@@ -6,7 +6,7 @@ Sources:
 
 - `NP-SRC-15`
   (`15_260724_NeX_Platform_Development_Environment_Directory_Structure_v1.1.md`)
-- [Development Environment Skeleton](04_development_environment_skeleton.md)
+- [Development Environment Skeleton](./archive/planning/04_development_environment_skeleton.md)
 - [NeX-Platform MVP SRS v0.1 Assembly](29_nex_platform_mvp_srs_v0_1_assembly.md)
 - [Service-Specific Requirement Partition](30_service_specific_requirement_partition.md)
 - [Cross-Service Traceability Matrix](31_cross_service_traceability_matrix.md)

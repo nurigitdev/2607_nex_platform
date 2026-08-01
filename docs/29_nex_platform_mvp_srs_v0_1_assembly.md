@@ -10,7 +10,7 @@ Sources:
   (`02_260723_NeX_Platform_Canonical_Terminology_State_API_Contract_v1.0.md`)
 - `NP-SRC-03`
   (`03_260723_NeX_Platform_Common_Foundation_Design_v1.6.md`)
-- [MVP SRS Skeleton](02_mvp_srs_skeleton.md)
+- [MVP SRS Skeleton](./archive/planning/02_mvp_srs_skeleton.md)
 - [2-Week MVP Capability Map](10_2week_mvp_capability_map.md)
 - [Common Contract Freeze Candidate Map](11_common_contract_freeze_candidate_map.md)
 - [Service Boundary Decision Record](12_service_boundary_decision_record.md)

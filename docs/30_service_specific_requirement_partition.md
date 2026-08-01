@@ -8,7 +8,7 @@ Sources:
 - [Service Boundary Decision Record](12_service_boundary_decision_record.md)
 - [2-Week MVP Capability Map](10_2week_mvp_capability_map.md)
 - [Common Contract Freeze Candidate Map](11_common_contract_freeze_candidate_map.md)
-- [Generation OpenAPI Endpoint Seed](27_generation_openapi_endpoint_seed.md)
+- [Generation OpenAPI Endpoint Seed](./archive/planning/27_generation_openapi_endpoint_seed.md)
 
 This document partitions the assembled MVP SRS into service-owned requirement
 sets. The goal is to prevent implementation tickets from mixing ownership across

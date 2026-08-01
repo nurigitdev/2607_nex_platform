@@ -4,9 +4,9 @@ Status: Draft seed for Slice 445.
 
 Sources:
 
-- [Design System Skeleton](03_design_system_skeleton.md)
-- [Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md)
-- [AG Generation Artifact Audit Dashboard Requirements](25_ag_generation_artifact_audit_dashboard_requirements.md)
+- [Design System Skeleton](./archive/planning/03_design_system_skeleton.md)
+- [Chat Workspace Artifact Link Requirements](./archive/planning/23_chat_workspace_artifact_link_requirements.md)
+- [AG Generation Artifact Audit Dashboard Requirements](./archive/planning/25_ag_generation_artifact_audit_dashboard_requirements.md)
 - [Testing Strategy v0.1 Detail](34_testing_strategy_v0_1_detail.md)
 - [NeX-Platform MVP SRS v0.1 Assembly](29_nex_platform_mvp_srs_v0_1_assembly.md)
 

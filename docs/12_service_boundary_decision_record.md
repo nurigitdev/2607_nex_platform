@@ -152,7 +152,7 @@ Consequence:
 | --- | --- |
 | `NP-SRC-07` file name says OA operations/administration. | Use only identity/auth/service-auth content for OA; move operations administration concerns to AG. |
 | `NP-SRC-09` includes CX generation, prompt, structured draft, and artifact areas. | Keep CX retrieval/evidence/content lifecycle and document-grounded generation execution record; keep final user-facing chat/artifact ownership in AE. |
-| `NP-SRC-11` contains language that AE should not call MO for document generation. | Reconciled in [Generation Routing Boundary Reconciliation](15_generation_routing_boundary_reconciliation.md): AE calls CX for document-grounded generation, and CX calls MO stable API. |
+| `NP-SRC-11` contains language that AE should not call MO for document generation. | Reconciled in [Generation Routing Boundary Reconciliation](./archive/planning/15_generation_routing_boundary_reconciliation.md): AE calls CX for document-grounded generation, and CX calls MO stable API. |
 | `NP-SRC-08` contains service lifecycle and host control scope. | Keep AG observation/readiness/audit in MVP; defer host start/stop/restart control unless operational launch requires it. |
 | Full SRS and 2-week MVP scope differ. | Use `NP-SRC-13` and this boundary record as the first scope gate; use full SRS only as completeness cross-check. |
 

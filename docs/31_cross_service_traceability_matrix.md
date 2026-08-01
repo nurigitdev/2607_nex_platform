@@ -4,7 +4,7 @@ Status: Draft seed for Slice 441.
 
 Sources:
 
-- [Source Material Inventory](09_source_material_inventory.md)
+- [Source Material Inventory](./archive/planning/09_source_material_inventory.md)
 - [NeX-Platform MVP SRS v0.1 Assembly](29_nex_platform_mvp_srs_v0_1_assembly.md)
 - [Service-Specific Requirement Partition](30_service_specific_requirement_partition.md)
 - [Common Contract Freeze Candidate Map](11_common_contract_freeze_candidate_map.md)

@@ -210,18 +210,18 @@ This contract should feed:
 The CX-to-AE retrieval context package direction is detailed in
 [CX-to-AE Retrieval Context Package Contract](14_cx_ae_retrieval_context_package_contract.md).
 Generation routing is reconciled in
-[Generation Routing Boundary Reconciliation](15_generation_routing_boundary_reconciliation.md).
+[Generation Routing Boundary Reconciliation](./archive/planning/15_generation_routing_boundary_reconciliation.md).
 The first AE-to-CX generation request package is defined in
 [AE-to-CX Generation Request Package Contract](16_ae_cx_generation_request_package_contract.md).
 The CX-to-MO generation provider contract is defined in
 [CX-to-MO Generation Provider Contract](17_cx_mo_generation_provider_contract.md).
 The CX generation execution and lineage record is defined in
-[CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md).
+[CX Generation Execution Record + Lineage Contract](./archive/planning/18_cx_generation_execution_record_lineage_contract.md).
 The structured draft and citation schema is defined in
-[Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md).
+[Structured Draft + Citation Schema Contract](./archive/planning/19_structured_draft_citation_schema_contract.md).
 The AE artifact rendering handoff is defined in
-[AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md).
+[AE Artifact Rendering Handoff Contract](./archive/planning/20_ae_artifact_rendering_handoff_contract.md).
 The generation progress event contract is defined in
-[Generation Progress Event Contract](21_generation_progress_event_contract.md).
+[Generation Progress Event Contract](./archive/planning/21_generation_progress_event_contract.md).
 The chat workspace artifact link requirements are defined in
-[Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md).
+[Chat Workspace Artifact Link Requirements](./archive/planning/23_chat_workspace_artifact_link_requirements.md).

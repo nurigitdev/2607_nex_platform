@@ -4,7 +4,7 @@ Status: Draft seed for Slice 444.
 
 Sources:
 
-- [Testing Strategy Skeleton](05_testing_strategy_skeleton.md)
+- [Testing Strategy Skeleton](./archive/planning/05_testing_strategy_skeleton.md)
 - [Generation E2E Acceptance + Contract Test Plan](28_generation_e2e_acceptance_contract_test_plan.md)
 - [Cross-Service Traceability Matrix](31_cross_service_traceability_matrix.md)
 - [Platform Development Environment Freeze](32_platform_development_environment_freeze.md)

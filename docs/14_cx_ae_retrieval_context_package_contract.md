@@ -214,7 +214,7 @@ This contract should feed:
 - MVP SRS v0.1 retrieval/generation acceptance criteria.
 
 Generation routing is reconciled in
-[Generation Routing Boundary Reconciliation](15_generation_routing_boundary_reconciliation.md).
+[Generation Routing Boundary Reconciliation](./archive/planning/15_generation_routing_boundary_reconciliation.md).
 The AE-to-CX generation request package is defined in
 [AE-to-CX Generation Request Package Contract](16_ae_cx_generation_request_package_contract.md).
 The CX-to-MO generation provider request/response contract is defined in

@@ -5,8 +5,8 @@ Status: Draft seed for Slice 443.
 Sources:
 
 - [Common Contract Freeze Candidate Map](11_common_contract_freeze_candidate_map.md)
-- [Generation Contract JSON Schema Seed](26_generation_contract_json_schema_seed.md)
-- [Generation OpenAPI Endpoint Seed](27_generation_openapi_endpoint_seed.md)
+- [Generation Contract JSON Schema Seed](./archive/planning/26_generation_contract_json_schema_seed.md)
+- [Generation OpenAPI Endpoint Seed](./archive/planning/27_generation_openapi_endpoint_seed.md)
 - [Platform Development Environment Freeze](32_platform_development_environment_freeze.md)
 - [Cross-Service Traceability Matrix](31_cross_service_traceability_matrix.md)
 

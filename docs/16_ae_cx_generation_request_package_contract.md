@@ -12,7 +12,7 @@ Sources:
   (`10_260723_NeX_AE_Work_Assistant_Workspace_Design_v1.4.md`)
 - [AE Agent Orchestration Contract](13_ae_agent_orchestration_contract.md)
 - [CX-to-AE Retrieval Context Package Contract](14_cx_ae_retrieval_context_package_contract.md)
-- [Generation Routing Boundary Reconciliation](15_generation_routing_boundary_reconciliation.md)
+- [Generation Routing Boundary Reconciliation](./archive/planning/15_generation_routing_boundary_reconciliation.md)
 
 This document freezes the first request package that `nex-ae-api` sends to
 `nex-cx` when a user-facing interaction needs document-grounded generation,
@@ -224,12 +224,12 @@ This contract should feed:
 - CX-to-MO generation provider request/response contract, starting from
   [CX-to-MO Generation Provider Contract](17_cx_mo_generation_provider_contract.md).
 - CX generation execution record and lineage contract, starting from
-  [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md).
+  [CX Generation Execution Record + Lineage Contract](./archive/planning/18_cx_generation_execution_record_lineage_contract.md).
 - Structured draft and citation validation schema, starting from
-  [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md).
+  [Structured Draft + Citation Schema Contract](./archive/planning/19_structured_draft_citation_schema_contract.md).
 - AE artifact rendering handoff contract, starting from
-  [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md).
+  [AE Artifact Rendering Handoff Contract](./archive/planning/20_ae_artifact_rendering_handoff_contract.md).
 - Prompt/template/output compatibility rule matrix, starting from
-  [Prompt/Template/Output Compatibility Matrix](24_prompt_template_output_compatibility_matrix.md).
+  [Prompt/Template/Output Compatibility Matrix](./archive/planning/24_prompt_template_output_compatibility_matrix.md).
 - OA service scope catalog for `ae:generation.request` and `cx:generation.run`.
 - AG generation audit and lineage dashboard requirements.

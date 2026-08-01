@@ -11,7 +11,7 @@ Sources:
 - `NP-SRC-11`
   (`11_260723_NeX_MO_Model_Operations_Design_v1.3.md`)
 - [Service Boundary Decision Record](12_service_boundary_decision_record.md)
-- [Generation Routing Boundary Reconciliation](15_generation_routing_boundary_reconciliation.md)
+- [Generation Routing Boundary Reconciliation](./archive/planning/15_generation_routing_boundary_reconciliation.md)
 - [AE-to-CX Generation Request Package Contract](16_ae_cx_generation_request_package_contract.md)
 
 This document freezes the first provider-facing generation contract between
@@ -240,9 +240,9 @@ All errors use `application/problem+json` and include `request_id`, `trace_id`,
 This contract should feed:
 
 - CX generation execution record and lineage contract, starting from
-  [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md).
+  [CX Generation Execution Record + Lineage Contract](./archive/planning/18_cx_generation_execution_record_lineage_contract.md).
 - Structured draft and citation validation schema, starting from
-  [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md).
+  [Structured Draft + Citation Schema Contract](./archive/planning/19_structured_draft_citation_schema_contract.md).
 - MO provider route and admission policy schema.
 - AG provider/generation operations dashboard requirements.
 - OA service scope catalog for `cx:generation.run` and `mo:generation`.
