@@ -1,0 +1,32 @@
+{
+  "event_schema_version": "ag_generation_audit_event.v1",
+  "audit_event_id": "audit-event-001",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "occurred_at": "2026-08-02T00:00:00Z",
+  "source_service": "nex-cx",
+  "actor_ref": {
+    "actor_type": "user",
+    "actor_id": "user-001",
+    "tenant_id": "tenant-001"
+  },
+  "action_type": "generation_run",
+  "target_type": "generation",
+  "target_ref": {
+    "target_id": "cx-gen-001",
+    "display_summary": "general-llm-default"
+  },
+  "result_status": "SUCCEEDED",
+  "quality_summary": {
+    "citation_status": "VALIDATED"
+  },
+  "compatibility_summary": {
+    "compatibility_rule_id": "compat-grounded-answer-v1"
+  },
+  "provider_summary": {
+    "alias": "general-llm-default"
+  },
+  "details": {
+    "raw_prompt": "private prompt text"
+  }
+}

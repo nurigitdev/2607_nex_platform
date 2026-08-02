@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/ag_generation_audit_event.v1.schema.json",
+  "title": "NeX AG Generation Audit Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_schema_version",
+    "audit_event_id",
+    "trace_id",
+    "request_id",
+    "occurred_at",
+    "source_service",
+    "actor_ref",
+    "action_type",
+    "target_type",
+    "target_ref",
+    "result_status",
+    "quality_summary",
+    "compatibility_summary",
+    "provider_summary",
+    "details"
+  ],
+  "properties": {
+    "event_schema_version": {
+      "const": "ag_generation_audit_event.v1"
+    },
+    "audit_event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_service": {
+      "type": "string",
+      "enum": [
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-oa",
+        "nex-ag"
+      ]
+    },
+    "actor_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor_type",
+        "actor_id",
+        "tenant_id"
+      ],
+      "properties": {
+        "actor_type": {
+          "type": "string",
+          "enum": [
+            "user",
+            "service"
+          ]
+        },
+        "actor_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenant_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "generation_run",
+        "artifact_render",
+        "download",
+        "retry",
+        "repair",
+        "override"
+      ]
+    },
+    "target_type": {
+      "type": "string",
+      "enum": [
+        "generation",
+        "artifact",
+        "artifact_file",
+        "policy",
+        "provider"
+      ]
+    },
+    "target_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_id",
+        "display_summary"
+      ],
+      "properties": {
+        "target_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "display_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      }
+    },
+    "result_status": {
+      "type": "string",
+      "enum": [
+        "SUCCEEDED",
+        "FAILED",
+        "DENIED",
+        "WARNED",
+        "ACCEPTED_WITH_WARNING"
+      ]
+    },
+    "quality_summary": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "compatibility_summary": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "provider_summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "propertyNames": {
+        "not": {
+          "enum": [
+            "provider_url",
+            "provider_endpoint",
+            "model_path",
+            "api_key",
+            "password",
+            "secret"
+          ]
+        }
+      }
+    },
+    "details": {
+      "type": "object",
+      "additionalProperties": true,
+      "propertyNames": {
+        "not": {
+          "enum": [
+            "prompt",
+            "messages",
+            "content",
+            "content_text",
+            "source_text",
+            "output_text",
+            "raw_prompt",
+            "raw_output",
+            "provider_url",
+            "provider_endpoint",
+            "model_path",
+            "storage_path",
+            "authorization",
+            "cookie",
+            "api_key",
+            "password",
+            "secret"
+          ]
+        }
+      }
+    }
+  }
+}

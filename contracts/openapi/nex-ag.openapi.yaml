@@ -4,6 +4,8 @@ info:
   version: 0.0.0-slice0003
 tags:
   - name: Platform
+  - name: Readiness
+  - name: GenerationAudit
 paths:
   /health:
     get:
@@ -51,3 +53,28 @@ paths:
           description: Read-only service readiness projection.
         "401":
           description: Service claim is missing or invalid.
+  /admin/v1/generation-audit/generations/{cx_generation_id}:
+    get:
+      operationId: getAgGenerationAuditProjection
+      tags:
+        - GenerationAudit
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: artifact_handoff_id
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Read-only redacted generation audit projection assembled through CX and AE service APIs.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Source generation or artifact handoff was not found.
+        "503":
+          description: Source service is unavailable.

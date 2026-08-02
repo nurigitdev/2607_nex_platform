@@ -1,0 +1,53 @@
+{
+  "event_schema_version": "ag_generation_audit_event.v1",
+  "audit_event_id": "audit-event-001",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "occurred_at": "2026-08-02T00:00:00Z",
+  "source_service": "nex-cx",
+  "actor_ref": {
+    "actor_type": "user",
+    "actor_id": "user-001",
+    "tenant_id": "tenant-001"
+  },
+  "action_type": "generation_run",
+  "target_type": "generation",
+  "target_ref": {
+    "target_id": "cx-gen-001",
+    "display_summary": "general-llm-default"
+  },
+  "result_status": "SUCCEEDED",
+  "quality_summary": {
+    "citation_status": "VALIDATED",
+    "citation_count": 2,
+    "validation_error_count": 0,
+    "warning_count": 0,
+    "grounding_required": true,
+    "retrieval_package_id": "cx-ret-001",
+    "retrieval_package_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "evidence_ref_count": 2
+  },
+  "compatibility_summary": {
+    "compatibility_rule_id": "compat-grounded-answer-v1",
+    "grounding_required": true,
+    "generation_request_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "provider_prompt_package_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "provider_summary": {
+    "alias": "general-llm-default",
+    "mo_generation_id": "mo-gen-001",
+    "usage": {
+      "input_tokens": 5,
+      "output_tokens": 7,
+      "total_tokens": 12
+    },
+    "finish_reason": "STOP",
+    "route_id": "route-general-llm-default",
+    "provider_request_id": "provider-001",
+    "total_ms": 12
+  },
+  "details": {
+    "timeline_event_count": 7,
+    "artifact_handoff_id": "handoff-001"
+  }
+}
