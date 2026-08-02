@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/generation_recovery_request.v1.schema.json",
+  "title": "NeX AE Generation Recovery Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "recovery_request_schema_version",
+    "recovery_request_id",
+    "status",
+    "trace_id",
+    "request_id",
+    "interaction_id",
+    "chat_document_id",
+    "cx_generation_id",
+    "parent_generation_id",
+    "requested_action",
+    "failure",
+    "policy",
+    "dispatch",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "recovery_request_schema_version": {
+      "const": "ae_generation_recovery_request.v1"
+    },
+    "recovery_request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ACCEPTED",
+        "REJECTED",
+        "DISPATCH_READY",
+        "DISPATCHED",
+        "CANCELLED"
+      ]
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "interaction_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "chat_document_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "cx_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parent_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requested_action": {
+      "$ref": "#/$defs/recoveryAction"
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "failure_code",
+        "failure_class",
+        "owner_service",
+        "failed_stage",
+        "retryable",
+        "recovery_policy_id",
+        "recovery_policy_hash"
+      ],
+      "properties": {
+        "failure_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failure_class": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_service": {
+          "$ref": "#/$defs/serviceId"
+        },
+        "failed_stage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "recovery_policy_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "recovery_policy_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recovery_policy_id",
+        "recovery_policy_hash",
+        "hash_status",
+        "operator_override_allowed"
+      ],
+      "properties": {
+        "recovery_policy_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "recovery_policy_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "hash_status": {
+          "type": "string",
+          "enum": [
+            "MATCHED",
+            "STALE",
+            "UNAVAILABLE"
+          ]
+        },
+        "operator_override_allowed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "dispatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_service",
+        "endpoint_hint",
+        "attempt_no",
+        "retry_after_seconds",
+        "reuse_retrieval_package",
+        "changed_fields",
+        "requires_user_confirmation"
+      ],
+      "properties": {
+        "target_service": {
+          "$ref": "#/$defs/serviceId"
+        },
+        "endpoint_hint": {
+          "type": "string",
+          "pattern": "^/api/v1/"
+        },
+        "attempt_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "retry_after_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "reuse_retrieval_package": {
+          "type": "boolean"
+        },
+        "changed_fields": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "not": {
+              "enum": [
+                "prompt",
+                "messages",
+                "content",
+                "source_text",
+                "output_text",
+                "raw_prompt",
+                "raw_output",
+                "api_key",
+                "password",
+                "secret",
+                "provider_url",
+                "model_path"
+              ]
+            }
+          }
+        },
+        "requires_user_confirmation": {
+          "type": "boolean"
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "serviceId": {
+      "type": "string",
+      "enum": [
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-ag"
+      ]
+    },
+    "recoveryAction": {
+      "type": "string",
+      "enum": [
+        "retry",
+        "repair",
+        "sectional_retry",
+        "regenerate",
+        "fresh_retrieval_regenerate",
+        "manual_accept_with_warning",
+        "cancel"
+      ]
+    }
+  }
+}

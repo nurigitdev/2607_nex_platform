@@ -10,6 +10,7 @@ from nex_ae_api.artifacts import register_artifact_handoff_routes
 from nex_ae_api.chat import register_chat_routes
 from nex_ae_api.documents import register_document_library_routes
 from nex_ae_api.prompts import DEFAULT_AE_PROMPT_STORE
+from nex_ae_api.recovery_requests import register_generation_recovery_request_routes
 from nex_ae_api.retrieval import register_retrieval_routes
 from nex_ae_api.uploads import register_upload_routes
 from nex_ae_api.workspace import register_workspace_routes
@@ -22,6 +23,7 @@ register_document_library_routes(app)
 register_artifact_handoff_routes(app)
 register_generation_compatibility_routes(app, expected_audience="nex-ae-api")
 register_generation_recovery_policy_routes(app, expected_audience="nex-ae-api")
+register_generation_recovery_request_routes(app)
 register_chat_routes(app, analytics_store=DEFAULT_PROMPT_ANALYTICS_STORE)
 register_retrieval_routes(app)
 register_prompt_analytics_routes(app, store=DEFAULT_PROMPT_ANALYTICS_STORE)

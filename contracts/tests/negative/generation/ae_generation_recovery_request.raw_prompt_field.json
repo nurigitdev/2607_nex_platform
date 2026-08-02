@@ -1,0 +1,40 @@
+{
+  "recovery_request_schema_version": "ae_generation_recovery_request.v1",
+  "recovery_request_id": "ae-recovery-001",
+  "status": "ACCEPTED",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "interaction_id": "ae-chat-001",
+  "chat_document_id": "ae-chat-doc-001",
+  "cx_generation_id": "cx-gen-timeout-001",
+  "parent_generation_id": "cx-gen-timeout-001",
+  "requested_action": "retry",
+  "failure": {
+    "failure_code": "mo.provider_timeout",
+    "failure_class": "provider_timeout",
+    "owner_service": "nex-cx",
+    "failed_stage": "GENERATING",
+    "retryable": true,
+    "recovery_policy_id": "recovery-mo-provider-timeout-retry-v1",
+    "recovery_policy_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  },
+  "policy": {
+    "recovery_policy_id": "recovery-mo-provider-timeout-retry-v1",
+    "recovery_policy_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "hash_status": "MATCHED",
+    "operator_override_allowed": false
+  },
+  "dispatch": {
+    "target_service": "nex-cx",
+    "endpoint_hint": "/api/v1/generations",
+    "attempt_no": 2,
+    "retry_after_seconds": 5,
+    "reuse_retrieval_package": true,
+    "changed_fields": [
+      "raw_prompt"
+    ],
+    "requires_user_confirmation": false
+  },
+  "created_at": "2026-08-02T00:00:00Z",
+  "updated_at": "2026-08-02T00:00:00Z"
+}

@@ -56,6 +56,11 @@
       "schema": "schemas/generation/generation_recovery_policy.v1.schema.json"
     },
     {
+      "name": "ae_generation_recovery_request_retry_accepted",
+      "path": "examples/generation/ae_generation_recovery_request.retry_accepted.json",
+      "schema": "schemas/service/nex_ae_api/generation_recovery_request.v1.schema.json"
+    },
+    {
       "name": "cx_structured_draft_mock",
       "path": "examples/generation/cx_structured_draft.mock_success.json",
       "schema": "schemas/generation/cx_structured_draft.v1.schema.json"

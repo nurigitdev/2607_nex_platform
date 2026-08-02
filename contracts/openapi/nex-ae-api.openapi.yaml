@@ -402,6 +402,40 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: No active generation recovery policy matched the failure code.
+  /api/v1/recovery/generation-requests:
+    post:
+      operationId: createAeGenerationRecoveryRequest
+      tags:
+        - Recovery
+      responses:
+        "202":
+          description: AE accepted a safe generation recovery request for a failed CX generation record.
+        "401":
+          description: Service claim is missing or invalid.
+        "409":
+          description: CX generation is not failed, source lineage is invalid, or requested action is not allowed by policy.
+        "422":
+          description: Recovery request is invalid.
+        "503":
+          description: CX generation lookup is unavailable.
+  /api/v1/recovery/generation-requests/{recovery_request_id}:
+    get:
+      operationId: getAeGenerationRecoveryRequest
+      tags:
+        - Recovery
+      parameters:
+        - name: recovery_request_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Safe AE generation recovery request record.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Recovery request was not found.
   /api/v1/chat/interactions:
     post:
       operationId: createAeChatInteraction

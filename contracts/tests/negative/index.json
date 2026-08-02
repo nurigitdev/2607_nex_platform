@@ -56,6 +56,11 @@
       "schema": "schemas/generation/generation_recovery_policy.v1.schema.json"
     },
     {
+      "name": "ae_generation_recovery_request_raw_prompt_field",
+      "path": "tests/negative/generation/ae_generation_recovery_request.raw_prompt_field.json",
+      "schema": "schemas/service/nex_ae_api/generation_recovery_request.v1.schema.json"
+    },
+    {
       "name": "cx_structured_draft_raw_output_leak",
       "path": "tests/negative/generation/cx_structured_draft.raw_output_leak.json",
       "schema": "schemas/generation/cx_structured_draft.v1.schema.json"

@@ -30,6 +30,8 @@ Current endpoints:
 - `GET /api/v1/compatibility/generation-rules`
 - `GET /api/v1/recovery/generation-policies`
 - `GET /api/v1/recovery/generation-policies/{failure_code}`
+- `POST /api/v1/recovery/generation-requests`
+- `GET /api/v1/recovery/generation-requests/{recovery_request_id}`
 - `POST /api/v1/chat/interactions`
 - `GET /api/v1/chat/interactions/{interaction_id}`
 - `POST /api/v1/chat/interactions/{interaction_id}/artifact-links`
@@ -109,3 +111,7 @@ Generation recovery policies:
 - AE reads the shared recovery policy catalog for retry, repair, regeneration,
   manual warning acceptance, and artifact render retry decisions. Policies store
   safe owner/action/lineage metadata and redaction-safe hashes only.
+- AE can accept a user/operator recovery action for a failed CX generation
+  record and store a separate safe recovery request envelope. The request fixes
+  policy hash status, next attempt number, dispatch target, and retrieval reuse
+  intent without mutating the failed chat or generation record.
