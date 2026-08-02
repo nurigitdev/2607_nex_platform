@@ -23,6 +23,28 @@ const workspaceState = {
   cxGenerationId: "cx-gen-local",
   retrievalPackageId: "cx-ret-local",
   artifactHandoffId: "handoff-local",
+  artifactRef: {
+    artifactId: "artifact-local",
+    artifactVersionId: "artifact-version-local-001",
+    displayTitle: "MVP 착수 패키지 보고서",
+    artifactType: "generated_document",
+    artifactStatus: "READY",
+    primaryFormat: "MD",
+    availableFormats: ["MD"],
+    previewRoute: "/api/v1/artifact-files/artifact-file-local-001/preview",
+    downloadRoutes: {
+      MD: "/api/v1/artifact-files/artifact-file-local-001/download"
+    },
+    sourceGenerationId: "cx-gen-local",
+    sourceContentHash: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    qualitySummary: {
+      citationStatus: "VALIDATED",
+      citationCount: 3,
+      evidenceRefCount: 3,
+      groundingRequired: true
+    },
+    actions: ["preview", "view_sources", "view_lineage", "download_md"]
+  },
   documents: [
     {
       documentId: "doc-001",
@@ -55,16 +77,22 @@ const workspaceState = {
     {
       role: "assistant",
       label: "assistant",
-      text: "CX retrieval package와 structured draft 검증 결과를 기준으로 답변을 준비했습니다."
+      text: "CX retrieval package와 structured draft 검증 결과를 기준으로 답변을 준비했습니다.",
+      artifactRefs: []
     }
   ],
   progressEvents: buildProgressEvents(true),
   artifact: {
-    handoffStatus: "READY_FOR_RENDERING",
+    handoffStatus: "READY",
     title: "MVP 착수 패키지 보고서",
     targetFormats: ["MD", "HTML_PREVIEW"],
     citationStatus: "VALIDATED",
-    evidenceRefCount: 3
+    evidenceRefCount: 3,
+    currentVersionId: "artifact-version-local-001",
+    previewRoute: "/api/v1/artifact-files/artifact-file-local-001/preview",
+    downloadRoutes: {
+      MD: "/api/v1/artifact-files/artifact-file-local-001/download"
+    }
   },
   audit: {
     resultStatus: "SUCCEEDED",
@@ -73,6 +101,8 @@ const workspaceState = {
     providerAlias: "general-llm-default"
   }
 };
+
+workspaceState.messages[1].artifactRefs = [workspaceState.artifactRef];
 
 const serviceList = document.querySelector("#service-list");
 const statusStrip = document.querySelector("#status-strip");
@@ -170,9 +200,45 @@ function renderMessages() {
     article.innerHTML = `
       <span>${escapeHtml(message.label)}</span>
       <p>${escapeHtml(message.text)}</p>
+      ${renderArtifactRefs(message.artifactRefs || [])}
     `;
     messageList.appendChild(article);
   }
+}
+
+function renderArtifactRefs(artifactRefs) {
+  if (!artifactRefs.length) return "";
+  return `
+    <div class="artifact-link-list" aria-label="연결된 아티팩트">
+      ${artifactRefs.map(renderArtifactRef).join("")}
+    </div>
+  `;
+}
+
+function renderArtifactRef(artifactRef) {
+  const downloadFormats = Object.keys(artifactRef.downloadRoutes || {});
+  return `
+    <div class="artifact-link" data-artifact-id="${escapeHtml(artifactRef.artifactId)}">
+      <div class="artifact-link-heading">
+        <strong>${escapeHtml(artifactRef.displayTitle)}</strong>
+        <span class="badge ${badgeClass(artifactRef.artifactStatus)}">${statusLabel(artifactRef.artifactStatus)}</span>
+      </div>
+      <dl class="inline-meta slim">
+        <div>
+          <dt>version</dt>
+          <dd>${escapeHtml(artifactRef.artifactVersionId)}</dd>
+        </div>
+        <div>
+          <dt>source</dt>
+          <dd>${escapeHtml(artifactRef.sourceGenerationId)}</dd>
+        </div>
+      </dl>
+      <div class="artifact-actions">
+        ${artifactRef.previewRoute ? `<a href="${escapeHtml(artifactRef.previewRoute)}">Preview</a>` : ""}
+        ${downloadFormats.map(format => `<a href="${escapeHtml(artifactRef.downloadRoutes[format])}">${escapeHtml(format)}</a>`).join("")}
+      </div>
+    </div>
+  `;
 }
 
 function renderDocuments() {
@@ -215,6 +281,7 @@ function renderTimeline() {
 }
 
 function renderArtifactSummary() {
+  const downloadFormats = Object.keys(workspaceState.artifact.downloadRoutes || {});
   artifactSummary.innerHTML = `
     <strong>${escapeHtml(workspaceState.artifact.title)}</strong>
     <dl class="inline-meta">
@@ -227,8 +294,20 @@ function renderArtifactSummary() {
         <dd>${workspaceState.artifact.targetFormats.map(escapeHtml).join(", ")}</dd>
       </div>
       <div>
+        <dt>version</dt>
+        <dd>${escapeHtml(workspaceState.artifact.currentVersionId)}</dd>
+      </div>
+      <div>
         <dt>citations</dt>
         <dd>${statusLabel(workspaceState.artifact.citationStatus)} · ${workspaceState.artifact.evidenceRefCount}</dd>
+      </div>
+      <div>
+        <dt>preview</dt>
+        <dd>${escapeHtml(workspaceState.artifact.previewRoute)}</dd>
+      </div>
+      <div>
+        <dt>download</dt>
+        <dd>${downloadFormats.map(format => `${format}: ${workspaceState.artifact.downloadRoutes[format]}`).map(escapeHtml).join(", ")}</dd>
       </div>
     </dl>
   `;
@@ -274,13 +353,38 @@ function appendPromptInteraction() {
     label: "assistant",
     text: grounded
       ? `근거 패키지와 ${format} handoff를 연결했습니다.`
-      : `${format} 생성 요청을 일반 답변 흐름으로 연결했습니다.`
+      : `${format} 생성 요청을 일반 답변 흐름으로 연결했습니다.`,
+    artifactRefs: [buildMockArtifactRef(format, grounded)]
   });
   workspaceState.artifact.targetFormats = [format];
-  workspaceState.artifact.handoffStatus = grounded ? "READY_FOR_RENDERING" : "PREVIEW_ONLY";
+  workspaceState.artifact.handoffStatus = "READY";
   workspaceState.artifact.citationStatus = grounded ? "VALIDATED" : "NOT_REQUIRED";
+  workspaceState.artifact.currentVersionId = workspaceState.artifactRef.artifactVersionId;
+  workspaceState.artifact.previewRoute = workspaceState.artifactRef.previewRoute;
+  workspaceState.artifact.downloadRoutes = workspaceState.artifactRef.downloadRoutes;
   workspaceState.progressEvents = buildProgressEvents(grounded);
   renderWorkspace();
+}
+
+function buildMockArtifactRef(format, grounded) {
+  const artifactFileId = `artifact-file-local-${format.toLowerCase()}`;
+  const artifactRef = {
+    ...workspaceState.artifactRef,
+    artifactStatus: "READY",
+    primaryFormat: format,
+    availableFormats: [format],
+    previewRoute: `/api/v1/artifact-files/${artifactFileId}/preview`,
+    downloadRoutes: {
+      [format]: `/api/v1/artifact-files/${artifactFileId}/download`
+    },
+    qualitySummary: {
+      ...workspaceState.artifactRef.qualitySummary,
+      citationStatus: grounded ? "VALIDATED" : "NOT_REQUIRED",
+      groundingRequired: grounded
+    }
+  };
+  workspaceState.artifactRef = artifactRef;
+  return artifactRef;
 }
 
 function buildProgressEvents(grounded) {

@@ -25,7 +25,7 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "format-select",
     ]:
         assert f'id="{required_id}"' in html
-    assert "Slice 0040" in html
+    assert "Slice 0045" in html
     assert "lang=\"ko\"" in html
 
 
@@ -38,6 +38,9 @@ def test_ae_web_mock_state_links_generation_artifact_and_audit_contracts() -> No
         "READY_FOR_RENDERING",
         "compat-grounded-answer-v1",
         "handoff-local",
+        "artifact-version-local-001",
+        "artifactRefs",
+        "download_md",
         "general-llm-default",
     ]:
         assert expected in javascript
@@ -52,6 +55,8 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert "grid-template-columns: minmax(220px, 260px) minmax(0, 1fr)" in styles
     assert "@media (max-width: 620px)" in styles
     assert "overflow-wrap: anywhere" in styles
+    assert ".artifact-link" in styles
+    assert ".artifact-actions" in styles
     assert "letter-spacing: 0" in styles
     assert "letter-spacing: -" not in styles
     assert "linear-gradient" not in styles
@@ -61,5 +66,5 @@ def test_ae_web_package_version_tracks_slice_0040() -> None:
     package = json.loads(read_web_file("package.json"))
 
     assert package["name"] == "nex-ae-web"
-    assert package["version"] == "0.0.0-slice0040"
+    assert package["version"] == "0.0.0-slice0045"
     assert package["scripts"]["dev"] == "node scripts/serve.mjs"

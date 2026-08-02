@@ -10,7 +10,7 @@ npm --prefix apps/nex-ae-web run dev
 
 The shell uses only Node.js standard library for serving static files.
 
-Slice 0040 integrates the first mock workspace surface:
+Slice 0045 integrates the first mock workspace surface and artifact card flow:
 
 - Service readiness strip.
 - Workspace summary metrics.
@@ -18,6 +18,8 @@ Slice 0040 integrates the first mock workspace surface:
 - Document scope list.
 - Generation progress timeline.
 - AE artifact handoff summary.
+- AE artifact card refs with version, preview route, download route, and action
+  metadata.
 - AG audit summary.
 
 The browser shell is static and mock-first. Backend service calls are limited to

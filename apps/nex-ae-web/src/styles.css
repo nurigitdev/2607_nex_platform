@@ -277,6 +277,49 @@ h2 {
   background: #fbfcfd;
 }
 
+.artifact-link-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  border-top: 1px solid var(--nex-border);
+  padding-top: 12px;
+}
+
+.artifact-link {
+  display: grid;
+  gap: 8px;
+}
+
+.artifact-link-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.artifact-link-heading strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.artifact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.artifact-actions a {
+  min-height: 30px;
+  border: 1px solid var(--nex-border);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--nex-primary);
+  padding: 5px 9px;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .composer {
   border-top: 1px solid var(--nex-border);
   padding: 14px 16px 16px;
@@ -485,6 +528,11 @@ meter {
   display: grid;
   gap: 0;
   margin: 0;
+}
+
+.inline-meta.slim div {
+  grid-template-columns: 68px minmax(0, 1fr);
+  padding: 6px 0;
 }
 
 .inline-meta div,

@@ -148,6 +148,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0042`](slices/0042_ae_markdown_artifact_renderer_mvp.md) | `S5-002` AE Markdown artifact renderer MVP. |
 | [`Slice 0043`](slices/0043_ae_artifact_file_preview_download_metadata.md) | `S5-003` AE artifact file preview and download metadata. |
 | [`Slice 0044`](slices/0044_ae_chat_artifact_link_contract.md) | `S5-004` AE chat artifact link contract. |
+| [`Slice 0045`](slices/0045_ae_web_artifact_card_integration.md) | `S5-005` AE web artifact card integration. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
