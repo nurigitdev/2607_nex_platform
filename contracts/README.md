@@ -60,4 +60,5 @@ reject them. The validation command fails if a negative fixture becomes valid.
 - Retrieval/content ingestion: CX upload registration, queued ingestion job,
   mock text extraction result, chunk set, embedding index, lexical index, and
   retrieval context package.
+- AE orchestration: AE retrieval interaction.
 - Audit: AG readiness projection.

@@ -79,6 +79,11 @@
       "name": "cx_retrieval_context_package_raw_token_leak",
       "path": "tests/negative/retrieval/cx_retrieval_context_package.raw_token_leak.json",
       "schema": "schemas/service/nex_cx/retrieval_context_package.v1.schema.json"
+    },
+    {
+      "name": "ae_retrieval_interaction_raw_user_message_leak",
+      "path": "tests/negative/retrieval/ae_retrieval_interaction.raw_user_message_leak.json",
+      "schema": "schemas/service/nex_ae_api/retrieval_interaction.v1.schema.json"
     }
   ]
 }

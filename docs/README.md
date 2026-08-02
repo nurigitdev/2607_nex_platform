@@ -121,6 +121,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0015`](slices/0015_cx_mock_embedding_index.md) | `S2-005` CX mock embedding index job. |
 | [`Slice 0016`](slices/0016_cx_lexical_index_tokenizer_fallback.md) | `S2-006` CX BM25 tokenizer fallback and lexical index shell. |
 | [`Slice 0017`](slices/0017_cx_retrieval_context_package.md) | `S2-007` CX retrieval context package endpoint. |
+| [`Slice 0018`](slices/0018_ae_retrieval_orchestration.md) | `S2-008` AE retrieval orchestration route. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

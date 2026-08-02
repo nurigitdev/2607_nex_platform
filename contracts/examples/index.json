@@ -79,6 +79,11 @@
       "name": "cx_retrieval_context_package_mock",
       "path": "examples/retrieval/cx_retrieval_context_package.mock_success.json",
       "schema": "schemas/service/nex_cx/retrieval_context_package.v1.schema.json"
+    },
+    {
+      "name": "ae_retrieval_interaction_mock",
+      "path": "examples/retrieval/ae_retrieval_interaction.mock_success.json",
+      "schema": "schemas/service/nex_ae_api/retrieval_interaction.v1.schema.json"
     }
   ]
 }

@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/retrieval_interaction.v1.schema.json",
+  "title": "NeX AE Retrieval Interaction",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "retrieval_interaction_schema_version",
+    "retrieval_interaction_id",
+    "chat_document_id",
+    "status",
+    "trace_id",
+    "request_id",
+    "user_message_hash",
+    "user_message_preview",
+    "cx_retrieval_package_id",
+    "cx_package_hash",
+    "cx_status",
+    "purpose",
+    "retrieval",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "retrieval_interaction_schema_version": {
+      "const": "ae_retrieval_interaction.v1"
+    },
+    "retrieval_interaction_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "chat_document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "COMPLETED",
+        "FAILED"
+      ]
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "user_message_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "user_message_preview": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "cx_retrieval_package_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cx_package_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "cx_status": {
+      "type": "string",
+      "enum": [
+        "READY",
+        "NO_ANSWER",
+        "LOW_CONFIDENCE",
+        "PARTIAL",
+        "FAILED"
+      ]
+    },
+    "purpose": {
+      "type": "string",
+      "enum": [
+        "search",
+        "grounded_answer",
+        "summary",
+        "document_generation",
+        "confidence_probe"
+      ]
+    },
+    "retrieval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_count",
+        "best_score",
+        "confidence_bucket",
+        "no_answer_reason",
+        "warnings"
+      ],
+      "properties": {
+        "evidence_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "best_score": {
+          "type": "number",
+          "minimum": 0
+        },
+        "confidence_bucket": {
+          "type": "string"
+        },
+        "no_answer_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

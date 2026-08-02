@@ -4,6 +4,8 @@ info:
   version: 0.0.0-slice0003
 tags:
   - name: Platform
+  - name: Chat
+  - name: Retrieval
 paths:
   /health:
     get:
@@ -71,3 +73,35 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: AE chat interaction was not found.
+  /api/v1/retrieval/contexts:
+    post:
+      operationId: createAeRetrievalInteraction
+      tags:
+        - Retrieval
+      responses:
+        "200":
+          description: AE retrieval interaction created and linked to CX retrieval package.
+        "400":
+          description: Retrieval interaction request is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "503":
+          description: CX retrieval is unavailable.
+  /api/v1/retrieval/contexts/{retrieval_interaction_id}:
+    get:
+      operationId: getAeRetrievalInteraction
+      tags:
+        - Retrieval
+      parameters:
+        - name: retrieval_interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AE retrieval interaction record.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: AE retrieval interaction was not found.
