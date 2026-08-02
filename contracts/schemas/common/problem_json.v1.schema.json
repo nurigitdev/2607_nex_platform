@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/problem_json.v1.schema.json",
+  "title": "NeX Problem JSON",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "type",
+    "title",
+    "status",
+    "detail",
+    "instance",
+    "error_code",
+    "retryable",
+    "request_id",
+    "trace_id",
+    "details"
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "status": {
+      "type": "integer",
+      "minimum": 400,
+      "maximum": 599
+    },
+    "detail": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "instance": {
+      "type": "string",
+      "minLength": 1
+    },
+    "error_code": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$"
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "details": {
+      "type": "object",
+      "propertyNames": {
+        "not": {
+          "enum": [
+            "password",
+            "authorization",
+            "access_token",
+            "refresh_token",
+            "service_secret",
+            "reset_token",
+            "activation_token",
+            "cookie"
+          ]
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

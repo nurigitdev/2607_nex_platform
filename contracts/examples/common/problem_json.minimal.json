@@ -1,0 +1,15 @@
+{
+  "type": "https://nex-platform.local/problems/validation-error",
+  "title": "Validation error",
+  "status": 400,
+  "detail": "The request payload did not match the contract.",
+  "instance": "/api/v1/example",
+  "error_code": "VALIDATION_ERROR",
+  "retryable": false,
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "details": {
+    "field": "example_field",
+    "reason": "missing required value"
+  }
+}

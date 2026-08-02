@@ -45,3 +45,8 @@ scripts/quality/run_quality_gate.sh
 `examples/index.json` maps payload examples to the schema that validates them.
 Paths are relative to this directory. This keeps payload examples clean while
 still making validation explicit.
+
+## Negative Fixture Convention
+
+`tests/negative/index.json` maps rejection fixtures to the schema that should
+reject them. The validation command fails if a negative fixture becomes valid.

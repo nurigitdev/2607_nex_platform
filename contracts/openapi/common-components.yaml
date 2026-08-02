@@ -22,3 +22,67 @@ components:
           type: string
         version:
           type: string
+    TraceRefs:
+      type: object
+      additionalProperties: false
+      required:
+        - trace_id
+        - request_id
+      properties:
+        trace_id:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+        request_id:
+          type: string
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+        traceparent:
+          type: string
+          pattern: ^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$
+        service_id:
+          type: string
+          enum:
+            - nex-oa
+            - nex-ag
+            - nex-ae-api
+            - nex-cx
+            - nex-mo
+    ProblemJson:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - status
+        - detail
+        - instance
+        - error_code
+        - retryable
+        - request_id
+        - trace_id
+        - details
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+        error_code:
+          type: string
+          pattern: ^[A-Z][A-Z0-9_]*$
+        retryable:
+          type: boolean
+        request_id:
+          type: string
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+        trace_id:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+        details:
+          type: object

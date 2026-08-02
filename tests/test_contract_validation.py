@@ -52,6 +52,19 @@ def build_contract_fixture(root: Path) -> None:
             ]
         },
     )
+    write_json(root / "tests" / "negative" / "sample.invalid.json", {})
+    write_json(
+        root / "tests" / "negative" / "index.json",
+        {
+            "negative_examples": [
+                {
+                    "name": "sample_invalid",
+                    "path": "tests/negative/sample.invalid.json",
+                    "schema": "schemas/common/sample.v1.schema.json",
+                }
+            ]
+        },
+    )
     write_yaml(root / "openapi" / "sample.openapi.yaml", minimal_openapi())
 
 
@@ -63,6 +76,7 @@ def test_validate_contract_tree_accepts_valid_contract_package(tmp_path: Path) -
     assert summary.ok
     assert summary.schema_count == 1
     assert summary.example_count == 1
+    assert summary.negative_example_count == 1
     assert summary.openapi_count == 1
 
 
@@ -107,6 +121,69 @@ def test_validate_contract_tree_reports_invalid_openapi(tmp_path: Path) -> None:
     assert "invalid OpenAPI spec" in summary.failures[0]
 
 
+def test_validate_contract_tree_reports_negative_fixture_that_validates(
+    tmp_path: Path,
+) -> None:
+    build_contract_fixture(tmp_path)
+    write_json(tmp_path / "tests" / "negative" / "sample.invalid.json", {"name": "valid"})
+
+    summary = validate_contracts.validate_contract_tree(tmp_path)
+
+    assert not summary.ok
+    assert "negative example validated" in summary.failures[0]
+
+
+def test_validate_contract_tree_reports_bad_negative_index(tmp_path: Path) -> None:
+    build_contract_fixture(tmp_path)
+    write_json(
+        tmp_path / "tests" / "negative" / "index.json",
+        {"negative_examples": "not-a-list"},
+    )
+
+    summary = validate_contracts.validate_contract_tree(tmp_path)
+
+    assert not summary.ok
+    assert "tests/negative/index.json" in summary.failures[0]
+
+
+def test_validate_contract_tree_reports_missing_negative_index_keys(
+    tmp_path: Path,
+) -> None:
+    build_contract_fixture(tmp_path)
+    write_json(
+        tmp_path / "tests" / "negative" / "index.json",
+        {"negative_examples": [{"path": "x"}]},
+    )
+
+    summary = validate_contracts.validate_contract_tree(tmp_path)
+
+    assert not summary.ok
+    assert "missing key" in summary.failures[0]
+
+
+def test_validate_contract_tree_reports_unreadable_negative_fixture(
+    tmp_path: Path,
+) -> None:
+    build_contract_fixture(tmp_path)
+    write_json(
+        tmp_path / "tests" / "negative" / "index.json",
+        {
+            "negative_examples": [
+                {
+                    "name": "missing",
+                    "path": "tests/negative/missing.json",
+                    "schema": "schemas/common/sample.v1.schema.json",
+                }
+            ]
+        },
+    )
+
+    summary = validate_contracts.validate_contract_tree(tmp_path)
+
+    assert not summary.ok
+    assert "tests/negative/missing.json" in summary.failures[0]
+
+
 def test_iter_openapi_files_handles_missing_directory(tmp_path: Path) -> None:
     assert validate_contracts.iter_openapi_files(tmp_path) == []
 
@@ -123,7 +200,9 @@ def test_main_returns_success_for_valid_package(tmp_path: Path, capsys) -> None:
     build_contract_fixture(tmp_path)
 
     assert validate_contracts.main([str(tmp_path)]) == 0
-    assert "contract_validation=pass" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "contract_validation=pass" in output
+    assert "negative_examples=1" in output
 
 
 def test_main_returns_failure_for_invalid_package(tmp_path: Path, capsys) -> None:

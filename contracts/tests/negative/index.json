@@ -1,0 +1,19 @@
+{
+  "negative_examples": [
+    {
+      "name": "problem_json_missing_trace_id",
+      "path": "tests/negative/common/problem_json.missing_trace_id.json",
+      "schema": "schemas/common/problem_json.v1.schema.json"
+    },
+    {
+      "name": "problem_json_secret_detail_key",
+      "path": "tests/negative/common/problem_json.secret_detail_key.json",
+      "schema": "schemas/common/problem_json.v1.schema.json"
+    },
+    {
+      "name": "trace_refs_bad_traceparent",
+      "path": "tests/negative/common/trace_refs.bad_traceparent.json",
+      "schema": "schemas/common/trace_refs.v1.schema.json"
+    }
+  ]
+}

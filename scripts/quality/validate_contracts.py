@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, ValidationError
 from openapi_spec_validator import validate
 
 SUPPORTED_OPENAPI_SUFFIXES = {".json", ".yaml", ".yml"}
@@ -17,6 +17,7 @@ SUPPORTED_OPENAPI_SUFFIXES = {".json", ".yaml", ".yml"}
 class ContractValidationSummary:
     schema_count: int = 0
     example_count: int = 0
+    negative_example_count: int = 0
     openapi_count: int = 0
     failures: list[str] = field(default_factory=list)
 
@@ -51,17 +52,31 @@ def iter_openapi_files(root: Path) -> list[Path]:
     )
 
 
-def load_example_index(root: Path) -> list[dict[str, str]]:
-    index_path = root / "examples" / "index.json"
+def load_index_entries(index_path: Path, key: str) -> list[dict[str, str]]:
     if not index_path.exists():
         return []
 
     payload = load_structured_file(index_path)
-    examples = payload.get("examples", [])
-    if not isinstance(examples, list):
-        raise ValueError("examples/index.json must contain an examples list")
+    entries = payload.get(key, [])
+    if not isinstance(entries, list):
+        raise ValueError(f"{index_path} must contain a {key} list")
 
-    return examples
+    return entries
+
+
+def load_example_index(root: Path) -> list[dict[str, str]]:
+    return load_index_entries(root / "examples" / "index.json", "examples")
+
+
+def load_negative_example_index(root: Path) -> list[dict[str, str]]:
+    return load_index_entries(
+        root / "tests" / "negative" / "index.json",
+        "negative_examples",
+    )
+
+
+def validate_payload(schema: dict[str, Any], payload: Any) -> None:
+    Draft202012Validator(schema).validate(payload)
 
 
 def validate_json_schemas(root: Path, summary: ContractValidationSummary) -> None:
@@ -87,13 +102,47 @@ def validate_examples(root: Path, summary: ContractValidationSummary) -> None:
             schema_path = root / entry["schema"]
             schema = load_structured_file(schema_path)
             payload = load_structured_file(example_path)
-            Draft202012Validator(schema).validate(payload)
+            validate_payload(schema, payload)
         except KeyError as exc:
             summary.failures.append(f"examples/index.json: missing key {exc}")
         except Exception as exc:
             summary.failures.append(f"{entry.get('path', '<unknown>')}: {exc}")
         else:
             summary.example_count += 1
+
+
+def validate_negative_examples(root: Path, summary: ContractValidationSummary) -> None:
+    try:
+        examples = load_negative_example_index(root)
+    except Exception as exc:
+        summary.failures.append(f"{root / 'tests' / 'negative' / 'index.json'}: {exc}")
+        return
+
+    for entry in examples:
+        try:
+            example_path = root / entry["path"]
+            schema_path = root / entry["schema"]
+            schema = load_structured_file(schema_path)
+            payload = load_structured_file(example_path)
+        except KeyError as exc:
+            summary.failures.append(f"tests/negative/index.json: missing key {exc}")
+            continue
+        except Exception as exc:
+            summary.failures.append(f"{entry.get('path', '<unknown>')}: {exc}")
+            continue
+
+        try:
+            validate_payload(schema, payload)
+        except ValidationError:
+            summary.negative_example_count += 1
+        except Exception as exc:
+            summary.failures.append(
+                f"{entry.get('path', '<unknown>')}: unexpected validation error: {exc}"
+            )
+        else:
+            summary.failures.append(
+                f"{entry.get('path', '<unknown>')}: negative example validated"
+            )
 
 
 def validate_openapi_specs(root: Path, summary: ContractValidationSummary) -> None:
@@ -110,6 +159,7 @@ def validate_contract_tree(root: Path) -> ContractValidationSummary:
     summary = ContractValidationSummary()
     validate_json_schemas(root, summary)
     validate_examples(root, summary)
+    validate_negative_examples(root, summary)
     validate_openapi_specs(root, summary)
     return summary
 
@@ -137,6 +187,7 @@ def main(argv: list[str] | None = None) -> int:
             "contract_validation=pass "
             f"schemas={summary.schema_count} "
             f"examples={summary.example_count} "
+            f"negative_examples={summary.negative_example_count} "
             f"openapi={summary.openapi_count}"
         )
         return 0

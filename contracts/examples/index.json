@@ -4,6 +4,16 @@
       "name": "contract_manifest_minimal",
       "path": "examples/common/contract_manifest.minimal.json",
       "schema": "schemas/common/contract_manifest.v1.schema.json"
+    },
+    {
+      "name": "problem_json_minimal",
+      "path": "examples/common/problem_json.minimal.json",
+      "schema": "schemas/common/problem_json.v1.schema.json"
+    },
+    {
+      "name": "trace_refs_minimal",
+      "path": "examples/common/trace_refs.minimal.json",
+      "schema": "schemas/common/trace_refs.v1.schema.json"
     }
   ]
 }
