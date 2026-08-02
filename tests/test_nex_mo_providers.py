@@ -5,11 +5,14 @@ from fastapi.testclient import TestClient
 from nex_mo.main import app
 from nex_mo.providers import (
     DEFAULT_PROVIDER_ROUTES,
+    ModelProfile,
     ProviderRoute,
     ProviderRouteError,
+    build_model_profile_catalog,
     create_mock_embedding_response,
     create_mock_generation_response,
     create_mock_rerank_response,
+    list_model_profiles,
     list_provider_routes,
     resolve_provider_route,
 )
@@ -34,6 +37,93 @@ def test_provider_registry_contains_required_mock_capabilities() -> None:
         "generation",
     }
     assert resolve_provider_route("general-llm-default", "generation").status == "READY"
+
+
+def test_model_profile_catalog_uses_qwen_defaults() -> None:
+    profiles = build_model_profile_catalog({})
+
+    assert [profile.profile_name for profile in profiles] == [
+        "qwen3_embedding_4b_bf16",
+        "qwen3_reranker_4b_bf16",
+        "qwen3_6_27b_nvfp4",
+    ]
+    assert profiles[0].model_path == "/data/nex-platform/models/qwen3-embedding-4b-bf16"
+    assert profiles[1].precision == "BF16"
+    assert profiles[2].runtime_engine == "vllm"
+    assert all(profile.provider_mode == "mock" for profile in profiles)
+    assert all(profile.status == "READY" for profile in profiles)
+
+
+def test_model_profile_catalog_accepts_env_overrides() -> None:
+    profiles = build_model_profile_catalog(
+        {
+            "NEX_MO_PROVIDER_MODE": "live",
+            "NEX_MO_MODEL_ROOT": "/models",
+            "NEX_MO_EMBEDDING_PROFILE": "embedding_a",
+            "NEX_MO_RERANKER_PROFILE": "reranker_a",
+            "NEX_MO_GENERATION_PROFILE": "generation_a",
+            "NEX_MO_EMBEDDING_MODEL_PATH": "/override/embed",
+        }
+    )
+
+    assert profiles[0].profile_name == "embedding_a"
+    assert profiles[0].model_path == "/override/embed"
+    assert profiles[1].model_path == "/models/qwen3-reranker-4b-bf16"
+    assert profiles[2].model_path == "/models/qwen3.6-27b-nvfp4"
+    assert all(profile.status == "CONFIGURED" for profile in profiles)
+
+
+def test_model_profile_to_wire_has_no_secret_fields() -> None:
+    payload = ModelProfile(
+        profile_name="profile",
+        provider_capability="embedding",
+        alias="mock-embedding-default",
+        provider_mode="mock",
+        model_name="Qwen3-embedding-4B",
+        precision="BF16",
+        runtime_engine="local_mock",
+        model_path="/data/nex-platform/models/qwen3-embedding-4b-bf16",
+        selected=True,
+        status="READY",
+    ).to_wire()
+
+    assert payload["model_path"].endswith("qwen3-embedding-4b-bf16")
+    assert "api_key" not in payload
+    assert "provider_url" not in payload
+
+
+def test_list_model_profiles_filters_by_capability() -> None:
+    profiles = (
+        ModelProfile(
+            profile_name="embedding",
+            provider_capability="embedding",
+            alias="mock-embedding-default",
+            provider_mode="mock",
+            model_name="embed",
+            precision="BF16",
+            runtime_engine="local_mock",
+            model_path="/models/embed",
+            selected=True,
+            status="READY",
+        ),
+        ModelProfile(
+            profile_name="generation",
+            provider_capability="generation",
+            alias="general-llm-default",
+            provider_mode="mock",
+            model_name="llm",
+            precision="NVFP4",
+            runtime_engine="vllm",
+            model_path="/models/llm",
+            selected=True,
+            status="READY",
+        ),
+    )
+
+    assert [profile.profile_name for profile in list_model_profiles("generation", profiles)] == [
+        "generation"
+    ]
+    assert list_model_profiles("unknown", profiles) == []
 
 
 def test_provider_routes_endpoint_requires_service_claim() -> None:
@@ -62,6 +152,37 @@ def test_provider_routes_endpoint_lists_embedding_dimensions() -> None:
     assert response.status_code == 200
     embedding_route = response.json()["data"][0]
     assert embedding_route["embedding_dimensions"] == 8
+
+
+def test_provider_profiles_endpoint_requires_service_claim() -> None:
+    response = TestClient(app).get("/api/v1/provider-profiles")
+
+    assert response.status_code == 401
+    assert response.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+
+
+def test_provider_profiles_endpoint_lists_selected_profiles() -> None:
+    response = TestClient(app).get("/api/v1/provider-profiles", headers=auth_headers())
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["meta"]["count"] == 3
+    assert payload["meta"]["provider_mode"] == "mock"
+    assert payload["data"][0]["profile_name"] == "qwen3_embedding_4b_bf16"
+    assert payload["data"][0]["selected"] is True
+
+
+def test_provider_profiles_endpoint_filters_by_capability() -> None:
+    response = TestClient(app).get(
+        "/api/v1/provider-profiles",
+        params={"capability": "reranking"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["meta"]["count"] == 1
+    assert payload["data"][0]["provider_capability"] == "reranking"
 
 
 def test_resolve_provider_route_rejects_capability_mismatch() -> None:

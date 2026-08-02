@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
@@ -17,6 +19,9 @@ from nex_runtime import (
     trace_id_from_headers,
     validate_authorization_header,
 )
+
+DEFAULT_MODEL_ROOT = "/data/nex-platform/models"
+DEFAULT_PROVIDER_MODE = "mock"
 
 
 @dataclass(frozen=True)
@@ -49,6 +54,34 @@ class ProviderRoute:
         if self.embedding_dimensions is not None:
             payload["embedding_dimensions"] = self.embedding_dimensions
         return payload
+
+
+@dataclass(frozen=True)
+class ModelProfile:
+    profile_name: str
+    provider_capability: str
+    alias: str
+    provider_mode: str
+    model_name: str
+    precision: str
+    runtime_engine: str
+    model_path: str
+    selected: bool
+    status: str
+
+    def to_wire(self) -> dict[str, Any]:
+        return {
+            "profile_name": self.profile_name,
+            "provider_capability": self.provider_capability,
+            "alias": self.alias,
+            "provider_mode": self.provider_mode,
+            "model_name": self.model_name,
+            "precision": self.precision,
+            "runtime_engine": self.runtime_engine,
+            "model_path": self.model_path,
+            "selected": self.selected,
+            "status": self.status,
+        }
 
 
 @dataclass(frozen=True)
@@ -95,6 +128,75 @@ DEFAULT_PROVIDER_ROUTES: tuple[ProviderRoute, ...] = (
         max_output_tokens=1024,
     ),
 )
+
+
+def build_model_profile_catalog(environ: dict[str, str] | None = None) -> tuple[ModelProfile, ...]:
+    env = environ if environ is not None else os.environ
+    provider_mode = env.get("NEX_MO_PROVIDER_MODE", DEFAULT_PROVIDER_MODE)
+    model_root = Path(env.get("NEX_MO_MODEL_ROOT", DEFAULT_MODEL_ROOT))
+    status = "READY" if provider_mode == "mock" else "CONFIGURED"
+
+    return (
+        ModelProfile(
+            profile_name=env.get("NEX_MO_EMBEDDING_PROFILE", "qwen3_embedding_4b_bf16"),
+            provider_capability="embedding",
+            alias="mock-embedding-default",
+            provider_mode=provider_mode,
+            model_name="Qwen3-embedding-4B",
+            precision="BF16",
+            runtime_engine="local_mock",
+            model_path=env.get(
+                "NEX_MO_EMBEDDING_MODEL_PATH",
+                str(model_root / "qwen3-embedding-4b-bf16"),
+            ),
+            selected=True,
+            status=status,
+        ),
+        ModelProfile(
+            profile_name=env.get("NEX_MO_RERANKER_PROFILE", "qwen3_reranker_4b_bf16"),
+            provider_capability="reranking",
+            alias="mock-reranker-default",
+            provider_mode=provider_mode,
+            model_name="Qwen3-reranker-4B",
+            precision="BF16",
+            runtime_engine="local_mock",
+            model_path=env.get(
+                "NEX_MO_RERANKER_MODEL_PATH",
+                str(model_root / "qwen3-reranker-4b-bf16"),
+            ),
+            selected=True,
+            status=status,
+        ),
+        ModelProfile(
+            profile_name=env.get("NEX_MO_GENERATION_PROFILE", "qwen3_6_27b_nvfp4"),
+            provider_capability="generation",
+            alias="general-llm-default",
+            provider_mode=provider_mode,
+            model_name="Qwen3.6-27B",
+            precision="NVFP4",
+            runtime_engine="vllm",
+            model_path=env.get(
+                "NEX_MO_GENERATION_MODEL_PATH",
+                str(model_root / "qwen3.6-27b-nvfp4"),
+            ),
+            selected=True,
+            status=status,
+        ),
+    )
+
+
+def list_model_profiles(
+    capability: str | None = None,
+    profiles: tuple[ModelProfile, ...] | None = None,
+) -> list[ModelProfile]:
+    selected_profiles = profiles or build_model_profile_catalog()
+    if capability is None:
+        return list(selected_profiles)
+    return [
+        profile
+        for profile in selected_profiles
+        if profile.provider_capability == capability
+    ]
 
 
 def list_provider_routes(
@@ -271,6 +373,26 @@ def register_mock_provider_routes(app: FastAPI) -> None:
             "meta": {
                 "count": len(routes),
                 "profile": "local_mock",
+            },
+        }
+
+    @app.get("/api/v1/provider-profiles", response_model=None)
+    def get_provider_profiles(
+        request: Request,
+        capability: str | None = None,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_mo_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        profiles = list_model_profiles(capability)
+        return {
+            "data": [profile.to_wire() for profile in profiles],
+            "meta": {
+                "count": len(profiles),
+                "provider_mode": os.getenv("NEX_MO_PROVIDER_MODE", DEFAULT_PROVIDER_MODE),
+                "model_root": os.getenv("NEX_MO_MODEL_ROOT", DEFAULT_MODEL_ROOT),
             },
         }
 

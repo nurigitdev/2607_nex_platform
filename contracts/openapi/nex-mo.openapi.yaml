@@ -4,6 +4,9 @@ info:
   version: 0.0.0-slice0003
 tags:
   - name: Platform
+  - name: Provider Profiles
+  - name: Provider Routes
+  - name: Providers
 paths:
   /health:
     get:
@@ -49,6 +52,26 @@ paths:
       responses:
         "200":
           description: Provider routes and aliases.
+        "401":
+          description: Service claim is missing or invalid.
+  /api/v1/provider-profiles:
+    get:
+      operationId: listMoProviderProfiles
+      tags:
+        - Provider Profiles
+      parameters:
+        - name: capability
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - embedding
+              - reranking
+              - generation
+      responses:
+        "200":
+          description: Selected MO model profiles by capability.
         "401":
           description: Service claim is missing or invalid.
   /api/v1/embeddings:

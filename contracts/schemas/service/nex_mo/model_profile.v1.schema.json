@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_mo/model_profile.v1.schema.json",
+  "title": "NeX MO Model Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "profile_name",
+    "provider_capability",
+    "alias",
+    "provider_mode",
+    "model_name",
+    "precision",
+    "runtime_engine",
+    "model_path",
+    "selected",
+    "status"
+  ],
+  "properties": {
+    "profile_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider_capability": {
+      "type": "string",
+      "enum": [
+        "embedding",
+        "reranking",
+        "generation"
+      ]
+    },
+    "alias": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider_mode": {
+      "type": "string",
+      "enum": [
+        "mock",
+        "live"
+      ]
+    },
+    "model_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "precision": {
+      "type": "string",
+      "enum": [
+        "BF16",
+        "NVFP4"
+      ]
+    },
+    "runtime_engine": {
+      "type": "string",
+      "enum": [
+        "local_mock",
+        "vllm"
+      ]
+    },
+    "model_path": {
+      "type": "string",
+      "pattern": "^/"
+    },
+    "selected": {
+      "type": "boolean"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "READY",
+        "CONFIGURED",
+        "UNAVAILABLE"
+      ]
+    }
+  }
+}

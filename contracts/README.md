@@ -55,8 +55,8 @@ reject them. The validation command fails if a negative fixture becomes valid.
 
 - Common envelopes: contract manifest, problem+json, trace refs, service claims,
   common job.
-- Generation: MO provider route, CX generation execution record, AE chat
-  interaction.
+- Generation: MO provider route, MO model profile, CX generation execution
+  record, AE chat interaction.
 - Retrieval/content ingestion: CX upload registration, queued ingestion job,
   mock text extraction result, and chunk set.
 - Audit: AG readiness projection.

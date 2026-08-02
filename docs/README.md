@@ -117,6 +117,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0011`](slices/0011_cx_upload_registration_ingestion_job.md) | `S2-001` CX upload registration and ingestion job shell. |
 | [`Slice 0012`](slices/0012_cx_mock_text_extraction.md) | `S2-002` CX mock text extraction to Markdown. |
 | [`Slice 0013`](slices/0013_cx_chunk_policy_1000_100.md) | `S2-003` CX chunk policy `1000_100` implementation. |
+| [`Slice 0014`](slices/0014_mo_model_profile_catalog.md) | `S2-004` MO model profile catalog for Qwen defaults. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
