@@ -15,6 +15,8 @@ Current endpoints:
 - `GET /api/v1/workspaces/{workspace_id}/activity`
 - `POST /api/v1/uploads`
 - `GET /api/v1/uploads/{upload_handoff_id}`
+- `GET /api/v1/workspaces/{workspace_id}/documents`
+- `GET /api/v1/documents/summary-search`
 - `POST /api/v1/chat/interactions`
 - `GET /api/v1/chat/interactions/{interaction_id}`
 - `POST /api/v1/retrieval/contexts`
@@ -40,6 +42,12 @@ Upload handoff:
 - AE accepts upload metadata and mock `content_text`, forwards it to CX, and
   stores only safe CX document/job references. Source bytes, storage keys, and
   filesystem paths remain CX-owned.
+
+Document library:
+
+- AE composes workspace document cards from upload handoffs and CX document,
+  summary, and summary embedding status. Summary search is lexical and mock-only
+  until a persistent AE read model is added.
 
 Prompt analytics:
 

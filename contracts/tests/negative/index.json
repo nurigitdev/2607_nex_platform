@@ -61,6 +61,11 @@
       "schema": "schemas/service/nex_ae_api/upload_handoff.v1.schema.json"
     },
     {
+      "name": "ae_document_library_item_storage_path_leak",
+      "path": "tests/negative/generation/ae_document_library_item.storage_path_leak.json",
+      "schema": "schemas/service/nex_ae_api/document_library_item.v1.schema.json"
+    },
+    {
       "name": "ag_readiness_projection_unknown_service",
       "path": "tests/negative/audit/ag_readiness_projection.unknown_service.json",
       "schema": "schemas/service/nex_ag/readiness_projection.v1.schema.json"

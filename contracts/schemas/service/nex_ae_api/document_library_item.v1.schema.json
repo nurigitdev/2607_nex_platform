@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/document_library_item.v1.schema.json",
+  "title": "NeX AE Document Library Item",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "document_library_schema_version",
+    "workspace_id",
+    "tenant_id",
+    "owner_user_id",
+    "document_id",
+    "upload_handoff_id",
+    "filename",
+    "content_type",
+    "size_bytes",
+    "source_sha256",
+    "status",
+    "summary",
+    "links",
+    "metadata"
+  ],
+  "properties": {
+    "document_library_schema_version": {
+      "const": "ae_document_library_item.v1"
+    },
+    "workspace_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner_user_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "upload_handoff_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "filename": {
+      "type": "string",
+      "pattern": "^[^/\\\\]{1,255}$"
+    },
+    "content_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "size_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "source_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dedupe_status",
+        "extraction_status",
+        "markdown_available",
+        "summary_status",
+        "summary_embedding_status"
+      ],
+      "properties": {
+        "dedupe_status": {
+          "type": "string",
+          "enum": [
+            "CREATED",
+            "ALREADY_EXISTS"
+          ]
+        },
+        "extraction_status": {
+          "type": "string",
+          "enum": [
+            "PENDING",
+            "RUNNING",
+            "SUCCEEDED",
+            "FAILED"
+          ]
+        },
+        "markdown_available": {
+          "type": "boolean"
+        },
+        "summary_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary_embedding_status": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary_available",
+        "summary_text_sha256",
+        "summary_preview",
+        "summary_char_count",
+        "summary_embedding_model",
+        "summary_embedding_dimension"
+      ],
+      "properties": {
+        "summary_available": {
+          "type": "boolean"
+        },
+        "summary_text_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary_preview": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 240
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary_char_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "summary_embedding_model": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary_embedding_dimension": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "upload_handoff",
+        "cx_document",
+        "cx_summary",
+        "cx_summary_embedding"
+      ],
+      "properties": {
+        "upload_handoff": {
+          "type": "string",
+          "pattern": "^/api/v1/uploads/[^/]+$"
+        },
+        "cx_document": {
+          "type": "string",
+          "pattern": "^/api/v1/documents/[^/]+$"
+        },
+        "cx_summary": {
+          "type": "string",
+          "pattern": "^/api/v1/documents/[^/]+/summary$"
+        },
+        "cx_summary_embedding": {
+          "type": "string",
+          "pattern": "^/api/v1/documents/[^/]+/summary-embedding$"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_source_stored_in_ae",
+        "raw_summary_stored_in_ae",
+        "cx_storage_redacted"
+      ],
+      "properties": {
+        "raw_source_stored_in_ae": {
+          "const": false
+        },
+        "raw_summary_stored_in_ae": {
+          "const": false
+        },
+        "cx_storage_redacted": {
+          "const": true
+        }
+      }
+    }
+  }
+}

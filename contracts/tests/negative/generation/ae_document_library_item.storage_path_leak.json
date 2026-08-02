@@ -1,0 +1,40 @@
+{
+  "document_library_schema_version": "ae_document_library_item.v1",
+  "workspace_id": "workspace-001",
+  "tenant_id": "local-tenant",
+  "owner_user_id": "local-user",
+  "document_id": "ef9069bc-4280-5f80-b670-ff93aa254f73",
+  "upload_handoff_id": "upload-handoff-001",
+  "filename": "mvp-srs.md",
+  "content_type": "text/markdown",
+  "size_bytes": 23,
+  "source_sha256": "d12261539d27dcab69f873a5e1a30587919b8ce4802782151f1bc2ba5390b610",
+  "status": {
+    "dedupe_status": "CREATED",
+    "extraction_status": "SUCCEEDED",
+    "markdown_available": true,
+    "summary_status": "SUCCEEDED",
+    "summary_embedding_status": "READY"
+  },
+  "summary": {
+    "summary_available": true,
+    "summary_text_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "summary_preview": "MVP SRS describes upload, retrieval, generation, artifact, and audit flow.",
+    "summary_char_count": 78,
+    "summary_embedding_model": "qwen3-embedding-4b-bf16",
+    "summary_embedding_dimension": 8,
+    "raw_summary_text": "Raw summary text is private to CX."
+  },
+  "links": {
+    "upload_handoff": "/api/v1/uploads/upload-handoff-001",
+    "cx_document": "/api/v1/documents/ef9069bc-4280-5f80-b670-ff93aa254f73",
+    "cx_summary": "/api/v1/documents/ef9069bc-4280-5f80-b670-ff93aa254f73/summary",
+    "cx_summary_embedding": "/api/v1/documents/ef9069bc-4280-5f80-b670-ff93aa254f73/summary-embedding"
+  },
+  "metadata": {
+    "raw_source_stored_in_ae": false,
+    "raw_summary_stored_in_ae": false,
+    "cx_storage_redacted": true
+  },
+  "source_storage_path": "/data/nex-platform/cx/source-files/20260802/aa/bb/file.md"
+}

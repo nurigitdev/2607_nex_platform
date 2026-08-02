@@ -136,6 +136,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0030`](slices/0030_ae_prompt_analytics_intent_mock.md) | `S3-010` AE prompt analytics and mock intent classification. |
 | [`Slice 0031`](slices/0031_ae_workspace_state_api_foundation.md) | `S4-001` AE workspace state API foundation. |
 | [`Slice 0032`](slices/0032_ae_upload_handoff_facade_to_cx.md) | `S4-002` AE upload handoff facade to CX. |
+| [`Slice 0033`](slices/0033_ae_document_library_summary_search_facade.md) | `S4-003` AE document library and summary search facade. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

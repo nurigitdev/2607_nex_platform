@@ -87,6 +87,13 @@ class UploadHandoffStore:
     def get(self, upload_handoff_id: str) -> dict[str, Any] | None:
         return self.records.get(upload_handoff_id)
 
+    def list_by_workspace(self, workspace_id: str) -> list[dict[str, Any]]:
+        return [
+            record
+            for record in self.records.values()
+            if record["workspace_id"] == workspace_id
+        ]
+
 
 @dataclass(frozen=True)
 class UploadHandoffError(Exception):

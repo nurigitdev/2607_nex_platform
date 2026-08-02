@@ -6,6 +6,7 @@ tags:
   - name: Platform
   - name: Workspace
   - name: Uploads
+  - name: Documents
   - name: Chat
   - name: Retrieval
   - name: Analytics
@@ -131,6 +132,49 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: Upload handoff was not found.
+  /api/v1/workspaces/{workspace_id}/documents:
+    get:
+      operationId: listAeWorkspaceDocuments
+      tags:
+        - Documents
+      parameters:
+        - name: workspace_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Safe AE document library items for a workspace.
+        "401":
+          description: Service claim is missing or invalid.
+        "503":
+          description: CX document status is unavailable.
+  /api/v1/documents/summary-search:
+    get:
+      operationId: searchAeDocumentSummaries
+      tags:
+        - Documents
+      parameters:
+        - name: workspace_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Mock lexical summary search results for a workspace.
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Summary search request is invalid.
+        "503":
+          description: CX document status is unavailable.
   /api/v1/chat/interactions:
     post:
       operationId: createAeChatInteraction
