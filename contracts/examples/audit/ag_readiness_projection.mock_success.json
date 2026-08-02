@@ -1,0 +1,23 @@
+{
+  "projection_schema_version": "ag_readiness_projection.v1",
+  "checked_at": "2026-08-02T00:00:00Z",
+  "services": [
+    {
+      "service_id": "nex-cx",
+      "base_url": "http://127.0.0.1:8104",
+      "health_status": "HEALTHY",
+      "readiness_status": "READY",
+      "version": "0.0.0-test",
+      "contract_catalog_version": "slice-0009",
+      "observed_status": "READY",
+      "failures": []
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "ready": 1,
+    "not_ready": 0,
+    "degraded": 0,
+    "unavailable": 0
+  }
+}

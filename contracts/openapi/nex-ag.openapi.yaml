@@ -41,3 +41,13 @@ paths:
           description: Service claim is valid for this service.
         "401":
           description: Service claim is missing or invalid.
+  /admin/v1/readiness/services:
+    get:
+      operationId: getAgReadinessProjection
+      tags:
+        - Readiness
+      responses:
+        "200":
+          description: Read-only service readiness projection.
+        "401":
+          description: Service claim is missing or invalid.

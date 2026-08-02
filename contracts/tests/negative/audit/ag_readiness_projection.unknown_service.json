@@ -1,0 +1,23 @@
+{
+  "projection_schema_version": "ag_readiness_projection.v1",
+  "checked_at": "2026-08-02T00:00:00Z",
+  "services": [
+    {
+      "service_id": "nex-unknown",
+      "base_url": "http://127.0.0.1:8999",
+      "health_status": "UNKNOWN",
+      "readiness_status": "UNKNOWN",
+      "version": "unknown",
+      "contract_catalog_version": "unknown",
+      "observed_status": "UNAVAILABLE",
+      "failures": []
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "ready": 0,
+    "not_ready": 0,
+    "degraded": 0,
+    "unavailable": 1
+  }
+}

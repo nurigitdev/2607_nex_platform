@@ -9,3 +9,5 @@ Current endpoints:
 - `GET /health`
 - `GET /ready`
 - `GET /version`
+- `GET /internal/v1/auth/service-claim`
+- `GET /admin/v1/readiness/services`
