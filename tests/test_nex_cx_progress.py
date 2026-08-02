@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from nex_cx.generation import GenerationExecutionStore, register_generation_routes
 from nex_cx.progress import (
+    build_cx_generation_failure_progress_events,
     build_generation_progress_event,
     deterministic_event_id,
     safe_progress_details,
@@ -273,6 +274,58 @@ def test_generation_events_route_skips_retrieval_for_general_answer() -> None:
         event["event_type"] for event in response.json()["events"]
     }
     assert response.json()["pagination"]["event_count"] == 6
+
+
+def test_failure_progress_events_include_policy_lineage_without_raw_prompt() -> None:
+    mo_payload = {
+        "cx_generation_id": "cx-gen-timeout-001",
+        "provider_prompt_package_hash": "a" * 64,
+        "metadata": {"generation_request_hash": "b" * 64},
+        "response_format": {"type": "text"},
+    }
+    failure_record = {
+        "failure": {
+            "failure_code": "mo.provider_timeout",
+            "failure_class": "provider_timeout",
+            "owner_service": "nex-cx",
+            "failed_stage": "GENERATING",
+            "retryable": True,
+            "recovery_policy_id": "recovery-mo-provider-timeout-retry-v1",
+            "recovery_policy_hash": "e" * 64,
+        },
+        "recovery_lineage": {
+            "default_recovery_action": "retry",
+            "attempt_no": 2,
+            "reuse_retrieval_package": True,
+        },
+    }
+
+    events = build_cx_generation_failure_progress_events(
+        source_payload=grounded_payload(),
+        mo_payload=mo_payload,
+        failure_record=failure_record,
+        compatibility_rule={
+            "execution_mode": "GROUNDED_ANSWER",
+            "generation_profile": "grounded-answer",
+            "compatibility_rule_id": "compat-grounded-answer-v1",
+            "grounding_required": True,
+        },
+        retrieval_package=retrieval_package(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert [event["event_type"] for event in events] == [
+        "generation.request.accepted",
+        "generation.retrieval.ready",
+        "generation.prompt.packaged",
+        "generation.failed",
+    ]
+    assert events[-1]["job_status"] == "FAILED"
+    assert events[-1]["current_stage"] == "GENERATING"
+    assert events[-1]["details"]["attempt_no"] == 2
+    assert events[-1]["details"]["reuse_retrieval_package"] is True
+    assert "Answer with citation." not in str(events)
 
 
 def test_generation_events_route_requires_auth_and_reports_missing_generation() -> None:

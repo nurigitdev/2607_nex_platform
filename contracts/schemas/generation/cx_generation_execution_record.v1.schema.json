@@ -54,7 +54,10 @@
       ]
     },
     "mo_generation_id": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "minLength": 1
     },
     "request_metadata": {
@@ -199,6 +202,172 @@
     "usage": {
       "type": "object",
       "additionalProperties": true
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "failure_code",
+        "failure_class",
+        "owner_service",
+        "failed_stage",
+        "retryable",
+        "recovery_policy_id",
+        "recovery_policy_hash",
+        "safe_message"
+      ],
+      "properties": {
+        "failure_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failure_class": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_service": {
+          "type": "string",
+          "enum": [
+            "nex-ae-api",
+            "nex-cx",
+            "nex-mo",
+            "nex-ag"
+          ]
+        },
+        "failed_stage": {
+          "type": "string",
+          "enum": [
+            "INTAKE",
+            "INTENT_DETECTED",
+            "RETRIEVAL_REQUESTED",
+            "CONTEXT_PACKAGED",
+            "TEMPLATE_SELECTED",
+            "PROMPT_ASSEMBLING",
+            "MO_ADMISSION_WAITING",
+            "GENERATING",
+            "DRAFT_VALIDATING",
+            "CITATION_VALIDATING",
+            "ARTIFACT_RENDERING",
+            "FINALIZING",
+            "FAILED",
+            "CANCELLED"
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "recovery_policy_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "recovery_policy_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "safe_message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      }
+    },
+    "recovery_lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root_generation_id",
+        "parent_generation_id",
+        "attempt_no",
+        "lineage_type",
+        "lineage_reason",
+        "default_recovery_action",
+        "recovery_policy_id",
+        "recovery_policy_hash",
+        "retry_after_seconds",
+        "max_attempts",
+        "reuse_retrieval_package",
+        "changed_fields"
+      ],
+      "properties": {
+        "root_generation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parent_generation_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "attempt_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lineage_type": {
+          "type": "string",
+          "enum": [
+            "retry",
+            "repair",
+            "fresh_retrieval_regenerate",
+            "failure"
+          ]
+        },
+        "lineage_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default_recovery_action": {
+          "type": "string",
+          "enum": [
+            "retry",
+            "repair",
+            "fresh_retrieval_regenerate",
+            "cancel"
+          ]
+        },
+        "recovery_policy_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "recovery_policy_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "retry_after_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reuse_retrieval_package": {
+          "type": "boolean"
+        },
+        "changed_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     },
     "created_at": {
       "type": "string",

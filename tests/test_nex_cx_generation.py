@@ -12,6 +12,7 @@ from nex_cx.generation import (
     GenerationFacadeError,
     HttpMoGenerationClient,
     build_generation_execution_record,
+    build_generation_failure_record,
     build_mo_generation_payload,
     compatibility_payload_from_generation_request,
     prompt_text_from_payload,
@@ -63,6 +64,39 @@ class FakeMoClient:
                 "provider_url": "http://should-not-leak.local",
             },
         }
+
+
+class FailingMoClient:
+    def __init__(
+        self,
+        *,
+        error_code: str = "mo.provider_timeout",
+        retryable: bool = True,
+    ) -> None:
+        self.error_code = error_code
+        self.retryable = retryable
+        self.calls: list[dict[str, Any]] = []
+
+    def create_generation(
+        self,
+        payload: dict[str, Any],
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            {
+                "payload": payload,
+                "request_id": request_id,
+                "trace_id": trace_id,
+            }
+        )
+        raise GenerationFacadeError(
+            status_code=504,
+            error_code=self.error_code,
+            detail="Provider timed out.",
+            retryable=self.retryable,
+        )
 
 
 class FakeRetrievalPackageStore:
@@ -233,6 +267,65 @@ def test_grounded_generation_endpoint_validates_retrieval_package_and_lineage() 
     assert payload["request_metadata"]["retrieval_package_id"] == "cx-ret-001"
     assert payload["request_metadata"]["selected_evidence_count"] == 1
     assert store.get(payload["cx_generation_id"]) == payload
+
+
+def test_generation_endpoint_stores_failed_record_and_lineage_for_mo_timeout() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    store = GenerationExecutionStore()
+    mo_client = FailingMoClient()
+    register_generation_routes(app, store=store, mo_client=mo_client)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/generations",
+        json={
+            "prompt": "Private timeout prompt.",
+            "alias": "general-llm-default",
+            "provider_capability": "generation",
+            "parent_generation_id": "cx-gen-parent-001",
+            "root_generation_id": "cx-gen-root-001",
+            "attempt_no": 2,
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 504
+    assert response.json()["error_code"] == "mo.provider_timeout"
+    failed_generation_id = mo_client.calls[0]["payload"]["cx_generation_id"]
+    record = store.get(failed_generation_id)
+    assert record is not None
+    assert record["status"] == "FAILED"
+    assert record["mo_generation_id"] is None
+    assert record["failure"] == {
+        "failure_code": "mo.provider_timeout",
+        "failure_class": "provider_timeout",
+        "owner_service": "nex-cx",
+        "failed_stage": "GENERATING",
+        "retryable": True,
+        "recovery_policy_id": "recovery-mo-provider-timeout-retry-v1",
+        "recovery_policy_hash": record["failure"]["recovery_policy_hash"],
+        "safe_message": "Generation failed before completion.",
+    }
+    assert len(record["failure"]["recovery_policy_hash"]) == 64
+    assert record["recovery_lineage"]["parent_generation_id"] == "cx-gen-parent-001"
+    assert record["recovery_lineage"]["root_generation_id"] == "cx-gen-root-001"
+    assert record["recovery_lineage"]["attempt_no"] == 2
+    assert record["recovery_lineage"]["lineage_type"] == "retry"
+    assert "Private timeout prompt." not in str(record)
+
+    events = store.get_progress_events(failed_generation_id)
+    assert events is not None
+    assert [event["event_type"] for event in events] == [
+        "generation.request.accepted",
+        "generation.prompt.packaged",
+        "generation.failed",
+    ]
+    assert events[-1]["job_status"] == "FAILED"
+    assert events[-1]["retryable"] is True
+    assert events[-1]["details"]["recovery_policy_id"] == (
+        "recovery-mo-provider-timeout-retry-v1"
+    )
+    assert "Private timeout prompt." not in str(events)
 
 
 def test_generation_endpoint_returns_problem_for_missing_prompt() -> None:
@@ -480,3 +573,34 @@ def test_build_generation_execution_record_keeps_safe_runtime_keys_only() -> Non
 
     assert record["response_metadata"]["output_preview"] == "answer"
     assert "provider_url" not in record["mo_runtime_metadata"]
+
+
+def test_build_generation_failure_record_uses_safe_policy_lineage_defaults() -> None:
+    record = build_generation_failure_record(
+        source_payload={"prompt": "private prompt", "attempt_no": 0},
+        mo_payload={
+            "cx_generation_id": "cx-gen-001",
+            "alias": "general-llm-default",
+            "provider_capability": "generation",
+            "provider_prompt_package_hash": "a" * 64,
+            "metadata": {"generation_request_hash": "b" * 64},
+            "response_format": {"type": "text"},
+        },
+        failure=GenerationFacadeError(
+            status_code=503,
+            error_code="mo.unknown_failure",
+            detail="Unknown provider failure.",
+            retryable=False,
+        ),
+        request_id="req",
+        trace_id="trace",
+    )
+
+    assert record["status"] == "FAILED"
+    assert record["failure"]["failure_class"] == "unclassified_failure"
+    assert record["failure"]["retryable"] is False
+    assert record["failure"]["recovery_policy_id"] is None
+    assert record["recovery_lineage"]["lineage_type"] == "failure"
+    assert record["recovery_lineage"]["default_recovery_action"] == "cancel"
+    assert record["recovery_lineage"]["attempt_no"] == 1
+    assert "private prompt" not in str(record)

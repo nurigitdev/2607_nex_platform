@@ -1,0 +1,57 @@
+{
+  "record_schema_version": "cx_generation_execution_record.v1",
+  "cx_generation_id": "cx-gen-timeout-001",
+  "status": "FAILED",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "alias": "general-llm-default",
+  "provider_capability": "generation",
+  "mo_generation_id": null,
+  "request_metadata": {
+    "provider_prompt_package_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "generation_request_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "response_format_type": "text",
+    "source_has_messages": true,
+    "source_has_prompt": false,
+    "compatibility_rule_id": "compat-grounded-answer-v1",
+    "grounding_required": true,
+    "retrieval_package_id": "cx-ret-001",
+    "retrieval_package_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "selected_evidence_count": 1,
+    "structured_draft_id": null,
+    "draft_validation_status": null
+  },
+  "response_metadata": {
+    "finish_reason": "ERROR",
+    "output_hash": null,
+    "output_preview": ""
+  },
+  "mo_runtime_metadata": {},
+  "usage": {},
+  "failure": {
+    "failure_code": "mo.provider_timeout",
+    "failure_class": "provider_timeout",
+    "owner_service": "nex-cx",
+    "failed_stage": "GENERATING",
+    "retryable": true,
+    "recovery_policy_id": "recovery-mo-provider-timeout-retry-v1",
+    "recovery_policy_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "safe_message": "Generation failed before completion."
+  },
+  "recovery_lineage": {
+    "root_generation_id": "cx-gen-timeout-001",
+    "parent_generation_id": null,
+    "attempt_no": 1,
+    "lineage_type": "retry",
+    "lineage_reason": "mo.provider_timeout",
+    "default_recovery_action": "retry",
+    "recovery_policy_id": "recovery-mo-provider-timeout-retry-v1",
+    "recovery_policy_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "retry_after_seconds": 5,
+    "max_attempts": 2,
+    "reuse_retrieval_package": true,
+    "changed_fields": []
+  },
+  "created_at": "2026-08-02T00:00:00Z",
+  "updated_at": "2026-08-02T00:00:00Z"
+}

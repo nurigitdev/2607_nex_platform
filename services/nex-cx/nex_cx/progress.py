@@ -68,6 +68,7 @@ SAFE_MESSAGE_BY_EVENT = {
     "generation.draft.validating": "Structured draft validated.",
     "generation.citation.validating": "Citation claims validated.",
     "generation.completed": "Generation completed.",
+    "generation.failed": "Generation failed before completion.",
 }
 FORBIDDEN_DETAIL_KEYS = {
     "prompt",
@@ -265,6 +266,90 @@ def build_cx_generation_progress_events(
         details={
             "structured_draft_id": structured_draft["structured_draft_id"],
             "draft_validation_status": structured_draft["validation"]["citation_status"],
+        },
+    )
+    return events
+
+
+def build_cx_generation_failure_progress_events(
+    *,
+    source_payload: dict[str, Any],
+    mo_payload: dict[str, Any],
+    failure_record: dict[str, Any],
+    compatibility_rule: dict[str, Any],
+    retrieval_package: dict[str, Any] | None,
+    request_id: str,
+    trace_id: str,
+) -> list[dict[str, Any]]:
+    cx_generation_id = mo_payload["cx_generation_id"]
+    failure = failure_record["failure"]
+    lineage = failure_record["recovery_lineage"]
+    events: list[dict[str, Any]] = []
+
+    def add(
+        event_type: str,
+        *,
+        job_status: str = "RUNNING",
+        retryable: bool = False,
+        current_stage: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        events.append(
+            build_generation_progress_event(
+                event_type=event_type,
+                event_source_service="nex-cx",
+                trace_id=trace_id,
+                request_id=request_id,
+                sequence_no=len(events) + 1,
+                job_status=job_status,
+                retryable=retryable,
+                current_stage=current_stage,
+                cx_generation_id=cx_generation_id,
+                details=details,
+            )
+        )
+
+    add(
+        "generation.request.accepted",
+        details={
+            "execution_mode": compatibility_rule["execution_mode"],
+            "generation_profile": compatibility_rule["generation_profile"],
+            "compatibility_rule_id": compatibility_rule["compatibility_rule_id"],
+            "grounding_required": compatibility_rule["grounding_required"],
+        },
+    )
+    if retrieval_package is not None:
+        add(
+            "generation.retrieval.ready",
+            details={
+                "retrieval_package_id": retrieval_package["retrieval_package_id"],
+                "retrieval_package_hash": retrieval_package["package_hash"],
+                "evidence_item_count": len(retrieval_package.get("evidence_items", [])),
+                "selected_evidence_count": selected_evidence_count(source_payload),
+            },
+        )
+    add(
+        "generation.prompt.packaged",
+        details={
+            "provider_prompt_package_hash": mo_payload["provider_prompt_package_hash"],
+            "generation_request_hash": mo_payload["metadata"]["generation_request_hash"],
+            "response_format_type": mo_payload["response_format"]["type"],
+        },
+    )
+    add(
+        "generation.failed",
+        job_status="FAILED",
+        retryable=failure["retryable"],
+        current_stage=failure["failed_stage"],
+        details={
+            "failure_code": failure["failure_code"],
+            "failure_class": failure["failure_class"],
+            "owner_service": failure["owner_service"],
+            "recovery_policy_id": failure["recovery_policy_id"],
+            "recovery_policy_hash": failure["recovery_policy_hash"],
+            "default_recovery_action": lineage["default_recovery_action"],
+            "attempt_no": lineage["attempt_no"],
+            "reuse_retrieval_package": lineage["reuse_retrieval_package"],
         },
     )
     return events

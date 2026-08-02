@@ -16,6 +16,11 @@ from nex_runtime.compatibility import (
     GenerationCompatibilityError,
     select_generation_compatibility_rule,
 )
+from nex_runtime.recovery import (
+    GenerationRecoveryPolicyError,
+    recovery_policy_hash,
+    select_generation_recovery_policy,
+)
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
     issue_mock_service_token,
@@ -25,9 +30,17 @@ from nex_runtime import (
     validate_authorization_header,
 )
 from nex_cx.drafts import build_structured_draft
-from nex_cx.progress import build_cx_generation_progress_events
+from nex_cx.progress import (
+    build_cx_generation_failure_progress_events,
+    build_cx_generation_progress_events,
+)
 
 FORBIDDEN_PROVIDER_FIELDS = {"provider_url", "model_path", "provider_endpoint", "api_key"}
+FAILED_STAGE_BY_ERROR_CODE = {
+    "mo.provider_timeout": "GENERATING",
+    "mo.request_failed": "MO_ADMISSION_WAITING",
+    "cx.citation_validation_failed": "CITATION_VALIDATING",
+}
 
 
 class MoGenerationClient(Protocol):
@@ -164,11 +177,35 @@ def register_generation_routes(
                 retrieval_store=retrieval_store,
             )
             mo_payload = build_mo_generation_payload(payload, trace_id=trace_id)
-            mo_response = client.create_generation(
-                mo_payload,
-                request_id=request_id,
-                trace_id=trace_id,
-            )
+            try:
+                mo_response = client.create_generation(
+                    mo_payload,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+            except GenerationFacadeError as exc:
+                failure_record = build_generation_failure_record(
+                    source_payload=payload,
+                    mo_payload=mo_payload,
+                    failure=exc,
+                    compatibility_rule=compatibility_rule,
+                    retrieval_package=retrieval_package,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+                generation_store.save(
+                    failure_record,
+                    progress_events=build_cx_generation_failure_progress_events(
+                        source_payload=payload,
+                        mo_payload=mo_payload,
+                        failure_record=failure_record,
+                        compatibility_rule=compatibility_rule,
+                        retrieval_package=retrieval_package,
+                        request_id=request_id,
+                        trace_id=trace_id,
+                    ),
+                )
+                return _generation_problem_response(request, exc)
             structured_draft = build_structured_draft(
                 cx_generation_id=mo_payload["cx_generation_id"],
                 trace_id=trace_id,
@@ -411,6 +448,75 @@ def build_generation_execution_record(
     }
 
 
+def build_generation_failure_record(
+    *,
+    source_payload: dict[str, Any],
+    mo_payload: dict[str, Any],
+    failure: GenerationFacadeError,
+    compatibility_rule: dict[str, Any] | None = None,
+    retrieval_package: dict[str, Any] | None = None,
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    now = _utc_now()
+    policy = _recovery_policy_for_failure_code(failure.error_code)
+    policy_hash = recovery_policy_hash(policy) if policy else None
+    return {
+        "record_schema_version": "cx_generation_execution_record.v1",
+        "cx_generation_id": mo_payload["cx_generation_id"],
+        "status": "FAILED",
+        "trace_id": trace_id,
+        "request_id": request_id,
+        "alias": mo_payload["alias"],
+        "provider_capability": mo_payload["provider_capability"],
+        "mo_generation_id": None,
+        "request_metadata": {
+            "provider_prompt_package_hash": mo_payload["provider_prompt_package_hash"],
+            "generation_request_hash": mo_payload["metadata"]["generation_request_hash"],
+            "response_format_type": mo_payload["response_format"]["type"],
+            "source_has_messages": bool(source_payload.get("messages")),
+            "source_has_prompt": bool(source_payload.get("prompt")),
+            "compatibility_rule_id": compatibility_rule["compatibility_rule_id"]
+            if compatibility_rule
+            else None,
+            "grounding_required": compatibility_rule["grounding_required"]
+            if compatibility_rule
+            else False,
+            "retrieval_package_id": retrieval_package["retrieval_package_id"]
+            if retrieval_package
+            else None,
+            "retrieval_package_hash": retrieval_package["package_hash"]
+            if retrieval_package
+            else None,
+            "selected_evidence_count": len(selected_evidence_ids_from_payload(source_payload)),
+            "structured_draft_id": None,
+            "draft_validation_status": None,
+        },
+        "response_metadata": {
+            "finish_reason": "ERROR",
+            "output_hash": None,
+            "output_preview": "",
+        },
+        "mo_runtime_metadata": {},
+        "usage": {},
+        "failure": _build_failure_summary(
+            failure=failure,
+            policy=policy,
+            policy_hash=policy_hash,
+        ),
+        "recovery_lineage": _build_recovery_lineage(
+            source_payload=source_payload,
+            mo_payload=mo_payload,
+            failure=failure,
+            policy=policy,
+            policy_hash=policy_hash,
+            has_retrieval_package=retrieval_package is not None,
+        ),
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
 def output_text_from_mo_response(mo_response: dict[str, Any]) -> str:
     output = mo_response.get("output", {})
     if isinstance(output, dict) and isinstance(output.get("text"), str):
@@ -597,6 +703,76 @@ def _safe_runtime_metadata(runtime_metadata: dict[str, Any]) -> dict[str, Any]:
         for key in allowed
         if key in runtime_metadata
     }
+
+
+def _build_failure_summary(
+    *,
+    failure: GenerationFacadeError,
+    policy: dict[str, Any] | None,
+    policy_hash: str | None,
+) -> dict[str, Any]:
+    return {
+        "failure_code": failure.error_code,
+        "failure_class": policy["failure_class"] if policy else "unclassified_failure",
+        "owner_service": policy["owner_service"] if policy else "nex-cx",
+        "failed_stage": FAILED_STAGE_BY_ERROR_CODE.get(failure.error_code, "FAILED"),
+        "retryable": bool(failure.retryable or (policy and policy["retryable"])),
+        "recovery_policy_id": policy["recovery_policy_id"] if policy else None,
+        "recovery_policy_hash": policy_hash,
+        "safe_message": "Generation failed before completion.",
+    }
+
+
+def _build_recovery_lineage(
+    *,
+    source_payload: dict[str, Any],
+    mo_payload: dict[str, Any],
+    failure: GenerationFacadeError,
+    policy: dict[str, Any] | None,
+    policy_hash: str | None,
+    has_retrieval_package: bool,
+) -> dict[str, Any]:
+    return {
+        "root_generation_id": _optional_string(
+            source_payload.get("root_generation_id")
+        )
+        or mo_payload["cx_generation_id"],
+        "parent_generation_id": _optional_string(
+            source_payload.get("parent_generation_id")
+        ),
+        "attempt_no": _attempt_no_from_payload(source_payload),
+        "lineage_type": policy["lineage_type"] if policy else "failure",
+        "lineage_reason": failure.error_code,
+        "default_recovery_action": policy["default_action"] if policy else "cancel",
+        "recovery_policy_id": policy["recovery_policy_id"] if policy else None,
+        "recovery_policy_hash": policy_hash,
+        "retry_after_seconds": policy.get("retry_after_seconds") if policy else None,
+        "max_attempts": policy["max_attempts"] if policy else 0,
+        "reuse_retrieval_package": bool(
+            policy["preserves_retrieval_package"] if policy else has_retrieval_package
+        ),
+        "changed_fields": [],
+    }
+
+
+def _recovery_policy_for_failure_code(error_code: str) -> dict[str, Any] | None:
+    try:
+        return select_generation_recovery_policy(error_code)
+    except GenerationRecoveryPolicyError:
+        return None
+
+
+def _attempt_no_from_payload(payload: dict[str, Any]) -> int:
+    value = payload.get("attempt_no", 1)
+    if isinstance(value, int) and value >= 1:
+        return value
+    return 1
+
+
+def _optional_string(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
 
 
 def _authorize_cx_request(

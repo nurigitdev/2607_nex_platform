@@ -82,3 +82,6 @@ Grounded generation validation:
 - Generation recovery policies classify failure codes and define retry, repair,
   regenerate, warning acceptance, and cancellation actions without exposing raw
   prompts, provider endpoints, model paths, or source documents.
+- MO generation failures after prompt packaging are stored as redacted `FAILED`
+  CX execution records with `failure` and `recovery_lineage` metadata, so AE/AG
+  can inspect retry or repair intent by `cx_generation_id`.

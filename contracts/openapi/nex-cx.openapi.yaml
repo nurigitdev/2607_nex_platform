@@ -470,6 +470,10 @@ paths:
           description: Provider-private fields, compatibility mismatches, or invalid retrieval evidence refs are rejected.
         "409":
           description: Retrieval package hash/status does not allow grounded generation.
+        "503":
+          description: Required CX state or MO generation dependency is unavailable; retry-safe failure records may be stored when a CX generation ID exists.
+        "504":
+          description: MO provider timeout; CX stores a failed generation record with recovery policy lineage.
   /api/v1/generations/{cx_generation_id}:
     get:
       operationId: getCxGeneration
