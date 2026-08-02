@@ -86,6 +86,11 @@
       "schema": "schemas/generation/ag_generation_audit_event.v1.schema.json"
     },
     {
+      "name": "ag_generation_audit_event_recovery_raw_prompt_leak",
+      "path": "tests/negative/generation/ag_generation_audit_event.recovery_raw_prompt_leak.json",
+      "schema": "schemas/generation/ag_generation_audit_event.v1.schema.json"
+    },
+    {
       "name": "ae_chat_interaction_raw_user_message_leak",
       "path": "tests/negative/generation/ae_chat_interaction.raw_user_message_leak.json",
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"

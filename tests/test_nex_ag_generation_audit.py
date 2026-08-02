@@ -10,11 +10,14 @@ import nex_ag.generation_audit as ag_audit
 from nex_ag.generation_audit import (
     GenerationAuditError,
     HttpGenerationAuditSourceClient,
+    audit_action_type,
     artifact_handoff_summary,
     build_ag_generation_audit_event,
     build_generation_audit_projection,
+    failure_summary,
     project_timeline_events,
     register_generation_audit_routes,
+    recovery_request_summary,
     safe_details,
 )
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
@@ -31,11 +34,13 @@ class FakeGenerationAuditSourceClient:
         generation_record: dict[str, Any] | None = None,
         progress_payload: dict[str, Any] | None = None,
         artifact_handoff: dict[str, Any] | None = None,
+        recovery_request: dict[str, Any] | None = None,
         error: GenerationAuditError | None = None,
     ) -> None:
         self.generation_record = generation_record or sample_generation_record()
         self.progress_payload = progress_payload or sample_progress_payload()
         self.artifact_handoff = artifact_handoff or sample_artifact_handoff()
+        self.recovery_request = recovery_request or sample_recovery_request()
         self.error = error
         self.calls: list[tuple[str, str]] = []
 
@@ -70,6 +75,16 @@ class FakeGenerationAuditSourceClient:
     ) -> dict[str, Any]:
         self.calls.append(("handoff", artifact_handoff_id))
         return self.artifact_handoff
+
+    def get_ae_recovery_request(
+        self,
+        recovery_request_id: str,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        self.calls.append(("recovery", recovery_request_id))
+        return self.recovery_request
 
 
 def auth_headers() -> dict[str, str]:
@@ -113,6 +128,29 @@ def sample_generation_record(*, status: str = "COMPLETED") -> dict[str, Any]:
             "total_ms": 12,
         },
         "usage": {"input_tokens": 5, "output_tokens": 7, "total_tokens": 12},
+    }
+
+
+def sample_failed_generation_record() -> dict[str, Any]:
+    return {
+        **sample_generation_record(status="FAILED"),
+        "mo_generation_id": None,
+        "response_metadata": {
+            "finish_reason": "ERROR",
+            "output_hash": None,
+            "output_preview": "",
+        },
+        "failure": {
+            "failure_code": "mo.provider_timeout",
+            "failure_class": "provider_timeout",
+            "owner_service": "nex-cx",
+            "failed_stage": "GENERATING",
+            "retryable": True,
+            "recovery_policy_id": "recovery-mo-provider-timeout-retry-v1",
+            "recovery_policy_hash": "e" * 64,
+            "safe_message": "Generation failed before completion.",
+            "raw_prompt": "private prompt",
+        },
     }
 
 
@@ -168,6 +206,33 @@ def sample_artifact_handoff() -> dict[str, Any]:
             "retrieval_package_id": "cx-ret-001",
             "retrieval_package_hash": "d" * 64,
             "evidence_ref_count": 2,
+        },
+    }
+
+
+def sample_recovery_request(
+    *,
+    requested_action: str = "retry",
+) -> dict[str, Any]:
+    return {
+        "recovery_request_id": "ae-recovery-001",
+        "status": "ACCEPTED",
+        "requested_action": requested_action,
+        "cx_generation_id": "cx-gen-001",
+        "parent_generation_id": "cx-gen-001",
+        "failure": {
+            "failure_code": "mo.provider_timeout",
+            "failure_class": "provider_timeout",
+        },
+        "policy": {
+            "hash_status": "MATCHED",
+        },
+        "dispatch": {
+            "target_service": "nex-cx",
+            "endpoint_hint": "/api/v1/generations",
+            "attempt_no": 2,
+            "reuse_retrieval_package": True,
+            "requires_user_confirmation": False,
         },
     }
 
@@ -228,7 +293,45 @@ def test_build_generation_audit_projection_can_omit_artifact_handoff() -> None:
         ("events", "cx-gen-001"),
     ]
     assert projection["artifact_handoff_summary"] is None
+    assert projection["recovery_request_summary"] is None
     assert projection["audit_event"]["actor_ref"]["actor_type"] == "service"
+
+
+def test_generation_audit_projection_can_include_recovery_request() -> None:
+    source_client = FakeGenerationAuditSourceClient(
+        generation_record=sample_failed_generation_record(),
+        recovery_request=sample_recovery_request(),
+    )
+
+    projection = build_generation_audit_projection(
+        source_client,
+        cx_generation_id="cx-gen-001",
+        artifact_handoff_id=None,
+        recovery_request_id="ae-recovery-001",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert source_client.calls == [
+        ("generation", "cx-gen-001"),
+        ("events", "cx-gen-001"),
+        ("recovery", "ae-recovery-001"),
+    ]
+    assert projection["generation_summary"]["failure"] == {
+        "failure_code": "mo.provider_timeout",
+        "failure_class": "provider_timeout",
+        "owner_service": "nex-cx",
+        "failed_stage": "GENERATING",
+        "retryable": True,
+        "recovery_policy_id": "recovery-mo-provider-timeout-retry-v1",
+        "recovery_policy_hash": "e" * 64,
+    }
+    assert projection["recovery_request_summary"]["requested_action"] == "retry"
+    assert projection["audit_event"]["action_type"] == "retry"
+    assert projection["audit_event"]["details"]["recovery_request_id"] == (
+        "ae-recovery-001"
+    )
+    assert "private prompt" not in str(projection)
 
 
 def test_generation_audit_event_marks_failed_generation() -> None:
@@ -252,9 +355,41 @@ def test_project_timeline_events_handles_invalid_shape_and_safe_details() -> Non
         "nested": {"ok": True},
     }
     assert artifact_handoff_summary(None) is None
+    assert recovery_request_summary(None) is None
+    assert failure_summary({"status": "COMPLETED"}) is None
     assert safe_details({"api_key": "hidden", "safe": object()})["safe"].startswith(
         "<object object"
     )
+
+
+def test_recovery_summary_and_action_type_helpers_map_safe_fields() -> None:
+    summary = recovery_request_summary(sample_recovery_request())
+
+    assert summary == {
+        "recovery_request_id": "ae-recovery-001",
+        "status": "ACCEPTED",
+        "requested_action": "retry",
+        "cx_generation_id": "cx-gen-001",
+        "parent_generation_id": "cx-gen-001",
+        "failure_code": "mo.provider_timeout",
+        "failure_class": "provider_timeout",
+        "policy_hash_status": "MATCHED",
+        "target_service": "nex-cx",
+        "endpoint_hint": "/api/v1/generations",
+        "attempt_no": 2,
+        "reuse_retrieval_package": True,
+        "requires_user_confirmation": False,
+    }
+    assert audit_action_type(None) == "generation_run"
+    assert audit_action_type(sample_recovery_request(requested_action="repair")) == "repair"
+    assert audit_action_type(
+        sample_recovery_request(requested_action="sectional_retry")
+    ) == "repair"
+    assert audit_action_type(
+        sample_recovery_request(requested_action="manual_accept_with_warning")
+    ) == "override"
+    assert audit_action_type(sample_recovery_request(requested_action="regenerate")) == "retry"
+    assert audit_action_type(sample_recovery_request(requested_action="cancel")) == "override"
 
 
 def test_generation_audit_route_requires_auth_and_returns_projection() -> None:
@@ -263,14 +398,20 @@ def test_generation_audit_route_requires_auth_and_returns_projection() -> None:
     unauthorized = client.get("/admin/v1/generation-audit/generations/cx-gen-001")
     response = client.get(
         "/admin/v1/generation-audit/generations/cx-gen-001",
-        params={"artifact_handoff_id": "handoff-001"},
+        params={
+            "artifact_handoff_id": "handoff-001",
+            "recovery_request_id": "ae-recovery-001",
+        },
         headers=auth_headers(),
     )
 
     assert unauthorized.status_code == 401
     assert response.status_code == 200
     assert response.json()["cx_generation_id"] == "cx-gen-001"
-    assert source_client.calls[-1] == ("handoff", "handoff-001")
+    assert source_client.calls[-2:] == [
+        ("handoff", "handoff-001"),
+        ("recovery", "ae-recovery-001"),
+    ]
 
 
 def test_generation_audit_route_maps_source_errors() -> None:
@@ -301,6 +442,8 @@ def test_http_generation_audit_source_client_reads_cx_and_ae(monkeypatch) -> Non
             return httpx.Response(status_code=200, json={"events": []})
         if "artifact-handoffs" in url:
             return httpx.Response(status_code=200, json={"artifact_handoff_id": "handoff-001"})
+        if "generation-requests" in url:
+            return httpx.Response(status_code=200, json={"recovery_request_id": "ae-rec-001"})
         return httpx.Response(status_code=200, json={"cx_generation_id": "cx-gen-001"})
 
     monkeypatch.setattr(ag_audit.httpx, "get", fake_get)
@@ -324,10 +467,16 @@ def test_http_generation_audit_source_client_reads_cx_and_ae(monkeypatch) -> Non
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     ) == {"artifact_handoff_id": "handoff-001"}
+    assert client.get_ae_recovery_request(
+        "ae-rec-001",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    ) == {"recovery_request_id": "ae-rec-001"}
     assert seen == [
         ("http://cx.test/api/v1/generations/cx-gen-001", "nex-ag"),
         ("http://cx.test/api/v1/generations/cx-gen-001/events", "nex-ag"),
         ("http://ae.test/api/v1/artifact-handoffs/handoff-001", "nex-ag"),
+        ("http://ae.test/api/v1/recovery/generation-requests/ae-rec-001", "nex-ag"),
     ]
 
 

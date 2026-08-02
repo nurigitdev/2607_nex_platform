@@ -20,3 +20,6 @@ Generation audit:
   events, optional artifact handoff summaries, and an
   `ag_generation_audit_event.v1` event without raw prompts, provider paths,
   source text, generated output text, or storage paths.
+- AG can also include an optional AE generation recovery request summary in the
+  same projection, exposing requested action, policy hash status, dispatch
+  target, attempt number, and retrieval reuse intent for failure audit.

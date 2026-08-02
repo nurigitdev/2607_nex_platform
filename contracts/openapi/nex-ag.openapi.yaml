@@ -69,12 +69,17 @@ paths:
           required: false
           schema:
             type: string
+        - name: recovery_request_id
+          in: query
+          required: false
+          schema:
+            type: string
       responses:
         "200":
-          description: Read-only redacted generation audit projection assembled through CX and AE service APIs.
+          description: Read-only redacted generation audit projection assembled through CX and AE service APIs, optionally including artifact handoff and recovery request summaries.
         "401":
           description: Service claim is missing or invalid.
         "404":
-          description: Source generation or artifact handoff was not found.
+          description: Source generation, artifact handoff, or recovery request was not found.
         "503":
           description: Source service is unavailable.

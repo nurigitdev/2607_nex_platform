@@ -152,6 +152,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0046`](slices/0046_generation_recovery_policy_contract.md) | `S5-006` Generation recovery policy contract. |
 | [`Slice 0047`](slices/0047_cx_generation_failure_lineage_stub.md) | `S5-007` CX generation failure record and recovery lineage stub. |
 | [`Slice 0048`](slices/0048_ae_generation_recovery_request_api.md) | `S5-008` AE generation recovery request API. |
+| [`Slice 0049`](slices/0049_ag_generation_recovery_audit_projection.md) | `S5-009` AG generation recovery audit projection. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

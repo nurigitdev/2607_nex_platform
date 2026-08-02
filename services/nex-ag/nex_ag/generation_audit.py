@@ -85,6 +85,15 @@ class GenerationAuditSourceClient(Protocol):
     ) -> dict[str, Any]:
         ...
 
+    def get_ae_recovery_request(
+        self,
+        recovery_request_id: str,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        ...
+
 
 @dataclass(frozen=True)
 class HttpGenerationAuditSourceClient:
@@ -136,6 +145,22 @@ class HttpGenerationAuditSourceClient:
         return self._get_json(
             self.ae_base_url,
             f"/api/v1/artifact-handoffs/{artifact_handoff_id}",
+            audience="nex-ae-api",
+            service_token=self.ae_service_token,
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+
+    def get_ae_recovery_request(
+        self,
+        recovery_request_id: str,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        return self._get_json(
+            self.ae_base_url,
+            f"/api/v1/recovery/generation-requests/{recovery_request_id}",
             audience="nex-ae-api",
             service_token=self.ae_service_token,
             request_id=request_id,
@@ -207,6 +232,7 @@ def register_generation_audit_routes(
         request: Request,
         authorization: str | None = Header(default=None),
         artifact_handoff_id: str | None = Query(default=None, min_length=1),
+        recovery_request_id: str | None = Query(default=None, min_length=1),
     ):
         auth_problem = _authorize_ag_request(request, authorization)
         if auth_problem is not None:
@@ -219,6 +245,7 @@ def register_generation_audit_routes(
                 client,
                 cx_generation_id=cx_generation_id,
                 artifact_handoff_id=artifact_handoff_id,
+                recovery_request_id=recovery_request_id,
                 request_id=request_id,
                 trace_id=trace_id,
             )
@@ -231,6 +258,7 @@ def build_generation_audit_projection(
     *,
     cx_generation_id: str,
     artifact_handoff_id: str | None,
+    recovery_request_id: str | None = None,
     request_id: str,
     trace_id: str,
 ) -> dict[str, Any]:
@@ -253,10 +281,20 @@ def build_generation_audit_projection(
         if artifact_handoff_id is not None
         else None
     )
+    recovery_request = (
+        client.get_ae_recovery_request(
+            recovery_request_id,
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+        if recovery_request_id is not None
+        else None
+    )
     now = _utc_now()
     audit_event = build_ag_generation_audit_event(
         generation_record=generation_record,
         artifact_handoff=artifact_handoff,
+        recovery_request=recovery_request,
         timeline_events=progress_payload.get("events", []),
         occurred_at=now,
     )
@@ -269,6 +307,7 @@ def build_generation_audit_projection(
         "generation_summary": generation_summary(generation_record),
         "timeline": project_timeline_events(progress_payload),
         "artifact_handoff_summary": artifact_handoff_summary(artifact_handoff),
+        "recovery_request_summary": recovery_request_summary(recovery_request),
         "redaction_summary": {
             "raw_content_included": False,
             "excluded_fields": [
@@ -290,9 +329,11 @@ def build_ag_generation_audit_event(
     generation_record: dict[str, Any],
     artifact_handoff: dict[str, Any] | None,
     timeline_events: list[dict[str, Any]],
+    recovery_request: dict[str, Any] | None = None,
     occurred_at: str | None = None,
 ) -> dict[str, Any]:
     result_status = "SUCCEEDED" if generation_record.get("status") == "COMPLETED" else "FAILED"
+    action_type = audit_action_type(recovery_request)
     actor_ref = (
         artifact_handoff["actor_claims_ref"]
         if artifact_handoff is not None
@@ -312,7 +353,7 @@ def build_ag_generation_audit_event(
         "occurred_at": occurred_at or _utc_now(),
         "source_service": "nex-cx",
         "actor_ref": actor_ref,
-        "action_type": "generation_run",
+        "action_type": action_type,
         "target_type": "generation",
         "target_ref": {
             "target_id": target_id,
@@ -330,6 +371,15 @@ def build_ag_generation_audit_event(
                 "timeline_event_count": len(timeline_events),
                 "artifact_handoff_id": artifact_handoff["artifact_handoff_id"]
                 if artifact_handoff
+                else None,
+                "recovery_request_id": recovery_request["recovery_request_id"]
+                if recovery_request
+                else None,
+                "requested_action": recovery_request["requested_action"]
+                if recovery_request
+                else None,
+                "policy_hash_status": recovery_request["policy"]["hash_status"]
+                if recovery_request
                 else None,
             }
         ),
@@ -349,6 +399,7 @@ def generation_summary(generation_record: dict[str, Any]) -> dict[str, Any]:
         "output_hash": response_metadata.get("output_hash"),
         "structured_draft_id": metadata.get("structured_draft_id"),
         "draft_validation_status": metadata.get("draft_validation_status"),
+        "failure": failure_summary(generation_record),
     }
 
 
@@ -384,6 +435,61 @@ def artifact_handoff_summary(
         ],
         "quality_summary": artifact_handoff["quality_summary"],
     }
+
+
+def recovery_request_summary(
+    recovery_request: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if recovery_request is None:
+        return None
+    dispatch = recovery_request["dispatch"]
+    policy = recovery_request["policy"]
+    failure = recovery_request["failure"]
+    return {
+        "recovery_request_id": recovery_request["recovery_request_id"],
+        "status": recovery_request["status"],
+        "requested_action": recovery_request["requested_action"],
+        "cx_generation_id": recovery_request["cx_generation_id"],
+        "parent_generation_id": recovery_request["parent_generation_id"],
+        "failure_code": failure["failure_code"],
+        "failure_class": failure["failure_class"],
+        "policy_hash_status": policy["hash_status"],
+        "target_service": dispatch["target_service"],
+        "endpoint_hint": dispatch["endpoint_hint"],
+        "attempt_no": dispatch["attempt_no"],
+        "reuse_retrieval_package": dispatch["reuse_retrieval_package"],
+        "requires_user_confirmation": dispatch["requires_user_confirmation"],
+    }
+
+
+def failure_summary(generation_record: dict[str, Any]) -> dict[str, Any] | None:
+    failure = generation_record.get("failure")
+    if not isinstance(failure, dict):
+        return None
+    return safe_details(
+        {
+            "failure_code": failure.get("failure_code"),
+            "failure_class": failure.get("failure_class"),
+            "owner_service": failure.get("owner_service"),
+            "failed_stage": failure.get("failed_stage"),
+            "retryable": failure.get("retryable"),
+            "recovery_policy_id": failure.get("recovery_policy_id"),
+            "recovery_policy_hash": failure.get("recovery_policy_hash"),
+        }
+    )
+
+
+def audit_action_type(recovery_request: dict[str, Any] | None) -> str:
+    if recovery_request is None:
+        return "generation_run"
+    action = recovery_request.get("requested_action")
+    if action in {"repair", "sectional_retry"}:
+        return "repair"
+    if action in {"manual_accept_with_warning"}:
+        return "override"
+    if action in {"retry", "regenerate", "fresh_retrieval_regenerate"}:
+        return "retry"
+    return "override"
 
 
 def quality_summary_from_sources(
