@@ -71,6 +71,11 @@
       "schema": "schemas/generation/ae_artifact_record.v1.schema.json"
     },
     {
+      "name": "ae_artifact_record_markdown_file_ready",
+      "path": "examples/generation/ae_artifact_record.markdown_file_ready.json",
+      "schema": "schemas/generation/ae_artifact_record.v1.schema.json"
+    },
+    {
       "name": "ag_generation_audit_event_mock",
       "path": "examples/generation/ag_generation_audit_event.mock_success.json",
       "schema": "schemas/generation/ag_generation_audit_event.v1.schema.json"

@@ -15,7 +15,9 @@ from nex_ae_api.artifacts import (
     actor_claims_ref_from_payload,
     artifact_intent_from_payload,
     artifact_type_from_payload,
+    build_artifact_links,
     build_artifact_handoff_record,
+    build_markdown_artifact_files,
     build_markdown_render_result,
     build_artifact_record_from_handoff,
     deterministic_render_job_id,
@@ -23,6 +25,8 @@ from nex_ae_api.artifacts import (
     markdown_target_formats_from_payload,
     register_artifact_handoff_routes,
     render_markdown_from_structured_draft,
+    resolve_artifact_file_payload,
+    safe_file_stem,
     target_formats_from_payload,
     validate_artifact_handoff_record,
     validate_structured_draft_for_markdown_render,
@@ -333,7 +337,52 @@ def test_build_markdown_render_result_creates_version_and_completed_job() -> Non
     assert result["artifact_version"]["version_reason"] == "initial_render"
     assert result["artifact_version"]["rendered_formats"] == ["MD"]
     assert len(result["artifact_version"]["artifact_content_hash"]) == 64
+    assert result["artifact_files"][0]["format"] == "MD"
+    assert result["artifact_files"][0]["storage_ref"].startswith("ae://artifacts/")
+    assert result["artifact_links"][0]["link_type"] == "preview"
+    assert result["artifact_links"][1]["link_type"] == "download"
     assert result["markdown"].startswith("# Grounded report")
+
+
+def test_artifact_file_metadata_helpers_create_safe_routes_and_refs() -> None:
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={
+            "artifact_request_id": "artifact-create-001",
+            "display_title": "Generated Report: 2026/08",
+        },
+        handoff_record=sample_handoff_record(),
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    render_result = build_markdown_render_result(
+        artifact_record=artifact_record,
+        structured_draft=sample_structured_draft(),
+        target_formats=["MD"],
+        render_request_id="render-request-001",
+        render_job_id=deterministic_render_job_id(
+            artifact_record["artifact_id"],
+            "render-request-001",
+        ),
+    )
+    artifact_file = build_markdown_artifact_files(
+        artifact_record=artifact_record,
+        artifact_version=render_result["artifact_version"],
+        markdown=render_result["markdown"],
+    )[0]
+    links = build_artifact_links(
+        artifact_file=artifact_file,
+        created_by_actor_ref=artifact_record["owner_actor_ref"],
+        created_at=render_result["artifact_version"]["created_at"],
+    )
+
+    assert safe_file_stem("한글 제목") == "artifact"
+    assert artifact_file["file_name"] == "generated-report-2026-08.md"
+    assert artifact_file["storage_ref"].startswith("ae://artifacts/")
+    assert "/data/nex-platform" not in artifact_file["storage_ref"]
+    assert {link["link_type"] for link in links} == {"preview", "download"}
+    assert all(link["link_route"].startswith("/api/v1/artifact-files/") for link in links)
+    assert all(link["access_policy"] == "owner_only" for link in links)
 
 
 def test_markdown_render_guards_reject_invalid_sources_and_formats() -> None:
@@ -495,6 +544,7 @@ def test_markdown_render_route_updates_artifact_and_preserves_private_content() 
     payload = rendered.json()
     render_job = payload["render_job"]
     artifact = payload["artifact"]
+    artifact_file = artifact["files"][0]
     repeated = client.post(
         f"/api/v1/artifacts/{artifact_id}/render-jobs",
         json={},
@@ -502,6 +552,18 @@ def test_markdown_render_route_updates_artifact_and_preserves_private_content() 
     )
     job_readback = client.get(
         f"/api/v1/artifact-render-jobs/{render_job['render_job_id']}",
+        headers=auth_headers(),
+    )
+    file_readback = client.get(
+        f"/api/v1/artifact-files/{artifact_file['artifact_file_id']}",
+        headers=auth_headers(),
+    )
+    preview = client.get(
+        f"/api/v1/artifact-files/{artifact_file['artifact_file_id']}/preview",
+        headers=auth_headers(),
+    )
+    download = client.get(
+        f"/api/v1/artifact-files/{artifact_file['artifact_file_id']}/download",
         headers=auth_headers(),
     )
 
@@ -513,6 +575,8 @@ def test_markdown_render_route_updates_artifact_and_preserves_private_content() 
     ]
     assert artifact["versions"][0]["rendered_formats"] == ["MD"]
     assert artifact["render_jobs"][0] == render_job
+    assert artifact_file["storage_ref"].startswith("ae://artifacts/")
+    assert {link["link_type"] for link in artifact["links"]} == {"preview", "download"}
     assert "Grounded answer [1]." not in str(payload)
     assert artifact_store.get_rendered_markdown(
         artifact["current_version_id"]
@@ -520,6 +584,16 @@ def test_markdown_render_route_updates_artifact_and_preserves_private_content() 
     assert repeated.json() == payload
     assert job_readback.status_code == 200
     assert job_readback.json() == render_job
+    assert file_readback.status_code == 200
+    assert file_readback.json() == artifact_file
+    assert preview.status_code == 200
+    assert preview.json()["preview_schema_version"] == "ae_artifact_file_preview.v1"
+    assert "Grounded answer [1]." in preview.json()["text_preview"]
+    assert "/data/nex-platform" not in str(preview.json())
+    assert download.status_code == 200
+    assert download.json()["download_schema_version"] == "ae_artifact_file_download.v1"
+    assert download.json()["download_file_name"] == artifact_file["file_name"]
+    assert download.json()["content_hash"] == artifact_file["file_hash"]
 
 
 def test_markdown_render_route_reports_missing_and_invalid_requests() -> None:
@@ -555,6 +629,14 @@ def test_markdown_render_route_reports_missing_and_invalid_requests() -> None:
         "/api/v1/artifact-render-jobs/missing",
         headers=auth_headers(),
     )
+    missing_file = client.get(
+        "/api/v1/artifact-files/missing",
+        headers=auth_headers(),
+    )
+    missing_preview = client.get(
+        "/api/v1/artifact-files/missing/preview",
+        headers=auth_headers(),
+    )
     source_client.structured_draft = sample_structured_draft(content_hash="9" * 64)
     mismatch = client.post(
         f"/api/v1/artifacts/{artifact_id}/render-jobs",
@@ -570,8 +652,55 @@ def test_markdown_render_route_reports_missing_and_invalid_requests() -> None:
     assert invalid_format.json()["error_code"] == "ae.render_format_unsupported"
     assert missing_job.status_code == 404
     assert missing_job.json()["error_code"] == "ae.render_job_not_found"
+    assert missing_file.status_code == 404
+    assert missing_file.json()["error_code"] == "ae.artifact_file_not_found"
+    assert missing_preview.status_code == 404
+    assert missing_preview.json()["error_code"] == "ae.artifact_file_not_found"
     assert mismatch.status_code == 409
     assert mismatch.json()["error_code"] == "ae.source_draft_hash_mismatch"
+
+
+def test_artifact_file_payload_resolution_requires_link_and_private_content() -> None:
+    store = ArtifactRecordStore()
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-create-001"},
+        handoff_record=sample_handoff_record(),
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.create(artifact_record)
+    render_result = build_markdown_render_result(
+        artifact_record=artifact_record,
+        structured_draft=sample_structured_draft(),
+        target_formats=["MD"],
+        render_request_id="render-request-001",
+        render_job_id=deterministic_render_job_id(
+            artifact_record["artifact_id"],
+            "render-request-001",
+        ),
+    )
+    artifact_file = render_result["artifact_files"][0]
+    store.artifact_files[artifact_file["artifact_file_id"]] = artifact_file
+
+    with pytest.raises(ArtifactHandoffError) as link_exc:
+        resolve_artifact_file_payload(
+            store,
+            artifact_file_id=artifact_file["artifact_file_id"],
+            link_type="download",
+        )
+    assert link_exc.value.error_code == "ae.artifact_link_not_found"
+
+    store.artifact_links[render_result["artifact_links"][1]["artifact_link_id"]] = (
+        render_result["artifact_links"][1]
+    )
+    with pytest.raises(ArtifactHandoffError) as content_exc:
+        resolve_artifact_file_payload(
+            store,
+            artifact_file_id=artifact_file["artifact_file_id"],
+            link_type="download",
+        )
+    assert content_exc.value.error_code == "ae.artifact_file_not_ready"
 
 
 def test_artifact_route_requires_auth_and_reports_missing_records() -> None:

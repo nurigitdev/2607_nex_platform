@@ -146,6 +146,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0040`](slices/0040_ae_web_workspace_shell_integration.md) | `S4-010` AE web MVP workspace shell integration. |
 | [`Slice 0041`](slices/0041_ae_artifact_record_family_foundation.md) | `S5-001` AE artifact record family foundation. |
 | [`Slice 0042`](slices/0042_ae_markdown_artifact_renderer_mvp.md) | `S5-002` AE Markdown artifact renderer MVP. |
+| [`Slice 0043`](slices/0043_ae_artifact_file_preview_download_metadata.md) | `S5-003` AE artifact file preview and download metadata. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

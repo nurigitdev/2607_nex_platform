@@ -305,6 +305,64 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: Artifact render job was not found.
+  /api/v1/artifact-files/{artifact_file_id}:
+    get:
+      operationId: getAeArtifactFile
+      tags:
+        - Artifacts
+      parameters:
+        - name: artifact_file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AE artifact file metadata with safe storage reference.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Artifact file was not found.
+  /api/v1/artifact-files/{artifact_file_id}/preview:
+    get:
+      operationId: previewAeArtifactFile
+      tags:
+        - Artifacts
+      parameters:
+        - name: artifact_file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Authorized Markdown artifact preview payload.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Artifact file or preview link was not found.
+        "409":
+          description: Artifact file content is not ready.
+  /api/v1/artifact-files/{artifact_file_id}/download:
+    get:
+      operationId: downloadAeArtifactFile
+      tags:
+        - Artifacts
+      parameters:
+        - name: artifact_file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Authorized Markdown artifact download payload.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Artifact file or download link was not found.
+        "409":
+          description: Artifact file content is not ready.
   /api/v1/compatibility/generation-rules:
     get:
       operationId: listAeGenerationCompatibilityRules

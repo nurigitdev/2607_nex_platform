@@ -24,6 +24,9 @@ Current endpoints:
 - `GET /api/v1/artifacts/{artifact_id}/versions`
 - `POST /api/v1/artifacts/{artifact_id}/render-jobs`
 - `GET /api/v1/artifact-render-jobs/{render_job_id}`
+- `GET /api/v1/artifact-files/{artifact_file_id}`
+- `GET /api/v1/artifact-files/{artifact_file_id}/preview`
+- `GET /api/v1/artifact-files/{artifact_file_id}/download`
 - `GET /api/v1/compatibility/generation-rules`
 - `POST /api/v1/chat/interactions`
 - `GET /api/v1/chat/interactions/{interaction_id}`
@@ -74,6 +77,9 @@ Artifact records:
   validated CX structured draft. Public artifact records expose version hashes
   and render job metadata, while Markdown content remains private until file and
   preview/download routes are added.
+- AE materializes rendered Markdown as safe artifact file metadata with
+  `ae://` storage refs and AE-owned preview/download routes. Public metadata
+  never exposes local filesystem paths.
 
 Prompt analytics:
 

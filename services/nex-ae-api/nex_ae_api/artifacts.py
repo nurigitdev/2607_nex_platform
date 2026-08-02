@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -138,6 +139,8 @@ class ArtifactRecordStore:
     records: dict[str, dict[str, Any]] = field(default_factory=dict)
     render_jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
     rendered_markdown: dict[str, str] = field(default_factory=dict)
+    artifact_files: dict[str, dict[str, Any]] = field(default_factory=dict)
+    artifact_links: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def create(self, record: dict[str, Any]) -> dict[str, Any]:
         existing = self.records.get(record["artifact_id"])
@@ -165,6 +168,22 @@ class ArtifactRecordStore:
     def get_rendered_markdown(self, artifact_version_id: str) -> str | None:
         return self.rendered_markdown.get(artifact_version_id)
 
+    def get_file(self, artifact_file_id: str) -> dict[str, Any] | None:
+        return self.artifact_files.get(artifact_file_id)
+
+    def get_file_link(
+        self,
+        artifact_file_id: str,
+        link_type: str,
+    ) -> dict[str, Any] | None:
+        for link in self.artifact_links.values():
+            if (
+                link["artifact_file_id"] == artifact_file_id
+                and link["link_type"] == link_type
+            ):
+                return link
+        return None
+
     def apply_markdown_render(
         self,
         *,
@@ -172,15 +191,23 @@ class ArtifactRecordStore:
         artifact_version: dict[str, Any],
         render_job: dict[str, Any],
         markdown: str,
+        artifact_files: list[dict[str, Any]],
+        artifact_links: list[dict[str, Any]],
     ) -> dict[str, Any]:
         record = self.records[artifact_id]
         record["versions"].append(artifact_version)
         record["render_jobs"].append(render_job)
+        record["files"].extend(artifact_files)
+        record["links"].extend(artifact_links)
         record["artifact_status"] = "READY"
         record["current_version_id"] = artifact_version["artifact_version_id"]
         record["updated_at"] = render_job["completed_at"]
         self.render_jobs[render_job["render_job_id"]] = render_job
         self.rendered_markdown[artifact_version["artifact_version_id"]] = markdown
+        for artifact_file in artifact_files:
+            self.artifact_files[artifact_file["artifact_file_id"]] = artifact_file
+        for artifact_link in artifact_links:
+            self.artifact_links[artifact_link["artifact_link_id"]] = artifact_link
         return record
 
 
@@ -415,6 +442,8 @@ def register_artifact_handoff_routes(
                 artifact_version=render_result["artifact_version"],
                 render_job=render_result["render_job"],
                 markdown=render_result["markdown"],
+                artifact_files=render_result["artifact_files"],
+                artifact_links=render_result["artifact_links"],
             )
             return {
                 "render_result_schema_version": "ae_markdown_render_result.v1",
@@ -445,6 +474,84 @@ def register_artifact_handoff_routes(
                 ),
             )
         return render_job
+
+    @app.get("/api/v1/artifact-files/{artifact_file_id}", response_model=None)
+    def get_artifact_file(
+        artifact_file_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        artifact_file = artifact_record_store.get_file(artifact_file_id)
+        if artifact_file is None:
+            return _artifact_problem_response(
+                request,
+                ArtifactHandoffError(
+                    status_code=404,
+                    error_code="ae.artifact_file_not_found",
+                    detail=f"Artifact file was not found: {artifact_file_id}",
+                ),
+            )
+        return artifact_file
+
+    @app.get("/api/v1/artifact-files/{artifact_file_id}/preview", response_model=None)
+    def preview_artifact_file(
+        artifact_file_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            artifact_file, preview_link, markdown = resolve_artifact_file_payload(
+                artifact_record_store,
+                artifact_file_id=artifact_file_id,
+                link_type="preview",
+            )
+            preview_text = markdown[:2000]
+            return {
+                "preview_schema_version": "ae_artifact_file_preview.v1",
+                "artifact_file": artifact_file,
+                "artifact_link": preview_link,
+                "content_type": artifact_file["mime_type"],
+                "text_preview": preview_text,
+                "truncated": len(markdown) > len(preview_text),
+            }
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.get("/api/v1/artifact-files/{artifact_file_id}/download", response_model=None)
+    def download_artifact_file(
+        artifact_file_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            artifact_file, download_link, markdown = resolve_artifact_file_payload(
+                artifact_record_store,
+                artifact_file_id=artifact_file_id,
+                link_type="download",
+            )
+            return {
+                "download_schema_version": "ae_artifact_file_download.v1",
+                "artifact_file": artifact_file,
+                "artifact_link": download_link,
+                "download_file_name": artifact_file["file_name"],
+                "content_type": artifact_file["mime_type"],
+                "content_hash": artifact_file["file_hash"],
+                "content": markdown,
+            }
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
 
 
 def build_artifact_handoff_record(
@@ -679,12 +786,137 @@ def build_markdown_render_result(
         "started_at": now,
         "completed_at": now,
     }
+    artifact_files = build_markdown_artifact_files(
+        artifact_record=artifact_record,
+        artifact_version=artifact_version,
+        markdown=markdown,
+    )
+    artifact_links = build_artifact_links(
+        artifact_file=artifact_files[0],
+        created_by_actor_ref=artifact_record["owner_actor_ref"],
+        created_at=now,
+    )
     return {
         "render_request_id": render_request_id,
         "render_job": render_job,
         "artifact_version": artifact_version,
+        "artifact_files": artifact_files,
+        "artifact_links": artifact_links,
         "markdown": markdown,
     }
+
+
+def build_markdown_artifact_files(
+    *,
+    artifact_record: dict[str, Any],
+    artifact_version: dict[str, Any],
+    markdown: str,
+) -> list[dict[str, Any]]:
+    artifact_file_id = str(
+        uuid5(
+            NAMESPACE_URL,
+            f"ae-artifact-file:{artifact_version['artifact_version_id']}:MD",
+        )
+    )
+    file_name = f"{safe_file_stem(artifact_record['display_title'])}.md"
+    return [
+        {
+            "artifact_file_id": artifact_file_id,
+            "artifact_version_id": artifact_version["artifact_version_id"],
+            "format": "MD",
+            "mime_type": "text/markdown",
+            "file_name": file_name,
+            "storage_ref": (
+                "ae://artifacts/"
+                f"{artifact_record['artifact_id']}/versions/"
+                f"{artifact_version['artifact_version_id']}/{file_name}"
+            ),
+            "file_size_bytes": len(markdown.encode("utf-8")),
+            "file_hash": sha256_text(markdown),
+            "source_version_hash": artifact_version["artifact_content_hash"],
+            "created_at": artifact_version["created_at"],
+        }
+    ]
+
+
+def build_artifact_links(
+    *,
+    artifact_file: dict[str, Any],
+    created_by_actor_ref: dict[str, str],
+    created_at: str,
+) -> list[dict[str, Any]]:
+    return [
+        build_artifact_link(
+            artifact_file=artifact_file,
+            link_type="preview",
+            created_by_actor_ref=created_by_actor_ref,
+            created_at=created_at,
+        ),
+        build_artifact_link(
+            artifact_file=artifact_file,
+            link_type="download",
+            created_by_actor_ref=created_by_actor_ref,
+            created_at=created_at,
+        ),
+    ]
+
+
+def build_artifact_link(
+    *,
+    artifact_file: dict[str, Any],
+    link_type: str,
+    created_by_actor_ref: dict[str, str],
+    created_at: str,
+) -> dict[str, Any]:
+    artifact_file_id = artifact_file["artifact_file_id"]
+    return {
+        "artifact_link_id": str(
+            uuid5(NAMESPACE_URL, f"ae-artifact-link:{artifact_file_id}:{link_type}")
+        ),
+        "artifact_file_id": artifact_file_id,
+        "link_type": link_type,
+        "access_policy": "owner_only",
+        "link_route": f"/api/v1/artifact-files/{artifact_file_id}/{link_type}",
+        "expires_at": None,
+        "created_by_actor_ref": dict(created_by_actor_ref),
+        "download_count": 0,
+        "revoked_at": None,
+    }
+
+
+def resolve_artifact_file_payload(
+    store: ArtifactRecordStore,
+    *,
+    artifact_file_id: str,
+    link_type: str,
+) -> tuple[dict[str, Any], dict[str, Any], str]:
+    artifact_file = store.get_file(artifact_file_id)
+    if artifact_file is None:
+        raise ArtifactHandoffError(
+            status_code=404,
+            error_code="ae.artifact_file_not_found",
+            detail=f"Artifact file was not found: {artifact_file_id}",
+        )
+    artifact_link = store.get_file_link(artifact_file_id, link_type)
+    if artifact_link is None:
+        raise ArtifactHandoffError(
+            status_code=404,
+            error_code="ae.artifact_link_not_found",
+            detail=f"Artifact {link_type} link was not found: {artifact_file_id}",
+        )
+    markdown = store.get_rendered_markdown(artifact_file["artifact_version_id"])
+    if markdown is None:
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.artifact_file_not_ready",
+            detail="Artifact file content is not ready.",
+        )
+    return artifact_file, artifact_link, markdown
+
+
+def safe_file_stem(value: str) -> str:
+    normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip().lower())
+    return normalized.strip(".-_")[:64] or "artifact"
 
 
 def render_markdown_from_structured_draft(structured_draft: dict[str, Any]) -> str:
