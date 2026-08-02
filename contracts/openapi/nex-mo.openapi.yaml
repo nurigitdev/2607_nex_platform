@@ -41,3 +41,55 @@ paths:
           description: Service claim is valid for this service.
         "401":
           description: Service claim is missing or invalid.
+  /api/v1/provider-routes:
+    get:
+      operationId: listMoProviderRoutes
+      tags:
+        - Provider Routes
+      responses:
+        "200":
+          description: Provider routes and aliases.
+        "401":
+          description: Service claim is missing or invalid.
+  /api/v1/embeddings:
+    post:
+      operationId: createMoMockEmbeddings
+      tags:
+        - Providers
+      responses:
+        "200":
+          description: Deterministic mock embeddings.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Provider alias was not found.
+        "422":
+          description: Provider route cannot satisfy the request.
+  /api/v1/rerank:
+    post:
+      operationId: createMoMockRerank
+      tags:
+        - Providers
+      responses:
+        "200":
+          description: Deterministic mock reranking scores.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Provider alias was not found.
+        "422":
+          description: Provider route cannot satisfy the request.
+  /api/v1/generations:
+    post:
+      operationId: createMoMockGeneration
+      tags:
+        - Providers
+      responses:
+        "200":
+          description: Deterministic mock generation response.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Provider alias was not found.
+        "422":
+          description: Provider route cannot satisfy the request.

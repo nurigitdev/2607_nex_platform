@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import os
-import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
-from uuid import uuid4
 
 import psycopg
 from fastapi import FastAPI, Header, Request, Response
@@ -20,8 +18,7 @@ from .auth import (
     validate_authorization_header,
     validate_mock_service_token,
 )
-
-TRACEPARENT_PATTERN = re.compile(r"^00-([0-9a-f]{32})-[0-9a-f]{16}-[0-9a-f]{2}$")
+from .problem import problem_response
 
 
 @dataclass(frozen=True)
@@ -129,7 +126,7 @@ def build_service_app(spec: ServiceSpec) -> FastAPI:
             "service_name": spec.display_name,
             "version": version,
             "api_version": "v1",
-            "contract_catalog_version": "slice-0005",
+            "contract_catalog_version": "slice-0006",
             "build_sha": os.getenv("NEX_BUILD_SHA", "local"),
         }
 
@@ -231,38 +228,14 @@ def _auth_problem_response(
     *,
     status_code: int = 401,
 ) -> JSONResponse:
-    return JSONResponse(
+    return problem_response(
+        request,
         status_code=status_code,
-        media_type="application/problem+json",
-        content={
-            "type": "https://nex-platform.local/problems/authentication-failed",
-            "title": "Authentication failed",
-            "status": status_code,
-            "detail": result.detail or "Service claim validation failed.",
-            "instance": request.url.path,
-            "error_code": result.error_code or "SERVICE_CLAIM_INVALID",
-            "retryable": False,
-            "request_id": _request_id(request),
-            "trace_id": _trace_id(request),
-            "details": {},
-        },
+        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
+        title="Authentication failed",
+        detail=result.detail or "Service claim validation failed.",
+        type_uri="https://nex-platform.local/problems/authentication-failed",
     )
-
-
-def _request_id(request: Request) -> str:
-    request_id = request.headers.get("X-Request-ID")
-    if request_id:
-        return request_id.lower()
-    return str(uuid4())
-
-
-def _trace_id(request: Request) -> str:
-    traceparent = request.headers.get("traceparent")
-    if traceparent:
-        match = TRACEPARENT_PATTERN.fullmatch(traceparent)
-        if match:
-            return match.group(1)
-    return uuid4().hex
 
 
 def _check_database(database_env: str) -> dict[str, Any]:

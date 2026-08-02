@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_mo/provider_route.v1.schema.json",
+  "title": "NeX MO Provider Route",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "alias",
+    "provider_capability",
+    "provider_type",
+    "model_revision",
+    "deployment_id",
+    "route_id",
+    "supports_response_formats",
+    "max_input_tokens",
+    "max_output_tokens",
+    "status"
+  ],
+  "properties": {
+    "alias": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider_capability": {
+      "type": "string",
+      "enum": [
+        "embedding",
+        "reranking",
+        "generation"
+      ]
+    },
+    "provider_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_revision": {
+      "type": "string",
+      "minLength": 1
+    },
+    "deployment_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "route_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "supports_response_formats": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "vector",
+          "score",
+          "text",
+          "json_object"
+        ]
+      }
+    },
+    "max_input_tokens": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_output_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "READY",
+        "DEGRADED",
+        "UNAVAILABLE"
+      ]
+    },
+    "embedding_dimensions": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

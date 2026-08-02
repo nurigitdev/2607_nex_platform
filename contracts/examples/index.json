@@ -19,6 +19,11 @@
       "name": "service_claims_ae_to_cx",
       "path": "examples/auth/service_claims.ae_to_cx.json",
       "schema": "schemas/common/service_claims.v1.schema.json"
+    },
+    {
+      "name": "mo_provider_route_generation",
+      "path": "examples/generation/mo_provider_route.general_llm_default.json",
+      "schema": "schemas/service/nex_mo/provider_route.v1.schema.json"
     }
   ]
 }

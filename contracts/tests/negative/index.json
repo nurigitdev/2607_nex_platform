@@ -19,6 +19,11 @@
       "name": "service_claims_user_token_use",
       "path": "tests/negative/auth/service_claims.user_token_use.json",
       "schema": "schemas/common/service_claims.v1.schema.json"
+    },
+    {
+      "name": "mo_provider_route_secret_endpoint_leak",
+      "path": "tests/negative/generation/mo_provider_route.secret_endpoint_leak.json",
+      "schema": "schemas/service/nex_mo/provider_route.v1.schema.json"
     }
   ]
 }

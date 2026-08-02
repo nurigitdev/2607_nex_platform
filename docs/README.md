@@ -109,7 +109,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0003`](slices/0003_contract_package_bootstrap.md) | `S1-003` Contract package bootstrap. |
 | [`Slice 0004`](slices/0004_problem_json_trace_contracts.md) | `S1-004` Common problem+json and trace contract fixtures. |
 | [`Slice 0005`](slices/0005_oa_service_token_mock.md) | `S1-005` OA service token mock and claim validation. |
-| `Slice 0006` | `S1-006` MO mock provider alias registry. |
+| [`Slice 0006`](slices/0006_mo_mock_provider_registry.md) | `S1-006` MO mock provider alias registry. |
 | `Slice 0007` | `S1-007` CX generation facade to MO mock. |
 | `Slice 0008` | `S1-008` AE API chat interaction stub. |
 | `Slice 0009` | `S1-009` AG service readiness projection. |
