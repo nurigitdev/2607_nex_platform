@@ -141,6 +141,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0035`](slices/0035_cx_grounded_generation_request_validation.md) | `S4-005` CX grounded generation request validation. |
 | [`Slice 0036`](slices/0036_cx_structured_draft_citation_mock_validation.md) | `S4-006` CX structured draft and citation mock validation. |
 | [`Slice 0037`](slices/0037_generation_progress_event_contract.md) | `S4-007` Generation progress event contract and CX polling timeline. |
+| [`Slice 0038`](slices/0038_ae_artifact_handoff_metadata.md) | `S4-008` AE artifact handoff metadata from validated CX draft lineage. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

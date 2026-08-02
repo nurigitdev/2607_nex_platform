@@ -56,6 +56,11 @@
       "schema": "schemas/generation/generation_progress_event.v1.schema.json"
     },
     {
+      "name": "ae_artifact_handoff_storage_path_leak",
+      "path": "tests/negative/generation/ae_artifact_handoff.storage_path_leak.json",
+      "schema": "schemas/generation/ae_artifact_handoff.v1.schema.json"
+    },
+    {
       "name": "ae_chat_interaction_raw_user_message_leak",
       "path": "tests/negative/generation/ae_chat_interaction.raw_user_message_leak.json",
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"

@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/ae_artifact_handoff.v1.schema.json",
+  "title": "NeX AE Artifact Handoff",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "handoff_schema_version",
+    "artifact_handoff_id",
+    "artifact_request_id",
+    "handoff_status",
+    "trace_id",
+    "request_id",
+    "chat_document_id",
+    "interaction_id",
+    "actor_claims_ref",
+    "workspace_ref",
+    "cx_generation_id",
+    "structured_draft_id",
+    "draft_schema_version",
+    "structured_draft_content_hash",
+    "citation_claims_hash",
+    "validation_result_hash",
+    "template_id",
+    "template_version",
+    "rendering_template_id",
+    "artifact_intent",
+    "target_formats",
+    "artifact_title",
+    "language",
+    "retention_policy_ref",
+    "quality_summary",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "handoff_schema_version": {
+      "const": "ae_artifact_handoff.v1"
+    },
+    "artifact_handoff_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifact_request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "handoff_status": {
+      "type": "string",
+      "enum": [
+        "READY_FOR_RENDERING"
+      ]
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "chat_document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "interaction_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "actor_claims_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor_type",
+        "actor_id",
+        "tenant_id"
+      ],
+      "properties": {
+        "actor_type": {
+          "type": "string",
+          "enum": [
+            "user",
+            "service"
+          ]
+        },
+        "actor_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenant_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "workspace_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspace_id",
+        "tenant_id"
+      ],
+      "properties": {
+        "workspace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenant_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "cx_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "structured_draft_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "draft_schema_version": {
+      "const": "cx_structured_draft.v1"
+    },
+    "structured_draft_content_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "citation_claims_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "validation_result_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "template_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "template_version": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "rendering_template_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "artifact_intent": {
+      "type": "string",
+      "enum": [
+        "preview_only",
+        "create_artifact",
+        "create_and_export"
+      ]
+    },
+    "target_formats": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "MD",
+          "HTML_PREVIEW",
+          "DOCX",
+          "PDF"
+        ]
+      }
+    },
+    "artifact_title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "language": {
+      "type": "string",
+      "enum": [
+        "ko",
+        "en"
+      ]
+    },
+    "retention_policy_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "quality_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "citation_status",
+        "citation_count",
+        "validation_error_count",
+        "warning_count",
+        "grounding_required",
+        "retrieval_package_id",
+        "retrieval_package_hash",
+        "evidence_ref_count"
+      ],
+      "properties": {
+        "citation_status": {
+          "type": "string",
+          "enum": [
+            "VALIDATED"
+          ]
+        },
+        "citation_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "validation_error_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "grounding_required": {
+          "type": "boolean"
+        },
+        "retrieval_package_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "retrieval_package_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "evidence_ref_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

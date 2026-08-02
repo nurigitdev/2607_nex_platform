@@ -7,6 +7,7 @@ tags:
   - name: Workspace
   - name: Uploads
   - name: Documents
+  - name: Artifacts
   - name: Compatibility
   - name: Chat
   - name: Retrieval
@@ -176,6 +177,40 @@ paths:
           description: Summary search request is invalid.
         "503":
           description: CX document status is unavailable.
+  /api/v1/artifact-handoffs:
+    post:
+      operationId: createAeArtifactHandoff
+      tags:
+        - Artifacts
+      responses:
+        "200":
+          description: AE artifact handoff package created from validated CX generation and structured draft records.
+        "401":
+          description: Service claim is missing or invalid.
+        "409":
+          description: CX generation or structured draft is not ready for artifact rendering.
+        "422":
+          description: Artifact handoff request is invalid.
+        "503":
+          description: CX artifact source records are unavailable.
+  /api/v1/artifact-handoffs/{artifact_handoff_id}:
+    get:
+      operationId: getAeArtifactHandoff
+      tags:
+        - Artifacts
+      parameters:
+        - name: artifact_handoff_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Safe AE artifact handoff package.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Artifact handoff was not found.
   /api/v1/compatibility/generation-rules:
     get:
       operationId: listAeGenerationCompatibilityRules

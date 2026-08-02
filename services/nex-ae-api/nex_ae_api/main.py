@@ -5,6 +5,7 @@ from nex_ae_api.analytics import (
     DEFAULT_PROMPT_ANALYTICS_STORE,
     register_prompt_analytics_routes,
 )
+from nex_ae_api.artifacts import register_artifact_handoff_routes
 from nex_ae_api.chat import register_chat_routes
 from nex_ae_api.documents import register_document_library_routes
 from nex_ae_api.prompts import DEFAULT_AE_PROMPT_STORE
@@ -17,6 +18,7 @@ app = build_service_app(SERVICE_SPECS["nex-ae-api"])
 register_workspace_routes(app)
 register_upload_routes(app)
 register_document_library_routes(app)
+register_artifact_handoff_routes(app)
 register_generation_compatibility_routes(app, expected_audience="nex-ae-api")
 register_chat_routes(app, analytics_store=DEFAULT_PROMPT_ANALYTICS_STORE)
 register_retrieval_routes(app)

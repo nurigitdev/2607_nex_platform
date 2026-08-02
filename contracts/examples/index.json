@@ -56,6 +56,11 @@
       "schema": "schemas/generation/generation_progress_event.v1.schema.json"
     },
     {
+      "name": "ae_artifact_handoff_mock",
+      "path": "examples/generation/ae_artifact_handoff.mock_success.json",
+      "schema": "schemas/generation/ae_artifact_handoff.v1.schema.json"
+    },
+    {
       "name": "ae_chat_interaction_mock",
       "path": "examples/generation/ae_chat_interaction.mock_success.json",
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
