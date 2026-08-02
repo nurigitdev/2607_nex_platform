@@ -1,22 +1,26 @@
 {
   "document_schema_version": "cx_upload_registration.v1",
-  "document_id": "e7e4cf11-c38a-538e-bef8-9567a456b762",
-  "upload_id": "4551fc71-29e8-5d66-951a-37f0d98d1bec",
+  "document_id": "ef9069bc-4280-5f80-b670-ff93aa254f73",
+  "upload_id": "1e104113-6044-547f-8441-6b9bb28eb1e1",
   "filename": "mvp-srs.md",
   "original_filename": "mvp-srs.md",
   "content_type": "text/markdown",
   "size_bytes": 23,
-  "source_sha256": "6128eb378510c6b79c86e3c9578ed94521bbac23859d3a7f5a51f92d331c7da5",
+  "source_sha256": "d12261539d27dcab69f873a5e1a30587919b8ce4802782151f1bc2ba5390b610",
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
   "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "ownership": {
+    "tenant_id": "local-tenant",
+    "owner_user_id": "local-user"
+  },
   "storage": {
     "source_storage_backend": "local_filesystem",
-    "source_storage_key": "20260802/61/28/e7e4cf11-c38a-538e-bef8-9567a456b762.md",
-    "source_storage_path": "/data/nex-platform/cx/source-files/20260802/61/28/e7e4cf11-c38a-538e-bef8-9567a456b762.md",
-    "stored_filename": "e7e4cf11-c38a-538e-bef8-9567a456b762.md",
+    "source_storage_key": "20260802/d1/22/338a4f26-3b69-5621-8d57-dd5b043251c0.md",
+    "source_storage_path": "/data/nex-platform/cx/source-files/20260802/d1/22/338a4f26-3b69-5621-8d57-dd5b043251c0.md",
+    "stored_filename": "338a4f26-3b69-5621-8d57-dd5b043251c0.md",
     "stored_extension": ".md",
-    "extracted_markdown_path": "/data/nex-platform/cx/extracted-markdown/61/e7e4cf11-c38a-538e-bef8-9567a456b762.md",
-    "extraction_temp_path": "/data/nex-platform/cx/extraction-temp/e7e4cf11-c38a-538e-bef8-9567a456b762"
+    "extracted_markdown_path": "/data/nex-platform/cx/extracted-markdown/d1/ef9069bc-4280-5f80-b670-ff93aa254f73.md",
+    "extraction_temp_path": "/data/nex-platform/cx/extraction-temp/ef9069bc-4280-5f80-b670-ff93aa254f73"
   },
   "retrieval_policy": {
     "chunk_policy": "chunk_1000_100",
@@ -27,26 +31,31 @@
   },
   "extraction": {
     "status": "PENDING",
-    "job_id": "f50f22f3-dfc2-5c6e-a93d-172e5ea5edfb",
+    "job_id": "c20e7c5d-77b8-514d-8243-d3357236a105",
     "markdown_available": false
+  },
+  "dedupe": {
+    "scope": "owner_active_content",
+    "status": "CREATED",
+    "existing_document_id": null
   },
   "ingestion_job": {
     "job_schema_version": "common_job.v1",
-    "job_id": "f50f22f3-dfc2-5c6e-a93d-172e5ea5edfb",
+    "job_id": "c20e7c5d-77b8-514d-8243-d3357236a105",
     "job_type": "cx.document_ingestion",
     "status": "QUEUED",
     "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
     "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
     "subject_ref": {
       "type": "cx.document",
-      "id": "e7e4cf11-c38a-538e-bef8-9567a456b762"
+      "id": "ef9069bc-4280-5f80-b670-ff93aa254f73"
     },
     "idempotency_key": "4551fc71-29e8-5d66-951a-37f0d98d1bec",
     "attempt_count": 0,
     "max_attempts": 1,
     "retryable": true,
     "links": {
-      "document": "/api/v1/documents/e7e4cf11-c38a-538e-bef8-9567a456b762"
+      "document": "/api/v1/documents/ef9069bc-4280-5f80-b670-ff93aa254f73"
     },
     "created_at": "2026-08-02T00:00:00Z",
     "updated_at": "2026-08-02T00:00:00Z"

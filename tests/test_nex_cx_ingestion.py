@@ -222,9 +222,122 @@ def test_build_upload_registration_accepts_precomputed_hash(tmp_path: Path) -> N
 
     assert record["source_sha256"] == "a" * 64
     assert record["size_bytes"] == 2048
-    assert record["storage"]["source_storage_key"].endswith(f"/{record['document_id']}.pdf")
+    assert not record["storage"]["source_storage_key"].endswith(
+        f"/{record['document_id']}.pdf"
+    )
+    assert record["storage"]["source_storage_key"].endswith(".pdf")
     assert record["storage"]["stored_extension"] == ".pdf"
     assert "/source.pdf" not in record["storage"]["source_storage_path"]
+
+
+def test_build_upload_registration_scopes_document_id_to_owner(tmp_path: Path) -> None:
+    base_payload = {
+        "filename": "source.md",
+        "content_type": "text/markdown",
+        "content_text": "same source bytes",
+        "tenant_id": "tenant-a",
+    }
+
+    user_a = build_upload_registration(
+        {**base_payload, "owner_user_id": "user-a"},
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    user_b = build_upload_registration(
+        {**base_payload, "owner_user_id": "user-b"},
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert user_a["document_id"] != user_b["document_id"]
+    assert user_a["source_sha256"] == user_b["source_sha256"]
+    assert user_a["storage"]["source_storage_key"] == user_b["storage"]["source_storage_key"]
+    assert user_a["ownership"] == {"tenant_id": "tenant-a", "owner_user_id": "user-a"}
+
+
+def test_store_returns_existing_registration_for_same_owner_duplicate(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    first = build_upload_registration(
+        {
+            "filename": "source.md",
+            "content_text": "same source bytes",
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+        },
+        storage_config=storage_config(tmp_path),
+        request_id="request-a",
+        trace_id=TRACE_ID,
+    )
+    second = build_upload_registration(
+        {
+            "filename": "renamed.md",
+            "content_text": "same source bytes",
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+        },
+        storage_config=storage_config(tmp_path),
+        request_id="request-b",
+        trace_id=TRACE_ID,
+    )
+
+    created = store.save_upload_registration(
+        first,
+        source_text="same source bytes",
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    duplicate = store.save_upload_registration(
+        second,
+        source_text="same source bytes",
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+
+    assert created["dedupe"]["status"] == "CREATED"
+    assert duplicate["document_id"] == created["document_id"]
+    assert duplicate["dedupe"]["status"] == "ALREADY_EXISTS"
+    assert duplicate["dedupe"]["existing_document_id"] == created["document_id"]
+    assert store.get_source_text(created["upload_id"]) == "same source bytes"
+    assert store.get_source_text(second["upload_id"]) is None
+
+
+def test_store_allows_same_hash_for_different_owner_without_leaking_duplicate(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    payload = {
+        "filename": "source.md",
+        "content_text": "same source bytes",
+        "tenant_id": "tenant-a",
+    }
+    user_a = build_upload_registration(
+        {**payload, "owner_user_id": "user-a"},
+        storage_config=storage_config(tmp_path),
+        request_id="request-a",
+        trace_id=TRACE_ID,
+    )
+    user_b = build_upload_registration(
+        {**payload, "owner_user_id": "user-b"},
+        storage_config=storage_config(tmp_path),
+        request_id="request-b",
+        trace_id=TRACE_ID,
+    )
+
+    store.save_upload_registration(user_a, tenant_id="tenant-a", owner_user_id="user-a")
+    created_for_b = store.save_upload_registration(
+        user_b,
+        tenant_id="tenant-a",
+        owner_user_id="user-b",
+    )
+
+    assert created_for_b["document_id"] == user_b["document_id"]
+    assert created_for_b["dedupe"]["status"] == "CREATED"
+    assert created_for_b["dedupe"]["existing_document_id"] is None
+    assert len(store.content_repository.source_files) == 1
 
 
 @pytest.mark.parametrize(
@@ -296,10 +409,42 @@ def test_upload_registration_endpoint_creates_document_and_job(tmp_path: Path) -
     payload = response.json()
     assert payload["trace_id"] == TRACE_ID
     assert payload["request_id"] == REQUEST_ID
+    assert payload["ownership"] == {
+        "tenant_id": "local-tenant",
+        "owner_user_id": "local-user",
+    }
+    assert payload["dedupe"]["status"] == "CREATED"
     assert payload["extraction"]["status"] == "PENDING"
     assert payload["extraction"]["markdown_available"] is False
     assert store.get_document(payload["document_id"]) == payload
     assert store.get_job(payload["extraction"]["job_id"]) == payload["ingestion_job"]
+
+
+def test_upload_registration_endpoint_returns_existing_owner_duplicate(
+    tmp_path: Path,
+) -> None:
+    client, store = build_test_client(tmp_path)
+    body = {
+        "filename": "source.md",
+        "content_type": "text/markdown",
+        "content_text": "same source bytes",
+        "tenant_id": "tenant-a",
+        "owner_user_id": "user-a",
+    }
+    first = client.post("/api/v1/documents/uploads", json=body, headers=auth_headers()).json()
+
+    response = client.post(
+        "/api/v1/documents/uploads",
+        json={**body, "filename": "renamed.md"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    duplicate = response.json()
+    assert duplicate["document_id"] == first["document_id"]
+    assert duplicate["dedupe"]["status"] == "ALREADY_EXISTS"
+    assert duplicate["dedupe"]["existing_document_id"] == first["document_id"]
+    assert len(store.documents) == 1
 
 
 def test_markdown_from_source_text_preserves_markdown() -> None:

@@ -106,6 +106,7 @@ def build_source_file_record(upload_registration: dict[str, Any]) -> dict[str, A
         "storage_uri": f"local://cx/source-files/{storage['source_storage_key']}",
         "storage_backend": storage["source_storage_backend"],
         "storage_key": storage["source_storage_key"],
+        "source_storage_path": storage["source_storage_path"],
         "stored_filename": storage["stored_filename"],
         "stored_extension": storage["stored_extension"],
         "first_seen_trace_id": upload_registration["trace_id"],

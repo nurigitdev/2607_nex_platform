@@ -73,9 +73,20 @@ class ContentIngestionStore:
         tenant_id: str = DEFAULT_TENANT_ID,
         owner_user_id: str = DEFAULT_OWNER_USER_ID,
     ) -> dict[str, Any]:
+        existing = self.content_repository.find_active_content_object(
+            tenant_id=tenant_id,
+            owner_user_id=owner_user_id,
+            source_sha256=record["source_sha256"],
+        )
+        if existing is not None and existing["content_object_id"] in self.documents:
+            return mark_upload_registration_duplicate(
+                self.documents[existing["content_object_id"]]
+            )
+
         source_file = self.content_repository.save_source_file(
             build_source_file_record(record)
         )
+        record = align_upload_registration_to_source_file(record, source_file)
         content_object = self.content_repository.save_content_object(
             build_content_object_record(
                 record,
@@ -257,12 +268,16 @@ def register_ingestion_routes(
             return _ingestion_problem_response(request, exc)
 
         source_text = payload.get("content_text")
+        ownership = record["ownership"]
+        saved_record = ingestion_store.save_upload_registration(
+            record,
+            source_text=source_text if isinstance(source_text, str) else None,
+            tenant_id=ownership["tenant_id"],
+            owner_user_id=ownership["owner_user_id"],
+        )
         return JSONResponse(
-            status_code=202,
-            content=ingestion_store.save_upload_registration(
-                record,
-                source_text=source_text if isinstance(source_text, str) else None,
-            ),
+            status_code=200 if saved_record["dedupe"]["status"] == "ALREADY_EXISTS" else 202,
+            content=saved_record,
         )
 
     @app.get("/api/v1/documents/{document_id}", response_model=None)
@@ -372,14 +387,18 @@ def build_upload_registration(
 
     source_sha256 = _source_sha256_from_payload(payload, content_text)
     size_bytes = _size_bytes_from_payload(payload, content_text)
+    tenant_id = _optional_string(payload, "tenant_id", DEFAULT_TENANT_ID)
+    owner_user_id = _optional_string(payload, "owner_user_id", DEFAULT_OWNER_USER_ID)
     created_at = _utc_now()
-    document_id = _document_id(filename, content_type, source_sha256)
+    source_file_id = _source_file_id(source_sha256)
+    document_id = _document_id(tenant_id, owner_user_id, source_sha256)
     upload_id = _upload_id(document_id, request_id, trace_id)
     paths = storage_paths_for_document(
         storage_config=storage_config,
         filename=filename,
         source_sha256=source_sha256,
         document_id=document_id,
+        source_file_id=source_file_id,
         created_at=created_at,
     )
     job = build_ingestion_job(
@@ -401,6 +420,10 @@ def build_upload_registration(
         "source_sha256": source_sha256,
         "trace_id": trace_id,
         "request_id": request_id,
+        "ownership": {
+            "tenant_id": tenant_id,
+            "owner_user_id": owner_user_id,
+        },
         "storage": paths,
         "retrieval_policy": {
             "chunk_policy": storage_config.chunk_policy,
@@ -414,10 +437,42 @@ def build_upload_registration(
             "job_id": job["job_id"],
             "markdown_available": False,
         },
+        "dedupe": {
+            "scope": "owner_active_content",
+            "status": "CREATED",
+            "existing_document_id": None,
+        },
         "ingestion_job": job,
         "created_at": created_at,
         "updated_at": created_at,
     }
+
+
+def mark_upload_registration_duplicate(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **record,
+        "dedupe": {
+            "scope": "owner_active_content",
+            "status": "ALREADY_EXISTS",
+            "existing_document_id": record["document_id"],
+        },
+    }
+
+
+def align_upload_registration_to_source_file(
+    record: dict[str, Any],
+    source_file: dict[str, Any],
+) -> dict[str, Any]:
+    storage = {
+        **record["storage"],
+        "source_storage_backend": source_file["storage_backend"],
+        "source_storage_key": source_file["storage_key"],
+        "stored_filename": source_file["stored_filename"],
+        "stored_extension": source_file["stored_extension"],
+    }
+    if source_file.get("source_storage_path"):
+        storage["source_storage_path"] = source_file["source_storage_path"]
+    return {**record, "storage": storage}
 
 
 def build_ingestion_job(
@@ -540,13 +595,15 @@ def storage_paths_for_document(
     filename: str,
     source_sha256: str,
     document_id: str,
+    source_file_id: str | None = None,
     created_at: str | None = None,
 ) -> dict[str, str]:
     date_partition = storage_date_partition(created_at)
     shard_one = source_sha256[:2]
     shard_two = source_sha256[2:4]
     stored_extension = stored_extension_for(filename)
-    stored_filename = f"{document_id}{stored_extension}"
+    storage_object_id = source_file_id or document_id
+    stored_filename = f"{storage_object_id}{stored_extension}"
     source_storage_key = f"{date_partition}/{shard_one}/{shard_two}/{stored_filename}"
     return {
         "source_storage_backend": "local_filesystem",
@@ -711,8 +768,12 @@ def _non_negative_int(
     return parsed
 
 
-def _document_id(filename: str, content_type: str, source_sha256: str) -> str:
-    return str(uuid5(NAMESPACE_URL, f"cx-document:{filename}:{content_type}:{source_sha256}"))
+def _source_file_id(source_sha256: str) -> str:
+    return str(uuid5(NAMESPACE_URL, f"cx-source-file:{source_sha256}"))
+
+
+def _document_id(tenant_id: str, owner_user_id: str, source_sha256: str) -> str:
+    return str(uuid5(NAMESPACE_URL, f"cx-document:{tenant_id}:{owner_user_id}:{source_sha256}"))
 
 
 def _upload_id(document_id: str, request_id: str, trace_id: str) -> str:

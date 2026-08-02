@@ -15,9 +15,11 @@
     "source_sha256",
     "trace_id",
     "request_id",
+    "ownership",
     "storage",
     "retrieval_policy",
     "extraction",
+    "dedupe",
     "ingestion_job",
     "created_at",
     "updated_at"
@@ -62,6 +64,24 @@
     "request_id": {
       "type": "string",
       "minLength": 1
+    },
+    "ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenant_id",
+        "owner_user_id"
+      ],
+      "properties": {
+        "tenant_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_user_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     },
     "storage": {
       "type": "object",
@@ -169,6 +189,38 @@
         },
         "markdown_available": {
           "type": "boolean"
+        }
+      }
+    },
+    "dedupe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "status",
+        "existing_document_id"
+      ],
+      "properties": {
+        "scope": {
+          "const": "owner_active_content"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "CREATED",
+            "ALREADY_EXISTS"
+          ]
+        },
+        "existing_document_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },

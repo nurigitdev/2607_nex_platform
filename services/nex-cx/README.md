@@ -11,7 +11,7 @@ Document ingestion storage defaults:
 - Extraction temp: `NEX_CX_EXTRACTION_TEMP_ROOT` or `/data/nex-platform/cx/extraction-temp`
 
 Local source files are stored outside PostgreSQL using a storage key shaped as
-`YYYYMMDD/<sha-prefix>/<sha-prefix>/<document-id><extension>`. The CX database
+`YYYYMMDD/<sha-prefix>/<sha-prefix>/<source-file-id><extension>`. The CX database
 stores source file metadata and links only.
 
 Internal persistence boundary:
@@ -20,6 +20,8 @@ Internal persistence boundary:
   `source_sha256`.
 - Content object records are tenant/user-owned logical documents keyed by active
   `tenant_id + owner_user_id + source_sha256`.
+- Same-owner duplicate uploads return the existing document; different owners
+  get distinct document IDs without learning about each other.
 - The current adapter is in-memory for mock-first testing; PostgreSQL
   write-through is added after migration execution is stable.
 

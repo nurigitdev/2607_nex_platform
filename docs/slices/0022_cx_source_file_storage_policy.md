@@ -22,7 +22,8 @@ Slice 0022 clarifies that original file bytes stay outside PostgreSQL:
   development, with future object storage support represented by backend/key/URI
   metadata.
 - Updates CX upload registration records so storage paths no longer include the
-  original filename.
+  original filename. Slice 0025 later refined the generated stored filename to
+  use the global `source_file_id` rather than the owner-scoped document ID.
 
 User-level dedupe remains based on active logical documents:
 `tenant_id + owner_user_id + source_sha256`. Storage-level dedupe remains based
