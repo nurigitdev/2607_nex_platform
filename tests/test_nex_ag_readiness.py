@@ -119,8 +119,10 @@ def test_build_readiness_projection_sorts_services() -> None:
     projection = build_readiness_projection(
         client,
         {"nex-oa": "http://oa.test", "nex-cx": "http://cx.test"},
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
     )
 
+    assert projection["trace_id"] == "4bf92f3577b34da6a3ce929d0e0e4736"
     assert [service["service_id"] for service in projection["services"]] == [
         "nex-cx",
         "nex-oa",
@@ -150,12 +152,16 @@ def test_readiness_endpoint_returns_projection() -> None:
 
     response = TestClient(app).get(
         "/admin/v1/readiness/services",
-        headers=auth_headers(),
+        headers={
+            **auth_headers(),
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        },
     )
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["projection_schema_version"] == "ag_readiness_projection.v1"
+    assert payload["trace_id"] == "4bf92f3577b34da6a3ce929d0e0e4736"
     assert payload["summary"]["ready"] == 1
 
 

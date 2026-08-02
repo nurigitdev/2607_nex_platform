@@ -113,7 +113,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0007`](slices/0007_cx_generation_facade_to_mo.md) | `S1-007` CX generation facade to MO mock. |
 | [`Slice 0008`](slices/0008_ae_api_chat_interaction_stub.md) | `S1-008` AE API chat interaction stub. |
 | [`Slice 0009`](slices/0009_ag_readiness_projection.md) | `S1-009` AG service readiness projection. |
-| `Slice 0010` | `S1-010` First traceable smoke. |
+| [`Slice 0010`](slices/0010_first_traceable_smoke.md) | `S1-010` First traceable smoke. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

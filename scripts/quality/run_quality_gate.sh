@@ -27,3 +27,5 @@ mkdir -p "$REPORT_DIR"
   "$BRANCH_COVERAGE_MIN"
 
 "$PYTHON_BIN" scripts/quality/validate_contracts.py
+
+"$PYTHON_BIN" scripts/smoke/run_traceable_mock_flow.py --summary

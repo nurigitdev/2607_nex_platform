@@ -13,6 +13,7 @@ from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
     SERVICE_SPECS,
     problem_response,
+    trace_id_from_headers,
     validate_authorization_header,
 )
 
@@ -84,7 +85,11 @@ def register_readiness_routes(
         if auth_problem is not None:
             return auth_problem
 
-        projection = build_readiness_projection(client, endpoints)
+        projection = build_readiness_projection(
+            client,
+            endpoints,
+            trace_id=trace_id_from_headers(request),
+        )
         return projection
 
 
@@ -101,17 +106,21 @@ def build_service_endpoints() -> dict[str, str]:
 def build_readiness_projection(
     client: ServiceStatusClient,
     service_endpoints: dict[str, str],
+    trace_id: str | None = None,
 ) -> dict[str, Any]:
     services = [
         client.fetch_status(service_id, base_url)
         for service_id, base_url in sorted(service_endpoints.items())
     ]
-    return {
+    projection = {
         "projection_schema_version": "ag_readiness_projection.v1",
         "checked_at": _utc_now(),
         "services": services,
         "summary": summarize_services(services),
     }
+    if trace_id is not None:
+        projection["trace_id"] = trace_id
+    return projection
 
 
 def normalize_service_projection(
