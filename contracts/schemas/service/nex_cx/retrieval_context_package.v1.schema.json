@@ -1,0 +1,268 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_cx/retrieval_context_package.v1.schema.json",
+  "title": "NeX CX Retrieval Context Package",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "retrieval_package_schema_version",
+    "retrieval_package_id",
+    "package_hash",
+    "status",
+    "trace_id",
+    "request_id",
+    "query_text",
+    "purpose",
+    "retrieval_profile",
+    "permission_snapshot",
+    "evidence_items",
+    "source_summary",
+    "score_summary",
+    "no_answer_reason",
+    "warnings",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "retrieval_package_schema_version": {
+      "const": "cx_retrieval_context_package.v1"
+    },
+    "retrieval_package_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "package_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "READY",
+        "NO_ANSWER",
+        "LOW_CONFIDENCE",
+        "PARTIAL",
+        "FAILED"
+      ]
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "query_text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "purpose": {
+      "type": "string",
+      "enum": [
+        "search",
+        "grounded_answer",
+        "summary",
+        "document_generation",
+        "confidence_probe"
+      ]
+    },
+    "retrieval_profile": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "permission_snapshot": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "actor_type",
+        "actor_id",
+        "scope_requested",
+        "scope_applied",
+        "classification_filter",
+        "visible_document_count",
+        "filtered_document_count",
+        "filtered_chunk_count",
+        "policy_version"
+      ]
+    },
+    "evidence_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "evidence_id",
+          "rank",
+          "content_object_id",
+          "content_version_id",
+          "chunk_id",
+          "chunk_policy_id",
+          "source_anchor",
+          "citation_label",
+          "text",
+          "neighbor_context",
+          "scores",
+          "matched_terms",
+          "permission_result",
+          "quality_flags"
+        ],
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rank": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "content_object_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "content_version_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "chunk_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "chunk_policy_id": {
+            "const": "chunk_1000_100"
+          },
+          "source_anchor": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "start_offset",
+              "end_offset"
+            ],
+            "properties": {
+              "type": {
+                "const": "character_range"
+              },
+              "start_offset": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "end_offset": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "citation_label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "text": {
+            "type": "string"
+          },
+          "neighbor_context": {
+            "type": "array"
+          },
+          "scores": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "vector_score",
+              "bm25_score",
+              "hybrid_score",
+              "rerank_score",
+              "final_score"
+            ],
+            "properties": {
+              "vector_score": {
+                "type": "number",
+                "minimum": 0
+              },
+              "bm25_score": {
+                "type": "number",
+                "minimum": 0
+              },
+              "hybrid_score": {
+                "type": "number",
+                "minimum": 0
+              },
+              "rerank_score": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "final_score": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          },
+          "matched_terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "permission_result": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+              "visible",
+              "reason",
+              "policy_version"
+            ]
+          },
+          "quality_flags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "source_summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "source_count",
+        "document_count",
+        "chunk_count",
+        "source_types"
+      ]
+    },
+    "score_summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "best_score",
+        "score_spread",
+        "ranker_mix",
+        "rerank_state",
+        "confidence_bucket"
+      ]
+    },
+    "no_answer_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

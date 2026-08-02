@@ -4,6 +4,7 @@ from nex_cx.embedding_index import register_embedding_index_routes
 from nex_cx.generation import register_generation_routes
 from nex_cx.ingestion import DEFAULT_INGESTION_STORE, register_ingestion_routes
 from nex_cx.lexical_index import register_lexical_index_routes
+from nex_cx.retrieval import register_retrieval_routes
 
 
 app = build_service_app(SERVICE_SPECS["nex-cx"])
@@ -12,3 +13,4 @@ register_ingestion_routes(app, store=DEFAULT_INGESTION_STORE)
 register_chunking_routes(app, store=DEFAULT_INGESTION_STORE)
 register_embedding_index_routes(app, store=DEFAULT_INGESTION_STORE)
 register_lexical_index_routes(app, store=DEFAULT_INGESTION_STORE)
+register_retrieval_routes(app, store=DEFAULT_INGESTION_STORE)

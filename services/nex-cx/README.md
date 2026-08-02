@@ -29,5 +29,7 @@ Current endpoints:
 - `POST /api/v1/documents/{document_id}/lexical-index/run`
 - `GET /api/v1/jobs/{job_id}`
 - `POST /api/v1/jobs/{job_id}/run`
+- `POST /api/v1/retrieval/context`
+- `GET /api/v1/retrieval/context/{retrieval_package_id}`
 - `POST /api/v1/generations`
 - `GET /api/v1/generations/{cx_generation_id}`

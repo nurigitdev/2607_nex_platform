@@ -1,0 +1,537 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
+from uuid import NAMESPACE_URL, uuid5
+
+from fastapi import FastAPI, Header, Request
+from fastapi.responses import JSONResponse
+
+from nex_runtime import (
+    DEFAULT_SERVICE_SCOPE,
+    problem_response,
+    request_id_from_headers,
+    trace_id_from_headers,
+    validate_authorization_header,
+)
+
+from nex_cx.ingestion import ContentIngestionStore
+from nex_cx.lexical_index import korean_mixed_v1_tokens
+
+DEFAULT_TOP_K = 5
+MAX_TOP_K = 20
+LOW_CONFIDENCE_THRESHOLD = 0.2
+ALLOWED_PURPOSES = {
+    "search",
+    "grounded_answer",
+    "summary",
+    "document_generation",
+    "confidence_probe",
+}
+
+
+@dataclass(frozen=True)
+class RetrievalError(Exception):
+    status_code: int
+    error_code: str
+    detail: str
+    retryable: bool = False
+
+
+def register_retrieval_routes(
+    app: FastAPI,
+    *,
+    store: ContentIngestionStore,
+) -> None:
+    @app.post("/api/v1/retrieval/context", response_model=None)
+    def create_retrieval_context(
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_cx_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            package = build_retrieval_context_package(
+                payload,
+                store=store,
+                request_id=request_id_from_headers(request),
+                trace_id=payload.get("trace_id") or trace_id_from_headers(request),
+            )
+        except RetrievalError as exc:
+            return _retrieval_problem_response(request, exc)
+        return store.save_retrieval_package(package)
+
+    @app.get("/api/v1/retrieval/context/{retrieval_package_id}", response_model=None)
+    def get_retrieval_context(
+        retrieval_package_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_cx_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        package = store.get_retrieval_package(retrieval_package_id)
+        if package is None:
+            return _retrieval_problem_response(
+                request,
+                RetrievalError(
+                    status_code=404,
+                    error_code="cx.retrieval_package_not_found",
+                    detail=f"Retrieval package was not found: {retrieval_package_id}",
+                ),
+            )
+        return package
+
+
+def build_retrieval_context_package(
+    payload: dict[str, Any],
+    *,
+    store: ContentIngestionStore,
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    query_text = _query_text(payload)
+    top_k = _top_k(payload)
+    include_source_preview = _bool_field(payload, "include_source_preview", True)
+    include_neighbors = _bool_field(payload, "include_neighbors", False)
+    purpose = _purpose_field(payload)
+    actor_claims_ref = payload.get("actor_claims_ref", {"actor_type": "service", "actor_id": "local_mock"})
+    document_ids = document_ids_from_scope(payload.get("document_scope"), store)
+    candidates = rank_retrieval_candidates(
+        query_text=query_text,
+        document_ids=document_ids,
+        store=store,
+        include_source_preview=include_source_preview,
+    )
+    evidence_items = [
+        build_evidence_item(
+            candidate,
+            rank=index + 1,
+            include_neighbors=include_neighbors,
+        )
+        for index, candidate in enumerate(candidates[:top_k])
+    ]
+    status, no_answer_reason = retrieval_status(evidence_items)
+    package_hash = package_hash_for(
+        query_text=query_text,
+        purpose=purpose,
+        document_ids=document_ids,
+        evidence_items=evidence_items,
+    )
+    now = _utc_now()
+    package_id = str(uuid5(NAMESPACE_URL, f"cx-retrieval:{package_hash}"))
+    package = {
+        "retrieval_package_schema_version": "cx_retrieval_context_package.v1",
+        "retrieval_package_id": package_id,
+        "package_hash": package_hash,
+        "status": status,
+        "trace_id": trace_id,
+        "request_id": request_id,
+        "query_text": query_text,
+        "purpose": purpose,
+        "retrieval_profile": build_retrieval_profile(store, document_ids),
+        "permission_snapshot": build_permission_snapshot(
+            actor_claims_ref=actor_claims_ref,
+            document_scope=payload.get("document_scope"),
+            document_ids=document_ids,
+        ),
+        "evidence_items": evidence_items,
+        "source_summary": build_source_summary(document_ids, store),
+        "score_summary": build_score_summary(evidence_items),
+        "no_answer_reason": no_answer_reason,
+        "warnings": build_warnings(document_ids, store),
+        "created_at": now,
+        "updated_at": now,
+    }
+    return package
+
+
+def rank_retrieval_candidates(
+    *,
+    query_text: str,
+    document_ids: list[str],
+    store: ContentIngestionStore,
+    include_source_preview: bool,
+) -> list[dict[str, Any]]:
+    query_terms = set(korean_mixed_v1_tokens(query_text))
+    if not query_terms:
+        return []
+
+    candidates: list[dict[str, Any]] = []
+    for document_id in document_ids:
+        chunk_set = store.get_chunk_set(document_id)
+        lexical_index = store.get_lexical_index(document_id)
+        if chunk_set is None or lexical_index is None:
+            continue
+        counts_by_chunk = matched_counts_by_chunk(lexical_index, query_terms)
+        for chunk in chunk_set["chunks"]:
+            matched_count = counts_by_chunk.get(chunk["chunk_id"], 0)
+            if matched_count == 0:
+                continue
+            bm25_score = min(1.0, matched_count / max(1, len(query_terms)))
+            vector_score = 0.5 if store.get_embedding_index(document_id) else 0.0
+            hybrid_score = min(1.0, bm25_score * 0.85 + vector_score * 0.15)
+            chunk_text = store.get_chunk_text(chunk["chunk_id"])
+            candidates.append(
+                {
+                    "document_id": document_id,
+                    "chunk": chunk,
+                    "chunk_text": chunk_text or chunk["text_preview"],
+                    "text": chunk_text if include_source_preview and chunk_text else chunk["text_preview"],
+                    "matched_terms": sorted(query_terms & terms_for_chunk(lexical_index, chunk["chunk_id"])),
+                    "scores": {
+                        "vector_score": round(vector_score, 6),
+                        "bm25_score": round(bm25_score, 6),
+                        "hybrid_score": round(hybrid_score, 6),
+                        "rerank_score": None,
+                        "final_score": round(hybrid_score, 6),
+                    },
+                }
+            )
+    return sorted(
+        candidates,
+        key=lambda item: (
+            item["scores"]["final_score"],
+            item["scores"]["bm25_score"],
+            -item["chunk"]["ordinal"],
+        ),
+        reverse=True,
+    )
+
+
+def matched_counts_by_chunk(
+    lexical_index: dict[str, Any],
+    query_terms: set[str],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for posting in lexical_index["postings"]:
+        if posting["term"] not in query_terms:
+            continue
+        for occurrence in posting["occurrences"]:
+            chunk_id = occurrence["chunk_id"]
+            counts[chunk_id] = counts.get(chunk_id, 0) + occurrence["count"]
+    return counts
+
+
+def terms_for_chunk(
+    lexical_index: dict[str, Any],
+    chunk_id: str,
+) -> set[str]:
+    terms = set()
+    for posting in lexical_index["postings"]:
+        if any(occurrence["chunk_id"] == chunk_id for occurrence in posting["occurrences"]):
+            terms.add(posting["term"])
+    return terms
+
+
+def build_evidence_item(
+    candidate: dict[str, Any],
+    *,
+    rank: int,
+    include_neighbors: bool,
+) -> dict[str, Any]:
+    document_id = candidate["document_id"]
+    chunk = candidate["chunk"]
+    evidence_id = str(uuid5(NAMESPACE_URL, f"cx-evidence:{document_id}:{chunk['chunk_id']}:{rank}"))
+    item = {
+        "evidence_id": evidence_id,
+        "rank": rank,
+        "content_object_id": document_id,
+        "content_version_id": chunk["text_sha256"],
+        "chunk_id": chunk["chunk_id"],
+        "chunk_policy_id": "chunk_1000_100",
+        "source_anchor": {
+            "type": "character_range",
+            "start_offset": chunk["start_offset"],
+            "end_offset": chunk["end_offset"],
+        },
+        "citation_label": f"[{rank}]",
+        "text": candidate["text"],
+        "neighbor_context": [],
+        "scores": candidate["scores"],
+        "matched_terms": candidate["matched_terms"],
+        "permission_result": {
+            "visible": True,
+            "reason": "local_mock_service_scope",
+            "policy_version": "local_mock_v1",
+        },
+        "quality_flags": [],
+    }
+    if include_neighbors:
+        item["neighbor_context"] = [{"policy": "not_loaded_in_slice_0017"}]
+    return item
+
+
+def retrieval_status(evidence_items: list[dict[str, Any]]) -> tuple[str, str | None]:
+    if not evidence_items:
+        return "NO_ANSWER", "no_terms_matched"
+    best_score = evidence_items[0]["scores"]["final_score"]
+    if best_score < LOW_CONFIDENCE_THRESHOLD:
+        return "LOW_CONFIDENCE", "best_score_below_threshold"
+    return "READY", None
+
+
+def build_retrieval_profile(
+    store: ContentIngestionStore,
+    document_ids: list[str],
+) -> dict[str, Any]:
+    first_document_id = document_ids[0] if document_ids else None
+    chunk_set = store.get_chunk_set(first_document_id) if first_document_id else None
+    lexical_index = store.get_lexical_index(first_document_id) if first_document_id else None
+    embedding_index = store.get_embedding_index(first_document_id) if first_document_id else None
+    return {
+        "search_strategy": "hybrid",
+        "embedding_profile": {
+            "provider_alias": embedding_index.get("provider_alias") if embedding_index else None,
+            "vector_dimension": embedding_index.get("vector_dimension") if embedding_index else 0,
+            "index_status": "READY" if embedding_index else "MISSING",
+        },
+        "bm25_tokenizer": lexical_index.get("tokenizer_used") if lexical_index else None,
+        "reranker_profile": {
+            "provider_alias": None,
+            "status": "NOT_APPLIED",
+        },
+        "chunk_policy": chunk_set.get("chunk_policy") if chunk_set else "chunk_1000_100",
+        "source_context_policy": {
+            "include_neighbors_supported": False,
+        },
+        "confidence_policy": {
+            "low_confidence_threshold": LOW_CONFIDENCE_THRESHOLD,
+        },
+    }
+
+
+def build_permission_snapshot(
+    *,
+    actor_claims_ref: Any,
+    document_scope: Any,
+    document_ids: list[str],
+) -> dict[str, Any]:
+    actor = actor_claims_ref if isinstance(actor_claims_ref, dict) else {}
+    return {
+        "actor_type": actor.get("actor_type", "service"),
+        "actor_id": actor.get("actor_id", "local_mock"),
+        "scope_requested": document_scope or {"type": "all_local_mock"},
+        "scope_applied": {
+            "type": "document_ids",
+            "document_ids": document_ids,
+        },
+        "classification_filter": ["internal"],
+        "visible_document_count": len(document_ids),
+        "filtered_document_count": 0,
+        "filtered_chunk_count": 0,
+        "policy_version": "local_mock_v1",
+    }
+
+
+def build_source_summary(
+    document_ids: list[str],
+    store: ContentIngestionStore,
+) -> dict[str, Any]:
+    chunk_count = 0
+    for document_id in document_ids:
+        chunk_set = store.get_chunk_set(document_id)
+        if chunk_set is not None:
+            chunk_count += chunk_set["chunk_count"]
+    return {
+        "source_count": len(document_ids),
+        "document_count": len(document_ids),
+        "chunk_count": chunk_count,
+        "source_types": ["cx.document"] if document_ids else [],
+    }
+
+
+def build_score_summary(evidence_items: list[dict[str, Any]]) -> dict[str, Any]:
+    if not evidence_items:
+        return {
+            "best_score": 0.0,
+            "score_spread": 0.0,
+            "ranker_mix": "bm25_with_embedding_presence",
+            "rerank_state": "NOT_APPLIED",
+            "confidence_bucket": "NO_ANSWER",
+        }
+    scores = [item["scores"]["final_score"] for item in evidence_items]
+    best = max(scores)
+    worst = min(scores)
+    return {
+        "best_score": best,
+        "score_spread": round(best - worst, 6),
+        "ranker_mix": "bm25_with_embedding_presence",
+        "rerank_state": "NOT_APPLIED",
+        "confidence_bucket": "READY" if best >= LOW_CONFIDENCE_THRESHOLD else "LOW_CONFIDENCE",
+    }
+
+
+def build_warnings(
+    document_ids: list[str],
+    store: ContentIngestionStore,
+) -> list[str]:
+    warnings: list[str] = []
+    for document_id in document_ids:
+        lexical_index = store.get_lexical_index(document_id)
+        if lexical_index and lexical_index.get("fallback_used"):
+            warnings.append(f"tokenizer_fallback_used:{document_id}")
+        if store.get_embedding_index(document_id) is None:
+            warnings.append(f"embedding_index_missing:{document_id}")
+    return warnings
+
+
+def document_ids_from_scope(
+    document_scope: Any,
+    store: ContentIngestionStore,
+) -> list[str]:
+    if document_scope is None:
+        return sorted(store.chunk_sets)
+    if not isinstance(document_scope, dict):
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.document_scope_invalid",
+            detail="document_scope must be an object when provided.",
+        )
+    document_ids = document_scope.get("document_ids")
+    if document_ids is None:
+        return sorted(store.chunk_sets)
+    if not isinstance(document_ids, list) or not all(
+        isinstance(document_id, str) and document_id for document_id in document_ids
+    ):
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.document_scope_invalid",
+            detail="document_scope.document_ids must be a list of strings.",
+        )
+    return [document_id for document_id in document_ids if document_id in store.chunk_sets]
+
+
+def package_hash_for(
+    *,
+    query_text: str,
+    purpose: str,
+    document_ids: list[str],
+    evidence_items: list[dict[str, Any]],
+) -> str:
+    return sha256_json(
+        {
+            "query_text": query_text,
+            "purpose": purpose,
+            "document_ids": document_ids,
+            "evidence": [
+                {
+                    "evidence_id": item["evidence_id"],
+                    "chunk_id": item["chunk_id"],
+                    "final_score": item["scores"]["final_score"],
+                    "matched_terms": item["matched_terms"],
+                }
+                for item in evidence_items
+            ],
+        }
+    )
+
+
+def sha256_json(value: dict[str, Any]) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _query_text(payload: dict[str, Any]) -> str:
+    query_text = payload.get("query_text") or payload.get("user_prompt")
+    if not isinstance(query_text, str) or not query_text.strip():
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.query_text_required",
+            detail="query_text or user_prompt must be a non-empty string.",
+        )
+    return query_text.strip()
+
+
+def _top_k(payload: dict[str, Any]) -> int:
+    value = payload.get("top_k", DEFAULT_TOP_K)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.top_k_invalid",
+            detail="top_k must be an integer.",
+        )
+    if value < 1 or value > MAX_TOP_K:
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.top_k_invalid",
+            detail=f"top_k must be between 1 and {MAX_TOP_K}.",
+        )
+    return value
+
+
+def _bool_field(payload: dict[str, Any], key: str, default: bool) -> bool:
+    value = payload.get(key, default)
+    if not isinstance(value, bool):
+        raise RetrievalError(
+            status_code=422,
+            error_code=f"cx.{key}_invalid",
+            detail=f"{key} must be a boolean.",
+        )
+    return value
+
+
+def _purpose_field(payload: dict[str, Any]) -> str:
+    value = payload.get("purpose", "search")
+    if not isinstance(value, str) or not value:
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.purpose_invalid",
+            detail="purpose must be a non-empty string.",
+        )
+    if value not in ALLOWED_PURPOSES:
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.purpose_invalid",
+            detail=f"purpose must be one of: {', '.join(sorted(ALLOWED_PURPOSES))}.",
+        )
+    return value
+
+
+def _authorize_cx_request(
+    request: Request,
+    authorization: str | None,
+) -> JSONResponse | None:
+    result = validate_authorization_header(
+        authorization,
+        expected_audience="nex-cx",
+        required_scopes=[DEFAULT_SERVICE_SCOPE],
+    )
+    if result.ok:
+        return None
+
+    return problem_response(
+        request,
+        status_code=401,
+        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
+        title="Authentication failed",
+        detail=result.detail or "CX requires a valid service claim.",
+        type_uri="https://nex-platform.local/problems/authentication-failed",
+    )
+
+
+def _retrieval_problem_response(
+    request: Request,
+    exc: RetrievalError,
+) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="Retrieval context request failed",
+        detail=exc.detail,
+        retryable=exc.retryable,
+        type_uri="https://nex-platform.local/problems/retrieval-context-failed",
+    )
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")

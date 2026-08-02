@@ -1,0 +1,50 @@
+{
+  "retrieval_package_schema_version": "cx_retrieval_context_package.v1",
+  "retrieval_package_id": "7ffcf694-7f86-528b-b1b3-f6a54c7ecbda",
+  "package_hash": "4eb6d09b2ad636f6aa5a2ddfce9b59cbdbfc7e369d18a5b9a5bd6afec7dd7939",
+  "status": "READY",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "query_text": "trace evidence",
+  "purpose": "grounded_answer",
+  "retrieval_profile": {
+    "search_strategy": "hybrid"
+  },
+  "permission_snapshot": {
+    "actor_type": "service",
+    "actor_id": "local_mock",
+    "scope_requested": {
+      "type": "all_local_mock"
+    },
+    "scope_applied": {
+      "type": "document_ids",
+      "document_ids": []
+    },
+    "classification_filter": [
+      "internal"
+    ],
+    "visible_document_count": 0,
+    "filtered_document_count": 0,
+    "filtered_chunk_count": 0,
+    "policy_version": "local_mock_v1"
+  },
+  "evidence_items": [],
+  "source_summary": {
+    "source_count": 0,
+    "document_count": 0,
+    "chunk_count": 0,
+    "source_types": []
+  },
+  "score_summary": {
+    "best_score": 0.0,
+    "score_spread": 0.0,
+    "ranker_mix": "bm25_with_embedding_presence",
+    "rerank_state": "NOT_APPLIED",
+    "confidence_bucket": "NO_ANSWER"
+  },
+  "no_answer_reason": null,
+  "warnings": [],
+  "raw_auth_token": "Bearer nex-mock-service.secret",
+  "created_at": "2026-08-02T00:00:00Z",
+  "updated_at": "2026-08-02T00:00:00Z"
+}

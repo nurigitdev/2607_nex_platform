@@ -51,6 +51,7 @@ class ContentIngestionStore:
     embedding_indexes: dict[str, dict[str, Any]] = field(default_factory=dict)
     embedding_vectors: dict[str, list[float]] = field(default_factory=dict)
     lexical_indexes: dict[str, dict[str, Any]] = field(default_factory=dict)
+    retrieval_packages: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def save_upload_registration(
         self,
@@ -135,6 +136,13 @@ class ContentIngestionStore:
 
     def get_lexical_index(self, document_id: str) -> dict[str, Any] | None:
         return self.lexical_indexes.get(document_id)
+
+    def save_retrieval_package(self, package: dict[str, Any]) -> dict[str, Any]:
+        self.retrieval_packages[package["retrieval_package_id"]] = package
+        return package
+
+    def get_retrieval_package(self, retrieval_package_id: str) -> dict[str, Any] | None:
+        return self.retrieval_packages.get(retrieval_package_id)
 
 
 @dataclass(frozen=True)
