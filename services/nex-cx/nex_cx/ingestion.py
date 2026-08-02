@@ -50,6 +50,7 @@ class ContentIngestionStore:
     chunk_texts: dict[str, str] = field(default_factory=dict)
     embedding_indexes: dict[str, dict[str, Any]] = field(default_factory=dict)
     embedding_vectors: dict[str, list[float]] = field(default_factory=dict)
+    lexical_indexes: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def save_upload_registration(
         self,
@@ -127,6 +128,13 @@ class ContentIngestionStore:
 
     def get_embedding_vector(self, chunk_id: str) -> list[float] | None:
         return self.embedding_vectors.get(chunk_id)
+
+    def save_lexical_index(self, lexical_index: dict[str, Any]) -> dict[str, Any]:
+        self.lexical_indexes[lexical_index["document_id"]] = lexical_index
+        return lexical_index
+
+    def get_lexical_index(self, document_id: str) -> dict[str, Any] | None:
+        return self.lexical_indexes.get(document_id)
 
 
 @dataclass(frozen=True)

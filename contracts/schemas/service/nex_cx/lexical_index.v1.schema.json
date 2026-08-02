@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_cx/lexical_index.v1.schema.json",
+  "title": "NeX CX Lexical Index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "lexical_index_schema_version",
+    "document_id",
+    "trace_id",
+    "request_id",
+    "tokenizer_requested",
+    "tokenizer_used",
+    "tokenizer_fallback",
+    "fallback_used",
+    "chunk_count",
+    "unique_token_count",
+    "postings",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "lexical_index_schema_version": {
+      "const": "cx_lexical_index.v1"
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tokenizer_requested": {
+      "type": "string",
+      "enum": [
+        "mecab_ko",
+        "korean_mixed_v1"
+      ]
+    },
+    "tokenizer_used": {
+      "type": "string",
+      "enum": [
+        "mecab_ko",
+        "korean_mixed_v1"
+      ]
+    },
+    "tokenizer_fallback": {
+      "type": "string",
+      "enum": [
+        "korean_mixed_v1"
+      ]
+    },
+    "fallback_used": {
+      "type": "boolean"
+    },
+    "chunk_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "unique_token_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "postings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "term",
+          "document_frequency",
+          "occurrences"
+        ],
+        "properties": {
+          "term": {
+            "type": "string",
+            "minLength": 1
+          },
+          "document_frequency": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "occurrences": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "chunk_id",
+                "ordinal",
+                "count"
+              ],
+              "properties": {
+                "chunk_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "ordinal": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

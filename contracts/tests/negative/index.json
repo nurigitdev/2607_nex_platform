@@ -69,6 +69,11 @@
       "name": "cx_embedding_index_vector_leak",
       "path": "tests/negative/retrieval/cx_embedding_index.vector_leak.json",
       "schema": "schemas/service/nex_cx/embedding_index.v1.schema.json"
+    },
+    {
+      "name": "cx_lexical_index_raw_chunk_text_leak",
+      "path": "tests/negative/retrieval/cx_lexical_index.raw_chunk_text_leak.json",
+      "schema": "schemas/service/nex_cx/lexical_index.v1.schema.json"
     }
   ]
 }

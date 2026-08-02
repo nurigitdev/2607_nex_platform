@@ -69,6 +69,11 @@
       "name": "cx_embedding_index_mock",
       "path": "examples/retrieval/cx_embedding_index.mock_success.json",
       "schema": "schemas/service/nex_cx/embedding_index.v1.schema.json"
+    },
+    {
+      "name": "cx_lexical_index_mock",
+      "path": "examples/retrieval/cx_lexical_index.mock_success.json",
+      "schema": "schemas/service/nex_cx/lexical_index.v1.schema.json"
     }
   ]
 }

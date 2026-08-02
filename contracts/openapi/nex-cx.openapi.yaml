@@ -197,6 +197,46 @@ paths:
           description: Private chunk text is unavailable.
         "502":
           description: MO embedding response was invalid.
+  /api/v1/documents/{document_id}/lexical-index:
+    get:
+      operationId: getCxLexicalIndex
+      tags:
+        - Content
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CX lexical index metadata for a document.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Lexical index was not found.
+  /api/v1/documents/{document_id}/lexical-index/run:
+    post:
+      operationId: runCxLexicalIndex
+      tags:
+        - Content
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CX lexical index was built from stored chunk text.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Chunk set was not found.
+        "409":
+          description: Private chunk text is unavailable.
+        "500":
+          description: No configured tokenizer is available.
   /api/v1/jobs/{job_id}:
     get:
       operationId: getCxIngestionJob

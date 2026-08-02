@@ -1,0 +1,28 @@
+{
+  "lexical_index_schema_version": "cx_lexical_index.v1",
+  "document_id": "e7e4cf11-c38a-538e-bef8-9567a456b762",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "tokenizer_requested": "mecab_ko",
+  "tokenizer_used": "korean_mixed_v1",
+  "tokenizer_fallback": "korean_mixed_v1",
+  "fallback_used": true,
+  "chunk_count": 1,
+  "unique_token_count": 1,
+  "postings": [
+    {
+      "term": "trace",
+      "document_frequency": 1,
+      "occurrences": [
+        {
+          "chunk_id": "bc367c40-e40a-5d53-a843-598b4b4ef6f1",
+          "ordinal": 0,
+          "count": 1,
+          "chunk_text": "raw private chunk"
+        }
+      ]
+    }
+  ],
+  "created_at": "2026-08-02T00:00:00Z",
+  "updated_at": "2026-08-02T00:00:00Z"
+}
