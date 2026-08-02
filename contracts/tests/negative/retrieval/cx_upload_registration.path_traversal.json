@@ -1,0 +1,52 @@
+{
+  "document_schema_version": "cx_upload_registration.v1",
+  "document_id": "e7e4cf11-c38a-538e-bef8-9567a456b762",
+  "upload_id": "4551fc71-29e8-5d66-951a-37f0d98d1bec",
+  "filename": "../mvp-srs.md",
+  "original_filename": "../mvp-srs.md",
+  "content_type": "text/markdown",
+  "size_bytes": 23,
+  "source_sha256": "6128eb378510c6b79c86e3c9578ed94521bbac23859d3a7f5a51f92d331c7da5",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "storage": {
+    "source_storage_path": "/data/nex-platform/cx/source-files/61/6128eb378510c6b79c86e3c9578ed94521bbac23859d3a7f5a51f92d331c7da5/mvp-srs.md",
+    "extracted_markdown_path": "/data/nex-platform/cx/extracted-markdown/61/e7e4cf11-c38a-538e-bef8-9567a456b762.md",
+    "extraction_temp_path": "/data/nex-platform/cx/extraction-temp/e7e4cf11-c38a-538e-bef8-9567a456b762"
+  },
+  "retrieval_policy": {
+    "chunk_policy": "chunk_1000_100",
+    "chunk_size": 1000,
+    "chunk_overlap": 100,
+    "bm25_tokenizer": "mecab_ko",
+    "bm25_tokenizer_fallback": "korean_mixed_v1"
+  },
+  "extraction": {
+    "status": "PENDING",
+    "job_id": "f50f22f3-dfc2-5c6e-a93d-172e5ea5edfb",
+    "markdown_available": false
+  },
+  "ingestion_job": {
+    "job_schema_version": "common_job.v1",
+    "job_id": "f50f22f3-dfc2-5c6e-a93d-172e5ea5edfb",
+    "job_type": "cx.document_ingestion",
+    "status": "QUEUED",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "subject_ref": {
+      "type": "cx.document",
+      "id": "e7e4cf11-c38a-538e-bef8-9567a456b762"
+    },
+    "idempotency_key": "4551fc71-29e8-5d66-951a-37f0d98d1bec",
+    "attempt_count": 0,
+    "max_attempts": 1,
+    "retryable": true,
+    "links": {
+      "document": "/api/v1/documents/e7e4cf11-c38a-538e-bef8-9567a456b762"
+    },
+    "created_at": "2026-08-02T00:00:00Z",
+    "updated_at": "2026-08-02T00:00:00Z"
+  },
+  "created_at": "2026-08-02T00:00:00Z",
+  "updated_at": "2026-08-02T00:00:00Z"
+}

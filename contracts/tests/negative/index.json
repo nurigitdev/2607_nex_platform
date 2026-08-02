@@ -39,6 +39,16 @@
       "name": "ag_readiness_projection_unknown_service",
       "path": "tests/negative/audit/ag_readiness_projection.unknown_service.json",
       "schema": "schemas/service/nex_ag/readiness_projection.v1.schema.json"
+    },
+    {
+      "name": "common_job_bad_status",
+      "path": "tests/negative/retrieval/common_job.bad_status.json",
+      "schema": "schemas/common/common_job.v1.schema.json"
+    },
+    {
+      "name": "cx_upload_registration_path_traversal",
+      "path": "tests/negative/retrieval/cx_upload_registration.path_traversal.json",
+      "schema": "schemas/service/nex_cx/upload_registration.v1.schema.json"
     }
   ]
 }

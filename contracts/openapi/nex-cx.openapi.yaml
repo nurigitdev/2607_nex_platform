@@ -4,6 +4,8 @@ info:
   version: 0.0.0-slice0003
 tags:
   - name: Platform
+  - name: Content
+  - name: Generation
 paths:
   /health:
     get:
@@ -41,6 +43,82 @@ paths:
           description: Service claim is valid for this service.
         "401":
           description: Service claim is missing or invalid.
+  /api/v1/documents/uploads:
+    post:
+      operationId: registerCxDocumentUpload
+      tags:
+        - Content
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - filename
+              properties:
+                filename:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                content_type:
+                  type: string
+                  minLength: 1
+                size_bytes:
+                  type: integer
+                  minimum: 0
+                source_sha256:
+                  type: string
+                  pattern: ^[0-9A-Fa-f]{64}$
+                content_text:
+                  type: string
+                trace_id:
+                  type: string
+                  pattern: ^[0-9a-f]{32}$
+      responses:
+        "202":
+          description: Document upload was registered and an ingestion job was queued.
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Upload metadata is invalid or unsafe.
+  /api/v1/documents/{document_id}:
+    get:
+      operationId: getCxDocumentRegistration
+      tags:
+        - Content
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CX document upload registration.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Document registration was not found.
+  /api/v1/jobs/{job_id}:
+    get:
+      operationId: getCxIngestionJob
+      tags:
+        - Content
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CX ingestion job.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Ingestion job was not found.
   /api/v1/generations:
     post:
       operationId: createCxGeneration

@@ -1,0 +1,253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_cx/upload_registration.v1.schema.json",
+  "title": "NeX CX Upload Registration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "document_schema_version",
+    "document_id",
+    "upload_id",
+    "filename",
+    "original_filename",
+    "content_type",
+    "size_bytes",
+    "source_sha256",
+    "trace_id",
+    "request_id",
+    "storage",
+    "retrieval_policy",
+    "extraction",
+    "ingestion_job",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "document_schema_version": {
+      "const": "cx_upload_registration.v1"
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "upload_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "filename": {
+      "type": "string",
+      "pattern": "^[^/\\\\]{1,255}$"
+    },
+    "original_filename": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "content_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "size_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "source_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_storage_path",
+        "extracted_markdown_path",
+        "extraction_temp_path"
+      ],
+      "properties": {
+        "source_storage_path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "extracted_markdown_path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "extraction_temp_path": {
+          "type": "string",
+          "pattern": "^/"
+        }
+      }
+    },
+    "retrieval_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chunk_policy",
+        "chunk_size",
+        "chunk_overlap",
+        "bm25_tokenizer",
+        "bm25_tokenizer_fallback"
+      ],
+      "properties": {
+        "chunk_policy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "chunk_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "chunk_overlap": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bm25_tokenizer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bm25_tokenizer_fallback": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "extraction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "job_id",
+        "markdown_available"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "PENDING",
+            "RUNNING",
+            "SUCCEEDED",
+            "FAILED"
+          ]
+        },
+        "job_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "markdown_available": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ingestion_job": {
+      "$ref": "#/$defs/common_job"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "common_job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "job_schema_version",
+        "job_id",
+        "job_type",
+        "status",
+        "trace_id",
+        "request_id",
+        "subject_ref",
+        "idempotency_key",
+        "attempt_count",
+        "max_attempts",
+        "retryable",
+        "links",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "job_schema_version": {
+          "const": "common_job.v1"
+        },
+        "job_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "job_type": {
+          "const": "cx.document_ingestion"
+        },
+        "status": {
+          "const": "QUEUED"
+        },
+        "trace_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject_ref": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "id"
+          ],
+          "properties": {
+            "type": {
+              "const": "cx.document"
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attempt_count": {
+          "type": "integer",
+          "const": 0
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "links": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

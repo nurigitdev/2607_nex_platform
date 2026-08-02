@@ -1,6 +1,6 @@
 # Contract Package
 
-Status: Slice 0003 bootstrap.
+Status: Contract catalog through Slice 0011.
 
 This directory is the canonical home for shared JSON Schemas, OpenAPI
 descriptions, contract examples, and negative fixtures.
@@ -50,3 +50,12 @@ still making validation explicit.
 
 `tests/negative/index.json` maps rejection fixtures to the schema that should
 reject them. The validation command fails if a negative fixture becomes valid.
+
+## Current Contract Families
+
+- Common envelopes: contract manifest, problem+json, trace refs, service claims,
+  common job.
+- Generation: MO provider route, CX generation execution record, AE chat
+  interaction.
+- Retrieval/content ingestion: CX upload registration and queued ingestion job.
+- Audit: AG readiness projection.

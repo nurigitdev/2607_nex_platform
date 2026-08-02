@@ -1,8 +1,16 @@
 # nex-cx
 
-Slice 0001 shell for NeX Content Experience.
+NeX Content Experience service.
 
 Owned database env: `NEX_CX_DATABASE_URL`.
+
+Document ingestion storage defaults:
+
+- Source files: `NEX_CX_SOURCE_STORAGE_ROOT` or `/data/nex-platform/cx/source-files`
+- Extracted Markdown: `NEX_CX_EXTRACTED_MARKDOWN_ROOT` or `/data/nex-platform/cx/extracted-markdown`
+- Extraction temp: `NEX_CX_EXTRACTION_TEMP_ROOT` or `/data/nex-platform/cx/extraction-temp`
+- Chunk policy: `chunk_1000_100`
+- BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`
 
 Current endpoints:
 
@@ -10,5 +18,8 @@ Current endpoints:
 - `GET /ready`
 - `GET /version`
 - `GET /internal/v1/auth/service-claim`
+- `POST /api/v1/documents/uploads`
+- `GET /api/v1/documents/{document_id}`
+- `GET /api/v1/jobs/{job_id}`
 - `POST /api/v1/generations`
 - `GET /api/v1/generations/{cx_generation_id}`

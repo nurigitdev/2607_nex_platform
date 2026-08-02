@@ -39,6 +39,16 @@
       "name": "ag_readiness_projection_mock",
       "path": "examples/audit/ag_readiness_projection.mock_success.json",
       "schema": "schemas/service/nex_ag/readiness_projection.v1.schema.json"
+    },
+    {
+      "name": "common_job_ingestion_queued",
+      "path": "examples/retrieval/common_job.ingestion_queued.json",
+      "schema": "schemas/common/common_job.v1.schema.json"
+    },
+    {
+      "name": "cx_upload_registration_mock",
+      "path": "examples/retrieval/cx_upload_registration.mock_success.json",
+      "schema": "schemas/service/nex_cx/upload_registration.v1.schema.json"
     }
   ]
 }
