@@ -6,15 +6,121 @@ const services = [
   ["nex-mo", 8105]
 ];
 
+const baseProgressEvents = [
+  ["generation.request.accepted", "INTAKE", "RUNNING"],
+  ["generation.retrieval.ready", "CONTEXT_PACKAGED", "RUNNING"],
+  ["generation.prompt.packaged", "PROMPT_ASSEMBLING", "RUNNING"],
+  ["generation.provider.completed", "GENERATING", "RUNNING"],
+  ["generation.draft.validating", "DRAFT_VALIDATING", "RUNNING"],
+  ["generation.citation.validating", "CITATION_VALIDATING", "RUNNING"],
+  ["generation.completed", "COMPLETED", "COMPLETED"]
+];
+
+const workspaceState = {
+  workspaceId: "workspace-local",
+  chatDocumentId: "chat-doc-local",
+  interactionId: "interaction-local",
+  cxGenerationId: "cx-gen-local",
+  retrievalPackageId: "cx-ret-local",
+  artifactHandoffId: "handoff-local",
+  documents: [
+    {
+      documentId: "doc-001",
+      filename: "29_mvp_srs.md",
+      summaryStatus: "READY",
+      confidenceBucket: "HIGH",
+      bestScore: 0.91
+    },
+    {
+      documentId: "doc-002",
+      filename: "31_traceability.md",
+      summaryStatus: "READY",
+      confidenceBucket: "HIGH",
+      bestScore: 0.88
+    },
+    {
+      documentId: "doc-003",
+      filename: "36_sprint_backlog.md",
+      summaryStatus: "READY",
+      confidenceBucket: "MEDIUM",
+      bestScore: 0.74
+    }
+  ],
+  messages: [
+    {
+      role: "user",
+      label: "사용자",
+      text: "허용된 문서 범위에서 근거를 찾아 보고서를 작성해줘."
+    },
+    {
+      role: "assistant",
+      label: "assistant",
+      text: "CX retrieval package와 structured draft 검증 결과를 기준으로 답변을 준비했습니다."
+    }
+  ],
+  progressEvents: buildProgressEvents(true),
+  artifact: {
+    handoffStatus: "READY_FOR_RENDERING",
+    title: "MVP 착수 패키지 보고서",
+    targetFormats: ["MD", "HTML_PREVIEW"],
+    citationStatus: "VALIDATED",
+    evidenceRefCount: 3
+  },
+  audit: {
+    resultStatus: "SUCCEEDED",
+    sourceService: "nex-cx",
+    compatibilityRuleId: "compat-grounded-answer-v1",
+    providerAlias: "general-llm-default"
+  }
+};
+
 const serviceList = document.querySelector("#service-list");
 const statusStrip = document.querySelector("#status-strip");
 const refreshButton = document.querySelector("#refresh-button");
+const composer = document.querySelector("#composer");
+const promptInput = document.querySelector("#prompt");
+const retrievalToggle = document.querySelector("#retrieval-toggle");
+const formatSelect = document.querySelector("#format-select");
+const messageList = document.querySelector("#message-list");
+const documentList = document.querySelector("#document-list");
+const progressTimeline = document.querySelector("#progress-timeline");
+const timelineCount = document.querySelector("#timeline-count");
+const chatStatus = document.querySelector("#chat-status");
+const workspaceId = document.querySelector("#workspace-id");
+const documentCount = document.querySelector("#document-count");
+const generationStage = document.querySelector("#generation-stage");
+const artifactStatus = document.querySelector("#artifact-status");
+const handoffBadge = document.querySelector("#handoff-badge");
+const artifactSummary = document.querySelector("#artifact-summary");
+const auditSummary = document.querySelector("#audit-summary");
 
 refreshButton.addEventListener("click", () => {
   renderServiceStatuses();
 });
 
+composer.addEventListener("submit", event => {
+  event.preventDefault();
+  appendPromptInteraction();
+});
+
+renderWorkspace();
 renderServiceStatuses();
+
+function renderWorkspace() {
+  workspaceId.textContent = workspaceState.workspaceId;
+  documentCount.textContent = `${workspaceState.documents.length}`;
+  generationStage.textContent = statusLabel(workspaceState.progressEvents.at(-1)[2]);
+  artifactStatus.textContent = statusLabel(workspaceState.artifact.handoffStatus);
+  chatStatus.textContent = statusLabel(workspaceState.progressEvents.at(-1)[2]);
+  chatStatus.className = `badge ${badgeClass(workspaceState.progressEvents.at(-1)[2])}`;
+  handoffBadge.textContent = statusLabel(workspaceState.artifact.citationStatus);
+  handoffBadge.className = `badge ${badgeClass(workspaceState.artifact.citationStatus)}`;
+  renderMessages();
+  renderDocuments();
+  renderTimeline();
+  renderArtifactSummary();
+  renderAuditSummary();
+}
 
 async function renderServiceStatuses() {
   serviceList.innerHTML = "";
@@ -56,6 +162,132 @@ async function readJson(url) {
   return response.json();
 }
 
+function renderMessages() {
+  messageList.innerHTML = "";
+  for (const message of workspaceState.messages) {
+    const article = document.createElement("article");
+    article.className = `message ${message.role}`;
+    article.innerHTML = `
+      <span>${escapeHtml(message.label)}</span>
+      <p>${escapeHtml(message.text)}</p>
+    `;
+    messageList.appendChild(article);
+  }
+}
+
+function renderDocuments() {
+  documentList.innerHTML = "";
+  for (const documentItem of workspaceState.documents) {
+    const article = document.createElement("article");
+    article.className = "document-row";
+    article.innerHTML = `
+      <div>
+        <strong>${escapeHtml(documentItem.filename)}</strong>
+        <span>${escapeHtml(documentItem.documentId)}</span>
+      </div>
+      <div class="badge-pair">
+        <span class="badge ${badgeClass(documentItem.summaryStatus)}">${statusLabel(documentItem.summaryStatus)}</span>
+        <span class="badge ${badgeClass(documentItem.confidenceBucket)}">${statusLabel(documentItem.confidenceBucket)}</span>
+      </div>
+      <meter min="0" max="1" value="${documentItem.bestScore}"></meter>
+    `;
+    documentList.appendChild(article);
+  }
+}
+
+function renderTimeline() {
+  progressTimeline.innerHTML = "";
+  workspaceState.progressEvents.forEach((event, index) => {
+    const [eventType, stage, status] = event;
+    const item = document.createElement("li");
+    item.className = status === "COMPLETED" ? "is-complete" : "is-running";
+    item.innerHTML = `
+      <span>${index + 1}</span>
+      <div>
+        <strong>${stage}</strong>
+        <small>${eventType}</small>
+      </div>
+      <em>${statusLabel(status)}</em>
+    `;
+    progressTimeline.appendChild(item);
+  });
+  timelineCount.textContent = `${workspaceState.progressEvents.length} events`;
+}
+
+function renderArtifactSummary() {
+  artifactSummary.innerHTML = `
+    <strong>${escapeHtml(workspaceState.artifact.title)}</strong>
+    <dl class="inline-meta">
+      <div>
+        <dt>handoff</dt>
+        <dd>${escapeHtml(workspaceState.artifactHandoffId)}</dd>
+      </div>
+      <div>
+        <dt>formats</dt>
+        <dd>${workspaceState.artifact.targetFormats.map(escapeHtml).join(", ")}</dd>
+      </div>
+      <div>
+        <dt>citations</dt>
+        <dd>${statusLabel(workspaceState.artifact.citationStatus)} · ${workspaceState.artifact.evidenceRefCount}</dd>
+      </div>
+    </dl>
+  `;
+}
+
+function renderAuditSummary() {
+  auditSummary.innerHTML = `
+    <div>
+      <dt>결과</dt>
+      <dd>${escapeHtml(workspaceState.audit.resultStatus)}</dd>
+    </div>
+    <div>
+      <dt>소스</dt>
+      <dd>${escapeHtml(workspaceState.audit.sourceService)}</dd>
+    </div>
+    <div>
+      <dt>규칙</dt>
+      <dd>${escapeHtml(workspaceState.audit.compatibilityRuleId)}</dd>
+    </div>
+    <div>
+      <dt>모델</dt>
+      <dd>${escapeHtml(workspaceState.audit.providerAlias)}</dd>
+    </div>
+  `;
+}
+
+function appendPromptInteraction() {
+  const prompt = promptInput.value.trim();
+  if (!prompt) {
+    promptInput.focus();
+    return;
+  }
+
+  const format = formatSelect.value;
+  const grounded = retrievalToggle.checked;
+  workspaceState.messages.push({
+    role: "user",
+    label: "사용자",
+    text: prompt
+  });
+  workspaceState.messages.push({
+    role: "assistant",
+    label: "assistant",
+    text: grounded
+      ? `근거 패키지와 ${format} handoff를 연결했습니다.`
+      : `${format} 생성 요청을 일반 답변 흐름으로 연결했습니다.`
+  });
+  workspaceState.artifact.targetFormats = [format];
+  workspaceState.artifact.handoffStatus = grounded ? "READY_FOR_RENDERING" : "PREVIEW_ONLY";
+  workspaceState.artifact.citationStatus = grounded ? "VALIDATED" : "NOT_REQUIRED";
+  workspaceState.progressEvents = buildProgressEvents(grounded);
+  renderWorkspace();
+}
+
+function buildProgressEvents(grounded) {
+  if (grounded) return [...baseProgressEvents];
+  return baseProgressEvents.filter(event => event[0] !== "generation.retrieval.ready");
+}
+
 function createServiceRow(result) {
   const row = document.createElement("article");
   row.className = "service-row";
@@ -81,9 +313,40 @@ function createStatusDot(result) {
 }
 
 function badgeClass(status) {
-  if (status === "HEALTHY" || status === "READY") return "success";
-  if (status === "DEGRADED" || status === "LOW_CONFIDENCE") return "warning";
-  if (status === "RUNNING") return "running";
-  if (status === "PENDING" || status === "UNKNOWN") return "pending";
+  if (["HEALTHY", "READY", "VALIDATED", "SUCCEEDED", "HIGH"].includes(status)) {
+    return "success";
+  }
+  if (["DEGRADED", "LOW_CONFIDENCE", "MEDIUM", "PREVIEW_ONLY"].includes(status)) {
+    return "warning";
+  }
+  if (["RUNNING", "READY_FOR_RENDERING"].includes(status)) return "running";
+  if (["PENDING", "UNKNOWN", "NOT_REQUIRED"].includes(status)) return "pending";
   return "danger";
+}
+
+function statusLabel(status) {
+  const labels = {
+    COMPLETED: "완료",
+    RUNNING: "진행",
+    READY: "준비",
+    READY_FOR_RENDERING: "렌더링 준비",
+    PREVIEW_ONLY: "미리보기",
+    VALIDATED: "검증됨",
+    SUCCEEDED: "성공",
+    NOT_REQUIRED: "불필요",
+    NOT_READY: "미준비",
+    UNHEALTHY: "비정상",
+    HIGH: "높음",
+    MEDIUM: "중간"
+  };
+  return labels[status] || status;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
