@@ -6,6 +6,7 @@ tags:
   - name: Platform
   - name: Content
   - name: Generation
+  - name: Compatibility
   - name: Prompts
 paths:
   /health:
@@ -414,6 +415,16 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: Retrieval context package was not found.
+  /api/v1/compatibility/generation-rules:
+    get:
+      operationId: listCxGenerationCompatibilityRules
+      tags:
+        - Compatibility
+      responses:
+        "200":
+          description: Active generation compatibility rules visible to CX.
+        "401":
+          description: Service claim is missing or invalid.
   /api/v1/generations:
     post:
       operationId: createCxGeneration

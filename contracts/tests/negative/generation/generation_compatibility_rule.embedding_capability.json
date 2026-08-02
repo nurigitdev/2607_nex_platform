@@ -1,0 +1,22 @@
+{
+  "compatibility_rule_schema_version": "generation_compatibility_rule.v1",
+  "compatibility_rule_id": "compat-bad-embedding-v1",
+  "status": "ACTIVE",
+  "execution_mode": "GROUNDED_ANSWER",
+  "template_id": "none",
+  "prompt_binding_id": "ae.grounded_chat.default",
+  "output_contract_id": "text_answer_v1",
+  "provider_capability": "embedding",
+  "generation_profile": "grounded-answer",
+  "grounding_required": true,
+  "allowed_artifact_intents": [
+    "preview_only"
+  ],
+  "citation_policy": {
+    "citations_required": true,
+    "source_trace_required": true
+  },
+  "metadata": {
+    "slice": "0034"
+  }
+}

@@ -17,6 +17,7 @@ Current endpoints:
 - `GET /api/v1/uploads/{upload_handoff_id}`
 - `GET /api/v1/workspaces/{workspace_id}/documents`
 - `GET /api/v1/documents/summary-search`
+- `GET /api/v1/compatibility/generation-rules`
 - `POST /api/v1/chat/interactions`
 - `GET /api/v1/chat/interactions/{interaction_id}`
 - `POST /api/v1/retrieval/contexts`

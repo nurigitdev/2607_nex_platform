@@ -57,6 +57,7 @@ Current endpoints:
 - `POST /api/v1/documents/{document_id}/summary-embedding/run`
 - `GET /api/v1/prompts/bindings`
 - `GET /api/v1/prompts/render-events/{prompt_render_event_id}`
+- `GET /api/v1/compatibility/generation-rules`
 - `GET /api/v1/jobs/{job_id}`
 - `POST /api/v1/jobs/{job_id}/run`
 - `POST /api/v1/retrieval/context`
