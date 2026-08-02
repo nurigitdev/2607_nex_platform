@@ -19,6 +19,9 @@ Current endpoints:
 - `GET /api/v1/documents/summary-search`
 - `POST /api/v1/artifact-handoffs`
 - `GET /api/v1/artifact-handoffs/{artifact_handoff_id}`
+- `POST /api/v1/artifacts`
+- `GET /api/v1/artifacts/{artifact_id}`
+- `GET /api/v1/artifacts/{artifact_id}/versions`
 - `GET /api/v1/compatibility/generation-rules`
 - `POST /api/v1/chat/interactions`
 - `GET /api/v1/chat/interactions/{interaction_id}`
@@ -58,6 +61,13 @@ Artifact handoff:
   draft read APIs. Handoffs store safe lineage hashes, target formats,
   validation summaries, actor/workspace refs, and retention policy refs without
   copying raw prompts, source text, provider paths, or local storage paths.
+
+Artifact records:
+
+- AE creates user-facing artifact shells from validated handoffs. The record
+  family fixes source refs, versions, render jobs, files, preview/download
+  links, current version, status, and retention metadata while rendering remains
+  a later slice.
 
 Prompt analytics:
 

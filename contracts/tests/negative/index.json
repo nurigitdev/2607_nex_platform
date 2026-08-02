@@ -61,6 +61,11 @@
       "schema": "schemas/generation/ae_artifact_handoff.v1.schema.json"
     },
     {
+      "name": "ae_artifact_record_storage_path_leak",
+      "path": "tests/negative/generation/ae_artifact_record.storage_path_leak.json",
+      "schema": "schemas/generation/ae_artifact_record.v1.schema.json"
+    },
+    {
       "name": "ag_generation_audit_event_raw_prompt_leak",
       "path": "tests/negative/generation/ag_generation_audit_event.raw_prompt_leak.json",
       "schema": "schemas/generation/ag_generation_audit_event.v1.schema.json"

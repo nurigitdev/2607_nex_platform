@@ -9,14 +9,18 @@ from fastapi.testclient import TestClient
 import nex_ae_api.artifacts as ae_artifacts
 from nex_ae_api.artifacts import (
     ArtifactHandoffError,
+    ArtifactRecordStore,
     ArtifactHandoffStore,
     HttpCxArtifactSourceClient,
     actor_claims_ref_from_payload,
     artifact_intent_from_payload,
+    artifact_type_from_payload,
     build_artifact_handoff_record,
+    build_artifact_record_from_handoff,
     language_from_payload,
     register_artifact_handoff_routes,
     target_formats_from_payload,
+    validate_artifact_handoff_record,
 )
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 
@@ -149,9 +153,26 @@ def build_client(
 ) -> tuple[TestClient, ArtifactHandoffStore, FakeCxArtifactSourceClient]:
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     store = ArtifactHandoffStore()
+    artifact_store = ArtifactRecordStore()
     client = cx_client or FakeCxArtifactSourceClient()
-    register_artifact_handoff_routes(app, store=store, cx_client=client)
+    register_artifact_handoff_routes(
+        app,
+        store=store,
+        artifact_store=artifact_store,
+        cx_client=client,
+    )
     return TestClient(app), store, client
+
+
+def sample_handoff_record() -> dict[str, Any]:
+    return build_artifact_handoff_record(
+        source_payload=artifact_payload(),
+        generation_record=sample_generation_record(),
+        structured_draft=sample_structured_draft(),
+        artifact_request_id="artifact-request-001",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
 
 
 def test_build_artifact_handoff_record_copies_only_safe_lineage() -> None:
@@ -174,6 +195,63 @@ def test_build_artifact_handoff_record_copies_only_safe_lineage() -> None:
     assert record["quality_summary"]["evidence_ref_count"] == 2
     assert "raw prompt" not in str(record).lower()
     assert "/data/nex-platform" not in str(record)
+
+
+def test_build_artifact_record_from_handoff_creates_safe_record_family() -> None:
+    record = build_artifact_record_from_handoff(
+        source_payload={"artifact_type": "summary", "display_title": "Brief report"},
+        handoff_record=sample_handoff_record(),
+        artifact_request_id="artifact-create-001",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert record["artifact_schema_version"] == "ae_artifact_record.v1"
+    assert record["artifact_type"] == "summary"
+    assert record["artifact_status"] == "DRAFT"
+    assert record["current_version_id"] is None
+    assert record["display_title"] == "Brief report"
+    assert record["handoff_ref"]["artifact_request_id"] == "artifact-request-001"
+    assert record["source_refs"][0]["cx_generation_id"] == "cx-gen-001"
+    assert record["source_refs"][0]["source_anchor_count"] == 2
+    assert record["versions"] == []
+    assert record["render_jobs"] == []
+    assert record["files"] == []
+    assert record["links"] == []
+    assert "Safe summary." not in str(record)
+    assert "/data/nex-platform" not in str(record)
+
+
+def test_build_artifact_record_uses_required_request_id_and_validates_handoff() -> None:
+    record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-create-001"},
+        handoff_record=sample_handoff_record(),
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    assert record["artifact_type"] == "generated_document"
+
+    with pytest.raises(ArtifactHandoffError) as request_exc:
+        build_artifact_record_from_handoff(
+            source_payload={},
+            handoff_record=sample_handoff_record(),
+            artifact_request_id=None,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+    assert request_exc.value.error_code == "ae.artifact_request_id_required"
+
+    broken_handoff = {**sample_handoff_record(), "handoff_status": "FAILED"}
+    with pytest.raises(ArtifactHandoffError) as handoff_exc:
+        validate_artifact_handoff_record(broken_handoff)
+    assert handoff_exc.value.error_code == "ae.artifact_handoff_not_ready"
+
+    missing_field = dict(sample_handoff_record())
+    del missing_field["quality_summary"]
+    with pytest.raises(ArtifactHandoffError) as missing_exc:
+        validate_artifact_handoff_record(missing_field)
+    assert missing_exc.value.error_code == "ae.artifact_handoff_invalid"
 
 
 def test_artifact_handoff_route_fetches_cx_records_and_allows_readback() -> None:
@@ -199,6 +277,81 @@ def test_artifact_handoff_route_fetches_cx_records_and_allows_readback() -> None
     assert store.get(payload["artifact_handoff_id"]) == payload
     assert readback.status_code == 200
     assert readback.json() == payload
+
+
+def test_artifact_route_creates_record_from_handoff_and_allows_readback() -> None:
+    client, store, _ = build_client()
+    handoff = store.save(sample_handoff_record())
+
+    response = client.post(
+        "/api/v1/artifacts",
+        json={
+            "artifact_handoff_id": handoff["artifact_handoff_id"],
+            "artifact_type": "generated_document",
+        },
+        headers={**auth_headers(), "Idempotency-Key": "artifact-create-001"},
+    )
+    payload = response.json()
+    repeat = client.post(
+        "/api/v1/artifacts",
+        json={"artifact_handoff_id": handoff["artifact_handoff_id"]},
+        headers={**auth_headers(), "Idempotency-Key": "artifact-create-001"},
+    )
+    readback = client.get(
+        f"/api/v1/artifacts/{payload['artifact_id']}",
+        headers=auth_headers(),
+    )
+    versions = client.get(
+        f"/api/v1/artifacts/{payload['artifact_id']}/versions",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert repeat.json() == payload
+    assert readback.status_code == 200
+    assert readback.json() == payload
+    assert versions.status_code == 200
+    assert versions.json() == {
+        "artifact_id": payload["artifact_id"],
+        "current_version_id": None,
+        "versions": [],
+    }
+    assert payload["handoff_ref"]["artifact_handoff_id"] == handoff[
+        "artifact_handoff_id"
+    ]
+    assert payload["source_refs"][0]["structured_draft_content_hash"] == "c" * 64
+    assert "Safe summary." not in str(payload)
+    assert "/data/nex-platform" not in str(payload)
+
+
+def test_artifact_route_requires_auth_and_reports_missing_records() -> None:
+    client, _, _ = build_client()
+
+    unauthorized = client.post(
+        "/api/v1/artifacts",
+        json={"artifact_handoff_id": "handoff-001"},
+    )
+    missing_handoff = client.post(
+        "/api/v1/artifacts",
+        json={"artifact_handoff_id": "missing"},
+        headers=auth_headers(),
+    )
+    missing_artifact = client.get(
+        "/api/v1/artifacts/missing",
+        headers=auth_headers(),
+    )
+    missing_versions = client.get(
+        "/api/v1/artifacts/missing/versions",
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert missing_handoff.status_code == 404
+    assert missing_handoff.json()["error_code"] == "ae.artifact_handoff_not_found"
+    assert missing_artifact.status_code == 404
+    assert missing_artifact.json()["error_code"] == "ae.artifact_not_found"
+    assert missing_versions.status_code == 404
+    assert missing_versions.json()["error_code"] == "ae.artifact_not_found"
 
 
 def test_artifact_handoff_route_requires_auth_and_reports_missing() -> None:
@@ -281,6 +434,7 @@ def test_artifact_handoff_rejects_source_draft_mismatch() -> None:
 
 def test_artifact_handoff_payload_validation_helpers() -> None:
     assert artifact_intent_from_payload({}) == "create_artifact"
+    assert artifact_type_from_payload({}) == "generated_document"
     assert target_formats_from_payload({}) == ["MD", "HTML_PREVIEW"]
     assert language_from_payload({}) == "ko"
     assert actor_claims_ref_from_payload({"owner_user_id": "user-001"}) == {
@@ -293,6 +447,10 @@ def test_artifact_handoff_payload_validation_helpers() -> None:
         artifact_intent_from_payload({"artifact_intent": "bad"})
     assert intent_exc.value.error_code == "ae.artifact_intent_invalid"
     assert "artifact intent" in intent_exc.value.detail
+
+    with pytest.raises(ArtifactHandoffError) as type_exc:
+        artifact_type_from_payload({"artifact_type": "bad"})
+    assert type_exc.value.error_code == "ae.artifact_type_invalid"
 
     with pytest.raises(ArtifactHandoffError) as formats_exc:
         target_formats_from_payload({"target_formats": []})

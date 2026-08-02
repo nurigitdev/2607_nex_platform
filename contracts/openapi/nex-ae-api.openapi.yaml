@@ -211,6 +211,58 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: Artifact handoff was not found.
+  /api/v1/artifacts:
+    post:
+      operationId: createAeArtifact
+      tags:
+        - Artifacts
+      responses:
+        "200":
+          description: AE artifact record shell created from a validated artifact handoff.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Artifact handoff was not found.
+        "409":
+          description: Artifact handoff is not ready for record creation.
+        "422":
+          description: Artifact creation request or handoff record is invalid.
+  /api/v1/artifacts/{artifact_id}:
+    get:
+      operationId: getAeArtifact
+      tags:
+        - Artifacts
+      parameters:
+        - name: artifact_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AE artifact record with source refs, versions, render jobs, files, and links.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Artifact was not found.
+  /api/v1/artifacts/{artifact_id}/versions:
+    get:
+      operationId: listAeArtifactVersions
+      tags:
+        - Artifacts
+      parameters:
+        - name: artifact_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AE artifact versions for the requested artifact.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Artifact was not found.
   /api/v1/compatibility/generation-rules:
     get:
       operationId: listAeGenerationCompatibilityRules
