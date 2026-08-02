@@ -9,6 +9,7 @@ tags:
   - name: Documents
   - name: Artifacts
   - name: Compatibility
+  - name: Recovery
   - name: Chat
   - name: Retrieval
   - name: Analytics
@@ -373,6 +374,34 @@ paths:
           description: Active generation compatibility rules visible to AE.
         "401":
           description: Service claim is missing or invalid.
+  /api/v1/recovery/generation-policies:
+    get:
+      operationId: listAeGenerationRecoveryPolicies
+      tags:
+        - Recovery
+      responses:
+        "200":
+          description: Active generation recovery policies visible to AE.
+        "401":
+          description: Service claim is missing or invalid.
+  /api/v1/recovery/generation-policies/{failure_code}:
+    get:
+      operationId: getAeGenerationRecoveryPolicy
+      tags:
+        - Recovery
+      parameters:
+        - name: failure_code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Generation recovery policy selected by failure code.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: No active generation recovery policy matched the failure code.
   /api/v1/chat/interactions:
     post:
       operationId: createAeChatInteraction

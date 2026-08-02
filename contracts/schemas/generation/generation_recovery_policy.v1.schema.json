@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/generation_recovery_policy.v1.schema.json",
+  "title": "NeX Generation Recovery Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "recovery_policy_schema_version",
+    "recovery_policy_id",
+    "status",
+    "failure_code",
+    "failure_class",
+    "owner_service",
+    "default_action",
+    "allowed_actions",
+    "retryable",
+    "max_attempts",
+    "retry_after_seconds",
+    "lineage_type",
+    "preserves_retrieval_package",
+    "preserves_artifact_source_hash",
+    "changed_fields_allowed",
+    "progress_event_types",
+    "operator_override_allowed",
+    "metadata"
+  ],
+  "properties": {
+    "recovery_policy_schema_version": {
+      "const": "generation_recovery_policy.v1"
+    },
+    "recovery_policy_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ACTIVE",
+        "INACTIVE"
+      ]
+    },
+    "failure_code": {
+      "type": "string",
+      "minLength": 1
+    },
+    "failure_class": {
+      "type": "string",
+      "enum": [
+        "request_contract_invalid",
+        "retrieval_no_answer",
+        "low_confidence",
+        "prompt_template_mismatch",
+        "provider_admission_throttled",
+        "provider_timeout",
+        "provider_runtime_failed",
+        "structured_draft_invalid",
+        "citation_validation_failed",
+        "required_section_missing",
+        "artifact_render_failed",
+        "artifact_access_denied"
+      ]
+    },
+    "owner_service": {
+      "type": "string",
+      "enum": [
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-ag"
+      ]
+    },
+    "default_action": {
+      "$ref": "#/$defs/recoveryAction"
+    },
+    "allowed_actions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/recoveryAction"
+      }
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "max_attempts": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "retry_after_seconds": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "lineage_type": {
+      "$ref": "#/$defs/lineageType"
+    },
+    "preserves_retrieval_package": {
+      "type": "boolean"
+    },
+    "preserves_artifact_source_hash": {
+      "type": "boolean"
+    },
+    "changed_fields_allowed": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "citation_map",
+          "section_blocks",
+          "render_policy",
+          "retrieval_scope",
+          "quality_policy",
+          "generation_parameters",
+          "template_policy"
+        ]
+      }
+    },
+    "progress_event_types": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "generation.failed",
+          "generation.retry.scheduled",
+          "generation.repair.started",
+          "generation.repair.completed",
+          "generation.regenerate.started",
+          "generation.manual_accept_with_warning"
+        ]
+      }
+    },
+    "operator_override_allowed": {
+      "type": "boolean"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "propertyNames": {
+        "not": {
+          "enum": [
+            "prompt",
+            "messages",
+            "content",
+            "raw_prompt",
+            "raw_output",
+            "provider_url",
+            "provider_endpoint",
+            "model_path",
+            "storage_path",
+            "authorization",
+            "cookie",
+            "api_key",
+            "password",
+            "secret"
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "recoveryAction": {
+      "type": "string",
+      "enum": [
+        "retry",
+        "repair",
+        "regenerate",
+        "sectional_retry",
+        "fresh_retrieval_regenerate",
+        "manual_accept_with_warning",
+        "cancel"
+      ]
+    },
+    "lineageType": {
+      "type": "string",
+      "enum": [
+        "retry",
+        "repair",
+        "regenerate",
+        "sectional_retry",
+        "fresh_retrieval_regenerate",
+        "manual_accept_with_warning",
+        "cancel"
+      ]
+    }
+  }
+}

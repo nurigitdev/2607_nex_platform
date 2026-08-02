@@ -1,6 +1,7 @@
 from nex_runtime import SERVICE_SPECS, build_service_app
 from nex_runtime.compatibility import register_generation_compatibility_routes
 from nex_runtime.prompts import register_prompt_registry_routes
+from nex_runtime.recovery import register_generation_recovery_policy_routes
 from nex_ae_api.analytics import (
     DEFAULT_PROMPT_ANALYTICS_STORE,
     register_prompt_analytics_routes,
@@ -20,6 +21,7 @@ register_upload_routes(app)
 register_document_library_routes(app)
 register_artifact_handoff_routes(app)
 register_generation_compatibility_routes(app, expected_audience="nex-ae-api")
+register_generation_recovery_policy_routes(app, expected_audience="nex-ae-api")
 register_chat_routes(app, analytics_store=DEFAULT_PROMPT_ANALYTICS_STORE)
 register_retrieval_routes(app)
 register_prompt_analytics_routes(app, store=DEFAULT_PROMPT_ANALYTICS_STORE)

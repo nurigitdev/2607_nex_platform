@@ -28,6 +28,8 @@ Current endpoints:
 - `GET /api/v1/artifact-files/{artifact_file_id}/preview`
 - `GET /api/v1/artifact-files/{artifact_file_id}/download`
 - `GET /api/v1/compatibility/generation-rules`
+- `GET /api/v1/recovery/generation-policies`
+- `GET /api/v1/recovery/generation-policies/{failure_code}`
 - `POST /api/v1/chat/interactions`
 - `GET /api/v1/chat/interactions/{interaction_id}`
 - `POST /api/v1/chat/interactions/{interaction_id}/artifact-links`
@@ -101,3 +103,9 @@ Chat artifact links:
   match. The link stores safe artifact/version IDs, preview/download AE routes,
   quality badges, source lineage, and allowed actions without embedding rendered
   content or filesystem paths.
+
+Generation recovery policies:
+
+- AE reads the shared recovery policy catalog for retry, repair, regeneration,
+  manual warning acceptance, and artifact render retry decisions. Policies store
+  safe owner/action/lineage metadata and redaction-safe hashes only.

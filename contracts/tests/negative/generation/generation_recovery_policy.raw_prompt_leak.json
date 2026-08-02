@@ -1,0 +1,32 @@
+{
+  "recovery_policy_schema_version": "generation_recovery_policy.v1",
+  "recovery_policy_id": "recovery-ae-render-failed-retry-v1",
+  "status": "ACTIVE",
+  "failure_code": "ae.render_job_failed",
+  "failure_class": "artifact_render_failed",
+  "owner_service": "nex-ae-api",
+  "default_action": "retry",
+  "allowed_actions": [
+    "retry",
+    "cancel"
+  ],
+  "retryable": true,
+  "max_attempts": 2,
+  "retry_after_seconds": 0,
+  "lineage_type": "retry",
+  "preserves_retrieval_package": true,
+  "preserves_artifact_source_hash": true,
+  "changed_fields_allowed": [
+    "render_policy"
+  ],
+  "progress_event_types": [
+    "generation.failed",
+    "generation.retry.scheduled"
+  ],
+  "operator_override_allowed": false,
+  "metadata": {
+    "slice": "0046",
+    "owner": "ae-artifact-recovery",
+    "raw_prompt": "private prompt"
+  }
+}

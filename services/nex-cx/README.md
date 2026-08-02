@@ -58,6 +58,8 @@ Current endpoints:
 - `GET /api/v1/prompts/bindings`
 - `GET /api/v1/prompts/render-events/{prompt_render_event_id}`
 - `GET /api/v1/compatibility/generation-rules`
+- `GET /api/v1/recovery/generation-policies`
+- `GET /api/v1/recovery/generation-policies/{failure_code}`
 - `GET /api/v1/jobs/{job_id}`
 - `POST /api/v1/jobs/{job_id}/run`
 - `POST /api/v1/retrieval/context`
@@ -77,3 +79,6 @@ Grounded generation validation:
 - Generation progress events expose ordered, redacted polling timelines for AE
   and AG without exposing raw prompts, source text, provider endpoints, or
   token-level output.
+- Generation recovery policies classify failure codes and define retry, repair,
+  regenerate, warning acceptance, and cancellation actions without exposing raw
+  prompts, provider endpoints, model paths, or source documents.

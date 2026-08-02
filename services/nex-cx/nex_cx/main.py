@@ -1,6 +1,7 @@
 from nex_runtime import SERVICE_SPECS, build_service_app
 from nex_runtime.compatibility import register_generation_compatibility_routes
 from nex_runtime.prompts import register_prompt_registry_routes
+from nex_runtime.recovery import register_generation_recovery_policy_routes
 from nex_cx.chunking import register_chunking_routes
 from nex_cx.embedding_index import register_embedding_index_routes
 from nex_cx.generation import register_generation_routes
@@ -15,6 +16,7 @@ from nex_cx.summaries import register_summary_routes
 app = build_service_app(SERVICE_SPECS["nex-cx"])
 register_generation_routes(app, retrieval_store=DEFAULT_INGESTION_STORE)
 register_generation_compatibility_routes(app, expected_audience="nex-cx")
+register_generation_recovery_policy_routes(app, expected_audience="nex-cx")
 register_ingestion_routes(app, store=DEFAULT_INGESTION_STORE)
 register_chunking_routes(app, store=DEFAULT_INGESTION_STORE)
 register_embedding_index_routes(app, store=DEFAULT_INGESTION_STORE)

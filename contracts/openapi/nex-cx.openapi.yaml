@@ -7,6 +7,7 @@ tags:
   - name: Content
   - name: Generation
   - name: Compatibility
+  - name: Recovery
   - name: Prompts
 paths:
   /health:
@@ -425,6 +426,34 @@ paths:
           description: Active generation compatibility rules visible to CX.
         "401":
           description: Service claim is missing or invalid.
+  /api/v1/recovery/generation-policies:
+    get:
+      operationId: listCxGenerationRecoveryPolicies
+      tags:
+        - Recovery
+      responses:
+        "200":
+          description: Active generation recovery policies visible to CX.
+        "401":
+          description: Service claim is missing or invalid.
+  /api/v1/recovery/generation-policies/{failure_code}:
+    get:
+      operationId: getCxGenerationRecoveryPolicy
+      tags:
+        - Recovery
+      parameters:
+        - name: failure_code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Generation recovery policy selected by failure code.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: No active generation recovery policy matched the failure code.
   /api/v1/generations:
     post:
       operationId: createCxGeneration
