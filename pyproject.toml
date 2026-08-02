@@ -1,0 +1,25 @@
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+pythonpath = [
+  "services/_shared",
+  "services/nex-oa",
+  "services/nex-ag",
+  "services/nex-ae-api",
+  "services/nex-cx",
+  "services/nex-mo",
+  "scripts/dev",
+  "scripts/smoke",
+  "scripts/quality"
+]
+
+[tool.coverage.run]
+branch = true
+source = ["services", "scripts"]
+omit = [
+  "*/__init__.py"
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false

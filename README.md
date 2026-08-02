@@ -72,3 +72,16 @@ Every backend shell exposes:
 
 - [Slice 0000 Documentation Baseline](docs/README.md)
 - [Slice 0001 Service Skeleton Bootstrap](docs/slices/0001_service_skeleton_bootstrap.md)
+- [Slice 0002 Single-Pass Quality Gate Bootstrap](docs/slices/0002_single_pass_quality_gate.md)
+
+## Development Process
+
+Run the quality gate for source-code slices:
+
+```bash
+scripts/quality/run_quality_gate.sh
+```
+
+Current thresholds are 95% statement coverage and 85% branch coverage. See
+[Development Process](docs/development_process.md) for the slice checklist and
+refactoring rule.

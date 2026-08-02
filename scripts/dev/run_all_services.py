@@ -64,5 +64,5 @@ def _terminate_processes(processes: list[subprocess.Popen[str]]) -> None:
                 process.kill()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())

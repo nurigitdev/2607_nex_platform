@@ -10,6 +10,11 @@ import psycopg
 
 
 ROOT = Path(__file__).resolve().parents[2]
+SHARED_PATH = ROOT / "services" / "_shared"
+sys.path.insert(0, str(SHARED_PATH))
+
+from nex_runtime import load_env_file  # noqa: E402
+
 DATABASE_ENVS = {
     "nex-oa": "NEX_OA_DATABASE_URL",
     "nex-ag": "NEX_AG_DATABASE_URL",
@@ -20,7 +25,7 @@ DATABASE_ENVS = {
 
 
 def main() -> int:
-    _load_env_file(ROOT / ".env.local")
+    load_env_file(ROOT / ".env.local")
     failures = 0
     for service_id, env_name in DATABASE_ENVS.items():
         started = time.perf_counter()
@@ -42,17 +47,5 @@ def main() -> int:
         print(f"{service_id}: READY db={database_name} user={user_name} latency_ms={latency_ms}")
     return 1 if failures else 0
 
-
-def _load_env_file(path: Path) -> None:
-    if not path.exists():
-        return
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
-
-
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
