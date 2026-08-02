@@ -102,6 +102,11 @@ class ContentIngestionStore:
         self.documents[record["document_id"]] = record
         self.jobs[record["extraction"]["job_id"]] = record["ingestion_job"]
         if source_text is not None:
+            verified_at = materialize_local_source_file(record, source_text)
+            self.content_repository.mark_source_file_checksum_verified(
+                source_file["source_file_id"],
+                verified_at=verified_at,
+            )
             self.source_texts[record["upload_id"]] = source_text
         return record
 
@@ -589,6 +594,56 @@ def write_extracted_markdown(path: Path, markdown_text: str) -> None:
     path.write_text(markdown_text, encoding="utf-8")
 
 
+def materialize_local_source_file(record: dict[str, Any], source_text: str) -> str:
+    storage = record["storage"]
+    if storage["source_storage_backend"] != "local_filesystem":
+        raise IngestionError(
+            status_code=422,
+            error_code="cx.source_storage_backend_unsupported",
+            detail="Mock source file materialization only supports local_filesystem storage.",
+        )
+
+    storage_key = storage["source_storage_key"]
+    if storage_key.startswith("/") or ".." in Path(storage_key).parts:
+        raise IngestionError(
+            status_code=422,
+            error_code="cx.source_storage_key_invalid",
+            detail="source_storage_key must be a relative safe storage key.",
+        )
+
+    source_bytes = source_text.encode("utf-8")
+    computed_sha256 = sha256_bytes(source_bytes)
+    if computed_sha256 != record["source_sha256"]:
+        raise IngestionError(
+            status_code=409,
+            error_code="cx.source_checksum_mismatch",
+            detail="Source content checksum did not match upload registration.",
+            retryable=False,
+        )
+
+    source_path = Path(storage["source_storage_path"])
+    if not source_path.is_absolute():
+        raise IngestionError(
+            status_code=422,
+            error_code="cx.source_storage_path_invalid",
+            detail="source_storage_path must be absolute for local materialization.",
+        )
+
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    if source_path.exists():
+        existing_sha256 = sha256_bytes(source_path.read_bytes())
+        if existing_sha256 != record["source_sha256"]:
+            raise IngestionError(
+                status_code=409,
+                error_code="cx.source_file_collision",
+                detail="Existing source file checksum differs from upload registration.",
+            )
+        return _utc_now()
+
+    source_path.write_bytes(source_bytes)
+    return _utc_now()
+
+
 def storage_paths_for_document(
     *,
     storage_config: CxStorageConfig,
@@ -671,6 +726,10 @@ def sanitize_filename(filename: str) -> str:
 
 def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
 
 
 def _source_sha256_from_payload(payload: dict[str, Any], content_text: str | None) -> str:

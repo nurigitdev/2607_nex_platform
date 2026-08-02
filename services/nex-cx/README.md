@@ -22,6 +22,8 @@ Internal persistence boundary:
   `tenant_id + owner_user_id + source_sha256`.
 - Same-owner duplicate uploads return the existing document; different owners
   get distinct document IDs without learning about each other.
+- In the mock upload path, `content_text` is materialized to the local source
+  file path and verified against `source_sha256`.
 - The current adapter is in-memory for mock-first testing; PostgreSQL
   write-through is added after migration execution is stable.
 

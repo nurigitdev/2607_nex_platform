@@ -22,6 +22,14 @@ class CxContentRepository(Protocol):
     def save_content_object(self, record: dict[str, Any]) -> dict[str, Any]:
         ...
 
+    def mark_source_file_checksum_verified(
+        self,
+        source_file_id: str,
+        *,
+        verified_at: str,
+    ) -> dict[str, Any]:
+        ...
+
     def get_content_object(self, content_object_id: str) -> dict[str, Any] | None:
         ...
 
@@ -62,6 +70,16 @@ class InMemoryCxContentRepository:
         if source_file_id is None:
             return None
         return self.source_files[source_file_id]
+
+    def mark_source_file_checksum_verified(
+        self,
+        source_file_id: str,
+        *,
+        verified_at: str,
+    ) -> dict[str, Any]:
+        source_file = self.source_files[source_file_id]
+        source_file["checksum_verified_at"] = verified_at
+        return source_file
 
     def save_content_object(self, record: dict[str, Any]) -> dict[str, Any]:
         stored = dict(record)

@@ -13,8 +13,10 @@ from nex_cx.ingestion import (
     build_storage_config,
     build_upload_registration,
     markdown_from_source_text,
+    materialize_local_source_file,
     register_ingestion_routes,
     run_text_extraction_job,
+    sha256_bytes,
     sanitize_filename,
     sha256_text,
     storage_date_partition,
@@ -205,6 +207,121 @@ def test_store_keeps_source_text_private_for_mock_extraction(tmp_path: Path) -> 
 
     assert store.get_source_text(record["upload_id"]) == "private source text"
     assert "private source text" not in str(store.get_document(record["document_id"]))
+
+
+def test_store_materializes_source_file_and_marks_checksum_verified(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    record = build_upload_registration(
+        {"filename": "source.md", "content_text": "private source text"},
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    saved = store.save_upload_registration(record, source_text="private source text")
+    refs = store.get_content_ref(saved["document_id"])
+    source_file = store.content_repository.get_source_file(refs["source_file_id"])
+
+    source_path = Path(saved["storage"]["source_storage_path"])
+    assert source_path.read_bytes() == b"private source text"
+    assert sha256_bytes(source_path.read_bytes()) == saved["source_sha256"]
+    assert source_file["checksum_verified_at"] is not None
+    assert saved["original_filename"] not in str(source_path.parent)
+
+
+def test_materialize_local_source_file_is_idempotent_for_matching_file(
+    tmp_path: Path,
+) -> None:
+    record = build_upload_registration(
+        {"filename": "source.md", "content_text": "same bytes"},
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    first_verified_at = materialize_local_source_file(record, "same bytes")
+    second_verified_at = materialize_local_source_file(record, "same bytes")
+
+    assert first_verified_at.endswith("Z")
+    assert second_verified_at.endswith("Z")
+    assert Path(record["storage"]["source_storage_path"]).read_text(encoding="utf-8") == (
+        "same bytes"
+    )
+
+
+def test_materialize_local_source_file_rejects_bad_checksum(tmp_path: Path) -> None:
+    record = build_upload_registration(
+        {"filename": "source.md", "content_text": "original"},
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    with pytest.raises(IngestionError) as exc:
+        materialize_local_source_file(record, "changed")
+
+    assert exc.value.error_code == "cx.source_checksum_mismatch"
+
+
+def test_materialize_local_source_file_rejects_unsafe_storage_metadata(
+    tmp_path: Path,
+) -> None:
+    record = build_upload_registration(
+        {"filename": "source.md", "content_text": "source"},
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    with pytest.raises(IngestionError) as backend_exc:
+        materialize_local_source_file(
+            {
+                **record,
+                "storage": {**record["storage"], "source_storage_backend": "s3"},
+            },
+            "source",
+        )
+    with pytest.raises(IngestionError) as key_exc:
+        materialize_local_source_file(
+            {
+                **record,
+                "storage": {**record["storage"], "source_storage_key": "../source.md"},
+            },
+            "source",
+        )
+    with pytest.raises(IngestionError) as path_exc:
+        materialize_local_source_file(
+            {
+                **record,
+                "storage": {**record["storage"], "source_storage_path": "relative/source.md"},
+            },
+            "source",
+        )
+
+    assert backend_exc.value.error_code == "cx.source_storage_backend_unsupported"
+    assert key_exc.value.error_code == "cx.source_storage_key_invalid"
+    assert path_exc.value.error_code == "cx.source_storage_path_invalid"
+
+
+def test_materialize_local_source_file_rejects_existing_file_collision(
+    tmp_path: Path,
+) -> None:
+    record = build_upload_registration(
+        {"filename": "source.md", "content_text": "expected"},
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    source_path = Path(record["storage"]["source_storage_path"])
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text("different", encoding="utf-8")
+
+    with pytest.raises(IngestionError) as exc:
+        materialize_local_source_file(record, "expected")
+
+    assert exc.value.error_code == "cx.source_file_collision"
 
 
 def test_build_upload_registration_accepts_precomputed_hash(tmp_path: Path) -> None:
@@ -418,6 +535,9 @@ def test_upload_registration_endpoint_creates_document_and_job(tmp_path: Path) -
     assert payload["extraction"]["markdown_available"] is False
     assert store.get_document(payload["document_id"]) == payload
     assert store.get_job(payload["extraction"]["job_id"]) == payload["ingestion_job"]
+    assert Path(payload["storage"]["source_storage_path"]).read_text(encoding="utf-8") == (
+        "hello from upload"
+    )
 
 
 def test_upload_registration_endpoint_returns_existing_owner_duplicate(
