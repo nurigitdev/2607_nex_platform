@@ -41,3 +41,35 @@ paths:
           description: Service claim is valid for this service.
         "401":
           description: Service claim is missing or invalid.
+  /api/v1/generations:
+    post:
+      operationId: createCxGeneration
+      tags:
+        - Generation
+      responses:
+        "200":
+          description: CX generation execution record created from MO mock response.
+        "400":
+          description: Generation request is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Provider-private fields are rejected.
+  /api/v1/generations/{cx_generation_id}:
+    get:
+      operationId: getCxGeneration
+      tags:
+        - Generation
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CX generation execution record.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: CX generation record was not found.

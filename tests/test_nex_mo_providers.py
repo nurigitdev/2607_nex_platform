@@ -4,6 +4,9 @@ from fastapi.testclient import TestClient
 
 from nex_mo.main import app
 from nex_mo.providers import (
+    DEFAULT_PROVIDER_ROUTES,
+    ProviderRoute,
+    ProviderRouteError,
     create_mock_embedding_response,
     create_mock_generation_response,
     create_mock_rerank_response,
@@ -53,6 +56,49 @@ def test_provider_routes_endpoint_filters_by_capability() -> None:
     assert payload["data"][0]["alias"] == "general-llm-default"
 
 
+def test_provider_routes_endpoint_lists_embedding_dimensions() -> None:
+    response = TestClient(app).get("/api/v1/provider-routes", headers=auth_headers())
+
+    assert response.status_code == 200
+    embedding_route = response.json()["data"][0]
+    assert embedding_route["embedding_dimensions"] == 8
+
+
+def test_resolve_provider_route_rejects_capability_mismatch() -> None:
+    try:
+        resolve_provider_route("mock-embedding-default", "generation")
+    except ProviderRouteError as exc:
+        assert exc.status_code == 422
+        assert exc.error_code == "mo.capability_not_supported"
+    else:
+        raise AssertionError("expected ProviderRouteError")
+
+
+def test_resolve_provider_route_rejects_unready_route() -> None:
+    unready = (
+        ProviderRoute(
+            alias="slow-route",
+            provider_capability="generation",
+            provider_type="mock-generation",
+            model_revision="mock-llm-v1",
+            deployment_id="mock-generation-local",
+            route_id="route-slow",
+            supports_response_formats=("text",),
+            max_input_tokens=1,
+            max_output_tokens=1,
+            status="UNAVAILABLE",
+        ),
+    )
+
+    try:
+        resolve_provider_route("slow-route", "generation", routes=unready)
+    except ProviderRouteError as exc:
+        assert exc.status_code == 503
+        assert exc.retryable is True
+    else:
+        raise AssertionError("expected ProviderRouteError")
+
+
 def test_mock_embeddings_are_deterministic() -> None:
     payload = {"inputs": ["alpha", "alpha"]}
 
@@ -73,6 +119,24 @@ def test_embeddings_endpoint_returns_mock_vectors() -> None:
     assert response.status_code == 200
     assert response.json()["alias"] == "mock-embedding-default"
     assert len(response.json()["data"]) == 2
+
+
+def test_embeddings_endpoint_requires_service_claim() -> None:
+    response = TestClient(app).post("/api/v1/embeddings", json={"inputs": ["alpha"]})
+
+    assert response.status_code == 401
+    assert response.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+
+
+def test_embedding_request_rejects_empty_inputs() -> None:
+    response = TestClient(app).post(
+        "/api/v1/embeddings",
+        json={"inputs": []},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "mo.request_invalid"
 
 
 def test_mock_rerank_response_is_sorted_by_score() -> None:
@@ -97,6 +161,17 @@ def test_rerank_endpoint_returns_scores() -> None:
     assert response.status_code == 200
     assert response.json()["alias"] == "mock-reranker-default"
     assert len(response.json()["results"]) == 2
+
+
+def test_rerank_endpoint_requires_query() -> None:
+    response = TestClient(app).post(
+        "/api/v1/rerank",
+        json={"documents": ["alpha"]},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "mo.request_invalid"
 
 
 def test_mock_generation_response_is_deterministic() -> None:
@@ -171,3 +246,18 @@ def test_generations_endpoint_rejects_out_of_bounds_tokens() -> None:
 
     assert response.status_code == 422
     assert response.json()["error_code"] == "mo.generation_parameter_out_of_bounds"
+
+
+def test_generations_endpoint_rejects_missing_prompt_or_messages() -> None:
+    response = TestClient(app).post(
+        "/api/v1/generations",
+        json={"alias": "general-llm-default"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "mo.request_invalid"
+
+
+def test_default_provider_routes_remain_three_entries() -> None:
+    assert len(DEFAULT_PROVIDER_ROUTES) == 3

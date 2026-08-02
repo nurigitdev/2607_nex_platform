@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/cx_generation_execution_record.v1.schema.json",
+  "title": "NeX CX Generation Execution Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_schema_version",
+    "cx_generation_id",
+    "status",
+    "trace_id",
+    "request_id",
+    "alias",
+    "provider_capability",
+    "mo_generation_id",
+    "request_metadata",
+    "response_metadata",
+    "mo_runtime_metadata",
+    "usage",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "record_schema_version": {
+      "const": "cx_generation_execution_record.v1"
+    },
+    "cx_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "COMPLETED",
+        "FAILED"
+      ]
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "alias": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider_capability": {
+      "type": "string",
+      "enum": [
+        "generation"
+      ]
+    },
+    "mo_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "request_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_prompt_package_hash",
+        "generation_request_hash",
+        "response_format_type",
+        "source_has_messages",
+        "source_has_prompt"
+      ],
+      "properties": {
+        "provider_prompt_package_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "generation_request_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "response_format_type": {
+          "type": "string",
+          "enum": [
+            "text",
+            "json_object",
+            "json_schema"
+          ]
+        },
+        "source_has_messages": {
+          "type": "boolean"
+        },
+        "source_has_prompt": {
+          "type": "boolean"
+        }
+      }
+    },
+    "response_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finish_reason",
+        "output_hash",
+        "output_preview"
+      ],
+      "properties": {
+        "finish_reason": {
+          "type": "string"
+        },
+        "output_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "output_preview": {
+          "type": "string",
+          "maxLength": 120
+        }
+      }
+    },
+    "mo_runtime_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "request_id": {
+          "type": "string"
+        },
+        "trace_id": {
+          "type": "string"
+        },
+        "queue_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provider_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "route_id": {
+          "type": "string"
+        },
+        "admission_decision": {
+          "type": "string"
+        },
+        "provider_request_id": {
+          "type": "string"
+        }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

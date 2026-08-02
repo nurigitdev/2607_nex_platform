@@ -9,3 +9,6 @@ Current endpoints:
 - `GET /health`
 - `GET /ready`
 - `GET /version`
+- `GET /internal/v1/auth/service-claim`
+- `POST /api/v1/generations`
+- `GET /api/v1/generations/{cx_generation_id}`

@@ -1,0 +1,27 @@
+{
+  "record_schema_version": "cx_generation_execution_record.v1",
+  "cx_generation_id": "cx-gen-001",
+  "status": "COMPLETED",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "alias": "general-llm-default",
+  "provider_capability": "generation",
+  "mo_generation_id": "mo-gen-001",
+  "request_metadata": {
+    "provider_prompt_package_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "generation_request_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "response_format_type": "text",
+    "source_has_messages": true,
+    "source_has_prompt": false,
+    "raw_prompt": "private prompt text"
+  },
+  "response_metadata": {
+    "finish_reason": "STOP",
+    "output_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "output_preview": "Mock CX response."
+  },
+  "mo_runtime_metadata": {},
+  "usage": {},
+  "created_at": "2026-08-02T00:00:00Z",
+  "updated_at": "2026-08-02T00:00:00Z"
+}
