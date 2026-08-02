@@ -12,10 +12,13 @@ from nex_cx.ingestion import (
     build_ingestion_job,
     build_storage_config,
     build_upload_registration,
+    markdown_from_source_text,
     register_ingestion_routes,
+    run_text_extraction_job,
     sanitize_filename,
     sha256_text,
     storage_paths_for_document,
+    write_extracted_markdown,
 )
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 
@@ -168,6 +171,21 @@ def test_build_upload_registration_hashes_content_without_leaking_text(tmp_path:
     assert "Traceable content" not in str(record)
 
 
+def test_store_keeps_source_text_private_for_mock_extraction(tmp_path: Path) -> None:
+    store = ContentIngestionStore()
+    record = build_upload_registration(
+        {"filename": "source.md", "content_text": "private source text"},
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    store.save_upload_registration(record, source_text="private source text")
+
+    assert store.get_source_text(record["upload_id"]) == "private source text"
+    assert "private source text" not in str(store.get_document(record["document_id"]))
+
+
 def test_build_upload_registration_accepts_precomputed_hash(tmp_path: Path) -> None:
     record = build_upload_registration(
         {
@@ -261,6 +279,146 @@ def test_upload_registration_endpoint_creates_document_and_job(tmp_path: Path) -
     assert store.get_job(payload["extraction"]["job_id"]) == payload["ingestion_job"]
 
 
+def test_markdown_from_source_text_preserves_markdown() -> None:
+    markdown = markdown_from_source_text(
+        "# Existing\n\nBody",
+        filename="source.md",
+        content_type="text/markdown",
+    )
+
+    assert markdown == "# Existing\n\nBody\n"
+
+
+def test_markdown_from_source_text_wraps_plain_text_with_title() -> None:
+    markdown = markdown_from_source_text(
+        "Plain extracted body",
+        filename="source.txt",
+        content_type="text/plain",
+    )
+
+    assert markdown == "# source.txt\n\nPlain extracted body\n"
+
+
+def test_markdown_from_source_text_handles_blank_source() -> None:
+    assert markdown_from_source_text("  ", filename="empty.pdf", content_type="application/pdf") == (
+        "# empty.pdf\n\n"
+    )
+
+
+def test_write_extracted_markdown_creates_parent_directory(tmp_path: Path) -> None:
+    path = tmp_path / "nested" / "document.md"
+
+    write_extracted_markdown(path, "# Written\n")
+
+    assert path.read_text(encoding="utf-8") == "# Written\n"
+
+
+def test_run_text_extraction_job_writes_markdown_and_updates_state(tmp_path: Path) -> None:
+    store = ContentIngestionStore()
+    config = storage_config(tmp_path)
+    document = build_upload_registration(
+        {
+            "filename": "source.txt",
+            "content_type": "text/plain",
+            "content_text": "hello extraction",
+        },
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.save_upload_registration(document, source_text="hello extraction")
+
+    result = run_text_extraction_job(
+        document["extraction"]["job_id"],
+        store=store,
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    markdown_path = Path(result["extracted_markdown_path"])
+    assert result["extraction_schema_version"] == "cx_text_extraction.v1"
+    assert result["status"] == "SUCCEEDED"
+    assert result["markdown_preview"] == "# source.txt\n\nhello extraction\n"
+    assert result["extracted_markdown_sha256"] == sha256_text(markdown_path.read_text())
+    assert store.get_job(result["job_id"])["status"] == "SUCCEEDED"
+    assert store.get_document(result["document_id"])["extraction"]["markdown_available"] is True
+    assert store.get_extraction_result(result["document_id"]) == result
+
+
+def test_run_text_extraction_job_reports_unknown_job(tmp_path: Path) -> None:
+    with pytest.raises(IngestionError) as exc:
+        run_text_extraction_job(
+            "missing",
+            store=ContentIngestionStore(),
+            storage_config=storage_config(tmp_path),
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert exc.value.error_code == "cx.ingestion_job_not_found"
+
+
+def test_run_text_extraction_job_reports_missing_document(tmp_path: Path) -> None:
+    store = ContentIngestionStore()
+    job = build_ingestion_job(
+        document_id="missing-doc",
+        upload_id="upload-001",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        created_at="2026-08-02T00:00:00Z",
+    )
+    store.jobs[job["job_id"]] = job
+
+    with pytest.raises(IngestionError) as exc:
+        run_text_extraction_job(
+            job["job_id"],
+            store=store,
+            storage_config=storage_config(tmp_path),
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert exc.value.error_code == "cx.document_not_found"
+
+
+def test_run_text_extraction_job_reports_missing_source_text(tmp_path: Path) -> None:
+    store = ContentIngestionStore()
+    config = storage_config(tmp_path)
+    document = build_upload_registration(
+        {"filename": "source.pdf", "source_sha256": "a" * 64, "size_bytes": 10},
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.save_upload_registration(document)
+
+    with pytest.raises(IngestionError) as exc:
+        run_text_extraction_job(
+            document["extraction"]["job_id"],
+            store=store,
+            storage_config=config,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert exc.value.status_code == 409
+    assert exc.value.error_code == "cx.source_content_unavailable"
+
+
+def test_store_save_extraction_result_requires_existing_state() -> None:
+    with pytest.raises(IngestionError) as exc:
+        ContentIngestionStore().save_extraction_result(
+            {
+                "document_id": "missing-doc",
+                "job_id": "missing-job",
+                "updated_at": "2026-08-02T00:00:00Z",
+            }
+        )
+
+    assert exc.value.error_code == "cx.ingestion_state_not_found"
+
+
 def test_upload_registration_endpoint_returns_problem_for_bad_filename(
     tmp_path: Path,
 ) -> None:
@@ -297,6 +455,90 @@ def test_document_and_job_can_be_read_back(tmp_path: Path) -> None:
     assert document_response.json()["document_id"] == created["document_id"]
     assert job_response.status_code == 200
     assert job_response.json()["job_id"] == created["extraction"]["job_id"]
+
+
+def test_run_job_endpoint_materializes_markdown_and_extraction_readback(
+    tmp_path: Path,
+) -> None:
+    client, _ = build_test_client(tmp_path)
+    created = client.post(
+        "/api/v1/documents/uploads",
+        json={
+            "filename": "source.txt",
+            "content_type": "text/plain",
+            "content_text": "hello endpoint",
+        },
+        headers=auth_headers(),
+    ).json()
+
+    run_response = client.post(
+        f"/api/v1/jobs/{created['extraction']['job_id']}/run",
+        headers=auth_headers(),
+    )
+    read_response = client.get(
+        f"/api/v1/documents/{created['document_id']}/extraction",
+        headers=auth_headers(),
+    )
+
+    assert run_response.status_code == 200
+    result = run_response.json()
+    assert Path(result["extracted_markdown_path"]).read_text(encoding="utf-8") == (
+        "# source.txt\n\nhello endpoint\n"
+    )
+    assert read_response.status_code == 200
+    assert read_response.json()["extracted_markdown_sha256"] == result["extracted_markdown_sha256"]
+
+
+def test_run_job_endpoint_requires_service_claim(tmp_path: Path) -> None:
+    client, _ = build_test_client(tmp_path)
+
+    response = client.post("/api/v1/jobs/missing/run")
+
+    assert response.status_code == 401
+    assert response.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+
+
+def test_extraction_read_requires_service_claim(tmp_path: Path) -> None:
+    client, _ = build_test_client(tmp_path)
+
+    response = client.get("/api/v1/documents/missing/extraction")
+
+    assert response.status_code == 401
+    assert response.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+
+
+def test_run_job_endpoint_reports_missing_source_content(tmp_path: Path) -> None:
+    client, _ = build_test_client(tmp_path)
+    created = client.post(
+        "/api/v1/documents/uploads",
+        json={
+            "filename": "source.pdf",
+            "content_type": "application/pdf",
+            "source_sha256": "a" * 64,
+            "size_bytes": 10,
+        },
+        headers=auth_headers(),
+    ).json()
+
+    response = client.post(
+        f"/api/v1/jobs/{created['extraction']['job_id']}/run",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error_code"] == "cx.source_content_unavailable"
+
+
+def test_extraction_read_reports_not_found(tmp_path: Path) -> None:
+    client, _ = build_test_client(tmp_path)
+
+    response = client.get(
+        "/api/v1/documents/missing/extraction",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "cx.extraction_result_not_found"
 
 
 def test_document_read_requires_service_claim(tmp_path: Path) -> None:

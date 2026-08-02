@@ -101,6 +101,24 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: Document registration was not found.
+  /api/v1/documents/{document_id}/extraction:
+    get:
+      operationId: getCxTextExtraction
+      tags:
+        - Content
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CX text extraction result for a document.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Extraction result was not found.
   /api/v1/jobs/{job_id}:
     get:
       operationId: getCxIngestionJob
@@ -119,6 +137,26 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: Ingestion job was not found.
+  /api/v1/jobs/{job_id}/run:
+    post:
+      operationId: runCxIngestionJob
+      tags:
+        - Content
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Mock text extraction completed and wrote extracted Markdown.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Ingestion job or document registration was not found.
+        "409":
+          description: Source content is unavailable for mock extraction.
   /api/v1/generations:
     post:
       operationId: createCxGeneration

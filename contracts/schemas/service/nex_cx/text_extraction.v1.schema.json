@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_cx/text_extraction.v1.schema.json",
+  "title": "NeX CX Text Extraction",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "extraction_schema_version",
+    "document_id",
+    "job_id",
+    "status",
+    "trace_id",
+    "request_id",
+    "source_sha256",
+    "extracted_markdown_sha256",
+    "extracted_markdown_path",
+    "markdown_char_count",
+    "markdown_preview",
+    "extractor",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "extraction_schema_version": {
+      "const": "cx_text_extraction.v1"
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "SUCCEEDED",
+        "FAILED"
+      ]
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "extracted_markdown_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "extracted_markdown_path": {
+      "type": "string",
+      "pattern": "^/.+\\.md$"
+    },
+    "markdown_char_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "markdown_preview": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "extractor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "mode",
+        "version"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

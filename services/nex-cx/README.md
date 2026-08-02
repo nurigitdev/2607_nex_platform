@@ -20,6 +20,8 @@ Current endpoints:
 - `GET /internal/v1/auth/service-claim`
 - `POST /api/v1/documents/uploads`
 - `GET /api/v1/documents/{document_id}`
+- `GET /api/v1/documents/{document_id}/extraction`
 - `GET /api/v1/jobs/{job_id}`
+- `POST /api/v1/jobs/{job_id}/run`
 - `POST /api/v1/generations`
 - `GET /api/v1/generations/{cx_generation_id}`

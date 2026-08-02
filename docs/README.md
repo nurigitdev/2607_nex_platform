@@ -115,6 +115,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0009`](slices/0009_ag_readiness_projection.md) | `S1-009` AG service readiness projection. |
 | [`Slice 0010`](slices/0010_first_traceable_smoke.md) | `S1-010` First traceable smoke. |
 | [`Slice 0011`](slices/0011_cx_upload_registration_ingestion_job.md) | `S2-001` CX upload registration and ingestion job shell. |
+| [`Slice 0012`](slices/0012_cx_mock_text_extraction.md) | `S2-002` CX mock text extraction to Markdown. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -44,10 +44,19 @@ class CxStorageConfig:
 class ContentIngestionStore:
     documents: dict[str, dict[str, Any]] = field(default_factory=dict)
     jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    source_texts: dict[str, str] = field(default_factory=dict)
+    extraction_results: dict[str, dict[str, Any]] = field(default_factory=dict)
 
-    def save_upload_registration(self, record: dict[str, Any]) -> dict[str, Any]:
+    def save_upload_registration(
+        self,
+        record: dict[str, Any],
+        *,
+        source_text: str | None = None,
+    ) -> dict[str, Any]:
         self.documents[record["document_id"]] = record
         self.jobs[record["extraction"]["job_id"]] = record["ingestion_job"]
+        if source_text is not None:
+            self.source_texts[record["upload_id"]] = source_text
         return record
 
     def get_document(self, document_id: str) -> dict[str, Any] | None:
@@ -55,6 +64,33 @@ class ContentIngestionStore:
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         return self.jobs.get(job_id)
+
+    def get_source_text(self, upload_id: str) -> str | None:
+        return self.source_texts.get(upload_id)
+
+    def save_extraction_result(self, result: dict[str, Any]) -> dict[str, Any]:
+        document = self.documents.get(result["document_id"])
+        job = self.jobs.get(result["job_id"])
+        if document is None or job is None:
+            raise IngestionError(
+                status_code=404,
+                error_code="cx.ingestion_state_not_found",
+                detail="Document or ingestion job was not found.",
+            )
+
+        job["status"] = "SUCCEEDED"
+        job["updated_at"] = result["updated_at"]
+        document["extraction"] = {
+            **document["extraction"],
+            "status": "SUCCEEDED",
+            "markdown_available": True,
+        }
+        document["updated_at"] = result["updated_at"]
+        self.extraction_results[result["document_id"]] = result
+        return result
+
+    def get_extraction_result(self, document_id: str) -> dict[str, Any] | None:
+        return self.extraction_results.get(document_id)
 
 
 @dataclass(frozen=True)
@@ -136,9 +172,13 @@ def register_ingestion_routes(
         except IngestionError as exc:
             return _ingestion_problem_response(request, exc)
 
+        source_text = payload.get("content_text")
         return JSONResponse(
             status_code=202,
-            content=ingestion_store.save_upload_registration(record),
+            content=ingestion_store.save_upload_registration(
+                record,
+                source_text=source_text if isinstance(source_text, str) else None,
+            ),
         )
 
     @app.get("/api/v1/documents/{document_id}", response_model=None)
@@ -184,6 +224,49 @@ def register_ingestion_routes(
                 ),
             )
         return job
+
+    @app.post("/api/v1/jobs/{job_id}/run", response_model=None)
+    def run_job(
+        job_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_cx_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return run_text_extraction_job(
+                job_id,
+                store=ingestion_store,
+                storage_config=config,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+            )
+        except IngestionError as exc:
+            return _ingestion_problem_response(request, exc)
+
+    @app.get("/api/v1/documents/{document_id}/extraction", response_model=None)
+    def get_extraction(
+        document_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_cx_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        result = ingestion_store.get_extraction_result(document_id)
+        if result is None:
+            return _ingestion_problem_response(
+                request,
+                IngestionError(
+                    status_code=404,
+                    error_code="cx.extraction_result_not_found",
+                    detail=f"Extraction result was not found: {document_id}",
+                ),
+            )
+        return result
 
 
 def build_upload_registration(
@@ -281,6 +364,89 @@ def build_ingestion_job(
         "created_at": created_at,
         "updated_at": created_at,
     }
+
+
+def run_text_extraction_job(
+    job_id: str,
+    *,
+    store: ContentIngestionStore,
+    storage_config: CxStorageConfig,
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    job = store.get_job(job_id)
+    if job is None:
+        raise IngestionError(
+            status_code=404,
+            error_code="cx.ingestion_job_not_found",
+            detail=f"Ingestion job was not found: {job_id}",
+        )
+
+    document = store.get_document(job["subject_ref"]["id"])
+    if document is None:
+        raise IngestionError(
+            status_code=404,
+            error_code="cx.document_not_found",
+            detail=f"Document registration was not found: {job['subject_ref']['id']}",
+        )
+
+    source_text = store.get_source_text(document["upload_id"])
+    if source_text is None:
+        raise IngestionError(
+            status_code=409,
+            error_code="cx.source_content_unavailable",
+            detail="Mock extraction requires content_text captured at upload registration.",
+        )
+
+    markdown_text = markdown_from_source_text(
+        source_text,
+        filename=document["filename"],
+        content_type=document["content_type"],
+    )
+    markdown_path = Path(document["storage"]["extracted_markdown_path"])
+    write_extracted_markdown(markdown_path, markdown_text)
+    extracted_sha256 = sha256_text(markdown_text)
+    now = _utc_now()
+    result = {
+        "extraction_schema_version": "cx_text_extraction.v1",
+        "document_id": document["document_id"],
+        "job_id": job_id,
+        "status": "SUCCEEDED",
+        "trace_id": trace_id,
+        "request_id": request_id,
+        "source_sha256": document["source_sha256"],
+        "extracted_markdown_sha256": extracted_sha256,
+        "extracted_markdown_path": str(markdown_path),
+        "markdown_char_count": len(markdown_text),
+        "markdown_preview": markdown_text[:120],
+        "extractor": {
+            "provider": "local_mock",
+            "mode": "content_text_to_markdown",
+            "version": "slice-0012",
+        },
+        "created_at": now,
+        "updated_at": now,
+    }
+    return store.save_extraction_result(result)
+
+
+def markdown_from_source_text(
+    source_text: str,
+    *,
+    filename: str,
+    content_type: str,
+) -> str:
+    stripped = source_text.strip()
+    if not stripped:
+        return f"# {filename}\n\n"
+    if filename.lower().endswith(".md") or content_type == "text/markdown":
+        return _ensure_trailing_newline(stripped)
+    return _ensure_trailing_newline(f"# {filename}\n\n{stripped}")
+
+
+def write_extracted_markdown(path: Path, markdown_text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(markdown_text, encoding="utf-8")
 
 
 def storage_paths_for_document(
@@ -434,6 +600,12 @@ def _document_id(filename: str, content_type: str, source_sha256: str) -> str:
 
 def _upload_id(document_id: str, request_id: str, trace_id: str) -> str:
     return str(uuid5(NAMESPACE_URL, f"cx-upload:{document_id}:{request_id}:{trace_id}"))
+
+
+def _ensure_trailing_newline(value: str) -> str:
+    if value.endswith("\n"):
+        return value
+    return f"{value}\n"
 
 
 def _authorize_cx_request(
