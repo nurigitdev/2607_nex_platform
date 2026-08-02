@@ -58,5 +58,5 @@ reject them. The validation command fails if a negative fixture becomes valid.
 - Generation: MO provider route, CX generation execution record, AE chat
   interaction.
 - Retrieval/content ingestion: CX upload registration, queued ingestion job,
-  and mock text extraction result.
+  mock text extraction result, and chunk set.
 - Audit: AG readiness projection.

@@ -46,6 +46,8 @@ class ContentIngestionStore:
     jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
     source_texts: dict[str, str] = field(default_factory=dict)
     extraction_results: dict[str, dict[str, Any]] = field(default_factory=dict)
+    chunk_sets: dict[str, dict[str, Any]] = field(default_factory=dict)
+    chunk_texts: dict[str, str] = field(default_factory=dict)
 
     def save_upload_registration(
         self,
@@ -91,6 +93,22 @@ class ContentIngestionStore:
 
     def get_extraction_result(self, document_id: str) -> dict[str, Any] | None:
         return self.extraction_results.get(document_id)
+
+    def save_chunk_set(
+        self,
+        chunk_set: dict[str, Any],
+        *,
+        chunk_texts: dict[str, str],
+    ) -> dict[str, Any]:
+        self.chunk_sets[chunk_set["document_id"]] = chunk_set
+        self.chunk_texts.update(chunk_texts)
+        return chunk_set
+
+    def get_chunk_set(self, document_id: str) -> dict[str, Any] | None:
+        return self.chunk_sets.get(document_id)
+
+    def get_chunk_text(self, chunk_id: str) -> str | None:
+        return self.chunk_texts.get(chunk_id)
 
 
 @dataclass(frozen=True)

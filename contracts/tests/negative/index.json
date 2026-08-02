@@ -54,6 +54,11 @@
       "name": "cx_text_extraction_raw_text_leak",
       "path": "tests/negative/retrieval/cx_text_extraction.raw_text_leak.json",
       "schema": "schemas/service/nex_cx/text_extraction.v1.schema.json"
+    },
+    {
+      "name": "cx_chunk_set_raw_text_leak",
+      "path": "tests/negative/retrieval/cx_chunk_set.raw_text_leak.json",
+      "schema": "schemas/service/nex_cx/chunk_set.v1.schema.json"
     }
   ]
 }

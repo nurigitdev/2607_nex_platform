@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_cx/chunk_set.v1.schema.json",
+  "title": "NeX CX Chunk Set",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "chunk_set_schema_version",
+    "document_id",
+    "extraction_job_id",
+    "trace_id",
+    "request_id",
+    "chunk_policy",
+    "chunk_size",
+    "chunk_overlap",
+    "source_markdown_sha256",
+    "chunk_count",
+    "chunks",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "chunk_set_schema_version": {
+      "const": "cx_chunk_set.v1"
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "extraction_job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "chunk_policy": {
+      "const": "chunk_1000_100"
+    },
+    "chunk_size": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "chunk_overlap": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "source_markdown_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "chunk_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "chunks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "chunk_id",
+          "ordinal",
+          "start_offset",
+          "end_offset",
+          "char_count",
+          "text_sha256",
+          "text_preview"
+        ],
+        "properties": {
+          "chunk_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ordinal": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "start_offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end_offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "char_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "text_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "text_preview": {
+            "type": "string",
+            "maxLength": 120
+          }
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

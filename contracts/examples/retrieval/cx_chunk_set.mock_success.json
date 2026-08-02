@@ -1,0 +1,70 @@
+{
+  "chunk_set_schema_version": "cx_chunk_set.v1",
+  "document_id": "e7e4cf11-c38a-538e-bef8-9567a456b762",
+  "extraction_job_id": "f50f22f3-dfc2-5c6e-a93d-172e5ea5edfb",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "chunk_policy": "chunk_1000_100",
+  "chunk_size": 10,
+  "chunk_overlap": 3,
+  "source_markdown_sha256": "c9f3574dd7ec4cc91ba99df7a9027152fa4d6fcfc1551dc0e8e02c6f11af65d5",
+  "chunk_count": 6,
+  "chunks": [
+    {
+      "chunk_id": "bc367c40-e40a-5d53-a843-598b4b4ef6f1",
+      "ordinal": 0,
+      "start_offset": 0,
+      "end_offset": 10,
+      "char_count": 10,
+      "text_sha256": "8cc4522bfb808db525a84b7bec9f342c2e4442440acef763e941a8ba864a8c49",
+      "text_preview": "# source.t"
+    },
+    {
+      "chunk_id": "4d1c3698-5521-54a3-ae39-7c7e258986b6",
+      "ordinal": 1,
+      "start_offset": 7,
+      "end_offset": 17,
+      "char_count": 10,
+      "text_sha256": "6e5e6fac7be898b575f09bf9f89c1d4c44e21a3cec9fe4ee6a470b9337d769ff",
+      "text_preview": "e.txt\n\nabc"
+    },
+    {
+      "chunk_id": "f1efd04e-d7f7-5fbb-b4d9-90b51bb54551",
+      "ordinal": 2,
+      "start_offset": 14,
+      "end_offset": 24,
+      "char_count": 10,
+      "text_sha256": "72399361da6a7754fec986dca5b7cbaf1c810a28ded4abaf56b2106d06cb78b0",
+      "text_preview": "abcdefghij"
+    },
+    {
+      "chunk_id": "fc531fcd-f51b-5de7-8de5-468a58feea5d",
+      "ordinal": 3,
+      "start_offset": 21,
+      "end_offset": 31,
+      "char_count": 10,
+      "text_sha256": "1ec9c33481b50c3cf43b10891e1bf731089b9cceb303573ddb96457e2e580205",
+      "text_preview": "hijklmnopq"
+    },
+    {
+      "chunk_id": "9484dcfd-e84a-5ac8-8067-f796079fb731",
+      "ordinal": 4,
+      "start_offset": 28,
+      "end_offset": 38,
+      "char_count": 10,
+      "text_sha256": "825006ffc71bd37c8523e703d2956511a6ac372e7d9512e791e5796364fed4d6",
+      "text_preview": "opqrstuvwx"
+    },
+    {
+      "chunk_id": "6274c9f4-ebe7-5001-a4c5-03728ef86527",
+      "ordinal": 5,
+      "start_offset": 35,
+      "end_offset": 41,
+      "char_count": 6,
+      "text_sha256": "5360e92bfd66eabf895679a6708322cf1e034278df90fceeddee0eea66cb21f7",
+      "text_preview": "vwxyz\n"
+    }
+  ],
+  "created_at": "2026-08-02T00:00:00Z",
+  "updated_at": "2026-08-02T00:00:00Z"
+}

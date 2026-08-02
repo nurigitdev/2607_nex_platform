@@ -126,7 +126,7 @@ def build_service_app(spec: ServiceSpec) -> FastAPI:
             "service_name": spec.display_name,
             "version": version,
             "api_version": "v1",
-            "contract_catalog_version": "slice-0012",
+            "contract_catalog_version": "slice-0013",
             "build_sha": os.getenv("NEX_BUILD_SHA", "local"),
         }
 
