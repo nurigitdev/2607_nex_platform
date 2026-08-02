@@ -134,6 +134,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0028`](slices/0028_cx_summary_embedding_index.md) | `S3-008` CX summary embedding index. |
 | [`Slice 0029`](slices/0029_prompt_registry_seed_render_contract.md) | `S3-009` Prompt registry seed and prompt render event contract. |
 | [`Slice 0030`](slices/0030_ae_prompt_analytics_intent_mock.md) | `S3-010` AE prompt analytics and mock intent classification. |
+| [`Slice 0031`](slices/0031_ae_workspace_state_api_foundation.md) | `S4-001` AE workspace state API foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

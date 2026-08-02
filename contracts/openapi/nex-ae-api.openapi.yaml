@@ -4,6 +4,7 @@ info:
   version: 0.0.0-slice0003
 tags:
   - name: Platform
+  - name: Workspace
   - name: Chat
   - name: Retrieval
   - name: Analytics
@@ -45,6 +46,54 @@ paths:
           description: Service claim is valid for this service.
         "401":
           description: Service claim is missing or invalid.
+  /api/v1/workspaces:
+    post:
+      operationId: createAeWorkspace
+      tags:
+        - Workspace
+      responses:
+        "200":
+          description: AE workspace state created with runtime defaults.
+        "400":
+          description: Workspace request is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+  /api/v1/workspaces/{workspace_id}:
+    get:
+      operationId: getAeWorkspace
+      tags:
+        - Workspace
+      parameters:
+        - name: workspace_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AE workspace state.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: AE workspace was not found.
+  /api/v1/workspaces/{workspace_id}/activity:
+    get:
+      operationId: listAeWorkspaceActivity
+      tags:
+        - Workspace
+      parameters:
+        - name: workspace_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Safe AE workspace activity entries.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: AE workspace was not found.
   /api/v1/chat/interactions:
     post:
       operationId: createAeChatInteraction

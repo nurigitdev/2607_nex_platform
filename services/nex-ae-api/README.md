@@ -10,6 +10,9 @@ Current endpoints:
 - `GET /ready`
 - `GET /version`
 - `GET /internal/v1/auth/service-claim`
+- `POST /api/v1/workspaces`
+- `GET /api/v1/workspaces/{workspace_id}`
+- `GET /api/v1/workspaces/{workspace_id}/activity`
 - `POST /api/v1/chat/interactions`
 - `GET /api/v1/chat/interactions/{interaction_id}`
 - `POST /api/v1/retrieval/contexts`
@@ -24,6 +27,11 @@ Prompt registry seed:
 
 - `ae.grounded_chat.default` records the grounded chat system prompt for debug
   and later prompt analytics lineage.
+
+Workspace state:
+
+- AE owns workspace state, default runtime controls, chat document identity, and
+  activity summaries for the user-facing web shell.
 
 Prompt analytics:
 

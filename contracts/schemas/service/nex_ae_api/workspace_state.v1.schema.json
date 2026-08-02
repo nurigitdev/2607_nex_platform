@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/workspace_state.v1.schema.json",
+  "title": "NeX AE Workspace State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "workspace_schema_version",
+    "workspace_id",
+    "tenant_id",
+    "owner_user_id",
+    "title",
+    "locale",
+    "chat_document_id",
+    "runtime_defaults",
+    "activity_summary",
+    "trace_id",
+    "request_id",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "workspace_schema_version": {
+      "const": "ae_workspace_state.v1"
+    },
+    "workspace_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner_user_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "locale": {
+      "type": "string",
+      "minLength": 1
+    },
+    "chat_document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime_defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "locale",
+        "execution_mode",
+        "template_id",
+        "prompt_binding_id",
+        "output_contract_id",
+        "retrieval_profile",
+        "generation_alias"
+      ],
+      "properties": {
+        "locale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "execution_mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "template_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt_binding_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "output_contract_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retrieval_profile": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "generation_alias": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "activity_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "last_activity_type",
+        "activity_count"
+      ],
+      "properties": {
+        "last_activity_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "activity_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

@@ -61,6 +61,11 @@
       "schema": "schemas/service/nex_ae_api/prompt_analytics.v1.schema.json"
     },
     {
+      "name": "ae_workspace_state_mock",
+      "path": "examples/generation/ae_workspace_state.mock_success.json",
+      "schema": "schemas/service/nex_ae_api/workspace_state.v1.schema.json"
+    },
+    {
       "name": "ag_readiness_projection_mock",
       "path": "examples/audit/ag_readiness_projection.mock_success.json",
       "schema": "schemas/service/nex_ag/readiness_projection.v1.schema.json"
