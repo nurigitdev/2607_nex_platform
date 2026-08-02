@@ -1,0 +1,44 @@
+{
+  "manifest_schema_version": "1.0",
+  "contract_catalog_version": "slice-0003",
+  "generated_at": "2026-08-02T00:00:00Z",
+  "schemas": [
+    {
+      "path": "schemas/common/contract_manifest.v1.schema.json",
+      "owner": "common",
+      "status": "bootstrap"
+    }
+  ],
+  "openapi": [
+    {
+      "path": "openapi/common-components.yaml",
+      "owner": "common",
+      "status": "bootstrap"
+    },
+    {
+      "path": "openapi/nex-oa.openapi.yaml",
+      "owner": "nex-oa",
+      "status": "bootstrap"
+    },
+    {
+      "path": "openapi/nex-ag.openapi.yaml",
+      "owner": "nex-ag",
+      "status": "bootstrap"
+    },
+    {
+      "path": "openapi/nex-ae-api.openapi.yaml",
+      "owner": "nex-ae-api",
+      "status": "bootstrap"
+    },
+    {
+      "path": "openapi/nex-cx.openapi.yaml",
+      "owner": "nex-cx",
+      "status": "bootstrap"
+    },
+    {
+      "path": "openapi/nex-mo.openapi.yaml",
+      "owner": "nex-mo",
+      "status": "bootstrap"
+    }
+  ]
+}

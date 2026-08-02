@@ -1,0 +1,33 @@
+openapi: 3.1.0
+info:
+  title: NeX OA API
+  version: 0.0.0-slice0003
+tags:
+  - name: Platform
+paths:
+  /health:
+    get:
+      operationId: getOaHealth
+      tags:
+        - Platform
+      responses:
+        "200":
+          description: Service health status.
+  /ready:
+    get:
+      operationId: getOaReadiness
+      tags:
+        - Platform
+      responses:
+        "200":
+          description: Service dependencies are ready.
+        "503":
+          description: One or more service dependencies are unavailable.
+  /version:
+    get:
+      operationId: getOaVersion
+      tags:
+        - Platform
+      responses:
+        "200":
+          description: Service version metadata.

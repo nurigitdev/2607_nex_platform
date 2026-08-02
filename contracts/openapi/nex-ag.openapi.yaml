@@ -1,0 +1,33 @@
+openapi: 3.1.0
+info:
+  title: NeX AG API
+  version: 0.0.0-slice0003
+tags:
+  - name: Platform
+paths:
+  /health:
+    get:
+      operationId: getAgHealth
+      tags:
+        - Platform
+      responses:
+        "200":
+          description: Service health status.
+  /ready:
+    get:
+      operationId: getAgReadiness
+      tags:
+        - Platform
+      responses:
+        "200":
+          description: Service dependencies are ready.
+        "503":
+          description: One or more service dependencies are unavailable.
+  /version:
+    get:
+      operationId: getAgVersion
+      tags:
+        - Platform
+      responses:
+        "200":
+          description: Service version metadata.

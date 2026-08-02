@@ -1,0 +1,24 @@
+openapi: 3.1.0
+info:
+  title: NeX Platform Common Components
+  version: 0.0.0-slice0003
+paths: {}
+components:
+  schemas:
+    ServiceStatus:
+      type: string
+      enum:
+        - ok
+        - degraded
+        - unavailable
+    ServiceIdentity:
+      type: object
+      additionalProperties: false
+      required:
+        - service
+        - version
+      properties:
+        service:
+          type: string
+        version:
+          type: string

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/contract_manifest.v1.schema.json",
+  "title": "NeX Contract Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_schema_version",
+    "contract_catalog_version",
+    "generated_at",
+    "schemas",
+    "openapi"
+  ],
+  "properties": {
+    "manifest_schema_version": {
+      "const": "1.0"
+    },
+    "contract_catalog_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "schemas": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    "openapi": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "owner",
+        "status"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "type": "string",
+          "enum": [
+            "common",
+            "nex-oa",
+            "nex-ag",
+            "nex-ae-api",
+            "nex-cx",
+            "nex-mo"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "bootstrap",
+            "draft",
+            "stable"
+          ]
+        }
+      }
+    }
+  }
+}

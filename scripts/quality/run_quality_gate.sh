@@ -25,3 +25,5 @@ mkdir -p "$REPORT_DIR"
   "$REPORT_DIR/coverage.json" \
   "$STATEMENT_COVERAGE_MIN" \
   "$BRANCH_COVERAGE_MIN"
+
+"$PYTHON_BIN" scripts/quality/validate_contracts.py

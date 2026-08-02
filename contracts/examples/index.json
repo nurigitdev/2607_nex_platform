@@ -1,0 +1,9 @@
+{
+  "examples": [
+    {
+      "name": "contract_manifest_minimal",
+      "path": "examples/common/contract_manifest.minimal.json",
+      "schema": "schemas/common/contract_manifest.v1.schema.json"
+    }
+  ]
+}
