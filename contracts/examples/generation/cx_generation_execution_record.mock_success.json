@@ -12,7 +12,12 @@
     "generation_request_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     "response_format_type": "text",
     "source_has_messages": true,
-    "source_has_prompt": false
+    "source_has_prompt": false,
+    "compatibility_rule_id": "compat-grounded-answer-v1",
+    "grounding_required": true,
+    "retrieval_package_id": "cx-ret-001",
+    "retrieval_package_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "selected_evidence_count": 1
   },
   "response_metadata": {
     "finish_reason": "STOP",

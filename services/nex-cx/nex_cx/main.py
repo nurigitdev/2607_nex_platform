@@ -13,7 +13,7 @@ from nex_cx.summaries import register_summary_routes
 
 
 app = build_service_app(SERVICE_SPECS["nex-cx"])
-register_generation_routes(app)
+register_generation_routes(app, retrieval_store=DEFAULT_INGESTION_STORE)
 register_generation_compatibility_routes(app, expected_audience="nex-cx")
 register_ingestion_routes(app, store=DEFAULT_INGESTION_STORE)
 register_chunking_routes(app, store=DEFAULT_INGESTION_STORE)

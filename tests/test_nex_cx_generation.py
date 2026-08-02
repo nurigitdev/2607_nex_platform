@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 import nex_cx.generation as cx_generation
@@ -12,8 +13,13 @@ from nex_cx.generation import (
     HttpMoGenerationClient,
     build_generation_execution_record,
     build_mo_generation_payload,
+    compatibility_payload_from_generation_request,
     prompt_text_from_payload,
     register_generation_routes,
+    retrieval_package_ref_from_payload,
+    selected_evidence_ids_from_payload,
+    validate_generation_request,
+    validate_selected_evidence_ids,
 )
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 
@@ -59,6 +65,16 @@ class FakeMoClient:
         }
 
 
+class FakeRetrievalPackageStore:
+    def __init__(self, package: dict[str, Any] | None) -> None:
+        self.package = package
+
+    def get_retrieval_package(self, retrieval_package_id: str) -> dict[str, Any] | None:
+        if self.package and self.package["retrieval_package_id"] == retrieval_package_id:
+            return self.package
+        return None
+
+
 def auth_headers() -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-ae-api", audience="nex-cx")
     return {
@@ -76,6 +92,41 @@ def build_test_client() -> tuple[TestClient, FakeMoClient, GenerationExecutionSt
     return TestClient(app), mo_client, store
 
 
+def grounded_package(*, status: str = "READY", package_hash: str = "d" * 64) -> dict[str, Any]:
+    return {
+        "retrieval_package_id": "cx-ret-001",
+        "package_hash": package_hash,
+        "status": status,
+        "evidence_items": [
+            {"evidence_id": "evidence-001"},
+            {"evidence_id": "evidence-002"},
+        ],
+    }
+
+
+def grounded_payload(
+    *,
+    package_hash: str = "d" * 64,
+    selected_evidence_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "messages": [{"role": "user", "content": "Answer using evidence."}],
+        "execution_mode": "GROUNDED_ANSWER",
+        "template_id": "none",
+        "prompt_binding_id": "ae.grounded_chat.default",
+        "output_contract_id": "text_answer_v1",
+        "provider_capability": "generation",
+        "generation_profile": "grounded-answer",
+        "retrieval_package_ref": {
+            "retrieval_package_id": "cx-ret-001",
+            "package_hash": package_hash,
+        },
+    }
+    if selected_evidence_ids is not None:
+        payload["selected_evidence_ids"] = selected_evidence_ids
+    return payload
+
+
 def test_build_mo_generation_payload_hashes_prompt_metadata() -> None:
     payload = build_mo_generation_payload(
         {
@@ -89,6 +140,16 @@ def test_build_mo_generation_payload_hashes_prompt_metadata() -> None:
     assert payload["alias"] == "general-llm-default"
     assert len(payload["provider_prompt_package_hash"]) == 64
     assert len(payload["metadata"]["generation_request_hash"]) == 64
+
+
+def test_compatibility_payload_defaults_legacy_generation_to_general_answer() -> None:
+    payload = compatibility_payload_from_generation_request({"prompt": "hello"})
+
+    assert payload["execution_mode"] == "GENERAL_ANSWER"
+    assert payload["generation_profile"] == "general-answer"
+    assert compatibility_payload_from_generation_request(
+        {"execution_mode": "GROUNDED_ANSWER"}
+    ) == {"execution_mode": "GROUNDED_ANSWER"}
 
 
 def test_prompt_text_from_payload_accepts_messages() -> None:
@@ -140,6 +201,38 @@ def test_generation_endpoint_calls_mo_and_stores_safe_metadata() -> None:
     assert "Summarize private prompt text." not in str(payload["request_metadata"])
     assert store.get(payload["cx_generation_id"]) == payload
     assert mo_client.calls[0]["payload"]["prompt"] == "Summarize private prompt text."
+    assert payload["request_metadata"]["compatibility_rule_id"] == (
+        "compat-general-answer-v1"
+    )
+    assert payload["request_metadata"]["grounding_required"] is False
+
+
+def test_grounded_generation_endpoint_validates_retrieval_package_and_lineage() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    store = GenerationExecutionStore()
+    mo_client = FakeMoClient()
+    register_generation_routes(
+        app,
+        store=store,
+        mo_client=mo_client,
+        retrieval_store=FakeRetrievalPackageStore(grounded_package()),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/generations",
+        json=grounded_payload(selected_evidence_ids=["evidence-001"]),
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["request_metadata"]["compatibility_rule_id"] == (
+        "compat-grounded-answer-v1"
+    )
+    assert payload["request_metadata"]["retrieval_package_id"] == "cx-ret-001"
+    assert payload["request_metadata"]["selected_evidence_count"] == 1
+    assert store.get(payload["cx_generation_id"]) == payload
 
 
 def test_generation_endpoint_returns_problem_for_missing_prompt() -> None:
@@ -153,6 +246,91 @@ def test_generation_endpoint_returns_problem_for_missing_prompt() -> None:
 
     assert response.status_code == 400
     assert response.json()["error_code"] == "cx.generation_request_invalid"
+
+
+def test_grounded_generation_rejects_missing_retrieval_ref() -> None:
+    client, _, _ = build_test_client()
+
+    response = client.post(
+        "/api/v1/generations",
+        json={
+            "prompt": "hello",
+            "execution_mode": "GROUNDED_ANSWER",
+            "generation_profile": "grounded-answer",
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "cx.retrieval_package_ref_required"
+
+
+def test_validate_generation_request_rejects_missing_store_hash_and_not_ready() -> None:
+    with pytest.raises(GenerationFacadeError) as missing_store:
+        validate_generation_request(grounded_payload(), retrieval_store=None)
+    assert missing_store.value.error_code == "cx.retrieval_package_store_unavailable"
+    assert missing_store.value.retryable is True
+
+    with pytest.raises(GenerationFacadeError) as missing_package:
+        validate_generation_request(
+            grounded_payload(),
+            retrieval_store=FakeRetrievalPackageStore(None),
+        )
+    assert missing_package.value.status_code == 404
+
+    with pytest.raises(GenerationFacadeError) as hash_mismatch:
+        validate_generation_request(
+            grounded_payload(package_hash="e" * 64),
+            retrieval_store=FakeRetrievalPackageStore(grounded_package()),
+        )
+    assert hash_mismatch.value.error_code == "cx.retrieval_package_hash_mismatch"
+
+    with pytest.raises(GenerationFacadeError) as not_ready:
+        validate_generation_request(
+            grounded_payload(),
+            retrieval_store=FakeRetrievalPackageStore(grounded_package(status="NO_ANSWER")),
+        )
+    assert not_ready.value.error_code == "cx.retrieval_package_not_ready"
+
+
+def test_retrieval_package_ref_and_selected_evidence_validation() -> None:
+    assert retrieval_package_ref_from_payload({}) is None
+    assert retrieval_package_ref_from_payload(grounded_payload()) == {
+        "retrieval_package_id": "cx-ret-001",
+        "package_hash": "d" * 64,
+    }
+    assert selected_evidence_ids_from_payload({"selected_evidence_ids": None}) == []
+    assert selected_evidence_ids_from_payload(
+        {"selected_evidence_ids": [" evidence-001 "]}
+    ) == ["evidence-001"]
+    validate_selected_evidence_ids(
+        {"selected_evidence_ids": ["evidence-001"]},
+        grounded_package(),
+    )
+
+    invalid_refs = [
+        {"retrieval_package_ref": []},
+        {"retrieval_package_ref": {"retrieval_package_id": "", "package_hash": "d" * 64}},
+        {"retrieval_package_ref": {"retrieval_package_id": "x", "package_hash": "bad"}},
+    ]
+    for payload in invalid_refs:
+        try:
+            retrieval_package_ref_from_payload(payload)
+        except GenerationFacadeError as exc:
+            assert exc.error_code == "cx.retrieval_package_ref_invalid"
+        else:
+            raise AssertionError("expected GenerationFacadeError")
+
+    with pytest.raises(GenerationFacadeError) as invalid_ids:
+        selected_evidence_ids_from_payload({"selected_evidence_ids": [""]})
+    assert invalid_ids.value.error_code == "cx.selected_evidence_invalid"
+
+    with pytest.raises(GenerationFacadeError) as missing_evidence:
+        validate_selected_evidence_ids(
+            {"selected_evidence_ids": ["missing"]},
+            grounded_package(),
+        )
+    assert missing_evidence.value.error_code == "cx.selected_evidence_not_in_package"
 
 
 def test_generation_record_can_be_read_back() -> None:

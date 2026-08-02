@@ -183,6 +183,7 @@ def run_traceable_mock_flow(trace_id: str = TRACE_ID) -> dict[str, Any]:
             cx_app,
             store=GenerationExecutionStore(),
             mo_client=mo_client,
+            retrieval_store=cx_store,
         )
         cx_test_client = TestClient(cx_app)
         cx_client = TestClientCxGenerationClient(cx_test_client)

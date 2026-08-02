@@ -64,3 +64,9 @@ Current endpoints:
 - `GET /api/v1/retrieval/context/{retrieval_package_id}`
 - `POST /api/v1/generations`
 - `GET /api/v1/generations/{cx_generation_id}`
+
+Grounded generation validation:
+
+- `GENERAL_ANSWER` generation can run without retrieval.
+- `GROUNDED_ANSWER`, `DOCUMENT_SUMMARY`, and `REPORT_GENERATION` require an
+  active compatibility rule and a matching `READY` retrieval package reference.

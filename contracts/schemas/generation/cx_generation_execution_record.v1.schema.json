@@ -89,6 +89,34 @@
         },
         "source_has_prompt": {
           "type": "boolean"
+        },
+        "compatibility_rule_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "grounding_required": {
+          "type": "boolean"
+        },
+        "retrieval_package_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "retrieval_package_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "selected_evidence_count": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },

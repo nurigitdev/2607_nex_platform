@@ -12,6 +12,10 @@ import httpx
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
+from nex_runtime.compatibility import (
+    GenerationCompatibilityError,
+    select_generation_compatibility_rule,
+)
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
     issue_mock_service_token,
@@ -32,6 +36,11 @@ class MoGenerationClient(Protocol):
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
+        ...
+
+
+class RetrievalPackageStore(Protocol):
+    def get_retrieval_package(self, retrieval_package_id: str) -> dict[str, Any] | None:
         ...
 
 
@@ -109,6 +118,7 @@ def register_generation_routes(
     *,
     store: GenerationExecutionStore | None = None,
     mo_client: MoGenerationClient | None = None,
+    retrieval_store: RetrievalPackageStore | None = None,
 ) -> None:
     generation_store = store or DEFAULT_GENERATION_STORE
     client = mo_client or build_default_mo_client()
@@ -126,6 +136,10 @@ def register_generation_routes(
         request_id = request_id_from_headers(request)
         trace_id = payload.get("trace_id") or trace_id_from_headers(request)
         try:
+            compatibility_rule, retrieval_package = validate_generation_request(
+                payload,
+                retrieval_store=retrieval_store,
+            )
             mo_payload = build_mo_generation_payload(payload, trace_id=trace_id)
             mo_response = client.create_generation(
                 mo_payload,
@@ -137,9 +151,20 @@ def register_generation_routes(
                     source_payload=payload,
                     mo_payload=mo_payload,
                     mo_response=mo_response,
+                    compatibility_rule=compatibility_rule,
+                    retrieval_package=retrieval_package,
                     request_id=request_id,
                     trace_id=trace_id,
                 )
+            )
+        except GenerationCompatibilityError as exc:
+            return _generation_problem_response(
+                request,
+                GenerationFacadeError(
+                    status_code=exc.status_code,
+                    error_code=exc.error_code,
+                    detail=exc.detail,
+                ),
             )
         except GenerationFacadeError as exc:
             return _generation_problem_response(request, exc)
@@ -208,7 +233,7 @@ def build_mo_generation_payload(
         "alias": source_payload.get("alias", "general-llm-default"),
         "provider_capability": source_payload.get("provider_capability", "generation"),
         "workload_class": source_payload.get("workload_class", "LLM_INTERACTIVE"),
-        "generation_profile": source_payload.get("generation_profile", "grounded-answer"),
+        "generation_profile": source_payload.get("generation_profile", "general-answer"),
         "messages": source_payload.get("messages"),
         "prompt": source_payload.get("prompt"),
         "response_format": source_payload.get("response_format", {"type": "text"}),
@@ -228,6 +253,8 @@ def build_generation_execution_record(
     source_payload: dict[str, Any],
     mo_payload: dict[str, Any],
     mo_response: dict[str, Any],
+    compatibility_rule: dict[str, Any] | None = None,
+    retrieval_package: dict[str, Any] | None = None,
     request_id: str,
     trace_id: str,
 ) -> dict[str, Any]:
@@ -249,6 +276,19 @@ def build_generation_execution_record(
             "response_format_type": mo_payload["response_format"]["type"],
             "source_has_messages": bool(source_payload.get("messages")),
             "source_has_prompt": bool(source_payload.get("prompt")),
+            "compatibility_rule_id": compatibility_rule["compatibility_rule_id"]
+            if compatibility_rule
+            else None,
+            "grounding_required": compatibility_rule["grounding_required"]
+            if compatibility_rule
+            else False,
+            "retrieval_package_id": retrieval_package["retrieval_package_id"]
+            if retrieval_package
+            else None,
+            "retrieval_package_hash": retrieval_package["package_hash"]
+            if retrieval_package
+            else None,
+            "selected_evidence_count": len(selected_evidence_ids_from_payload(source_payload)),
         },
         "response_metadata": {
             "finish_reason": mo_response.get("finish_reason"),
@@ -262,6 +302,139 @@ def build_generation_execution_record(
         "created_at": now,
         "updated_at": now,
     }
+
+
+def validate_generation_request(
+    source_payload: dict[str, Any],
+    *,
+    retrieval_store: RetrievalPackageStore | None,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    compatibility_rule = select_generation_compatibility_rule(
+        compatibility_payload_from_generation_request(source_payload)
+    )
+    if not compatibility_rule["grounding_required"]:
+        return compatibility_rule, None
+
+    retrieval_ref = retrieval_package_ref_from_payload(source_payload)
+    if retrieval_ref is None:
+        raise GenerationFacadeError(
+            status_code=422,
+            error_code="cx.retrieval_package_ref_required",
+            detail="Grounded generation requires retrieval_package_ref.",
+        )
+    if retrieval_store is None:
+        raise GenerationFacadeError(
+            status_code=503,
+            error_code="cx.retrieval_package_store_unavailable",
+            detail="Grounded generation requires CX retrieval package state.",
+            retryable=True,
+        )
+
+    retrieval_package = retrieval_store.get_retrieval_package(
+        retrieval_ref["retrieval_package_id"]
+    )
+    if retrieval_package is None:
+        raise GenerationFacadeError(
+            status_code=404,
+            error_code="cx.retrieval_package_not_found",
+            detail=(
+                "Retrieval package was not found: "
+                f"{retrieval_ref['retrieval_package_id']}"
+            ),
+        )
+    if retrieval_package["package_hash"] != retrieval_ref["package_hash"]:
+        raise GenerationFacadeError(
+            status_code=409,
+            error_code="cx.retrieval_package_hash_mismatch",
+            detail="Retrieval package hash does not match CX state.",
+        )
+    if retrieval_package["status"] != "READY":
+        raise GenerationFacadeError(
+            status_code=409,
+            error_code="cx.retrieval_package_not_ready",
+            detail=f"Retrieval package status is {retrieval_package['status']}.",
+        )
+    validate_selected_evidence_ids(source_payload, retrieval_package)
+    return compatibility_rule, retrieval_package
+
+
+def compatibility_payload_from_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
+    if any(field in payload for field in ("execution_mode", "generation_profile")):
+        return payload
+    if "retrieval_package_ref" in payload:
+        return payload
+    return {
+        **payload,
+        "execution_mode": "GENERAL_ANSWER",
+        "generation_profile": "general-answer",
+    }
+
+
+def retrieval_package_ref_from_payload(payload: dict[str, Any]) -> dict[str, str] | None:
+    ref = payload.get("retrieval_package_ref")
+    if ref is None:
+        return None
+    if not isinstance(ref, dict):
+        raise GenerationFacadeError(
+            status_code=422,
+            error_code="cx.retrieval_package_ref_invalid",
+            detail="retrieval_package_ref must be an object.",
+        )
+    retrieval_package_id = _required_ref_string(ref, "retrieval_package_id")
+    package_hash = _required_ref_string(ref, "package_hash")
+    if len(package_hash) != 64 or any(char not in "0123456789abcdef" for char in package_hash):
+        raise GenerationFacadeError(
+            status_code=422,
+            error_code="cx.retrieval_package_ref_invalid",
+            detail="retrieval_package_ref.package_hash must be a SHA-256 hex string.",
+        )
+    return {
+        "retrieval_package_id": retrieval_package_id,
+        "package_hash": package_hash,
+    }
+
+
+def validate_selected_evidence_ids(
+    payload: dict[str, Any],
+    retrieval_package: dict[str, Any],
+) -> None:
+    selected_ids = selected_evidence_ids_from_payload(payload)
+    if not selected_ids:
+        return
+    available = {item["evidence_id"] for item in retrieval_package.get("evidence_items", [])}
+    missing = sorted(set(selected_ids) - available)
+    if missing:
+        raise GenerationFacadeError(
+            status_code=422,
+            error_code="cx.selected_evidence_not_in_package",
+            detail=f"Selected evidence is not in retrieval package: {missing[0]}",
+        )
+
+
+def selected_evidence_ids_from_payload(payload: dict[str, Any]) -> list[str]:
+    selected = payload.get("selected_evidence_ids", [])
+    if selected is None:
+        return []
+    if not isinstance(selected, list) or any(
+        not isinstance(item, str) or not item.strip() for item in selected
+    ):
+        raise GenerationFacadeError(
+            status_code=422,
+            error_code="cx.selected_evidence_invalid",
+            detail="selected_evidence_ids must be a list of non-empty strings.",
+        )
+    return [item.strip() for item in selected]
+
+
+def _required_ref_string(ref: dict[str, Any], field_name: str) -> str:
+    value = ref.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise GenerationFacadeError(
+            status_code=422,
+            error_code="cx.retrieval_package_ref_invalid",
+            detail=f"retrieval_package_ref.{field_name} must be a non-empty string.",
+        )
+    return value.strip()
 
 
 def prompt_text_from_payload(payload: dict[str, Any]) -> str:

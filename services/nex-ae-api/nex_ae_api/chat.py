@@ -254,6 +254,7 @@ def build_cx_generation_payload(
 ) -> dict[str, Any]:
     user_message = user_message_from_payload(source_payload)
     message_hash = sha256_text(user_message)
+    retrieval_enabled = _retrieval_enabled_for_defaults(source_payload)
     interaction_id = source_payload.get("interaction_id") or str(
         uuid5(NAMESPACE_URL, f"ae-interaction:{trace_id}:{message_hash}")
     )
@@ -272,9 +273,22 @@ def build_cx_generation_payload(
         "trace_id": trace_id,
         "client_request_id": interaction_id,
         "cx_generation_id": source_payload.get("cx_generation_id"),
+        "execution_mode": generation.get(
+            "execution_mode",
+            "GROUNDED_ANSWER" if retrieval_enabled else "GENERAL_ANSWER",
+        ),
+        "template_id": generation.get("template_id", "none"),
+        "prompt_binding_id": generation.get(
+            "prompt_binding_id",
+            "ae.grounded_chat.default",
+        ),
+        "output_contract_id": generation.get("output_contract_id", "text_answer_v1"),
         "alias": generation.get("alias", "general-llm-default"),
         "provider_capability": generation.get("provider_capability", "generation"),
-        "generation_profile": generation.get("generation_profile", "grounded-answer"),
+        "generation_profile": generation.get(
+            "generation_profile",
+            "grounded-answer" if retrieval_enabled else "general-answer",
+        ),
         "messages": [{"role": "user", "content": user_message}],
         "response_format": generation.get("response_format", {"type": "text"}),
         "max_output_tokens": generation.get("max_output_tokens", 256),
@@ -374,6 +388,16 @@ def attach_retrieval_package_to_generation_payload(
     )
     return {
         **cx_payload,
+        "retrieval_package_ref": {
+            "retrieval_package_id": retrieval_package["retrieval_package_id"],
+            "package_hash": retrieval_package["package_hash"],
+            "status": retrieval_package["status"],
+        },
+        "selected_evidence_ids": [
+            item["evidence_id"]
+            for item in retrieval_package.get("evidence_items", [])
+            if isinstance(item.get("evidence_id"), str)
+        ],
         "messages": [{"role": "user", "content": grounded_message}],
         "metadata": {
             **cx_payload["metadata"],
@@ -383,6 +407,13 @@ def attach_retrieval_package_to_generation_payload(
             "retrieval_evidence_count": len(retrieval_package["evidence_items"]),
         },
     }
+
+
+def _retrieval_enabled_for_defaults(payload: dict[str, Any]) -> bool:
+    retrieval = payload.get("retrieval")
+    if not isinstance(retrieval, dict):
+        return False
+    return bool(retrieval.get("enabled", True))
 
 
 def build_grounded_user_message(

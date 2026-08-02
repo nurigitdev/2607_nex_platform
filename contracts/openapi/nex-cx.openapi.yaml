@@ -438,7 +438,9 @@ paths:
         "401":
           description: Service claim is missing or invalid.
         "422":
-          description: Provider-private fields are rejected.
+          description: Provider-private fields, compatibility mismatches, or invalid retrieval evidence refs are rejected.
+        "409":
+          description: Retrieval package hash/status does not allow grounded generation.
   /api/v1/generations/{cx_generation_id}:
     get:
       operationId: getCxGeneration
