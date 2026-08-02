@@ -24,6 +24,7 @@ from nex_runtime import (
     trace_id_from_headers,
     validate_authorization_header,
 )
+from nex_cx.drafts import build_structured_draft
 
 FORBIDDEN_PROVIDER_FIELDS = {"provider_url", "model_path", "provider_endpoint", "api_key"}
 
@@ -86,13 +87,24 @@ class HttpMoGenerationClient:
 @dataclass
 class GenerationExecutionStore:
     records: dict[str, dict[str, Any]] = field(default_factory=dict)
+    structured_drafts: dict[str, dict[str, Any]] = field(default_factory=dict)
 
-    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+    def save(
+        self,
+        record: dict[str, Any],
+        *,
+        structured_draft: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         self.records[record["cx_generation_id"]] = record
+        if structured_draft is not None:
+            self.structured_drafts[record["cx_generation_id"]] = structured_draft
         return record
 
     def get(self, cx_generation_id: str) -> dict[str, Any] | None:
         return self.records.get(cx_generation_id)
+
+    def get_structured_draft(self, cx_generation_id: str) -> dict[str, Any] | None:
+        return self.structured_drafts.get(cx_generation_id)
 
 
 @dataclass(frozen=True)
@@ -146,6 +158,14 @@ def register_generation_routes(
                 request_id=request_id,
                 trace_id=trace_id,
             )
+            structured_draft = build_structured_draft(
+                cx_generation_id=mo_payload["cx_generation_id"],
+                trace_id=trace_id,
+                request_id=request_id,
+                output_text=output_text_from_mo_response(mo_response),
+                compatibility_rule=compatibility_rule,
+                retrieval_package=retrieval_package,
+            )
             return generation_store.save(
                 build_generation_execution_record(
                     source_payload=payload,
@@ -153,9 +173,11 @@ def register_generation_routes(
                     mo_response=mo_response,
                     compatibility_rule=compatibility_rule,
                     retrieval_package=retrieval_package,
+                    structured_draft=structured_draft,
                     request_id=request_id,
                     trace_id=trace_id,
-                )
+                ),
+                structured_draft=structured_draft,
             )
         except GenerationCompatibilityError as exc:
             return _generation_problem_response(
@@ -190,6 +212,28 @@ def register_generation_routes(
                 ),
             )
         return record
+
+    @app.get("/api/v1/generations/{cx_generation_id}/structured-draft", response_model=None)
+    def get_structured_draft(
+        cx_generation_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_cx_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        draft = generation_store.get_structured_draft(cx_generation_id)
+        if draft is None:
+            return _generation_problem_response(
+                request,
+                GenerationFacadeError(
+                    status_code=404,
+                    error_code="cx.structured_draft_not_found",
+                    detail=f"Structured draft was not found: {cx_generation_id}",
+                ),
+            )
+        return draft
 
 
 def build_mo_generation_payload(
@@ -255,6 +299,7 @@ def build_generation_execution_record(
     mo_response: dict[str, Any],
     compatibility_rule: dict[str, Any] | None = None,
     retrieval_package: dict[str, Any] | None = None,
+    structured_draft: dict[str, Any] | None = None,
     request_id: str,
     trace_id: str,
 ) -> dict[str, Any]:
@@ -289,6 +334,12 @@ def build_generation_execution_record(
             if retrieval_package
             else None,
             "selected_evidence_count": len(selected_evidence_ids_from_payload(source_payload)),
+            "structured_draft_id": structured_draft["structured_draft_id"]
+            if structured_draft
+            else None,
+            "draft_validation_status": structured_draft["validation"]["citation_status"]
+            if structured_draft
+            else None,
         },
         "response_metadata": {
             "finish_reason": mo_response.get("finish_reason"),
@@ -302,6 +353,13 @@ def build_generation_execution_record(
         "created_at": now,
         "updated_at": now,
     }
+
+
+def output_text_from_mo_response(mo_response: dict[str, Any]) -> str:
+    output = mo_response.get("output", {})
+    if isinstance(output, dict) and isinstance(output.get("text"), str):
+        return output["text"]
+    return ""
 
 
 def validate_generation_request(

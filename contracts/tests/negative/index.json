@@ -46,6 +46,11 @@
       "schema": "schemas/generation/generation_compatibility_rule.v1.schema.json"
     },
     {
+      "name": "cx_structured_draft_raw_output_leak",
+      "path": "tests/negative/generation/cx_structured_draft.raw_output_leak.json",
+      "schema": "schemas/generation/cx_structured_draft.v1.schema.json"
+    },
+    {
       "name": "ae_chat_interaction_raw_user_message_leak",
       "path": "tests/negative/generation/ae_chat_interaction.raw_user_message_leak.json",
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"

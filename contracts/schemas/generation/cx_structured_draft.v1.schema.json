@@ -1,0 +1,252 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/cx_structured_draft.v1.schema.json",
+  "title": "NeX CX Structured Draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "structured_draft_schema_version",
+    "structured_draft_id",
+    "cx_generation_id",
+    "status",
+    "trace_id",
+    "request_id",
+    "title",
+    "summary",
+    "content_hash",
+    "sections",
+    "citations",
+    "validation",
+    "metadata",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "structured_draft_schema_version": {
+      "const": "cx_structured_draft.v1"
+    },
+    "structured_draft_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cx_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "VALIDATED",
+        "VALIDATION_FAILED"
+      ]
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "section_id",
+          "ordinal",
+          "heading",
+          "blocks"
+        ],
+        "properties": {
+          "section_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ordinal": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "heading": {
+            "type": "string",
+            "minLength": 1
+          },
+          "blocks": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "block_id",
+                "block_type",
+                "text_hash",
+                "text_preview"
+              ],
+              "properties": {
+                "block_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "block_type": {
+                  "type": "string",
+                  "enum": [
+                    "paragraph"
+                  ]
+                },
+                "text_hash": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "text_preview": {
+                  "type": "string",
+                  "maxLength": 240
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "citations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "citation_label",
+          "evidence_id",
+          "retrieval_package_id",
+          "valid",
+          "validation_error"
+        ],
+        "properties": {
+          "citation_label": {
+            "type": "string",
+            "pattern": "^\\[[0-9]+\\]$"
+          },
+          "evidence_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retrieval_package_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "valid": {
+            "type": "boolean"
+          },
+          "validation_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validator_profile_id",
+        "citation_status",
+        "errors",
+        "warnings"
+      ],
+      "properties": {
+        "validator_profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "citation_status": {
+          "type": "string",
+          "enum": [
+            "VALIDATED",
+            "FAILED"
+          ]
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "detail"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "detail": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_output_stored_in_public_record",
+        "retrieval_package_id",
+        "compatibility_rule_id"
+      ],
+      "properties": {
+        "raw_output_stored_in_public_record": {
+          "const": false
+        },
+        "retrieval_package_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "compatibility_rule_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

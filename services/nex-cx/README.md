@@ -64,9 +64,12 @@ Current endpoints:
 - `GET /api/v1/retrieval/context/{retrieval_package_id}`
 - `POST /api/v1/generations`
 - `GET /api/v1/generations/{cx_generation_id}`
+- `GET /api/v1/generations/{cx_generation_id}/structured-draft`
 
 Grounded generation validation:
 
 - `GENERAL_ANSWER` generation can run without retrieval.
 - `GROUNDED_ANSWER`, `DOCUMENT_SUMMARY`, and `REPORT_GENERATION` require an
   active compatibility rule and a matching `READY` retrieval package reference.
+- Structured drafts expose output hashes, short previews, citation validation,
+  and retrieval lineage without exposing full model output text.

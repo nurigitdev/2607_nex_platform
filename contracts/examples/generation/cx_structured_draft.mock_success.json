@@ -1,0 +1,48 @@
+{
+  "structured_draft_schema_version": "cx_structured_draft.v1",
+  "structured_draft_id": "draft-001",
+  "cx_generation_id": "cx-gen-001",
+  "status": "VALIDATED",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "title": "Grounded answer [1]",
+  "summary": "Grounded answer [1]",
+  "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "sections": [
+    {
+      "section_id": "section-001",
+      "ordinal": 1,
+      "heading": "Generated response",
+      "blocks": [
+        {
+          "block_id": "block-001",
+          "block_type": "paragraph",
+          "text_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "text_preview": "Grounded answer [1]"
+        }
+      ]
+    }
+  ],
+  "citations": [
+    {
+      "citation_label": "[1]",
+      "evidence_id": "evidence-001",
+      "retrieval_package_id": "cx-ret-001",
+      "valid": true,
+      "validation_error": null
+    }
+  ],
+  "validation": {
+    "validator_profile_id": "mock-structured-draft-validator-v1",
+    "citation_status": "VALIDATED",
+    "errors": [],
+    "warnings": []
+  },
+  "metadata": {
+    "raw_output_stored_in_public_record": false,
+    "retrieval_package_id": "cx-ret-001",
+    "compatibility_rule_id": "compat-grounded-answer-v1"
+  },
+  "created_at": "2026-08-02T00:00:00Z",
+  "updated_at": "2026-08-02T00:00:00Z"
+}

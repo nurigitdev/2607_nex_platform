@@ -117,6 +117,24 @@
         "selected_evidence_count": {
           "type": "integer",
           "minimum": 0
+        },
+        "structured_draft_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "draft_validation_status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "VALIDATED",
+            "FAILED",
+            null
+          ]
         }
       }
     },

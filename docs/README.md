@@ -139,6 +139,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0033`](slices/0033_ae_document_library_summary_search_facade.md) | `S4-003` AE document library and summary search facade. |
 | [`Slice 0034`](slices/0034_generation_compatibility_rule_contract.md) | `S4-004` Generation compatibility rule contract. |
 | [`Slice 0035`](slices/0035_cx_grounded_generation_request_validation.md) | `S4-005` CX grounded generation request validation. |
+| [`Slice 0036`](slices/0036_cx_structured_draft_citation_mock_validation.md) | `S4-006` CX structured draft and citation mock validation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

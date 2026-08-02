@@ -459,6 +459,24 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: CX generation record was not found.
+  /api/v1/generations/{cx_generation_id}/structured-draft:
+    get:
+      operationId: getCxStructuredDraft
+      tags:
+        - Generation
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CX structured draft with citation validation summary.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: CX structured draft was not found.
   /api/v1/prompts/bindings:
     get:
       operationId: listCxPromptBindings

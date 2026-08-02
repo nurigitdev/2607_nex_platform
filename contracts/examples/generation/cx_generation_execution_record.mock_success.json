@@ -17,7 +17,9 @@
     "grounding_required": true,
     "retrieval_package_id": "cx-ret-001",
     "retrieval_package_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-    "selected_evidence_count": 1
+    "selected_evidence_count": 1,
+    "structured_draft_id": "draft-001",
+    "draft_validation_status": "VALIDATED"
   },
   "response_metadata": {
     "finish_reason": "STOP",

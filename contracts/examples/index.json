@@ -46,6 +46,11 @@
       "schema": "schemas/generation/generation_compatibility_rule.v1.schema.json"
     },
     {
+      "name": "cx_structured_draft_mock",
+      "path": "examples/generation/cx_structured_draft.mock_success.json",
+      "schema": "schemas/generation/cx_structured_draft.v1.schema.json"
+    },
+    {
       "name": "ae_chat_interaction_mock",
       "path": "examples/generation/ae_chat_interaction.mock_success.json",
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
