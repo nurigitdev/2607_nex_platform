@@ -1,0 +1,19 @@
+{
+  "event_schema_version": "generation_progress_event.v1",
+  "event_id": "progress-event-001",
+  "event_type": "generation.prompt.packaged",
+  "event_source_service": "nex-cx",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "occurred_at": "2026-08-02T00:00:00Z",
+  "sequence_no": 3,
+  "cx_generation_id": "cx-gen-001",
+  "job_status": "RUNNING",
+  "current_stage": "PROMPT_ASSEMBLING",
+  "progress_mode": "INDETERMINATE",
+  "message_key": "generation.progress.prompt_packaged",
+  "retryable": false,
+  "details": {
+    "raw_prompt": "private prompt text"
+  }
+}

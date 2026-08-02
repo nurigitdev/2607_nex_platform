@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/generation_progress_event.v1.schema.json",
+  "title": "NeX Generation Progress Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_schema_version",
+    "event_id",
+    "event_type",
+    "event_source_service",
+    "trace_id",
+    "request_id",
+    "occurred_at",
+    "sequence_no",
+    "job_status",
+    "current_stage",
+    "progress_mode",
+    "message_key",
+    "retryable"
+  ],
+  "properties": {
+    "event_schema_version": {
+      "const": "generation_progress_event.v1"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "generation.request.accepted",
+        "generation.intent.selected",
+        "generation.retrieval.requested",
+        "generation.retrieval.ready",
+        "generation.retrieval.no_answer",
+        "generation.template.selected",
+        "generation.prompt.packaged",
+        "generation.provider.admitted",
+        "generation.provider.streaming_delta",
+        "generation.provider.completed",
+        "generation.draft.validating",
+        "generation.citation.validating",
+        "generation.artifact.rendering",
+        "generation.artifact.ready",
+        "generation.completed",
+        "generation.failed",
+        "generation.cancelled"
+      ]
+    },
+    "event_source_service": {
+      "type": "string",
+      "enum": [
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-ag"
+      ]
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sequence_no": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cx_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mo_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifact_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifact_version_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "job_status": {
+      "type": "string",
+      "enum": [
+        "PENDING",
+        "QUEUED",
+        "RUNNING",
+        "COMPLETED",
+        "FAILED",
+        "TIMEOUT",
+        "CANCELLED"
+      ]
+    },
+    "current_stage": {
+      "type": "string",
+      "enum": [
+        "INTAKE",
+        "INTENT_DETECTED",
+        "RETRIEVAL_REQUESTED",
+        "CONTEXT_PACKAGED",
+        "TEMPLATE_SELECTED",
+        "PROMPT_ASSEMBLING",
+        "MO_ADMISSION_WAITING",
+        "GENERATING",
+        "DRAFT_VALIDATING",
+        "CITATION_VALIDATING",
+        "ARTIFACT_RENDERING",
+        "FINALIZING",
+        "COMPLETED",
+        "FAILED",
+        "CANCELLED"
+      ]
+    },
+    "progress_mode": {
+      "type": "string",
+      "enum": [
+        "DETERMINATE",
+        "INDETERMINATE",
+        "STREAMING"
+      ]
+    },
+    "progress_percent": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "message_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "safe_message": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "details": {
+      "type": "object",
+      "additionalProperties": true,
+      "propertyNames": {
+        "not": {
+          "enum": [
+            "prompt",
+            "messages",
+            "content",
+            "content_text",
+            "source_text",
+            "output_text",
+            "raw_prompt",
+            "raw_output",
+            "provider_url",
+            "provider_endpoint",
+            "model_path",
+            "authorization",
+            "cookie",
+            "api_key",
+            "password",
+            "secret"
+          ]
+        }
+      }
+    }
+  }
+}

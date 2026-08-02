@@ -25,6 +25,7 @@ from nex_runtime import (
     validate_authorization_header,
 )
 from nex_cx.drafts import build_structured_draft
+from nex_cx.progress import build_cx_generation_progress_events
 
 FORBIDDEN_PROVIDER_FIELDS = {"provider_url", "model_path", "provider_endpoint", "api_key"}
 
@@ -88,16 +89,20 @@ class HttpMoGenerationClient:
 class GenerationExecutionStore:
     records: dict[str, dict[str, Any]] = field(default_factory=dict)
     structured_drafts: dict[str, dict[str, Any]] = field(default_factory=dict)
+    progress_events: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
     def save(
         self,
         record: dict[str, Any],
         *,
         structured_draft: dict[str, Any] | None = None,
+        progress_events: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         self.records[record["cx_generation_id"]] = record
         if structured_draft is not None:
             self.structured_drafts[record["cx_generation_id"]] = structured_draft
+        if progress_events is not None:
+            self.progress_events[record["cx_generation_id"]] = list(progress_events)
         return record
 
     def get(self, cx_generation_id: str) -> dict[str, Any] | None:
@@ -105,6 +110,12 @@ class GenerationExecutionStore:
 
     def get_structured_draft(self, cx_generation_id: str) -> dict[str, Any] | None:
         return self.structured_drafts.get(cx_generation_id)
+
+    def get_progress_events(self, cx_generation_id: str) -> list[dict[str, Any]] | None:
+        events = self.progress_events.get(cx_generation_id)
+        if events is None:
+            return None
+        return list(events)
 
 
 @dataclass(frozen=True)
@@ -166,6 +177,16 @@ def register_generation_routes(
                 compatibility_rule=compatibility_rule,
                 retrieval_package=retrieval_package,
             )
+            progress_events = build_cx_generation_progress_events(
+                source_payload=payload,
+                mo_payload=mo_payload,
+                mo_response=mo_response,
+                compatibility_rule=compatibility_rule,
+                retrieval_package=retrieval_package,
+                structured_draft=structured_draft,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
             return generation_store.save(
                 build_generation_execution_record(
                     source_payload=payload,
@@ -178,6 +199,7 @@ def register_generation_routes(
                     trace_id=trace_id,
                 ),
                 structured_draft=structured_draft,
+                progress_events=progress_events,
             )
         except GenerationCompatibilityError as exc:
             return _generation_problem_response(
@@ -234,6 +256,40 @@ def register_generation_routes(
                 ),
             )
         return draft
+
+    @app.get("/api/v1/generations/{cx_generation_id}/events", response_model=None)
+    def get_generation_events(
+        cx_generation_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_cx_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        record = generation_store.get(cx_generation_id)
+        if record is None:
+            return _generation_problem_response(
+                request,
+                GenerationFacadeError(
+                    status_code=404,
+                    error_code="cx.generation_not_found",
+                    detail=f"Generation record was not found: {cx_generation_id}",
+                ),
+            )
+
+        events = generation_store.get_progress_events(cx_generation_id) or []
+        return {
+            "progress_events_schema_version": "generation_progress_event_list.v1",
+            "cx_generation_id": cx_generation_id,
+            "trace_id": record["trace_id"],
+            "request_id": record["request_id"],
+            "events": events,
+            "pagination": {
+                "next_cursor": None,
+                "event_count": len(events),
+            },
+        }
 
 
 def build_mo_generation_payload(

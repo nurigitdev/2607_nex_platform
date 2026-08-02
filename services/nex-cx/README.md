@@ -65,6 +65,7 @@ Current endpoints:
 - `POST /api/v1/generations`
 - `GET /api/v1/generations/{cx_generation_id}`
 - `GET /api/v1/generations/{cx_generation_id}/structured-draft`
+- `GET /api/v1/generations/{cx_generation_id}/events`
 
 Grounded generation validation:
 
@@ -73,3 +74,6 @@ Grounded generation validation:
   active compatibility rule and a matching `READY` retrieval package reference.
 - Structured drafts expose output hashes, short previews, citation validation,
   and retrieval lineage without exposing full model output text.
+- Generation progress events expose ordered, redacted polling timelines for AE
+  and AG without exposing raw prompts, source text, provider endpoints, or
+  token-level output.

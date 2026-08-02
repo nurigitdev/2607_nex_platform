@@ -1,0 +1,27 @@
+{
+  "event_schema_version": "generation_progress_event.v1",
+  "event_id": "progress-event-001",
+  "event_type": "generation.provider.completed",
+  "event_source_service": "nex-cx",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "occurred_at": "2026-08-02T00:00:00Z",
+  "sequence_no": 4,
+  "cx_generation_id": "cx-gen-001",
+  "mo_generation_id": "mo-gen-001",
+  "job_status": "RUNNING",
+  "current_stage": "GENERATING",
+  "progress_mode": "INDETERMINATE",
+  "message_key": "generation.progress.provider_completed",
+  "safe_message": "Provider generation completed.",
+  "retryable": false,
+  "details": {
+    "alias": "general-llm-default",
+    "finish_reason": "STOP",
+    "usage": {
+      "input_tokens": 5,
+      "output_tokens": 7,
+      "total_tokens": 12
+    }
+  }
+}

@@ -51,6 +51,11 @@
       "schema": "schemas/generation/cx_structured_draft.v1.schema.json"
     },
     {
+      "name": "generation_progress_event_raw_prompt_leak",
+      "path": "tests/negative/generation/generation_progress_event.raw_prompt_leak.json",
+      "schema": "schemas/generation/generation_progress_event.v1.schema.json"
+    },
+    {
       "name": "ae_chat_interaction_raw_user_message_leak",
       "path": "tests/negative/generation/ae_chat_interaction.raw_user_message_leak.json",
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"

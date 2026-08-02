@@ -51,6 +51,11 @@
       "schema": "schemas/generation/cx_structured_draft.v1.schema.json"
     },
     {
+      "name": "generation_progress_event_mock",
+      "path": "examples/generation/generation_progress_event.mock_success.json",
+      "schema": "schemas/generation/generation_progress_event.v1.schema.json"
+    },
+    {
       "name": "ae_chat_interaction_mock",
       "path": "examples/generation/ae_chat_interaction.mock_success.json",
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
