@@ -3,8 +3,8 @@
 Status: Slice 0001 service shell baseline.
 
 Each backend service owns its package, database, and public service boundary.
-The `_shared` runtime currently contains only the Slice 0001 shell behavior for
-`/health`, `/ready`, and `/version`; it must not grow service-private database
+The `_shared` runtime contains service shell behavior and the Slice 0005
+local-mock service claim validator; it must not grow service-private database
 models or domain ownership.
 
 | Service | Package | Default Port | Database Env |
@@ -28,3 +28,9 @@ Run all service shells:
 ```
 
 Both scripts load `.env.local` when present. Keep `.env.local` out of git.
+
+Slice 0005 adds a mock-only OA service token path:
+
+- `POST /api/v1/auth/service-token` on `nex-oa`.
+- `POST /api/v1/auth/introspect` on `nex-oa`.
+- `GET /internal/v1/auth/service-claim` on every backend service.

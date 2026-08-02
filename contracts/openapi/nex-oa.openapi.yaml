@@ -31,3 +31,31 @@ paths:
       responses:
         "200":
           description: Service version metadata.
+  /internal/v1/auth/service-claim:
+    get:
+      operationId: validateOaServiceClaim
+      tags:
+        - Platform
+      responses:
+        "200":
+          description: Service claim is valid for this service.
+        "401":
+          description: Service claim is missing or invalid.
+  /api/v1/auth/service-token:
+    post:
+      operationId: createMockServiceToken
+      tags:
+        - Auth
+      responses:
+        "200":
+          description: Mock service token issued.
+        "400":
+          description: Service token request is invalid.
+  /api/v1/auth/introspect:
+    post:
+      operationId: introspectMockServiceToken
+      tags:
+        - Auth
+      responses:
+        "200":
+          description: Mock service token introspection result.

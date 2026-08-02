@@ -1,0 +1,12 @@
+{
+  "issuer": "nex-oa",
+  "subject": "service:nex-ae-api",
+  "audience": "nex-cx",
+  "service_id": "nex-ae-api",
+  "scopes": [
+    "service:call"
+  ],
+  "issued_at": "2026-08-02T00:00:00Z",
+  "expires_at": "2026-08-02T01:00:00Z",
+  "token_use": "service"
+}

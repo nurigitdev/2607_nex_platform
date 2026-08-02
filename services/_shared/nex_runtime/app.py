@@ -1,14 +1,27 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 import psycopg
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from .auth import (
+    DEFAULT_SERVICE_SCOPE,
+    ClaimValidationResult,
+    issue_mock_service_token,
+    validate_authorization_header,
+    validate_mock_service_token,
+)
+
+TRACEPARENT_PATTERN = re.compile(r"^00-([0-9a-f]{32})-[0-9a-f]{16}-[0-9a-f]{2}$")
 
 
 @dataclass(frozen=True)
@@ -116,11 +129,82 @@ def build_service_app(spec: ServiceSpec) -> FastAPI:
             "service_name": spec.display_name,
             "version": version,
             "api_version": "v1",
-            "contract_catalog_version": "slice-0000",
+            "contract_catalog_version": "slice-0005",
             "build_sha": os.getenv("NEX_BUILD_SHA", "local"),
         }
 
+    @app.get("/internal/v1/auth/service-claim", response_model=None)
+    def validate_service_claim(
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any] | JSONResponse:
+        result = validate_authorization_header(
+            authorization,
+            expected_audience=spec.service_id,
+            required_scopes=[DEFAULT_SERVICE_SCOPE],
+        )
+        if not result.ok:
+            return _auth_problem_response(request, result)
+
+        assert result.claims is not None
+        return {
+            "service_id": spec.service_id,
+            "claim_status": "VALID",
+            "claims": result.claims.to_wire(),
+        }
+
+    if spec.service_id == "nex-oa":
+        _register_oa_mock_auth_routes(app)
+
     return app
+
+
+def _register_oa_mock_auth_routes(app: FastAPI) -> None:
+    @app.post("/api/v1/auth/service-token", response_model=None)
+    def create_service_token(
+        payload: dict[str, Any],
+        request: Request,
+    ) -> dict[str, Any] | JSONResponse:
+        try:
+            issued = issue_mock_service_token(
+                service_id=payload.get("service_id", ""),
+                audience=payload.get("audience", ""),
+                scopes=payload.get("scopes"),
+                ttl_seconds=payload.get("ttl_seconds", 3600),
+            )
+        except (TypeError, ValueError) as exc:
+            result = ClaimValidationResult(
+                ok=False,
+                error_code="SERVICE_TOKEN_REQUEST_INVALID",
+                detail=str(exc),
+            )
+            return _auth_problem_response(request, result, status_code=400)
+
+        return {
+            "token_type": "Bearer",
+            "access_token": issued.access_token,
+            "claims": issued.claims.to_wire(),
+        }
+
+    @app.post("/api/v1/auth/introspect")
+    def introspect_service_token(payload: dict[str, Any]) -> dict[str, Any]:
+        result = validate_mock_service_token(
+            payload.get("token", ""),
+            expected_audience=payload.get("audience"),
+            required_scopes=payload.get("required_scopes", []),
+        )
+        if not result.ok:
+            return {
+                "active": False,
+                "error_code": result.error_code,
+                "detail": result.detail,
+            }
+
+        assert result.claims is not None
+        return {
+            "active": True,
+            "claims": result.claims.to_wire(),
+        }
 
 
 def _configure_cors(app: FastAPI) -> None:
@@ -136,9 +220,49 @@ def _configure_cors(app: FastAPI) -> None:
         CORSMiddleware,
         allow_origins=origins,
         allow_credentials=False,
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
+
+
+def _auth_problem_response(
+    request: Request,
+    result: ClaimValidationResult,
+    *,
+    status_code: int = 401,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        media_type="application/problem+json",
+        content={
+            "type": "https://nex-platform.local/problems/authentication-failed",
+            "title": "Authentication failed",
+            "status": status_code,
+            "detail": result.detail or "Service claim validation failed.",
+            "instance": request.url.path,
+            "error_code": result.error_code or "SERVICE_CLAIM_INVALID",
+            "retryable": False,
+            "request_id": _request_id(request),
+            "trace_id": _trace_id(request),
+            "details": {},
+        },
+    )
+
+
+def _request_id(request: Request) -> str:
+    request_id = request.headers.get("X-Request-ID")
+    if request_id:
+        return request_id.lower()
+    return str(uuid4())
+
+
+def _trace_id(request: Request) -> str:
+    traceparent = request.headers.get("traceparent")
+    if traceparent:
+        match = TRACEPARENT_PATTERN.fullmatch(traceparent)
+        if match:
+            return match.group(1)
+    return uuid4().hex
 
 
 def _check_database(database_env: str) -> dict[str, Any]:

@@ -14,6 +14,11 @@
       "name": "trace_refs_minimal",
       "path": "examples/common/trace_refs.minimal.json",
       "schema": "schemas/common/trace_refs.v1.schema.json"
+    },
+    {
+      "name": "service_claims_ae_to_cx",
+      "path": "examples/auth/service_claims.ae_to_cx.json",
+      "schema": "schemas/common/service_claims.v1.schema.json"
     }
   ]
 }

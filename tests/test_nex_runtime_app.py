@@ -5,7 +5,7 @@ import importlib
 import pytest
 from fastapi.testclient import TestClient
 
-from nex_runtime import SERVICE_SPECS, build_service_app
+from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 import nex_runtime.app as runtime_app
 
 
@@ -70,6 +70,7 @@ def test_root_health_and_version_use_service_metadata(monkeypatch: pytest.Monkey
     assert version.status_code == 200
     assert version.json()["version"] == "9.9.9-test"
     assert version.json()["build_sha"] == "abc123"
+    assert version.json()["contract_catalog_version"] == "slice-0005"
 
 
 def test_ready_returns_503_when_database_url_is_missing(
@@ -124,6 +125,89 @@ def test_ready_reports_database_connection_failure(
 
     assert response.status_code == 503
     assert response.json()["checks"][0]["error_code"] == "DATABASE_CONNECTION_FAILED"
+
+
+@pytest.mark.parametrize("service_id", sorted(SERVICE_SPECS))
+def test_service_claim_endpoint_accepts_valid_mock_token(service_id: str) -> None:
+    issued = issue_mock_service_token(service_id="nex-oa", audience=service_id)
+    client = TestClient(build_service_app(SERVICE_SPECS[service_id]))
+
+    response = client.get(
+        "/internal/v1/auth/service-claim",
+        headers={"Authorization": f"Bearer {issued.access_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["claim_status"] == "VALID"
+    assert response.json()["claims"]["audience"] == service_id
+
+
+def test_service_claim_endpoint_rejects_missing_token_with_problem_json() -> None:
+    client = TestClient(build_service_app(SERVICE_SPECS["nex-cx"]))
+
+    response = client.get(
+        "/internal/v1/auth/service-claim",
+        headers={
+            "X-Request-ID": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith("application/problem+json")
+    payload = response.json()
+    assert payload["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert payload["request_id"] == "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
+    assert payload["trace_id"] == "4bf92f3577b34da6a3ce929d0e0e4736"
+
+
+def test_oa_issues_and_introspects_mock_service_token() -> None:
+    client = TestClient(build_service_app(SERVICE_SPECS["nex-oa"]))
+
+    token_response = client.post(
+        "/api/v1/auth/service-token",
+        json={"service_id": "nex-ae-api", "audience": "nex-cx"},
+    )
+
+    assert token_response.status_code == 200
+    token_payload = token_response.json()
+    assert token_payload["token_type"] == "Bearer"
+    assert token_payload["claims"]["service_id"] == "nex-ae-api"
+
+    introspect_response = client.post(
+        "/api/v1/auth/introspect",
+        json={
+            "token": token_payload["access_token"],
+            "audience": "nex-cx",
+            "required_scopes": ["service:call"],
+        },
+    )
+
+    assert introspect_response.status_code == 200
+    assert introspect_response.json()["active"] is True
+
+
+def test_oa_rejects_invalid_service_token_request_with_problem_json() -> None:
+    client = TestClient(build_service_app(SERVICE_SPECS["nex-oa"]))
+
+    response = client.post(
+        "/api/v1/auth/service-token",
+        json={"service_id": "unknown", "audience": "nex-cx"},
+    )
+
+    assert response.status_code == 400
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["error_code"] == "SERVICE_TOKEN_REQUEST_INVALID"
+
+
+def test_oa_introspection_reports_inactive_for_invalid_token() -> None:
+    client = TestClient(build_service_app(SERVICE_SPECS["nex-oa"]))
+
+    response = client.post("/api/v1/auth/introspect", json={"token": "invalid"})
+
+    assert response.status_code == 200
+    assert response.json()["active"] is False
+    assert response.json()["error_code"] == "TOKEN_FORMAT_INVALID"
 
 
 @pytest.mark.parametrize(

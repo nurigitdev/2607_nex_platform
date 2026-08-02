@@ -31,3 +31,13 @@ paths:
       responses:
         "200":
           description: Service version metadata.
+  /internal/v1/auth/service-claim:
+    get:
+      operationId: validateAeServiceClaim
+      tags:
+        - Platform
+      responses:
+        "200":
+          description: Service claim is valid for this service.
+        "401":
+          description: Service claim is missing or invalid.

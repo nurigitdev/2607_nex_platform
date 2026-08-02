@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/service_claims.v1.schema.json",
+  "title": "NeX Service Claims",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "issuer",
+    "subject",
+    "audience",
+    "service_id",
+    "scopes",
+    "issued_at",
+    "expires_at",
+    "token_use"
+  ],
+  "properties": {
+    "issuer": {
+      "const": "nex-oa"
+    },
+    "subject": {
+      "type": "string",
+      "pattern": "^service:nex-(oa|ag|ae-api|cx|mo)$"
+    },
+    "audience": {
+      "type": "string",
+      "enum": [
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo"
+      ]
+    },
+    "service_id": {
+      "type": "string",
+      "enum": [
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo"
+      ]
+    },
+    "scopes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]*(?::[a-z][a-z0-9_-]*)+$"
+      }
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "token_use": {
+      "const": "service"
+    }
+  }
+}
