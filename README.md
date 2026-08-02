@@ -18,6 +18,7 @@ services/
   nex-cx/
   nex-mo/
   _shared/
+database/
 docs/
 scripts/
 ```

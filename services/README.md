@@ -29,6 +29,9 @@ Run all service shells:
 
 Both scripts load `.env.local` when present. Keep `.env.local` out of git.
 
+Persistent schema foundations live under `database/<service>/migrations/`.
+Service migrations must only reference tables in the owning service database.
+
 Slice 0005 adds a mock-only OA service token path:
 
 - `POST /api/v1/auth/service-token` on `nex-oa`.

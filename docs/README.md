@@ -124,6 +124,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0018`](slices/0018_ae_retrieval_orchestration.md) | `S2-008` AE retrieval orchestration route. |
 | [`Slice 0019`](slices/0019_ae_grounded_chat_retrieval_context.md) | `S2-009` AE grounded chat uses CX retrieval context. |
 | [`Slice 0020`](slices/0020_grounded_traceable_mock_flow.md) | `S2-010` Grounded traceable mock flow regression. |
+| [`Slice 0021`](slices/0021_persistent_schema_foundation.md) | `S3-001` Persistent schema foundation for content, summaries, prompt registry, and prompt analytics. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
