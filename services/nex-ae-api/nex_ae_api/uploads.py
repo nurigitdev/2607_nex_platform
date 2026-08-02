@@ -1,0 +1,387 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any, Protocol
+from uuid import NAMESPACE_URL, uuid5
+
+import httpx
+from fastapi import FastAPI, Header, Request
+from fastapi.responses import JSONResponse
+
+from nex_runtime import (
+    DEFAULT_SERVICE_SCOPE,
+    issue_mock_service_token,
+    problem_response,
+    request_id_from_headers,
+    trace_id_from_headers,
+    validate_authorization_header,
+)
+
+
+DEFAULT_TENANT_ID = "local-tenant"
+DEFAULT_OWNER_USER_ID = "local-user"
+
+
+class CxUploadClient(Protocol):
+    def register_upload(
+        self,
+        payload: dict[str, Any],
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        ...
+
+
+@dataclass(frozen=True)
+class HttpCxUploadClient:
+    base_url: str = "http://127.0.0.1:8104"
+    service_token: str | None = None
+    timeout_seconds: float = 5.0
+
+    def register_upload(
+        self,
+        payload: dict[str, Any],
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        token = self.service_token or issue_mock_service_token(
+            service_id="nex-ae-api",
+            audience="nex-cx",
+        ).access_token
+        response = httpx.post(
+            f"{self.base_url}/api/v1/documents/uploads",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "X-Request-ID": request_id,
+                "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
+                "X-Service-ID": "nex-ae-api",
+            },
+            timeout=self.timeout_seconds,
+        )
+        if response.status_code >= 400:
+            body = _safe_response_json(response)
+            raise UploadHandoffError(
+                status_code=response.status_code,
+                error_code=body.get("error_code", "cx.upload_request_failed"),
+                detail=body.get("detail", "CX upload registration failed."),
+                retryable=body.get("retryable", False),
+            )
+        return response.json()
+
+
+@dataclass
+class UploadHandoffStore:
+    records: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        self.records[record["upload_handoff_id"]] = record
+        return record
+
+    def get(self, upload_handoff_id: str) -> dict[str, Any] | None:
+        return self.records.get(upload_handoff_id)
+
+
+@dataclass(frozen=True)
+class UploadHandoffError(Exception):
+    status_code: int
+    error_code: str
+    detail: str
+    retryable: bool = False
+
+
+DEFAULT_UPLOAD_HANDOFF_STORE = UploadHandoffStore()
+
+
+def build_default_cx_upload_client() -> HttpCxUploadClient:
+    return HttpCxUploadClient(
+        base_url=os.getenv("NEX_CX_BASE_URL", "http://127.0.0.1:8104"),
+        service_token=os.getenv("NEX_AE_TO_CX_SERVICE_TOKEN"),
+    )
+
+
+def register_upload_routes(
+    app: FastAPI,
+    *,
+    store: UploadHandoffStore | None = None,
+    cx_client: CxUploadClient | None = None,
+) -> None:
+    upload_store = store or DEFAULT_UPLOAD_HANDOFF_STORE
+    client = cx_client or build_default_cx_upload_client()
+
+    @app.post("/api/v1/uploads", response_model=None)
+    def create_upload_handoff(
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        request_id = request_id_from_headers(request)
+        trace_id = payload.get("trace_id") or trace_id_from_headers(request)
+        try:
+            cx_payload = build_cx_upload_payload(payload, trace_id=trace_id)
+            cx_record = client.register_upload(
+                cx_payload,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            status_code = 200 if cx_record["dedupe"]["status"] == "ALREADY_EXISTS" else 202
+            return JSONResponse(
+                status_code=status_code,
+                content=upload_store.save(
+                    build_upload_handoff_record(
+                        source_payload=payload,
+                        cx_payload=cx_payload,
+                        cx_record=cx_record,
+                        request_id=request_id,
+                        trace_id=trace_id,
+                    )
+                ),
+            )
+        except UploadHandoffError as exc:
+            return _upload_problem_response(request, exc)
+
+    @app.get("/api/v1/uploads/{upload_handoff_id}", response_model=None)
+    def get_upload_handoff(
+        upload_handoff_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        record = upload_store.get(upload_handoff_id)
+        if record is None:
+            return _upload_problem_response(
+                request,
+                UploadHandoffError(
+                    status_code=404,
+                    error_code="ae.upload_handoff_not_found",
+                    detail=f"Upload handoff was not found: {upload_handoff_id}",
+                ),
+            )
+        return record
+
+
+def build_cx_upload_payload(
+    source_payload: dict[str, Any],
+    *,
+    trace_id: str,
+) -> dict[str, Any]:
+    tenant_id, owner_user_id = owner_scope_from_payload(source_payload)
+    filename = required_string(source_payload, "filename", "ae.upload_filename_required")
+    content_type = optional_string(
+        source_payload,
+        "content_type",
+        "application/octet-stream",
+    )
+    content_text = source_payload.get("content_text")
+    if content_text is not None and not isinstance(content_text, str):
+        raise UploadHandoffError(
+            status_code=422,
+            error_code="ae.upload_content_text_invalid",
+            detail="content_text must be a string when supplied.",
+        )
+
+    payload: dict[str, Any] = {
+        "trace_id": trace_id,
+        "filename": filename,
+        "content_type": content_type,
+        "tenant_id": tenant_id,
+        "owner_user_id": owner_user_id,
+    }
+    if isinstance(content_text, str):
+        payload["content_text"] = content_text
+    if "source_sha256" in source_payload:
+        payload["source_sha256"] = required_hash(source_payload["source_sha256"])
+    if "size_bytes" in source_payload:
+        payload["size_bytes"] = non_negative_int(source_payload["size_bytes"])
+    return payload
+
+
+def build_upload_handoff_record(
+    *,
+    source_payload: dict[str, Any],
+    cx_payload: dict[str, Any],
+    cx_record: dict[str, Any],
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    tenant_id = cx_payload["tenant_id"]
+    owner_user_id = cx_payload["owner_user_id"]
+    workspace_id = source_payload.get("workspace_id") or str(
+        uuid5(NAMESPACE_URL, f"ae-workspace:{tenant_id}:{owner_user_id}:default")
+    )
+    source_sha256 = cx_record["source_sha256"]
+    upload_handoff_id = source_payload.get("upload_handoff_id") or str(
+        uuid5(NAMESPACE_URL, f"ae-upload-handoff:{workspace_id}:{source_sha256}")
+    )
+    now = _utc_now()
+    return {
+        "upload_handoff_schema_version": "ae_upload_handoff.v1",
+        "upload_handoff_id": upload_handoff_id,
+        "workspace_id": workspace_id,
+        "tenant_id": tenant_id,
+        "owner_user_id": owner_user_id,
+        "status": upload_handoff_status(cx_record),
+        "trace_id": trace_id,
+        "request_id": request_id,
+        "source": {
+            "filename": cx_record["filename"],
+            "content_type": cx_record["content_type"],
+            "size_bytes": cx_record["size_bytes"],
+            "source_sha256": source_sha256,
+            "source_text_hash": sha256_text(cx_payload["content_text"])
+            if "content_text" in cx_payload
+            else None,
+        },
+        "cx_document_ref": {
+            "document_id": cx_record["document_id"],
+            "upload_id": cx_record["upload_id"],
+            "ingestion_job_id": cx_record["extraction"]["job_id"],
+            "extraction_status": cx_record["extraction"]["status"],
+            "markdown_available": cx_record["extraction"]["markdown_available"],
+            "dedupe_status": cx_record["dedupe"]["status"],
+            "existing_document_id": cx_record["dedupe"]["existing_document_id"],
+        },
+        "links": {
+            "cx_document": f"/api/v1/documents/{cx_record['document_id']}",
+            "cx_ingestion_job": f"/api/v1/jobs/{cx_record['extraction']['job_id']}",
+        },
+        "metadata": {
+            "raw_source_stored_in_ae": False,
+            "cx_storage_redacted": True,
+        },
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def upload_handoff_status(cx_record: dict[str, Any]) -> str:
+    if cx_record["dedupe"]["status"] == "ALREADY_EXISTS":
+        return "ALREADY_EXISTS"
+    return "QUEUED"
+
+
+def owner_scope_from_payload(payload: dict[str, Any]) -> tuple[str, str]:
+    tenant_id = optional_string(payload, "tenant_id", DEFAULT_TENANT_ID)
+    owner_user_id = optional_string(
+        payload,
+        "owner_user_id",
+        optional_string(payload, "user_id", DEFAULT_OWNER_USER_ID),
+    )
+    return tenant_id, owner_user_id
+
+
+def required_string(payload: dict[str, Any], field_name: str, error_code: str) -> str:
+    value = payload.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise UploadHandoffError(
+            status_code=400,
+            error_code=error_code,
+            detail=f"{field_name} must be a non-empty string.",
+        )
+    return value.strip()
+
+
+def optional_string(payload: dict[str, Any], field_name: str, default: str) -> str:
+    value = payload.get(field_name, default)
+    if not isinstance(value, str) or not value.strip():
+        raise UploadHandoffError(
+            status_code=400,
+            error_code="ae.upload_owner_invalid",
+            detail=f"{field_name} must be a non-empty string.",
+        )
+    return value.strip()
+
+
+def required_hash(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise UploadHandoffError(
+            status_code=400,
+            error_code="ae.upload_source_hash_invalid",
+            detail="source_sha256 must be a lowercase SHA-256 hex string.",
+        )
+    normalized = value.strip()
+    if len(normalized) != 64 or any(char not in "0123456789abcdef" for char in normalized):
+        raise UploadHandoffError(
+            status_code=400,
+            error_code="ae.upload_source_hash_invalid",
+            detail="source_sha256 must be a lowercase SHA-256 hex string.",
+        )
+    return normalized
+
+
+def non_negative_int(value: Any) -> int:
+    if not isinstance(value, int) or value < 0:
+        raise UploadHandoffError(
+            status_code=400,
+            error_code="ae.upload_size_invalid",
+            detail="size_bytes must be a non-negative integer.",
+        )
+    return value
+
+
+def sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _authorize_ae_request(
+    request: Request,
+    authorization: str | None,
+) -> JSONResponse | None:
+    result = validate_authorization_header(
+        authorization,
+        expected_audience="nex-ae-api",
+        required_scopes=[DEFAULT_SERVICE_SCOPE],
+    )
+    if result.ok:
+        return None
+
+    return problem_response(
+        request,
+        status_code=401,
+        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
+        title="Authentication failed",
+        detail=result.detail or "AE API requires a valid service claim.",
+        type_uri="https://nex-platform.local/problems/authentication-failed",
+    )
+
+
+def _upload_problem_response(
+    request: Request,
+    exc: UploadHandoffError,
+) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="Upload handoff failed",
+        detail=exc.detail,
+        retryable=exc.retryable,
+        type_uri="https://nex-platform.local/problems/upload-handoff-failed",
+    )
+
+
+def _safe_response_json(response: httpx.Response) -> dict[str, Any]:
+    try:
+        payload = response.json()
+    except json.JSONDecodeError:
+        return {}
+    if isinstance(payload, dict):
+        return payload
+    return {}
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")

@@ -13,6 +13,8 @@ Current endpoints:
 - `POST /api/v1/workspaces`
 - `GET /api/v1/workspaces/{workspace_id}`
 - `GET /api/v1/workspaces/{workspace_id}/activity`
+- `POST /api/v1/uploads`
+- `GET /api/v1/uploads/{upload_handoff_id}`
 - `POST /api/v1/chat/interactions`
 - `GET /api/v1/chat/interactions/{interaction_id}`
 - `POST /api/v1/retrieval/contexts`
@@ -32,6 +34,12 @@ Workspace state:
 
 - AE owns workspace state, default runtime controls, chat document identity, and
   activity summaries for the user-facing web shell.
+
+Upload handoff:
+
+- AE accepts upload metadata and mock `content_text`, forwards it to CX, and
+  stores only safe CX document/job references. Source bytes, storage keys, and
+  filesystem paths remain CX-owned.
 
 Prompt analytics:
 

@@ -1,0 +1,37 @@
+{
+  "upload_handoff_schema_version": "ae_upload_handoff.v1",
+  "upload_handoff_id": "upload-handoff-001",
+  "workspace_id": "workspace-001",
+  "tenant_id": "local-tenant",
+  "owner_user_id": "local-user",
+  "status": "QUEUED",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "source": {
+    "filename": "mvp-srs.md",
+    "content_type": "text/markdown",
+    "size_bytes": 23,
+    "source_sha256": "d12261539d27dcab69f873a5e1a30587919b8ce4802782151f1bc2ba5390b610",
+    "source_text_hash": "d12261539d27dcab69f873a5e1a30587919b8ce4802782151f1bc2ba5390b610",
+    "content_text": "Raw source document text must stay out of AE handoff records."
+  },
+  "cx_document_ref": {
+    "document_id": "ef9069bc-4280-5f80-b670-ff93aa254f73",
+    "upload_id": "1e104113-6044-547f-8441-6b9bb28eb1e1",
+    "ingestion_job_id": "c20e7c5d-77b8-514d-8243-d3357236a105",
+    "extraction_status": "PENDING",
+    "markdown_available": false,
+    "dedupe_status": "CREATED",
+    "existing_document_id": null
+  },
+  "links": {
+    "cx_document": "/api/v1/documents/ef9069bc-4280-5f80-b670-ff93aa254f73",
+    "cx_ingestion_job": "/api/v1/jobs/c20e7c5d-77b8-514d-8243-d3357236a105"
+  },
+  "metadata": {
+    "raw_source_stored_in_ae": false,
+    "cx_storage_redacted": true
+  },
+  "created_at": "2026-08-02T00:00:00Z",
+  "updated_at": "2026-08-02T00:00:00Z"
+}

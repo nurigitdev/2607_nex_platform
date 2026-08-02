@@ -5,6 +5,7 @@ info:
 tags:
   - name: Platform
   - name: Workspace
+  - name: Uploads
   - name: Chat
   - name: Retrieval
   - name: Analytics
@@ -94,6 +95,42 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: AE workspace was not found.
+  /api/v1/uploads:
+    post:
+      operationId: createAeUploadHandoff
+      tags:
+        - Uploads
+      responses:
+        "200":
+          description: CX reported an existing owner-scoped document.
+        "202":
+          description: Upload handoff accepted and CX ingestion is queued.
+        "400":
+          description: Upload handoff request is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Upload handoff content metadata is invalid.
+        "503":
+          description: CX upload registration is unavailable.
+  /api/v1/uploads/{upload_handoff_id}:
+    get:
+      operationId: getAeUploadHandoff
+      tags:
+        - Uploads
+      parameters:
+        - name: upload_handoff_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Safe AE upload handoff record.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Upload handoff was not found.
   /api/v1/chat/interactions:
     post:
       operationId: createAeChatInteraction

@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/upload_handoff.v1.schema.json",
+  "title": "NeX AE Upload Handoff",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "upload_handoff_schema_version",
+    "upload_handoff_id",
+    "workspace_id",
+    "tenant_id",
+    "owner_user_id",
+    "status",
+    "trace_id",
+    "request_id",
+    "source",
+    "cx_document_ref",
+    "links",
+    "metadata",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "upload_handoff_schema_version": {
+      "const": "ae_upload_handoff.v1"
+    },
+    "upload_handoff_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspace_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner_user_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "QUEUED",
+        "ALREADY_EXISTS"
+      ]
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "filename",
+        "content_type",
+        "size_bytes",
+        "source_sha256",
+        "source_text_hash"
+      ],
+      "properties": {
+        "filename": {
+          "type": "string",
+          "pattern": "^[^/\\\\]{1,255}$"
+        },
+        "content_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "source_text_hash": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "cx_document_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "document_id",
+        "upload_id",
+        "ingestion_job_id",
+        "extraction_status",
+        "markdown_available",
+        "dedupe_status",
+        "existing_document_id"
+      ],
+      "properties": {
+        "document_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "upload_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ingestion_job_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "extraction_status": {
+          "type": "string",
+          "enum": [
+            "PENDING",
+            "RUNNING",
+            "SUCCEEDED",
+            "FAILED"
+          ]
+        },
+        "markdown_available": {
+          "type": "boolean"
+        },
+        "dedupe_status": {
+          "type": "string",
+          "enum": [
+            "CREATED",
+            "ALREADY_EXISTS"
+          ]
+        },
+        "existing_document_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cx_document",
+        "cx_ingestion_job"
+      ],
+      "properties": {
+        "cx_document": {
+          "type": "string",
+          "pattern": "^/api/v1/documents/[^/]+$"
+        },
+        "cx_ingestion_job": {
+          "type": "string",
+          "pattern": "^/api/v1/jobs/[^/]+$"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_source_stored_in_ae",
+        "cx_storage_redacted"
+      ],
+      "properties": {
+        "raw_source_stored_in_ae": {
+          "const": false
+        },
+        "cx_storage_redacted": {
+          "const": true
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
