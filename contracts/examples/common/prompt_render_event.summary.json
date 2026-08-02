@@ -1,0 +1,24 @@
+{
+  "prompt_render_event_schema_version": "prompt_render_event.v1",
+  "prompt_render_event_id": "be0a6a6a-34f3-5a1f-813c-5bebcfb2a0d4",
+  "service_id": "nex-cx",
+  "prompt_binding_id": "9c7e82d4-6b52-5d87-95da-f3b0b4a7e495",
+  "prompt_template_version_id": "db22008f-20fa-5daa-beb2-6a3292fab7dc",
+  "binding_key": "cx.document_summary.default",
+  "purpose": "document_summary",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "rendered_prompt_hash": "bb091da79121e3c2ff1dc0053a39231446a7973a502f70364bb96362f2317f7d",
+  "rendered_prompt_preview": "Summarize extracted Markdown for retrieval. Keep the summary under 900 characters and never exceed 1000 characters.",
+  "user_prompt_hash": null,
+  "output_hash": "2af9e68d2982eac0868adbcab5d84c35ae6a8e1819ce3daf2eb9c31a1ed00c34",
+  "metadata": {
+    "variable_keys": [
+      "summary_hard_limit_chars",
+      "summary_max_chars"
+    ],
+    "role": "system",
+    "model_capability": "summary"
+  },
+  "created_at": "2026-08-02T00:00:00Z"
+}

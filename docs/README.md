@@ -132,6 +132,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0026`](slices/0026_cx_local_source_file_materialization.md) | `S3-006` CX local source file materialization. |
 | [`Slice 0027`](slices/0027_cx_document_summary_contract.md) | `S3-007` CX document summary contract and mock summarizer job. |
 | [`Slice 0028`](slices/0028_cx_summary_embedding_index.md) | `S3-008` CX summary embedding index. |
+| [`Slice 0029`](slices/0029_prompt_registry_seed_render_contract.md) | `S3-009` Prompt registry seed and prompt render event contract. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

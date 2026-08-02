@@ -25,6 +25,8 @@ from nex_cx.summaries import (
     trim_to_limit,
     validate_summary_limits,
 )
+from nex_cx.prompts import CX_DOCUMENT_SUMMARY_BINDING, seed_cx_prompt_registry
+from nex_runtime.prompts import PromptRegistryStore
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 
 
@@ -176,6 +178,31 @@ def test_build_and_store_document_summary_saves_private_text(tmp_path: Path) -> 
     assert record["summary_text_sha256"] == sha256_text(private_text)
     assert store.get_document_summary(extraction["document_id"]) == record
     assert "traceable retrieval" not in str(record["summary_text_sha256"])
+
+
+def test_build_and_store_document_summary_records_prompt_render_event(
+    tmp_path: Path,
+) -> None:
+    store, extraction = build_store_with_extraction(tmp_path)
+    prompt_store = PromptRegistryStore()
+    seed_cx_prompt_registry(prompt_store)
+
+    record = build_and_store_document_summary(
+        extraction["document_id"],
+        store=store,
+        prompt_store=prompt_store,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    event = prompt_store.get_render_event(record["prompt_render_event_id"])
+    assert event["binding_key"] == CX_DOCUMENT_SUMMARY_BINDING
+    assert record["prompt_template_version_id"] == event["prompt_template_version_id"]
+    assert record["provider_prompt_package_hash"] == event["rendered_prompt_hash"]
+    assert event["metadata"]["variable_keys"] == [
+        "summary_hard_limit_chars",
+        "summary_max_chars",
+    ]
 
 
 def test_build_and_store_document_summary_reports_missing_extraction() -> None:

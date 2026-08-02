@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0023 migration runner smoke guard.
+Status: Slice 0029 prompt registry seed.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -44,6 +44,16 @@ Local migrations are applied by the service-owned runner:
 The runner reads `.env.local`, rejects placeholder database URLs, creates the
 `schema_migrations` state table before checking applied versions, and executes
 only migrations that have not already been recorded.
+
+## Prompt Registry Seeds
+
+Prompt registry seed migrations currently install:
+
+- CX `cx.document_summary.default` for bounded document summaries.
+- AE `ae.grounded_chat.default` for grounded chat generation.
+
+Runtime prompt render events store hashes, short previews, variable keys, and
+lineage IDs. They do not store raw user prompts.
 
 ## Source File Storage
 

@@ -16,8 +16,14 @@ from nex_runtime import (
     trace_id_from_headers,
     validate_authorization_header,
 )
+from nex_runtime.prompts import (
+    PromptRegistryError,
+    PromptRegistryStore,
+    render_prompt_from_binding,
+)
 
 from nex_cx.ingestion import ContentIngestionStore, sha256_text
+from nex_cx.prompts import CX_DOCUMENT_SUMMARY_BINDING
 
 
 DEFAULT_SUMMARY_CHUNK_POLICY = "summary_1000_0"
@@ -34,7 +40,12 @@ class SummaryError(Exception):
     retryable: bool = False
 
 
-def register_summary_routes(app: FastAPI, *, store: ContentIngestionStore) -> None:
+def register_summary_routes(
+    app: FastAPI,
+    *,
+    store: ContentIngestionStore,
+    prompt_store: PromptRegistryStore | None = None,
+) -> None:
     @app.post("/api/v1/documents/{document_id}/summary/run", response_model=None)
     def run_summary(
         document_id: str,
@@ -49,6 +60,7 @@ def register_summary_routes(app: FastAPI, *, store: ContentIngestionStore) -> No
             return build_and_store_document_summary(
                 document_id,
                 store=store,
+                prompt_store=prompt_store,
                 request_id=request_id_from_headers(request),
                 trace_id=trace_id_from_headers(request),
             )
@@ -82,6 +94,7 @@ def build_and_store_document_summary(
     document_id: str,
     *,
     store: ContentIngestionStore,
+    prompt_store: PromptRegistryStore | None = None,
     request_id: str,
     trace_id: str,
     max_chars: int = DEFAULT_SUMMARY_MAX_CHARS,
@@ -110,16 +123,58 @@ def build_and_store_document_summary(
         max_chars=max_chars,
         hard_limit_chars=hard_limit_chars,
     )
+    prompt_event = render_summary_prompt_event(
+        prompt_store=prompt_store,
+        request_id=request_id,
+        trace_id=trace_id,
+        max_chars=max_chars,
+        hard_limit_chars=hard_limit_chars,
+        output_text=summary_text,
+    )
     record = build_document_summary_record(
         document_id=document_id,
         extraction=extraction,
         summary_text=summary_text,
+        prompt_event=prompt_event,
         request_id=request_id,
         trace_id=trace_id,
         max_chars=max_chars,
         hard_limit_chars=hard_limit_chars,
     )
     return store.save_document_summary(record, summary_text=summary_text)
+
+
+def render_summary_prompt_event(
+    *,
+    prompt_store: PromptRegistryStore | None,
+    request_id: str,
+    trace_id: str,
+    max_chars: int,
+    hard_limit_chars: int,
+    output_text: str,
+) -> dict[str, Any] | None:
+    if prompt_store is None:
+        return None
+
+    try:
+        result = render_prompt_from_binding(
+            prompt_store,
+            binding_key=CX_DOCUMENT_SUMMARY_BINDING,
+            variables={
+                "summary_max_chars": max_chars,
+                "summary_hard_limit_chars": hard_limit_chars,
+            },
+            request_id=request_id,
+            trace_id=trace_id,
+            output_text=output_text,
+        )
+    except PromptRegistryError as exc:
+        raise SummaryError(
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            detail=exc.detail,
+        ) from exc
+    return result["render_event"]
 
 
 def summarize_markdown_text(
@@ -179,6 +234,7 @@ def build_document_summary_record(
     document_id: str,
     extraction: dict[str, Any],
     summary_text: str,
+    prompt_event: dict[str, Any] | None = None,
     request_id: str,
     trace_id: str,
     max_chars: int,
@@ -216,6 +272,15 @@ def build_document_summary_record(
         "summary_preview": summary_text[:240],
         "summary_storage_uri": f"memory://cx/document-summaries/{document_summary_id}.md",
         "source_markdown_sha256": extraction["extracted_markdown_sha256"],
+        "prompt_template_version_id": (
+            prompt_event["prompt_template_version_id"] if prompt_event else None
+        ),
+        "prompt_render_event_id": (
+            prompt_event["prompt_render_event_id"] if prompt_event else None
+        ),
+        "provider_prompt_package_hash": (
+            prompt_event["rendered_prompt_hash"] if prompt_event else None
+        ),
         "summarizer": {
             "provider": "local_mock",
             "mode": "markdown_summary",

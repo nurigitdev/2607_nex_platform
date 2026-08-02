@@ -16,6 +16,11 @@
       "schema": "schemas/common/trace_refs.v1.schema.json"
     },
     {
+      "name": "prompt_render_event_raw_prompt_leak",
+      "path": "tests/negative/common/prompt_render_event.raw_prompt_leak.json",
+      "schema": "schemas/common/prompt_render_event.v1.schema.json"
+    },
+    {
       "name": "service_claims_user_token_use",
       "path": "tests/negative/auth/service_claims.user_token_use.json",
       "schema": "schemas/common/service_claims.v1.schema.json"

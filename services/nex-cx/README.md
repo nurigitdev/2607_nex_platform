@@ -28,6 +28,8 @@ Internal persistence boundary:
   1000 chars so summary text fits within one default retrieval chunk.
 - Summary embeddings index the document summary separately from chunk
   embeddings for future document-level similarity features.
+- Prompt registry seed `cx.document_summary.default` records the bounded summary
+  system prompt and prompt render events for summary jobs.
 - The current adapter is in-memory for mock-first testing; PostgreSQL
   write-through is added after migration execution is stable.
 
@@ -53,6 +55,8 @@ Current endpoints:
 - `POST /api/v1/documents/{document_id}/summary/run`
 - `GET /api/v1/documents/{document_id}/summary-embedding`
 - `POST /api/v1/documents/{document_id}/summary-embedding/run`
+- `GET /api/v1/prompts/bindings`
+- `GET /api/v1/prompts/render-events/{prompt_render_event_id}`
 - `GET /api/v1/jobs/{job_id}`
 - `POST /api/v1/jobs/{job_id}/run`
 - `POST /api/v1/retrieval/context`

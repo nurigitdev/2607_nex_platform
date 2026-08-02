@@ -16,6 +16,11 @@
       "schema": "schemas/common/trace_refs.v1.schema.json"
     },
     {
+      "name": "prompt_render_event_summary",
+      "path": "examples/common/prompt_render_event.summary.json",
+      "schema": "schemas/common/prompt_render_event.v1.schema.json"
+    },
+    {
       "name": "service_claims_ae_to_cx",
       "path": "examples/auth/service_claims.ae_to_cx.json",
       "schema": "schemas/common/service_claims.v1.schema.json"

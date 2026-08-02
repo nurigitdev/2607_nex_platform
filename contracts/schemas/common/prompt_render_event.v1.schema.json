@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/prompt_render_event.v1.schema.json",
+  "title": "NeX Prompt Render Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "prompt_render_event_schema_version",
+    "prompt_render_event_id",
+    "service_id",
+    "prompt_binding_id",
+    "prompt_template_version_id",
+    "binding_key",
+    "purpose",
+    "trace_id",
+    "request_id",
+    "rendered_prompt_hash",
+    "rendered_prompt_preview",
+    "user_prompt_hash",
+    "output_hash",
+    "metadata",
+    "created_at"
+  ],
+  "properties": {
+    "prompt_render_event_schema_version": {
+      "const": "prompt_render_event.v1"
+    },
+    "prompt_render_event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "service_id": {
+      "type": "string",
+      "enum": [
+        "nex-ae-api",
+        "nex-cx"
+      ]
+    },
+    "prompt_binding_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "prompt_template_version_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "binding_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rendered_prompt_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "rendered_prompt_preview": {
+      "type": "string",
+      "maxLength": 240
+    },
+    "user_prompt_hash": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "output_hash": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

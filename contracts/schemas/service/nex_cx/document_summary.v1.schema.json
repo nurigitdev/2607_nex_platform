@@ -85,6 +85,39 @@
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },
+    "prompt_template_version_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "prompt_render_event_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "provider_prompt_package_hash": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "summarizer": {
       "type": "object",
       "additionalProperties": false,

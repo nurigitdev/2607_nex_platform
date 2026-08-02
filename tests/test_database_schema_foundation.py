@@ -109,6 +109,21 @@ def test_prompt_registry_is_service_local_and_versioned() -> None:
         assert "raw_user_message" not in compact
 
 
+def test_prompt_registry_seed_migrations_define_default_bindings() -> None:
+    cx_seed = normalized(read_migration_named("nex-cx", "0029_prompt_registry_seed.sql"))
+    ae_seed = normalized(read_migration_named("nex-ae-api", "0029_prompt_registry_seed.sql"))
+
+    assert "cx.document_summary.default" in cx_seed
+    assert "default_document_summary_system" in cx_seed
+    assert "summary_1000_0" in cx_seed
+    assert "summary_max_chars" in cx_seed
+    assert "ae.grounded_chat.default" in ae_seed
+    assert "default_grounded_chat_system" in ae_seed
+    assert "retrieval_required" in ae_seed
+    assert "raw_prompt" not in cx_seed
+    assert "raw_prompt" not in ae_seed
+
+
 def test_ae_schema_supports_prompt_analytics_and_recommendations_without_raw_prompt() -> None:
     compact = normalized(read_migration("nex-ae-api"))
 

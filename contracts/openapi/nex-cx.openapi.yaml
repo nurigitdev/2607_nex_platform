@@ -6,6 +6,7 @@ tags:
   - name: Platform
   - name: Content
   - name: Generation
+  - name: Prompts
 paths:
   /health:
     get:
@@ -445,3 +446,31 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: CX generation record was not found.
+  /api/v1/prompts/bindings:
+    get:
+      operationId: listCxPromptBindings
+      tags:
+        - Prompts
+      responses:
+        "200":
+          description: Active CX prompt bindings for debug and audit.
+        "401":
+          description: Service claim is missing or invalid.
+  /api/v1/prompts/render-events/{prompt_render_event_id}:
+    get:
+      operationId: getCxPromptRenderEvent
+      tags:
+        - Prompts
+      parameters:
+        - name: prompt_render_event_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Prompt render event metadata.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Prompt render event was not found.
