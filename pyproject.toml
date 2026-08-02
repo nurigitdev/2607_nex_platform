@@ -8,6 +8,7 @@ pythonpath = [
   "services/nex-ae-api",
   "services/nex-cx",
   "services/nex-mo",
+  "scripts/db",
   "scripts/dev",
   "scripts/smoke",
   "scripts/quality"

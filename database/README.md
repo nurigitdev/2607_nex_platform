@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0022 source file storage policy foundation.
+Status: Slice 0023 migration runner smoke guard.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -10,9 +10,15 @@ references between services.
 
 ```text
 database/
+  nex-oa/
+    migrations/
+  nex-ag/
+    migrations/
   nex-ae-api/
     migrations/
   nex-cx/
+    migrations/
+  nex-mo/
     migrations/
 ```
 
@@ -20,8 +26,24 @@ database/
 
 | Service | Database Env | Migration Directory |
 | --- | --- | --- |
+| `nex-oa` | `NEX_OA_DATABASE_URL` | `database/nex-oa/migrations/` |
+| `nex-ag` | `NEX_AG_DATABASE_URL` | `database/nex-ag/migrations/` |
 | `nex-ae-api` | `NEX_AE_DATABASE_URL` | `database/nex-ae-api/migrations/` |
 | `nex-cx` | `NEX_CX_DATABASE_URL` | `database/nex-cx/migrations/` |
+| `nex-mo` | `NEX_MO_DATABASE_URL` | `database/nex-mo/migrations/` |
+
+## Migration Runner
+
+Local migrations are applied by the service-owned runner:
+
+```bash
+./.venv/bin/python scripts/db/run_migrations.py --service nex-cx --dry-run
+./.venv/bin/python scripts/db/run_migrations.py --all
+```
+
+The runner reads `.env.local`, rejects placeholder database URLs, creates the
+`schema_migrations` state table before checking applied versions, and executes
+only migrations that have not already been recorded.
 
 ## Source File Storage
 

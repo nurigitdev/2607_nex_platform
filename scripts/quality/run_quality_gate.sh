@@ -9,7 +9,7 @@ STATEMENT_COVERAGE_MIN="${STATEMENT_COVERAGE_MIN:-95}"
 BRANCH_COVERAGE_MIN="${BRANCH_COVERAGE_MIN:-85}"
 REPORT_DIR="${REPORT_DIR:-reports/coverage}"
 
-export PYTHONPATH="services/_shared:services/nex-oa:services/nex-ag:services/nex-ae-api:services/nex-cx:services/nex-mo:scripts/dev:scripts/smoke:scripts/quality${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="services/_shared:services/nex-oa:services/nex-ag:services/nex-ae-api:services/nex-cx:services/nex-mo:scripts/db:scripts/dev:scripts/smoke:scripts/quality${PYTHONPATH:+:$PYTHONPATH}"
 
 mkdir -p "$REPORT_DIR"
 
