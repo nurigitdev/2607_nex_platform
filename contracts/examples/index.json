@@ -29,6 +29,11 @@
       "name": "cx_generation_execution_record_mock",
       "path": "examples/generation/cx_generation_execution_record.mock_success.json",
       "schema": "schemas/generation/cx_generation_execution_record.v1.schema.json"
+    },
+    {
+      "name": "ae_chat_interaction_mock",
+      "path": "examples/generation/ae_chat_interaction.mock_success.json",
+      "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
     }
   ]
 }

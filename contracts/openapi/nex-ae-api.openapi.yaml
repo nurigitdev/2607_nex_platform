@@ -41,3 +41,33 @@ paths:
           description: Service claim is valid for this service.
         "401":
           description: Service claim is missing or invalid.
+  /api/v1/chat/interactions:
+    post:
+      operationId: createAeChatInteraction
+      tags:
+        - Chat
+      responses:
+        "200":
+          description: AE chat interaction created and linked to CX generation.
+        "400":
+          description: Chat interaction request is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+  /api/v1/chat/interactions/{interaction_id}:
+    get:
+      operationId: getAeChatInteraction
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AE chat interaction record.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: AE chat interaction was not found.

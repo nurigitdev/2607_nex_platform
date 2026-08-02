@@ -29,6 +29,11 @@
       "name": "cx_generation_execution_record_raw_prompt_leak",
       "path": "tests/negative/generation/cx_generation_execution_record.raw_prompt_leak.json",
       "schema": "schemas/generation/cx_generation_execution_record.v1.schema.json"
+    },
+    {
+      "name": "ae_chat_interaction_raw_user_message_leak",
+      "path": "tests/negative/generation/ae_chat_interaction.raw_user_message_leak.json",
+      "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
     }
   ]
 }
