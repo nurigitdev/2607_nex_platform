@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/prompt_analytics.v1.schema.json",
+  "title": "NeX AE Prompt Analytics Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "prompt_analytics_schema_version",
+    "prompt_event",
+    "intent_classification",
+    "user_task_profile",
+    "automation_recommendation"
+  ],
+  "properties": {
+    "prompt_analytics_schema_version": {
+      "const": "ae_prompt_analytics.v1"
+    },
+    "prompt_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prompt_event_schema_version",
+        "prompt_event_id",
+        "tenant_id",
+        "user_id",
+        "chat_interaction_id",
+        "trace_id",
+        "request_id",
+        "prompt_hash",
+        "prompt_preview",
+        "prompt_char_count",
+        "prompt_token_estimate",
+        "locale",
+        "source_channel",
+        "retrieval_used",
+        "retrieval_outcome",
+        "generation_outcome",
+        "metadata",
+        "occurred_at"
+      ],
+      "properties": {
+        "prompt_event_schema_version": {
+          "const": "ae_prompt_event.v1"
+        },
+        "prompt_event_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenant_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "user_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "chat_interaction_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "prompt_preview": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "prompt_char_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "prompt_token_estimate": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "locale": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_channel": {
+          "type": "string",
+          "enum": [
+            "chat",
+            "upload",
+            "artifact",
+            "automation"
+          ]
+        },
+        "retrieval_used": {
+          "type": "boolean"
+        },
+        "retrieval_outcome": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "generation_outcome": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "intent_classification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent_classification_schema_version",
+        "intent_classification_id",
+        "prompt_event_id",
+        "intent_label",
+        "task_category",
+        "confidence",
+        "classifier_profile_id",
+        "prompt_template_version_id",
+        "evidence",
+        "created_at"
+      ],
+      "properties": {
+        "intent_classification_schema_version": {
+          "const": "ae_prompt_intent_classification.v1"
+        },
+        "intent_classification_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt_event_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "intent_label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task_category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "classifier_profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt_template_version_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "user_task_profile": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "user_task_profile_schema_version",
+        "user_task_profile_id",
+        "tenant_id",
+        "user_id",
+        "dominant_task_categories",
+        "prompt_frequency",
+        "automation_readiness_score",
+        "last_computed_at"
+      ]
+    },
+    "automation_recommendation": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "automation_recommendation_schema_version",
+            "automation_recommendation_id",
+            "tenant_id",
+            "user_id",
+            "source_prompt_event_id",
+            "recommendation_type",
+            "task_category",
+            "title",
+            "rationale_summary",
+            "confidence",
+            "status"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

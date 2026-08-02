@@ -1,0 +1,62 @@
+{
+  "prompt_analytics_schema_version": "ae_prompt_analytics.v1",
+  "prompt_event": {
+    "prompt_event_schema_version": "ae_prompt_event.v1",
+    "prompt_event_id": "0d9b39f5-8f30-52b0-bb0a-599cd8c5bdf0",
+    "tenant_id": "local-tenant",
+    "user_id": "local-user",
+    "chat_interaction_id": "chat-001",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "prompt_hash": "df30b5e9a2191701a6262c508f5540c38428a7c54779ff72e572614fc9d8254e",
+    "prompt_preview": "Summarize the selected evidence.",
+    "prompt_char_count": 32,
+    "prompt_token_estimate": 8,
+    "locale": null,
+    "source_channel": "chat",
+    "retrieval_used": true,
+    "retrieval_outcome": "READY",
+    "generation_outcome": "STOP",
+    "metadata": {
+      "raw_prompt_stored": false
+    },
+    "occurred_at": "2026-08-02T00:00:00Z"
+  },
+  "intent_classification": {
+    "intent_classification_schema_version": "ae_prompt_intent_classification.v1",
+    "intent_classification_id": "b6940f2d-5317-59af-a7ca-eb12b656e11f",
+    "prompt_event_id": "0d9b39f5-8f30-52b0-bb0a-599cd8c5bdf0",
+    "intent_label": "summarize_document",
+    "task_category": "document_summary",
+    "confidence": 0.86,
+    "classifier_profile_id": "mock-intent-classifier-v1",
+    "prompt_template_version_id": null,
+    "evidence": {
+      "matched_terms": [
+        "summarize"
+      ]
+    },
+    "created_at": "2026-08-02T00:00:00Z"
+  },
+  "user_task_profile": {
+    "user_task_profile_schema_version": "ae_user_task_profile.v1",
+    "user_task_profile_id": "profile-001",
+    "tenant_id": "local-tenant",
+    "user_id": "local-user",
+    "dominant_task_categories": [
+      {
+        "task_category": "document_summary",
+        "count": 1
+      }
+    ],
+    "prompt_frequency": {
+      "total": 1,
+      "by_task_category": {
+        "document_summary": 1
+      }
+    },
+    "automation_readiness_score": 0.3333,
+    "last_computed_at": "2026-08-02T00:00:00Z"
+  },
+  "automation_recommendation": null
+}

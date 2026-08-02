@@ -14,6 +14,9 @@ Current endpoints:
 - `GET /api/v1/chat/interactions/{interaction_id}`
 - `POST /api/v1/retrieval/contexts`
 - `GET /api/v1/retrieval/contexts/{retrieval_interaction_id}`
+- `GET /api/v1/analytics/prompt-events/{prompt_event_id}`
+- `GET /api/v1/analytics/users/{user_id}/task-profile`
+- `GET /api/v1/analytics/users/{user_id}/recommendations`
 - `GET /api/v1/prompts/bindings`
 - `GET /api/v1/prompts/render-events/{prompt_render_event_id}`
 
@@ -21,6 +24,12 @@ Prompt registry seed:
 
 - `ae.grounded_chat.default` records the grounded chat system prompt for debug
   and later prompt analytics lineage.
+
+Prompt analytics:
+
+- Chat interactions can record prompt event hashes, short previews, deterministic
+  mock intent classifications, user task profiles, and early automation
+  recommendation signals without storing full raw prompts.
 
 Chat interactions can include a `retrieval` object. When enabled, AE asks CX for
 a retrieval context package first, injects cited evidence into the CX generation

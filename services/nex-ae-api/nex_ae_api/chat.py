@@ -26,6 +26,12 @@ from nex_ae_api.retrieval import (
     RetrievalInteractionError,
     build_cx_retrieval_payload,
 )
+from nex_ae_api.analytics import (
+    PromptAnalyticsError,
+    PromptAnalyticsStore,
+    owner_scope_from_payload,
+    record_chat_prompt_analytics,
+)
 
 
 class CxGenerationClient(Protocol):
@@ -121,6 +127,7 @@ def register_chat_routes(
     store: ChatInteractionStore | None = None,
     cx_client: CxGenerationClient | None = None,
     retrieval_client: CxRetrievalClient | None = None,
+    analytics_store: PromptAnalyticsStore | None = None,
 ) -> None:
     chat_store = store or DEFAULT_CHAT_STORE
     client = cx_client or build_default_cx_client()
@@ -139,6 +146,8 @@ def register_chat_routes(
         request_id = request_id_from_headers(request)
         trace_id = payload.get("trace_id") or trace_id_from_headers(request)
         try:
+            if analytics_store is not None:
+                owner_scope_from_payload(payload)
             retrieval_package = None
             if should_use_retrieval(payload):
                 retrieval_payload = build_cx_retrieval_payload(payload, trace_id=trace_id)
@@ -148,7 +157,7 @@ def register_chat_routes(
                     trace_id=trace_id,
                 )
                 if retrieval_package["status"] == "NO_ANSWER":
-                    return chat_store.save(
+                    saved_no_answer = chat_store.save(
                         build_no_answer_chat_interaction_record(
                             source_payload=payload,
                             retrieval_payload=retrieval_payload,
@@ -157,6 +166,13 @@ def register_chat_routes(
                             trace_id=trace_id,
                         )
                     )
+                    record_chat_prompt_analytics(
+                        analytics_store,
+                        source_payload=payload,
+                        chat_record=saved_no_answer,
+                        retrieval_used=True,
+                    )
+                    return saved_no_answer
 
             cx_payload = build_cx_generation_payload(payload, trace_id=trace_id)
             if retrieval_package is not None:
@@ -169,7 +185,7 @@ def register_chat_routes(
                 request_id=request_id,
                 trace_id=trace_id,
             )
-            return chat_store.save(
+            saved_record = chat_store.save(
                 build_chat_interaction_record(
                     source_payload=payload,
                     cx_payload=cx_payload,
@@ -178,6 +194,22 @@ def register_chat_routes(
                     request_id=request_id,
                     trace_id=trace_id,
                 )
+            )
+            record_chat_prompt_analytics(
+                analytics_store,
+                source_payload=payload,
+                chat_record=saved_record,
+                retrieval_used=retrieval_package is not None,
+            )
+            return saved_record
+        except PromptAnalyticsError as exc:
+            return _chat_problem_response(
+                request,
+                ChatInteractionError(
+                    status_code=exc.status_code,
+                    error_code=exc.error_code,
+                    detail=exc.detail,
+                ),
             )
         except RetrievalInteractionError as exc:
             return _chat_problem_response(

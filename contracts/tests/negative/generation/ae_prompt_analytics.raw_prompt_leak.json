@@ -1,0 +1,47 @@
+{
+  "prompt_analytics_schema_version": "ae_prompt_analytics.v1",
+  "prompt_event": {
+    "prompt_event_schema_version": "ae_prompt_event.v1",
+    "prompt_event_id": "event-001",
+    "tenant_id": "local-tenant",
+    "user_id": "local-user",
+    "chat_interaction_id": "chat-001",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "prompt_hash": "df30b5e9a2191701a6262c508f5540c38428a7c54779ff72e572614fc9d8254e",
+    "prompt_preview": "preview",
+    "prompt_char_count": 10,
+    "prompt_token_estimate": 3,
+    "locale": null,
+    "source_channel": "chat",
+    "retrieval_used": false,
+    "retrieval_outcome": null,
+    "generation_outcome": "STOP",
+    "raw_prompt": "raw prompt text should not be stored",
+    "metadata": {},
+    "occurred_at": "2026-08-02T00:00:00Z"
+  },
+  "intent_classification": {
+    "intent_classification_schema_version": "ae_prompt_intent_classification.v1",
+    "intent_classification_id": "classification-001",
+    "prompt_event_id": "event-001",
+    "intent_label": "general_question",
+    "task_category": "knowledge_work",
+    "confidence": 0.55,
+    "classifier_profile_id": "mock-intent-classifier-v1",
+    "prompt_template_version_id": null,
+    "evidence": {},
+    "created_at": "2026-08-02T00:00:00Z"
+  },
+  "user_task_profile": {
+    "user_task_profile_schema_version": "ae_user_task_profile.v1",
+    "user_task_profile_id": "profile-001",
+    "tenant_id": "local-tenant",
+    "user_id": "local-user",
+    "dominant_task_categories": [],
+    "prompt_frequency": {},
+    "automation_readiness_score": 0,
+    "last_computed_at": "2026-08-02T00:00:00Z"
+  },
+  "automation_recommendation": null
+}

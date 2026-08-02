@@ -6,6 +6,7 @@ tags:
   - name: Platform
   - name: Chat
   - name: Retrieval
+  - name: Analytics
   - name: Prompts
 paths:
   /health:
@@ -136,3 +137,65 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: Prompt render event was not found.
+  /api/v1/analytics/prompt-events/{prompt_event_id}:
+    get:
+      operationId: getAePromptAnalyticsSnapshot
+      tags:
+        - Analytics
+      parameters:
+        - name: prompt_event_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AE prompt analytics snapshot.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Prompt event was not found.
+  /api/v1/analytics/users/{user_id}/task-profile:
+    get:
+      operationId: getAeUserTaskProfile
+      tags:
+        - Analytics
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: tenant_id
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AE user task profile.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: User task profile was not found.
+  /api/v1/analytics/users/{user_id}/recommendations:
+    get:
+      operationId: listAeUserAutomationRecommendations
+      tags:
+        - Analytics
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: tenant_id
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Proposed automation recommendations for the user.
+        "401":
+          description: Service claim is missing or invalid.
