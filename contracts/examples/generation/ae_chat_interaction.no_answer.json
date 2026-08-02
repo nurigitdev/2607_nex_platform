@@ -1,0 +1,25 @@
+{
+  "interaction_schema_version": "ae_chat_interaction.v1",
+  "interaction_id": "interaction-no-answer-001",
+  "chat_document_id": "chat-001",
+  "status": "NO_ANSWER",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "user_message_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "user_message_preview": "Find missing evidence.",
+  "cx_generation_id": null,
+  "cx_status": "NO_ANSWER",
+  "generation": null,
+  "retrieval": {
+    "cx_retrieval_package_id": "cx-ret-empty-001",
+    "cx_package_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "cx_status": "NO_ANSWER",
+    "evidence_count": 0,
+    "best_score": 0,
+    "confidence_bucket": "NO_ANSWER",
+    "no_answer_reason": "no_terms_matched",
+    "warnings": []
+  },
+  "created_at": "2026-08-02T00:00:00Z",
+  "updated_at": "2026-08-02T00:00:00Z"
+}

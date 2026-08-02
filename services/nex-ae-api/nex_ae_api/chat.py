@@ -20,6 +20,12 @@ from nex_runtime import (
     trace_id_from_headers,
     validate_authorization_header,
 )
+from nex_ae_api.retrieval import (
+    CxRetrievalClient,
+    HttpCxRetrievalClient,
+    RetrievalInteractionError,
+    build_cx_retrieval_payload,
+)
 
 
 class CxGenerationClient(Protocol):
@@ -102,14 +108,23 @@ def build_default_cx_client() -> HttpCxGenerationClient:
     )
 
 
+def build_default_cx_retrieval_client() -> HttpCxRetrievalClient:
+    return HttpCxRetrievalClient(
+        base_url=os.getenv("NEX_CX_BASE_URL", "http://127.0.0.1:8104"),
+        service_token=os.getenv("NEX_AE_TO_CX_SERVICE_TOKEN"),
+    )
+
+
 def register_chat_routes(
     app: FastAPI,
     *,
     store: ChatInteractionStore | None = None,
     cx_client: CxGenerationClient | None = None,
+    retrieval_client: CxRetrievalClient | None = None,
 ) -> None:
     chat_store = store or DEFAULT_CHAT_STORE
     client = cx_client or build_default_cx_client()
+    retrieval = retrieval_client or build_default_cx_retrieval_client()
 
     @app.post("/api/v1/chat/interactions", response_model=None)
     def create_chat_interaction(
@@ -124,7 +139,31 @@ def register_chat_routes(
         request_id = request_id_from_headers(request)
         trace_id = payload.get("trace_id") or trace_id_from_headers(request)
         try:
+            retrieval_package = None
+            if should_use_retrieval(payload):
+                retrieval_payload = build_cx_retrieval_payload(payload, trace_id=trace_id)
+                retrieval_package = retrieval.create_retrieval_context(
+                    retrieval_payload,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+                if retrieval_package["status"] == "NO_ANSWER":
+                    return chat_store.save(
+                        build_no_answer_chat_interaction_record(
+                            source_payload=payload,
+                            retrieval_payload=retrieval_payload,
+                            retrieval_package=retrieval_package,
+                            request_id=request_id,
+                            trace_id=trace_id,
+                        )
+                    )
+
             cx_payload = build_cx_generation_payload(payload, trace_id=trace_id)
+            if retrieval_package is not None:
+                cx_payload = attach_retrieval_package_to_generation_payload(
+                    cx_payload,
+                    retrieval_package,
+                )
             cx_record = client.create_generation(
                 cx_payload,
                 request_id=request_id,
@@ -135,9 +174,20 @@ def register_chat_routes(
                     source_payload=payload,
                     cx_payload=cx_payload,
                     cx_record=cx_record,
+                    retrieval_package=retrieval_package,
                     request_id=request_id,
                     trace_id=trace_id,
                 )
+            )
+        except RetrievalInteractionError as exc:
+            return _chat_problem_response(
+                request,
+                ChatInteractionError(
+                    status_code=exc.status_code,
+                    error_code=exc.error_code,
+                    detail=exc.detail,
+                    retryable=exc.retryable,
+                ),
             )
         except ChatInteractionError as exc:
             return _chat_problem_response(request, exc)
@@ -210,6 +260,7 @@ def build_chat_interaction_record(
     source_payload: dict[str, Any],
     cx_payload: dict[str, Any],
     cx_record: dict[str, Any],
+    retrieval_package: dict[str, Any] | None = None,
     request_id: str,
     trace_id: str,
 ) -> dict[str, Any]:
@@ -234,8 +285,102 @@ def build_chat_interaction_record(
             "output_preview": cx_record["response_metadata"]["output_preview"],
             "usage": cx_record["usage"],
         },
+        "retrieval": retrieval_summary(retrieval_package),
         "created_at": now,
         "updated_at": now,
+    }
+
+
+def build_no_answer_chat_interaction_record(
+    *,
+    source_payload: dict[str, Any],
+    retrieval_payload: dict[str, Any],
+    retrieval_package: dict[str, Any],
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    user_message = user_message_from_payload(source_payload)
+    now = _utc_now()
+    return {
+        "interaction_schema_version": "ae_chat_interaction.v1",
+        "interaction_id": retrieval_payload["metadata"]["ae_retrieval_interaction_id"],
+        "chat_document_id": retrieval_payload["metadata"]["chat_document_id"],
+        "status": "NO_ANSWER",
+        "trace_id": trace_id,
+        "request_id": request_id,
+        "user_message_hash": retrieval_payload["metadata"]["user_message_hash"],
+        "user_message_preview": user_message[:120],
+        "cx_generation_id": None,
+        "cx_status": retrieval_package["status"],
+        "generation": None,
+        "retrieval": retrieval_summary(retrieval_package),
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def should_use_retrieval(payload: dict[str, Any]) -> bool:
+    retrieval = payload.get("retrieval")
+    if retrieval is None:
+        return False
+    if not isinstance(retrieval, dict):
+        raise ChatInteractionError(
+            status_code=400,
+            error_code="ae.chat_request_invalid",
+            detail="retrieval must be an object when supplied.",
+        )
+    return bool(retrieval.get("enabled", True))
+
+
+def attach_retrieval_package_to_generation_payload(
+    cx_payload: dict[str, Any],
+    retrieval_package: dict[str, Any],
+) -> dict[str, Any]:
+    grounded_message = build_grounded_user_message(
+        cx_payload["messages"][0]["content"],
+        retrieval_package,
+    )
+    return {
+        **cx_payload,
+        "messages": [{"role": "user", "content": grounded_message}],
+        "metadata": {
+            **cx_payload["metadata"],
+            "retrieval_package_id": retrieval_package["retrieval_package_id"],
+            "retrieval_package_hash": retrieval_package["package_hash"],
+            "retrieval_status": retrieval_package["status"],
+            "retrieval_evidence_count": len(retrieval_package["evidence_items"]),
+        },
+    }
+
+
+def build_grounded_user_message(
+    user_message: str,
+    retrieval_package: dict[str, Any],
+) -> str:
+    evidence_lines = [
+        f"{item['citation_label']} {item['text']}"
+        for item in retrieval_package.get("evidence_items", [])
+    ]
+    evidence_text = "\n".join(evidence_lines) or "No supporting evidence returned."
+    return (
+        "Answer using only the supporting evidence below.\n\n"
+        f"User request:\n{user_message}\n\n"
+        f"Supporting evidence:\n{evidence_text}"
+    )
+
+
+def retrieval_summary(retrieval_package: dict[str, Any] | None) -> dict[str, Any] | None:
+    if retrieval_package is None:
+        return None
+    return {
+        "cx_retrieval_package_id": retrieval_package["retrieval_package_id"],
+        "cx_package_hash": retrieval_package["package_hash"],
+        "cx_status": retrieval_package["status"],
+        "evidence_count": len(retrieval_package["evidence_items"]),
+        "best_score": retrieval_package["score_summary"]["best_score"],
+        "confidence_bucket": retrieval_package["score_summary"]["confidence_bucket"],
+        "no_answer_reason": retrieval_package.get("no_answer_reason"),
+        "warnings": retrieval_package.get("warnings", []),
     }
 
 

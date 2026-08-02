@@ -14,3 +14,8 @@ Current endpoints:
 - `GET /api/v1/chat/interactions/{interaction_id}`
 - `POST /api/v1/retrieval/contexts`
 - `GET /api/v1/retrieval/contexts/{retrieval_interaction_id}`
+
+Chat interactions can include a `retrieval` object. When enabled, AE asks CX for
+a retrieval context package first, injects cited evidence into the CX generation
+request, records a compact retrieval summary, and returns `NO_ANSWER` without
+calling generation when CX has no supporting evidence.

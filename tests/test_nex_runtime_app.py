@@ -70,7 +70,7 @@ def test_root_health_and_version_use_service_metadata(monkeypatch: pytest.Monkey
     assert version.status_code == 200
     assert version.json()["version"] == "9.9.9-test"
     assert version.json()["build_sha"] == "abc123"
-    assert version.json()["contract_catalog_version"] == "slice-0018"
+    assert version.json()["contract_catalog_version"] == "slice-0019"
 
 
 def test_ready_returns_503_when_database_url_is_missing(

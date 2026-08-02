@@ -41,6 +41,16 @@
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
     },
     {
+      "name": "ae_chat_interaction_grounded",
+      "path": "examples/generation/ae_chat_interaction.grounded_success.json",
+      "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
+    },
+    {
+      "name": "ae_chat_interaction_no_answer",
+      "path": "examples/generation/ae_chat_interaction.no_answer.json",
+      "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
+    },
+    {
       "name": "ag_readiness_projection_mock",
       "path": "examples/audit/ag_readiness_projection.mock_success.json",
       "schema": "schemas/service/nex_ag/readiness_projection.v1.schema.json"

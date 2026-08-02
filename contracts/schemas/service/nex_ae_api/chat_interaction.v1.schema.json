@@ -16,6 +16,7 @@
     "cx_generation_id",
     "cx_status",
     "generation",
+    "retrieval",
     "created_at",
     "updated_at"
   ],
@@ -35,6 +36,7 @@
       "type": "string",
       "enum": [
         "COMPLETED",
+        "NO_ANSWER",
         "FAILED"
       ]
     },
@@ -55,48 +57,129 @@
       "maxLength": 120
     },
     "cx_generation_id": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "minLength": 1
     },
     "cx_status": {
-      "type": "string"
+      "type": "string",
+      "enum": [
+        "COMPLETED",
+        "NO_ANSWER",
+        "LOW_CONFIDENCE",
+        "PARTIAL",
+        "FAILED"
+      ]
     },
     "generation": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "alias",
-        "provider_capability",
-        "mo_generation_id",
-        "finish_reason",
-        "output_preview",
-        "usage"
-      ],
-      "properties": {
-        "alias": {
-          "type": "string"
-        },
-        "provider_capability": {
-          "type": "string",
-          "enum": [
-            "generation"
-          ]
-        },
-        "mo_generation_id": {
-          "type": "string"
-        },
-        "finish_reason": {
-          "type": "string"
-        },
-        "output_preview": {
-          "type": "string",
-          "maxLength": 120
-        },
-        "usage": {
+      "anyOf": [
+        {
           "type": "object",
-          "additionalProperties": true
+          "additionalProperties": false,
+          "required": [
+            "alias",
+            "provider_capability",
+            "mo_generation_id",
+            "finish_reason",
+            "output_preview",
+            "usage"
+          ],
+          "properties": {
+            "alias": {
+              "type": "string"
+            },
+            "provider_capability": {
+              "type": "string",
+              "enum": [
+                "generation"
+              ]
+            },
+            "mo_generation_id": {
+              "type": "string"
+            },
+            "finish_reason": {
+              "type": "string"
+            },
+            "output_preview": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "usage": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
+        {
+          "type": "null"
         }
-      }
+      ]
+    },
+    "retrieval": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cx_retrieval_package_id",
+            "cx_package_hash",
+            "cx_status",
+            "evidence_count",
+            "best_score",
+            "confidence_bucket",
+            "no_answer_reason",
+            "warnings"
+          ],
+          "properties": {
+            "cx_retrieval_package_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "cx_package_hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "cx_status": {
+              "type": "string",
+              "enum": [
+                "READY",
+                "NO_ANSWER",
+                "LOW_CONFIDENCE",
+                "PARTIAL",
+                "FAILED"
+              ]
+            },
+            "evidence_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "best_score": {
+              "type": "number",
+              "minimum": 0
+            },
+            "confidence_bucket": {
+              "type": "string"
+            },
+            "no_answer_reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "created_at": {
       "type": "string",
