@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_cx/document_summary.v1.schema.json",
+  "title": "NeX CX Document Summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "document_summary_schema_version",
+    "document_summary_id",
+    "document_id",
+    "extraction_job_id",
+    "trace_id",
+    "request_id",
+    "status",
+    "summary_chunk_policy_id",
+    "summary_text_sha256",
+    "summary_char_count",
+    "summary_max_chars",
+    "summary_hard_limit_chars",
+    "summary_preview",
+    "summary_storage_uri",
+    "source_markdown_sha256",
+    "summarizer",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "document_summary_schema_version": {
+      "const": "cx_document_summary.v1"
+    },
+    "document_summary_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "extraction_job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "const": "READY"
+    },
+    "summary_chunk_policy_id": {
+      "const": "summary_1000_0"
+    },
+    "summary_text_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "summary_char_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000
+    },
+    "summary_max_chars": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "summary_hard_limit_chars": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "summary_preview": {
+      "type": "string",
+      "maxLength": 240
+    },
+    "summary_storage_uri": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_markdown_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "summarizer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "mode",
+        "model_profile_id",
+        "model_revision"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_revision": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

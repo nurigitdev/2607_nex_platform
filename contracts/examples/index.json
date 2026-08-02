@@ -86,6 +86,11 @@
       "schema": "schemas/service/nex_cx/lexical_index.v1.schema.json"
     },
     {
+      "name": "cx_document_summary_mock",
+      "path": "examples/retrieval/cx_document_summary.mock_success.json",
+      "schema": "schemas/service/nex_cx/document_summary.v1.schema.json"
+    },
+    {
       "name": "cx_retrieval_context_package_mock",
       "path": "examples/retrieval/cx_retrieval_context_package.mock_success.json",
       "schema": "schemas/service/nex_cx/retrieval_context_package.v1.schema.json"

@@ -130,6 +130,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0024`](slices/0024_cx_persistent_repository_boundary.md) | `S3-004` CX persistent repository boundary for source file and content object records. |
 | [`Slice 0025`](slices/0025_cx_user_scoped_duplicate_upload_guard.md) | `S3-005` CX user-scoped duplicate upload guard. |
 | [`Slice 0026`](slices/0026_cx_local_source_file_materialization.md) | `S3-006` CX local source file materialization. |
+| [`Slice 0027`](slices/0027_cx_document_summary_contract.md) | `S3-007` CX document summary contract and mock summarizer job. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

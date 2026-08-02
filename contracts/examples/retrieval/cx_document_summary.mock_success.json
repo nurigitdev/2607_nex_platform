@@ -1,0 +1,25 @@
+{
+  "document_summary_schema_version": "cx_document_summary.v1",
+  "document_summary_id": "3c2a0d32-a313-5446-93da-1a418b148b25",
+  "document_id": "62cbb468-147e-5e66-9bd8-4551a5807cf6",
+  "extraction_job_id": "c20e7c5d-77b8-514d-8243-d3357236a105",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "status": "READY",
+  "summary_chunk_policy_id": "summary_1000_0",
+  "summary_text_sha256": "2af9e68d2982eac0868adbcab5d84c35ae6a8e1819ce3daf2eb9c31a1ed00c34",
+  "summary_char_count": 91,
+  "summary_max_chars": 900,
+  "summary_hard_limit_chars": 1000,
+  "summary_preview": "Traceable retrieval smoke evidence confirms Markdown extraction, chunking, indexing, and grounded generation.",
+  "summary_storage_uri": "memory://cx/document-summaries/3c2a0d32-a313-5446-93da-1a418b148b25.md",
+  "source_markdown_sha256": "8cc4522bfb808db525a84b7bec9f342c2e4442440acef763e941a8ba864a8c49",
+  "summarizer": {
+    "provider": "local_mock",
+    "mode": "markdown_summary",
+    "model_profile_id": "mock-document-summary",
+    "model_revision": "slice-0027"
+  },
+  "created_at": "2026-08-02T00:00:00Z",
+  "updated_at": "2026-08-02T00:00:00Z"
+}

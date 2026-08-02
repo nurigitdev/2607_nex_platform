@@ -24,6 +24,8 @@ Internal persistence boundary:
   get distinct document IDs without learning about each other.
 - In the mock upload path, `content_text` is materialized to the local source
   file path and verified against `source_sha256`.
+- Document summaries use `summary_1000_0`, target 900 chars, and hard limit
+  1000 chars so summary text fits within one default retrieval chunk.
 - The current adapter is in-memory for mock-first testing; PostgreSQL
   write-through is added after migration execution is stable.
 
@@ -45,6 +47,8 @@ Current endpoints:
 - `POST /api/v1/documents/{document_id}/embeddings/run`
 - `GET /api/v1/documents/{document_id}/lexical-index`
 - `POST /api/v1/documents/{document_id}/lexical-index/run`
+- `GET /api/v1/documents/{document_id}/summary`
+- `POST /api/v1/documents/{document_id}/summary/run`
 - `GET /api/v1/jobs/{job_id}`
 - `POST /api/v1/jobs/{job_id}/run`
 - `POST /api/v1/retrieval/context`
