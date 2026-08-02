@@ -14,6 +14,12 @@ def read_migration(service: str) -> str:
     return "\n".join(path.read_text(encoding="utf-8") for path in migrations)
 
 
+def read_migration_named(service: str, name: str) -> str:
+    path = DATABASE_ROOT / service / "migrations" / name
+    assert path.exists(), f"missing migration {path}"
+    return path.read_text(encoding="utf-8")
+
+
 def normalized(sql: str) -> str:
     return re.sub(r"\s+", " ", sql.lower()).strip()
 
@@ -30,13 +36,36 @@ def test_database_migrations_are_transactional_and_secret_free() -> None:
 
 def test_cx_schema_scopes_duplicate_uploads_to_active_owner_documents() -> None:
     compact = normalized(read_migration("nex-cx"))
+    storage_policy = normalized(
+        read_migration_named("nex-cx", "0022_source_file_storage_policy.sql")
+    )
 
-    assert "create table if not exists cx_source_blobs" in compact
+    assert "cx_source_files" in compact
+    assert "alter table cx_source_blobs rename to cx_source_files" in storage_policy
+    assert "rename column source_blob_id to source_file_id" in storage_policy
     assert "create table if not exists cx_content_objects" in compact
     assert "unique (source_sha256)" in compact
     assert "ux_cx_content_owner_source_active" in compact
     assert "on cx_content_objects (tenant_id, owner_user_id, source_sha256)" in compact
     assert "where lifecycle_status = 'active'" in compact
+    assert "bytea" not in compact
+
+
+def test_cx_source_files_use_local_storage_key_policy() -> None:
+    storage_policy = normalized(
+        read_migration_named("nex-cx", "0022_source_file_storage_policy.sql")
+    )
+
+    assert "storage_backend text not null default 'local_filesystem'" in storage_policy
+    assert "storage_key text" in storage_policy
+    assert "stored_filename text" in storage_policy
+    assert "stored_extension text" in storage_policy
+    assert "checksum_verified_at timestamptz" in storage_policy
+    assert "ck_cx_source_files_storage_backend" in storage_policy
+    assert "ck_cx_source_files_storage_key_safe" in storage_policy
+    assert "ck_cx_source_files_local_key_shape" in storage_policy
+    assert "^[0-9]{8}/[0-9a-f]{2}/[0-9a-f]{2}/" in storage_policy
+    assert "ux_cx_source_files_storage_backend_key" in storage_policy
 
 
 def test_cx_schema_tracks_markdown_summary_and_summary_embedding_lineage() -> None:

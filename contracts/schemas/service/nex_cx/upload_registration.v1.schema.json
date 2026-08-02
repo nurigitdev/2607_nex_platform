@@ -67,14 +67,40 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "source_storage_backend",
+        "source_storage_key",
         "source_storage_path",
+        "stored_filename",
+        "stored_extension",
         "extracted_markdown_path",
         "extraction_temp_path"
       ],
       "properties": {
+        "source_storage_backend": {
+          "type": "string",
+          "enum": [
+            "local_filesystem",
+            "s3",
+            "minio",
+            "gcs",
+            "azure_blob"
+          ]
+        },
+        "source_storage_key": {
+          "type": "string",
+          "pattern": "^[0-9]{8}/[0-9a-f]{2}/[0-9a-f]{2}/[^/\\\\]{1,255}$"
+        },
         "source_storage_path": {
           "type": "string",
           "pattern": "^/"
+        },
+        "stored_filename": {
+          "type": "string",
+          "pattern": "^[^/\\\\]{1,255}$"
+        },
+        "stored_extension": {
+          "type": "string",
+          "pattern": "^(|\\.[A-Za-z0-9][A-Za-z0-9._-]{0,31})$"
         },
         "extracted_markdown_path": {
           "type": "string",

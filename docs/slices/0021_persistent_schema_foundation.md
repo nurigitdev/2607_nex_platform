@@ -13,11 +13,11 @@ Requirement coverage: `CX-FR-001` through `CX-FR-006`, `AEAPI-FR-001`,
 Slice 0021 adds service-owned SQL migration foundations without wiring runtime
 repositories yet:
 
-- CX content persistence for source blobs, logical content objects, ACL entries,
+- CX content persistence for source file metadata, logical content objects, ACL entries,
   Markdown extraction artifacts, chunk sets, chunks, chunk embeddings, lexical
   terms/postings, document summaries, and document summary embeddings.
 - CX active-document dedupe scoped to `tenant_id + owner_user_id +
-  source_sha256`, while source blobs keep a global hash for storage-level
+  source_sha256`, while source file metadata keeps a global hash for storage-level
   dedupe.
 - CX summary records limited to a single summary chunk shape:
   `summary_1000_0`, default 900 characters, hard limit 1000 characters.

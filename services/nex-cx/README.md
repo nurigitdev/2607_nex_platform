@@ -9,6 +9,10 @@ Document ingestion storage defaults:
 - Source files: `NEX_CX_SOURCE_STORAGE_ROOT` or `/data/nex-platform/cx/source-files`
 - Extracted Markdown: `NEX_CX_EXTRACTED_MARKDOWN_ROOT` or `/data/nex-platform/cx/extracted-markdown`
 - Extraction temp: `NEX_CX_EXTRACTION_TEMP_ROOT` or `/data/nex-platform/cx/extraction-temp`
+
+Local source files are stored outside PostgreSQL using a storage key shaped as
+`YYYYMMDD/<sha-prefix>/<sha-prefix>/<document-id><extension>`. The CX database
+stores source file metadata and links only.
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`
 

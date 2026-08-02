@@ -348,6 +348,7 @@ def build_upload_registration(
         filename=filename,
         source_sha256=source_sha256,
         document_id=document_id,
+        created_at=created_at,
     )
     job = build_ingestion_job(
         document_id=document_id,
@@ -507,15 +508,47 @@ def storage_paths_for_document(
     filename: str,
     source_sha256: str,
     document_id: str,
+    created_at: str | None = None,
 ) -> dict[str, str]:
-    shard = source_sha256[:2]
+    date_partition = storage_date_partition(created_at)
+    shard_one = source_sha256[:2]
+    shard_two = source_sha256[2:4]
+    stored_extension = stored_extension_for(filename)
+    stored_filename = f"{document_id}{stored_extension}"
+    source_storage_key = f"{date_partition}/{shard_one}/{shard_two}/{stored_filename}"
     return {
-        "source_storage_path": str(storage_config.source_root / shard / source_sha256 / filename),
+        "source_storage_backend": "local_filesystem",
+        "source_storage_key": source_storage_key,
+        "source_storage_path": str(storage_config.source_root / source_storage_key),
+        "stored_filename": stored_filename,
+        "stored_extension": stored_extension,
         "extracted_markdown_path": str(
-            storage_config.extracted_markdown_root / shard / f"{document_id}.md"
+            storage_config.extracted_markdown_root / shard_one / f"{document_id}.md"
         ),
         "extraction_temp_path": str(storage_config.extraction_temp_root / document_id),
     }
+
+
+def storage_date_partition(created_at: str | None) -> str:
+    if (
+        isinstance(created_at, str)
+        and len(created_at) >= 10
+        and created_at[4] == "-"
+        and created_at[7] == "-"
+    ):
+        return created_at[:10].replace("-", "")
+    return _utc_now()[:10].replace("-", "")
+
+
+def stored_extension_for(filename: str) -> str:
+    suffix = Path(filename).suffix.lower()
+    if (
+        suffix.startswith(".")
+        and 1 < len(suffix) <= 32
+        and all(char.isalnum() or char in "._-" for char in suffix[1:])
+    ):
+        return suffix
+    return ""
 
 
 def sanitize_filename(filename: str) -> str:

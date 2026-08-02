@@ -17,7 +17,9 @@ from nex_cx.ingestion import (
     run_text_extraction_job,
     sanitize_filename,
     sha256_text,
+    storage_date_partition,
     storage_paths_for_document,
+    stored_extension_for,
     write_extracted_markdown,
 )
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
@@ -123,17 +125,36 @@ def test_sanitize_filename_rejects_long_name() -> None:
         sanitize_filename("a" * 256)
 
 
-def test_storage_paths_partition_by_source_hash(tmp_path: Path) -> None:
+def test_storage_paths_partition_by_date_hash_and_generated_filename(tmp_path: Path) -> None:
     paths = storage_paths_for_document(
         storage_config=storage_config(tmp_path),
         filename="report.md",
         source_sha256="a" * 64,
         document_id="doc-001",
+        created_at="2026-08-02T00:00:00Z",
     )
 
-    assert paths["source_storage_path"].endswith("/cx/source-files/aa/" + "a" * 64 + "/report.md")
+    assert paths["source_storage_backend"] == "local_filesystem"
+    assert paths["source_storage_key"] == "20260802/aa/aa/doc-001.md"
+    assert paths["source_storage_path"].endswith("/cx/source-files/20260802/aa/aa/doc-001.md")
+    assert paths["stored_filename"] == "doc-001.md"
+    assert paths["stored_extension"] == ".md"
     assert paths["extracted_markdown_path"].endswith("/cx/extracted-markdown/aa/doc-001.md")
     assert paths["extraction_temp_path"].endswith("/cx/extraction-temp/doc-001")
+
+
+def test_stored_extension_for_uses_safe_lowercase_suffix_only() -> None:
+    assert stored_extension_for("REPORT.PDF") == ".pdf"
+    assert stored_extension_for("archive.tar.gz") == ".gz"
+    assert stored_extension_for("source") == ""
+    assert stored_extension_for("unsafe.$$$") == ""
+
+
+def test_storage_date_partition_falls_back_for_invalid_timestamp() -> None:
+    partition = storage_date_partition("not-a-timestamp")
+
+    assert len(partition) == 8
+    assert partition.isdigit()
 
 
 def test_build_ingestion_job_links_document() -> None:
@@ -201,7 +222,9 @@ def test_build_upload_registration_accepts_precomputed_hash(tmp_path: Path) -> N
 
     assert record["source_sha256"] == "a" * 64
     assert record["size_bytes"] == 2048
-    assert record["storage"]["source_storage_path"].endswith("/source.pdf")
+    assert record["storage"]["source_storage_key"].endswith(f"/{record['document_id']}.pdf")
+    assert record["storage"]["stored_extension"] == ".pdf"
+    assert "/source.pdf" not in record["storage"]["source_storage_path"]
 
 
 @pytest.mark.parametrize(
@@ -292,6 +315,16 @@ def test_markdown_from_source_text_preserves_markdown() -> None:
 def test_markdown_from_source_text_wraps_plain_text_with_title() -> None:
     markdown = markdown_from_source_text(
         "Plain extracted body",
+        filename="source.txt",
+        content_type="text/plain",
+    )
+
+    assert markdown == "# source.txt\n\nPlain extracted body\n"
+
+
+def test_markdown_from_source_text_keeps_existing_trailing_newline() -> None:
+    markdown = markdown_from_source_text(
+        "Plain extracted body\n",
         filename="source.txt",
         content_type="text/plain",
     )
