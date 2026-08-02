@@ -10,14 +10,18 @@ import run_traceable_mock_flow as smoke
 def test_run_traceable_mock_flow_links_trace_across_services() -> None:
     evidence = smoke.run_traceable_mock_flow()
 
-    assert evidence["assertions"] == {
-        "ae_trace": True,
-        "cx_trace": True,
-        "mo_trace": True,
-        "ag_trace": True,
-    }
+    assert all(evidence["assertions"].values())
+    assert evidence["cx_upload"]["document_id"] == evidence["cx_chunk_set"]["document_id"]
+    assert evidence["cx_embedding_index"]["chunk_count"] == evidence["cx_chunk_set"]["chunk_count"]
+    assert evidence["cx_lexical_index"]["chunk_count"] == evidence["cx_chunk_set"]["chunk_count"]
+    assert evidence["cx_retrieval"]["status"] == "READY"
+    assert evidence["cx_retrieval"]["evidence_items"]
+    assert evidence["ae"]["retrieval"]["cx_retrieval_package_id"] == (
+        evidence["cx_retrieval"]["retrieval_package_id"]
+    )
     assert evidence["ae"]["cx_generation_id"] == evidence["cx"]["cx_generation_id"]
     assert evidence["cx"]["mo_generation_id"] == evidence["mo"]["mo_generation_id"]
+    assert evidence["mo_embedding"]["alias"] == "mock-embedding-default"
     assert evidence["ag"]["summary"]["total"] == 5
 
 
@@ -32,7 +36,9 @@ def test_assert_trace_evidence_reports_mismatch() -> None:
 def test_main_prints_summary(capsys) -> None:
     assert smoke.main(["--summary"]) == 0
 
-    assert "traceable_mock_flow=pass" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "traceable_mock_flow=pass" in output
+    assert "retrieval=" in output
 
 
 def test_main_writes_evidence_file(tmp_path) -> None:
@@ -42,3 +48,4 @@ def test_main_writes_evidence_file(tmp_path) -> None:
 
     evidence = json.loads(output.read_text(encoding="utf-8"))
     assert evidence["trace_id"] == smoke.TRACE_ID
+    assert evidence["assertions"]["retrieval_lineage"] is True
