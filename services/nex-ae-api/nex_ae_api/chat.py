@@ -95,6 +95,27 @@ class ChatInteractionStore:
     def get(self, interaction_id: str) -> dict[str, Any] | None:
         return self.records.get(interaction_id)
 
+    def attach_artifact_ref(
+        self,
+        *,
+        interaction_id: str,
+        artifact_ref: dict[str, Any],
+        updated_at: str,
+    ) -> dict[str, Any] | None:
+        record = self.get(interaction_id)
+        if record is None:
+            return None
+        for existing_ref in record["artifact_refs"]:
+            if (
+                existing_ref["artifact_id"] == artifact_ref["artifact_id"]
+                and existing_ref["artifact_version_id"]
+                == artifact_ref["artifact_version_id"]
+            ):
+                return record
+        record["artifact_refs"].append(artifact_ref)
+        record["updated_at"] = updated_at
+        return record
+
 
 @dataclass(frozen=True)
 class ChatInteractionError(Exception):
@@ -246,6 +267,79 @@ def register_chat_routes(
             )
         return record
 
+    @app.post(
+        "/api/v1/chat/interactions/{interaction_id}/artifact-links",
+        response_model=None,
+    )
+    def attach_chat_artifact_link(
+        interaction_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            record = chat_store.get(interaction_id)
+            if record is None:
+                raise ChatInteractionError(
+                    status_code=404,
+                    error_code="ae.chat_interaction_not_found",
+                    detail=f"Chat interaction was not found: {interaction_id}",
+                )
+            artifact_record = artifact_record_from_payload(payload)
+            if artifact_record["chat_document_id"] != record["chat_document_id"]:
+                raise ChatInteractionError(
+                    status_code=409,
+                    error_code="ae.artifact_link_scope_mismatch",
+                    detail="Artifact chat document does not match the interaction.",
+                )
+            if artifact_record["interaction_id"] != interaction_id:
+                raise ChatInteractionError(
+                    status_code=409,
+                    error_code="ae.artifact_link_scope_mismatch",
+                    detail="Artifact interaction does not match the target interaction.",
+                )
+            updated = chat_store.attach_artifact_ref(
+                interaction_id=interaction_id,
+                artifact_ref=build_chat_artifact_ref(artifact_record),
+                updated_at=_utc_now(),
+            )
+            return updated
+        except ChatInteractionError as exc:
+            return _chat_problem_response(request, exc)
+
+    @app.get(
+        "/api/v1/chat/interactions/{interaction_id}/artifact-links",
+        response_model=None,
+    )
+    def list_chat_artifact_links(
+        interaction_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        record = chat_store.get(interaction_id)
+        if record is None:
+            return _chat_problem_response(
+                request,
+                ChatInteractionError(
+                    status_code=404,
+                    error_code="ae.chat_interaction_not_found",
+                    detail=f"Chat interaction was not found: {interaction_id}",
+                ),
+            )
+        return {
+            "interaction_id": interaction_id,
+            "chat_document_id": record["chat_document_id"],
+            "artifact_refs": record["artifact_refs"],
+        }
+
 
 def build_cx_generation_payload(
     source_payload: dict[str, Any],
@@ -332,6 +426,7 @@ def build_chat_interaction_record(
             "usage": cx_record["usage"],
         },
         "retrieval": retrieval_summary(retrieval_package),
+        "artifact_refs": [],
         "created_at": now,
         "updated_at": now,
     }
@@ -360,9 +455,141 @@ def build_no_answer_chat_interaction_record(
         "cx_status": retrieval_package["status"],
         "generation": None,
         "retrieval": retrieval_summary(retrieval_package),
+        "artifact_refs": [],
         "created_at": now,
         "updated_at": now,
     }
+
+
+def artifact_record_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    artifact_record = payload.get("artifact")
+    if not isinstance(artifact_record, dict):
+        raise ChatInteractionError(
+            status_code=422,
+            error_code="ae.artifact_record_required",
+            detail="artifact must be supplied as an object.",
+        )
+    return artifact_record
+
+
+def build_chat_artifact_ref(artifact_record: dict[str, Any]) -> dict[str, Any]:
+    current_version = current_artifact_version(artifact_record)
+    source_ref = artifact_record["source_refs"][0]
+    available_formats = [
+        artifact_file["format"] for artifact_file in artifact_record.get("files", [])
+    ]
+    return {
+        "artifact_id": required_text(
+            artifact_record,
+            "artifact_id",
+            "ae.artifact_record_invalid",
+        ),
+        "artifact_version_id": current_version["artifact_version_id"],
+        "display_title": required_text(
+            artifact_record,
+            "display_title",
+            "ae.artifact_record_invalid",
+        ),
+        "artifact_type": required_text(
+            artifact_record,
+            "artifact_type",
+            "ae.artifact_record_invalid",
+        ),
+        "artifact_status": required_text(
+            artifact_record,
+            "artifact_status",
+            "ae.artifact_record_invalid",
+        ),
+        "primary_format": available_formats[0]
+        if available_formats
+        else first_target_format(artifact_record),
+        "available_formats": available_formats,
+        "preview_route": link_route_for_type(artifact_record, "preview"),
+        "download_routes": download_routes_by_format(artifact_record),
+        "source_generation_id": source_ref["cx_generation_id"],
+        "source_content_hash": current_version["source_content_hash"],
+        "quality_summary": dict(source_ref["quality_summary"]),
+        "actions": artifact_actions_for_record(artifact_record),
+    }
+
+
+def current_artifact_version(artifact_record: dict[str, Any]) -> dict[str, Any]:
+    current_version_id = artifact_record.get("current_version_id")
+    if not isinstance(current_version_id, str) or not current_version_id.strip():
+        raise ChatInteractionError(
+            status_code=409,
+            error_code="ae.artifact_link_version_required",
+            detail="Artifact must have a current version before linking to chat.",
+        )
+    for version in artifact_record.get("versions", []):
+        if version.get("artifact_version_id") == current_version_id:
+            return version
+    raise ChatInteractionError(
+        status_code=409,
+        error_code="ae.artifact_link_version_required",
+        detail="Artifact current version metadata was not found.",
+    )
+
+
+def first_target_format(artifact_record: dict[str, Any]) -> str:
+    target_formats = artifact_record.get("target_formats", [])
+    if not target_formats:
+        raise ChatInteractionError(
+            status_code=422,
+            error_code="ae.artifact_record_invalid",
+            detail="Artifact target formats are required.",
+        )
+    return target_formats[0]
+
+
+def link_route_for_type(
+    artifact_record: dict[str, Any],
+    link_type: str,
+) -> str | None:
+    for link in artifact_record.get("links", []):
+        if link.get("link_type") == link_type and isinstance(link.get("link_route"), str):
+            return link["link_route"]
+    return None
+
+
+def download_routes_by_format(artifact_record: dict[str, Any]) -> dict[str, str]:
+    download_route = link_route_for_type(artifact_record, "download")
+    if download_route is None:
+        return {}
+    return {
+        artifact_file["format"]: download_route
+        for artifact_file in artifact_record.get("files", [])
+        if isinstance(artifact_file.get("format"), str)
+    }
+
+
+def artifact_actions_for_record(artifact_record: dict[str, Any]) -> list[str]:
+    status = artifact_record.get("artifact_status")
+    actions = ["view_sources", "view_lineage"]
+    if status == "READY":
+        if link_route_for_type(artifact_record, "preview") is not None:
+            actions.insert(0, "preview")
+        download_routes = download_routes_by_format(artifact_record)
+        for render_format in sorted(download_routes):
+            actions.append(f"download_{render_format.lower()}")
+    if status == "FAILED":
+        actions.append("retry_render")
+    return actions
+
+
+def required_text(
+    payload: dict[str, Any],
+    field_name: str,
+    error_code: str,
+) -> str:
+    value = payload.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ChatInteractionError(
+            status_code=422,
+            error_code=error_code,
+            detail=f"{field_name} is required.",
+        )
+    return value.strip()
 
 
 def should_use_retrieval(payload: dict[str, Any]) -> bool:

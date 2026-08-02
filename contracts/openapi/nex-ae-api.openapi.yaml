@@ -405,6 +405,45 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: AE chat interaction was not found.
+  /api/v1/chat/interactions/{interaction_id}/artifact-links:
+    post:
+      operationId: attachAeChatArtifactLink
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AE chat interaction updated with an artifact reference.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: AE chat interaction was not found.
+        "409":
+          description: Artifact scope or current version does not match the chat interaction.
+        "422":
+          description: Artifact record payload is invalid.
+    get:
+      operationId: listAeChatArtifactLinks
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Artifact references attached to the AE chat interaction.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: AE chat interaction was not found.
   /api/v1/retrieval/contexts:
     post:
       operationId: createAeRetrievalInteraction

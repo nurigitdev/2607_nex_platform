@@ -30,6 +30,8 @@ Current endpoints:
 - `GET /api/v1/compatibility/generation-rules`
 - `POST /api/v1/chat/interactions`
 - `GET /api/v1/chat/interactions/{interaction_id}`
+- `POST /api/v1/chat/interactions/{interaction_id}/artifact-links`
+- `GET /api/v1/chat/interactions/{interaction_id}/artifact-links`
 - `POST /api/v1/retrieval/contexts`
 - `GET /api/v1/retrieval/contexts/{retrieval_interaction_id}`
 - `GET /api/v1/analytics/prompt-events/{prompt_event_id}`
@@ -91,3 +93,11 @@ Chat interactions can include a `retrieval` object. When enabled, AE asks CX for
 a retrieval context package first, injects cited evidence into the CX generation
 request, records a compact retrieval summary, and returns `NO_ANSWER` without
 calling generation when CX has no supporting evidence.
+
+Chat artifact links:
+
+- Chat records always include `artifact_refs`. AE can attach a rendered artifact
+  ref to the originating interaction when chat document and interaction lineage
+  match. The link stores safe artifact/version IDs, preview/download AE routes,
+  quality badges, source lineage, and allowed actions without embedding rendered
+  content or filesystem paths.

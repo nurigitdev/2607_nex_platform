@@ -11,6 +11,9 @@ from nex_ae_api.chat import (
     ChatInteractionStore,
     HttpCxGenerationClient,
     attach_retrieval_package_to_generation_payload,
+    artifact_actions_for_record,
+    artifact_record_from_payload,
+    build_chat_artifact_ref,
     build_chat_interaction_record,
     build_cx_generation_payload,
     build_grounded_user_message,
@@ -151,6 +154,65 @@ def build_grounded_test_client(
     return TestClient(app), cx_client, retrieval, store
 
 
+def sample_artifact_record(
+    *,
+    chat_document_id: str = "chat-001",
+    interaction_id: str = "interaction-001",
+    current_version_id: str | None = "artifact-version-001",
+    status: str = "READY",
+) -> dict[str, Any]:
+    return {
+        "artifact_id": "artifact-001",
+        "artifact_type": "generated_document",
+        "artifact_status": status,
+        "current_version_id": current_version_id,
+        "chat_document_id": chat_document_id,
+        "interaction_id": interaction_id,
+        "display_title": "Generated report",
+        "target_formats": ["MD", "HTML_PREVIEW"],
+        "source_refs": [
+            {
+                "cx_generation_id": "cx-gen-001",
+                "structured_draft_content_hash": "c" * 64,
+                "quality_summary": {
+                    "citation_status": "VALIDATED",
+                    "citation_count": 2,
+                    "validation_error_count": 0,
+                    "warning_count": 0,
+                    "grounding_required": True,
+                    "retrieval_package_id": "cx-ret-001",
+                    "retrieval_package_hash": "d" * 64,
+                    "evidence_ref_count": 2,
+                },
+            }
+        ],
+        "versions": [
+            {
+                "artifact_version_id": "artifact-version-001",
+                "source_content_hash": "c" * 64,
+            }
+        ],
+        "files": [
+            {
+                "artifact_file_id": "artifact-file-001",
+                "format": "MD",
+            }
+        ],
+        "links": [
+            {
+                "artifact_file_id": "artifact-file-001",
+                "link_type": "preview",
+                "link_route": "/api/v1/artifact-files/artifact-file-001/preview",
+            },
+            {
+                "artifact_file_id": "artifact-file-001",
+                "link_type": "download",
+                "link_route": "/api/v1/artifact-files/artifact-file-001/download",
+            },
+        ],
+    }
+
+
 def test_build_cx_generation_payload_uses_user_message_hash() -> None:
     payload = build_cx_generation_payload(
         {"user_message": "  summarize this document  "},
@@ -195,6 +257,7 @@ def test_chat_interaction_endpoint_calls_cx_and_stores_record() -> None:
     assert payload["status"] == "COMPLETED"
     assert payload["cx_generation_id"] == "cx-gen-001"
     assert payload["generation"]["output_preview"] == "Mock answer."
+    assert payload["artifact_refs"] == []
     assert "Summarize the selected evidence." not in payload["user_message_hash"]
     assert store.get(payload["interaction_id"]) == payload
     assert cx_client.calls[0]["payload"]["messages"][0]["content"] == (
@@ -219,6 +282,44 @@ def test_chat_interaction_can_be_read_back() -> None:
     assert response.json()["interaction_id"] == created["interaction_id"]
 
 
+def test_chat_artifact_link_route_attaches_and_lists_refs() -> None:
+    client, _, store = build_test_client()
+    created = client.post(
+        "/api/v1/chat/interactions",
+        json={
+            "interaction_id": "interaction-001",
+            "chat_document_id": "chat-001",
+            "user_message": "hello",
+        },
+        headers=auth_headers(),
+    ).json()
+
+    attached = client.post(
+        f"/api/v1/chat/interactions/{created['interaction_id']}/artifact-links",
+        json={"artifact": sample_artifact_record()},
+        headers=auth_headers(),
+    )
+    repeated = client.post(
+        f"/api/v1/chat/interactions/{created['interaction_id']}/artifact-links",
+        json={"artifact": sample_artifact_record()},
+        headers=auth_headers(),
+    )
+    listed = client.get(
+        f"/api/v1/chat/interactions/{created['interaction_id']}/artifact-links",
+        headers=auth_headers(),
+    )
+
+    assert attached.status_code == 200
+    assert len(attached.json()["artifact_refs"]) == 1
+    assert repeated.status_code == 200
+    assert len(repeated.json()["artifact_refs"]) == 1
+    assert listed.status_code == 200
+    assert listed.json()["artifact_refs"] == attached.json()["artifact_refs"]
+    assert store.get(created["interaction_id"])["artifact_refs"] == attached.json()[
+        "artifact_refs"
+    ]
+
+
 def test_chat_interaction_read_requires_auth() -> None:
     client, _, _ = build_test_client()
 
@@ -238,6 +339,59 @@ def test_chat_interaction_read_returns_not_found() -> None:
 
     assert response.status_code == 404
     assert response.json()["error_code"] == "ae.chat_interaction_not_found"
+
+
+def test_chat_artifact_link_routes_require_auth_and_matching_scope() -> None:
+    client, _, _ = build_test_client()
+    created = client.post(
+        "/api/v1/chat/interactions",
+        json={
+            "interaction_id": "interaction-001",
+            "chat_document_id": "chat-001",
+            "user_message": "hello",
+        },
+        headers=auth_headers(),
+    ).json()
+
+    unauthorized = client.post(
+        f"/api/v1/chat/interactions/{created['interaction_id']}/artifact-links",
+        json={"artifact": sample_artifact_record()},
+    )
+    missing = client.post(
+        "/api/v1/chat/interactions/missing/artifact-links",
+        json={"artifact": sample_artifact_record()},
+        headers=auth_headers(),
+    )
+    missing_list = client.get(
+        "/api/v1/chat/interactions/missing/artifact-links",
+        headers=auth_headers(),
+    )
+    bad_chat_document = client.post(
+        f"/api/v1/chat/interactions/{created['interaction_id']}/artifact-links",
+        json={"artifact": sample_artifact_record(chat_document_id="other-chat")},
+        headers=auth_headers(),
+    )
+    bad_interaction = client.post(
+        f"/api/v1/chat/interactions/{created['interaction_id']}/artifact-links",
+        json={"artifact": sample_artifact_record(interaction_id="other-interaction")},
+        headers=auth_headers(),
+    )
+    bad_artifact = client.post(
+        f"/api/v1/chat/interactions/{created['interaction_id']}/artifact-links",
+        json={"artifact": sample_artifact_record(current_version_id=None)},
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert missing.status_code == 404
+    assert missing.json()["error_code"] == "ae.chat_interaction_not_found"
+    assert missing_list.status_code == 404
+    assert bad_chat_document.status_code == 409
+    assert bad_chat_document.json()["error_code"] == "ae.artifact_link_scope_mismatch"
+    assert bad_interaction.status_code == 409
+    assert bad_interaction.json()["error_code"] == "ae.artifact_link_scope_mismatch"
+    assert bad_artifact.status_code == 409
+    assert bad_artifact.json()["error_code"] == "ae.artifact_link_version_required"
 
 
 def test_chat_interaction_endpoint_rejects_bad_generation_object() -> None:
@@ -282,6 +436,73 @@ def test_build_chat_interaction_record_maps_cx_metadata() -> None:
     assert record["interaction_id"] == "interaction-001"
     assert record["generation"]["mo_generation_id"] == "mo-gen-001"
     assert record["retrieval"] is None
+    assert record["artifact_refs"] == []
+
+
+def test_build_chat_artifact_ref_maps_artifact_routes_and_actions() -> None:
+    artifact_ref = build_chat_artifact_ref(sample_artifact_record())
+
+    assert artifact_ref["artifact_id"] == "artifact-001"
+    assert artifact_ref["artifact_version_id"] == "artifact-version-001"
+    assert artifact_ref["primary_format"] == "MD"
+    assert artifact_ref["available_formats"] == ["MD"]
+    assert artifact_ref["preview_route"].endswith("/preview")
+    assert artifact_ref["download_routes"] == {
+        "MD": "/api/v1/artifact-files/artifact-file-001/download"
+    }
+    assert artifact_ref["source_generation_id"] == "cx-gen-001"
+    assert artifact_ref["source_content_hash"] == "c" * 64
+    assert artifact_ref["actions"] == [
+        "preview",
+        "view_sources",
+        "view_lineage",
+        "download_md",
+    ]
+    assert "/data/nex-platform" not in str(artifact_ref)
+
+
+def test_chat_artifact_ref_guards_missing_version_and_bad_payload() -> None:
+    try:
+        artifact_record_from_payload({})
+    except ChatInteractionError as exc:
+        assert exc.error_code == "ae.artifact_record_required"
+    else:
+        raise AssertionError("expected ChatInteractionError")
+
+    try:
+        build_chat_artifact_ref(sample_artifact_record(current_version_id=None))
+    except ChatInteractionError as exc:
+        assert exc.error_code == "ae.artifact_link_version_required"
+    else:
+        raise AssertionError("expected ChatInteractionError")
+
+    missing_version = sample_artifact_record(current_version_id="missing-version")
+    try:
+        build_chat_artifact_ref(missing_version)
+    except ChatInteractionError as exc:
+        assert exc.error_code == "ae.artifact_link_version_required"
+    else:
+        raise AssertionError("expected ChatInteractionError")
+
+    bad_record = {**sample_artifact_record(), "target_formats": ["MD"]}
+    bad_record["files"] = []
+    bad_record["links"] = []
+    artifact_ref = build_chat_artifact_ref(bad_record)
+    assert artifact_ref["available_formats"] == []
+    assert artifact_ref["primary_format"] == "MD"
+    assert artifact_ref["preview_route"] is None
+    assert artifact_ref["download_routes"] == {}
+    assert artifact_actions_for_record(
+        {**sample_artifact_record(status="FAILED"), "links": []}
+    ) == ["view_sources", "view_lineage", "retry_render"]
+
+    no_targets = {**sample_artifact_record(), "target_formats": [], "files": []}
+    try:
+        build_chat_artifact_ref(no_targets)
+    except ChatInteractionError as exc:
+        assert exc.error_code == "ae.artifact_record_invalid"
+    else:
+        raise AssertionError("expected ChatInteractionError")
 
 
 def test_should_use_retrieval_handles_disabled_and_invalid_payloads() -> None:

@@ -96,6 +96,11 @@
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
     },
     {
+      "name": "ae_chat_interaction_artifact_linked",
+      "path": "examples/generation/ae_chat_interaction.artifact_linked.json",
+      "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
+    },
+    {
       "name": "ae_prompt_analytics_mock",
       "path": "examples/generation/ae_prompt_analytics.mock_success.json",
       "schema": "schemas/service/nex_ae_api/prompt_analytics.v1.schema.json"

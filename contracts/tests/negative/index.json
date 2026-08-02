@@ -76,6 +76,11 @@
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
     },
     {
+      "name": "ae_chat_interaction_artifact_route_path_leak",
+      "path": "tests/negative/generation/ae_chat_interaction.artifact_route_path_leak.json",
+      "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
+    },
+    {
       "name": "ae_prompt_analytics_raw_prompt_leak",
       "path": "tests/negative/generation/ae_prompt_analytics.raw_prompt_leak.json",
       "schema": "schemas/service/nex_ae_api/prompt_analytics.v1.schema.json"

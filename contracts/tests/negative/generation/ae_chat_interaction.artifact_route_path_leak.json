@@ -1,0 +1,58 @@
+{
+  "interaction_schema_version": "ae_chat_interaction.v1",
+  "interaction_id": "interaction-001",
+  "chat_document_id": "chat-001",
+  "status": "COMPLETED",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "user_message_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "user_message_preview": "Summarize the selected evidence.",
+  "cx_generation_id": "cx-gen-001",
+  "cx_status": "COMPLETED",
+  "generation": {
+    "alias": "general-llm-default",
+    "provider_capability": "generation",
+    "mo_generation_id": "mo-gen-001",
+    "finish_reason": "STOP",
+    "output_preview": "Mock answer.",
+    "usage": {}
+  },
+  "retrieval": null,
+  "artifact_refs": [
+    {
+      "artifact_id": "artifact-001",
+      "artifact_version_id": "artifact-version-001",
+      "display_title": "Generated report",
+      "artifact_type": "generated_document",
+      "artifact_status": "READY",
+      "primary_format": "MD",
+      "available_formats": [
+        "MD"
+      ],
+      "preview_route": "/data/nex-platform/ae/artifacts/generated-report.md",
+      "download_routes": {
+        "MD": "/api/v1/artifact-files/artifact-file-001/download"
+      },
+      "source_generation_id": "cx-gen-001",
+      "source_content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "quality_summary": {
+        "citation_status": "VALIDATED",
+        "citation_count": 2,
+        "validation_error_count": 0,
+        "warning_count": 0,
+        "grounding_required": true,
+        "retrieval_package_id": "cx-ret-001",
+        "retrieval_package_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "evidence_ref_count": 2
+      },
+      "actions": [
+        "preview",
+        "view_sources",
+        "view_lineage",
+        "download_md"
+      ]
+    }
+  ],
+  "created_at": "2026-08-02T00:00:00Z",
+  "updated_at": "2026-08-02T00:00:00Z"
+}
