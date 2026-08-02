@@ -27,6 +27,7 @@ DEFAULT_OWNER_USER_ID = "local-user"
 DEFAULT_TARGET_FORMATS = ["MD", "HTML_PREVIEW"]
 DEFAULT_RETENTION_POLICY_REF = "generated-artifact-retention-local-v1"
 DEFAULT_ARTIFACT_TYPE = "generated_document"
+MARKDOWN_RENDERER_POLICY_ID = "ae-markdown-renderer-v1"
 SUPPORTED_ARTIFACT_INTENTS = {
     "preview_only",
     "create_artifact",
@@ -135,6 +136,8 @@ class ArtifactHandoffStore:
 @dataclass
 class ArtifactRecordStore:
     records: dict[str, dict[str, Any]] = field(default_factory=dict)
+    render_jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    rendered_markdown: dict[str, str] = field(default_factory=dict)
 
     def create(self, record: dict[str, Any]) -> dict[str, Any]:
         existing = self.records.get(record["artifact_id"])
@@ -155,6 +158,30 @@ class ArtifactRecordStore:
         if record is None:
             return None
         return list(record["versions"])
+
+    def get_render_job(self, render_job_id: str) -> dict[str, Any] | None:
+        return self.render_jobs.get(render_job_id)
+
+    def get_rendered_markdown(self, artifact_version_id: str) -> str | None:
+        return self.rendered_markdown.get(artifact_version_id)
+
+    def apply_markdown_render(
+        self,
+        *,
+        artifact_id: str,
+        artifact_version: dict[str, Any],
+        render_job: dict[str, Any],
+        markdown: str,
+    ) -> dict[str, Any]:
+        record = self.records[artifact_id]
+        record["versions"].append(artifact_version)
+        record["render_jobs"].append(render_job)
+        record["artifact_status"] = "READY"
+        record["current_version_id"] = artifact_version["artifact_version_id"]
+        record["updated_at"] = render_job["completed_at"]
+        self.render_jobs[render_job["render_job_id"]] = render_job
+        self.rendered_markdown[artifact_version["artifact_version_id"]] = markdown
+        return record
 
 
 @dataclass(frozen=True)
@@ -336,6 +363,89 @@ def register_artifact_handoff_routes(
             "versions": artifact_record_store.list_versions(artifact_id) or [],
         }
 
+    @app.post("/api/v1/artifacts/{artifact_id}/render-jobs", response_model=None)
+    def create_artifact_render_job(
+        artifact_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            record = artifact_record_store.get(artifact_id)
+            if record is None:
+                raise ArtifactHandoffError(
+                    status_code=404,
+                    error_code="ae.artifact_not_found",
+                    detail=f"Artifact was not found: {artifact_id}",
+                )
+            render_request_id = idempotency_key or required_string(
+                payload,
+                "render_request_id",
+                "ae.render_request_id_required",
+            )
+            render_job_id = deterministic_render_job_id(artifact_id, render_request_id)
+            existing_job = artifact_record_store.get_render_job(render_job_id)
+            if existing_job is not None:
+                return {
+                    "render_result_schema_version": "ae_markdown_render_result.v1",
+                    "render_job": existing_job,
+                    "artifact": record,
+                }
+            target_formats = markdown_target_formats_from_payload(payload, record)
+            source_ref = record["source_refs"][0]
+            structured_draft = client.get_structured_draft(
+                source_ref["cx_generation_id"],
+                request_id=request_id_from_headers(request),
+                trace_id=payload.get("trace_id") or trace_id_from_headers(request),
+            )
+            render_result = build_markdown_render_result(
+                artifact_record=record,
+                structured_draft=structured_draft,
+                target_formats=target_formats,
+                render_request_id=render_request_id,
+                render_job_id=render_job_id,
+            )
+            updated_record = artifact_record_store.apply_markdown_render(
+                artifact_id=artifact_id,
+                artifact_version=render_result["artifact_version"],
+                render_job=render_result["render_job"],
+                markdown=render_result["markdown"],
+            )
+            return {
+                "render_result_schema_version": "ae_markdown_render_result.v1",
+                "render_job": render_result["render_job"],
+                "artifact": updated_record,
+            }
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.get("/api/v1/artifact-render-jobs/{render_job_id}", response_model=None)
+    def get_artifact_render_job(
+        render_job_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        render_job = artifact_record_store.get_render_job(render_job_id)
+        if render_job is None:
+            return _artifact_problem_response(
+                request,
+                ArtifactHandoffError(
+                    status_code=404,
+                    error_code="ae.render_job_not_found",
+                    detail=f"Artifact render job was not found: {render_job_id}",
+                ),
+            )
+        return render_job
+
 
 def build_artifact_handoff_record(
     *,
@@ -508,6 +618,187 @@ def artifact_source_ref_from_handoff(
         "source_anchor_count": evidence_ref_count,
         "quality_summary": quality_summary,
     }
+
+
+def build_markdown_render_result(
+    *,
+    artifact_record: dict[str, Any],
+    structured_draft: dict[str, Any],
+    target_formats: list[str],
+    render_request_id: str,
+    render_job_id: str,
+) -> dict[str, Any]:
+    validate_structured_draft_for_markdown_render(artifact_record, structured_draft)
+    markdown = render_markdown_from_structured_draft(structured_draft)
+    now = _utc_now()
+    artifact_content_hash = sha256_text(markdown)
+    source_ref = artifact_record["source_refs"][0]
+    artifact_version_id = str(
+        uuid5(
+            NAMESPACE_URL,
+            (
+                "ae-artifact-version:"
+                f"{artifact_record['artifact_id']}:{len(artifact_record['versions']) + 1}:"
+                f"{artifact_content_hash}"
+            ),
+        )
+    )
+    artifact_version = {
+        "artifact_version_id": artifact_version_id,
+        "artifact_id": artifact_record["artifact_id"],
+        "version_no": len(artifact_record["versions"]) + 1,
+        "version_reason": "initial_render"
+        if not artifact_record["versions"]
+        else "rerender",
+        "source_generation_id": source_ref["cx_generation_id"],
+        "source_structured_draft_id": source_ref["structured_draft_id"],
+        "source_content_hash": source_ref["structured_draft_content_hash"],
+        "source_citation_claims_hash": source_ref["citation_claims_hash"],
+        "render_policy_hash": sha256_json(
+            {
+                "renderer_policy_id": MARKDOWN_RENDERER_POLICY_ID,
+                "target_formats": target_formats,
+                "template_ref": artifact_record["template_ref"],
+            }
+        ),
+        "artifact_content_hash": artifact_content_hash,
+        "rendered_formats": target_formats,
+        "validation_snapshot": dict(source_ref["quality_summary"]),
+        "created_at": now,
+    }
+    render_job = {
+        "render_job_id": render_job_id,
+        "artifact_id": artifact_record["artifact_id"],
+        "artifact_version_id": artifact_version_id,
+        "job_status": "COMPLETED",
+        "current_stage": "FINALIZING",
+        "progress_mode": "DETERMINATE",
+        "progress_percent": 100,
+        "retryable": False,
+        "failure_code": None,
+        "started_at": now,
+        "completed_at": now,
+    }
+    return {
+        "render_request_id": render_request_id,
+        "render_job": render_job,
+        "artifact_version": artifact_version,
+        "markdown": markdown,
+    }
+
+
+def render_markdown_from_structured_draft(structured_draft: dict[str, Any]) -> str:
+    lines: list[str] = [f"# {structured_draft['title'].strip()}"]
+    summary = optional_text(structured_draft.get("summary"))
+    if summary:
+        lines.extend(["", summary])
+
+    for section in sorted(
+        structured_draft.get("sections", []),
+        key=lambda item: int(item.get("ordinal") or 0),
+    ):
+        heading = optional_text(section.get("heading"))
+        if heading:
+            lines.extend(["", f"## {heading}"])
+        for block in section.get("blocks", []):
+            if block.get("block_type") != "paragraph":
+                continue
+            text_preview = optional_text(block.get("text_preview"))
+            if text_preview:
+                lines.extend(["", text_preview])
+
+    valid_citations = [
+        citation
+        for citation in structured_draft.get("citations", [])
+        if citation.get("valid") and optional_text(citation.get("citation_label"))
+    ]
+    if valid_citations:
+        lines.extend(["", "## Citations"])
+        for citation in valid_citations:
+            evidence_id = optional_text(citation.get("evidence_id")) or "unknown"
+            retrieval_package_id = (
+                optional_text(citation.get("retrieval_package_id")) or "unknown"
+            )
+            lines.append(
+                "- "
+                f"{citation['citation_label']} evidence `{evidence_id}` "
+                f"from retrieval package `{retrieval_package_id}`."
+            )
+
+    return "\n".join(lines).strip() + "\n"
+
+
+def validate_structured_draft_for_markdown_render(
+    artifact_record: dict[str, Any],
+    structured_draft: dict[str, Any],
+) -> None:
+    if artifact_record["artifact_status"] in {"ARCHIVED", "DELETED"}:
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.artifact_not_renderable",
+            detail="Archived or deleted artifacts cannot be rendered.",
+        )
+    if structured_draft.get("status") != "VALIDATED":
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.citation_validation_required",
+            detail="Structured draft must be validated before rendering.",
+        )
+    if structured_draft.get("validation", {}).get("citation_status") != "VALIDATED":
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.citation_validation_required",
+            detail="Citation validation must pass before rendering.",
+        )
+    source_ref = artifact_record["source_refs"][0]
+    if structured_draft.get("structured_draft_id") != source_ref["structured_draft_id"]:
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.source_draft_hash_mismatch",
+            detail="Structured draft ID does not match the artifact source ref.",
+        )
+    if structured_draft.get("content_hash") != source_ref["structured_draft_content_hash"]:
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.source_draft_hash_mismatch",
+            detail="Structured draft content hash does not match the artifact source ref.",
+        )
+
+
+def markdown_target_formats_from_payload(
+    payload: dict[str, Any],
+    artifact_record: dict[str, Any],
+) -> list[str]:
+    requested_formats = (
+        payload["target_formats"] if "target_formats" in payload else ["MD"]
+    )
+    if not isinstance(requested_formats, list) or not requested_formats:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.target_formats_invalid",
+            detail="target_formats must be a non-empty list.",
+        )
+    normalized: list[str] = []
+    for value in requested_formats:
+        if value != "MD":
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.render_format_unsupported",
+                detail="Slice 0042 supports Markdown rendering only.",
+            )
+        if value not in normalized:
+            normalized.append(value)
+    if "MD" not in artifact_record["target_formats"]:
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.render_format_not_requested",
+            detail="The artifact handoff did not request Markdown output.",
+        )
+    return normalized
+
+
+def deterministic_render_job_id(artifact_id: str, render_request_id: str) -> str:
+    return str(uuid5(NAMESPACE_URL, f"ae-render-job:{artifact_id}:{render_request_id}"))
 
 
 def validate_artifact_handoff_record(handoff_record: dict[str, Any]) -> None:
@@ -698,6 +989,10 @@ def sha256_json(value: dict[str, Any]) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+
+
+def sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def _authorize_ae_request(

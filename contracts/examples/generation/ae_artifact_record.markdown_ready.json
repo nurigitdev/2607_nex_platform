@@ -1,0 +1,110 @@
+{
+  "artifact_schema_version": "ae_artifact_record.v1",
+  "artifact_id": "artifact-001",
+  "artifact_type": "generated_document",
+  "artifact_status": "READY",
+  "current_version_id": "artifact-version-001",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "chat_document_id": "chat-doc-001",
+  "interaction_id": "interaction-001",
+  "owner_actor_ref": {
+    "actor_type": "user",
+    "actor_id": "user-001",
+    "tenant_id": "tenant-001"
+  },
+  "workspace_ref": {
+    "workspace_id": "workspace-001",
+    "tenant_id": "tenant-001"
+  },
+  "display_title": "Generated report",
+  "language": "ko",
+  "artifact_intent": "create_artifact",
+  "target_formats": [
+    "MD",
+    "HTML_PREVIEW"
+  ],
+  "retention_policy_ref": "generated-artifact-retention-local-v1",
+  "template_ref": {
+    "template_id": null,
+    "template_version": null,
+    "rendering_template_id": null
+  },
+  "handoff_ref": {
+    "artifact_handoff_id": "handoff-001",
+    "artifact_request_id": "artifact-request-001",
+    "handoff_schema_version": "ae_artifact_handoff.v1"
+  },
+  "source_refs": [
+    {
+      "source_ref_id": "source-ref-001",
+      "cx_generation_id": "cx-gen-001",
+      "structured_draft_id": "draft-001",
+      "draft_schema_version": "cx_structured_draft.v1",
+      "structured_draft_content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "citation_claims_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "validation_result_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "retrieval_package_id": "cx-ret-001",
+      "retrieval_package_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "evidence_ref_count": 2,
+      "source_anchor_count": 2,
+      "quality_summary": {
+        "citation_status": "VALIDATED",
+        "citation_count": 2,
+        "validation_error_count": 0,
+        "warning_count": 0,
+        "grounding_required": true,
+        "retrieval_package_id": "cx-ret-001",
+        "retrieval_package_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "evidence_ref_count": 2
+      }
+    }
+  ],
+  "versions": [
+    {
+      "artifact_version_id": "artifact-version-001",
+      "artifact_id": "artifact-001",
+      "version_no": 1,
+      "version_reason": "initial_render",
+      "source_generation_id": "cx-gen-001",
+      "source_structured_draft_id": "draft-001",
+      "source_content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "source_citation_claims_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "render_policy_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "artifact_content_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "rendered_formats": [
+        "MD"
+      ],
+      "validation_snapshot": {
+        "citation_status": "VALIDATED",
+        "citation_count": 2,
+        "validation_error_count": 0,
+        "warning_count": 0,
+        "grounding_required": true,
+        "retrieval_package_id": "cx-ret-001",
+        "retrieval_package_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "evidence_ref_count": 2
+      },
+      "created_at": "2026-08-02T00:00:00Z"
+    }
+  ],
+  "render_jobs": [
+    {
+      "render_job_id": "render-job-001",
+      "artifact_id": "artifact-001",
+      "artifact_version_id": "artifact-version-001",
+      "job_status": "COMPLETED",
+      "current_stage": "FINALIZING",
+      "progress_mode": "DETERMINATE",
+      "progress_percent": 100,
+      "retryable": false,
+      "failure_code": null,
+      "started_at": "2026-08-02T00:00:00Z",
+      "completed_at": "2026-08-02T00:00:00Z"
+    }
+  ],
+  "files": [],
+  "links": [],
+  "created_at": "2026-08-02T00:00:00Z",
+  "updated_at": "2026-08-02T00:00:00Z"
+}

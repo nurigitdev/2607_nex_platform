@@ -9,18 +9,23 @@ from fastapi.testclient import TestClient
 import nex_ae_api.artifacts as ae_artifacts
 from nex_ae_api.artifacts import (
     ArtifactHandoffError,
-    ArtifactRecordStore,
     ArtifactHandoffStore,
+    ArtifactRecordStore,
     HttpCxArtifactSourceClient,
     actor_claims_ref_from_payload,
     artifact_intent_from_payload,
     artifact_type_from_payload,
     build_artifact_handoff_record,
+    build_markdown_render_result,
     build_artifact_record_from_handoff,
+    deterministic_render_job_id,
     language_from_payload,
+    markdown_target_formats_from_payload,
     register_artifact_handoff_routes,
+    render_markdown_from_structured_draft,
     target_formats_from_payload,
     validate_artifact_handoff_record,
+    validate_structured_draft_for_markdown_render,
 )
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 
@@ -91,6 +96,7 @@ def sample_structured_draft(
     citation_status: str = "VALIDATED",
     cx_generation_id: str = "cx-gen-001",
     structured_draft_id: str = "draft-001",
+    content_hash: str = "c" * 64,
 ) -> dict[str, Any]:
     return {
         "structured_draft_schema_version": "cx_structured_draft.v1",
@@ -101,8 +107,28 @@ def sample_structured_draft(
         "request_id": REQUEST_ID,
         "title": "Grounded report",
         "summary": "Safe summary.",
-        "content_hash": "c" * 64,
-        "sections": [],
+        "content_hash": content_hash,
+        "sections": [
+            {
+                "section_id": "section-001",
+                "ordinal": 1,
+                "heading": "Overview",
+                "blocks": [
+                    {
+                        "block_id": "block-001",
+                        "block_type": "paragraph",
+                        "text_hash": "e" * 64,
+                        "text_preview": "Grounded answer [1].",
+                    },
+                    {
+                        "block_id": "block-002",
+                        "block_type": "paragraph",
+                        "text_hash": "f" * 64,
+                        "text_preview": "Second finding [2].",
+                    },
+                ],
+            }
+        ],
         "citations": [
             {
                 "citation_label": "[1]",
@@ -151,6 +177,18 @@ def artifact_payload() -> dict[str, Any]:
 def build_client(
     cx_client: FakeCxArtifactSourceClient | None = None,
 ) -> tuple[TestClient, ArtifactHandoffStore, FakeCxArtifactSourceClient]:
+    client, store, _, source_client = build_client_with_artifact_store(cx_client)
+    return client, store, source_client
+
+
+def build_client_with_artifact_store(
+    cx_client: FakeCxArtifactSourceClient | None = None,
+) -> tuple[
+    TestClient,
+    ArtifactHandoffStore,
+    ArtifactRecordStore,
+    FakeCxArtifactSourceClient,
+]:
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     store = ArtifactHandoffStore()
     artifact_store = ArtifactRecordStore()
@@ -161,7 +199,7 @@ def build_client(
         artifact_store=artifact_store,
         cx_client=client,
     )
-    return TestClient(app), store, client
+    return TestClient(app), store, artifact_store, client
 
 
 def sample_handoff_record() -> dict[str, Any]:
@@ -254,6 +292,121 @@ def test_build_artifact_record_uses_required_request_id_and_validates_handoff() 
     assert missing_exc.value.error_code == "ae.artifact_handoff_invalid"
 
 
+def test_markdown_renderer_uses_safe_draft_previews_and_citations() -> None:
+    markdown = render_markdown_from_structured_draft(sample_structured_draft())
+
+    assert markdown.startswith("# Grounded report")
+    assert "## Overview" in markdown
+    assert "Grounded answer [1]." in markdown
+    assert "Second finding [2]." in markdown
+    assert "## Citations" in markdown
+    assert "`evidence-001`" in markdown
+    assert "/data/nex-platform" not in markdown
+
+
+def test_build_markdown_render_result_creates_version_and_completed_job() -> None:
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-create-001"},
+        handoff_record=sample_handoff_record(),
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    render_job_id = deterministic_render_job_id(
+        artifact_record["artifact_id"],
+        "render-request-001",
+    )
+
+    result = build_markdown_render_result(
+        artifact_record=artifact_record,
+        structured_draft=sample_structured_draft(),
+        target_formats=["MD"],
+        render_request_id="render-request-001",
+        render_job_id=render_job_id,
+    )
+
+    assert result["render_request_id"] == "render-request-001"
+    assert result["render_job"]["render_job_id"] == render_job_id
+    assert result["render_job"]["job_status"] == "COMPLETED"
+    assert result["render_job"]["progress_percent"] == 100
+    assert result["artifact_version"]["version_no"] == 1
+    assert result["artifact_version"]["version_reason"] == "initial_render"
+    assert result["artifact_version"]["rendered_formats"] == ["MD"]
+    assert len(result["artifact_version"]["artifact_content_hash"]) == 64
+    assert result["markdown"].startswith("# Grounded report")
+
+
+def test_markdown_render_guards_reject_invalid_sources_and_formats() -> None:
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-create-001"},
+        handoff_record=sample_handoff_record(),
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert markdown_target_formats_from_payload({}, artifact_record) == ["MD"]
+    assert markdown_target_formats_from_payload(
+        {"target_formats": ["MD", "MD"]},
+        artifact_record,
+    ) == ["MD"]
+
+    with pytest.raises(ArtifactHandoffError) as formats_exc:
+        markdown_target_formats_from_payload({"target_formats": []}, artifact_record)
+    assert formats_exc.value.error_code == "ae.target_formats_invalid"
+
+    with pytest.raises(ArtifactHandoffError) as format_exc:
+        markdown_target_formats_from_payload(
+            {"target_formats": ["HTML_PREVIEW"]},
+            artifact_record,
+        )
+    assert format_exc.value.error_code == "ae.render_format_unsupported"
+
+    no_markdown_record = {
+        **artifact_record,
+        "target_formats": ["HTML_PREVIEW"],
+    }
+    with pytest.raises(ArtifactHandoffError) as not_requested_exc:
+        markdown_target_formats_from_payload({}, no_markdown_record)
+    assert not_requested_exc.value.error_code == "ae.render_format_not_requested"
+
+    with pytest.raises(ArtifactHandoffError) as status_exc:
+        validate_structured_draft_for_markdown_render(
+            artifact_record,
+            sample_structured_draft(status="VALIDATION_FAILED"),
+        )
+    assert status_exc.value.error_code == "ae.citation_validation_required"
+
+    with pytest.raises(ArtifactHandoffError) as citation_exc:
+        validate_structured_draft_for_markdown_render(
+            artifact_record,
+            sample_structured_draft(citation_status="FAILED"),
+        )
+    assert citation_exc.value.error_code == "ae.citation_validation_required"
+
+    with pytest.raises(ArtifactHandoffError) as draft_exc:
+        validate_structured_draft_for_markdown_render(
+            artifact_record,
+            sample_structured_draft(structured_draft_id="draft-other"),
+        )
+    assert draft_exc.value.error_code == "ae.source_draft_hash_mismatch"
+
+    with pytest.raises(ArtifactHandoffError) as hash_exc:
+        validate_structured_draft_for_markdown_render(
+            artifact_record,
+            sample_structured_draft(content_hash="9" * 64),
+        )
+    assert hash_exc.value.error_code == "ae.source_draft_hash_mismatch"
+
+    archived_record = {**artifact_record, "artifact_status": "ARCHIVED"}
+    with pytest.raises(ArtifactHandoffError) as archived_exc:
+        validate_structured_draft_for_markdown_render(
+            archived_record,
+            sample_structured_draft(),
+        )
+    assert archived_exc.value.error_code == "ae.artifact_not_renderable"
+
+
 def test_artifact_handoff_route_fetches_cx_records_and_allows_readback() -> None:
     client, store, cx_client = build_client()
 
@@ -322,6 +475,103 @@ def test_artifact_route_creates_record_from_handoff_and_allows_readback() -> Non
     assert payload["source_refs"][0]["structured_draft_content_hash"] == "c" * 64
     assert "Safe summary." not in str(payload)
     assert "/data/nex-platform" not in str(payload)
+
+
+def test_markdown_render_route_updates_artifact_and_preserves_private_content() -> None:
+    client, handoff_store, artifact_store, _ = build_client_with_artifact_store()
+    handoff = handoff_store.save(sample_handoff_record())
+    created = client.post(
+        "/api/v1/artifacts",
+        json={"artifact_handoff_id": handoff["artifact_handoff_id"]},
+        headers={**auth_headers(), "Idempotency-Key": "artifact-create-001"},
+    )
+    artifact_id = created.json()["artifact_id"]
+
+    rendered = client.post(
+        f"/api/v1/artifacts/{artifact_id}/render-jobs",
+        json={},
+        headers={**auth_headers(), "Idempotency-Key": "render-request-001"},
+    )
+    payload = rendered.json()
+    render_job = payload["render_job"]
+    artifact = payload["artifact"]
+    repeated = client.post(
+        f"/api/v1/artifacts/{artifact_id}/render-jobs",
+        json={},
+        headers={**auth_headers(), "Idempotency-Key": "render-request-001"},
+    )
+    job_readback = client.get(
+        f"/api/v1/artifact-render-jobs/{render_job['render_job_id']}",
+        headers=auth_headers(),
+    )
+
+    assert rendered.status_code == 200
+    assert payload["render_result_schema_version"] == "ae_markdown_render_result.v1"
+    assert artifact["artifact_status"] == "READY"
+    assert artifact["current_version_id"] == artifact["versions"][0][
+        "artifact_version_id"
+    ]
+    assert artifact["versions"][0]["rendered_formats"] == ["MD"]
+    assert artifact["render_jobs"][0] == render_job
+    assert "Grounded answer [1]." not in str(payload)
+    assert artifact_store.get_rendered_markdown(
+        artifact["current_version_id"]
+    ).startswith("# Grounded report")
+    assert repeated.json() == payload
+    assert job_readback.status_code == 200
+    assert job_readback.json() == render_job
+
+
+def test_markdown_render_route_reports_missing_and_invalid_requests() -> None:
+    client, handoff_store, _, source_client = build_client_with_artifact_store()
+    handoff = handoff_store.save(sample_handoff_record())
+    created = client.post(
+        "/api/v1/artifacts",
+        json={"artifact_handoff_id": handoff["artifact_handoff_id"]},
+        headers={**auth_headers(), "Idempotency-Key": "artifact-create-001"},
+    )
+    artifact_id = created.json()["artifact_id"]
+
+    missing_artifact = client.post(
+        "/api/v1/artifacts/missing/render-jobs",
+        json={},
+        headers=auth_headers(),
+    )
+    missing_request_id = client.post(
+        f"/api/v1/artifacts/{artifact_id}/render-jobs",
+        json={},
+        headers={
+            key: value
+            for key, value in auth_headers().items()
+            if key != "Idempotency-Key"
+        },
+    )
+    invalid_format = client.post(
+        f"/api/v1/artifacts/{artifact_id}/render-jobs",
+        json={"target_formats": ["PDF"]},
+        headers=auth_headers(),
+    )
+    missing_job = client.get(
+        "/api/v1/artifact-render-jobs/missing",
+        headers=auth_headers(),
+    )
+    source_client.structured_draft = sample_structured_draft(content_hash="9" * 64)
+    mismatch = client.post(
+        f"/api/v1/artifacts/{artifact_id}/render-jobs",
+        json={},
+        headers={**auth_headers(), "Idempotency-Key": "render-request-mismatch"},
+    )
+
+    assert missing_artifact.status_code == 404
+    assert missing_artifact.json()["error_code"] == "ae.artifact_not_found"
+    assert missing_request_id.status_code == 422
+    assert missing_request_id.json()["error_code"] == "ae.render_request_id_required"
+    assert invalid_format.status_code == 422
+    assert invalid_format.json()["error_code"] == "ae.render_format_unsupported"
+    assert missing_job.status_code == 404
+    assert missing_job.json()["error_code"] == "ae.render_job_not_found"
+    assert mismatch.status_code == 409
+    assert mismatch.json()["error_code"] == "ae.source_draft_hash_mismatch"
 
 
 def test_artifact_route_requires_auth_and_reports_missing_records() -> None:

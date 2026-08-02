@@ -263,6 +263,48 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: Artifact was not found.
+  /api/v1/artifacts/{artifact_id}/render-jobs:
+    post:
+      operationId: createAeArtifactRenderJob
+      tags:
+        - Artifacts
+      parameters:
+        - name: artifact_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Markdown render job completed and artifact version metadata recorded.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Artifact was not found.
+        "409":
+          description: Artifact or source draft is not renderable.
+        "422":
+          description: Render request is invalid or requests an unsupported format.
+        "503":
+          description: CX structured draft read is unavailable.
+  /api/v1/artifact-render-jobs/{render_job_id}:
+    get:
+      operationId: getAeArtifactRenderJob
+      tags:
+        - Artifacts
+      parameters:
+        - name: render_job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AE artifact render job metadata.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Artifact render job was not found.
   /api/v1/compatibility/generation-rules:
     get:
       operationId: listAeGenerationCompatibilityRules

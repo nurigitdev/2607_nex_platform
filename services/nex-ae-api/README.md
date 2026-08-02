@@ -22,6 +22,8 @@ Current endpoints:
 - `POST /api/v1/artifacts`
 - `GET /api/v1/artifacts/{artifact_id}`
 - `GET /api/v1/artifacts/{artifact_id}/versions`
+- `POST /api/v1/artifacts/{artifact_id}/render-jobs`
+- `GET /api/v1/artifact-render-jobs/{render_job_id}`
 - `GET /api/v1/compatibility/generation-rules`
 - `POST /api/v1/chat/interactions`
 - `GET /api/v1/chat/interactions/{interaction_id}`
@@ -68,6 +70,10 @@ Artifact records:
   family fixes source refs, versions, render jobs, files, preview/download
   links, current version, status, and retention metadata while rendering remains
   a later slice.
+- AE can synchronously render the first Markdown artifact version from a
+  validated CX structured draft. Public artifact records expose version hashes
+  and render job metadata, while Markdown content remains private until file and
+  preview/download routes are added.
 
 Prompt analytics:
 
