@@ -26,7 +26,7 @@ provider checks. The detailed MVP testing strategy is now assembled in
 Use one pytest invocation for regression and coverage whenever possible:
 
 ```bash
-NEX_PCX_TEST_DATABASE_URL="postgresql://nex_pcx_test:nuri1004@127.0.0.1:5432/nex_pcx_test" \
+NEX_PCX_TEST_DATABASE_URL="postgresql://nex_pcx_test:<password>@127.0.0.1:5432/nex_pcx_test" \
   bash scripts/quality_gate.sh
 ```
 

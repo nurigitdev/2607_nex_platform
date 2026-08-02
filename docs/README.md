@@ -104,7 +104,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 
 | Slice | Starting Backlog Candidate |
 | --- | --- |
-| `Slice 0001` | `S1-001` Repository and service skeleton bootstrap. |
+| [`Slice 0001`](slices/0001_service_skeleton_bootstrap.md) | `S1-001` Repository and service skeleton bootstrap. |
 | `Slice 0002` | `S1-002` Single-pass quality gate bootstrap. |
 | `Slice 0003` | `S1-003` Contract package bootstrap. |
 | `Slice 0004` | `S1-004` Common problem+json and trace contract fixtures. |

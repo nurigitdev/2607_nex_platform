@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NeX AE Workspace</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="주요 탐색">
+        <div class="brand">
+          <span class="brand-mark">NX</span>
+          <div>
+            <strong>NeX AE</strong>
+            <span>local_mock</span>
+          </div>
+        </div>
+        <nav>
+          <a class="active" href="#">워크스페이스</a>
+          <a href="#">문서 그룹</a>
+          <a href="#">아티팩트</a>
+          <a href="#">감사 추적</a>
+        </nav>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Slice 0001</p>
+            <h1>NeX-Platform 작업면</h1>
+          </div>
+          <div class="status-strip" id="status-strip" aria-live="polite"></div>
+        </header>
+
+        <section class="content-grid">
+          <section class="chat-pane" aria-labelledby="chat-title">
+            <div class="section-header">
+              <div>
+                <p class="eyebrow">채팅 문서</p>
+                <h2 id="chat-title">계약 기반 생성 흐름</h2>
+              </div>
+              <span class="badge pending">대기</span>
+            </div>
+
+            <div class="message-list">
+              <article class="message user">
+                <span>사용자</span>
+                <p>허용된 문서 범위에서 근거를 찾아 보고서를 작성해줘.</p>
+              </article>
+              <article class="message assistant">
+                <span>assistant</span>
+                <p>서비스 readiness와 계약 패키지가 준비되면 생성 요청을 시작합니다.</p>
+              </article>
+            </div>
+
+            <form class="composer">
+              <label for="prompt">프롬프트</label>
+              <div class="composer-row">
+                <input id="prompt" type="text" value="MVP 착수 패키지 기준으로 요약해줘." />
+                <button type="button">전송</button>
+              </div>
+            </form>
+          </section>
+
+          <aside class="context-pane" aria-label="컨텍스트 패널">
+            <section class="panel">
+              <div class="section-header compact">
+                <h2>서비스 상태</h2>
+                <button id="refresh-button" type="button">새로고침</button>
+              </div>
+              <div class="service-list" id="service-list"></div>
+            </section>
+
+            <section class="panel">
+              <h2>문서 범위</h2>
+              <dl class="meta-list">
+                <div>
+                  <dt>모드</dt>
+                  <dd>DOCUMENT_GENERATION</dd>
+                </div>
+                <div>
+                  <dt>계약</dt>
+                  <dd>slice-0000</dd>
+                </div>
+                <div>
+                  <dt>출력</dt>
+                  <dd>Markdown artifact</dd>
+                </div>
+              </dl>
+            </section>
+          </aside>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
