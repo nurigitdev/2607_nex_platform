@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_cx/embedding_index.v1.schema.json",
+  "title": "NeX CX Embedding Index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "embedding_index_schema_version",
+    "document_id",
+    "trace_id",
+    "request_id",
+    "provider_alias",
+    "model_revision",
+    "deployment_id",
+    "chunk_count",
+    "vector_dimension",
+    "chunk_embeddings",
+    "usage",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "embedding_index_schema_version": {
+      "const": "cx_embedding_index.v1"
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider_alias": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_revision": {
+      "type": "string",
+      "minLength": 1
+    },
+    "deployment_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "chunk_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "vector_dimension": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "chunk_embeddings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "chunk_id",
+          "ordinal",
+          "text_sha256",
+          "embedding_sha256",
+          "vector_dimension"
+        ],
+        "properties": {
+          "chunk_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ordinal": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "text_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "embedding_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "vector_dimension": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

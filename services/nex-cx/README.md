@@ -23,6 +23,8 @@ Current endpoints:
 - `GET /api/v1/documents/{document_id}/extraction`
 - `GET /api/v1/documents/{document_id}/chunks`
 - `POST /api/v1/documents/{document_id}/chunks/run`
+- `GET /api/v1/documents/{document_id}/embeddings`
+- `POST /api/v1/documents/{document_id}/embeddings/run`
 - `GET /api/v1/jobs/{job_id}`
 - `POST /api/v1/jobs/{job_id}/run`
 - `POST /api/v1/generations`

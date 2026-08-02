@@ -48,6 +48,8 @@ class ContentIngestionStore:
     extraction_results: dict[str, dict[str, Any]] = field(default_factory=dict)
     chunk_sets: dict[str, dict[str, Any]] = field(default_factory=dict)
     chunk_texts: dict[str, str] = field(default_factory=dict)
+    embedding_indexes: dict[str, dict[str, Any]] = field(default_factory=dict)
+    embedding_vectors: dict[str, list[float]] = field(default_factory=dict)
 
     def save_upload_registration(
         self,
@@ -109,6 +111,22 @@ class ContentIngestionStore:
 
     def get_chunk_text(self, chunk_id: str) -> str | None:
         return self.chunk_texts.get(chunk_id)
+
+    def save_embedding_index(
+        self,
+        embedding_index: dict[str, Any],
+        *,
+        embedding_vectors: dict[str, list[float]],
+    ) -> dict[str, Any]:
+        self.embedding_indexes[embedding_index["document_id"]] = embedding_index
+        self.embedding_vectors.update(embedding_vectors)
+        return embedding_index
+
+    def get_embedding_index(self, document_id: str) -> dict[str, Any] | None:
+        return self.embedding_indexes.get(document_id)
+
+    def get_embedding_vector(self, chunk_id: str) -> list[float] | None:
+        return self.embedding_vectors.get(chunk_id)
 
 
 @dataclass(frozen=True)

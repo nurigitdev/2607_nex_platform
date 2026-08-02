@@ -1,0 +1,32 @@
+{
+  "embedding_index_schema_version": "cx_embedding_index.v1",
+  "document_id": "e7e4cf11-c38a-538e-bef8-9567a456b762",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "provider_alias": "mock-embedding-default",
+  "model_revision": "mock-embedding-v1",
+  "deployment_id": "mock-embedding-local",
+  "chunk_count": 1,
+  "vector_dimension": 3,
+  "chunk_embeddings": [
+    {
+      "chunk_id": "bc367c40-e40a-5d53-a843-598b4b4ef6f1",
+      "ordinal": 0,
+      "text_sha256": "8cc4522bfb808db525a84b7bec9f342c2e4442440acef763e941a8ba864a8c49",
+      "embedding_sha256": "6d504e6046008fcc5b7d08b8db7f1f044cec89c5671d032f6ad5e6e2dc762524",
+      "vector_dimension": 3,
+      "embedding": [
+        0.0,
+        0.5,
+        1.0
+      ]
+    }
+  ],
+  "usage": {
+    "input_tokens": 1,
+    "output_tokens": 0,
+    "total_tokens": 1
+  },
+  "created_at": "2026-08-02T00:00:00Z",
+  "updated_at": "2026-08-02T00:00:00Z"
+}
