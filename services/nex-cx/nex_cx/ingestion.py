@@ -18,6 +18,14 @@ from nex_runtime import (
     trace_id_from_headers,
     validate_authorization_header,
 )
+from nex_cx.repository import (
+    CxContentRepository,
+    DEFAULT_OWNER_USER_ID,
+    DEFAULT_TENANT_ID,
+    InMemoryCxContentRepository,
+    build_content_object_record,
+    build_source_file_record,
+)
 
 DEFAULT_DATA_ROOT = "/data/nex-platform"
 DEFAULT_CHUNK_POLICY = "chunk_1000_100"
@@ -52,13 +60,34 @@ class ContentIngestionStore:
     embedding_vectors: dict[str, list[float]] = field(default_factory=dict)
     lexical_indexes: dict[str, dict[str, Any]] = field(default_factory=dict)
     retrieval_packages: dict[str, dict[str, Any]] = field(default_factory=dict)
+    content_repository: CxContentRepository = field(
+        default_factory=InMemoryCxContentRepository
+    )
+    document_content_refs: dict[str, dict[str, str]] = field(default_factory=dict)
 
     def save_upload_registration(
         self,
         record: dict[str, Any],
         *,
         source_text: str | None = None,
+        tenant_id: str = DEFAULT_TENANT_ID,
+        owner_user_id: str = DEFAULT_OWNER_USER_ID,
     ) -> dict[str, Any]:
+        source_file = self.content_repository.save_source_file(
+            build_source_file_record(record)
+        )
+        content_object = self.content_repository.save_content_object(
+            build_content_object_record(
+                record,
+                tenant_id=tenant_id,
+                owner_user_id=owner_user_id,
+                source_file_id=source_file["source_file_id"],
+            )
+        )
+        self.document_content_refs[record["document_id"]] = {
+            "source_file_id": source_file["source_file_id"],
+            "content_object_id": content_object["content_object_id"],
+        }
         self.documents[record["document_id"]] = record
         self.jobs[record["extraction"]["job_id"]] = record["ingestion_job"]
         if source_text is not None:
@@ -73,6 +102,9 @@ class ContentIngestionStore:
 
     def get_source_text(self, upload_id: str) -> str | None:
         return self.source_texts.get(upload_id)
+
+    def get_content_ref(self, document_id: str) -> dict[str, str] | None:
+        return self.document_content_refs.get(document_id)
 
     def save_extraction_result(self, result: dict[str, Any]) -> dict[str, Any]:
         document = self.documents.get(result["document_id"])

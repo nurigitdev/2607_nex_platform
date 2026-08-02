@@ -13,6 +13,16 @@ Document ingestion storage defaults:
 Local source files are stored outside PostgreSQL using a storage key shaped as
 `YYYYMMDD/<sha-prefix>/<sha-prefix>/<document-id><extension>`. The CX database
 stores source file metadata and links only.
+
+Internal persistence boundary:
+
+- Source file records are global byte/storage metadata records keyed by
+  `source_sha256`.
+- Content object records are tenant/user-owned logical documents keyed by active
+  `tenant_id + owner_user_id + source_sha256`.
+- The current adapter is in-memory for mock-first testing; PostgreSQL
+  write-through is added after migration execution is stable.
+
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`
 
