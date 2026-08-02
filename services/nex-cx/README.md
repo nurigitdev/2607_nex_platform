@@ -26,6 +26,8 @@ Internal persistence boundary:
   file path and verified against `source_sha256`.
 - Document summaries use `summary_1000_0`, target 900 chars, and hard limit
   1000 chars so summary text fits within one default retrieval chunk.
+- Summary embeddings index the document summary separately from chunk
+  embeddings for future document-level similarity features.
 - The current adapter is in-memory for mock-first testing; PostgreSQL
   write-through is added after migration execution is stable.
 
@@ -49,6 +51,8 @@ Current endpoints:
 - `POST /api/v1/documents/{document_id}/lexical-index/run`
 - `GET /api/v1/documents/{document_id}/summary`
 - `POST /api/v1/documents/{document_id}/summary/run`
+- `GET /api/v1/documents/{document_id}/summary-embedding`
+- `POST /api/v1/documents/{document_id}/summary-embedding/run`
 - `GET /api/v1/jobs/{job_id}`
 - `POST /api/v1/jobs/{job_id}/run`
 - `POST /api/v1/retrieval/context`

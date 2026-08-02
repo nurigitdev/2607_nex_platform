@@ -62,6 +62,8 @@ class ContentIngestionStore:
     retrieval_packages: dict[str, dict[str, Any]] = field(default_factory=dict)
     document_summaries: dict[str, dict[str, Any]] = field(default_factory=dict)
     summary_texts: dict[str, str] = field(default_factory=dict)
+    summary_embedding_indexes: dict[str, dict[str, Any]] = field(default_factory=dict)
+    summary_embedding_vectors: dict[str, list[float]] = field(default_factory=dict)
     content_repository: CxContentRepository = field(
         default_factory=InMemoryCxContentRepository
     )
@@ -209,6 +211,25 @@ class ContentIngestionStore:
 
     def get_summary_text(self, document_summary_id: str) -> str | None:
         return self.summary_texts.get(document_summary_id)
+
+    def save_summary_embedding_index(
+        self,
+        record: dict[str, Any],
+        *,
+        embedding_vector: list[float],
+    ) -> dict[str, Any]:
+        self.summary_embedding_indexes[record["document_id"]] = record
+        self.summary_embedding_vectors[record["document_summary_id"]] = embedding_vector
+        return record
+
+    def get_summary_embedding_index(self, document_id: str) -> dict[str, Any] | None:
+        return self.summary_embedding_indexes.get(document_id)
+
+    def get_summary_embedding_vector(
+        self,
+        document_summary_id: str,
+    ) -> list[float] | None:
+        return self.summary_embedding_vectors.get(document_summary_id)
 
 
 @dataclass(frozen=True)

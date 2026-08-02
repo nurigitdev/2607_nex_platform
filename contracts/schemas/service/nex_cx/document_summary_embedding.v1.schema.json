@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_cx/document_summary_embedding.v1.schema.json",
+  "title": "NeX CX Document Summary Embedding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary_embedding_schema_version",
+    "document_id",
+    "document_summary_id",
+    "trace_id",
+    "request_id",
+    "provider_alias",
+    "model_revision",
+    "deployment_id",
+    "summary_text_sha256",
+    "embedding_sha256",
+    "vector_dimension",
+    "usage",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "summary_embedding_schema_version": {
+      "const": "cx_document_summary_embedding.v1"
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "document_summary_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider_alias": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_revision": {
+      "type": "string",
+      "minLength": 1
+    },
+    "deployment_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary_text_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "embedding_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "vector_dimension": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

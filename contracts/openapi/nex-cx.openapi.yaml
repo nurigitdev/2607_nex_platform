@@ -275,6 +275,46 @@ paths:
           description: Extraction result was not found.
         "409":
           description: Extracted Markdown file is missing.
+  /api/v1/documents/{document_id}/summary-embedding:
+    get:
+      operationId: getCxDocumentSummaryEmbedding
+      tags:
+        - Content
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CX document summary embedding metadata.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Document summary embedding was not found.
+  /api/v1/documents/{document_id}/summary-embedding/run:
+    post:
+      operationId: runCxDocumentSummaryEmbedding
+      tags:
+        - Content
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CX document summary embedding was built from private summary text.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Document summary was not found.
+        "409":
+          description: Private summary text is unavailable.
+        "502":
+          description: MO embedding response was invalid.
   /api/v1/jobs/{job_id}:
     get:
       operationId: getCxIngestionJob
