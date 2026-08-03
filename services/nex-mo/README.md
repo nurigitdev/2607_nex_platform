@@ -37,6 +37,11 @@ Model profile defaults:
   `NEX_MO_VLLM_CHAT_COMPLETIONS_URL`; MO sends OpenAI-compatible
   `POST /v1/chat/completions` and normalizes choices, finish reason, usage, and
   runtime metadata back to the existing MO generation response shape.
+- Live provider failures use a shared safe taxonomy. Timeouts, connection
+  errors, HTTP `429`, HTTP `5xx`, and malformed provider responses are treated
+  as retryable degraded failures; upstream `4xx` responses are safe non-retryable
+  `502` failures. Problem responses expose `details.degraded=true` only for
+  degraded failures and never include endpoint URLs or API keys.
 
 Current endpoints:
 

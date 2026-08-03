@@ -4,11 +4,14 @@ import httpx
 import pytest
 
 from nex_mo.remote_provider import (
+    RemoteProviderFailureDecision,
     RemoteProviderPreflightConfig,
     build_remote_embedding_execution_config,
     build_remote_generation_execution_config,
     build_remote_provider_preflight_configs,
     build_remote_reranker_execution_config,
+    classify_remote_provider_exception,
+    classify_remote_provider_http_status,
     execute_remote_embedding_request,
     execute_remote_generation_request,
     execute_remote_rerank_request,
@@ -16,6 +19,7 @@ from nex_mo.remote_provider import (
     normalize_remote_embedding_response,
     normalize_remote_generation_response,
     normalize_remote_rerank_response,
+    remote_provider_response_invalid_decision,
     run_remote_provider_preflight_check,
     selected_generation_model_names,
     validate_preflight_response,
@@ -285,6 +289,114 @@ def test_execute_remote_embedding_request_rejects_missing_config_and_private_fie
     assert getattr(leaked.value, "error_code") == "mo.provider_field_forbidden"
 
 
+def test_remote_provider_failure_decision_is_safe_and_routeable() -> None:
+    decision = RemoteProviderFailureDecision(
+        failure_kind="upstream_5xx",
+        error_code="mo.remote_embedding_http_error",
+        status_code=503,
+        detail="Remote provider returned HTTP 503.",
+        retryable=True,
+        degraded=True,
+        upstream_status_code=503,
+    )
+
+    route_error = decision.to_route_error()
+
+    assert route_error.status_code == 503
+    assert route_error.error_code == "mo.remote_embedding_http_error"
+    assert route_error.retryable is True
+    assert route_error.degraded is True
+    assert decision.to_safe_summary() == {
+        "failure_kind": "upstream_5xx",
+        "error_code": "mo.remote_embedding_http_error",
+        "status_code": 503,
+        "retryable": True,
+        "degraded": True,
+        "upstream_status_code": 503,
+    }
+    assert "dgx.local" not in str(decision.to_safe_summary())
+    assert "secret" not in str(decision.to_safe_summary())
+
+
+@pytest.mark.parametrize(
+    ("upstream_status", "failure_kind", "error_code", "status_code", "retryable", "degraded"),
+    [
+        (429, "throttled", "mo.remote_embedding_throttled", 429, True, True),
+        (500, "upstream_5xx", "mo.remote_embedding_http_error", 503, True, True),
+        (503, "upstream_5xx", "mo.remote_embedding_http_error", 503, True, True),
+        (400, "upstream_4xx", "mo.remote_embedding_http_error", 502, False, False),
+    ],
+)
+def test_remote_provider_failure_taxonomy_classifies_http_statuses(
+    upstream_status: int,
+    failure_kind: str,
+    error_code: str,
+    status_code: int,
+    retryable: bool,
+    degraded: bool,
+) -> None:
+    decision = classify_remote_provider_http_status(
+        upstream_status,
+        error_code_prefix="mo.remote_embedding",
+    )
+
+    assert decision.failure_kind == failure_kind
+    assert decision.error_code == error_code
+    assert decision.status_code == status_code
+    assert decision.retryable is retryable
+    assert decision.degraded is degraded
+    assert decision.upstream_status_code == upstream_status
+
+
+@pytest.mark.parametrize(
+    ("exc", "failure_kind", "error_code", "status_code"),
+    [
+        (
+            httpx.TimeoutException("slow"),
+            "timeout",
+            "mo.remote_generation_timeout",
+            504,
+        ),
+        (
+            httpx.ConnectError("down"),
+            "connection_error",
+            "mo.remote_generation_unavailable",
+            503,
+        ),
+    ],
+)
+def test_remote_provider_failure_taxonomy_classifies_exceptions(
+    exc: httpx.HTTPError,
+    failure_kind: str,
+    error_code: str,
+    status_code: int,
+) -> None:
+    decision = classify_remote_provider_exception(
+        exc,
+        error_code_prefix="mo.remote_generation",
+    )
+
+    assert decision.failure_kind == failure_kind
+    assert decision.error_code == error_code
+    assert decision.status_code == status_code
+    assert decision.retryable is True
+    assert decision.degraded is True
+
+
+def test_remote_provider_response_invalid_is_retryable_degraded() -> None:
+    decision = remote_provider_response_invalid_decision(
+        error_code_prefix="mo.remote_reranker",
+        detail="Remote reranker response must include non-empty results.",
+    )
+
+    assert decision.failure_kind == "malformed_response"
+    assert decision.error_code == "mo.remote_reranker_response_invalid"
+    assert decision.status_code == 502
+    assert decision.retryable is True
+    assert decision.degraded is True
+    assert "upstream_status_code" not in decision.to_safe_summary()
+
+
 @pytest.mark.parametrize(
     ("provider_payload", "expected_detail"),
     [
@@ -333,8 +445,8 @@ def test_normalize_remote_embedding_response_rejects_bad_shapes(
         ),
         (
             lambda *args, **kwargs: httpx.Response(429, json={"error": "throttled"}),
-            "mo.remote_embedding_http_error",
-            False,
+            "mo.remote_embedding_throttled",
+            True,
         ),
         (
             lambda *args, **kwargs: httpx.Response(503, json={"error": "down"}),

@@ -374,6 +374,34 @@ def test_embeddings_endpoint_uses_remote_adapter_when_live(
     assert "secret" not in str(response.json())
 
 
+def test_embeddings_endpoint_reports_live_provider_degraded_failure(monkeypatch) -> None:
+    monkeypatch.setenv("NEX_MO_PROVIDER_MODE", "live")
+    monkeypatch.setenv(
+        "NEX_MO_REMOTE_EMBEDDING_URL",
+        "http://dgx.local:9103/v1/embeddings",
+    )
+    monkeypatch.setenv("NEX_MO_REMOTE_EMBEDDING_API_KEY", "secret")
+
+    def fake_request(method: str, url: str, **kwargs: object) -> httpx.Response:
+        return httpx.Response(429, json={"error": "throttled"})
+
+    monkeypatch.setattr(remote_provider.httpx, "request", fake_request)
+
+    response = TestClient(app).post(
+        "/api/v1/embeddings",
+        json={"inputs": ["alpha"]},
+        headers=auth_headers(),
+    )
+
+    payload = response.json()
+    assert response.status_code == 429
+    assert payload["error_code"] == "mo.remote_embedding_throttled"
+    assert payload["retryable"] is True
+    assert payload["details"] == {"degraded": True}
+    assert "dgx.local" not in str(payload)
+    assert "secret" not in str(payload)
+
+
 def test_embeddings_endpoint_requires_service_claim() -> None:
     response = TestClient(app).post("/api/v1/embeddings", json={"inputs": ["alpha"]})
 

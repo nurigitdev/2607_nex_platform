@@ -125,6 +125,7 @@ class ProviderRouteError(Exception):
     error_code: str
     detail: str
     retryable: bool = False
+    degraded: bool = False
 
 
 DEFAULT_PROVIDER_ROUTES: tuple[ProviderRoute, ...] = (
@@ -658,6 +659,7 @@ def _handle_provider_request(
             detail=exc.detail,
             retryable=exc.retryable,
             type_uri="https://nex-platform.local/problems/provider-route-rejected",
+            details={"degraded": exc.degraded} if exc.degraded else None,
         )
 
 

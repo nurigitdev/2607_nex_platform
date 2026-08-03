@@ -124,6 +124,38 @@ class RemoteProviderExecutionConfig:
         }
 
 
+@dataclass(frozen=True)
+class RemoteProviderFailureDecision:
+    failure_kind: str
+    error_code: str
+    status_code: int
+    detail: str
+    retryable: bool
+    degraded: bool
+    upstream_status_code: int | None = None
+
+    def to_route_error(self) -> ProviderRouteError:
+        return ProviderRouteError(
+            status_code=self.status_code,
+            error_code=self.error_code,
+            detail=self.detail,
+            retryable=self.retryable,
+            degraded=self.degraded,
+        )
+
+    def to_safe_summary(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "failure_kind": self.failure_kind,
+            "error_code": self.error_code,
+            "status_code": self.status_code,
+            "retryable": self.retryable,
+            "degraded": self.degraded,
+        }
+        if self.upstream_status_code is not None:
+            payload["upstream_status_code"] = self.upstream_status_code
+        return payload
+
+
 class RemoteProviderPreflightError(Exception):
     def __init__(self, failure_code: str) -> None:
         super().__init__(failure_code)
@@ -445,19 +477,15 @@ def normalize_remote_generation_response(
     input_texts: list[str],
 ) -> dict[str, Any]:
     if not isinstance(provider_payload, dict):
-        raise ProviderRouteError(
-            status_code=502,
-            error_code="mo.remote_generation_response_invalid",
+        raise _remote_provider_response_invalid(
+            error_code_prefix="mo.remote_generation",
             detail="Remote generation response must be a JSON object.",
-            retryable=True,
         )
     choices = provider_payload.get("choices")
     if not isinstance(choices, list) or not choices:
-        raise ProviderRouteError(
-            status_code=502,
-            error_code="mo.remote_generation_response_invalid",
+        raise _remote_provider_response_invalid(
+            error_code_prefix="mo.remote_generation",
             detail="Remote generation response must include non-empty choices.",
-            retryable=True,
         )
     first_choice = choices[0]
     output_text = _choice_output_text(first_choice)
@@ -513,19 +541,15 @@ def normalize_remote_embedding_response(
     input_texts: list[str],
 ) -> dict[str, Any]:
     if not isinstance(provider_payload, dict):
-        raise ProviderRouteError(
-            status_code=502,
-            error_code="mo.remote_embedding_response_invalid",
+        raise _remote_provider_response_invalid(
+            error_code_prefix="mo.remote_embedding",
             detail="Remote embedding response must be a JSON object.",
-            retryable=True,
         )
     response_items = provider_payload.get("data")
     if not isinstance(response_items, list) or len(response_items) != input_count:
-        raise ProviderRouteError(
-            status_code=502,
-            error_code="mo.remote_embedding_response_invalid",
+        raise _remote_provider_response_invalid(
+            error_code_prefix="mo.remote_embedding",
             detail="Remote embedding response count did not match request count.",
-            retryable=True,
         )
 
     normalized_items = [
@@ -555,19 +579,15 @@ def normalize_remote_rerank_response(
     query: str,
 ) -> dict[str, Any]:
     if not isinstance(provider_payload, dict):
-        raise ProviderRouteError(
-            status_code=502,
-            error_code="mo.remote_reranker_response_invalid",
+        raise _remote_provider_response_invalid(
+            error_code_prefix="mo.remote_reranker",
             detail="Remote reranker response must be a JSON object.",
-            retryable=True,
         )
     response_items = provider_payload.get("results", provider_payload.get("data"))
     if not isinstance(response_items, list) or not response_items:
-        raise ProviderRouteError(
-            status_code=502,
-            error_code="mo.remote_reranker_response_invalid",
+        raise _remote_provider_response_invalid(
+            error_code_prefix="mo.remote_reranker",
             detail="Remote reranker response must include non-empty results.",
-            retryable=True,
         )
 
     normalized_items = [
@@ -715,37 +735,114 @@ def _execute_remote_json_request(
             timeout=config.timeout_seconds,
         )
     except httpx.TimeoutException as exc:
-        raise ProviderRouteError(
-            status_code=504,
-            error_code=f"{error_code_prefix}_timeout",
-            detail="Remote provider request timed out.",
-            retryable=True,
-        ) from exc
+        raise classify_remote_provider_exception(
+            exc,
+            error_code_prefix=error_code_prefix,
+        ).to_route_error() from exc
     except httpx.HTTPError as exc:
-        raise ProviderRouteError(
-            status_code=503,
-            error_code=f"{error_code_prefix}_unavailable",
-            detail="Remote provider request failed before a valid response was received.",
-            retryable=True,
-        ) from exc
+        raise classify_remote_provider_exception(
+            exc,
+            error_code_prefix=error_code_prefix,
+        ).to_route_error() from exc
 
     if response.is_error:
-        retryable = response.status_code >= 500
-        raise ProviderRouteError(
-            status_code=502,
-            error_code=f"{error_code_prefix}_http_error",
-            detail=f"Remote provider returned HTTP {response.status_code}.",
-            retryable=retryable,
-        )
+        raise classify_remote_provider_http_status(
+            response.status_code,
+            error_code_prefix=error_code_prefix,
+        ).to_route_error()
     try:
         return response.json()
     except ValueError as exc:
-        raise ProviderRouteError(
-            status_code=502,
-            error_code=f"{error_code_prefix}_response_invalid",
+        raise remote_provider_response_invalid_decision(
+            error_code_prefix=error_code_prefix,
             detail="Remote provider response was not valid JSON.",
+        ).to_route_error() from exc
+
+
+def classify_remote_provider_exception(
+    exc: httpx.HTTPError,
+    *,
+    error_code_prefix: str,
+) -> RemoteProviderFailureDecision:
+    if isinstance(exc, httpx.TimeoutException):
+        return RemoteProviderFailureDecision(
+            failure_kind="timeout",
+            error_code=f"{error_code_prefix}_timeout",
+            status_code=504,
+            detail="Remote provider request timed out.",
             retryable=True,
-        ) from exc
+            degraded=True,
+        )
+    return RemoteProviderFailureDecision(
+        failure_kind="connection_error",
+        error_code=f"{error_code_prefix}_unavailable",
+        status_code=503,
+        detail="Remote provider request failed before a valid response was received.",
+        retryable=True,
+        degraded=True,
+    )
+
+
+def classify_remote_provider_http_status(
+    status_code: int,
+    *,
+    error_code_prefix: str,
+) -> RemoteProviderFailureDecision:
+    if status_code == 429:
+        return RemoteProviderFailureDecision(
+            failure_kind="throttled",
+            error_code=f"{error_code_prefix}_throttled",
+            status_code=429,
+            detail="Remote provider throttled the request.",
+            retryable=True,
+            degraded=True,
+            upstream_status_code=status_code,
+        )
+    if status_code >= 500:
+        return RemoteProviderFailureDecision(
+            failure_kind="upstream_5xx",
+            error_code=f"{error_code_prefix}_http_error",
+            status_code=503,
+            detail=f"Remote provider returned HTTP {status_code}.",
+            retryable=True,
+            degraded=True,
+            upstream_status_code=status_code,
+        )
+    return RemoteProviderFailureDecision(
+        failure_kind="upstream_4xx",
+        error_code=f"{error_code_prefix}_http_error",
+        status_code=502,
+        detail=f"Remote provider returned HTTP {status_code}.",
+        retryable=False,
+        degraded=False,
+        upstream_status_code=status_code,
+    )
+
+
+def remote_provider_response_invalid_decision(
+    *,
+    error_code_prefix: str,
+    detail: str,
+) -> RemoteProviderFailureDecision:
+    return RemoteProviderFailureDecision(
+        failure_kind="malformed_response",
+        error_code=f"{error_code_prefix}_response_invalid",
+        status_code=502,
+        detail=detail,
+        retryable=True,
+        degraded=True,
+    )
+
+
+def _remote_provider_response_invalid(
+    *,
+    error_code_prefix: str,
+    detail: str,
+) -> ProviderRouteError:
+    return remote_provider_response_invalid_decision(
+        error_code_prefix=error_code_prefix,
+        detail=detail,
+    ).to_route_error()
 
 
 def _selected_profile(env: dict[str, str], capability: str):
@@ -908,31 +1005,25 @@ def _temperature(payload: dict[str, Any]) -> float:
 
 def _choice_output_text(choice: Any) -> str:
     if not isinstance(choice, dict):
-        raise ProviderRouteError(
-            status_code=502,
-            error_code="mo.remote_generation_response_invalid",
+        raise _remote_provider_response_invalid(
+            error_code_prefix="mo.remote_generation",
             detail="Remote generation choice must be an object.",
-            retryable=True,
         )
     message = choice.get("message")
     content = message.get("content") if isinstance(message, dict) else choice.get("text")
     if not isinstance(content, str) or not content:
-        raise ProviderRouteError(
-            status_code=502,
-            error_code="mo.remote_generation_response_invalid",
+        raise _remote_provider_response_invalid(
+            error_code_prefix="mo.remote_generation",
             detail="Remote generation output text was missing.",
-            retryable=True,
         )
     return content
 
 
 def _finish_reason_from_choice(choice: Any) -> str:
     if not isinstance(choice, dict):
-        raise ProviderRouteError(
-            status_code=502,
-            error_code="mo.remote_generation_response_invalid",
+        raise _remote_provider_response_invalid(
+            error_code_prefix="mo.remote_generation",
             detail="Remote generation choice must be an object.",
-            retryable=True,
         )
     raw_finish_reason = choice.get("finish_reason", "stop")
     if not isinstance(raw_finish_reason, str) or not raw_finish_reason:
@@ -953,22 +1044,18 @@ def _embedding_item_index(item: Any, fallback: int) -> int:
 
 def _embedding_vector_from_item(item: Any) -> list[float]:
     if not isinstance(item, dict):
-        raise ProviderRouteError(
-            status_code=502,
-            error_code="mo.remote_embedding_response_invalid",
+        raise _remote_provider_response_invalid(
+            error_code_prefix="mo.remote_embedding",
             detail="Remote embedding item must be an object.",
-            retryable=True,
         )
     vector = item.get("embedding")
     if not isinstance(vector, list) or not vector or not all(
         isinstance(value, int | float) and not isinstance(value, bool)
         for value in vector
     ):
-        raise ProviderRouteError(
-            status_code=502,
-            error_code="mo.remote_embedding_response_invalid",
+        raise _remote_provider_response_invalid(
+            error_code_prefix="mo.remote_embedding",
             detail="Remote embedding vector must be a non-empty numeric list.",
-            retryable=True,
         )
     return [float(value) for value in vector]
 
@@ -980,19 +1067,15 @@ def _normalize_rerank_item(
     documents: list[str],
 ) -> dict[str, Any]:
     if not isinstance(item, dict):
-        raise ProviderRouteError(
-            status_code=502,
-            error_code="mo.remote_reranker_response_invalid",
+        raise _remote_provider_response_invalid(
+            error_code_prefix="mo.remote_reranker",
             detail="Remote reranker item must be an object.",
-            retryable=True,
         )
     index = item.get("index", rank)
     if not isinstance(index, int) or isinstance(index, bool) or index < 0:
-        raise ProviderRouteError(
-            status_code=502,
-            error_code="mo.remote_reranker_response_invalid",
+        raise _remote_provider_response_invalid(
+            error_code_prefix="mo.remote_reranker",
             detail="Remote reranker item index must be a non-negative integer.",
-            retryable=True,
         )
     score = _rerank_score_from_item(item)
     document = item.get("document")
@@ -1008,11 +1091,9 @@ def _normalize_rerank_item(
 def _rerank_score_from_item(item: dict[str, Any]) -> float:
     value = item.get("score", item.get("relevance_score"))
     if not isinstance(value, int | float) or isinstance(value, bool):
-        raise ProviderRouteError(
-            status_code=502,
-            error_code="mo.remote_reranker_response_invalid",
+        raise _remote_provider_response_invalid(
+            error_code_prefix="mo.remote_reranker",
             detail="Remote reranker score must be numeric.",
-            retryable=True,
         )
     return round(float(value), 6)
 
