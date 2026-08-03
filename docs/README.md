@@ -163,6 +163,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0057`](slices/0057_mo_provider_runtime_telemetry_snapshot.md) | `S6-007` MO provider runtime telemetry snapshot. |
 | [`Slice 0058`](slices/0058_ag_mo_provider_readiness_projection.md) | `S6-008` AG MO provider readiness projection. |
 | [`Slice 0059`](slices/0059_protected_live_smoke_evidence_writer.md) | `S6-009` Protected live smoke evidence writer. |
+| [`Slice 0060`](slices/0060_cx_mo_remote_mode_regression_bridge.md) | `S6-010` CX-to-MO remote-mode regression bridge. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

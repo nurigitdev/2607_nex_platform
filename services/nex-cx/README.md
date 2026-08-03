@@ -85,3 +85,7 @@ Grounded generation validation:
 - MO generation failures after prompt packaging are stored as redacted `FAILED`
   CX execution records with `failure` and `recovery_lineage` metadata, so AE/AG
   can inspect retry or repair intent by `cx_generation_id`.
+- CX-to-MO remote-mode regression stays in-process: tests configure MO as
+  `NEX_MO_PROVIDER_MODE=live`, fake only the remote provider HTTP hop, and prove
+  that CX embedding/generation calls still use MO's service API without seeing
+  provider URLs or API keys.
