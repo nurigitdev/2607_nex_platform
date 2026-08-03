@@ -17,6 +17,13 @@ Model profile defaults:
 - Provider mode: `NEX_MO_PROVIDER_MODE=mock` until DGX-spark is reachable
 - Live DGX preflight stays opt-in with `NEX_MO_LIVE_PREFLIGHT=1`; it is not
   part of the default regression gate.
+- Live preflight request shapes:
+  - Embedding: `POST` to `NEX_MO_REMOTE_EMBEDDING_URL` with OpenAI-compatible
+    `model` and `input`.
+  - Reranker: `POST` to `NEX_MO_REMOTE_RERANKER_URL` with `model`, `query`,
+    `documents`, and `top_n`.
+  - vLLM model catalog: `GET` to `NEX_MO_VLLM_MODELS_URL`, or
+    `NEX_MO_VLLM_BASE_URL` plus `/v1/models`.
 
 Current endpoints:
 
@@ -36,6 +43,10 @@ Manual live preflight:
 NEX_MO_LIVE_PREFLIGHT=1 ./.venv/bin/python scripts/smoke/run_dgx_live_provider_preflight.py --summary
 ```
 
-Configure `NEX_MO_LIVE_EMBEDDING_HEALTH_URL`,
-`NEX_MO_LIVE_RERANKER_HEALTH_URL`, and `NEX_MO_LIVE_VLLM_MODELS_URL` in
-`.env.local` or the shell before running live checks.
+The older `NEX_MO_LIVE_EMBEDDING_HEALTH_URL`,
+`NEX_MO_LIVE_RERANKER_HEALTH_URL`, and `NEX_MO_LIVE_VLLM_MODELS_URL` names
+remain supported as deprecated fallback aliases. Prefer
+`NEX_MO_REMOTE_EMBEDDING_URL`, `NEX_MO_REMOTE_RERANKER_URL`,
+`NEX_MO_VLLM_BASE_URL`, `NEX_MO_VLLM_MODELS_URL`, and `NEX_MO_VLLM_API_KEY` in
+`.env.local` or the shell before running live checks. Do not commit real API
+keys.

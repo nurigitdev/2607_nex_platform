@@ -1,33 +1,19 @@
 from __future__ import annotations
 
 import json
-from urllib.error import URLError
 
+import httpx
 import pytest
 
 import run_dgx_live_provider_preflight as dgx_preflight
 
 
-class FakeResponse:
-    def __init__(self, payload: str) -> None:
-        self.payload = payload
-
-    def __enter__(self) -> "FakeResponse":
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        return None
-
-    def read(self) -> bytes:
-        return self.payload.encode("utf-8")
-
-
 def live_env() -> dict[str, str]:
     return {
         "NEX_MO_LIVE_PREFLIGHT": "1",
-        "NEX_MO_LIVE_EMBEDDING_HEALTH_URL": "http://dgx.local/embed/health",
-        "NEX_MO_LIVE_RERANKER_HEALTH_URL": "http://dgx.local/rerank/health",
-        "NEX_MO_LIVE_VLLM_MODELS_URL": "http://dgx.local/v1/models",
+        "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local/v1/embeddings",
+        "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local/v1/rerank",
+        "NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000",
     }
 
 
@@ -42,50 +28,68 @@ def test_dgx_preflight_skips_when_not_enabled() -> None:
 
 
 def test_dgx_preflight_passes_when_expected_models_are_observed() -> None:
-    calls: list[tuple[str, int]] = []
+    calls: list[dict[str, object]] = []
 
-    def opener(url: str, *, timeout: int) -> FakeResponse:
-        calls.append((url, timeout))
-        return FakeResponse(
-            json.dumps(
-                {
-                    "models": [
-                        "Qwen3-embedding-4B",
-                        "Qwen3-reranker-4B",
-                        "Qwen3.5-122B-A10B-NVFP4",
-                        "Qwen3.6-27B-NVFP4",
-                    ]
-                }
-            )
+    def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
+        calls.append({"method": method, "url": url, **kwargs})
+        if url.endswith("/v1/embeddings"):
+            return httpx.Response(200, json={"data": [{"embedding": [0.1, 0.2]}]})
+        if url.endswith("/v1/rerank"):
+            return httpx.Response(200, json={"results": [{"index": 0, "score": 0.91}]})
+        return httpx.Response(
+            200,
+            json={"data": [{"id": "Qwen3.5-122B-A10B-NVFP4"}]},
         )
 
     evidence = dgx_preflight.run_dgx_live_provider_preflight(
-        {**live_env(), "NEX_MO_LIVE_TIMEOUT_SECONDS": "7"},
-        opener=opener,
+        {
+            **live_env(),
+            "NEX_MO_LIVE_TIMEOUT_SECONDS": "7",
+            "NEX_MO_VLLM_API_KEY": "secret-key",
+        },
+        requester=requester,
     )
 
     assert evidence["status"] == "PASS"
     assert [check["status"] for check in evidence["checks"]] == ["PASS", "PASS", "PASS"]
-    assert calls == [
-        ("http://dgx.local/embed/health", 7),
-        ("http://dgx.local/rerank/health", 7),
-        ("http://dgx.local/v1/models", 7),
-    ]
+    assert [call["method"] for call in calls] == ["POST", "POST", "GET"]
+    assert calls[0]["json"] == {
+        "model": "Qwen3-embedding-4B",
+        "input": ["nex live provider preflight"],
+    }
+    assert calls[1]["json"] == {
+        "model": "Qwen3-reranker-4B",
+        "query": "nex live provider preflight",
+        "documents": ["NeX live provider preflight document."],
+        "top_n": 1,
+    }
+    assert "json" not in calls[2]
+    assert calls[2]["url"] == "http://dgx.local:12000/v1/models"
+    assert calls[2]["headers"] == {
+        "Accept": "application/json",
+        "Authorization": "Bearer secret-key",
+    }
+    assert [call["timeout"] for call in calls] == [7.0, 7.0, 7.0]
     assert "dgx.local" not in json.dumps(evidence)
+    assert "secret-key" not in json.dumps(evidence)
 
 
 def test_dgx_preflight_reports_missing_endpoint_and_model() -> None:
-    def opener(url: str, *, timeout: int) -> FakeResponse:
-        return FakeResponse("Qwen3-embedding-4B Qwen3-reranker-4B")
+    def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
+        if url.endswith("/v1/embeddings"):
+            return httpx.Response(200, json={"data": [{"embedding": [0.1]}]})
+        if url.endswith("/v1/rerank"):
+            return httpx.Response(200, json={"results": [{"relevance_score": 0.8}]})
+        return httpx.Response(200, json={"data": [{"id": "OtherGeneration"}]})
 
     evidence = dgx_preflight.run_dgx_live_provider_preflight(
         {
             "NEX_MO_LIVE_PREFLIGHT": "1",
-            "NEX_MO_LIVE_EMBEDDING_HEALTH_URL": "http://dgx.local/embed/health",
-            "NEX_MO_LIVE_RERANKER_HEALTH_URL": "http://dgx.local/rerank/health",
+            "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local/v1/embeddings",
+            "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local/v1/rerank",
             "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": "CustomGeneration",
         },
-        opener=opener,
+        requester=requester,
     )
 
     assert evidence["status"] == "FAIL"
@@ -93,31 +97,30 @@ def test_dgx_preflight_reports_missing_endpoint_and_model() -> None:
 
     missing_model = dgx_preflight.run_dgx_live_provider_preflight(
         live_env(),
-        opener=opener,
+        requester=requester,
     )
     assert missing_model["status"] == "FAIL"
     assert missing_model["checks"][2]["failure_code"] == "expected_model_missing"
     assert missing_model["checks"][2]["missing_expected_models"] == [
         "Qwen3.5-122B-A10B-NVFP4",
-        "Qwen3.6-27B-NVFP4",
     ]
 
 
 def test_dgx_preflight_reports_fetch_errors_and_env_model_overrides() -> None:
-    def opener(url: str, *, timeout: int) -> FakeResponse:
-        raise URLError("down")
+    def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
+        raise httpx.ConnectError("down")
 
     evidence = dgx_preflight.run_dgx_live_provider_preflight(
         {
             **live_env(),
             "NEX_MO_LIVE_EXPECTED_EMBEDDING_MODELS": "EmbedA, EmbedB",
         },
-        opener=opener,
+        requester=requester,
     )
 
     assert evidence["status"] == "FAIL"
     assert evidence["checks"][0]["expected_models"] == ["EmbedA", "EmbedB"]
-    assert evidence["checks"][0]["failure_code"] == "URLError"
+    assert evidence["checks"][0]["failure_code"] == "ConnectError"
 
 
 def test_dgx_preflight_main_summary_and_output(monkeypatch, capsys, tmp_path) -> None:
@@ -136,6 +139,9 @@ def test_dgx_preflight_main_returns_failure_when_enabled_without_urls(monkeypatc
     monkeypatch.setenv("NEX_MO_LIVE_PREFLIGHT", "1")
     for check in dgx_preflight.LIVE_PROVIDER_CHECKS:
         monkeypatch.delenv(check.endpoint_env, raising=False)
+        if check.legacy_endpoint_env:
+            monkeypatch.delenv(check.legacy_endpoint_env, raising=False)
+    monkeypatch.delenv("NEX_MO_VLLM_BASE_URL", raising=False)
 
     assert dgx_preflight.main(["--summary"]) == 1
 
