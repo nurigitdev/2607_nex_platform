@@ -28,6 +28,10 @@ Model profile defaults:
   already calls. Set `NEX_MO_PROVIDER_MODE=live` and
   `NEX_MO_REMOTE_EMBEDDING_URL`; MO translates `inputs` to OpenAI-compatible
   `input` and returns the existing normalized MO response shape.
+- Live reranker execution uses the same `/api/v1/rerank` MO API. Set
+  `NEX_MO_PROVIDER_MODE=live` and `NEX_MO_REMOTE_RERANKER_URL`; MO translates
+  `query`, `documents`, and optional `top_n` to the remote reranker shape and
+  normalizes scores back to the existing MO result shape.
 
 Current endpoints:
 

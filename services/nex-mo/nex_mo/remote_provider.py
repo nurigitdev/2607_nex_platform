@@ -262,6 +262,27 @@ def build_remote_embedding_execution_config(
     )
 
 
+def build_remote_reranker_execution_config(
+    environ: dict[str, str] | None = None,
+) -> RemoteProviderExecutionConfig:
+    env = environ if environ is not None else os.environ
+    profile = _selected_profile(env, "reranking")
+    model_name = env.get("NEX_MO_REMOTE_RERANKER_MODEL", profile.model_name)
+    return RemoteProviderExecutionConfig(
+        capability="reranking",
+        endpoint_env="NEX_MO_REMOTE_RERANKER_URL",
+        url=_env_first(env, "NEX_MO_REMOTE_RERANKER_URL", "NEX_MO_LIVE_RERANKER_HEALTH_URL"),
+        method="POST",
+        request_shape="rerank",
+        model_name=model_name,
+        model_revision=env.get("NEX_MO_REMOTE_RERANKER_MODEL_REVISION", model_name),
+        deployment_id=env.get("NEX_MO_REMOTE_RERANKER_DEPLOYMENT_ID", "remote-reranker-http"),
+        api_key_env="NEX_MO_REMOTE_RERANKER_API_KEY",
+        api_key=_empty_to_none(env.get("NEX_MO_REMOTE_RERANKER_API_KEY")),
+        timeout_seconds=float(env.get("NEX_MO_LIVE_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)),
+    )
+
+
 def execute_remote_embedding_request(
     payload: dict[str, Any],
     *,
@@ -295,6 +316,46 @@ def execute_remote_embedding_request(
         config=config,
         input_count=len(inputs),
         input_texts=inputs,
+    )
+
+
+def execute_remote_rerank_request(
+    payload: dict[str, Any],
+    *,
+    environ: dict[str, str] | None = None,
+    requester: HttpRequester | None = None,
+) -> dict[str, Any]:
+    _reject_raw_provider_fields(payload)
+    alias = _string_field(payload, "alias", "mock-reranker-default")
+    query = _string_field(payload, "query")
+    documents = _string_list_field(payload, "documents")
+    top_n = _top_n(payload, default=len(documents))
+    config = build_remote_reranker_execution_config(environ)
+    if not config.configured:
+        raise ProviderRouteError(
+            status_code=503,
+            error_code="mo.remote_reranker_not_configured",
+            detail="Remote reranker provider endpoint is not configured.",
+            retryable=True,
+        )
+
+    response_payload = _execute_remote_json_request(
+        config,
+        json_payload={
+            "model": config.model_name,
+            "query": query,
+            "documents": documents,
+            "top_n": top_n,
+        },
+        requester=requester,
+        error_code_prefix="mo.remote_reranker",
+    )
+    return normalize_remote_rerank_response(
+        provider_payload=response_payload,
+        alias=alias,
+        config=config,
+        documents=documents,
+        query=query,
     )
 
 
@@ -337,6 +398,48 @@ def normalize_remote_embedding_response(
         "deployment_id": config.deployment_id,
         "data": normalized_items,
         "usage": _normalize_usage(provider_payload.get("usage"), input_texts),
+    }
+
+
+def normalize_remote_rerank_response(
+    *,
+    provider_payload: Any,
+    alias: str,
+    config: RemoteProviderExecutionConfig,
+    documents: list[str],
+    query: str,
+) -> dict[str, Any]:
+    if not isinstance(provider_payload, dict):
+        raise ProviderRouteError(
+            status_code=502,
+            error_code="mo.remote_reranker_response_invalid",
+            detail="Remote reranker response must be a JSON object.",
+            retryable=True,
+        )
+    response_items = provider_payload.get("results", provider_payload.get("data"))
+    if not isinstance(response_items, list) or not response_items:
+        raise ProviderRouteError(
+            status_code=502,
+            error_code="mo.remote_reranker_response_invalid",
+            detail="Remote reranker response must include non-empty results.",
+            retryable=True,
+        )
+
+    normalized_items = [
+        _normalize_rerank_item(item, rank=index, documents=documents)
+        for index, item in enumerate(response_items)
+    ]
+    normalized_items = sorted(
+        normalized_items,
+        key=lambda item: item["score"],
+        reverse=True,
+    )
+    return {
+        "alias": alias,
+        "model_revision": config.model_revision,
+        "deployment_id": config.deployment_id,
+        "results": normalized_items,
+        "usage": _normalize_usage(provider_payload.get("usage"), [query, *documents]),
     }
 
 
@@ -550,6 +653,17 @@ def _string_list_field(payload: dict[str, Any], key: str) -> list[str]:
     return value
 
 
+def _top_n(payload: dict[str, Any], *, default: int) -> int:
+    value = payload.get("top_n", default)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ProviderRouteError(
+            400,
+            "mo.request_invalid",
+            "top_n must be a positive integer when provided.",
+        )
+    return min(value, default)
+
+
 def _embedding_item_index(item: Any, fallback: int) -> int:
     if isinstance(item, dict) and isinstance(item.get("index"), int):
         return item["index"]
@@ -576,6 +690,50 @@ def _embedding_vector_from_item(item: Any) -> list[float]:
             retryable=True,
         )
     return [float(value) for value in vector]
+
+
+def _normalize_rerank_item(
+    item: Any,
+    *,
+    rank: int,
+    documents: list[str],
+) -> dict[str, Any]:
+    if not isinstance(item, dict):
+        raise ProviderRouteError(
+            status_code=502,
+            error_code="mo.remote_reranker_response_invalid",
+            detail="Remote reranker item must be an object.",
+            retryable=True,
+        )
+    index = item.get("index", rank)
+    if not isinstance(index, int) or isinstance(index, bool) or index < 0:
+        raise ProviderRouteError(
+            status_code=502,
+            error_code="mo.remote_reranker_response_invalid",
+            detail="Remote reranker item index must be a non-negative integer.",
+            retryable=True,
+        )
+    score = _rerank_score_from_item(item)
+    document = item.get("document")
+    if not isinstance(document, str):
+        document = documents[index] if index < len(documents) else ""
+    return {
+        "index": index,
+        "score": score,
+        "document": document,
+    }
+
+
+def _rerank_score_from_item(item: dict[str, Any]) -> float:
+    value = item.get("score", item.get("relevance_score"))
+    if not isinstance(value, int | float) or isinstance(value, bool):
+        raise ProviderRouteError(
+            status_code=502,
+            error_code="mo.remote_reranker_response_invalid",
+            detail="Remote reranker score must be numeric.",
+            retryable=True,
+        )
+    return round(float(value), 6)
 
 
 def _normalize_usage(value: Any, input_texts: list[str]) -> dict[str, int]:

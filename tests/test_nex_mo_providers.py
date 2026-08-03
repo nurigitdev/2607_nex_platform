@@ -16,6 +16,7 @@ from nex_mo.providers import (
     create_mock_embedding_response,
     create_mock_generation_response,
     create_mock_rerank_response,
+    create_rerank_response,
     list_model_profiles,
     list_provider_routes,
     resolve_provider_route,
@@ -402,6 +403,40 @@ def test_mock_rerank_response_is_sorted_by_score() -> None:
     assert scores == sorted(scores, reverse=True)
 
 
+def test_create_rerank_response_uses_remote_adapter_in_live_mode() -> None:
+    calls: list[dict[str, object]] = []
+
+    def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
+        calls.append({"method": method, "url": url, **kwargs})
+        return httpx.Response(
+            200,
+            json={"results": [{"index": 0, "relevance_score": 0.8}]},
+        )
+
+    response = create_rerank_response(
+        {
+            "alias": "mock-reranker-default",
+            "query": "trace",
+            "documents": ["alpha"],
+        },
+        environ={
+            "NEX_MO_PROVIDER_MODE": "live",
+            "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9104/v1/rerank",
+            "NEX_MO_REMOTE_RERANKER_MODEL": "RerankerA",
+        },
+        requester=requester,
+    )
+
+    assert calls[0]["json"] == {
+        "model": "RerankerA",
+        "query": "trace",
+        "documents": ["alpha"],
+        "top_n": 1,
+    }
+    assert response["alias"] == "mock-reranker-default"
+    assert response["results"][0]["score"] == 0.8
+
+
 def test_rerank_endpoint_returns_scores() -> None:
     response = TestClient(app).post(
         "/api/v1/rerank",
@@ -412,6 +447,41 @@ def test_rerank_endpoint_returns_scores() -> None:
     assert response.status_code == 200
     assert response.json()["alias"] == "mock-reranker-default"
     assert len(response.json()["results"]) == 2
+
+
+def test_rerank_endpoint_uses_remote_adapter_when_live(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+    monkeypatch.setenv("NEX_MO_PROVIDER_MODE", "live")
+    monkeypatch.setenv(
+        "NEX_MO_REMOTE_RERANKER_URL",
+        "http://dgx.local:9104/v1/rerank",
+    )
+    monkeypatch.setenv("NEX_MO_REMOTE_RERANKER_API_KEY", "secret")
+    monkeypatch.setenv("NEX_MO_REMOTE_RERANKER_MODEL", "RerankerA")
+
+    def fake_request(method: str, url: str, **kwargs: object) -> httpx.Response:
+        calls.append({"method": method, "url": url, **kwargs})
+        return httpx.Response(200, json={"results": [{"index": 1, "score": 0.7}]})
+
+    monkeypatch.setattr(remote_provider.httpx, "request", fake_request)
+
+    response = TestClient(app).post(
+        "/api/v1/rerank",
+        json={"query": "trace", "documents": ["alpha", "beta"]},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["results"] == [
+        {"index": 1, "score": 0.7, "document": "beta"}
+    ]
+    assert calls[0]["headers"] == {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": "Bearer secret",
+    }
+    assert "dgx.local" not in str(response.json())
+    assert "secret" not in str(response.json())
 
 
 def test_rerank_endpoint_requires_query() -> None:
