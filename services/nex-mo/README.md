@@ -24,6 +24,10 @@ Model profile defaults:
     `documents`, and `top_n`.
   - vLLM model catalog: `GET` to `NEX_MO_VLLM_MODELS_URL`, or
     `NEX_MO_VLLM_BASE_URL` plus `/v1/models`.
+- Live embedding execution uses the same `/api/v1/embeddings` MO API that CX
+  already calls. Set `NEX_MO_PROVIDER_MODE=live` and
+  `NEX_MO_REMOTE_EMBEDDING_URL`; MO translates `inputs` to OpenAI-compatible
+  `input` and returns the existing normalized MO response shape.
 
 Current endpoints:
 

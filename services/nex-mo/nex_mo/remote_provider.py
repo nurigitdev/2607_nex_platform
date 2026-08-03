@@ -6,7 +6,11 @@ from typing import Any, Callable
 
 import httpx
 
-from nex_mo.providers import DEFAULT_GENERATION_PROFILE, build_model_profile_catalog
+from nex_mo.providers import (
+    DEFAULT_GENERATION_PROFILE,
+    ProviderRouteError,
+    build_model_profile_catalog,
+)
 
 DEFAULT_TIMEOUT_SECONDS = 5.0
 PREFLIGHT_TEXT = "nex live provider preflight"
@@ -73,6 +77,47 @@ class RemoteProviderPreflightConfig:
         if self.legacy_endpoint_env is not None:
             payload["legacy_endpoint_env"] = self.legacy_endpoint_env
         return payload
+
+
+@dataclass(frozen=True)
+class RemoteProviderExecutionConfig:
+    capability: str
+    endpoint_env: str
+    url: str
+    method: str
+    request_shape: str
+    model_name: str
+    model_revision: str
+    deployment_id: str
+    api_key_env: str | None = None
+    api_key: str | None = None
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.url)
+
+    def headers(self) -> dict[str, str]:
+        headers = {"Accept": "application/json"}
+        if self.method == "POST":
+            headers["Content-Type"] = "application/json"
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
+    def to_safe_summary(self) -> dict[str, Any]:
+        return {
+            "capability": self.capability,
+            "endpoint_env": self.endpoint_env,
+            "configured": self.configured,
+            "method": self.method,
+            "request_shape": self.request_shape,
+            "model_name": self.model_name,
+            "model_revision": self.model_revision,
+            "deployment_id": self.deployment_id,
+            "authorization_env": self.api_key_env,
+            "authorization_configured": bool(self.api_key),
+        }
 
 
 class RemoteProviderPreflightError(Exception):
@@ -196,6 +241,105 @@ def run_remote_provider_preflight_check(
     }
 
 
+def build_remote_embedding_execution_config(
+    environ: dict[str, str] | None = None,
+) -> RemoteProviderExecutionConfig:
+    env = environ if environ is not None else os.environ
+    profile = _selected_profile(env, "embedding")
+    model_name = env.get("NEX_MO_REMOTE_EMBEDDING_MODEL", profile.model_name)
+    return RemoteProviderExecutionConfig(
+        capability="embedding",
+        endpoint_env="NEX_MO_REMOTE_EMBEDDING_URL",
+        url=_env_first(env, "NEX_MO_REMOTE_EMBEDDING_URL", "NEX_MO_LIVE_EMBEDDING_HEALTH_URL"),
+        method="POST",
+        request_shape="openai_embeddings",
+        model_name=model_name,
+        model_revision=env.get("NEX_MO_REMOTE_EMBEDDING_MODEL_REVISION", model_name),
+        deployment_id=env.get("NEX_MO_REMOTE_EMBEDDING_DEPLOYMENT_ID", "remote-embedding-http"),
+        api_key_env="NEX_MO_REMOTE_EMBEDDING_API_KEY",
+        api_key=_empty_to_none(env.get("NEX_MO_REMOTE_EMBEDDING_API_KEY")),
+        timeout_seconds=float(env.get("NEX_MO_LIVE_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)),
+    )
+
+
+def execute_remote_embedding_request(
+    payload: dict[str, Any],
+    *,
+    environ: dict[str, str] | None = None,
+    requester: HttpRequester | None = None,
+) -> dict[str, Any]:
+    _reject_raw_provider_fields(payload)
+    alias = _string_field(payload, "alias", "mock-embedding-default")
+    inputs = _string_list_field(payload, "inputs")
+    config = build_remote_embedding_execution_config(environ)
+    if not config.configured:
+        raise ProviderRouteError(
+            status_code=503,
+            error_code="mo.remote_embedding_not_configured",
+            detail="Remote embedding provider endpoint is not configured.",
+            retryable=True,
+        )
+
+    response_payload = _execute_remote_json_request(
+        config,
+        json_payload={
+            "model": config.model_name,
+            "input": inputs,
+        },
+        requester=requester,
+        error_code_prefix="mo.remote_embedding",
+    )
+    return normalize_remote_embedding_response(
+        provider_payload=response_payload,
+        alias=alias,
+        config=config,
+        input_count=len(inputs),
+        input_texts=inputs,
+    )
+
+
+def normalize_remote_embedding_response(
+    *,
+    provider_payload: Any,
+    alias: str,
+    config: RemoteProviderExecutionConfig,
+    input_count: int,
+    input_texts: list[str],
+) -> dict[str, Any]:
+    if not isinstance(provider_payload, dict):
+        raise ProviderRouteError(
+            status_code=502,
+            error_code="mo.remote_embedding_response_invalid",
+            detail="Remote embedding response must be a JSON object.",
+            retryable=True,
+        )
+    response_items = provider_payload.get("data")
+    if not isinstance(response_items, list) or len(response_items) != input_count:
+        raise ProviderRouteError(
+            status_code=502,
+            error_code="mo.remote_embedding_response_invalid",
+            detail="Remote embedding response count did not match request count.",
+            retryable=True,
+        )
+
+    normalized_items = [
+        {
+            "object": "embedding",
+            "index": _embedding_item_index(item, index),
+            "embedding": _embedding_vector_from_item(item),
+        }
+        for index, item in enumerate(response_items)
+    ]
+    return {
+        "object": provider_payload.get("object", "list"),
+        "alias": alias,
+        "model_revision": config.model_revision,
+        "deployment_id": config.deployment_id,
+        "data": normalized_items,
+        "usage": _normalize_usage(provider_payload.get("usage"), input_texts),
+    }
+
+
 def validate_preflight_response(
     config: RemoteProviderPreflightConfig,
     payload: Any,
@@ -304,6 +448,174 @@ def _extract_model_ids(payload: Any) -> tuple[str, ...]:
         elif isinstance(item, dict) and isinstance(item.get("id"), str):
             model_ids.append(item["id"])
     return tuple(model_ids)
+
+
+def _execute_remote_json_request(
+    config: RemoteProviderExecutionConfig,
+    *,
+    json_payload: dict[str, Any],
+    requester: HttpRequester | None,
+    error_code_prefix: str,
+) -> Any:
+    selected_requester = requester or httpx.request
+    try:
+        response = selected_requester(
+            config.method,
+            config.url,
+            headers=config.headers(),
+            json=json_payload,
+            timeout=config.timeout_seconds,
+        )
+    except httpx.TimeoutException as exc:
+        raise ProviderRouteError(
+            status_code=504,
+            error_code=f"{error_code_prefix}_timeout",
+            detail="Remote provider request timed out.",
+            retryable=True,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise ProviderRouteError(
+            status_code=503,
+            error_code=f"{error_code_prefix}_unavailable",
+            detail="Remote provider request failed before a valid response was received.",
+            retryable=True,
+        ) from exc
+
+    if response.is_error:
+        retryable = response.status_code >= 500
+        raise ProviderRouteError(
+            status_code=502,
+            error_code=f"{error_code_prefix}_http_error",
+            detail=f"Remote provider returned HTTP {response.status_code}.",
+            retryable=retryable,
+        )
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise ProviderRouteError(
+            status_code=502,
+            error_code=f"{error_code_prefix}_response_invalid",
+            detail="Remote provider response was not valid JSON.",
+            retryable=True,
+        ) from exc
+
+
+def _selected_profile(env: dict[str, str], capability: str):
+    profiles = [
+        profile
+        for profile in build_model_profile_catalog(env)
+        if profile.provider_capability == capability and profile.selected
+    ]
+    if profiles:
+        return profiles[0]
+    return [
+        profile
+        for profile in build_model_profile_catalog(env)
+        if profile.provider_capability == capability
+    ][0]
+
+
+def _reject_raw_provider_fields(payload: dict[str, Any]) -> None:
+    forbidden = {"provider_url", "model_path", "provider_endpoint", "api_key"}
+    leaked = sorted(forbidden & set(payload))
+    if leaked:
+        raise ProviderRouteError(
+            422,
+            "mo.provider_field_forbidden",
+            f"Provider-private field is not allowed: {leaked[0]}",
+        )
+
+
+def _string_field(
+    payload: dict[str, Any],
+    key: str,
+    default: str | None = None,
+) -> str:
+    value = payload.get(key, default)
+    if not isinstance(value, str) or not value:
+        raise ProviderRouteError(400, "mo.request_invalid", f"{key} is required.")
+    return value
+
+
+def _string_list_field(payload: dict[str, Any], key: str) -> list[str]:
+    value = payload.get(key)
+    if not isinstance(value, list) or not value or not all(
+        isinstance(item, str) and item for item in value
+    ):
+        raise ProviderRouteError(
+            400,
+            "mo.request_invalid",
+            f"{key} must be a non-empty list of strings.",
+        )
+    return value
+
+
+def _embedding_item_index(item: Any, fallback: int) -> int:
+    if isinstance(item, dict) and isinstance(item.get("index"), int):
+        return item["index"]
+    return fallback
+
+
+def _embedding_vector_from_item(item: Any) -> list[float]:
+    if not isinstance(item, dict):
+        raise ProviderRouteError(
+            status_code=502,
+            error_code="mo.remote_embedding_response_invalid",
+            detail="Remote embedding item must be an object.",
+            retryable=True,
+        )
+    vector = item.get("embedding")
+    if not isinstance(vector, list) or not vector or not all(
+        isinstance(value, int | float) and not isinstance(value, bool)
+        for value in vector
+    ):
+        raise ProviderRouteError(
+            status_code=502,
+            error_code="mo.remote_embedding_response_invalid",
+            detail="Remote embedding vector must be a non-empty numeric list.",
+            retryable=True,
+        )
+    return [float(value) for value in vector]
+
+
+def _normalize_usage(value: Any, input_texts: list[str]) -> dict[str, int]:
+    usage = value if isinstance(value, dict) else {}
+    input_tokens = _int_usage_value(
+        usage,
+        "input_tokens",
+        "prompt_tokens",
+        default=sum(_token_count(text) for text in input_texts),
+    )
+    output_tokens = _int_usage_value(usage, "output_tokens", default=0)
+    total_tokens = _int_usage_value(
+        usage,
+        "total_tokens",
+        default=input_tokens + output_tokens,
+    )
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+    }
+
+
+def _int_usage_value(
+    usage: dict[str, Any],
+    key: str,
+    fallback_key: str | None = None,
+    *,
+    default: int,
+) -> int:
+    value = usage.get(key)
+    if value is None and fallback_key is not None:
+        value = usage.get(fallback_key)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return max(0, value)
+    return default
+
+
+def _token_count(text: str) -> int:
+    return max(1, len(text.split()))
 
 
 def _env_first(env: dict[str, str], primary: str, legacy: str) -> str:

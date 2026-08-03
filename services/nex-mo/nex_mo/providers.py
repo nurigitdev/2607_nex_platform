@@ -373,6 +373,24 @@ def resolve_provider_route(
     return route
 
 
+def create_embedding_response(
+    payload: dict[str, Any],
+    *,
+    environ: dict[str, str] | None = None,
+    requester=None,
+) -> dict[str, Any]:
+    env = environ if environ is not None else os.environ
+    if env.get("NEX_MO_PROVIDER_MODE", DEFAULT_PROVIDER_MODE) == "live":
+        from nex_mo.remote_provider import execute_remote_embedding_request
+
+        return execute_remote_embedding_request(
+            payload,
+            environ=env,
+            requester=requester,
+        )
+    return create_mock_embedding_response(payload)
+
+
 def create_mock_embedding_response(payload: dict[str, Any]) -> dict[str, Any]:
     route = resolve_provider_route(
         _string_field(payload, "alias", "mock-embedding-default"),
@@ -544,7 +562,7 @@ def register_mock_provider_routes(app: FastAPI) -> None:
         return _handle_provider_request(
             request,
             authorization,
-            lambda: create_mock_embedding_response(payload),
+            lambda: create_embedding_response(payload),
         )
 
     @app.post("/api/v1/rerank", response_model=None)

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import httpx
 from fastapi.testclient import TestClient
 
+import nex_mo.remote_provider as remote_provider
 from nex_mo.main import app
 from nex_mo.providers import (
     DEFAULT_PROVIDER_ROUTES,
@@ -10,6 +12,7 @@ from nex_mo.providers import (
     ProviderRoute,
     ProviderRouteError,
     build_model_profile_catalog,
+    create_embedding_response,
     create_mock_embedding_response,
     create_mock_generation_response,
     create_mock_rerank_response,
@@ -299,6 +302,29 @@ def test_mock_embeddings_are_deterministic() -> None:
     assert response["usage"]["total_tokens"] == 2
 
 
+def test_create_embedding_response_uses_remote_adapter_in_live_mode() -> None:
+    calls: list[dict[str, object]] = []
+
+    def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
+        calls.append({"method": method, "url": url, **kwargs})
+        return httpx.Response(200, json={"data": [{"embedding": [0.25, 0.75]}]})
+
+    response = create_embedding_response(
+        {"alias": "mock-embedding-default", "inputs": ["alpha"]},
+        environ={
+            "NEX_MO_PROVIDER_MODE": "live",
+            "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local:9103/v1/embeddings",
+            "NEX_MO_REMOTE_EMBEDDING_MODEL": "EmbeddingA",
+        },
+        requester=requester,
+    )
+
+    assert calls[0]["json"] == {"model": "EmbeddingA", "input": ["alpha"]}
+    assert response["alias"] == "mock-embedding-default"
+    assert response["model_revision"] == "EmbeddingA"
+    assert response["deployment_id"] == "remote-embedding-http"
+
+
 def test_embeddings_endpoint_returns_mock_vectors() -> None:
     response = TestClient(app).post(
         "/api/v1/embeddings",
@@ -309,6 +335,41 @@ def test_embeddings_endpoint_returns_mock_vectors() -> None:
     assert response.status_code == 200
     assert response.json()["alias"] == "mock-embedding-default"
     assert len(response.json()["data"]) == 2
+
+
+def test_embeddings_endpoint_uses_remote_adapter_when_live(
+    monkeypatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+    monkeypatch.setenv("NEX_MO_PROVIDER_MODE", "live")
+    monkeypatch.setenv(
+        "NEX_MO_REMOTE_EMBEDDING_URL",
+        "http://dgx.local:9103/v1/embeddings",
+    )
+    monkeypatch.setenv("NEX_MO_REMOTE_EMBEDDING_API_KEY", "secret")
+    monkeypatch.setenv("NEX_MO_REMOTE_EMBEDDING_MODEL", "EmbeddingA")
+
+    def fake_request(method: str, url: str, **kwargs: object) -> httpx.Response:
+        calls.append({"method": method, "url": url, **kwargs})
+        return httpx.Response(200, json={"data": [{"embedding": [0.1, 0.2]}]})
+
+    monkeypatch.setattr(remote_provider.httpx, "request", fake_request)
+
+    response = TestClient(app).post(
+        "/api/v1/embeddings",
+        json={"inputs": ["alpha"]},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"][0]["embedding"] == [0.1, 0.2]
+    assert calls[0]["headers"] == {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": "Bearer secret",
+    }
+    assert "dgx.local" not in str(response.json())
+    assert "secret" not in str(response.json())
 
 
 def test_embeddings_endpoint_requires_service_claim() -> None:

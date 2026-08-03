@@ -156,6 +156,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0050`](slices/0050_generation_recovery_mock_flow.md) | `S5-010` Generation recovery mock flow regression. |
 | [`Slice 0051`](slices/0051_dgx_live_provider_preflight_generation_catalog.md) | `S6-001` DGX live provider preflight and pluggable generation model catalog. |
 | [`Slice 0052`](slices/0052_remote_provider_http_client_preflight_shapes.md) | `S6-002` Remote provider HTTP client foundation and live preflight request shapes. |
+| [`Slice 0053`](slices/0053_mo_remote_embedding_execution_adapter.md) | `S6-003` MO remote embedding execution adapter. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
