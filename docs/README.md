@@ -161,6 +161,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0055`](slices/0055_mo_vllm_generation_execution_adapter.md) | `S6-005` MO vLLM generation execution adapter. |
 | [`Slice 0056`](slices/0056_provider_failure_taxonomy_retry_degrade_policy.md) | `S6-006` Provider failure taxonomy and retry/degrade policy. |
 | [`Slice 0057`](slices/0057_mo_provider_runtime_telemetry_snapshot.md) | `S6-007` MO provider runtime telemetry snapshot. |
+| [`Slice 0058`](slices/0058_ag_mo_provider_readiness_projection.md) | `S6-008` AG MO provider readiness projection. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

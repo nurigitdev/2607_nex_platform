@@ -11,7 +11,21 @@ Current endpoints:
 - `GET /version`
 - `GET /internal/v1/auth/service-claim`
 - `GET /admin/v1/readiness/services`
+- `GET /admin/v1/readiness/providers`
 - `GET /admin/v1/generation-audit/generations/{cx_generation_id}`
+
+Provider readiness:
+
+- AG reads MO's `GET /api/v1/provider-telemetry` with a service token and
+  projects it into `ag_mo_provider_readiness_projection.v1`.
+- The projection summarizes configured provider rows, request/success/failure
+  counters, retryable failure counters, degraded counters, and the last safe
+  failure metadata.
+- In `live` mode, unconfigured provider rows are `NOT_READY`; observed provider
+  failures or degraded counters are `DEGRADED`; telemetry fetch failures are
+  `UNAVAILABLE`.
+- Provider URLs, API keys, model paths, and raw upstream payloads are not copied
+  into the AG projection.
 
 Generation audit:
 
