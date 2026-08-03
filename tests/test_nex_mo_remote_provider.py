@@ -16,14 +16,23 @@ from nex_mo.remote_provider import (
     execute_remote_generation_request,
     execute_remote_rerank_request,
     expected_models_from_env,
+    list_remote_provider_telemetry,
     normalize_remote_embedding_response,
     normalize_remote_generation_response,
     normalize_remote_rerank_response,
     remote_provider_response_invalid_decision,
+    reset_remote_provider_telemetry,
     run_remote_provider_preflight_check,
     selected_generation_model_names,
     validate_preflight_response,
 )
+
+
+@pytest.fixture(autouse=True)
+def clear_remote_provider_telemetry():
+    reset_remote_provider_telemetry()
+    yield
+    reset_remote_provider_telemetry()
 
 
 def test_remote_provider_configs_use_current_env_contract() -> None:
@@ -395,6 +404,110 @@ def test_remote_provider_response_invalid_is_retryable_degraded() -> None:
     assert decision.retryable is True
     assert decision.degraded is True
     assert "upstream_status_code" not in decision.to_safe_summary()
+
+
+def test_remote_provider_telemetry_lists_safe_zero_state_for_current_configs() -> None:
+    telemetry = list_remote_provider_telemetry(
+        environ={
+            "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local:9103/v1/embeddings",
+            "NEX_MO_REMOTE_EMBEDDING_API_KEY": "secret",
+            "NEX_MO_REMOTE_EMBEDDING_MODEL": "EmbeddingA",
+            "NEX_MO_REMOTE_EMBEDDING_MODEL_REVISION": "EmbeddingA@rev",
+            "NEX_MO_REMOTE_EMBEDDING_DEPLOYMENT_ID": "remote-embedding-a",
+        }
+    )
+
+    embedding = [
+        item for item in telemetry if item["capability"] == "embedding"
+    ][0]
+    assert embedding["configured"] is True
+    assert embedding["endpoint_env"] == "NEX_MO_REMOTE_EMBEDDING_URL"
+    assert embedding["model_name"] == "EmbeddingA"
+    assert embedding["model_revision"] == "EmbeddingA@rev"
+    assert embedding["deployment_id"] == "remote-embedding-a"
+    assert embedding["authorization_configured"] is True
+    assert embedding["request_count"] == 0
+    assert embedding["last_outcome"] is None
+    assert "dgx.local" not in str(telemetry)
+    assert "secret" not in str(telemetry)
+
+
+def test_remote_provider_telemetry_records_success_and_failure() -> None:
+    environ = {
+        "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local:9103/v1/embeddings",
+        "NEX_MO_REMOTE_EMBEDDING_MODEL": "EmbeddingA",
+        "NEX_MO_REMOTE_EMBEDDING_MODEL_REVISION": "EmbeddingA@rev",
+        "NEX_MO_REMOTE_EMBEDDING_DEPLOYMENT_ID": "remote-embedding-a",
+    }
+
+    execute_remote_embedding_request(
+        {"alias": "mock-embedding-default", "inputs": ["alpha"]},
+        environ=environ,
+        requester=lambda *args, **kwargs: httpx.Response(
+            200,
+            json={"data": [{"embedding": [0.1, 0.2]}]},
+        ),
+    )
+    with pytest.raises(Exception):
+        execute_remote_embedding_request(
+            {"alias": "mock-embedding-default", "inputs": ["beta"]},
+            environ=environ,
+            requester=lambda *args, **kwargs: httpx.Response(
+                503,
+                json={"error": "down"},
+            ),
+        )
+
+    telemetry = list_remote_provider_telemetry(
+        capability="embedding",
+        environ=environ,
+    )
+
+    assert len(telemetry) == 1
+    assert telemetry[0]["request_count"] == 2
+    assert telemetry[0]["success_count"] == 1
+    assert telemetry[0]["failure_count"] == 1
+    assert telemetry[0]["retryable_failure_count"] == 1
+    assert telemetry[0]["degraded_count"] == 1
+    assert telemetry[0]["last_outcome"] == "failure"
+    assert telemetry[0]["last_status_code"] == 503
+    assert telemetry[0]["last_error_code"] == "mo.remote_embedding_http_error"
+    assert telemetry[0]["last_failure_kind"] == "upstream_5xx"
+    assert telemetry[0]["last_upstream_status_code"] == 503
+    assert isinstance(telemetry[0]["last_latency_ms"], int)
+    assert isinstance(telemetry[0]["last_observed_at"], str)
+
+
+def test_remote_provider_telemetry_records_malformed_response_degrade() -> None:
+    environ = {
+        "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9104/v1/rerank",
+        "NEX_MO_REMOTE_RERANKER_MODEL": "RerankerA",
+    }
+
+    with pytest.raises(Exception):
+        execute_remote_rerank_request(
+            {
+                "alias": "mock-reranker-default",
+                "query": "quality",
+                "documents": ["doc-a"],
+            },
+            environ=environ,
+            requester=lambda *args, **kwargs: httpx.Response(
+                200,
+                json={"results": []},
+            ),
+        )
+
+    telemetry = list_remote_provider_telemetry(
+        capability="reranking",
+        environ=environ,
+    )
+
+    assert telemetry[0]["failure_count"] == 1
+    assert telemetry[0]["retryable_failure_count"] == 1
+    assert telemetry[0]["degraded_count"] == 1
+    assert telemetry[0]["last_error_code"] == "mo.remote_reranker_response_invalid"
+    assert telemetry[0]["last_failure_kind"] == "malformed_response"
 
 
 @pytest.mark.parametrize(

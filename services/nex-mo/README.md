@@ -42,6 +42,10 @@ Model profile defaults:
   as retryable degraded failures; upstream `4xx` responses are safe non-retryable
   `502` failures. Problem responses expose `details.degraded=true` only for
   degraded failures and never include endpoint URLs or API keys.
+- Provider runtime telemetry is available at `GET /api/v1/provider-telemetry`.
+  The snapshot is in-memory, process-local, and read-only. It reports configured
+  capability rows plus success/failure counters and last safe failure metadata;
+  it does not expose provider URLs, API keys, or raw provider payloads.
 
 Current endpoints:
 
@@ -51,6 +55,7 @@ Current endpoints:
 - `GET /internal/v1/auth/service-claim`
 - `GET /api/v1/provider-routes`
 - `GET /api/v1/provider-profiles`
+- `GET /api/v1/provider-telemetry`
 - `POST /api/v1/embeddings`
 - `POST /api/v1/rerank`
 - `POST /api/v1/generations`

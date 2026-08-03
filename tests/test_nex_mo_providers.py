@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 import nex_mo.remote_provider as remote_provider
@@ -23,6 +24,13 @@ from nex_mo.providers import (
     resolve_provider_route,
 )
 from nex_runtime import issue_mock_service_token
+
+
+@pytest.fixture(autouse=True)
+def clear_remote_provider_telemetry():
+    remote_provider.reset_remote_provider_telemetry()
+    yield
+    remote_provider.reset_remote_provider_telemetry()
 
 
 def auth_headers() -> dict[str, str]:
@@ -257,6 +265,56 @@ def test_provider_profiles_endpoint_lists_generation_candidates() -> None:
     assert payload["data"][0]["selected"] is True
     assert payload["data"][1]["candidate_role"] == "candidate"
     assert payload["data"][2]["candidate_role"] == "planned"
+
+
+def test_provider_telemetry_endpoint_requires_service_claim() -> None:
+    response = TestClient(app).get("/api/v1/provider-telemetry")
+
+    assert response.status_code == 401
+    assert response.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+
+
+def test_provider_telemetry_endpoint_returns_safe_runtime_snapshot(monkeypatch) -> None:
+    monkeypatch.setenv("NEX_MO_PROVIDER_MODE", "live")
+    monkeypatch.setenv(
+        "NEX_MO_REMOTE_EMBEDDING_URL",
+        "http://dgx.local:9103/v1/embeddings",
+    )
+    monkeypatch.setenv("NEX_MO_REMOTE_EMBEDDING_API_KEY", "secret")
+    monkeypatch.setenv("NEX_MO_REMOTE_EMBEDDING_MODEL", "EmbeddingA")
+
+    def fake_request(method: str, url: str, **kwargs: object) -> httpx.Response:
+        return httpx.Response(200, json={"data": [{"embedding": [0.1, 0.2]}]})
+
+    monkeypatch.setattr(remote_provider.httpx, "request", fake_request)
+
+    embedding_response = TestClient(app).post(
+        "/api/v1/embeddings",
+        json={"inputs": ["alpha"]},
+        headers=auth_headers(),
+    )
+    telemetry_response = TestClient(app).get(
+        "/api/v1/provider-telemetry",
+        params={"capability": "embedding"},
+        headers=auth_headers(),
+    )
+
+    assert embedding_response.status_code == 200
+    assert telemetry_response.status_code == 200
+    payload = telemetry_response.json()
+    assert payload["meta"] == {
+        "count": 1,
+        "provider_mode": "live",
+        "schema_version": "mo_provider_telemetry_snapshot.v1",
+    }
+    assert payload["data"][0]["capability"] == "embedding"
+    assert payload["data"][0]["request_count"] == 1
+    assert payload["data"][0]["success_count"] == 1
+    assert payload["data"][0]["failure_count"] == 0
+    assert payload["data"][0]["last_outcome"] == "success"
+    assert payload["data"][0]["last_status_code"] == 200
+    assert "dgx.local" not in str(payload)
+    assert "secret" not in str(payload)
 
 
 def test_resolve_provider_route_rejects_capability_mismatch() -> None:

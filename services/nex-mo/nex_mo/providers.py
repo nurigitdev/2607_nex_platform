@@ -126,6 +126,8 @@ class ProviderRouteError(Exception):
     detail: str
     retryable: bool = False
     degraded: bool = False
+    failure_kind: str | None = None
+    upstream_status_code: int | None = None
 
 
 DEFAULT_PROVIDER_ROUTES: tuple[ProviderRoute, ...] = (
@@ -595,6 +597,28 @@ def register_mock_provider_routes(app: FastAPI) -> None:
                 "count": len(profiles),
                 "provider_mode": os.getenv("NEX_MO_PROVIDER_MODE", DEFAULT_PROVIDER_MODE),
                 "model_root": os.getenv("NEX_MO_MODEL_ROOT", DEFAULT_MODEL_ROOT),
+            },
+        }
+
+    @app.get("/api/v1/provider-telemetry", response_model=None)
+    def get_provider_telemetry(
+        request: Request,
+        capability: str | None = None,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_mo_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        from nex_mo.remote_provider import list_remote_provider_telemetry
+
+        telemetry = list_remote_provider_telemetry(capability=capability)
+        return {
+            "data": telemetry,
+            "meta": {
+                "count": len(telemetry),
+                "provider_mode": os.getenv("NEX_MO_PROVIDER_MODE", DEFAULT_PROVIDER_MODE),
+                "schema_version": "mo_provider_telemetry_snapshot.v1",
             },
         }
 
