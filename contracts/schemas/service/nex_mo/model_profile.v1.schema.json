@@ -55,6 +55,7 @@
       "type": "string",
       "enum": [
         "local_mock",
+        "remote_http",
         "vllm"
       ]
     },
@@ -70,8 +71,26 @@
       "enum": [
         "READY",
         "CONFIGURED",
-        "UNAVAILABLE"
+        "UNAVAILABLE",
+        "PLANNED"
       ]
+    },
+    "candidate_role": {
+      "type": "string",
+      "enum": [
+        "primary",
+        "candidate",
+        "planned",
+        "custom"
+      ]
+    },
+    "selection_reason": {
+      "type": "string",
+      "maxLength": 240
+    },
+    "live_health_env": {
+      "type": "string",
+      "pattern": "^NEX_MO_LIVE_"
     }
   }
 }

@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from nex_mo.main import app
 from nex_mo.providers import (
     DEFAULT_PROVIDER_ROUTES,
+    GENERATION_PROFILE_CANDIDATES,
     ModelProfile,
     ProviderRoute,
     ProviderRouteError,
@@ -45,13 +46,25 @@ def test_model_profile_catalog_uses_qwen_defaults() -> None:
     assert [profile.profile_name for profile in profiles] == [
         "qwen3_embedding_4b_bf16",
         "qwen3_reranker_4b_bf16",
+        "qwen3_5_122b_a10b_nvfp4",
         "qwen3_6_27b_nvfp4",
+        "k_ai_generation_candidate",
     ]
     assert profiles[0].model_path == "/data/nex-platform/models/qwen3-embedding-4b-bf16"
     assert profiles[1].precision == "BF16"
     assert profiles[2].runtime_engine == "vllm"
+    assert profiles[2].model_name == "Qwen3.5-122B-A10B-NVFP4"
+    assert profiles[2].selected is True
+    assert profiles[3].candidate_role == "candidate"
+    assert profiles[4].status == "PLANNED"
     assert all(profile.provider_mode == "mock" for profile in profiles)
-    assert all(profile.status == "READY" for profile in profiles)
+    assert [profile.status for profile in profiles] == [
+        "READY",
+        "READY",
+        "READY",
+        "CONFIGURED",
+        "PLANNED",
+    ]
 
 
 def test_model_profile_catalog_accepts_env_overrides() -> None:
@@ -61,16 +74,48 @@ def test_model_profile_catalog_accepts_env_overrides() -> None:
             "NEX_MO_MODEL_ROOT": "/models",
             "NEX_MO_EMBEDDING_PROFILE": "embedding_a",
             "NEX_MO_RERANKER_PROFILE": "reranker_a",
-            "NEX_MO_GENERATION_PROFILE": "generation_a",
+            "NEX_MO_GENERATION_PROFILE": "qwen3_6_27b_nvfp4",
             "NEX_MO_EMBEDDING_MODEL_PATH": "/override/embed",
+            "NEX_MO_GENERATION_MODEL_PATH": "/override/generation-selected",
         }
     )
 
     assert profiles[0].profile_name == "embedding_a"
     assert profiles[0].model_path == "/override/embed"
+    assert profiles[0].runtime_engine == "remote_http"
     assert profiles[1].model_path == "/models/qwen3-reranker-4b-bf16"
-    assert profiles[2].model_path == "/models/qwen3.6-27b-nvfp4"
-    assert all(profile.status == "CONFIGURED" for profile in profiles)
+    assert profiles[2].model_path == "/models/qwen3.5-122b-a10b-nvfp4"
+    assert profiles[2].selected is False
+    assert profiles[3].model_path == "/override/generation-selected"
+    assert profiles[3].selected is True
+    assert [profile.status for profile in profiles] == [
+        "CONFIGURED",
+        "CONFIGURED",
+        "CONFIGURED",
+        "CONFIGURED",
+        "PLANNED",
+    ]
+
+
+def test_generation_model_profiles_support_custom_selected_profile() -> None:
+    profiles = build_model_profile_catalog(
+        {
+            "NEX_MO_MODEL_ROOT": "/models",
+            "NEX_MO_GENERATION_PROFILE": "kai_local_trial_v1",
+            "NEX_MO_GENERATION_MODEL_NAME": "K-AI local trial v1",
+            "NEX_MO_GENERATION_MODEL_PATH": "/models/kai-local-trial-v1",
+        }
+    )
+    generation_profiles = [
+        profile for profile in profiles if profile.provider_capability == "generation"
+    ]
+
+    assert len(GENERATION_PROFILE_CANDIDATES) == 3
+    assert generation_profiles[-1].profile_name == "kai_local_trial_v1"
+    assert generation_profiles[-1].model_name == "K-AI local trial v1"
+    assert generation_profiles[-1].candidate_role == "custom"
+    assert generation_profiles[-1].selected is True
+    assert generation_profiles[0].selected is False
 
 
 def test_model_profile_to_wire_has_no_secret_fields() -> None:
@@ -85,9 +130,13 @@ def test_model_profile_to_wire_has_no_secret_fields() -> None:
         model_path="/data/nex-platform/models/qwen3-embedding-4b-bf16",
         selected=True,
         status="READY",
+        candidate_role="primary",
+        selection_reason="safe public profile",
+        live_health_env="NEX_MO_LIVE_EMBEDDING_HEALTH_URL",
     ).to_wire()
 
     assert payload["model_path"].endswith("qwen3-embedding-4b-bf16")
+    assert payload["live_health_env"] == "NEX_MO_LIVE_EMBEDDING_HEALTH_URL"
     assert "api_key" not in payload
     assert "provider_url" not in payload
 
@@ -166,7 +215,7 @@ def test_provider_profiles_endpoint_lists_selected_profiles() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["meta"]["count"] == 3
+    assert payload["meta"]["count"] == 5
     assert payload["meta"]["provider_mode"] == "mock"
     assert payload["data"][0]["profile_name"] == "qwen3_embedding_4b_bf16"
     assert payload["data"][0]["selected"] is True
@@ -183,6 +232,26 @@ def test_provider_profiles_endpoint_filters_by_capability() -> None:
     payload = response.json()
     assert payload["meta"]["count"] == 1
     assert payload["data"][0]["provider_capability"] == "reranking"
+
+
+def test_provider_profiles_endpoint_lists_generation_candidates() -> None:
+    response = TestClient(app).get(
+        "/api/v1/provider-profiles",
+        params={"capability": "generation"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["meta"]["count"] == 3
+    assert [item["profile_name"] for item in payload["data"]] == [
+        "qwen3_5_122b_a10b_nvfp4",
+        "qwen3_6_27b_nvfp4",
+        "k_ai_generation_candidate",
+    ]
+    assert payload["data"][0]["selected"] is True
+    assert payload["data"][1]["candidate_role"] == "candidate"
+    assert payload["data"][2]["candidate_role"] == "planned"
 
 
 def test_resolve_provider_route_rejects_capability_mismatch() -> None:

@@ -71,7 +71,7 @@ paths:
               - generation
       responses:
         "200":
-          description: Selected MO model profiles by capability.
+          description: MO model profiles by capability, including selected defaults and generation candidates.
         "401":
           description: Service claim is missing or invalid.
   /api/v1/embeddings:

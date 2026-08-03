@@ -1,0 +1,15 @@
+{
+  "profile_name": "k_ai_generation_candidate",
+  "provider_capability": "generation",
+  "alias": "general-llm-kai-candidate",
+  "provider_mode": "live",
+  "model_name": "K-AI generation model",
+  "precision": "NVFP4",
+  "runtime_engine": "vllm",
+  "model_path": "/data/nex-platform/models/k-ai-generation-candidate",
+  "selected": false,
+  "status": "PLANNED",
+  "candidate_role": "planned",
+  "selection_reason": "Domestic K-AI generation model planned for evaluation.",
+  "live_health_env": "NEX_MO_LIVE_VLLM_MODELS_URL"
+}

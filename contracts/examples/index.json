@@ -36,6 +36,16 @@
       "schema": "schemas/service/nex_mo/model_profile.v1.schema.json"
     },
     {
+      "name": "mo_model_profile_generation_qwen35_selected",
+      "path": "examples/generation/mo_model_profile.generation_qwen35_selected.json",
+      "schema": "schemas/service/nex_mo/model_profile.v1.schema.json"
+    },
+    {
+      "name": "mo_model_profile_generation_kai_planned",
+      "path": "examples/generation/mo_model_profile.generation_kai_planned.json",
+      "schema": "schemas/service/nex_mo/model_profile.v1.schema.json"
+    },
+    {
       "name": "cx_generation_execution_record_mock",
       "path": "examples/generation/cx_generation_execution_record.mock_success.json",
       "schema": "schemas/generation/cx_generation_execution_record.v1.schema.json"
