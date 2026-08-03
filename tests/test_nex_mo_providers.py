@@ -13,6 +13,7 @@ from nex_mo.providers import (
     ProviderRouteError,
     build_model_profile_catalog,
     create_embedding_response,
+    create_generation_response,
     create_mock_embedding_response,
     create_mock_generation_response,
     create_mock_rerank_response,
@@ -519,6 +520,54 @@ def test_mock_generation_response_is_deterministic() -> None:
     assert "provider_url" not in first["runtime_metadata"]
 
 
+def test_create_generation_response_uses_remote_adapter_in_live_mode() -> None:
+    calls: list[dict[str, object]] = []
+
+    def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
+        calls.append({"method": method, "url": url, **kwargs})
+        return httpx.Response(
+            200,
+            json={
+                "id": "cmpl-001",
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": "Remote answer."},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 2,
+                    "completion_tokens": 2,
+                    "total_tokens": 4,
+                },
+            },
+        )
+
+    response = create_generation_response(
+        {
+            "alias": "general-llm-default",
+            "provider_capability": "generation",
+            "prompt": "hello",
+            "max_output_tokens": 64,
+        },
+        request_id="req-001",
+        trace_id="trace-001",
+        environ={
+            "NEX_MO_PROVIDER_MODE": "live",
+            "NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000",
+            "NEX_MO_VLLM_MODEL": "GenerationA",
+        },
+        requester=requester,
+    )
+
+    assert calls[0]["json"]["model"] == "GenerationA"
+    assert calls[0]["json"]["messages"] == [{"role": "user", "content": "hello"}]
+    assert calls[0]["json"]["max_tokens"] == 64
+    assert response["mo_generation_id"] == "cmpl-001"
+    assert response["output"]["text"] == "Remote answer."
+    assert response["usage"] == {"input_tokens": 2, "output_tokens": 2, "total_tokens": 4}
+
+
 def test_generations_endpoint_returns_mock_output() -> None:
     response = TestClient(app).post(
         "/api/v1/generations",
@@ -534,6 +583,50 @@ def test_generations_endpoint_returns_mock_output() -> None:
     payload = response.json()
     assert payload["finish_reason"] == "STOP"
     assert payload["runtime_metadata"]["trace_id"] == "4bf92f3577b34da6a3ce929d0e0e4736"
+
+
+def test_generations_endpoint_uses_remote_adapter_when_live(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+    monkeypatch.setenv("NEX_MO_PROVIDER_MODE", "live")
+    monkeypatch.setenv("NEX_MO_VLLM_CHAT_COMPLETIONS_URL", "http://vllm.local/chat")
+    monkeypatch.setenv("NEX_MO_VLLM_API_KEY", "secret")
+    monkeypatch.setenv("NEX_MO_VLLM_MODEL", "GenerationA")
+
+    def fake_request(method: str, url: str, **kwargs: object) -> httpx.Response:
+        calls.append({"method": method, "url": url, **kwargs})
+        return httpx.Response(
+            200,
+            json={
+                "id": "cmpl-002",
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": "Remote draft."},
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+
+    monkeypatch.setattr(remote_provider.httpx, "request", fake_request)
+
+    response = TestClient(app).post(
+        "/api/v1/generations",
+        json={"messages": [{"role": "user", "content": "Draft the summary."}]},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["mo_generation_id"] == "cmpl-002"
+    assert payload["provider_type"] == "vllm"
+    assert payload["output"]["text"] == "Remote draft."
+    assert calls[0]["headers"] == {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": "Bearer secret",
+    }
+    assert "vllm.local" not in str(payload)
+    assert "secret" not in str(payload)
 
 
 def test_generations_endpoint_rejects_unknown_alias() -> None:

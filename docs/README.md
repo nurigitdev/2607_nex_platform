@@ -158,6 +158,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0052`](slices/0052_remote_provider_http_client_preflight_shapes.md) | `S6-002` Remote provider HTTP client foundation and live preflight request shapes. |
 | [`Slice 0053`](slices/0053_mo_remote_embedding_execution_adapter.md) | `S6-003` MO remote embedding execution adapter. |
 | [`Slice 0054`](slices/0054_mo_remote_reranker_execution_adapter.md) | `S6-004` MO remote reranker execution adapter. |
+| [`Slice 0055`](slices/0055_mo_vllm_generation_execution_adapter.md) | `S6-005` MO vLLM generation execution adapter. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

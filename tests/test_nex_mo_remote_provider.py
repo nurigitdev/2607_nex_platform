@@ -6,12 +6,15 @@ import pytest
 from nex_mo.remote_provider import (
     RemoteProviderPreflightConfig,
     build_remote_embedding_execution_config,
+    build_remote_generation_execution_config,
     build_remote_provider_preflight_configs,
     build_remote_reranker_execution_config,
     execute_remote_embedding_request,
+    execute_remote_generation_request,
     execute_remote_rerank_request,
     expected_models_from_env,
     normalize_remote_embedding_response,
+    normalize_remote_generation_response,
     normalize_remote_rerank_response,
     run_remote_provider_preflight_check,
     selected_generation_model_names,
@@ -81,6 +84,35 @@ def test_remote_reranker_execution_config_uses_model_overrides() -> None:
     assert config.deployment_id == "dgx-reranker-a"
     assert config.headers()["Authorization"] == "Bearer secret"
     assert "secret" not in str(config.to_safe_summary())
+
+
+def test_remote_generation_execution_config_uses_vllm_base_and_profile() -> None:
+    config = build_remote_generation_execution_config(
+        {
+            "NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000",
+            "NEX_MO_VLLM_API_KEY": "secret",
+            "NEX_MO_GENERATION_PROFILE": "qwen3_6_27b_nvfp4",
+        }
+    )
+
+    assert config.url == "http://dgx.local:12000/v1/chat/completions"
+    assert config.model_name == "Qwen3.6-27B-NVFP4"
+    assert config.model_revision == "Qwen3.6-27B-NVFP4"
+    assert config.headers()["Authorization"] == "Bearer secret"
+    assert "secret" not in str(config.to_safe_summary())
+
+    explicit = build_remote_generation_execution_config(
+        {
+            "NEX_MO_VLLM_CHAT_COMPLETIONS_URL": "http://vllm.local/chat",
+            "NEX_MO_VLLM_MODEL": "GenerationA",
+            "NEX_MO_VLLM_MODEL_REVISION": "GenerationA@rev",
+            "NEX_MO_VLLM_DEPLOYMENT_ID": "vllm-a",
+        }
+    )
+    assert explicit.url == "http://vllm.local/chat"
+    assert explicit.model_name == "GenerationA"
+    assert explicit.model_revision == "GenerationA@rev"
+    assert explicit.deployment_id == "vllm-a"
 
 
 def test_remote_provider_configs_keep_legacy_live_endpoint_fallbacks() -> None:
@@ -509,6 +541,253 @@ def test_execute_remote_rerank_request_reports_safe_provider_errors(
                 "documents": ["doc-a"],
             },
             environ={"NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9104/v1/rerank"},
+            requester=requester,
+        )
+
+    assert getattr(exc_info.value, "error_code") == error_code
+    assert getattr(exc_info.value, "retryable") is retryable
+
+
+def test_execute_remote_generation_request_posts_chat_completion_and_normalizes() -> None:
+    calls: list[dict[str, object]] = []
+
+    def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
+        calls.append({"method": method, "url": url, **kwargs})
+        return httpx.Response(
+            200,
+            json={
+                "id": "cmpl-001",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "Draft complete."},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 7,
+                    "completion_tokens": 3,
+                    "total_tokens": 10,
+                },
+            },
+        )
+
+    response = execute_remote_generation_request(
+        {
+            "alias": "general-llm-default",
+            "provider_capability": "generation",
+            "messages": [
+                {"role": "system", "content": "Be concise."},
+                {"role": "user", "content": "Draft the summary."},
+            ],
+            "response_format": {"type": "json_object"},
+            "max_output_tokens": 128,
+            "temperature": 0.2,
+            "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        },
+        request_id="0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+        trace_id="fallback-trace",
+        environ={
+            "NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000",
+            "NEX_MO_VLLM_API_KEY": "secret",
+            "NEX_MO_VLLM_MODEL": "GenerationA",
+            "NEX_MO_VLLM_MODEL_REVISION": "GenerationA@rev",
+            "NEX_MO_VLLM_DEPLOYMENT_ID": "vllm-a",
+        },
+        requester=requester,
+    )
+
+    assert calls == [
+        {
+            "method": "POST",
+            "url": "http://dgx.local:12000/v1/chat/completions",
+            "headers": {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Authorization": "Bearer secret",
+            },
+            "json": {
+                "model": "GenerationA",
+                "messages": [
+                    {"role": "system", "content": "Be concise."},
+                    {"role": "user", "content": "Draft the summary."},
+                ],
+                "temperature": 0.2,
+                "max_tokens": 128,
+                "stream": False,
+                "response_format": {"type": "json_object"},
+            },
+            "timeout": 5.0,
+        }
+    ]
+    assert response["mo_generation_id"] == "cmpl-001"
+    assert response["alias"] == "general-llm-default"
+    assert response["model_revision"] == "GenerationA@rev"
+    assert response["deployment_id"] == "vllm-a"
+    assert response["provider_type"] == "vllm"
+    assert response["output"] == {"type": "text", "text": "Draft complete."}
+    assert response["finish_reason"] == "STOP"
+    assert response["usage"] == {"input_tokens": 7, "output_tokens": 3, "total_tokens": 10}
+    assert response["runtime_metadata"]["trace_id"] == "4bf92f3577b34da6a3ce929d0e0e4736"
+    assert "dgx.local" not in str(response)
+    assert "secret" not in str(response)
+
+
+def test_execute_remote_generation_request_uses_prompt_fallback_and_text_choice() -> None:
+    def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
+        assert kwargs["json"]["messages"] == [
+            {"role": "user", "content": "Plain prompt."}
+        ]
+        assert "response_format" not in kwargs["json"]
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "text": "Plain completion.",
+                        "finish_reason": "length",
+                    }
+                ],
+            },
+        )
+
+    response = execute_remote_generation_request(
+        {
+            "prompt": "Plain prompt.",
+            "response_format": {"type": "text"},
+        },
+        request_id="req-001",
+        trace_id="trace-001",
+        environ={"NEX_MO_VLLM_CHAT_COMPLETIONS_URL": "http://vllm.local/chat"},
+        requester=requester,
+    )
+
+    assert response["finish_reason"] == "LENGTH"
+    assert response["output"]["text"] == "Plain completion."
+    assert response["usage"]["total_tokens"] == 2
+    assert response["mo_generation_id"]
+
+
+def test_execute_remote_generation_request_rejects_missing_config_and_streaming() -> None:
+    with pytest.raises(Exception) as missing:
+        execute_remote_generation_request(
+            {"prompt": "hello"},
+            request_id="req-001",
+            trace_id="trace-001",
+            environ={},
+        )
+
+    assert getattr(missing.value, "error_code") == "mo.remote_generation_not_configured"
+    assert getattr(missing.value, "retryable") is True
+
+    with pytest.raises(Exception) as streaming:
+        execute_remote_generation_request(
+            {"prompt": "hello", "stream": True},
+            request_id="req-001",
+            trace_id="trace-001",
+            environ={"NEX_MO_VLLM_CHAT_COMPLETIONS_URL": "http://vllm.local/chat"},
+        )
+
+    assert getattr(streaming.value, "error_code") == (
+        "mo.remote_generation_streaming_unsupported"
+    )
+
+
+@pytest.mark.parametrize(
+    ("payload", "error_code"),
+    [
+        ({"messages": ["bad"]}, "mo.request_invalid"),
+        ({"messages": [{"role": "", "content": "x"}]}, "mo.request_invalid"),
+        ({"messages": [{"role": "user", "content": ""}]}, "mo.request_invalid"),
+        ({"prompt": "x", "temperature": "warm"}, "mo.request_invalid"),
+        ({"prompt": "x", "max_output_tokens": 0}, "mo.request_invalid"),
+        ({"prompt": "x", "max_output_tokens": 2048}, "mo.generation_parameter_out_of_bounds"),
+        ({"prompt": "x", "provider_endpoint": "http://bad.local"}, "mo.provider_field_forbidden"),
+    ],
+)
+def test_execute_remote_generation_request_rejects_invalid_requests(
+    payload: dict[str, object],
+    error_code: str,
+) -> None:
+    with pytest.raises(Exception) as exc_info:
+        execute_remote_generation_request(
+            payload,
+            request_id="req-001",
+            trace_id="trace-001",
+            environ={"NEX_MO_VLLM_CHAT_COMPLETIONS_URL": "http://vllm.local/chat"},
+        )
+
+    assert getattr(exc_info.value, "error_code") == error_code
+
+
+@pytest.mark.parametrize(
+    ("provider_payload", "expected_detail"),
+    [
+        ([], "JSON object"),
+        ({}, "choices"),
+        ({"choices": ["bad"]}, "choice"),
+        ({"choices": [{"message": {"content": ""}}]}, "output text"),
+    ],
+)
+def test_normalize_remote_generation_response_rejects_bad_shapes(
+    provider_payload: object,
+    expected_detail: str,
+) -> None:
+    config = build_remote_generation_execution_config(
+        {"NEX_MO_VLLM_CHAT_COMPLETIONS_URL": "http://vllm.local/chat"}
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        normalize_remote_generation_response(
+            provider_payload=provider_payload,
+            alias="general-llm-default",
+            route_id="route-general-llm-default",
+            config=config,
+            request_id="req-001",
+            trace_id="trace-001",
+            input_texts=["hello"],
+        )
+
+    assert getattr(exc_info.value, "error_code") == "mo.remote_generation_response_invalid"
+    assert expected_detail in getattr(exc_info.value, "detail")
+
+
+@pytest.mark.parametrize(
+    ("requester", "error_code", "retryable"),
+    [
+        (
+            lambda *args, **kwargs: (_ for _ in ()).throw(httpx.TimeoutException("slow")),
+            "mo.remote_generation_timeout",
+            True,
+        ),
+        (
+            lambda *args, **kwargs: (_ for _ in ()).throw(httpx.ConnectError("down")),
+            "mo.remote_generation_unavailable",
+            True,
+        ),
+        (
+            lambda *args, **kwargs: httpx.Response(500, json={"error": "down"}),
+            "mo.remote_generation_http_error",
+            True,
+        ),
+        (
+            lambda *args, **kwargs: httpx.Response(200, content=b"not-json"),
+            "mo.remote_generation_response_invalid",
+            True,
+        ),
+    ],
+)
+def test_execute_remote_generation_request_reports_safe_provider_errors(
+    requester,
+    error_code: str,
+    retryable: bool,
+) -> None:
+    with pytest.raises(Exception) as exc_info:
+        execute_remote_generation_request(
+            {"prompt": "hello"},
+            request_id="req-001",
+            trace_id="trace-001",
+            environ={"NEX_MO_VLLM_CHAT_COMPLETIONS_URL": "http://vllm.local/chat"},
             requester=requester,
         )
 

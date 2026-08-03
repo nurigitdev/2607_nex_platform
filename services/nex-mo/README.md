@@ -32,6 +32,11 @@ Model profile defaults:
   `NEX_MO_PROVIDER_MODE=live` and `NEX_MO_REMOTE_RERANKER_URL`; MO translates
   `query`, `documents`, and optional `top_n` to the remote reranker shape and
   normalizes scores back to the existing MO result shape.
+- Live generation execution uses the same `/api/v1/generations` MO API. Set
+  `NEX_MO_PROVIDER_MODE=live` and `NEX_MO_VLLM_BASE_URL` or
+  `NEX_MO_VLLM_CHAT_COMPLETIONS_URL`; MO sends OpenAI-compatible
+  `POST /v1/chat/completions` and normalizes choices, finish reason, usage, and
+  runtime metadata back to the existing MO generation response shape.
 
 Current endpoints:
 

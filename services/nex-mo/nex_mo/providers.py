@@ -531,6 +531,32 @@ def create_mock_generation_response(
     }
 
 
+def create_generation_response(
+    payload: dict[str, Any],
+    *,
+    request_id: str,
+    trace_id: str,
+    environ: dict[str, str] | None = None,
+    requester=None,
+) -> dict[str, Any]:
+    env = environ if environ is not None else os.environ
+    if env.get("NEX_MO_PROVIDER_MODE", DEFAULT_PROVIDER_MODE) == "live":
+        from nex_mo.remote_provider import execute_remote_generation_request
+
+        return execute_remote_generation_request(
+            payload,
+            request_id=request_id,
+            trace_id=trace_id,
+            environ=env,
+            requester=requester,
+        )
+    return create_mock_generation_response(
+        payload,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+
+
 def register_mock_provider_routes(app: FastAPI) -> None:
     @app.get("/api/v1/provider-routes", response_model=None)
     def get_provider_routes(
@@ -604,7 +630,7 @@ def register_mock_provider_routes(app: FastAPI) -> None:
         return _handle_provider_request(
             request,
             authorization,
-            lambda: create_mock_generation_response(
+            lambda: create_generation_response(
                 payload,
                 request_id=request_id_from_headers(request),
                 trace_id=trace_id_from_headers(request),

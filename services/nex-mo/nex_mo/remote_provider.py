@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import os
+import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Callable
+from uuid import NAMESPACE_URL, uuid5
 
 import httpx
 
@@ -10,6 +13,7 @@ from nex_mo.providers import (
     DEFAULT_GENERATION_PROFILE,
     ProviderRouteError,
     build_model_profile_catalog,
+    resolve_provider_route,
 )
 
 DEFAULT_TIMEOUT_SECONDS = 5.0
@@ -283,6 +287,27 @@ def build_remote_reranker_execution_config(
     )
 
 
+def build_remote_generation_execution_config(
+    environ: dict[str, str] | None = None,
+) -> RemoteProviderExecutionConfig:
+    env = environ if environ is not None else os.environ
+    profile = _selected_profile(env, "generation")
+    model_name = env.get("NEX_MO_VLLM_MODEL", profile.model_name)
+    return RemoteProviderExecutionConfig(
+        capability="generation",
+        endpoint_env="NEX_MO_VLLM_CHAT_COMPLETIONS_URL",
+        url=_vllm_chat_completions_url(env),
+        method="POST",
+        request_shape="openai_chat_completions",
+        model_name=model_name,
+        model_revision=env.get("NEX_MO_VLLM_MODEL_REVISION", model_name),
+        deployment_id=env.get("NEX_MO_VLLM_DEPLOYMENT_ID", "vllm-generation-http"),
+        api_key_env="NEX_MO_VLLM_API_KEY",
+        api_key=_empty_to_none(env.get("NEX_MO_VLLM_API_KEY")),
+        timeout_seconds=float(env.get("NEX_MO_LIVE_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)),
+    )
+
+
 def execute_remote_embedding_request(
     payload: dict[str, Any],
     *,
@@ -316,6 +341,56 @@ def execute_remote_embedding_request(
         config=config,
         input_count=len(inputs),
         input_texts=inputs,
+    )
+
+
+def execute_remote_generation_request(
+    payload: dict[str, Any],
+    *,
+    request_id: str,
+    trace_id: str,
+    environ: dict[str, str] | None = None,
+    requester: HttpRequester | None = None,
+) -> dict[str, Any]:
+    _reject_raw_provider_fields(payload)
+    alias = _string_field(payload, "alias", "general-llm-default")
+    provider_capability = _string_field(payload, "provider_capability", "generation")
+    route = resolve_provider_route(alias, provider_capability)
+    max_output_tokens = _max_output_tokens(payload, route.max_output_tokens)
+    if _bool_field(payload, "stream", False):
+        raise ProviderRouteError(
+            status_code=422,
+            error_code="mo.remote_generation_streaming_unsupported",
+            detail="Remote generation streaming is not supported by this adapter.",
+        )
+
+    config = build_remote_generation_execution_config(environ)
+    if not config.configured:
+        raise ProviderRouteError(
+            status_code=503,
+            error_code="mo.remote_generation_not_configured",
+            detail="Remote generation provider endpoint is not configured.",
+            retryable=True,
+        )
+
+    response_payload = _execute_remote_json_request(
+        config,
+        json_payload=_chat_completion_request_payload(
+            payload,
+            model_name=config.model_name,
+            max_output_tokens=max_output_tokens,
+        ),
+        requester=requester,
+        error_code_prefix="mo.remote_generation",
+    )
+    return normalize_remote_generation_response(
+        provider_payload=response_payload,
+        alias=alias,
+        route_id=route.route_id,
+        config=config,
+        request_id=request_id,
+        trace_id=payload.get("trace_id", trace_id),
+        input_texts=_message_texts_from_payload(payload),
     )
 
 
@@ -357,6 +432,76 @@ def execute_remote_rerank_request(
         documents=documents,
         query=query,
     )
+
+
+def normalize_remote_generation_response(
+    *,
+    provider_payload: Any,
+    alias: str,
+    route_id: str,
+    config: RemoteProviderExecutionConfig,
+    request_id: str,
+    trace_id: str,
+    input_texts: list[str],
+) -> dict[str, Any]:
+    if not isinstance(provider_payload, dict):
+        raise ProviderRouteError(
+            status_code=502,
+            error_code="mo.remote_generation_response_invalid",
+            detail="Remote generation response must be a JSON object.",
+            retryable=True,
+        )
+    choices = provider_payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise ProviderRouteError(
+            status_code=502,
+            error_code="mo.remote_generation_response_invalid",
+            detail="Remote generation response must include non-empty choices.",
+            retryable=True,
+        )
+    first_choice = choices[0]
+    output_text = _choice_output_text(first_choice)
+    finish_reason = _finish_reason_from_choice(first_choice)
+    provider_request_id = provider_payload.get("id")
+    if not isinstance(provider_request_id, str) or not provider_request_id:
+        provider_request_id = str(
+            uuid5(
+                NAMESPACE_URL,
+                _stable_json(
+                    {
+                        "alias": alias,
+                        "trace_id": trace_id,
+                        "output_text": output_text,
+                    }
+                ),
+            )
+        )
+    now = _utc_now()
+    return {
+        "mo_generation_id": provider_request_id,
+        "alias": alias,
+        "model_revision": config.model_revision,
+        "deployment_id": config.deployment_id,
+        "provider_type": "vllm",
+        "output": {
+            "type": "text",
+            "text": output_text,
+        },
+        "finish_reason": finish_reason,
+        "usage": _normalize_usage(provider_payload.get("usage"), input_texts),
+        "runtime_metadata": {
+            "request_id": request_id,
+            "trace_id": trace_id,
+            "queue_ms": 0,
+            "provider_ms": 0,
+            "total_ms": 0,
+            "route_id": route_id,
+            "admission_decision": "ACCEPTED",
+            "provider_request_id": provider_request_id,
+        },
+        "created_at": now,
+        "updated_at": now,
+    }
 
 
 def normalize_remote_embedding_response(
@@ -664,6 +809,142 @@ def _top_n(payload: dict[str, Any], *, default: int) -> int:
     return min(value, default)
 
 
+def _max_output_tokens(payload: dict[str, Any], route_limit: int) -> int:
+    value = payload.get("max_output_tokens", 256)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ProviderRouteError(
+            400,
+            "mo.request_invalid",
+            "max_output_tokens must be a positive integer.",
+        )
+    if value > route_limit:
+        raise ProviderRouteError(
+            422,
+            "mo.generation_parameter_out_of_bounds",
+            f"max_output_tokens must be <= {route_limit}.",
+        )
+    return value
+
+
+def _bool_field(payload: dict[str, Any], key: str, default: bool) -> bool:
+    value = payload.get(key, default)
+    if isinstance(value, bool):
+        return value
+    raise ProviderRouteError(
+        400,
+        "mo.request_invalid",
+        f"{key} must be a boolean when provided.",
+    )
+
+
+def _chat_completion_request_payload(
+    payload: dict[str, Any],
+    *,
+    model_name: str,
+    max_output_tokens: int,
+) -> dict[str, Any]:
+    request_payload: dict[str, Any] = {
+        "model": model_name,
+        "messages": _chat_messages_from_payload(payload),
+        "temperature": _temperature(payload),
+        "max_tokens": max_output_tokens,
+        "stream": False,
+    }
+    response_format = payload.get("response_format")
+    if isinstance(response_format, dict) and response_format.get("type") == "json_object":
+        request_payload["response_format"] = {"type": "json_object"}
+    return request_payload
+
+
+def _chat_messages_from_payload(payload: dict[str, Any]) -> list[dict[str, str]]:
+    messages = payload.get("messages")
+    if isinstance(messages, list) and messages:
+        normalized_messages: list[dict[str, str]] = []
+        for message in messages:
+            if not isinstance(message, dict):
+                raise ProviderRouteError(
+                    400,
+                    "mo.request_invalid",
+                    "messages must contain objects.",
+                )
+            role = message.get("role", "user")
+            content = message.get("content")
+            if not isinstance(role, str) or not role:
+                raise ProviderRouteError(400, "mo.request_invalid", "message.role is required.")
+            if not isinstance(content, str) or not content:
+                raise ProviderRouteError(
+                    400,
+                    "mo.request_invalid",
+                    "message.content is required.",
+                )
+            normalized_messages.append({"role": role, "content": content})
+        return normalized_messages
+
+    prompt = payload.get("prompt")
+    if isinstance(prompt, str) and prompt:
+        return [{"role": "user", "content": prompt}]
+
+    raise ProviderRouteError(
+        400,
+        "mo.request_invalid",
+        "prompt or messages are required.",
+    )
+
+
+def _message_texts_from_payload(payload: dict[str, Any]) -> list[str]:
+    return [message["content"] for message in _chat_messages_from_payload(payload)]
+
+
+def _temperature(payload: dict[str, Any]) -> float:
+    value = payload.get("temperature", 0.0)
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return float(value)
+    raise ProviderRouteError(
+        400,
+        "mo.request_invalid",
+        "temperature must be numeric when provided.",
+    )
+
+
+def _choice_output_text(choice: Any) -> str:
+    if not isinstance(choice, dict):
+        raise ProviderRouteError(
+            status_code=502,
+            error_code="mo.remote_generation_response_invalid",
+            detail="Remote generation choice must be an object.",
+            retryable=True,
+        )
+    message = choice.get("message")
+    content = message.get("content") if isinstance(message, dict) else choice.get("text")
+    if not isinstance(content, str) or not content:
+        raise ProviderRouteError(
+            status_code=502,
+            error_code="mo.remote_generation_response_invalid",
+            detail="Remote generation output text was missing.",
+            retryable=True,
+        )
+    return content
+
+
+def _finish_reason_from_choice(choice: Any) -> str:
+    if not isinstance(choice, dict):
+        raise ProviderRouteError(
+            status_code=502,
+            error_code="mo.remote_generation_response_invalid",
+            detail="Remote generation choice must be an object.",
+            retryable=True,
+        )
+    raw_finish_reason = choice.get("finish_reason", "stop")
+    if not isinstance(raw_finish_reason, str) or not raw_finish_reason:
+        return "UNKNOWN"
+    return {
+        "stop": "STOP",
+        "length": "LENGTH",
+        "content_filter": "CONTENT_FILTER",
+        "tool_calls": "TOOL_CALLS",
+    }.get(raw_finish_reason, raw_finish_reason.upper())
+
+
 def _embedding_item_index(item: Any, fallback: int) -> int:
     if isinstance(item, dict) and isinstance(item.get("index"), int):
         return item["index"]
@@ -744,7 +1025,12 @@ def _normalize_usage(value: Any, input_texts: list[str]) -> dict[str, int]:
         "prompt_tokens",
         default=sum(_token_count(text) for text in input_texts),
     )
-    output_tokens = _int_usage_value(usage, "output_tokens", default=0)
+    output_tokens = _int_usage_value(
+        usage,
+        "output_tokens",
+        "completion_tokens",
+        default=0,
+    )
     total_tokens = _int_usage_value(
         usage,
         "total_tokens",
@@ -788,6 +1074,14 @@ def _vllm_models_url(env: dict[str, str]) -> str:
     return env.get("NEX_MO_LIVE_VLLM_MODELS_URL", "")
 
 
+def _vllm_chat_completions_url(env: dict[str, str]) -> str:
+    if env.get("NEX_MO_VLLM_CHAT_COMPLETIONS_URL"):
+        return env["NEX_MO_VLLM_CHAT_COMPLETIONS_URL"]
+    if env.get("NEX_MO_VLLM_BASE_URL"):
+        return f"{env['NEX_MO_VLLM_BASE_URL'].rstrip('/')}/v1/chat/completions"
+    return ""
+
+
 def _empty_to_none(value: str | None) -> str | None:
     return value or None
 
@@ -798,3 +1092,11 @@ def _failure_code(exc: Exception) -> str:
     if isinstance(exc, httpx.TimeoutException):
         return "timeout"
     return exc.__class__.__name__
+
+
+def _stable_json(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
