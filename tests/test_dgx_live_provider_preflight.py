@@ -133,6 +133,85 @@ def test_dgx_preflight_main_summary_and_output(monkeypatch, capsys, tmp_path) ->
     assert dgx_preflight.main(["--output", str(output)]) == 0
     evidence = json.loads(output.read_text(encoding="utf-8"))
     assert evidence["status"] == "SKIPPED"
+    assert evidence["evidence_schema_version"] == (
+        "dgx_live_provider_preflight_evidence.v1"
+    )
+    assert evidence["redaction"] == {
+        "status": "PASS",
+        "policy": "provider endpoints and credentials are excluded",
+        "checked_env_keys": [],
+    }
+
+
+def test_dgx_preflight_main_json_output_is_protected(monkeypatch, capsys) -> None:
+    monkeypatch.delenv("NEX_MO_LIVE_PREFLIGHT", raising=False)
+
+    assert dgx_preflight.main([]) == 0
+
+    evidence = json.loads(capsys.readouterr().out)
+    assert evidence["status"] == "SKIPPED"
+    assert evidence["evidence_schema_version"] == (
+        "dgx_live_provider_preflight_evidence.v1"
+    )
+    assert evidence["redaction"]["status"] == "PASS"
+
+
+def test_protected_preflight_evidence_records_configured_env_keys() -> None:
+    evidence = dgx_preflight.build_protected_preflight_evidence(
+        {"status": "PASS", "checks": [], "model_profiles": []},
+        environ={
+            "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local/v1/embeddings",
+            "NEX_MO_VLLM_API_KEY": "secret-key",
+        },
+    )
+
+    assert evidence["redaction"]["checked_env_keys"] == [
+        "NEX_MO_REMOTE_EMBEDDING_URL",
+        "NEX_MO_VLLM_API_KEY",
+    ]
+    assert "dgx.local" not in json.dumps(evidence)
+    assert "secret-key" not in json.dumps(evidence)
+
+
+def test_protected_preflight_evidence_rejects_unredacted_provider_values() -> None:
+    with pytest.raises(ValueError) as exc_info:
+        dgx_preflight.build_protected_preflight_evidence(
+            {
+                "status": "PASS",
+                "checks": [{"provider_url": "http://dgx.local/v1/embeddings"}],
+                "model_profiles": [],
+            },
+            environ={
+                "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local/v1/embeddings",
+            },
+        )
+
+    assert "NEX_MO_REMOTE_EMBEDDING_URL" in str(exc_info.value)
+
+
+def test_write_protected_preflight_evidence_rechecks_output(tmp_path) -> None:
+    evidence = dgx_preflight.build_protected_preflight_evidence(
+        {"status": "PASS", "checks": [], "model_profiles": []},
+        environ={},
+    )
+    output = tmp_path / "nested" / "evidence.json"
+
+    dgx_preflight.write_protected_preflight_evidence(output, evidence, environ={})
+
+    saved = json.loads(output.read_text(encoding="utf-8"))
+    assert saved["status"] == "PASS"
+
+    with pytest.raises(ValueError):
+        dgx_preflight.write_protected_preflight_evidence(
+            output,
+            {
+                **evidence,
+                "checks": [{"provider_url": "http://dgx.local/v1/embeddings"}],
+            },
+            environ={
+                "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local/v1/embeddings",
+            },
+        )
 
 
 def test_dgx_preflight_main_returns_failure_when_enabled_without_urls(monkeypatch) -> None:

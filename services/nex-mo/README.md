@@ -64,7 +64,12 @@ Manual live preflight:
 
 ```bash
 NEX_MO_LIVE_PREFLIGHT=1 ./.venv/bin/python scripts/smoke/run_dgx_live_provider_preflight.py --summary
+NEX_MO_LIVE_PREFLIGHT=1 ./.venv/bin/python scripts/smoke/run_dgx_live_provider_preflight.py --evidence-output reports/live/dgx-provider-preflight.json --summary
 ```
+
+The evidence writer adds `dgx_live_provider_preflight_evidence.v1` redaction
+metadata and refuses to write if configured endpoint or API-key environment
+values appear in the serialized evidence.
 
 The older `NEX_MO_LIVE_EMBEDDING_HEALTH_URL`,
 `NEX_MO_LIVE_RERANKER_HEALTH_URL`, and `NEX_MO_LIVE_VLLM_MODELS_URL` names
