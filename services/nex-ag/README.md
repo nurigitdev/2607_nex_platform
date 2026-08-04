@@ -13,6 +13,9 @@ Current endpoints:
 - `GET /admin/v1/readiness/services`
 - `GET /admin/v1/readiness/providers`
 - `GET /admin/v1/generation-audit/generations/{cx_generation_id}`
+- `GET /admin/v1/policies/retrieval`
+- `GET /admin/v1/policies/retrieval/active`
+- `GET /admin/v1/policies/retrieval/{policy_id}`
 
 Provider readiness:
 
@@ -26,6 +29,15 @@ Provider readiness:
   `UNAVAILABLE`.
 - Provider URLs, API keys, model paths, and raw upstream payloads are not copied
   into the AG projection.
+
+Retrieval policy registry:
+
+- AG exposes a read-only retrieval policy registry with current active policy
+  `retrieval_quality_v1` and planned candidate policy
+  `weighted_rrf_vector_bm25_v1`.
+- Policy projections include versions, hashes, ranker weights, candidate limits,
+  tokenizer profile metadata, confidence thresholds, and provider aliases.
+- Policy mutation, publish, rollback, and audit are intentionally deferred.
 
 Generation audit:
 
