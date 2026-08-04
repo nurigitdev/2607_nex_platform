@@ -26,6 +26,7 @@ from nex_mo.remote_provider import (
     selected_generation_model_names,
     validate_preflight_response,
 )
+from run_protected_dgx_live_profile import protected_dgx_vllm_profile_defaults
 
 
 @pytest.fixture(autouse=True)
@@ -735,6 +736,148 @@ def test_execute_remote_rerank_request_posts_shape_and_normalizes_sorted_results
         "usage": {"input_tokens": 5, "output_tokens": 0, "total_tokens": 5},
     }
     assert "dgx.local" not in str(response)
+
+
+def test_direct_vllm_profile_executes_three_providers_and_records_safe_telemetry() -> None:
+    calls: list[dict[str, object]] = []
+    environ = {
+        **protected_dgx_vllm_profile_defaults(),
+        "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local:9112/v1/embeddings",
+        "NEX_MO_REMOTE_EMBEDDING_API_KEY": "secret",
+        "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9113/v1/rerank",
+        "NEX_MO_REMOTE_RERANKER_API_KEY": "secret",
+        "NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000",
+        "NEX_MO_VLLM_API_KEY": "secret",
+    }
+
+    def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
+        calls.append({"method": method, "url": url, **kwargs})
+        if url.endswith("/v1/embeddings"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": "embd-vllm-001",
+                    "created": 1780000000,
+                    "object": "list",
+                    "model": "Qwen3-Embedding-4B",
+                    "data": [
+                        {"object": "embedding", "index": 0, "embedding": [0.1, 0.2]},
+                        {"object": "embedding", "index": 1, "embedding": [0.3, 0.4]},
+                    ],
+                    "usage": {
+                        "prompt_tokens": 2,
+                        "completion_tokens": 0,
+                        "prompt_tokens_details": {},
+                        "total_tokens": 2,
+                    },
+                },
+            )
+        if url.endswith("/v1/rerank"):
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {
+                            "index": 1,
+                            "relevance_score": 0.4,
+                            "document": {"text": "vllm-doc-b"},
+                        },
+                        {
+                            "index": 0,
+                            "relevance_score": 0.9,
+                            "document": {"text": "vllm-doc-a"},
+                        },
+                    ],
+                    "usage": {"prompt_tokens": 6, "total_tokens": 6},
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-vllm-001",
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "direct vLLM answer",
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 5,
+                    "completion_tokens": 3,
+                    "total_tokens": 8,
+                },
+            },
+        )
+
+    embedding = execute_remote_embedding_request(
+        {"alias": "mock-embedding-default", "inputs": ["alpha", "beta"]},
+        environ=environ,
+        requester=requester,
+    )
+    rerank = execute_remote_rerank_request(
+        {
+            "alias": "mock-reranker-default",
+            "query": "quality",
+            "documents": ["doc-a", "doc-b"],
+            "top_n": 1,
+        },
+        environ=environ,
+        requester=requester,
+    )
+    generation = execute_remote_generation_request(
+        {
+            "alias": "general-llm-default",
+            "provider_capability": "generation",
+            "prompt": "Say hello.",
+            "max_output_tokens": 32,
+        },
+        request_id="req-001",
+        trace_id="trace-001",
+        environ=environ,
+        requester=requester,
+    )
+    telemetry = {
+        item["capability"]: item for item in list_remote_provider_telemetry(environ=environ)
+    }
+
+    assert [call["url"] for call in calls] == [
+        "http://dgx.local:9112/v1/embeddings",
+        "http://dgx.local:9113/v1/rerank",
+        "http://dgx.local:12000/v1/chat/completions",
+    ]
+    assert calls[0]["json"] == {
+        "model": "Qwen3-Embedding-4B",
+        "input": ["alpha", "beta"],
+    }
+    assert calls[1]["json"] == {
+        "model": "Qwen3-Reranker-0.6B",
+        "query": "quality",
+        "documents": ["doc-a", "doc-b"],
+        "top_n": 1,
+    }
+    assert calls[2]["json"]["model"] == "Qwen3.5-122B-A10B-NVFP4"
+    assert calls[2]["json"]["messages"] == [{"role": "user", "content": "Say hello."}]
+    assert all(call["headers"]["Authorization"] == "Bearer secret" for call in calls)
+
+    assert embedding["model_revision"] == "Qwen3-Embedding-4B"
+    assert embedding["usage"] == {"input_tokens": 2, "output_tokens": 0, "total_tokens": 2}
+    assert rerank["results"] == [
+        {"index": 0, "score": 0.9, "document": "vllm-doc-a"},
+        {"index": 1, "score": 0.4, "document": "vllm-doc-b"},
+    ]
+    assert generation["mo_generation_id"] == "chatcmpl-vllm-001"
+    assert generation["output"]["text"] == "direct vLLM answer"
+    assert telemetry["embedding"]["request_count"] == 1
+    assert telemetry["reranking"]["request_count"] == 1
+    assert telemetry["generation"]["request_count"] == 1
+    assert "dgx.local" not in str(embedding)
+    assert "dgx.local" not in str(rerank)
+    assert "dgx.local" not in str(generation)
+    assert "dgx.local" not in str(telemetry)
+    assert "secret" not in str(telemetry)
 
 
 def test_execute_remote_rerank_request_posts_nex_pcx_shape_and_normalizes() -> None:

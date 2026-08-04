@@ -46,7 +46,9 @@ Model profile defaults:
 - Live reranker execution uses the same `/api/v1/rerank` MO API. Set
   `NEX_MO_PROVIDER_MODE=live` and `NEX_MO_REMOTE_RERANKER_URL`; MO translates
   `query`, `documents`, and optional `top_n` to the configured remote reranker
-  shape and normalizes scores back to the existing MO result shape.
+  shape and normalizes scores back to the existing MO result shape. Direct vLLM
+  reranker responses may use `relevance_score` and `document.text`; both are
+  normalized by MO.
 - Live generation execution uses the same `/api/v1/generations` MO API. Set
   `NEX_MO_PROVIDER_MODE=live` and `NEX_MO_VLLM_BASE_URL` or
   `NEX_MO_VLLM_CHAT_COMPLETIONS_URL`; MO sends OpenAI-compatible

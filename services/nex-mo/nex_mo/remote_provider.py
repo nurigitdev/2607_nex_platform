@@ -1556,9 +1556,7 @@ def _normalize_rerank_item(
             detail="Remote reranker item index must be a non-negative integer.",
         )
     score = _rerank_score_from_item(item)
-    document = item.get("document")
-    if not isinstance(document, str):
-        document = documents[index] if index < len(documents) else ""
+    document = _rerank_document_from_item(item, index=index, documents=documents)
     return {
         "index": index,
         "score": score,
@@ -1574,6 +1572,20 @@ def _rerank_score_from_item(item: dict[str, Any]) -> float:
             detail="Remote reranker score must be numeric.",
         )
     return round(float(value), 6)
+
+
+def _rerank_document_from_item(
+    item: dict[str, Any],
+    *,
+    index: int,
+    documents: list[str],
+) -> str:
+    document = item.get("document")
+    if isinstance(document, str):
+        return document
+    if isinstance(document, dict) and isinstance(document.get("text"), str):
+        return document["text"]
+    return documents[index] if index < len(documents) else ""
 
 
 def _normalize_usage(value: Any, input_texts: list[str]) -> dict[str, int]:
