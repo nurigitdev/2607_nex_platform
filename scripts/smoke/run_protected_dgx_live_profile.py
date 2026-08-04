@@ -17,7 +17,14 @@ import check_local_live_provider_config as local_config
 import run_dgx_live_provider_preflight as dgx_preflight
 
 PROFILE_ENV = "NEX_MO_PROTECTED_LIVE_PROFILE"
-DGX_PROFILE_NAME = "dgx"
+DGX_PROFILE_NAME = "dgx_vllm"
+DGX_PROFILE_ALIAS = "dgx"
+DGX_PCX_LEGACY_PROFILE_NAME = "dgx_pcx_legacy"
+SUPPORTED_PROFILE_NAMES = (
+    DGX_PROFILE_NAME,
+    DGX_PCX_LEGACY_PROFILE_NAME,
+    DGX_PROFILE_ALIAS,
+)
 PROTECTED_PROFILE_ENV_KEYS = tuple(
     dict.fromkeys(
         (
@@ -36,10 +43,12 @@ def run_protected_dgx_live_profile(
 ) -> dict[str, Any]:
     env = environ if environ is not None else os.environ
     requested_profile = profile_name if profile_name is not None else env.get(PROFILE_ENV, "")
+    resolved_profile = resolve_profile_name(requested_profile)
     if not requested_profile:
         return _profile_evidence(
             status="SKIPPED",
             requested_profile=requested_profile,
+            resolved_profile=resolved_profile,
             effective_env=env,
             config_snapshot=None,
             preflight_evidence=None,
@@ -51,10 +60,11 @@ def run_protected_dgx_live_profile(
                 }
             ],
         )
-    if requested_profile != DGX_PROFILE_NAME:
+    if resolved_profile is None:
         return _profile_evidence(
             status="FAIL",
             requested_profile=requested_profile,
+            resolved_profile=resolved_profile,
             effective_env=env,
             config_snapshot=None,
             preflight_evidence=None,
@@ -68,7 +78,7 @@ def run_protected_dgx_live_profile(
         )
 
     effective_env = {
-        **protected_dgx_profile_defaults(),
+        **protected_profile_defaults(resolved_profile),
         **env,
         "NEX_MO_PROVIDER_MODE": "live",
         "NEX_MO_LIVE_PREFLIGHT": "1",
@@ -80,6 +90,7 @@ def run_protected_dgx_live_profile(
         return _profile_evidence(
             status="FAIL",
             requested_profile=requested_profile,
+            resolved_profile=resolved_profile,
             effective_env=effective_env,
             config_snapshot=config_snapshot,
             preflight_evidence=None,
@@ -97,6 +108,7 @@ def run_protected_dgx_live_profile(
     return _profile_evidence(
         status="PASS" if preflight["status"] == "PASS" else "FAIL",
         requested_profile=requested_profile,
+        resolved_profile=resolved_profile,
         effective_env=effective_env,
         config_snapshot=config_snapshot,
         preflight_evidence=protected_preflight,
@@ -108,6 +120,7 @@ def _profile_evidence(
     *,
     status: str,
     requested_profile: str,
+    resolved_profile: str | None,
     effective_env: dict[str, str],
     config_snapshot: dict[str, Any] | None,
     preflight_evidence: dict[str, Any] | None,
@@ -120,8 +133,11 @@ def _profile_evidence(
         "profile": {
             "activation_env": PROFILE_ENV,
             "activation_value": DGX_PROFILE_NAME,
+            "legacy_activation_value": DGX_PCX_LEGACY_PROFILE_NAME,
+            "accepted_values": list(SUPPORTED_PROFILE_NAMES),
             "requested_profile": requested_profile,
-            "enabled": requested_profile == DGX_PROFILE_NAME,
+            "resolved_profile": resolved_profile,
+            "enabled": resolved_profile is not None,
         },
         "effective_flags": {
             "NEX_MO_PROVIDER_MODE": effective_env.get("NEX_MO_PROVIDER_MODE"),
@@ -150,19 +166,68 @@ def _profile_evidence(
 
 
 def protected_dgx_profile_defaults() -> dict[str, str]:
+    return protected_dgx_vllm_profile_defaults()
+
+
+def protected_profile_defaults(profile_name: str) -> dict[str, str]:
+    if profile_name == DGX_PCX_LEGACY_PROFILE_NAME:
+        return protected_dgx_pcx_legacy_profile_defaults()
+    return protected_dgx_vllm_profile_defaults()
+
+
+def resolve_profile_name(requested_profile: str) -> str | None:
+    if requested_profile == DGX_PROFILE_ALIAS:
+        return DGX_PROFILE_NAME
+    if requested_profile in {DGX_PROFILE_NAME, DGX_PCX_LEGACY_PROFILE_NAME}:
+        return requested_profile
+    return None
+
+
+def protected_dgx_vllm_profile_defaults() -> dict[str, str]:
+    return {
+        "NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE": "openai_embeddings",
+        "NEX_MO_REMOTE_EMBEDDING_MODEL": "Qwen3-Embedding-4B",
+        "NEX_MO_REMOTE_EMBEDDING_MODEL_REVISION": "Qwen3-Embedding-4B",
+        "NEX_MO_REMOTE_EMBEDDING_DEPLOYMENT_ID": "vllm-embedding-http",
+        "NEX_MO_LIVE_EXPECTED_EMBEDDING_MODELS": "Qwen3-Embedding-4B",
+        "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE": "rerank",
+        "NEX_MO_REMOTE_RERANKER_MODEL": "Qwen3-Reranker-0.6B",
+        "NEX_MO_REMOTE_RERANKER_MODEL_REVISION": "Qwen3-Reranker-0.6B",
+        "NEX_MO_REMOTE_RERANKER_DEPLOYMENT_ID": "vllm-reranker-http",
+        "NEX_MO_LIVE_EXPECTED_RERANKER_MODELS": "Qwen3-Reranker-0.6B",
+        "NEX_MO_VLLM_MODEL": "Qwen3.5-122B-A10B-NVFP4",
+        "NEX_MO_VLLM_MODEL_REVISION": "Qwen3.5-122B-A10B-NVFP4",
+        "NEX_MO_VLLM_DEPLOYMENT_ID": "vllm-generation-http",
+        "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": "Qwen3.5-122B-A10B-NVFP4",
+    }
+
+
+def protected_dgx_pcx_legacy_profile_defaults() -> dict[str, str]:
     return {
         "NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE": "nex_pcx_embeddings_v1",
+        "NEX_MO_REMOTE_EMBEDDING_MODEL": "Qwen3-embedding-4B",
+        "NEX_MO_REMOTE_EMBEDDING_MODEL_REVISION": "Qwen3-embedding-4B",
+        "NEX_MO_REMOTE_EMBEDDING_DEPLOYMENT_ID": "remote-embedding-http",
+        "NEX_MO_LIVE_EXPECTED_EMBEDDING_MODELS": "Qwen3-embedding-4B",
         "NEX_MO_REMOTE_EMBEDDING_PROFILE_NAME": "qwen3_4b_2560",
         "NEX_MO_REMOTE_EMBEDDING_MODEL_KEY": "qwen3_embedding_4b",
         "NEX_MO_REMOTE_EMBEDDING_INPUT_TYPE": "document",
         "NEX_MO_REMOTE_EMBEDDING_OUTPUT_DIMENSION": "2560",
         "NEX_MO_REMOTE_EMBEDDING_NORMALIZE": "true",
         "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE": "nex_pcx_rerank_v1",
+        "NEX_MO_REMOTE_RERANKER_MODEL": "Qwen3-Reranker-0.6B",
+        "NEX_MO_REMOTE_RERANKER_MODEL_REVISION": "Qwen3-Reranker-0.6B",
+        "NEX_MO_REMOTE_RERANKER_DEPLOYMENT_ID": "remote-reranker-http",
+        "NEX_MO_LIVE_EXPECTED_RERANKER_MODELS": "Qwen3-Reranker-0.6B",
         "NEX_MO_REMOTE_RERANKER_PROFILE_NAME": "qwen3_reranker_0_6b",
         "NEX_MO_REMOTE_RERANKER_MODEL_ID": "Qwen/Qwen3-Reranker-0.6B",
         "NEX_MO_REMOTE_RERANKER_SOURCE_PROFILE_NAME": "qwen3_4b_2560",
         "NEX_MO_REMOTE_RERANKER_SOURCE_RETRIEVAL_STRATEGY": "preflight",
         "NEX_MO_REMOTE_RERANKER_SOURCE_SCORE": "0.5",
+        "NEX_MO_VLLM_MODEL": "Qwen3.5-122B-A10B-NVFP4",
+        "NEX_MO_VLLM_MODEL_REVISION": "Qwen3.5-122B-A10B-NVFP4",
+        "NEX_MO_VLLM_DEPLOYMENT_ID": "vllm-generation-http",
+        "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": "Qwen3.5-122B-A10B-NVFP4",
     }
 
 

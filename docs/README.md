@@ -170,6 +170,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0064`](slices/0064_compatible_provider_contract_freeze.md) | `S6-014` OpenAI-compatible embedding and NeX-compatible reranker provider contract freeze. |
 | [`Slice 0065`](slices/0065_compatible_provider_skeleton.md) | `S6-015` Mock-first compatible provider source skeleton. |
 | [`Slice 0066`](slices/0066_compatible_provider_dgx_live_smoke.md) | `S6-016` Direct vLLM compatible provider DGX live smoke and BF16 serving evidence policy. |
+| [`Slice 0067`](slices/0067_dgx_vllm_profile_split.md) | `S6-017` Protected DGX vLLM profile and legacy PCX profile split. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

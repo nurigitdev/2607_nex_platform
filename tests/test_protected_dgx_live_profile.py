@@ -11,8 +11,10 @@ import run_protected_dgx_live_profile as protected_live
 def live_env() -> dict[str, str]:
     return {
         protected_live.PROFILE_ENV: protected_live.DGX_PROFILE_NAME,
-        "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local:9103/v1/embeddings",
-        "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9104/v1/rerank",
+        "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local:9112/v1/embeddings",
+        "NEX_MO_REMOTE_EMBEDDING_API_KEY": "secret-key",
+        "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9113/v1/rerank",
+        "NEX_MO_REMOTE_RERANKER_API_KEY": "secret-key",
         "NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000",
         "NEX_MO_VLLM_API_KEY": "secret-key",
     }
@@ -23,6 +25,7 @@ def test_protected_dgx_live_profile_skips_without_profile() -> None:
 
     assert evidence["status"] == "SKIPPED"
     assert evidence["profile"]["enabled"] is False
+    assert evidence["profile"]["resolved_profile"] is None
     assert evidence["stage_status"] == {
         "local_live_config": "NOT_RUN",
         "dgx_live_preflight": "NOT_RUN",
@@ -79,32 +82,21 @@ def test_protected_dgx_live_profile_passes_and_redacts_live_values() -> None:
         calls.append({"method": method, "url": url, **kwargs})
         if url.endswith("/v1/embeddings"):
             assert kwargs["json"] == {
-                "profile_name": "qwen3_4b_2560",
-                "model_key": "qwen3_embedding_4b",
-                "input_type": "document",
-                "texts": ["nex live provider preflight"],
-                "output_dimension": 2560,
-                "normalize_embeddings": True,
+                "model": "Qwen3-Embedding-4B",
+                "input": ["nex live provider preflight"],
             }
-            return httpx.Response(200, json={"embeddings": [[0.1]]})
+            return httpx.Response(200, json={"data": [{"embedding": [0.1]}]})
         if url.endswith("/v1/rerank"):
             assert kwargs["json"] == {
-                "query_text": "nex live provider preflight",
-                "top_k": 1,
-                "reranker_profile_name": "qwen3_reranker_0_6b",
-                "reranker_model_id": "Qwen/Qwen3-Reranker-0.6B",
-                "candidates": [
-                    {
-                        "candidate_key": "doc-1",
-                        "rank": 1,
-                        "text": "NeX live provider preflight document.",
-                        "source_profile_name": "qwen3_4b_2560",
-                        "source_retrieval_strategy": "preflight",
-                        "source_score": 0.5,
-                    }
-                ],
+                "model": "Qwen3-Reranker-0.6B",
+                "query": "nex live provider preflight",
+                "documents": ["NeX live provider preflight document."],
+                "top_n": 1,
             }
-            return httpx.Response(200, json={"results": [{"rank": 1, "score": 0.9}]})
+            return httpx.Response(
+                200,
+                json={"results": [{"index": 0, "relevance_score": 0.9}]},
+            )
         return httpx.Response(
             200,
             json={"data": [{"id": "Qwen3.5-122B-A10B-NVFP4"}]},
@@ -116,6 +108,7 @@ def test_protected_dgx_live_profile_passes_and_redacts_live_values() -> None:
     )
 
     assert evidence["status"] == "PASS"
+    assert evidence["profile"]["resolved_profile"] == protected_live.DGX_PROFILE_NAME
     assert evidence["effective_flags"] == {
         "NEX_MO_PROVIDER_MODE": "live",
         "NEX_MO_LIVE_PREFLIGHT": "1",
@@ -126,6 +119,10 @@ def test_protected_dgx_live_profile_passes_and_redacts_live_values() -> None:
     }
     assert [call["method"] for call in calls] == ["POST", "POST", "GET"]
     assert evidence["config_snapshot"]["provider_mode"] == "live"
+    assert evidence["config_snapshot"]["execution_configs"][0]["request_shape"] == (
+        "openai_embeddings"
+    )
+    assert evidence["config_snapshot"]["execution_configs"][1]["request_shape"] == "rerank"
     assert evidence["preflight_evidence"]["status"] == "PASS"
     assert "NEX_MO_VLLM_API_KEY" in evidence["redaction"]["checked_env_keys"]
 
@@ -137,9 +134,12 @@ def test_protected_dgx_live_profile_passes_and_redacts_live_values() -> None:
 def test_protected_dgx_live_profile_reports_live_preflight_failure() -> None:
     def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
         if url.endswith("/v1/embeddings"):
-            return httpx.Response(200, json={"embeddings": [[0.1]]})
+            return httpx.Response(200, json={"data": [{"embedding": [0.1]}]})
         if url.endswith("/v1/rerank"):
-            return httpx.Response(200, json={"results": [{"rank": 1, "score": 0.9}]})
+            return httpx.Response(
+                200,
+                json={"results": [{"index": 0, "relevance_score": 0.9}]},
+            )
         return httpx.Response(200, json={"data": [{"id": "OtherGeneration"}]})
 
     evidence = protected_live.run_protected_dgx_live_profile(
@@ -161,15 +161,26 @@ def test_protected_dgx_live_profile_reports_live_preflight_failure() -> None:
     ]
 
 
-def test_protected_dgx_live_profile_uses_current_dgx_pcx_defaults() -> None:
+def test_protected_dgx_live_profile_uses_vllm_defaults() -> None:
     defaults = protected_live.protected_dgx_profile_defaults()
 
     assert defaults["NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE"] == (
-        "nex_pcx_embeddings_v1"
+        "openai_embeddings"
     )
-    assert defaults["NEX_MO_REMOTE_EMBEDDING_PROFILE_NAME"] == "qwen3_4b_2560"
+    assert defaults["NEX_MO_REMOTE_EMBEDDING_MODEL"] == "Qwen3-Embedding-4B"
+    assert defaults["NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE"] == "rerank"
+    assert defaults["NEX_MO_REMOTE_RERANKER_MODEL"] == "Qwen3-Reranker-0.6B"
+
+
+def test_protected_dgx_live_profile_keeps_legacy_pcx_defaults_separate() -> None:
+    defaults = protected_live.protected_profile_defaults(
+        protected_live.DGX_PCX_LEGACY_PROFILE_NAME,
+    )
+
+    assert defaults["NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE"] == "nex_pcx_embeddings_v1"
     assert defaults["NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE"] == "nex_pcx_rerank_v1"
     assert defaults["NEX_MO_REMOTE_RERANKER_PROFILE_NAME"] == "qwen3_reranker_0_6b"
+    assert protected_live.resolve_profile_name("dgx") == protected_live.DGX_PROFILE_NAME
 
 
 def test_protected_dgx_live_profile_main_summary_and_output(

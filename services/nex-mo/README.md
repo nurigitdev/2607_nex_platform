@@ -21,6 +21,12 @@ Model profile defaults:
 - Local live config guard can be run without network calls. It verifies that
   selected execution models and live preflight expected models agree, including
   the current DGX-Spark reranker target `Qwen3-Reranker-0.6B`.
+- Protected live profiles are split by provider shape:
+  - `dgx_vllm`: canonical direct vLLM profile for embedding, reranking, and
+    generation.
+  - `dgx`: deprecated alias for `dgx_vllm`.
+  - `dgx_pcx_legacy`: explicit compatibility profile for older NeX-PCX
+    embedding/reranker request shapes.
 - Live preflight request shapes:
   - Current DGX embedding/reranker providers are direct vLLM pooling servers.
   - Embedding: `POST` to `NEX_MO_REMOTE_EMBEDDING_URL`. The generic shape is
@@ -85,7 +91,8 @@ NEX_COMPAT_LIVE_SMOKE=1 ./.venv/bin/python scripts/smoke/run_compatible_provider
 NEX_COMPAT_LIVE_SMOKE=1 ./.venv/bin/python scripts/smoke/run_compatible_provider_live_smoke.py --evidence-output reports/live/compatible-vllm-provider-smoke.json --summary
 ```
 
-`run_protected_dgx_live_profile.py` is the preferred operator entrypoint. It
+`run_protected_dgx_live_profile.py` is the preferred operator entrypoint. Use
+`NEX_MO_PROTECTED_LIVE_PROFILE=dgx_vllm` for the canonical direct vLLM path. It
 sets the underlying local-live and live-preflight flags in an isolated
 environment copy, runs the local config guard first, and only then calls DGX.
 
