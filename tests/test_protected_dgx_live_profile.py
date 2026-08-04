@@ -78,9 +78,33 @@ def test_protected_dgx_live_profile_passes_and_redacts_live_values() -> None:
     def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
         calls.append({"method": method, "url": url, **kwargs})
         if url.endswith("/v1/embeddings"):
-            return httpx.Response(200, json={"data": [{"embedding": [0.1]}]})
+            assert kwargs["json"] == {
+                "profile_name": "qwen3_4b_2560",
+                "model_key": "qwen3_embedding_4b",
+                "input_type": "document",
+                "texts": ["nex live provider preflight"],
+                "output_dimension": 2560,
+                "normalize_embeddings": True,
+            }
+            return httpx.Response(200, json={"embeddings": [[0.1]]})
         if url.endswith("/v1/rerank"):
-            return httpx.Response(200, json={"results": [{"index": 0, "score": 0.9}]})
+            assert kwargs["json"] == {
+                "query_text": "nex live provider preflight",
+                "top_k": 1,
+                "reranker_profile_name": "qwen3_reranker_0_6b",
+                "reranker_model_id": "Qwen/Qwen3-Reranker-0.6B",
+                "candidates": [
+                    {
+                        "candidate_key": "doc-1",
+                        "rank": 1,
+                        "text": "NeX live provider preflight document.",
+                        "source_profile_name": "qwen3_4b_2560",
+                        "source_retrieval_strategy": "preflight",
+                        "source_score": 0.5,
+                    }
+                ],
+            }
+            return httpx.Response(200, json={"results": [{"rank": 1, "score": 0.9}]})
         return httpx.Response(
             200,
             json={"data": [{"id": "Qwen3.5-122B-A10B-NVFP4"}]},
@@ -113,9 +137,9 @@ def test_protected_dgx_live_profile_passes_and_redacts_live_values() -> None:
 def test_protected_dgx_live_profile_reports_live_preflight_failure() -> None:
     def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
         if url.endswith("/v1/embeddings"):
-            return httpx.Response(200, json={"data": [{"embedding": [0.1]}]})
+            return httpx.Response(200, json={"embeddings": [[0.1]]})
         if url.endswith("/v1/rerank"):
-            return httpx.Response(200, json={"results": [{"index": 0, "score": 0.9}]})
+            return httpx.Response(200, json={"results": [{"rank": 1, "score": 0.9}]})
         return httpx.Response(200, json={"data": [{"id": "OtherGeneration"}]})
 
     evidence = protected_live.run_protected_dgx_live_profile(
@@ -135,6 +159,17 @@ def test_protected_dgx_live_profile_reports_live_preflight_failure() -> None:
             "capability": "generation",
         }
     ]
+
+
+def test_protected_dgx_live_profile_uses_current_dgx_pcx_defaults() -> None:
+    defaults = protected_live.protected_dgx_profile_defaults()
+
+    assert defaults["NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE"] == (
+        "nex_pcx_embeddings_v1"
+    )
+    assert defaults["NEX_MO_REMOTE_EMBEDDING_PROFILE_NAME"] == "qwen3_4b_2560"
+    assert defaults["NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE"] == "nex_pcx_rerank_v1"
+    assert defaults["NEX_MO_REMOTE_RERANKER_PROFILE_NAME"] == "qwen3_reranker_0_6b"
 
 
 def test_protected_dgx_live_profile_main_summary_and_output(

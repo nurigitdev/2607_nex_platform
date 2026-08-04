@@ -68,6 +68,7 @@ def run_protected_dgx_live_profile(
         )
 
     effective_env = {
+        **protected_dgx_profile_defaults(),
         **env,
         "NEX_MO_PROVIDER_MODE": "live",
         "NEX_MO_LIVE_PREFLIGHT": "1",
@@ -146,6 +147,23 @@ def _profile_evidence(
         effective_env,
     )
     return evidence
+
+
+def protected_dgx_profile_defaults() -> dict[str, str]:
+    return {
+        "NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE": "nex_pcx_embeddings_v1",
+        "NEX_MO_REMOTE_EMBEDDING_PROFILE_NAME": "qwen3_4b_2560",
+        "NEX_MO_REMOTE_EMBEDDING_MODEL_KEY": "qwen3_embedding_4b",
+        "NEX_MO_REMOTE_EMBEDDING_INPUT_TYPE": "document",
+        "NEX_MO_REMOTE_EMBEDDING_OUTPUT_DIMENSION": "2560",
+        "NEX_MO_REMOTE_EMBEDDING_NORMALIZE": "true",
+        "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE": "nex_pcx_rerank_v1",
+        "NEX_MO_REMOTE_RERANKER_PROFILE_NAME": "qwen3_reranker_0_6b",
+        "NEX_MO_REMOTE_RERANKER_MODEL_ID": "Qwen/Qwen3-Reranker-0.6B",
+        "NEX_MO_REMOTE_RERANKER_SOURCE_PROFILE_NAME": "qwen3_4b_2560",
+        "NEX_MO_REMOTE_RERANKER_SOURCE_RETRIEVAL_STRATEGY": "preflight",
+        "NEX_MO_REMOTE_RERANKER_SOURCE_SCORE": "0.5",
+    }
 
 
 def _optional_status(payload: dict[str, Any] | None) -> str:

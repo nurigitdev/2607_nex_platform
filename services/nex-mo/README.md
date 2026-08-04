@@ -22,20 +22,23 @@ Model profile defaults:
   selected execution models and live preflight expected models agree, including
   the current DGX-Spark reranker target `Qwen3-Reranker-0.6B`.
 - Live preflight request shapes:
-  - Embedding: `POST` to `NEX_MO_REMOTE_EMBEDDING_URL` with OpenAI-compatible
-    `model` and `input`.
-  - Reranker: `POST` to `NEX_MO_REMOTE_RERANKER_URL` with `model`, `query`,
-    `documents`, and `top_n`.
+  - Embedding: `POST` to `NEX_MO_REMOTE_EMBEDDING_URL`. The generic shape is
+    OpenAI-compatible `model` and `input`; the protected DGX profile uses
+    `nex_pcx_embeddings_v1` with profile/model-key/texts/dimension fields.
+  - Reranker: `POST` to `NEX_MO_REMOTE_RERANKER_URL`. The generic shape uses
+    `model`, `query`, `documents`, and `top_n`; the protected DGX profile uses
+    `nex_pcx_rerank_v1` with query/candidate metadata fields.
   - vLLM model catalog: `GET` to `NEX_MO_VLLM_MODELS_URL`, or
     `NEX_MO_VLLM_BASE_URL` plus `/v1/models`.
 - Live embedding execution uses the same `/api/v1/embeddings` MO API that CX
   already calls. Set `NEX_MO_PROVIDER_MODE=live` and
   `NEX_MO_REMOTE_EMBEDDING_URL`; MO translates `inputs` to OpenAI-compatible
-  `input` and returns the existing normalized MO response shape.
+  `input`, or to the configured DGX-PCX shape, and returns the existing
+  normalized MO response shape.
 - Live reranker execution uses the same `/api/v1/rerank` MO API. Set
   `NEX_MO_PROVIDER_MODE=live` and `NEX_MO_REMOTE_RERANKER_URL`; MO translates
-  `query`, `documents`, and optional `top_n` to the remote reranker shape and
-  normalizes scores back to the existing MO result shape.
+  `query`, `documents`, and optional `top_n` to the configured remote reranker
+  shape and normalizes scores back to the existing MO result shape.
 - Live generation execution uses the same `/api/v1/generations` MO API. Set
   `NEX_MO_PROVIDER_MODE=live` and `NEX_MO_VLLM_BASE_URL` or
   `NEX_MO_VLLM_CHAT_COMPLETIONS_URL`; MO sends OpenAI-compatible
@@ -90,5 +93,7 @@ The older `NEX_MO_LIVE_EMBEDDING_HEALTH_URL`,
 remain supported as deprecated fallback aliases. Prefer
 `NEX_MO_REMOTE_EMBEDDING_URL`, `NEX_MO_REMOTE_RERANKER_URL`,
 `NEX_MO_VLLM_BASE_URL`, `NEX_MO_VLLM_MODELS_URL`, and `NEX_MO_VLLM_API_KEY` in
-`.env.local` or the shell before running live checks. Do not commit real API
-keys.
+`.env.local` or the shell before running live checks. Current DGX-PCX providers
+should use `NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE=nex_pcx_embeddings_v1` and
+`NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE=nex_pcx_rerank_v1`. Do not commit real
+API keys.

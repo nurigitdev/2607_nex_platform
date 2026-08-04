@@ -64,6 +64,46 @@ def test_remote_provider_configs_use_current_env_contract() -> None:
     assert "secret" not in str(configs[2].to_safe_summary())
 
 
+def test_remote_provider_configs_support_nex_pcx_request_shapes() -> None:
+    configs = build_remote_provider_preflight_configs(
+        {
+            "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local:9103/v1/embeddings",
+            "NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE": "nex_pcx_embeddings_v1",
+            "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9104/v1/rerank",
+            "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE": "nex_pcx_rerank_v1",
+        }
+    )
+
+    assert [config.request_shape for config in configs[:2]] == [
+        "nex_pcx_embeddings_v1",
+        "nex_pcx_rerank_v1",
+    ]
+    assert configs[0].request_json() == {
+        "profile_name": "qwen3_4b_2560",
+        "model_key": "qwen3_embedding_4b",
+        "input_type": "document",
+        "texts": ["nex live provider preflight"],
+        "output_dimension": 2560,
+        "normalize_embeddings": True,
+    }
+    assert configs[1].request_json() == {
+        "query_text": "nex live provider preflight",
+        "top_k": 1,
+        "reranker_profile_name": "qwen3_reranker_0_6b",
+        "reranker_model_id": "Qwen/Qwen3-Reranker-0.6B",
+        "candidates": [
+            {
+                "candidate_key": "doc-1",
+                "rank": 1,
+                "text": "NeX live provider preflight document.",
+                "source_profile_name": "qwen3_4b_2560",
+                "source_retrieval_strategy": "preflight",
+                "source_score": 0.5,
+            }
+        ],
+    }
+
+
 def test_remote_embedding_execution_config_uses_model_overrides() -> None:
     config = build_remote_embedding_execution_config(
         {
@@ -273,6 +313,51 @@ def test_execute_remote_embedding_request_posts_openai_shape_and_normalizes() ->
     }
     assert "dgx.local" not in str(response)
     assert "secret" not in str(response)
+
+
+def test_execute_remote_embedding_request_posts_nex_pcx_shape_and_normalizes() -> None:
+    calls: list[dict[str, object]] = []
+
+    def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
+        calls.append({"method": method, "url": url, **kwargs})
+        return httpx.Response(
+            200,
+            json={
+                "embeddings": [
+                    [0.1, 0.2],
+                    [0.3, 0.4],
+                ]
+            },
+        )
+
+    response = execute_remote_embedding_request(
+        {
+            "alias": "mock-embedding-default",
+            "inputs": ["alpha", "beta"],
+        },
+        environ={
+            "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local:9103/v1/embeddings",
+            "NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE": "nex_pcx_embeddings_v1",
+            "NEX_MO_REMOTE_EMBEDDING_MODEL_REVISION": "Qwen3-embedding-4B@pcx",
+        },
+        requester=requester,
+    )
+
+    assert calls[0]["json"] == {
+        "profile_name": "qwen3_4b_2560",
+        "model_key": "qwen3_embedding_4b",
+        "input_type": "document",
+        "texts": ["alpha", "beta"],
+        "output_dimension": 2560,
+        "normalize_embeddings": True,
+    }
+    assert response["model_revision"] == "Qwen3-embedding-4B@pcx"
+    assert response["data"] == [
+        {"object": "embedding", "index": 0, "embedding": [0.1, 0.2]},
+        {"object": "embedding", "index": 1, "embedding": [0.3, 0.4]},
+    ]
+    assert response["usage"]["input_tokens"] == 2
+    assert "dgx.local" not in str(response)
 
 
 def test_execute_remote_embedding_request_rejects_missing_config_and_private_fields() -> None:
@@ -650,6 +735,66 @@ def test_execute_remote_rerank_request_posts_shape_and_normalizes_sorted_results
         "usage": {"input_tokens": 5, "output_tokens": 0, "total_tokens": 5},
     }
     assert "dgx.local" not in str(response)
+
+
+def test_execute_remote_rerank_request_posts_nex_pcx_shape_and_normalizes() -> None:
+    calls: list[dict[str, object]] = []
+
+    def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
+        calls.append({"method": method, "url": url, **kwargs})
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {"candidate_key": "doc-2", "rank": 1, "score": 9.5},
+                    {"candidate_key": "doc-1", "rank": 2, "score": 2.0},
+                ]
+            },
+        )
+
+    response = execute_remote_rerank_request(
+        {
+            "alias": "mock-reranker-default",
+            "query": "quality",
+            "documents": ["doc-a", "doc-b"],
+        },
+        environ={
+            "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9104/v1/rerank",
+            "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE": "nex_pcx_rerank_v1",
+            "NEX_MO_REMOTE_RERANKER_MODEL_REVISION": "Qwen3-Reranker-0.6B@pcx",
+        },
+        requester=requester,
+    )
+
+    assert calls[0]["json"] == {
+        "query_text": "quality",
+        "top_k": 2,
+        "reranker_profile_name": "qwen3_reranker_0_6b",
+        "reranker_model_id": "Qwen/Qwen3-Reranker-0.6B",
+        "candidates": [
+            {
+                "candidate_key": "doc-1",
+                "rank": 1,
+                "text": "doc-a",
+                "source_profile_name": "qwen3_4b_2560",
+                "source_retrieval_strategy": "preflight",
+                "source_score": 0.5,
+            },
+            {
+                "candidate_key": "doc-2",
+                "rank": 2,
+                "text": "doc-b",
+                "source_profile_name": "qwen3_4b_2560",
+                "source_retrieval_strategy": "preflight",
+                "source_score": 0.5,
+            },
+        ],
+    }
+    assert response["model_revision"] == "Qwen3-Reranker-0.6B@pcx"
+    assert response["results"] == [
+        {"index": 0, "score": 9.5, "document": "doc-a"},
+        {"index": 1, "score": 2.0, "document": "doc-b"},
+    ]
 
 
 def test_execute_remote_rerank_request_rejects_missing_config_and_bad_top_n() -> None:

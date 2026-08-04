@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from threading import Lock
 from time import perf_counter
@@ -20,6 +20,11 @@ from nex_mo.providers import (
 
 DEFAULT_TIMEOUT_SECONDS = 5.0
 PREFLIGHT_TEXT = "nex live provider preflight"
+OPENAI_EMBEDDINGS_SHAPE = "openai_embeddings"
+NEX_PCX_EMBEDDINGS_SHAPE = "nex_pcx_embeddings_v1"
+GENERIC_RERANK_SHAPE = "rerank"
+NEX_PCX_RERANK_SHAPE = "nex_pcx_rerank_v1"
+OPENAI_MODELS_SHAPE = "openai_models"
 
 
 @dataclass(frozen=True)
@@ -34,6 +39,7 @@ class RemoteProviderPreflightConfig:
     api_key: str | None = None
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
     legacy_endpoint_env: str | None = None
+    request_options: dict[str, Any] = field(default_factory=dict)
 
     @property
     def configured(self) -> bool:
@@ -53,19 +59,31 @@ class RemoteProviderPreflightConfig:
 
     def request_json(self) -> dict[str, Any] | None:
         model_name = self.expected_models[0] if self.expected_models else ""
-        if self.request_shape == "openai_embeddings":
+        if self.request_shape == OPENAI_EMBEDDINGS_SHAPE:
             return {
                 "model": model_name,
                 "input": [PREFLIGHT_TEXT],
             }
-        if self.request_shape == "rerank":
+        if self.request_shape == NEX_PCX_EMBEDDINGS_SHAPE:
+            return _nex_pcx_embedding_request_payload(
+                self,
+                texts=[PREFLIGHT_TEXT],
+            )
+        if self.request_shape == GENERIC_RERANK_SHAPE:
             return {
                 "model": model_name,
                 "query": PREFLIGHT_TEXT,
                 "documents": ["NeX live provider preflight document."],
                 "top_n": 1,
             }
-        if self.request_shape == "openai_models":
+        if self.request_shape == NEX_PCX_RERANK_SHAPE:
+            return _nex_pcx_rerank_request_payload(
+                self,
+                query=PREFLIGHT_TEXT,
+                documents=["NeX live provider preflight document."],
+                top_n=1,
+            )
+        if self.request_shape == OPENAI_MODELS_SHAPE:
             return None
         raise RemoteProviderPreflightError("unsupported_request_shape")
 
@@ -82,6 +100,9 @@ class RemoteProviderPreflightConfig:
         }
         if self.legacy_endpoint_env is not None:
             payload["legacy_endpoint_env"] = self.legacy_endpoint_env
+        safe_options = _safe_request_options(self.request_options)
+        if safe_options:
+            payload["request_options"] = safe_options
         return payload
 
 
@@ -98,6 +119,7 @@ class RemoteProviderExecutionConfig:
     api_key_env: str | None = None
     api_key: str | None = None
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
+    request_options: dict[str, Any] = field(default_factory=dict)
 
     @property
     def configured(self) -> bool:
@@ -124,6 +146,10 @@ class RemoteProviderExecutionConfig:
             "authorization_env": self.api_key_env,
             "authorization_configured": bool(self.api_key),
         }
+        safe_options = _safe_request_options(self.request_options)
+        if safe_options:
+            payload["request_options"] = safe_options
+        return payload
 
 
 @dataclass(frozen=True)
@@ -283,7 +309,11 @@ def build_remote_provider_preflight_configs(
             legacy_endpoint_env="NEX_MO_LIVE_EMBEDDING_HEALTH_URL",
             url=_env_first(env, "NEX_MO_REMOTE_EMBEDDING_URL", "NEX_MO_LIVE_EMBEDDING_HEALTH_URL"),
             method="POST",
-            request_shape="openai_embeddings",
+            request_shape=_env_or_default(
+                env,
+                "NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE",
+                OPENAI_EMBEDDINGS_SHAPE,
+            ),
             expected_models=expected_models_from_env(
                 env.get("NEX_MO_LIVE_EXPECTED_EMBEDDING_MODELS"),
                 ("Qwen3-embedding-4B",),
@@ -291,6 +321,7 @@ def build_remote_provider_preflight_configs(
             api_key_env="NEX_MO_REMOTE_EMBEDDING_API_KEY",
             api_key=_empty_to_none(env.get("NEX_MO_REMOTE_EMBEDDING_API_KEY")),
             timeout_seconds=timeout_seconds,
+            request_options=_embedding_request_options(env),
         ),
         RemoteProviderPreflightConfig(
             capability="reranking",
@@ -298,7 +329,11 @@ def build_remote_provider_preflight_configs(
             legacy_endpoint_env="NEX_MO_LIVE_RERANKER_HEALTH_URL",
             url=_env_first(env, "NEX_MO_REMOTE_RERANKER_URL", "NEX_MO_LIVE_RERANKER_HEALTH_URL"),
             method="POST",
-            request_shape="rerank",
+            request_shape=_env_or_default(
+                env,
+                "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE",
+                GENERIC_RERANK_SHAPE,
+            ),
             expected_models=expected_models_from_env(
                 env.get("NEX_MO_LIVE_EXPECTED_RERANKER_MODELS"),
                 ("Qwen3-Reranker-0.6B",),
@@ -306,6 +341,7 @@ def build_remote_provider_preflight_configs(
             api_key_env="NEX_MO_REMOTE_RERANKER_API_KEY",
             api_key=_empty_to_none(env.get("NEX_MO_REMOTE_RERANKER_API_KEY")),
             timeout_seconds=timeout_seconds,
+            request_options=_reranker_request_options(env),
         ),
         RemoteProviderPreflightConfig(
             capability="generation",
@@ -313,7 +349,7 @@ def build_remote_provider_preflight_configs(
             legacy_endpoint_env="NEX_MO_LIVE_VLLM_MODELS_URL",
             url=_vllm_models_url(env),
             method="GET",
-            request_shape="openai_models",
+            request_shape=OPENAI_MODELS_SHAPE,
             expected_models=expected_models_from_env(
                 env.get("NEX_MO_LIVE_EXPECTED_GENERATION_MODELS"),
                 selected_generation_model_names(env),
@@ -393,13 +429,18 @@ def build_remote_embedding_execution_config(
         endpoint_env="NEX_MO_REMOTE_EMBEDDING_URL",
         url=_env_first(env, "NEX_MO_REMOTE_EMBEDDING_URL", "NEX_MO_LIVE_EMBEDDING_HEALTH_URL"),
         method="POST",
-        request_shape="openai_embeddings",
+        request_shape=_env_or_default(
+            env,
+            "NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE",
+            OPENAI_EMBEDDINGS_SHAPE,
+        ),
         model_name=model_name,
         model_revision=env.get("NEX_MO_REMOTE_EMBEDDING_MODEL_REVISION", model_name),
         deployment_id=env.get("NEX_MO_REMOTE_EMBEDDING_DEPLOYMENT_ID", "remote-embedding-http"),
         api_key_env="NEX_MO_REMOTE_EMBEDDING_API_KEY",
         api_key=_empty_to_none(env.get("NEX_MO_REMOTE_EMBEDDING_API_KEY")),
         timeout_seconds=float(env.get("NEX_MO_LIVE_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)),
+        request_options=_embedding_request_options(env),
     )
 
 
@@ -414,13 +455,18 @@ def build_remote_reranker_execution_config(
         endpoint_env="NEX_MO_REMOTE_RERANKER_URL",
         url=_env_first(env, "NEX_MO_REMOTE_RERANKER_URL", "NEX_MO_LIVE_RERANKER_HEALTH_URL"),
         method="POST",
-        request_shape="rerank",
+        request_shape=_env_or_default(
+            env,
+            "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE",
+            GENERIC_RERANK_SHAPE,
+        ),
         model_name=model_name,
         model_revision=env.get("NEX_MO_REMOTE_RERANKER_MODEL_REVISION", model_name),
         deployment_id=env.get("NEX_MO_REMOTE_RERANKER_DEPLOYMENT_ID", "remote-reranker-http"),
         api_key_env="NEX_MO_REMOTE_RERANKER_API_KEY",
         api_key=_empty_to_none(env.get("NEX_MO_REMOTE_RERANKER_API_KEY")),
         timeout_seconds=float(env.get("NEX_MO_LIVE_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)),
+        request_options=_reranker_request_options(env),
     )
 
 
@@ -502,10 +548,7 @@ def execute_remote_embedding_request(
     def operation() -> dict[str, Any]:
         response_payload = _execute_remote_json_request(
             config,
-            json_payload={
-                "model": config.model_name,
-                "input": inputs,
-            },
+            json_payload=_remote_embedding_request_payload(config, inputs),
             requester=requester,
             error_code_prefix="mo.remote_embedding",
         )
@@ -596,12 +639,7 @@ def execute_remote_rerank_request(
     def operation() -> dict[str, Any]:
         response_payload = _execute_remote_json_request(
             config,
-            json_payload={
-                "model": config.model_name,
-                "query": query,
-                "documents": documents,
-                "top_n": top_n,
-            },
+            json_payload=_remote_rerank_request_payload(config, query, documents, top_n),
             requester=requester,
             error_code_prefix="mo.remote_reranker",
         )
@@ -695,7 +733,7 @@ def normalize_remote_embedding_response(
             error_code_prefix="mo.remote_embedding",
             detail="Remote embedding response must be a JSON object.",
         )
-    response_items = provider_payload.get("data")
+    response_items = _embedding_response_items(provider_payload)
     if not isinstance(response_items, list) or len(response_items) != input_count:
         raise _remote_provider_response_invalid(
             error_code_prefix="mo.remote_embedding",
@@ -762,11 +800,15 @@ def validate_preflight_response(
     config: RemoteProviderPreflightConfig,
     payload: Any,
 ) -> dict[str, Any]:
-    if config.request_shape == "openai_embeddings":
-        return _validate_embedding_response(payload)
-    if config.request_shape == "rerank":
-        return _validate_rerank_response(payload)
-    if config.request_shape == "openai_models":
+    if config.request_shape == OPENAI_EMBEDDINGS_SHAPE:
+        return _validate_embedding_response(payload, validated_shape=config.request_shape)
+    if config.request_shape == NEX_PCX_EMBEDDINGS_SHAPE:
+        return _validate_embedding_response(payload, validated_shape=config.request_shape)
+    if config.request_shape == GENERIC_RERANK_SHAPE:
+        return _validate_rerank_response(payload, validated_shape=config.request_shape)
+    if config.request_shape == NEX_PCX_RERANK_SHAPE:
+        return _validate_rerank_response(payload, validated_shape=config.request_shape)
+    if config.request_shape == OPENAI_MODELS_SHAPE:
         return _validate_openai_models_response(config.expected_models, payload)
     raise RemoteProviderPreflightError("unsupported_request_shape")
 
@@ -861,10 +903,114 @@ def selected_generation_model_names(env: dict[str, str]) -> tuple[str, ...]:
     return tuple(selected) or (selected_profile,)
 
 
-def _validate_embedding_response(payload: Any) -> dict[str, Any]:
+def _remote_embedding_request_payload(
+    config: RemoteProviderExecutionConfig,
+    inputs: list[str],
+) -> dict[str, Any]:
+    if config.request_shape == OPENAI_EMBEDDINGS_SHAPE:
+        return {
+            "model": config.model_name,
+            "input": inputs,
+        }
+    if config.request_shape == NEX_PCX_EMBEDDINGS_SHAPE:
+        return _nex_pcx_embedding_request_payload(config, texts=inputs)
+    raise ProviderRouteError(
+        500,
+        "mo.remote_embedding_request_shape_unsupported",
+        "Remote embedding request shape is unsupported.",
+    )
+
+
+def _remote_rerank_request_payload(
+    config: RemoteProviderExecutionConfig,
+    query: str,
+    documents: list[str],
+    top_n: int,
+) -> dict[str, Any]:
+    if config.request_shape == GENERIC_RERANK_SHAPE:
+        return {
+            "model": config.model_name,
+            "query": query,
+            "documents": documents,
+            "top_n": top_n,
+        }
+    if config.request_shape == NEX_PCX_RERANK_SHAPE:
+        return _nex_pcx_rerank_request_payload(
+            config,
+            query=query,
+            documents=documents,
+            top_n=top_n,
+        )
+    raise ProviderRouteError(
+        500,
+        "mo.remote_reranker_request_shape_unsupported",
+        "Remote reranker request shape is unsupported.",
+    )
+
+
+def _nex_pcx_embedding_request_payload(
+    config: RemoteProviderPreflightConfig | RemoteProviderExecutionConfig,
+    *,
+    texts: list[str],
+) -> dict[str, Any]:
+    options = config.request_options
+    return {
+        "profile_name": str(options["profile_name"]),
+        "model_key": str(options["model_key"]),
+        "input_type": str(options["input_type"]),
+        "texts": texts,
+        "output_dimension": int(options["output_dimension"]),
+        "normalize_embeddings": bool(options["normalize_embeddings"]),
+    }
+
+
+def _nex_pcx_rerank_request_payload(
+    config: RemoteProviderPreflightConfig | RemoteProviderExecutionConfig,
+    *,
+    query: str,
+    documents: list[str],
+    top_n: int,
+) -> dict[str, Any]:
+    options = config.request_options
+    return {
+        "query_text": query,
+        "top_k": top_n,
+        "reranker_profile_name": str(options["reranker_profile_name"]),
+        "reranker_model_id": str(options["reranker_model_id"]),
+        "candidates": [
+            {
+                "candidate_key": f"doc-{index + 1}",
+                "rank": index + 1,
+                "text": document,
+                "source_profile_name": str(options["source_profile_name"]),
+                "source_retrieval_strategy": str(
+                    options["source_retrieval_strategy"]
+                ),
+                "source_score": float(options["source_score"]),
+            }
+            for index, document in enumerate(documents)
+        ],
+    }
+
+
+def _embedding_response_items(payload: dict[str, Any]) -> Any:
+    data = payload.get("data")
+    if isinstance(data, list):
+        return data
+    embeddings = payload.get("embeddings")
+    if isinstance(embeddings, list):
+        return [{"embedding": embedding} for embedding in embeddings]
+    return data
+
+
+def _validate_embedding_response(
+    payload: Any,
+    *,
+    validated_shape: str,
+) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise RemoteProviderPreflightError("response_not_json_object")
-    data = payload.get("data")
+    data = _embedding_response_items(payload)
     if not isinstance(data, list) or not data:
         raise RemoteProviderPreflightError("embedding_data_missing")
     first_item = data[0]
@@ -872,12 +1018,16 @@ def _validate_embedding_response(payload: Any) -> dict[str, Any]:
         raise RemoteProviderPreflightError("embedding_vector_missing")
     return {
         "response_observed": True,
-        "validated_shape": "openai_embeddings",
+        "validated_shape": validated_shape,
         "observed_items": len(data),
     }
 
 
-def _validate_rerank_response(payload: Any) -> dict[str, Any]:
+def _validate_rerank_response(
+    payload: Any,
+    *,
+    validated_shape: str,
+) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise RemoteProviderPreflightError("response_not_json_object")
     results = payload.get("results", payload.get("data"))
@@ -890,7 +1040,7 @@ def _validate_rerank_response(payload: Any) -> dict[str, Any]:
         raise RemoteProviderPreflightError("rerank_score_missing")
     return {
         "response_observed": True,
-        "validated_shape": "rerank",
+        "validated_shape": validated_shape,
         "observed_items": len(results),
     }
 
@@ -934,6 +1084,116 @@ def _extract_model_ids(payload: Any) -> tuple[str, ...]:
         elif isinstance(item, dict) and isinstance(item.get("id"), str):
             model_ids.append(item["id"])
     return tuple(model_ids)
+
+
+def _embedding_request_options(env: dict[str, str]) -> dict[str, Any]:
+    return {
+        "profile_name": _env_or_default(
+            env,
+            "NEX_MO_REMOTE_EMBEDDING_PROFILE_NAME",
+            "qwen3_4b_2560",
+        ),
+        "model_key": _env_or_default(
+            env,
+            "NEX_MO_REMOTE_EMBEDDING_MODEL_KEY",
+            "qwen3_embedding_4b",
+        ),
+        "input_type": _env_or_default(
+            env,
+            "NEX_MO_REMOTE_EMBEDDING_INPUT_TYPE",
+            "document",
+        ),
+        "output_dimension": _int_env(
+            env,
+            "NEX_MO_REMOTE_EMBEDDING_OUTPUT_DIMENSION",
+            2560,
+        ),
+        "normalize_embeddings": _bool_env(
+            env,
+            "NEX_MO_REMOTE_EMBEDDING_NORMALIZE",
+            True,
+        ),
+    }
+
+
+def _reranker_request_options(env: dict[str, str]) -> dict[str, Any]:
+    return {
+        "reranker_profile_name": _env_or_default(
+            env,
+            "NEX_MO_REMOTE_RERANKER_PROFILE_NAME",
+            "qwen3_reranker_0_6b",
+        ),
+        "reranker_model_id": _env_or_default(
+            env,
+            "NEX_MO_REMOTE_RERANKER_MODEL_ID",
+            "Qwen/Qwen3-Reranker-0.6B",
+        ),
+        "source_profile_name": _env_or_default(
+            env,
+            "NEX_MO_REMOTE_RERANKER_SOURCE_PROFILE_NAME",
+            "qwen3_4b_2560",
+        ),
+        "source_retrieval_strategy": _env_or_default(
+            env,
+            "NEX_MO_REMOTE_RERANKER_SOURCE_RETRIEVAL_STRATEGY",
+            "preflight",
+        ),
+        "source_score": _float_env(
+            env,
+            "NEX_MO_REMOTE_RERANKER_SOURCE_SCORE",
+            0.5,
+        ),
+    }
+
+
+def _safe_request_options(options: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in options.items()
+        if key
+        in {
+            "profile_name",
+            "model_key",
+            "input_type",
+            "output_dimension",
+            "normalize_embeddings",
+            "reranker_profile_name",
+            "reranker_model_id",
+            "source_profile_name",
+            "source_retrieval_strategy",
+            "source_score",
+        }
+    }
+
+
+def _env_or_default(env: dict[str, str], key: str, default: str) -> str:
+    return env.get(key) or default
+
+
+def _int_env(env: dict[str, str], key: str, default: int) -> int:
+    value = env.get(key)
+    if value is None or value == "":
+        return default
+    return int(value)
+
+
+def _float_env(env: dict[str, str], key: str, default: float) -> float:
+    value = env.get(key)
+    if value is None or value == "":
+        return default
+    return float(value)
+
+
+def _bool_env(env: dict[str, str], key: str, default: bool) -> bool:
+    value = env.get(key)
+    if value is None or value == "":
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{key} must be a boolean value.")
 
 
 def _execute_remote_json_request(
