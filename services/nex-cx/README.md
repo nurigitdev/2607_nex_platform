@@ -117,6 +117,10 @@ Grounded generation validation:
   weight `0.15`, embedding-presence score `0.5`, low-confidence threshold
   `0.2`, and rerank candidate limit `50`. Tests and future tenant policies can
   pass bounded overrides through `retrieval_policy`.
+- CX maps the active AG retrieval policy registry record into runtime retrieval
+  settings. Default packages therefore show `policy_source=ag_registry_active`
+  plus the registry policy version and hash. Explicit bounded overrides show
+  `policy_source=request_override`.
 - Retrieval packages expose `bm25_tokenizer_profile` so AG/debug tooling can
   inspect the BM25 tokenizer, fallback, dictionary profile, and query tokenizer
   policy used by the searched lexical index.

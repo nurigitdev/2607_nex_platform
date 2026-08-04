@@ -22,6 +22,10 @@ from nex_runtime import (
     validate_authorization_header,
 )
 from nex_runtime.retrieval_policies import CURRENT_POLICY_ID, WEIGHTED_RRF_POLICY_ID
+from nex_runtime.retrieval_policies import (
+    RetrievalPolicyError as RegistryRetrievalPolicyError,
+)
+from nex_runtime.retrieval_policies import active_retrieval_policy_record, retrieval_policy_by_id
 
 from nex_cx.ingestion import ContentIngestionStore
 from nex_cx.lexical_index import query_terms_for_lexical_index
@@ -58,13 +62,16 @@ class RetrievalError(Exception):
 @dataclass(frozen=True)
 class RetrievalQualityPolicy:
     policy_id: str = CURRENT_POLICY_ID
+    policy_version: str | None = None
+    policy_hash: str | None = None
+    policy_source: str = "local_default"
     bm25_weight: float = 0.85
     embedding_presence_weight: float = 0.15
     embedding_presence_score: float = 0.5
-    vector_weight: float = DEFAULT_WEIGHTED_RRF_VECTOR_WEIGHT
+    vector_weight: float = 0.0
     rrf_k: int = DEFAULT_WEIGHTED_RRF_K
-    vector_candidate_limit: int = DEFAULT_VECTOR_CANDIDATE_LIMIT
-    bm25_candidate_limit: int = DEFAULT_BM25_CANDIDATE_LIMIT
+    vector_candidate_limit: int = 0
+    bm25_candidate_limit: int = DEFAULT_RERANK_CANDIDATE_LIMIT
     low_confidence_threshold: float = LOW_CONFIDENCE_THRESHOLD
     rerank_candidate_limit: int = DEFAULT_RERANK_CANDIDATE_LIMIT
     ranker_mix: str = BM25_EMBEDDING_PRESENCE_RANKER_MIX
@@ -787,10 +794,10 @@ def build_retrieval_quality_policy(
     payload: dict[str, Any] | None = None,
 ) -> RetrievalQualityPolicy:
     if payload is None or "retrieval_policy" not in payload:
-        return DEFAULT_RETRIEVAL_QUALITY_POLICY
+        return active_retrieval_quality_policy()
     policy_payload = payload.get("retrieval_policy")
     if policy_payload is None:
-        return DEFAULT_RETRIEVAL_QUALITY_POLICY
+        return active_retrieval_quality_policy()
     if not isinstance(policy_payload, dict):
         raise RetrievalError(
             status_code=422,
@@ -798,6 +805,118 @@ def build_retrieval_quality_policy(
             detail="retrieval_policy must be an object when provided.",
         )
 
+    registry_payload = registry_policy_payload_for_request(policy_payload)
+    merged_payload = {
+        **registry_payload,
+        **policy_payload,
+        "policy_source": "request_override",
+    }
+    if request_payload_changes_registry_defaults(policy_payload):
+        merged_payload["policy_hash"] = None
+    return retrieval_quality_policy_from_payload(merged_payload)
+
+
+def active_retrieval_quality_policy() -> RetrievalQualityPolicy:
+    try:
+        record = active_retrieval_policy_record()
+    except RegistryRetrievalPolicyError as exc:
+        raise RetrievalError(
+            status_code=exc.status_code,
+            error_code="cx.retrieval_policy_registry_invalid",
+            detail=exc.detail,
+            retryable=False,
+        ) from exc
+    return retrieval_quality_policy_from_registry_record(
+        record,
+        policy_source="ag_registry_active",
+    )
+
+
+def retrieval_quality_policy_from_registry_record(
+    record: dict[str, Any],
+    *,
+    policy_source: str = "ag_registry",
+) -> RetrievalQualityPolicy:
+    return retrieval_quality_policy_from_payload(
+        retrieval_policy_payload_from_registry_record(
+            record,
+            policy_source=policy_source,
+        )
+    )
+
+
+def retrieval_policy_payload_from_registry_record(
+    record: dict[str, Any],
+    *,
+    policy_source: str,
+) -> dict[str, Any]:
+    try:
+        ranker = record["ranker"]
+        limits = record["candidate_limits"]
+        confidence = record["confidence"]
+        method = ranker["method"]
+    except KeyError as exc:
+        raise RetrievalError(
+            status_code=500,
+            error_code="cx.retrieval_policy_registry_invalid",
+            detail=f"Retrieval policy registry record is missing {exc.args[0]}.",
+        ) from exc
+
+    if method == BM25_EMBEDDING_PRESENCE_RANKER_MIX:
+        ranker_mix = BM25_EMBEDDING_PRESENCE_RANKER_MIX
+    elif method == "weighted_rrf":
+        ranker_mix = WEIGHTED_RRF_RANKER_MIX
+    else:
+        raise RetrievalError(
+            status_code=500,
+            error_code="cx.retrieval_policy_registry_invalid",
+            detail=f"Unsupported registry retrieval ranker method: {method}.",
+        )
+
+    return {
+        "policy_id": record["policy_id"],
+        "policy_version": record.get("version"),
+        "policy_hash": record.get("policy_hash"),
+        "policy_source": policy_source,
+        "ranker_mix": ranker_mix,
+        "bm25_weight": ranker["bm25_weight"],
+        "embedding_presence_weight": ranker.get("embedding_presence_weight", 0.0),
+        "embedding_presence_score": ranker.get("embedding_presence_score", 0.0),
+        "vector_weight": ranker.get("vector_weight", 0.0),
+        "rrf_k": ranker.get("rrf_k") or DEFAULT_WEIGHTED_RRF_K,
+        "vector_candidate_limit": limits["vector_candidate_limit"],
+        "bm25_candidate_limit": limits["bm25_candidate_limit"],
+        "rerank_candidate_limit": limits["rerank_candidate_limit"],
+        "low_confidence_threshold": confidence["low_confidence_threshold"],
+    }
+
+
+def registry_policy_payload_for_request(
+    policy_payload: dict[str, Any],
+) -> dict[str, Any]:
+    policy_id = policy_payload.get("policy_id")
+    if policy_id not in {CURRENT_POLICY_ID, WEIGHTED_RRF_POLICY_ID}:
+        return {}
+    try:
+        return retrieval_policy_payload_from_registry_record(
+            retrieval_policy_by_id(policy_id),
+            policy_source="ag_registry_base",
+        )
+    except RegistryRetrievalPolicyError as exc:
+        raise RetrievalError(
+            status_code=exc.status_code,
+            error_code="cx.retrieval_policy_registry_invalid",
+            detail=exc.detail,
+        ) from exc
+
+
+def request_payload_changes_registry_defaults(policy_payload: dict[str, Any]) -> bool:
+    return any(key not in {"policy_id"} for key in policy_payload)
+
+
+def retrieval_quality_policy_from_payload(
+    policy_payload: dict[str, Any],
+) -> RetrievalQualityPolicy:
     policy_id = _optional_policy_string(
         policy_payload,
         "policy_id",
@@ -856,9 +975,27 @@ def build_retrieval_quality_policy(
             error_code="cx.retrieval_policy_invalid",
             detail="retrieval_policy score weights must not exceed 1.0 in total.",
         )
+    vector_candidate_minimum = 1 if weighted_rrf else 0
+    vector_candidate_default = (
+        DEFAULT_VECTOR_CANDIDATE_LIMIT
+        if weighted_rrf
+        else DEFAULT_RETRIEVAL_QUALITY_POLICY.vector_candidate_limit
+    )
+    bm25_candidate_default = (
+        DEFAULT_BM25_CANDIDATE_LIMIT
+        if weighted_rrf
+        else DEFAULT_RETRIEVAL_QUALITY_POLICY.bm25_candidate_limit
+    )
 
     return RetrievalQualityPolicy(
         policy_id=policy_id,
+        policy_version=_optional_policy_nullable_string(policy_payload, "policy_version"),
+        policy_hash=_optional_policy_nullable_string(policy_payload, "policy_hash"),
+        policy_source=_optional_policy_string(
+            policy_payload,
+            "policy_source",
+            DEFAULT_RETRIEVAL_QUALITY_POLICY.policy_source,
+        ),
         bm25_weight=bm25_weight,
         embedding_presence_weight=embedding_presence_weight,
         embedding_presence_score=_optional_policy_float(
@@ -877,14 +1014,14 @@ def build_retrieval_quality_policy(
         vector_candidate_limit=_optional_policy_int(
             policy_payload,
             "vector_candidate_limit",
-            DEFAULT_VECTOR_CANDIDATE_LIMIT,
-            minimum=1,
+            vector_candidate_default,
+            minimum=vector_candidate_minimum,
             maximum=500,
         ),
         bm25_candidate_limit=_optional_policy_int(
             policy_payload,
             "bm25_candidate_limit",
-            DEFAULT_BM25_CANDIDATE_LIMIT,
+            bm25_candidate_default,
             minimum=1,
             maximum=500,
         ),
@@ -914,6 +1051,9 @@ def retrieval_quality_policy_snapshot(
 ) -> dict[str, Any]:
     return {
         "policy_id": quality_policy.policy_id,
+        "policy_version": quality_policy.policy_version,
+        "policy_hash": quality_policy.policy_hash,
+        "policy_source": quality_policy.policy_source,
         "bm25_weight": quality_policy.bm25_weight,
         "embedding_presence_weight": quality_policy.embedding_presence_weight,
         "embedding_presence_score": quality_policy.embedding_presence_score,
@@ -1168,6 +1308,22 @@ def _optional_policy_string(
             status_code=422,
             error_code="cx.retrieval_policy_invalid",
             detail=f"retrieval_policy.{key} must be a non-empty string.",
+        )
+    return value.strip()
+
+
+def _optional_policy_nullable_string(
+    policy_payload: dict[str, Any],
+    key: str,
+) -> str | None:
+    value = policy_payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.retrieval_policy_invalid",
+            detail=f"retrieval_policy.{key} must be a non-empty string when provided.",
         )
     return value.strip()
 

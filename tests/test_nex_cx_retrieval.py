@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import nex_cx.lexical_index as lexical_index
+import nex_cx.retrieval as retrieval_module
 from nex_cx.chunking import build_and_store_chunk_set, register_chunking_routes
 from nex_cx.embedding_index import build_and_store_embedding_index, register_embedding_index_routes
 from nex_cx.ingestion import (
@@ -27,6 +28,7 @@ from nex_cx.retrieval import (
     WEIGHTED_RRF_RANKER_MIX,
     RetrievalError,
     RetrievalQualityPolicy,
+    active_retrieval_quality_policy,
     apply_rerank_scores,
     build_permission_snapshot,
     build_query_embedding_snapshot,
@@ -45,9 +47,16 @@ from nex_cx.retrieval import (
     rank_retrieval_candidates,
     register_retrieval_routes,
     retrieval_quality_policy_snapshot,
+    retrieval_policy_payload_from_registry_record,
+    retrieval_quality_policy_from_registry_record,
     retrieval_status,
     terms_for_chunk,
     weighted_rrf_score,
+)
+from nex_runtime.retrieval_policies import (
+    DEFAULT_RETRIEVAL_POLICIES,
+    WEIGHTED_RRF_POLICY_ID,
+    finalize_retrieval_policy,
 )
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 
@@ -306,6 +315,8 @@ def weighted_rrf_policy(**overrides: object) -> RetrievalQualityPolicy:
         "bm25_weight": 0.3,
         "vector_weight": 0.7,
         "rrf_k": 60,
+        "vector_candidate_limit": 80,
+        "bm25_candidate_limit": 80,
     }
     values.update(overrides)
     return RetrievalQualityPolicy(**values)
@@ -683,10 +694,14 @@ def test_apply_rerank_scores_limits_candidate_window() -> None:
 
 
 def test_build_retrieval_quality_policy_defaults_and_snapshot() -> None:
-    assert build_retrieval_quality_policy({}) == DEFAULT_RETRIEVAL_QUALITY_POLICY
-    assert build_retrieval_quality_policy({"retrieval_policy": None}) == (
-        DEFAULT_RETRIEVAL_QUALITY_POLICY
-    )
+    active_policy = build_retrieval_quality_policy({})
+    null_override_policy = build_retrieval_quality_policy({"retrieval_policy": None})
+
+    assert active_policy.policy_id == "retrieval_quality_v1"
+    assert active_policy.policy_source == "ag_registry_active"
+    assert active_policy.policy_version == "0001"
+    assert len(active_policy.policy_hash or "") == 64
+    assert null_override_policy == active_policy
 
     policy = build_retrieval_quality_policy(
         {
@@ -702,11 +717,112 @@ def test_build_retrieval_quality_policy_defaults_and_snapshot() -> None:
     snapshot = retrieval_quality_policy_snapshot(policy)
 
     assert snapshot["policy_id"] == "retrieval_quality_v1"
+    assert snapshot["policy_source"] == "request_override"
     assert snapshot["bm25_weight"] == 0.7
     assert snapshot["embedding_presence_weight"] == 0.2
     assert snapshot["embedding_presence_score"] == 0.8
     assert snapshot["low_confidence_threshold"] == 0.4
     assert snapshot["rerank_candidate_limit"] == 7
+
+
+def test_active_retrieval_quality_policy_maps_registry_defaults() -> None:
+    policy = active_retrieval_quality_policy()
+    snapshot = retrieval_quality_policy_snapshot(policy)
+
+    assert policy == build_retrieval_quality_policy()
+    assert snapshot["policy_id"] == "retrieval_quality_v1"
+    assert snapshot["policy_source"] == "ag_registry_active"
+    assert snapshot["bm25_weight"] == 0.85
+    assert snapshot["embedding_presence_weight"] == 0.15
+    assert snapshot["vector_weight"] == 0.0
+    assert snapshot["vector_candidate_limit"] == 0
+    assert snapshot["bm25_candidate_limit"] == 50
+
+
+def test_registry_candidate_policy_maps_to_weighted_rrf_policy() -> None:
+    registry_record = finalize_retrieval_policy(DEFAULT_RETRIEVAL_POLICIES[1])
+    payload = retrieval_policy_payload_from_registry_record(
+        registry_record,
+        policy_source="ag_registry_candidate",
+    )
+    policy = retrieval_quality_policy_from_registry_record(
+        registry_record,
+        policy_source="ag_registry_candidate",
+    )
+
+    assert payload["policy_id"] == WEIGHTED_RRF_POLICY_ID
+    assert policy.policy_id == WEIGHTED_RRF_POLICY_ID
+    assert policy.policy_source == "ag_registry_candidate"
+    assert policy.ranker_mix == WEIGHTED_RRF_RANKER_MIX
+    assert policy.vector_weight == 0.7
+    assert policy.bm25_weight == 0.3
+    assert policy.vector_candidate_limit == 80
+    assert len(policy.policy_hash or "") == 64
+
+
+def test_active_retrieval_quality_policy_reports_registry_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_active_policy() -> dict[str, object]:
+        raise retrieval_module.RegistryRetrievalPolicyError(
+            status_code=500,
+            error_code="retrieval_policy.active_policy_invalid",
+            detail="broken registry",
+        )
+
+    monkeypatch.setattr(
+        retrieval_module,
+        "active_retrieval_policy_record",
+        fail_active_policy,
+    )
+
+    with pytest.raises(RetrievalError) as exc:
+        active_retrieval_quality_policy()
+
+    assert exc.value.error_code == "cx.retrieval_policy_registry_invalid"
+    assert exc.value.detail == "broken registry"
+
+
+def test_registry_policy_mapping_rejects_bad_registry_records() -> None:
+    with pytest.raises(RetrievalError) as missing:
+        retrieval_policy_payload_from_registry_record(
+            {"policy_id": "bad"},
+            policy_source="ag_registry",
+        )
+    unsupported = finalize_retrieval_policy(DEFAULT_RETRIEVAL_POLICIES[0])
+    unsupported["ranker"] = {**unsupported["ranker"], "method": "unsupported"}
+
+    with pytest.raises(RetrievalError) as bad_method:
+        retrieval_policy_payload_from_registry_record(
+            unsupported,
+            policy_source="ag_registry",
+        )
+
+    assert missing.value.error_code == "cx.retrieval_policy_registry_invalid"
+    assert bad_method.value.detail == (
+        "Unsupported registry retrieval ranker method: unsupported."
+    )
+
+
+def test_registry_policy_payload_for_request_reports_lookup_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_lookup(policy_id: str) -> dict[str, object]:
+        raise retrieval_module.RegistryRetrievalPolicyError(
+            status_code=404,
+            error_code="retrieval_policy.not_found",
+            detail=policy_id,
+        )
+
+    monkeypatch.setattr(retrieval_module, "retrieval_policy_by_id", fail_lookup)
+
+    with pytest.raises(RetrievalError) as exc:
+        retrieval_module.registry_policy_payload_for_request(
+            {"policy_id": WEIGHTED_RRF_POLICY_ID}
+        )
+
+    assert exc.value.status_code == 404
+    assert exc.value.error_code == "cx.retrieval_policy_registry_invalid"
 
 
 def test_build_retrieval_quality_policy_enables_weighted_rrf_defaults() -> None:
@@ -716,6 +832,7 @@ def test_build_retrieval_quality_policy_enables_weighted_rrf_defaults() -> None:
     snapshot = retrieval_quality_policy_snapshot(policy)
 
     assert policy.policy_id == WEIGHTED_RRF_RANKER_MIX
+    assert policy.policy_source == "request_override"
     assert policy.ranker_mix == WEIGHTED_RRF_RANKER_MIX
     assert policy.reranked_ranker_mix == "weighted_rrf_vector_bm25_with_rerank"
     assert policy.vector_weight == 0.7
@@ -730,6 +847,7 @@ def test_build_retrieval_quality_policy_enables_weighted_rrf_defaults() -> None:
     [
         "bad",
         {"policy_id": ""},
+        {"policy_version": ""},
         {"ranker_mix": "unsupported"},
         {"bm25_weight": True},
         {"embedding_presence_weight": -0.1},
@@ -740,7 +858,7 @@ def test_build_retrieval_quality_policy_enables_weighted_rrf_defaults() -> None:
         {"ranker_mix": WEIGHTED_RRF_RANKER_MIX, "bm25_weight": 0.8, "vector_weight": 0.3},
         {"ranker_mix": WEIGHTED_RRF_RANKER_MIX, "bm25_weight": 0.0, "vector_weight": 0.0},
         {"rrf_k": 0},
-        {"vector_candidate_limit": 0},
+        {"ranker_mix": WEIGHTED_RRF_RANKER_MIX, "vector_candidate_limit": 0},
         {"bm25_candidate_limit": 501},
         {"rerank_candidate_limit": 0},
         {"rerank_candidate_limit": 101},
@@ -958,6 +1076,9 @@ def test_build_retrieval_context_package_returns_ready(
     )
     assert package["retrieval_profile"]["quality_policy"]["policy_id"] == (
         "retrieval_quality_v1"
+    )
+    assert package["retrieval_profile"]["quality_policy"]["policy_source"] == (
+        "ag_registry_active"
     )
     assert package["score_summary"]["quality_policy_id"] == "retrieval_quality_v1"
     assert len(package["evidence_items"]) <= 2
