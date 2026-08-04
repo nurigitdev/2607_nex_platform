@@ -172,6 +172,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0066`](slices/0066_compatible_provider_dgx_live_smoke.md) | `S6-016` Direct vLLM compatible provider DGX live smoke and BF16 serving evidence policy. |
 | [`Slice 0067`](slices/0067_dgx_vllm_profile_split.md) | `S6-017` Protected DGX vLLM profile and legacy PCX profile split. |
 | [`Slice 0068`](slices/0068_mo_direct_vllm_execution_regression.md) | `S6-018` MO direct vLLM execution profile regression. |
+| [`Slice 0069`](slices/0069_cx_retrieval_rerank_bridge_to_mo_vllm.md) | `S6-019` CX retrieval rerank bridge to MO direct vLLM mode. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

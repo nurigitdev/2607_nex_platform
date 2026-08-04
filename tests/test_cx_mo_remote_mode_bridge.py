@@ -25,6 +25,12 @@ from nex_cx.ingestion import (
     CxStorageConfig,
     register_ingestion_routes,
 )
+from nex_cx.lexical_index import register_lexical_index_routes
+from nex_cx.retrieval import (
+    DEFAULT_RERANKER_ALIAS,
+    RetrievalError,
+    register_retrieval_routes,
+)
 from nex_mo.providers import register_mock_provider_routes
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 
@@ -36,6 +42,7 @@ REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
 class InProcessMoBridgeClient:
     client: TestClient
     last_embedding_response: dict[str, Any] | None = None
+    last_rerank_response: dict[str, Any] | None = None
     last_generation_response: dict[str, Any] | None = None
 
     def create_embeddings(
@@ -61,6 +68,37 @@ class InProcessMoBridgeClient:
             )
         self.last_embedding_response = response.json()
         return self.last_embedding_response
+
+    def rerank_documents(
+        self,
+        query: str,
+        documents: list[str],
+        *,
+        alias: str,
+        top_n: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        response = self.client.post(
+            "/api/v1/rerank",
+            json={
+                "alias": alias,
+                "query": query,
+                "documents": documents,
+                "top_n": top_n,
+            },
+            headers=service_headers("nex-cx", "nex-mo", trace_id, request_id),
+        )
+        if response.status_code >= 400:
+            body = response.json()
+            raise RetrievalError(
+                status_code=response.status_code,
+                error_code=body.get("error_code", "mo.rerank_request_failed"),
+                detail=body.get("detail", "MO rerank request failed."),
+                retryable=body.get("retryable", False),
+            )
+        self.last_rerank_response = response.json()
+        return self.last_rerank_response
 
     def create_generation(
         self,
@@ -93,7 +131,7 @@ def reset_provider_telemetry():
     remote_provider.reset_remote_provider_telemetry()
 
 
-def test_cx_embedding_and_generation_bridge_to_mo_live_remote_mode(
+def test_cx_embedding_retrieval_and_generation_bridge_to_mo_live_remote_mode(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -112,6 +150,22 @@ def test_cx_embedding_and_generation_bridge_to_mo_live_remote_mode(
                         for index, _ in enumerate(inputs)
                     ],
                     "usage": {"prompt_tokens": len(inputs), "total_tokens": len(inputs)},
+                },
+            )
+        if url.endswith("/v1/rerank"):
+            documents = kwargs["json"]["documents"]
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {
+                            "index": index,
+                            "relevance_score": round(0.91 - index * 0.01, 6),
+                            "document": {"text": document},
+                        }
+                        for index, document in enumerate(documents)
+                    ],
+                    "usage": {"prompt_tokens": len(documents), "total_tokens": len(documents)},
                 },
             )
         return httpx.Response(
@@ -141,9 +195,20 @@ def test_cx_embedding_and_generation_bridge_to_mo_live_remote_mode(
     uploaded = register_document(cx_client)
     run_cx_post(cx_client, f"/api/v1/jobs/{uploaded['extraction']['job_id']}/run")
     run_cx_post(cx_client, f"/api/v1/documents/{uploaded['document_id']}/chunks/run")
+    run_cx_post(cx_client, f"/api/v1/documents/{uploaded['document_id']}/lexical-index/run")
     embedding_index = run_cx_post(
         cx_client,
         f"/api/v1/documents/{uploaded['document_id']}/embeddings/run",
+    )
+    retrieval = cx_client.post(
+        "/api/v1/retrieval/context",
+        json={
+            "query_text": "Remote bridge",
+            "purpose": "grounded_answer",
+            "document_scope": {"document_ids": [uploaded["document_id"]]},
+            "top_k": 1,
+        },
+        headers=service_headers("nex-ae-api", "nex-cx"),
     )
     generation = cx_client.post(
         "/api/v1/generations",
@@ -160,9 +225,20 @@ def test_cx_embedding_and_generation_bridge_to_mo_live_remote_mode(
     )
 
     assert generation.status_code == 200
+    assert retrieval.status_code == 200
+    retrieval_payload = retrieval.json()
     generation_payload = generation.json()
     assert embedding_index["model_revision"] == "BridgeEmbedding"
     assert embedding_index["deployment_id"] == "remote-embedding-http"
+    assert retrieval_payload["score_summary"]["rerank_state"] == "APPLIED"
+    assert retrieval_payload["score_summary"]["ranker_mix"] == "bm25_embedding_with_rerank"
+    assert retrieval_payload["retrieval_profile"]["reranker_profile"] == {
+        "provider_alias": DEFAULT_RERANKER_ALIAS,
+        "model_revision": "BridgeReranker",
+        "deployment_id": "remote-reranker-http",
+        "status": "APPLIED",
+    }
+    assert retrieval_payload["evidence_items"][0]["scores"]["rerank_score"] == 0.91
     assert generation_payload["mo_generation_id"] == "cmpl-bridge-001"
     assert generation_payload["response_metadata"]["output_preview"] == (
         "Remote bridge answer."
@@ -172,9 +248,11 @@ def test_cx_embedding_and_generation_bridge_to_mo_live_remote_mode(
     )
     assert generation_store.get(generation_payload["cx_generation_id"]) == generation_payload
     assert mo_client.last_embedding_response is not None
+    assert mo_client.last_rerank_response is not None
     assert mo_client.last_generation_response is not None
     assert [call["url"] for call in calls] == [
         "http://remote-provider.test/v1/embeddings",
+        "http://remote-provider.test/v1/rerank",
         "http://remote-provider.test/v1/chat/completions",
     ]
     assert telemetry.status_code == 200
@@ -182,9 +260,12 @@ def test_cx_embedding_and_generation_bridge_to_mo_live_remote_mode(
         item["capability"]: item for item in telemetry.json()["data"]
     }
     assert telemetry_rows["embedding"]["request_count"] == 1
+    assert telemetry_rows["reranking"]["request_count"] == 1
+    assert telemetry_rows["reranking"]["success_count"] == 1
     assert telemetry_rows["generation"]["request_count"] == 1
     assert telemetry_rows["generation"]["success_count"] == 1
     assert "remote-provider.test" not in str(embedding_index)
+    assert "remote-provider.test" not in str(retrieval_payload)
     assert "remote-provider.test" not in str(generation_payload)
     assert "remote-provider.test" not in str(telemetry.json())
 
@@ -237,7 +318,7 @@ def test_cx_generation_bridge_preserves_mo_remote_failure_lineage(
 
 def build_bridge_clients(
     tmp_path: Path,
-) -> tuple[TestClient, TestClientMoBridgeClient, TestClient, GenerationExecutionStore]:
+) -> tuple[TestClient, InProcessMoBridgeClient, TestClient, GenerationExecutionStore]:
     mo_app = build_service_app(SERVICE_SPECS["nex-mo"])
     register_mock_provider_routes(mo_app)
     mo_test_client = TestClient(mo_app)
@@ -262,6 +343,17 @@ def build_bridge_clients(
         mo_client=mo_bridge_client,
         embedding_alias=DEFAULT_EMBEDDING_ALIAS,
     )
+    register_lexical_index_routes(
+        cx_app,
+        store=cx_store,
+        storage_config=storage_config(tmp_path),
+    )
+    register_retrieval_routes(
+        cx_app,
+        store=cx_store,
+        rerank_client=mo_bridge_client,
+        reranker_alias=DEFAULT_RERANKER_ALIAS,
+    )
     register_generation_routes(
         cx_app,
         store=generation_store,
@@ -277,11 +369,20 @@ def configure_mo_live_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "http://remote-provider.test/v1/embeddings",
     )
     monkeypatch.setenv("NEX_MO_REMOTE_EMBEDDING_MODEL", "BridgeEmbedding")
+    monkeypatch.setenv("NEX_MO_REMOTE_EMBEDDING_API_KEY", "bridge-secret")
+    monkeypatch.setenv(
+        "NEX_MO_REMOTE_RERANKER_URL",
+        "http://remote-provider.test/v1/rerank",
+    )
+    monkeypatch.setenv("NEX_MO_REMOTE_RERANKER_MODEL", "BridgeReranker")
+    monkeypatch.setenv("NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE", "rerank")
+    monkeypatch.setenv("NEX_MO_REMOTE_RERANKER_API_KEY", "bridge-secret")
     monkeypatch.setenv(
         "NEX_MO_VLLM_CHAT_COMPLETIONS_URL",
         "http://remote-provider.test/v1/chat/completions",
     )
     monkeypatch.setenv("NEX_MO_VLLM_MODEL", "BridgeGeneration")
+    monkeypatch.setenv("NEX_MO_VLLM_API_KEY", "bridge-secret")
 
 
 def storage_config(tmp_path: Path) -> CxStorageConfig:

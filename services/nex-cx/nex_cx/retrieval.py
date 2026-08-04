@@ -2,16 +2,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
+import httpx
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
+    issue_mock_service_token,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
@@ -24,6 +27,7 @@ from nex_cx.lexical_index import korean_mixed_v1_tokens
 DEFAULT_TOP_K = 5
 MAX_TOP_K = 20
 LOW_CONFIDENCE_THRESHOLD = 0.2
+DEFAULT_RERANKER_ALIAS = "mock-reranker-default"
 ALLOWED_PURPOSES = {
     "search",
     "grounded_answer",
@@ -41,11 +45,86 @@ class RetrievalError(Exception):
     retryable: bool = False
 
 
+class MoRerankClient(Protocol):
+    def rerank_documents(
+        self,
+        query: str,
+        documents: list[str],
+        *,
+        alias: str,
+        top_n: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        ...
+
+
+@dataclass(frozen=True)
+class HttpMoRerankClient:
+    base_url: str = "http://127.0.0.1:8105"
+    service_token: str | None = None
+    timeout_seconds: float = 5.0
+
+    def rerank_documents(
+        self,
+        query: str,
+        documents: list[str],
+        *,
+        alias: str,
+        top_n: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        token = self.service_token or issue_mock_service_token(
+            service_id="nex-cx",
+            audience="nex-mo",
+        ).access_token
+        response = httpx.post(
+            f"{self.base_url}/api/v1/rerank",
+            json={
+                "alias": alias,
+                "query": query,
+                "documents": documents,
+                "top_n": top_n,
+            },
+            headers={
+                "Authorization": f"Bearer {token}",
+                "X-Request-ID": request_id,
+                "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
+                "X-Service-ID": "nex-cx",
+            },
+            timeout=self.timeout_seconds,
+        )
+        if response.status_code >= 400:
+            body = _safe_response_json(response)
+            raise RetrievalError(
+                status_code=response.status_code,
+                error_code=body.get("error_code", "mo.rerank_request_failed"),
+                detail=body.get("detail", "MO rerank request failed."),
+                retryable=body.get("retryable", False),
+            )
+        return response.json()
+
+
+def build_default_mo_rerank_client() -> HttpMoRerankClient:
+    return HttpMoRerankClient(
+        base_url=os.getenv("NEX_MO_BASE_URL", "http://127.0.0.1:8105"),
+        service_token=os.getenv("NEX_CX_TO_MO_SERVICE_TOKEN"),
+    )
+
+
 def register_retrieval_routes(
     app: FastAPI,
     *,
     store: ContentIngestionStore,
+    rerank_client: MoRerankClient | None = None,
+    reranker_alias: str | None = None,
 ) -> None:
+    client = rerank_client
+    if client is None and _env_flag("NEX_CX_RERANKER_ENABLED"):
+        client = build_default_mo_rerank_client()
+    alias = reranker_alias or os.getenv("NEX_CX_RERANKER_ALIAS", DEFAULT_RERANKER_ALIAS)
+
     @app.post("/api/v1/retrieval/context", response_model=None)
     def create_retrieval_context(
         payload: dict[str, Any],
@@ -62,6 +141,8 @@ def register_retrieval_routes(
                 store=store,
                 request_id=request_id_from_headers(request),
                 trace_id=payload.get("trace_id") or trace_id_from_headers(request),
+                rerank_client=client,
+                reranker_alias=alias,
             )
         except RetrievalError as exc:
             return _retrieval_problem_response(request, exc)
@@ -96,6 +177,8 @@ def build_retrieval_context_package(
     store: ContentIngestionStore,
     request_id: str,
     trace_id: str,
+    rerank_client: MoRerankClient | None = None,
+    reranker_alias: str = DEFAULT_RERANKER_ALIAS,
 ) -> dict[str, Any]:
     query_text = _query_text(payload)
     top_k = _top_k(payload)
@@ -109,6 +192,10 @@ def build_retrieval_context_package(
         document_ids=document_ids,
         store=store,
         include_source_preview=include_source_preview,
+        rerank_client=rerank_client,
+        reranker_alias=reranker_alias,
+        request_id=request_id,
+        trace_id=trace_id,
     )
     evidence_items = [
         build_evidence_item(
@@ -136,7 +223,14 @@ def build_retrieval_context_package(
         "request_id": request_id,
         "query_text": query_text,
         "purpose": purpose,
-        "retrieval_profile": build_retrieval_profile(store, document_ids),
+        "retrieval_profile": build_retrieval_profile(
+            store,
+            document_ids,
+            reranker_profile=build_reranker_profile(
+                candidates,
+                configured_alias=reranker_alias if rerank_client is not None else None,
+            ),
+        ),
         "permission_snapshot": build_permission_snapshot(
             actor_claims_ref=actor_claims_ref,
             document_scope=payload.get("document_scope"),
@@ -159,6 +253,10 @@ def rank_retrieval_candidates(
     document_ids: list[str],
     store: ContentIngestionStore,
     include_source_preview: bool,
+    rerank_client: MoRerankClient | None = None,
+    reranker_alias: str = DEFAULT_RERANKER_ALIAS,
+    request_id: str = "",
+    trace_id: str = "",
 ) -> list[dict[str, Any]]:
     query_terms = set(korean_mixed_v1_tokens(query_text))
     if not query_terms:
@@ -195,7 +293,7 @@ def rank_retrieval_candidates(
                     },
                 }
             )
-    return sorted(
+    ranked = sorted(
         candidates,
         key=lambda item: (
             item["scores"]["final_score"],
@@ -204,6 +302,71 @@ def rank_retrieval_candidates(
         ),
         reverse=True,
     )
+    if rerank_client is None or not ranked:
+        return ranked
+    return apply_rerank_scores(
+        query_text=query_text,
+        candidates=ranked,
+        rerank_client=rerank_client,
+        reranker_alias=reranker_alias,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+
+
+def apply_rerank_scores(
+    *,
+    query_text: str,
+    candidates: list[dict[str, Any]],
+    rerank_client: MoRerankClient,
+    reranker_alias: str,
+    request_id: str,
+    trace_id: str,
+) -> list[dict[str, Any]]:
+    documents = [candidate["chunk_text"] for candidate in candidates]
+    response = rerank_client.rerank_documents(
+        query_text,
+        documents,
+        alias=reranker_alias,
+        top_n=len(documents),
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    results = response.get("results")
+    if not isinstance(results, list):
+        raise RetrievalError(
+            status_code=502,
+            error_code="cx.rerank_response_invalid",
+            detail="MO rerank response must include results.",
+            retryable=True,
+        )
+
+    seen_indexes: set[int] = set()
+    reranked: list[dict[str, Any]] = []
+    for result in results:
+        index = _rerank_result_index(result, candidate_count=len(candidates))
+        if index in seen_indexes:
+            continue
+        seen_indexes.add(index)
+        score = _rerank_result_score(result)
+        candidate = dict(candidates[index])
+        candidate["scores"] = {
+            **candidate["scores"],
+            "rerank_score": score,
+            "final_score": score,
+        }
+        candidate["reranker"] = {
+            "provider_alias": response.get("alias", reranker_alias),
+            "model_revision": response.get("model_revision"),
+            "deployment_id": response.get("deployment_id"),
+            "status": "APPLIED",
+        }
+        reranked.append(candidate)
+
+    for index, candidate in enumerate(candidates):
+        if index not in seen_indexes:
+            reranked.append(candidate)
+    return reranked
 
 
 def matched_counts_by_chunk(
@@ -281,6 +444,8 @@ def retrieval_status(evidence_items: list[dict[str, Any]]) -> tuple[str, str | N
 def build_retrieval_profile(
     store: ContentIngestionStore,
     document_ids: list[str],
+    *,
+    reranker_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     first_document_id = document_ids[0] if document_ids else None
     chunk_set = store.get_chunk_set(first_document_id) if first_document_id else None
@@ -294,10 +459,7 @@ def build_retrieval_profile(
             "index_status": "READY" if embedding_index else "MISSING",
         },
         "bm25_tokenizer": lexical_index.get("tokenizer_used") if lexical_index else None,
-        "reranker_profile": {
-            "provider_alias": None,
-            "status": "NOT_APPLIED",
-        },
+        "reranker_profile": reranker_profile or build_reranker_profile([], configured_alias=None),
         "chunk_policy": chunk_set.get("chunk_policy") if chunk_set else "chunk_1000_100",
         "source_context_policy": {
             "include_neighbors_supported": False,
@@ -305,6 +467,26 @@ def build_retrieval_profile(
         "confidence_policy": {
             "low_confidence_threshold": LOW_CONFIDENCE_THRESHOLD,
         },
+    }
+
+
+def build_reranker_profile(
+    candidates: list[dict[str, Any]],
+    *,
+    configured_alias: str | None,
+) -> dict[str, Any]:
+    for candidate in candidates:
+        reranker = candidate.get("reranker")
+        if isinstance(reranker, dict):
+            return {
+                "provider_alias": reranker.get("provider_alias", configured_alias),
+                "model_revision": reranker.get("model_revision"),
+                "deployment_id": reranker.get("deployment_id"),
+                "status": "APPLIED",
+            }
+    return {
+        "provider_alias": configured_alias,
+        "status": "NOT_APPLIED",
     }
 
 
@@ -349,6 +531,9 @@ def build_source_summary(
 
 
 def build_score_summary(evidence_items: list[dict[str, Any]]) -> dict[str, Any]:
+    rerank_applied = any(
+        item["scores"].get("rerank_score") is not None for item in evidence_items
+    )
     if not evidence_items:
         return {
             "best_score": 0.0,
@@ -363,8 +548,12 @@ def build_score_summary(evidence_items: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "best_score": best,
         "score_spread": round(best - worst, 6),
-        "ranker_mix": "bm25_with_embedding_presence",
-        "rerank_state": "NOT_APPLIED",
+        "ranker_mix": (
+            "bm25_embedding_with_rerank"
+            if rerank_applied
+            else "bm25_with_embedding_presence"
+        ),
+        "rerank_state": "APPLIED" if rerank_applied else "NOT_APPLIED",
         "confidence_bucket": "READY" if best >= LOW_CONFIDENCE_THRESHOLD else "LOW_CONFIDENCE",
     }
 
@@ -531,6 +720,55 @@ def _retrieval_problem_response(
         retryable=exc.retryable,
         type_uri="https://nex-platform.local/problems/retrieval-context-failed",
     )
+
+
+def _rerank_result_index(result: Any, *, candidate_count: int) -> int:
+    if not isinstance(result, dict):
+        raise RetrievalError(
+            status_code=502,
+            error_code="cx.rerank_response_invalid",
+            detail="MO rerank result must be an object.",
+            retryable=True,
+        )
+    value = result.get("index")
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or value < 0
+        or value >= candidate_count
+    ):
+        raise RetrievalError(
+            status_code=502,
+            error_code="cx.rerank_response_invalid",
+            detail="MO rerank result index is out of range.",
+            retryable=True,
+        )
+    return value
+
+
+def _rerank_result_score(result: Any) -> float:
+    value = result.get("score") if isinstance(result, dict) else None
+    if not isinstance(value, int | float) or isinstance(value, bool):
+        raise RetrievalError(
+            status_code=502,
+            error_code="cx.rerank_response_invalid",
+            detail="MO rerank result score must be numeric.",
+            retryable=True,
+        )
+    return round(float(value), 6)
+
+
+def _safe_response_json(response: httpx.Response) -> dict[str, Any]:
+    try:
+        payload = response.json()
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _env_flag(name: str) -> bool:
+    value = os.getenv(name, "")
+    return value.lower() in {"1", "true", "yes", "on"}
 
 
 def _utc_now() -> str:

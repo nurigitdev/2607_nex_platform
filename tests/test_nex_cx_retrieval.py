@@ -22,8 +22,11 @@ from nex_cx.lexical_index import (
     register_lexical_index_routes,
 )
 from nex_cx.retrieval import (
+    DEFAULT_RERANKER_ALIAS,
     RetrievalError,
+    apply_rerank_scores,
     build_permission_snapshot,
+    build_reranker_profile,
     build_retrieval_context_package,
     build_score_summary,
     build_source_summary,
@@ -65,6 +68,39 @@ class FakeMoEmbeddingClient:
                 "output_tokens": 0,
                 "total_tokens": len(inputs),
             },
+        }
+
+
+class FakeMoRerankClient:
+    def __init__(self, results: list[dict[str, Any]] | None = None) -> None:
+        self.results = results or [{"index": 0, "score": 0.93}]
+        self.calls: list[dict[str, Any]] = []
+
+    def rerank_documents(
+        self,
+        query: str,
+        documents: list[str],
+        *,
+        alias: str,
+        top_n: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            {
+                "query": query,
+                "documents": documents,
+                "alias": alias,
+                "top_n": top_n,
+                "request_id": request_id,
+                "trace_id": trace_id,
+            }
+        )
+        return {
+            "alias": alias,
+            "model_revision": "mock-reranker-v1",
+            "deployment_id": "mock-reranker-local",
+            "results": self.results,
         }
 
 
@@ -232,6 +268,31 @@ def test_rank_retrieval_candidates_scores_matches(
     assert "trace" in candidates[0]["text"].lower()
 
 
+def test_rank_retrieval_candidates_applies_reranker_scores(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, document_id = build_store_with_indexes(tmp_path, monkeypatch)
+    rerank_client = FakeMoRerankClient()
+
+    candidates = rank_retrieval_candidates(
+        query_text="trace quality",
+        document_ids=[document_id],
+        store=store,
+        include_source_preview=True,
+        rerank_client=rerank_client,
+        reranker_alias=DEFAULT_RERANKER_ALIAS,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert candidates[0]["scores"]["rerank_score"] == 0.93
+    assert candidates[0]["scores"]["final_score"] == 0.93
+    assert candidates[0]["reranker"]["status"] == "APPLIED"
+    assert rerank_client.calls[0]["alias"] == DEFAULT_RERANKER_ALIAS
+    assert rerank_client.calls[0]["top_n"] == len(candidates)
+
+
 def test_rank_retrieval_candidates_can_use_preview_only(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -274,6 +335,39 @@ def test_rank_retrieval_candidates_skips_unindexed_documents() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "results",
+    [
+        ["bad"],
+        [{"index": True, "score": 0.5}],
+        [{"index": 0, "score": False}],
+    ],
+)
+def test_apply_rerank_scores_rejects_invalid_results(results: list[Any]) -> None:
+    candidate = {
+        "chunk_text": "candidate text",
+        "scores": {
+            "bm25_score": 1.0,
+            "hybrid_score": 1.0,
+            "rerank_score": None,
+            "final_score": 1.0,
+        },
+    }
+
+    with pytest.raises(RetrievalError) as exc:
+        apply_rerank_scores(
+            query_text="candidate",
+            candidates=[candidate],
+            rerank_client=FakeMoRerankClient(results),
+            reranker_alias=DEFAULT_RERANKER_ALIAS,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert exc.value.error_code == "cx.rerank_response_invalid"
+    assert exc.value.retryable is True
+
+
 def test_retrieval_status_handles_no_answer_low_confidence_and_ready() -> None:
     assert retrieval_status([]) == ("NO_ANSWER", "no_terms_matched")
     low_item = {"scores": {"final_score": 0.1}}
@@ -296,6 +390,37 @@ def test_build_score_summary_handles_empty_and_ready_items() -> None:
     assert ready["best_score"] == 0.9
     assert ready["score_spread"] == 0.4
     assert ready["confidence_bucket"] == "READY"
+
+
+def test_build_score_summary_reports_rerank_state() -> None:
+    summary = build_score_summary(
+        [
+            {"scores": {"final_score": 0.93, "rerank_score": 0.93}},
+            {"scores": {"final_score": 0.71, "rerank_score": None}},
+        ]
+    )
+
+    assert summary["ranker_mix"] == "bm25_embedding_with_rerank"
+    assert summary["rerank_state"] == "APPLIED"
+
+
+def test_build_reranker_profile_reports_applied_metadata() -> None:
+    profile = build_reranker_profile(
+        [
+            {
+                "reranker": {
+                    "provider_alias": DEFAULT_RERANKER_ALIAS,
+                    "model_revision": "mock-reranker-v1",
+                    "deployment_id": "mock-reranker-local",
+                    "status": "APPLIED",
+                }
+            }
+        ],
+        configured_alias=DEFAULT_RERANKER_ALIAS,
+    )
+
+    assert profile["status"] == "APPLIED"
+    assert profile["provider_alias"] == DEFAULT_RERANKER_ALIAS
 
 
 def test_build_permission_snapshot_defaults_non_dict_actor() -> None:
@@ -374,6 +499,30 @@ def test_build_retrieval_context_package_returns_ready(
     assert package["permission_snapshot"]["actor_id"] == "user-1"
     assert package["retrieval_profile"]["embedding_profile"]["index_status"] == "READY"
     assert len(package["evidence_items"]) <= 2
+
+
+def test_build_retrieval_context_package_records_reranker_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, document_id = build_store_with_indexes(tmp_path, monkeypatch)
+
+    package = build_retrieval_context_package(
+        {
+            "query_text": "trace evidence",
+            "purpose": "search",
+            "document_scope": {"document_ids": [document_id]},
+            "top_k": 1,
+        },
+        store=store,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        rerank_client=FakeMoRerankClient(),
+        reranker_alias=DEFAULT_RERANKER_ALIAS,
+    )
+
+    assert package["retrieval_profile"]["reranker_profile"]["status"] == "APPLIED"
+    assert package["score_summary"]["rerank_state"] == "APPLIED"
 
 
 def test_build_retrieval_context_package_returns_no_answer() -> None:

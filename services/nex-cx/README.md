@@ -87,5 +87,9 @@ Grounded generation validation:
   can inspect retry or repair intent by `cx_generation_id`.
 - CX-to-MO remote-mode regression stays in-process: tests configure MO as
   `NEX_MO_PROVIDER_MODE=live`, fake only the remote provider HTTP hop, and prove
-  that CX embedding/generation calls still use MO's service API without seeing
-  provider URLs or API keys.
+  that CX embedding, retrieval reranking, and generation calls still use MO's
+  service API without seeing provider URLs or API keys.
+- Retrieval reranking is disabled by default. Set `NEX_CX_RERANKER_ENABLED=1`
+  and `NEX_CX_RERANKER_ALIAS` or inject a rerank client to let CX retrieval call
+  MO `/api/v1/rerank`; otherwise retrieval packages keep `rerank_state` as
+  `NOT_APPLIED`.
