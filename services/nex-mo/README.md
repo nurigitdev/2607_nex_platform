@@ -68,10 +68,16 @@ Manual live preflight:
 
 ```bash
 ./.venv/bin/python scripts/smoke/check_local_live_provider_config.py --summary
+NEX_MO_PROTECTED_LIVE_PROFILE=dgx ./.venv/bin/python scripts/smoke/run_protected_dgx_live_profile.py --summary
+NEX_MO_PROTECTED_LIVE_PROFILE=dgx ./.venv/bin/python scripts/smoke/run_protected_dgx_live_profile.py --output reports/live/protected-dgx-live-profile.json --summary
 NEX_MO_PROVIDER_MODE=live ./.venv/bin/python scripts/smoke/check_local_live_provider_config.py --output reports/live/local-live-provider-config.json --summary
 NEX_MO_LIVE_PREFLIGHT=1 ./.venv/bin/python scripts/smoke/run_dgx_live_provider_preflight.py --summary
 NEX_MO_LIVE_PREFLIGHT=1 ./.venv/bin/python scripts/smoke/run_dgx_live_provider_preflight.py --evidence-output reports/live/dgx-provider-preflight.json --summary
 ```
+
+`run_protected_dgx_live_profile.py` is the preferred operator entrypoint. It
+sets the underlying local-live and live-preflight flags in an isolated
+environment copy, runs the local config guard first, and only then calls DGX.
 
 The config snapshot writer adds `local_live_provider_config_snapshot.v1`
 redaction metadata. The live preflight evidence writer adds

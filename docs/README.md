@@ -165,6 +165,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0059`](slices/0059_protected_live_smoke_evidence_writer.md) | `S6-009` Protected live smoke evidence writer. |
 | [`Slice 0060`](slices/0060_cx_mo_remote_mode_regression_bridge.md) | `S6-010` CX-to-MO remote-mode regression bridge. |
 | [`Slice 0061`](slices/0061_local_live_provider_config_guard.md) | `S6-011` Local live provider config guard and Qwen3 reranker 0.6B update. |
+| [`Slice 0062`](slices/0062_protected_dgx_live_preflight_profile.md) | `S6-012` Protected DGX live preflight execution profile. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
