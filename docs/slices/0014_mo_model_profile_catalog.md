@@ -16,10 +16,14 @@ Slice 0014 adds a model profile catalog to MO:
 - Optional `capability` query filters embedding, reranking, or generation.
 - Defaults match the PCX lessons that will carry into NeX:
   - Embedding: `qwen3_embedding_4b_bf16`
-  - Reranker: `qwen3_reranker_4b_bf16`
-  - Generation: `qwen3_6_27b_nvfp4`
+  - Reranker: `qwen3_reranker_0_6b_bf16`
+  - Generation: `qwen3_5_122b_a10b_nvfp4`
 - Model paths default under `/data/nex-platform/models`.
 - `NEX_MO_PROVIDER_MODE=mock` remains the default until DGX-spark is reachable.
+
+Slice 0061 updated the reranker default to the DGX-Spark runtime target
+`Qwen3-Reranker-0.6B`. The previous 4B reranker remains planning provenance,
+not the current selected default.
 
 The catalog is separate from provider routes. Routes answer "which alias can
 serve a request"; profiles answer "which model/runtime profile is selected for

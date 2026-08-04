@@ -58,7 +58,7 @@ def test_dgx_preflight_passes_when_expected_models_are_observed() -> None:
         "input": ["nex live provider preflight"],
     }
     assert calls[1]["json"] == {
-        "model": "Qwen3-reranker-4B",
+        "model": "Qwen3-Reranker-0.6B",
         "query": "nex live provider preflight",
         "documents": ["NeX live provider preflight document."],
         "top_n": 1,

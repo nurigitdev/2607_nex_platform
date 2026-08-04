@@ -18,7 +18,7 @@ default regression dependency:
   - `qwen3_6_27b_nvfp4` for `Qwen3.6-27B-NVFP4`.
   - `k_ai_generation_candidate` for domestic K-AI evaluation.
 - Embedding and reranker defaults remain `Qwen3-embedding-4B` BF16 and
-  `Qwen3-reranker-4B` BF16.
+  `Qwen3-Reranker-0.6B` BF16.
 - `NEX_MO_GENERATION_PROFILE` selects exactly one generation profile, including
   operator-defined custom profiles.
 - `model_profile.v1` supports candidate role, selection reason, live health env
@@ -29,6 +29,9 @@ default regression dependency:
 
 The default quality gate remains mock-first. Live DGX evidence should be run
 manually or as a protected release/nightly check.
+
+Slice 0061 aligned the reranker expected model with the current DGX-Spark
+remote provider runtime.
 
 ## Files
 

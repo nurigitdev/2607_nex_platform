@@ -58,12 +58,13 @@ def test_model_profile_catalog_uses_qwen_defaults() -> None:
 
     assert [profile.profile_name for profile in profiles] == [
         "qwen3_embedding_4b_bf16",
-        "qwen3_reranker_4b_bf16",
+        "qwen3_reranker_0_6b_bf16",
         "qwen3_5_122b_a10b_nvfp4",
         "qwen3_6_27b_nvfp4",
         "k_ai_generation_candidate",
     ]
     assert profiles[0].model_path == "/data/nex-platform/models/qwen3-embedding-4b-bf16"
+    assert profiles[1].model_name == "Qwen3-Reranker-0.6B"
     assert profiles[1].precision == "BF16"
     assert profiles[2].runtime_engine == "vllm"
     assert profiles[2].model_name == "Qwen3.5-122B-A10B-NVFP4"
@@ -96,7 +97,7 @@ def test_model_profile_catalog_accepts_env_overrides() -> None:
     assert profiles[0].profile_name == "embedding_a"
     assert profiles[0].model_path == "/override/embed"
     assert profiles[0].runtime_engine == "remote_http"
-    assert profiles[1].model_path == "/models/qwen3-reranker-4b-bf16"
+    assert profiles[1].model_path == "/models/qwen3-reranker-0.6b-bf16"
     assert profiles[2].model_path == "/models/qwen3.5-122b-a10b-nvfp4"
     assert profiles[2].selected is False
     assert profiles[3].model_path == "/override/generation-selected"

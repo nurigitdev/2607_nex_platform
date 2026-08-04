@@ -57,6 +57,7 @@ def test_remote_provider_configs_use_current_env_contract() -> None:
         "rerank",
         "openai_models",
     ]
+    assert configs[1].expected_models == ("Qwen3-Reranker-0.6B",)
     assert configs[2].url == "http://dgx.local:12000/v1/models"
     assert configs[2].headers()["Authorization"] == "Bearer secret"
     assert configs[2].timeout_seconds == 8.5

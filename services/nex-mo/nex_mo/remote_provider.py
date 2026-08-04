@@ -301,7 +301,7 @@ def build_remote_provider_preflight_configs(
             request_shape="rerank",
             expected_models=expected_models_from_env(
                 env.get("NEX_MO_LIVE_EXPECTED_RERANKER_MODELS"),
-                ("Qwen3-reranker-4B",),
+                ("Qwen3-Reranker-0.6B",),
             ),
             api_key_env="NEX_MO_REMOTE_RERANKER_API_KEY",
             api_key=_empty_to_none(env.get("NEX_MO_REMOTE_RERANKER_API_KEY")),

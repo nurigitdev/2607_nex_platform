@@ -8,7 +8,8 @@ Model profile defaults:
 
 - Model root: `NEX_MO_MODEL_ROOT` or `/data/nex-platform/models`
 - Embedding: `qwen3_embedding_4b_bf16` at `qwen3-embedding-4b-bf16`
-- Reranker: `qwen3_reranker_4b_bf16` at `qwen3-reranker-4b-bf16`
+- Reranker: `qwen3_reranker_0_6b_bf16` at
+  `qwen3-reranker-0.6b-bf16`
 - Generation primary: `qwen3_5_122b_a10b_nvfp4` at
   `qwen3.5-122b-a10b-nvfp4`
 - Generation candidate: `qwen3_6_27b_nvfp4` at `qwen3.6-27b-nvfp4`
@@ -17,6 +18,9 @@ Model profile defaults:
 - Provider mode: `NEX_MO_PROVIDER_MODE=mock` until DGX-spark is reachable
 - Live DGX preflight stays opt-in with `NEX_MO_LIVE_PREFLIGHT=1`; it is not
   part of the default regression gate.
+- Local live config guard can be run without network calls. It verifies that
+  selected execution models and live preflight expected models agree, including
+  the current DGX-Spark reranker target `Qwen3-Reranker-0.6B`.
 - Live preflight request shapes:
   - Embedding: `POST` to `NEX_MO_REMOTE_EMBEDDING_URL` with OpenAI-compatible
     `model` and `input`.
@@ -63,13 +67,17 @@ Current endpoints:
 Manual live preflight:
 
 ```bash
+./.venv/bin/python scripts/smoke/check_local_live_provider_config.py --summary
+NEX_MO_PROVIDER_MODE=live ./.venv/bin/python scripts/smoke/check_local_live_provider_config.py --output reports/live/local-live-provider-config.json --summary
 NEX_MO_LIVE_PREFLIGHT=1 ./.venv/bin/python scripts/smoke/run_dgx_live_provider_preflight.py --summary
 NEX_MO_LIVE_PREFLIGHT=1 ./.venv/bin/python scripts/smoke/run_dgx_live_provider_preflight.py --evidence-output reports/live/dgx-provider-preflight.json --summary
 ```
 
-The evidence writer adds `dgx_live_provider_preflight_evidence.v1` redaction
-metadata and refuses to write if configured endpoint or API-key environment
-values appear in the serialized evidence.
+The config snapshot writer adds `local_live_provider_config_snapshot.v1`
+redaction metadata. The live preflight evidence writer adds
+`dgx_live_provider_preflight_evidence.v1` redaction metadata. Both refuse to
+write if configured endpoint or API-key environment values appear in the
+serialized output.
 
 The older `NEX_MO_LIVE_EMBEDDING_HEALTH_URL`,
 `NEX_MO_LIVE_RERANKER_HEALTH_URL`, and `NEX_MO_LIVE_VLLM_MODELS_URL` names
