@@ -22,14 +22,14 @@ Model profile defaults:
   selected execution models and live preflight expected models agree, including
   the current DGX-Spark reranker target `Qwen3-Reranker-0.6B`.
 - Live preflight request shapes:
-  - Canonical nex-platform target providers should implement
-    `contracts/openapi/nex-compatible-providers.openapi.yaml`.
+  - Current DGX embedding/reranker providers are direct vLLM pooling servers.
   - Embedding: `POST` to `NEX_MO_REMOTE_EMBEDDING_URL`. The generic shape is
-    OpenAI-compatible `model` and `input`; the protected DGX profile uses
-    `nex_pcx_embeddings_v1` with profile/model-key/texts/dimension fields.
+    OpenAI-compatible `model` and `input`.
   - Reranker: `POST` to `NEX_MO_REMOTE_RERANKER_URL`. The generic shape uses
-    `model`, `query`, `documents`, and `top_n`; the protected DGX profile uses
-    `nex_pcx_rerank_v1` with query/candidate metadata fields.
+    `model`, `query`, `documents`, and `top_n`; MO normalizes vLLM native
+    `relevance_score` results when present.
+  - The protected DGX-PCX profile remains available for legacy providers with
+    `nex_pcx_embeddings_v1` and `nex_pcx_rerank_v1`.
   - vLLM model catalog: `GET` to `NEX_MO_VLLM_MODELS_URL`, or
     `NEX_MO_VLLM_BASE_URL` plus `/v1/models`.
 - Live embedding execution uses the same `/api/v1/embeddings` MO API that CX
@@ -55,10 +55,9 @@ Model profile defaults:
   The snapshot is in-memory, process-local, and read-only. It reports configured
   capability rows plus success/failure counters and last safe failure metadata;
   it does not expose provider URLs, API keys, or raw provider payloads.
-- Compatible provider `/healthz` responses must expose requested and loaded
-  parameter dtype. BF16-required models must report
-  `requested_torch_dtype=bfloat16`, `loaded_parameter_dtype=bfloat16`, and
-  `dtype_match=true`; FP32-loaded BF16 models are contract failures.
+- Direct vLLM HTTP APIs do not expose loaded parameter dtype. BF16 evidence for
+  embedding/reranker providers must be collected by inspecting vLLM launch args
+  or logs and confirming `--dtype bfloat16`.
 
 Current endpoints:
 
@@ -82,6 +81,8 @@ NEX_MO_PROTECTED_LIVE_PROFILE=dgx ./.venv/bin/python scripts/smoke/run_protected
 NEX_MO_PROVIDER_MODE=live ./.venv/bin/python scripts/smoke/check_local_live_provider_config.py --output reports/live/local-live-provider-config.json --summary
 NEX_MO_LIVE_PREFLIGHT=1 ./.venv/bin/python scripts/smoke/run_dgx_live_provider_preflight.py --summary
 NEX_MO_LIVE_PREFLIGHT=1 ./.venv/bin/python scripts/smoke/run_dgx_live_provider_preflight.py --evidence-output reports/live/dgx-provider-preflight.json --summary
+NEX_COMPAT_LIVE_SMOKE=1 ./.venv/bin/python scripts/smoke/run_compatible_provider_live_smoke.py --summary
+NEX_COMPAT_LIVE_SMOKE=1 ./.venv/bin/python scripts/smoke/run_compatible_provider_live_smoke.py --evidence-output reports/live/compatible-vllm-provider-smoke.json --summary
 ```
 
 `run_protected_dgx_live_profile.py` is the preferred operator entrypoint. It
@@ -99,7 +100,9 @@ The older `NEX_MO_LIVE_EMBEDDING_HEALTH_URL`,
 remain supported as deprecated fallback aliases. Prefer
 `NEX_MO_REMOTE_EMBEDDING_URL`, `NEX_MO_REMOTE_RERANKER_URL`,
 `NEX_MO_VLLM_BASE_URL`, `NEX_MO_VLLM_MODELS_URL`, and `NEX_MO_VLLM_API_KEY` in
-`.env.local` or the shell before running live checks. Current DGX-PCX providers
-should use `NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE=nex_pcx_embeddings_v1` and
-`NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE=nex_pcx_rerank_v1`. Do not commit real
-API keys.
+`.env.local` or the shell before running live checks. Current direct vLLM
+embedding/reranker providers should use
+`NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE=openai_embeddings` and
+`NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE=rerank`. Legacy DGX-PCX providers should
+use `nex_pcx_embeddings_v1` and `nex_pcx_rerank_v1`. Do not commit real API
+keys.
