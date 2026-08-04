@@ -108,3 +108,8 @@ Grounded generation validation:
   and `NEX_CX_RERANKER_ALIAS` or inject a rerank client to let CX retrieval call
   MO `/api/v1/rerank`; otherwise retrieval packages keep `rerank_state` as
   `NOT_APPLIED`.
+- Retrieval quality policy v1 is recorded in each retrieval package. Defaults
+  keep the current scoring behavior: BM25 weight `0.85`, embedding-presence
+  weight `0.15`, embedding-presence score `0.5`, low-confidence threshold
+  `0.2`, and rerank candidate limit `50`. Tests and future tenant policies can
+  pass bounded overrides through `retrieval_policy`.

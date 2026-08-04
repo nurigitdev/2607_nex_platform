@@ -177,6 +177,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0071`](slices/0071_cx_real_file_upload_boundary_hardening.md) | `S7-001` CX real file upload boundary hardening. |
 | [`Slice 0072`](slices/0072_cx_text_extraction_adapter_foundation.md) | `S7-002` CX text extraction adapter foundation. |
 | [`Slice 0073`](slices/0073_cx_document_processing_pipeline_job.md) | `S7-003` CX document processing pipeline job. |
+| [`Slice 0074`](slices/0074_retrieval_quality_policy_v1.md) | `S7-004` Retrieval quality policy v1. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

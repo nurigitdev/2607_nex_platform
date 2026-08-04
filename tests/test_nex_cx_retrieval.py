@@ -23,11 +23,14 @@ from nex_cx.lexical_index import (
 )
 from nex_cx.retrieval import (
     DEFAULT_RERANKER_ALIAS,
+    DEFAULT_RETRIEVAL_QUALITY_POLICY,
     RetrievalError,
+    RetrievalQualityPolicy,
     apply_rerank_scores,
     build_permission_snapshot,
     build_reranker_profile,
     build_retrieval_context_package,
+    build_retrieval_quality_policy,
     build_score_summary,
     build_source_summary,
     build_warnings,
@@ -36,6 +39,7 @@ from nex_cx.retrieval import (
     package_hash_for,
     rank_retrieval_candidates,
     register_retrieval_routes,
+    retrieval_quality_policy_snapshot,
     retrieval_status,
     terms_for_chunk,
 )
@@ -293,6 +297,28 @@ def test_rank_retrieval_candidates_applies_reranker_scores(
     assert rerank_client.calls[0]["top_n"] == len(candidates)
 
 
+def test_rank_retrieval_candidates_honors_quality_policy_weights(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, document_id = build_store_with_indexes(tmp_path, monkeypatch)
+
+    candidates = rank_retrieval_candidates(
+        query_text="trace quality",
+        document_ids=[document_id],
+        store=store,
+        include_source_preview=True,
+        quality_policy=RetrievalQualityPolicy(
+            bm25_weight=0.5,
+            embedding_presence_weight=0.5,
+            embedding_presence_score=1.0,
+        ),
+    )
+
+    assert candidates[0]["scores"]["final_score"] == 1.0
+    assert candidates[0]["scores"]["vector_score"] == 1.0
+
+
 def test_rank_retrieval_candidates_can_use_preview_only(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -368,6 +394,88 @@ def test_apply_rerank_scores_rejects_invalid_results(results: list[Any]) -> None
     assert exc.value.retryable is True
 
 
+def test_apply_rerank_scores_limits_candidate_window() -> None:
+    candidates = [
+        {
+            "chunk_text": f"candidate {index}",
+            "scores": {
+                "bm25_score": 1.0,
+                "hybrid_score": 1.0,
+                "rerank_score": None,
+                "final_score": 1.0,
+            },
+        }
+        for index in range(4)
+    ]
+    rerank_client = FakeMoRerankClient(results=[{"index": 1, "score": 0.99}])
+
+    reranked = apply_rerank_scores(
+        query_text="candidate",
+        candidates=candidates,
+        rerank_client=rerank_client,
+        reranker_alias=DEFAULT_RERANKER_ALIAS,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        quality_policy=RetrievalQualityPolicy(rerank_candidate_limit=2),
+    )
+
+    assert rerank_client.calls[0]["documents"] == ["candidate 0", "candidate 1"]
+    assert rerank_client.calls[0]["top_n"] == 2
+    assert reranked[0]["chunk_text"] == "candidate 1"
+    assert reranked[0]["scores"]["final_score"] == 0.99
+    assert reranked[-1]["chunk_text"] == "candidate 3"
+
+
+def test_build_retrieval_quality_policy_defaults_and_snapshot() -> None:
+    assert build_retrieval_quality_policy({}) == DEFAULT_RETRIEVAL_QUALITY_POLICY
+    assert build_retrieval_quality_policy({"retrieval_policy": None}) == (
+        DEFAULT_RETRIEVAL_QUALITY_POLICY
+    )
+
+    policy = build_retrieval_quality_policy(
+        {
+            "retrieval_policy": {
+                "bm25_weight": 0.7,
+                "embedding_presence_weight": 0.2,
+                "embedding_presence_score": 0.8,
+                "low_confidence_threshold": 0.4,
+                "rerank_candidate_limit": 7,
+            }
+        }
+    )
+    snapshot = retrieval_quality_policy_snapshot(policy)
+
+    assert snapshot["policy_id"] == "retrieval_quality_v1"
+    assert snapshot["bm25_weight"] == 0.7
+    assert snapshot["embedding_presence_weight"] == 0.2
+    assert snapshot["embedding_presence_score"] == 0.8
+    assert snapshot["low_confidence_threshold"] == 0.4
+    assert snapshot["rerank_candidate_limit"] == 7
+
+
+@pytest.mark.parametrize(
+    "retrieval_policy",
+    [
+        "bad",
+        {"bm25_weight": True},
+        {"embedding_presence_weight": -0.1},
+        {"low_confidence_threshold": 1.1},
+        {"bm25_weight": 0.8, "embedding_presence_weight": 0.3},
+        {"bm25_weight": 0.0, "embedding_presence_weight": 0.0},
+        {"rerank_candidate_limit": 0},
+        {"rerank_candidate_limit": 101},
+        {"rerank_candidate_limit": 1.5},
+    ],
+)
+def test_build_retrieval_quality_policy_rejects_invalid_policy(
+    retrieval_policy: object,
+) -> None:
+    with pytest.raises(RetrievalError) as exc:
+        build_retrieval_quality_policy({"retrieval_policy": retrieval_policy})
+
+    assert exc.value.error_code == "cx.retrieval_policy_invalid"
+
+
 def test_retrieval_status_handles_no_answer_low_confidence_and_ready() -> None:
     assert retrieval_status([]) == ("NO_ANSWER", "no_terms_matched")
     low_item = {"scores": {"final_score": 0.1}}
@@ -375,6 +483,15 @@ def test_retrieval_status_handles_no_answer_low_confidence_and_ready() -> None:
 
     assert retrieval_status([low_item]) == ("LOW_CONFIDENCE", "best_score_below_threshold")
     assert retrieval_status([ready_item]) == ("READY", None)
+
+
+def test_retrieval_status_uses_quality_policy_threshold() -> None:
+    item = {"scores": {"final_score": 0.9}}
+
+    assert retrieval_status(
+        [item],
+        quality_policy=RetrievalQualityPolicy(low_confidence_threshold=0.95),
+    ) == ("LOW_CONFIDENCE", "best_score_below_threshold")
 
 
 def test_build_score_summary_handles_empty_and_ready_items() -> None:
@@ -387,6 +504,7 @@ def test_build_score_summary_handles_empty_and_ready_items() -> None:
     )
 
     assert empty["confidence_bucket"] == "NO_ANSWER"
+    assert empty["quality_policy_id"] == DEFAULT_RETRIEVAL_QUALITY_POLICY.policy_id
     assert ready["best_score"] == 0.9
     assert ready["score_spread"] == 0.4
     assert ready["confidence_bucket"] == "READY"
@@ -402,6 +520,17 @@ def test_build_score_summary_reports_rerank_state() -> None:
 
     assert summary["ranker_mix"] == "bm25_embedding_with_rerank"
     assert summary["rerank_state"] == "APPLIED"
+
+
+def test_build_score_summary_uses_quality_policy_metadata() -> None:
+    summary = build_score_summary(
+        [{"scores": {"final_score": 0.3, "rerank_score": None}}],
+        quality_policy=RetrievalQualityPolicy(low_confidence_threshold=0.4),
+    )
+
+    assert summary["confidence_bucket"] == "LOW_CONFIDENCE"
+    assert summary["ranker_mix"] == "bm25_with_embedding_presence"
+    assert summary["low_confidence_threshold"] == 0.4
 
 
 def test_build_reranker_profile_reports_applied_metadata() -> None:
@@ -475,6 +604,27 @@ def test_package_hash_is_stable() -> None:
     assert package_hash_for(**kwargs) == package_hash_for(**kwargs)
 
 
+def test_package_hash_changes_when_quality_policy_changes() -> None:
+    kwargs = {
+        "query_text": "trace",
+        "purpose": "search",
+        "document_ids": ["doc-1"],
+        "evidence_items": [
+            {
+                "evidence_id": "ev-1",
+                "chunk_id": "chunk-1",
+                "scores": {"final_score": 0.5},
+                "matched_terms": ["trace"],
+            }
+        ],
+    }
+
+    assert package_hash_for(**kwargs) != package_hash_for(
+        **kwargs,
+        quality_policy=RetrievalQualityPolicy(low_confidence_threshold=0.9),
+    )
+
+
 def test_build_retrieval_context_package_returns_ready(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -498,7 +648,37 @@ def test_build_retrieval_context_package_returns_ready(
     assert package["status"] == "READY"
     assert package["permission_snapshot"]["actor_id"] == "user-1"
     assert package["retrieval_profile"]["embedding_profile"]["index_status"] == "READY"
+    assert package["retrieval_profile"]["quality_policy"]["policy_id"] == (
+        "retrieval_quality_v1"
+    )
+    assert package["score_summary"]["quality_policy_id"] == "retrieval_quality_v1"
     assert len(package["evidence_items"]) <= 2
+
+
+def test_build_retrieval_context_package_applies_quality_policy_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, document_id = build_store_with_indexes(tmp_path, monkeypatch)
+
+    package = build_retrieval_context_package(
+        {
+            "query_text": "trace evidence",
+            "purpose": "search",
+            "document_scope": {"document_ids": [document_id]},
+            "retrieval_policy": {
+                "low_confidence_threshold": 0.95,
+                "rerank_candidate_limit": 3,
+            },
+        },
+        store=store,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert package["status"] == "LOW_CONFIDENCE"
+    assert package["score_summary"]["low_confidence_threshold"] == 0.95
+    assert package["retrieval_profile"]["quality_policy"]["rerank_candidate_limit"] == 3
 
 
 def test_build_retrieval_context_package_records_reranker_profile(

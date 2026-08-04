@@ -27,6 +27,7 @@ from nex_cx.lexical_index import korean_mixed_v1_tokens
 DEFAULT_TOP_K = 5
 MAX_TOP_K = 20
 LOW_CONFIDENCE_THRESHOLD = 0.2
+DEFAULT_RERANK_CANDIDATE_LIMIT = 50
 DEFAULT_RERANKER_ALIAS = "mock-reranker-default"
 ALLOWED_PURPOSES = {
     "search",
@@ -43,6 +44,22 @@ class RetrievalError(Exception):
     error_code: str
     detail: str
     retryable: bool = False
+
+
+@dataclass(frozen=True)
+class RetrievalQualityPolicy:
+    policy_id: str = "retrieval_quality_v1"
+    bm25_weight: float = 0.85
+    embedding_presence_weight: float = 0.15
+    embedding_presence_score: float = 0.5
+    low_confidence_threshold: float = LOW_CONFIDENCE_THRESHOLD
+    rerank_candidate_limit: int = DEFAULT_RERANK_CANDIDATE_LIMIT
+    ranker_mix: str = "bm25_with_embedding_presence"
+    reranked_ranker_mix: str = "bm25_embedding_with_rerank"
+    neighbor_policy: str = "not_loaded_in_slice_0017"
+
+
+DEFAULT_RETRIEVAL_QUALITY_POLICY = RetrievalQualityPolicy()
 
 
 class MoRerankClient(Protocol):
@@ -185,6 +202,7 @@ def build_retrieval_context_package(
     include_source_preview = _bool_field(payload, "include_source_preview", True)
     include_neighbors = _bool_field(payload, "include_neighbors", False)
     purpose = _purpose_field(payload)
+    quality_policy = build_retrieval_quality_policy(payload)
     actor_claims_ref = payload.get("actor_claims_ref", {"actor_type": "service", "actor_id": "local_mock"})
     document_ids = document_ids_from_scope(payload.get("document_scope"), store)
     candidates = rank_retrieval_candidates(
@@ -196,21 +214,24 @@ def build_retrieval_context_package(
         reranker_alias=reranker_alias,
         request_id=request_id,
         trace_id=trace_id,
+        quality_policy=quality_policy,
     )
     evidence_items = [
         build_evidence_item(
             candidate,
             rank=index + 1,
             include_neighbors=include_neighbors,
+            quality_policy=quality_policy,
         )
         for index, candidate in enumerate(candidates[:top_k])
     ]
-    status, no_answer_reason = retrieval_status(evidence_items)
+    status, no_answer_reason = retrieval_status(evidence_items, quality_policy=quality_policy)
     package_hash = package_hash_for(
         query_text=query_text,
         purpose=purpose,
         document_ids=document_ids,
         evidence_items=evidence_items,
+        quality_policy=quality_policy,
     )
     now = _utc_now()
     package_id = str(uuid5(NAMESPACE_URL, f"cx-retrieval:{package_hash}"))
@@ -230,6 +251,7 @@ def build_retrieval_context_package(
                 candidates,
                 configured_alias=reranker_alias if rerank_client is not None else None,
             ),
+            quality_policy=quality_policy,
         ),
         "permission_snapshot": build_permission_snapshot(
             actor_claims_ref=actor_claims_ref,
@@ -238,7 +260,7 @@ def build_retrieval_context_package(
         ),
         "evidence_items": evidence_items,
         "source_summary": build_source_summary(document_ids, store),
-        "score_summary": build_score_summary(evidence_items),
+        "score_summary": build_score_summary(evidence_items, quality_policy=quality_policy),
         "no_answer_reason": no_answer_reason,
         "warnings": build_warnings(document_ids, store),
         "created_at": now,
@@ -257,6 +279,7 @@ def rank_retrieval_candidates(
     reranker_alias: str = DEFAULT_RERANKER_ALIAS,
     request_id: str = "",
     trace_id: str = "",
+    quality_policy: RetrievalQualityPolicy = DEFAULT_RETRIEVAL_QUALITY_POLICY,
 ) -> list[dict[str, Any]]:
     query_terms = set(korean_mixed_v1_tokens(query_text))
     if not query_terms:
@@ -268,14 +291,19 @@ def rank_retrieval_candidates(
         lexical_index = store.get_lexical_index(document_id)
         if chunk_set is None or lexical_index is None:
             continue
+        embedding_index = store.get_embedding_index(document_id)
         counts_by_chunk = matched_counts_by_chunk(lexical_index, query_terms)
         for chunk in chunk_set["chunks"]:
             matched_count = counts_by_chunk.get(chunk["chunk_id"], 0)
             if matched_count == 0:
                 continue
             bm25_score = min(1.0, matched_count / max(1, len(query_terms)))
-            vector_score = 0.5 if store.get_embedding_index(document_id) else 0.0
-            hybrid_score = min(1.0, bm25_score * 0.85 + vector_score * 0.15)
+            vector_score = quality_policy.embedding_presence_score if embedding_index else 0.0
+            hybrid_score = min(
+                1.0,
+                bm25_score * quality_policy.bm25_weight
+                + vector_score * quality_policy.embedding_presence_weight,
+            )
             chunk_text = store.get_chunk_text(chunk["chunk_id"])
             candidates.append(
                 {
@@ -311,6 +339,7 @@ def rank_retrieval_candidates(
         reranker_alias=reranker_alias,
         request_id=request_id,
         trace_id=trace_id,
+        quality_policy=quality_policy,
     )
 
 
@@ -322,8 +351,10 @@ def apply_rerank_scores(
     reranker_alias: str,
     request_id: str,
     trace_id: str,
+    quality_policy: RetrievalQualityPolicy = DEFAULT_RETRIEVAL_QUALITY_POLICY,
 ) -> list[dict[str, Any]]:
-    documents = [candidate["chunk_text"] for candidate in candidates]
+    rerank_candidates = candidates[: quality_policy.rerank_candidate_limit]
+    documents = [candidate["chunk_text"] for candidate in rerank_candidates]
     response = rerank_client.rerank_documents(
         query_text,
         documents,
@@ -344,12 +375,12 @@ def apply_rerank_scores(
     seen_indexes: set[int] = set()
     reranked: list[dict[str, Any]] = []
     for result in results:
-        index = _rerank_result_index(result, candidate_count=len(candidates))
+        index = _rerank_result_index(result, candidate_count=len(rerank_candidates))
         if index in seen_indexes:
             continue
         seen_indexes.add(index)
         score = _rerank_result_score(result)
-        candidate = dict(candidates[index])
+        candidate = dict(rerank_candidates[index])
         candidate["scores"] = {
             **candidate["scores"],
             "rerank_score": score,
@@ -363,9 +394,10 @@ def apply_rerank_scores(
         }
         reranked.append(candidate)
 
-    for index, candidate in enumerate(candidates):
+    for index, candidate in enumerate(rerank_candidates):
         if index not in seen_indexes:
             reranked.append(candidate)
+    reranked.extend(candidates[len(rerank_candidates) :])
     return reranked
 
 
@@ -399,6 +431,7 @@ def build_evidence_item(
     *,
     rank: int,
     include_neighbors: bool,
+    quality_policy: RetrievalQualityPolicy = DEFAULT_RETRIEVAL_QUALITY_POLICY,
 ) -> dict[str, Any]:
     document_id = candidate["document_id"]
     chunk = candidate["chunk"]
@@ -428,15 +461,19 @@ def build_evidence_item(
         "quality_flags": [],
     }
     if include_neighbors:
-        item["neighbor_context"] = [{"policy": "not_loaded_in_slice_0017"}]
+        item["neighbor_context"] = [{"policy": quality_policy.neighbor_policy}]
     return item
 
 
-def retrieval_status(evidence_items: list[dict[str, Any]]) -> tuple[str, str | None]:
+def retrieval_status(
+    evidence_items: list[dict[str, Any]],
+    *,
+    quality_policy: RetrievalQualityPolicy = DEFAULT_RETRIEVAL_QUALITY_POLICY,
+) -> tuple[str, str | None]:
     if not evidence_items:
         return "NO_ANSWER", "no_terms_matched"
     best_score = evidence_items[0]["scores"]["final_score"]
-    if best_score < LOW_CONFIDENCE_THRESHOLD:
+    if best_score < quality_policy.low_confidence_threshold:
         return "LOW_CONFIDENCE", "best_score_below_threshold"
     return "READY", None
 
@@ -446,6 +483,7 @@ def build_retrieval_profile(
     document_ids: list[str],
     *,
     reranker_profile: dict[str, Any] | None = None,
+    quality_policy: RetrievalQualityPolicy = DEFAULT_RETRIEVAL_QUALITY_POLICY,
 ) -> dict[str, Any]:
     first_document_id = document_ids[0] if document_ids else None
     chunk_set = store.get_chunk_set(first_document_id) if first_document_id else None
@@ -463,10 +501,12 @@ def build_retrieval_profile(
         "chunk_policy": chunk_set.get("chunk_policy") if chunk_set else "chunk_1000_100",
         "source_context_policy": {
             "include_neighbors_supported": False,
+            "neighbor_policy": quality_policy.neighbor_policy,
         },
         "confidence_policy": {
-            "low_confidence_threshold": LOW_CONFIDENCE_THRESHOLD,
+            "low_confidence_threshold": quality_policy.low_confidence_threshold,
         },
+        "quality_policy": retrieval_quality_policy_snapshot(quality_policy),
     }
 
 
@@ -530,7 +570,88 @@ def build_source_summary(
     }
 
 
-def build_score_summary(evidence_items: list[dict[str, Any]]) -> dict[str, Any]:
+def build_retrieval_quality_policy(
+    payload: dict[str, Any] | None = None,
+) -> RetrievalQualityPolicy:
+    if payload is None or "retrieval_policy" not in payload:
+        return DEFAULT_RETRIEVAL_QUALITY_POLICY
+    policy_payload = payload.get("retrieval_policy")
+    if policy_payload is None:
+        return DEFAULT_RETRIEVAL_QUALITY_POLICY
+    if not isinstance(policy_payload, dict):
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.retrieval_policy_invalid",
+            detail="retrieval_policy must be an object when provided.",
+        )
+
+    bm25_weight = _optional_policy_float(
+        policy_payload,
+        "bm25_weight",
+        DEFAULT_RETRIEVAL_QUALITY_POLICY.bm25_weight,
+    )
+    embedding_presence_weight = _optional_policy_float(
+        policy_payload,
+        "embedding_presence_weight",
+        DEFAULT_RETRIEVAL_QUALITY_POLICY.embedding_presence_weight,
+    )
+    if bm25_weight + embedding_presence_weight <= 0.0:
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.retrieval_policy_invalid",
+            detail="retrieval_policy score weights must have a positive sum.",
+        )
+    if bm25_weight + embedding_presence_weight > 1.0:
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.retrieval_policy_invalid",
+            detail="retrieval_policy score weights must not exceed 1.0 in total.",
+        )
+
+    return RetrievalQualityPolicy(
+        bm25_weight=bm25_weight,
+        embedding_presence_weight=embedding_presence_weight,
+        embedding_presence_score=_optional_policy_float(
+            policy_payload,
+            "embedding_presence_score",
+            DEFAULT_RETRIEVAL_QUALITY_POLICY.embedding_presence_score,
+        ),
+        low_confidence_threshold=_optional_policy_float(
+            policy_payload,
+            "low_confidence_threshold",
+            DEFAULT_RETRIEVAL_QUALITY_POLICY.low_confidence_threshold,
+        ),
+        rerank_candidate_limit=_optional_policy_int(
+            policy_payload,
+            "rerank_candidate_limit",
+            DEFAULT_RETRIEVAL_QUALITY_POLICY.rerank_candidate_limit,
+            minimum=1,
+            maximum=100,
+        ),
+    )
+
+
+def retrieval_quality_policy_snapshot(
+    quality_policy: RetrievalQualityPolicy = DEFAULT_RETRIEVAL_QUALITY_POLICY,
+) -> dict[str, Any]:
+    return {
+        "policy_id": quality_policy.policy_id,
+        "bm25_weight": quality_policy.bm25_weight,
+        "embedding_presence_weight": quality_policy.embedding_presence_weight,
+        "embedding_presence_score": quality_policy.embedding_presence_score,
+        "low_confidence_threshold": quality_policy.low_confidence_threshold,
+        "rerank_candidate_limit": quality_policy.rerank_candidate_limit,
+        "ranker_mix": quality_policy.ranker_mix,
+        "reranked_ranker_mix": quality_policy.reranked_ranker_mix,
+        "neighbor_policy": quality_policy.neighbor_policy,
+    }
+
+
+def build_score_summary(
+    evidence_items: list[dict[str, Any]],
+    *,
+    quality_policy: RetrievalQualityPolicy = DEFAULT_RETRIEVAL_QUALITY_POLICY,
+) -> dict[str, Any]:
     rerank_applied = any(
         item["scores"].get("rerank_score") is not None for item in evidence_items
     )
@@ -538,9 +659,11 @@ def build_score_summary(evidence_items: list[dict[str, Any]]) -> dict[str, Any]:
         return {
             "best_score": 0.0,
             "score_spread": 0.0,
-            "ranker_mix": "bm25_with_embedding_presence",
+            "ranker_mix": quality_policy.ranker_mix,
             "rerank_state": "NOT_APPLIED",
             "confidence_bucket": "NO_ANSWER",
+            "quality_policy_id": quality_policy.policy_id,
+            "low_confidence_threshold": quality_policy.low_confidence_threshold,
         }
     scores = [item["scores"]["final_score"] for item in evidence_items]
     best = max(scores)
@@ -549,12 +672,18 @@ def build_score_summary(evidence_items: list[dict[str, Any]]) -> dict[str, Any]:
         "best_score": best,
         "score_spread": round(best - worst, 6),
         "ranker_mix": (
-            "bm25_embedding_with_rerank"
+            quality_policy.reranked_ranker_mix
             if rerank_applied
-            else "bm25_with_embedding_presence"
+            else quality_policy.ranker_mix
         ),
         "rerank_state": "APPLIED" if rerank_applied else "NOT_APPLIED",
-        "confidence_bucket": "READY" if best >= LOW_CONFIDENCE_THRESHOLD else "LOW_CONFIDENCE",
+        "confidence_bucket": (
+            "READY"
+            if best >= quality_policy.low_confidence_threshold
+            else "LOW_CONFIDENCE"
+        ),
+        "quality_policy_id": quality_policy.policy_id,
+        "low_confidence_threshold": quality_policy.low_confidence_threshold,
     }
 
 
@@ -604,12 +733,14 @@ def package_hash_for(
     purpose: str,
     document_ids: list[str],
     evidence_items: list[dict[str, Any]],
+    quality_policy: RetrievalQualityPolicy = DEFAULT_RETRIEVAL_QUALITY_POLICY,
 ) -> str:
     return sha256_json(
         {
             "query_text": query_text,
             "purpose": purpose,
             "document_ids": document_ids,
+            "retrieval_policy": retrieval_quality_policy_snapshot(quality_policy),
             "evidence": [
                 {
                     "evidence_id": item["evidence_id"],
@@ -681,6 +812,52 @@ def _purpose_field(payload: dict[str, Any]) -> str:
             status_code=422,
             error_code="cx.purpose_invalid",
             detail=f"purpose must be one of: {', '.join(sorted(ALLOWED_PURPOSES))}.",
+        )
+    return value
+
+
+def _optional_policy_float(
+    policy_payload: dict[str, Any],
+    key: str,
+    default: float,
+) -> float:
+    value = policy_payload.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.retrieval_policy_invalid",
+            detail=f"retrieval_policy.{key} must be numeric.",
+        )
+    numeric_value = float(value)
+    if numeric_value < 0.0 or numeric_value > 1.0:
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.retrieval_policy_invalid",
+            detail=f"retrieval_policy.{key} must be between 0.0 and 1.0.",
+        )
+    return round(numeric_value, 6)
+
+
+def _optional_policy_int(
+    policy_payload: dict[str, Any],
+    key: str,
+    default: int,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    value = policy_payload.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.retrieval_policy_invalid",
+            detail=f"retrieval_policy.{key} must be an integer.",
+        )
+    if value < minimum or value > maximum:
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.retrieval_policy_invalid",
+            detail=f"retrieval_policy.{key} must be between {minimum} and {maximum}.",
         )
     return value
 
