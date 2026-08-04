@@ -817,9 +817,79 @@ def test_run_text_extraction_job_writes_markdown_and_updates_state(tmp_path: Pat
     assert result["status"] == "SUCCEEDED"
     assert result["markdown_preview"] == "# source.txt\n\nhello extraction\n"
     assert result["extracted_markdown_sha256"] == sha256_text(markdown_path.read_text())
+    assert result["extractor"] == {
+        "provider": "local_mock",
+        "mode": "plain_text_to_markdown",
+        "version": "slice-0072",
+        "source_format": "plain_text",
+    }
+    assert result["warnings"] == []
     assert store.get_job(result["job_id"])["status"] == "SUCCEEDED"
     assert store.get_document(result["document_id"])["extraction"]["markdown_available"] is True
     assert store.get_extraction_result(result["document_id"]) == result
+
+
+def test_run_text_extraction_job_uses_binary_placeholder_adapter(tmp_path: Path) -> None:
+    store = ContentIngestionStore()
+    config = storage_config(tmp_path)
+    source_bytes = b"%PDF-1.7\nprivate bytes"
+    document = build_upload_registration(
+        {
+            "filename": "source.pdf",
+            "content_type": "application/pdf",
+            "content_base64": base64.b64encode(source_bytes).decode("ascii"),
+        },
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.save_upload_registration(document, source_bytes=source_bytes)
+
+    result = run_text_extraction_job(
+        document["extraction"]["job_id"],
+        store=store,
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    markdown = Path(result["extracted_markdown_path"]).read_text(encoding="utf-8")
+    assert result["extractor"]["mode"] == "binary_document_placeholder_to_markdown"
+    assert result["extractor"]["source_format"] == "pdf"
+    assert result["warnings"] == ["mock_binary_extraction_placeholder:pdf"]
+    assert "private bytes" not in markdown
+    assert "Mock extraction placeholder." in markdown
+
+
+def test_run_text_extraction_job_reports_unsupported_adapter_source(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    config = storage_config(tmp_path)
+    source_bytes = b"\x00\x01binary"
+    document = build_upload_registration(
+        {
+            "filename": "source.bin",
+            "content_type": "application/octet-stream",
+            "content_base64": base64.b64encode(source_bytes).decode("ascii"),
+        },
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.save_upload_registration(document, source_bytes=source_bytes)
+
+    with pytest.raises(IngestionError) as exc:
+        run_text_extraction_job(
+            document["extraction"]["job_id"],
+            store=store,
+            storage_config=config,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert exc.value.status_code == 415
+    assert exc.value.error_code == "cx.extractor_source_type_unsupported"
 
 
 def test_run_text_extraction_job_reports_unknown_job(tmp_path: Path) -> None:

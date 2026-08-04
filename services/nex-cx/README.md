@@ -29,6 +29,10 @@ Internal persistence boundary:
 - In the mock upload path, `content_text` is materialized to the local source
   file path and verified against `source_sha256`; `content_base64` follows the
   same checksum and materialization policy for binary source bytes.
+- Text extraction runs through the `nex_cx.extractors` adapter boundary. The
+  local mock adapter performs real UTF-8 Markdown/plain-text conversion and
+  emits explicit placeholders with warnings for PDF, DOCX, PPTX, and XLSX until
+  real extractor backends are wired.
 - Document summaries use `summary_1000_0`, target 900 chars, and hard limit
   1000 chars so summary text fits within one default retrieval chunk.
 - Summary embeddings index the document summary separately from chunk

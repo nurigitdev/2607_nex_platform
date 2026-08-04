@@ -28,6 +28,13 @@ from nex_cx.repository import (
     build_content_object_record,
     build_source_file_record,
 )
+from nex_cx.extractors import (
+    ExtractionAdapterError,
+    ExtractorInput,
+    LocalMockTextExtractor,
+    TextExtractor,
+    markdown_from_source_text,
+)
 
 DEFAULT_DATA_ROOT = "/data/nex-platform"
 DEFAULT_CHUNK_POLICY = "chunk_1000_100"
@@ -608,6 +615,7 @@ def run_text_extraction_job(
     storage_config: CxStorageConfig,
     request_id: str,
     trace_id: str,
+    extractor: TextExtractor | None = None,
 ) -> dict[str, Any]:
     job = store.get_job(job_id)
     if job is None:
@@ -625,19 +633,33 @@ def run_text_extraction_job(
             detail=f"Document registration was not found: {job['subject_ref']['id']}",
         )
 
-    source_text = store.get_source_text(document["upload_id"])
-    if source_text is None:
+    source_bytes = store.get_source_bytes(document["upload_id"])
+    if source_bytes is None:
         raise IngestionError(
             status_code=409,
             error_code="cx.source_content_unavailable",
-            detail="Mock extraction requires content_text captured at upload registration.",
+            detail="Extraction requires source bytes captured at upload registration.",
         )
 
-    markdown_text = markdown_from_source_text(
-        source_text,
-        filename=document["filename"],
-        content_type=document["content_type"],
-    )
+    selected_extractor = extractor or LocalMockTextExtractor()
+    try:
+        extracted = selected_extractor.extract_markdown(
+            ExtractorInput(
+                filename=document["filename"],
+                content_type=document["content_type"],
+                source_bytes=source_bytes,
+                source_sha256=document["source_sha256"],
+            )
+        )
+    except ExtractionAdapterError as exc:
+        raise IngestionError(
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            detail=exc.detail,
+            retryable=exc.retryable,
+        ) from exc
+
+    markdown_text = extracted.markdown_text
     markdown_path = Path(document["storage"]["extracted_markdown_path"])
     write_extracted_markdown(markdown_path, markdown_text)
     extracted_sha256 = sha256_text(markdown_text)
@@ -655,28 +677,16 @@ def run_text_extraction_job(
         "markdown_char_count": len(markdown_text),
         "markdown_preview": markdown_text[:120],
         "extractor": {
-            "provider": "local_mock",
-            "mode": "content_text_to_markdown",
-            "version": "slice-0012",
+            "provider": extracted.provider,
+            "mode": extracted.mode,
+            "version": extracted.version,
+            "source_format": extracted.source_format,
         },
+        "warnings": extracted.warnings,
         "created_at": now,
         "updated_at": now,
     }
     return store.save_extraction_result(result)
-
-
-def markdown_from_source_text(
-    source_text: str,
-    *,
-    filename: str,
-    content_type: str,
-) -> str:
-    stripped = source_text.strip()
-    if not stripped:
-        return f"# {filename}\n\n"
-    if filename.lower().endswith(".md") or content_type == "text/markdown":
-        return _ensure_trailing_newline(stripped)
-    return _ensure_trailing_newline(f"# {filename}\n\n{stripped}")
 
 
 def write_extracted_markdown(path: Path, markdown_text: str) -> None:
@@ -1008,12 +1018,6 @@ def _document_id(tenant_id: str, owner_user_id: str, source_sha256: str) -> str:
 
 def _upload_id(document_id: str, request_id: str, trace_id: str) -> str:
     return str(uuid5(NAMESPACE_URL, f"cx-upload:{document_id}:{request_id}:{trace_id}"))
-
-
-def _ensure_trailing_newline(value: str) -> str:
-    if value.endswith("\n"):
-        return value
-    return f"{value}\n"
 
 
 def _authorize_cx_request(
