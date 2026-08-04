@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import os
 from dataclasses import dataclass, field
@@ -33,6 +35,7 @@ DEFAULT_CHUNK_SIZE = 1000
 DEFAULT_CHUNK_OVERLAP = 100
 DEFAULT_BM25_TOKENIZER = "mecab_ko"
 DEFAULT_BM25_TOKENIZER_FALLBACK = "korean_mixed_v1"
+DEFAULT_MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,7 @@ class CxStorageConfig:
     chunk_overlap: int
     bm25_tokenizer: str
     bm25_tokenizer_fallback: str
+    max_upload_size_bytes: int = DEFAULT_MAX_UPLOAD_SIZE_BYTES
 
 
 @dataclass
@@ -53,6 +57,7 @@ class ContentIngestionStore:
     documents: dict[str, dict[str, Any]] = field(default_factory=dict)
     jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
     source_texts: dict[str, str] = field(default_factory=dict)
+    source_bytes: dict[str, bytes] = field(default_factory=dict)
     extraction_results: dict[str, dict[str, Any]] = field(default_factory=dict)
     chunk_sets: dict[str, dict[str, Any]] = field(default_factory=dict)
     chunk_texts: dict[str, str] = field(default_factory=dict)
@@ -74,6 +79,7 @@ class ContentIngestionStore:
         record: dict[str, Any],
         *,
         source_text: str | None = None,
+        source_bytes: bytes | None = None,
         tenant_id: str = DEFAULT_TENANT_ID,
         owner_user_id: str = DEFAULT_OWNER_USER_ID,
     ) -> dict[str, Any]:
@@ -83,9 +89,13 @@ class ContentIngestionStore:
             source_sha256=record["source_sha256"],
         )
         if existing is not None and existing["content_object_id"] in self.documents:
-            return mark_upload_registration_duplicate(
-                self.documents[existing["content_object_id"]]
+            existing_record = self.documents[existing["content_object_id"]]
+            self._capture_duplicate_source_content(
+                existing_record,
+                source_text=source_text,
+                source_bytes=source_bytes,
             )
+            return mark_upload_registration_duplicate(existing_record)
 
         source_file = self.content_repository.save_source_file(
             build_source_file_record(record)
@@ -105,14 +115,42 @@ class ContentIngestionStore:
         }
         self.documents[record["document_id"]] = record
         self.jobs[record["extraction"]["job_id"]] = record["ingestion_job"]
+        materialized_source = source_bytes
         if source_text is not None:
-            verified_at = materialize_local_source_file(record, source_text)
+            materialized_source = source_text.encode("utf-8")
+        if materialized_source is not None:
+            verified_at = materialize_local_source_bytes(record, materialized_source)
             self.content_repository.mark_source_file_checksum_verified(
                 source_file["source_file_id"],
                 verified_at=verified_at,
             )
-            self.source_texts[record["upload_id"]] = source_text
+            self.source_bytes[record["upload_id"]] = materialized_source
+            if source_text is not None:
+                self.source_texts[record["upload_id"]] = source_text
         return record
+
+    def _capture_duplicate_source_content(
+        self,
+        record: dict[str, Any],
+        *,
+        source_text: str | None,
+        source_bytes: bytes | None,
+    ) -> None:
+        materialized_source = source_bytes
+        if source_text is not None:
+            materialized_source = source_text.encode("utf-8")
+        if materialized_source is None:
+            return
+        refs = self.document_content_refs.get(record["document_id"])
+        verified_at = materialize_local_source_bytes(record, materialized_source)
+        if refs is not None:
+            self.content_repository.mark_source_file_checksum_verified(
+                refs["source_file_id"],
+                verified_at=verified_at,
+            )
+        self.source_bytes[record["upload_id"]] = materialized_source
+        if source_text is not None:
+            self.source_texts[record["upload_id"]] = source_text
 
     def get_document(self, document_id: str) -> dict[str, Any] | None:
         return self.documents.get(document_id)
@@ -122,6 +160,9 @@ class ContentIngestionStore:
 
     def get_source_text(self, upload_id: str) -> str | None:
         return self.source_texts.get(upload_id)
+
+    def get_source_bytes(self, upload_id: str) -> bytes | None:
+        return self.source_bytes.get(upload_id)
 
     def get_content_ref(self, document_id: str) -> dict[str, str] | None:
         return self.document_content_refs.get(document_id)
@@ -279,6 +320,11 @@ def build_storage_config(environ: dict[str, str] | None = None) -> CxStorageConf
             "NEX_CX_BM25_TOKENIZER_FALLBACK",
             DEFAULT_BM25_TOKENIZER_FALLBACK,
         ),
+        max_upload_size_bytes=_positive_int(
+            env.get("NEX_CX_MAX_UPLOAD_SIZE_BYTES"),
+            default=DEFAULT_MAX_UPLOAD_SIZE_BYTES,
+            field_name="NEX_CX_MAX_UPLOAD_SIZE_BYTES",
+        ),
     )
 
 
@@ -311,11 +357,12 @@ def register_ingestion_routes(
         except IngestionError as exc:
             return _ingestion_problem_response(request, exc)
 
-        source_text = payload.get("content_text")
+        source_text, source_bytes = source_content_from_payload(payload)
         ownership = record["ownership"]
         saved_record = ingestion_store.save_upload_registration(
             record,
-            source_text=source_text if isinstance(source_text, str) else None,
+            source_text=source_text,
+            source_bytes=source_bytes,
             tenant_id=ownership["tenant_id"],
             owner_user_id=ownership["owner_user_id"],
         )
@@ -421,16 +468,11 @@ def build_upload_registration(
 ) -> dict[str, Any]:
     filename = sanitize_filename(_required_string(payload, "filename"))
     content_type = _optional_string(payload, "content_type", "application/octet-stream")
-    content_text = payload.get("content_text")
-    if content_text is not None and not isinstance(content_text, str):
-        raise IngestionError(
-            status_code=422,
-            error_code="cx.upload_content_text_invalid",
-            detail="content_text must be a string when provided.",
-        )
+    content_text, source_bytes = source_content_from_payload(payload)
 
-    source_sha256 = _source_sha256_from_payload(payload, content_text)
-    size_bytes = _size_bytes_from_payload(payload, content_text)
+    source_sha256 = _source_sha256_from_payload(payload, content_text, source_bytes)
+    size_bytes = _size_bytes_from_payload(payload, content_text, source_bytes)
+    validate_upload_size(size_bytes, max_upload_size_bytes=storage_config.max_upload_size_bytes)
     tenant_id = _optional_string(payload, "tenant_id", DEFAULT_TENANT_ID)
     owner_user_id = _optional_string(payload, "owner_user_id", DEFAULT_OWNER_USER_ID)
     created_at = _utc_now()
@@ -469,6 +511,15 @@ def build_upload_registration(
             "owner_user_id": owner_user_id,
         },
         "storage": paths,
+        "upload_boundary": {
+            "payload_source": payload_source_kind(
+                content_text=content_text,
+                source_bytes=source_bytes,
+            ),
+            "source_content_in_record": False,
+            "checksum_algorithm": "sha256",
+            "max_size_bytes": storage_config.max_upload_size_bytes,
+        },
         "retrieval_policy": {
             "chunk_policy": storage_config.chunk_policy,
             "chunk_size": storage_config.chunk_size,
@@ -634,6 +685,10 @@ def write_extracted_markdown(path: Path, markdown_text: str) -> None:
 
 
 def materialize_local_source_file(record: dict[str, Any], source_text: str) -> str:
+    return materialize_local_source_bytes(record, source_text.encode("utf-8"))
+
+
+def materialize_local_source_bytes(record: dict[str, Any], source_bytes: bytes) -> str:
     storage = record["storage"]
     if storage["source_storage_backend"] != "local_filesystem":
         raise IngestionError(
@@ -650,7 +705,6 @@ def materialize_local_source_file(record: dict[str, Any], source_text: str) -> s
             detail="source_storage_key must be a relative safe storage key.",
         )
 
-    source_bytes = source_text.encode("utf-8")
     computed_sha256 = sha256_bytes(source_bytes)
     if computed_sha256 != record["source_sha256"]:
         raise IngestionError(
@@ -771,9 +825,71 @@ def sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def _source_sha256_from_payload(payload: dict[str, Any], content_text: str | None) -> str:
+def source_content_from_payload(payload: dict[str, Any]) -> tuple[str | None, bytes | None]:
+    content_text = payload.get("content_text")
+    content_base64 = payload.get("content_base64")
+    if content_text is not None and content_base64 is not None:
+        raise IngestionError(
+            status_code=422,
+            error_code="cx.upload_content_source_conflict",
+            detail="Provide only one of content_text or content_base64.",
+        )
+    if content_text is not None:
+        if not isinstance(content_text, str):
+            raise IngestionError(
+                status_code=422,
+                error_code="cx.upload_content_text_invalid",
+                detail="content_text must be a string when provided.",
+            )
+        return content_text, None
+    if content_base64 is None:
+        return None, None
+    if not isinstance(content_base64, str) or not content_base64.strip():
+        raise IngestionError(
+            status_code=422,
+            error_code="cx.upload_content_base64_invalid",
+            detail="content_base64 must be a non-empty base64 string.",
+        )
+    try:
+        return None, base64.b64decode(content_base64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise IngestionError(
+            status_code=422,
+            error_code="cx.upload_content_base64_invalid",
+            detail="content_base64 must be valid base64.",
+        ) from exc
+
+
+def payload_source_kind(
+    *,
+    content_text: str | None,
+    source_bytes: bytes | None,
+) -> str:
+    if content_text is not None:
+        return "content_text"
+    if source_bytes is not None:
+        return "content_base64"
+    return "precomputed_hash"
+
+
+def validate_upload_size(size_bytes: int, *, max_upload_size_bytes: int) -> None:
+    if size_bytes > max_upload_size_bytes:
+        raise IngestionError(
+            status_code=413,
+            error_code="cx.upload_size_exceeds_limit",
+            detail=f"size_bytes must be <= {max_upload_size_bytes}.",
+        )
+
+
+def _source_sha256_from_payload(
+    payload: dict[str, Any],
+    content_text: str | None,
+    source_bytes: bytes | None,
+) -> str:
     if content_text is not None:
         return sha256_text(content_text)
+    if source_bytes is not None:
+        return sha256_bytes(source_bytes)
 
     source_sha256 = _required_string(payload, "source_sha256").lower()
     if len(source_sha256) == 64 and all(char in "0123456789abcdef" for char in source_sha256):
@@ -786,10 +902,20 @@ def _source_sha256_from_payload(payload: dict[str, Any], content_text: str | Non
     )
 
 
-def _size_bytes_from_payload(payload: dict[str, Any], content_text: str | None) -> int:
+def _size_bytes_from_payload(
+    payload: dict[str, Any],
+    content_text: str | None,
+    source_bytes: bytes | None,
+) -> int:
+    computed_size: int | None = None
+    if content_text is not None:
+        computed_size = len(content_text.encode("utf-8"))
+    if source_bytes is not None:
+        computed_size = len(source_bytes)
+
     if "size_bytes" not in payload:
-        if content_text is not None:
-            return len(content_text.encode("utf-8"))
+        if computed_size is not None:
+            return computed_size
         raise IngestionError(
             status_code=422,
             error_code="cx.upload_size_required",
@@ -802,6 +928,12 @@ def _size_bytes_from_payload(payload: dict[str, Any], content_text: str | None) 
             status_code=422,
             error_code="cx.upload_size_invalid",
             detail="size_bytes must be a non-negative integer.",
+        )
+    if computed_size is not None and size_bytes != computed_size:
+        raise IngestionError(
+            status_code=422,
+            error_code="cx.upload_size_mismatch",
+            detail="size_bytes must match the provided upload content.",
         )
     return size_bytes
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import pytest
@@ -13,15 +14,19 @@ from nex_cx.ingestion import (
     build_storage_config,
     build_upload_registration,
     markdown_from_source_text,
+    materialize_local_source_bytes,
     materialize_local_source_file,
+    payload_source_kind,
     register_ingestion_routes,
     run_text_extraction_job,
     sha256_bytes,
     sanitize_filename,
     sha256_text,
+    source_content_from_payload,
     storage_date_partition,
     storage_paths_for_document,
     stored_extension_for,
+    validate_upload_size,
     write_extracted_markdown,
 )
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
@@ -73,6 +78,7 @@ def test_build_storage_config_uses_data_root_defaults() -> None:
     assert config.chunk_overlap == 100
     assert config.bm25_tokenizer == "mecab_ko"
     assert config.bm25_tokenizer_fallback == "korean_mixed_v1"
+    assert config.max_upload_size_bytes == 50 * 1024 * 1024
 
 
 def test_build_storage_config_accepts_explicit_overrides() -> None:
@@ -87,6 +93,7 @@ def test_build_storage_config_accepts_explicit_overrides() -> None:
             "NEX_CX_CHUNK_OVERLAP": "80",
             "NEX_CX_BM25_TOKENIZER": "mecab_ko",
             "NEX_CX_BM25_TOKENIZER_FALLBACK": "korean_mixed_v1",
+            "NEX_CX_MAX_UPLOAD_SIZE_BYTES": "4096",
         }
     )
 
@@ -96,6 +103,7 @@ def test_build_storage_config_accepts_explicit_overrides() -> None:
     assert config.chunk_policy == "custom"
     assert config.chunk_size == 1200
     assert config.chunk_overlap == 80
+    assert config.max_upload_size_bytes == 4096
 
 
 @pytest.mark.parametrize(
@@ -105,6 +113,8 @@ def test_build_storage_config_accepts_explicit_overrides() -> None:
         {"NEX_CX_CHUNK_SIZE": "not-an-int"},
         {"NEX_CX_CHUNK_OVERLAP": "-1"},
         {"NEX_CX_CHUNK_OVERLAP": "not-an-int"},
+        {"NEX_CX_MAX_UPLOAD_SIZE_BYTES": "0"},
+        {"NEX_CX_MAX_UPLOAD_SIZE_BYTES": "not-an-int"},
     ],
 )
 def test_build_storage_config_rejects_bad_numeric_values(env: dict[str, str]) -> None:
@@ -194,6 +204,73 @@ def test_build_upload_registration_hashes_content_without_leaking_text(tmp_path:
     assert "Traceable content" not in str(record)
 
 
+def test_build_upload_registration_accepts_base64_source_bytes_without_leak(
+    tmp_path: Path,
+) -> None:
+    source_bytes = b"%PDF-1.7\nbinary-ish\x00content\n"
+    content_base64 = base64.b64encode(source_bytes).decode("ascii")
+
+    record = build_upload_registration(
+        {
+            "filename": "source.pdf",
+            "content_type": "application/pdf",
+            "content_base64": content_base64,
+        },
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert record["source_sha256"] == sha256_bytes(source_bytes)
+    assert record["size_bytes"] == len(source_bytes)
+    assert record["upload_boundary"] == {
+        "payload_source": "content_base64",
+        "source_content_in_record": False,
+        "checksum_algorithm": "sha256",
+        "max_size_bytes": 50 * 1024 * 1024,
+    }
+    assert content_base64 not in str(record)
+    assert "binary-ish" not in str(record)
+
+
+def test_source_content_from_payload_rejects_conflicts_and_bad_base64() -> None:
+    assert source_content_from_payload({"content_text": "hello"}) == ("hello", None)
+    assert source_content_from_payload(
+        {"content_base64": base64.b64encode(b"hello").decode("ascii")}
+    ) == (None, b"hello")
+
+    with pytest.raises(IngestionError) as conflict:
+        source_content_from_payload({"content_text": "hello", "content_base64": "aGVsbG8="})
+    with pytest.raises(IngestionError) as bad_type:
+        source_content_from_payload({"content_base64": 123})
+    with pytest.raises(IngestionError) as bad_value:
+        source_content_from_payload({"content_base64": "not base64"})
+
+    assert conflict.value.error_code == "cx.upload_content_source_conflict"
+    assert bad_type.value.error_code == "cx.upload_content_base64_invalid"
+    assert bad_value.value.error_code == "cx.upload_content_base64_invalid"
+
+
+def test_upload_size_validation_rejects_mismatch_and_limit(tmp_path: Path) -> None:
+    with pytest.raises(IngestionError) as mismatch:
+        build_upload_registration(
+            {
+                "filename": "source.txt",
+                "content_text": "12345",
+                "size_bytes": 4,
+            },
+            storage_config=storage_config(tmp_path),
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+    with pytest.raises(IngestionError) as too_large:
+        validate_upload_size(11, max_upload_size_bytes=10)
+
+    assert mismatch.value.error_code == "cx.upload_size_mismatch"
+    assert too_large.value.status_code == 413
+    assert too_large.value.error_code == "cx.upload_size_exceeds_limit"
+
+
 def test_store_keeps_source_text_private_for_mock_extraction(tmp_path: Path) -> None:
     store = ContentIngestionStore()
     record = build_upload_registration(
@@ -206,6 +283,7 @@ def test_store_keeps_source_text_private_for_mock_extraction(tmp_path: Path) -> 
     store.save_upload_registration(record, source_text="private source text")
 
     assert store.get_source_text(record["upload_id"]) == "private source text"
+    assert store.get_source_bytes(record["upload_id"]) == b"private source text"
     assert "private source text" not in str(store.get_document(record["document_id"]))
 
 
@@ -249,6 +327,24 @@ def test_materialize_local_source_file_is_idempotent_for_matching_file(
     assert Path(record["storage"]["source_storage_path"]).read_text(encoding="utf-8") == (
         "same bytes"
     )
+
+
+def test_materialize_local_source_bytes_writes_binary_source(tmp_path: Path) -> None:
+    source_bytes = b"\x00\x01binary upload"
+    record = build_upload_registration(
+        {
+            "filename": "source.bin",
+            "content_base64": base64.b64encode(source_bytes).decode("ascii"),
+        },
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    verified_at = materialize_local_source_bytes(record, source_bytes)
+
+    assert verified_at.endswith("Z")
+    assert Path(record["storage"]["source_storage_path"]).read_bytes() == source_bytes
 
 
 def test_materialize_local_source_file_rejects_bad_checksum(tmp_path: Path) -> None:
@@ -339,6 +435,7 @@ def test_build_upload_registration_accepts_precomputed_hash(tmp_path: Path) -> N
 
     assert record["source_sha256"] == "a" * 64
     assert record["size_bytes"] == 2048
+    assert record["upload_boundary"]["payload_source"] == "precomputed_hash"
     assert not record["storage"]["source_storage_key"].endswith(
         f"/{record['document_id']}.pdf"
     )
@@ -457,6 +554,52 @@ def test_store_allows_same_hash_for_different_owner_without_leaking_duplicate(
     assert len(store.content_repository.source_files) == 1
 
 
+def test_duplicate_upload_with_bytes_materializes_existing_metadata_only_source(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    source_bytes = b"same source bytes"
+    source_sha256 = sha256_bytes(source_bytes)
+    first = build_upload_registration(
+        {
+            "filename": "source.pdf",
+            "source_sha256": source_sha256,
+            "size_bytes": len(source_bytes),
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+        },
+        storage_config=storage_config(tmp_path),
+        request_id="request-a",
+        trace_id=TRACE_ID,
+    )
+    second = build_upload_registration(
+        {
+            "filename": "source.pdf",
+            "content_base64": base64.b64encode(source_bytes).decode("ascii"),
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+        },
+        storage_config=storage_config(tmp_path),
+        request_id="request-b",
+        trace_id=TRACE_ID,
+    )
+
+    created = store.save_upload_registration(first, tenant_id="tenant-a", owner_user_id="user-a")
+    duplicate = store.save_upload_registration(
+        second,
+        source_bytes=source_bytes,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    refs = store.get_content_ref(created["document_id"])
+    source_file = store.content_repository.get_source_file(refs["source_file_id"])
+
+    assert duplicate["dedupe"]["status"] == "ALREADY_EXISTS"
+    assert Path(created["storage"]["source_storage_path"]).read_bytes() == source_bytes
+    assert store.get_source_bytes(created["upload_id"]) == source_bytes
+    assert source_file["checksum_verified_at"] is not None
+
+
 @pytest.mark.parametrize(
     ("payload", "error_code"),
     [
@@ -481,6 +624,10 @@ def test_store_allows_same_hash_for_different_owner_without_leaking_duplicate(
         (
             {"filename": "report.pdf", "content_text": ["hello"]},
             "cx.upload_content_text_invalid",
+        ),
+        (
+            {"filename": "report.pdf", "content_text": "hello", "content_base64": "aGVsbG8="},
+            "cx.upload_content_source_conflict",
         ),
     ],
 )
@@ -538,6 +685,37 @@ def test_upload_registration_endpoint_creates_document_and_job(tmp_path: Path) -
     assert Path(payload["storage"]["source_storage_path"]).read_text(encoding="utf-8") == (
         "hello from upload"
     )
+
+
+def test_upload_registration_endpoint_materializes_base64_source_bytes(
+    tmp_path: Path,
+) -> None:
+    client, store = build_test_client(tmp_path)
+    source_bytes = b"\x00binary endpoint upload"
+
+    response = client.post(
+        "/api/v1/documents/uploads",
+        json={
+            "filename": "source.bin",
+            "content_type": "application/octet-stream",
+            "content_base64": base64.b64encode(source_bytes).decode("ascii"),
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["source_sha256"] == sha256_bytes(source_bytes)
+    assert payload["upload_boundary"]["payload_source"] == "content_base64"
+    assert Path(payload["storage"]["source_storage_path"]).read_bytes() == source_bytes
+    assert store.get_source_bytes(payload["upload_id"]) == source_bytes
+    assert store.get_source_text(payload["upload_id"]) is None
+
+
+def test_payload_source_kind_labels_upload_boundary_sources() -> None:
+    assert payload_source_kind(content_text="hello", source_bytes=None) == "content_text"
+    assert payload_source_kind(content_text=None, source_bytes=b"hello") == "content_base64"
+    assert payload_source_kind(content_text=None, source_bytes=None) == "precomputed_hash"
 
 
 def test_upload_registration_endpoint_returns_existing_owner_duplicate(

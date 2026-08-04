@@ -9,6 +9,7 @@ Document ingestion storage defaults:
 - Source files: `NEX_CX_SOURCE_STORAGE_ROOT` or `/data/nex-platform/cx/source-files`
 - Extracted Markdown: `NEX_CX_EXTRACTED_MARKDOWN_ROOT` or `/data/nex-platform/cx/extracted-markdown`
 - Extraction temp: `NEX_CX_EXTRACTION_TEMP_ROOT` or `/data/nex-platform/cx/extraction-temp`
+- Max upload size: `NEX_CX_MAX_UPLOAD_SIZE_BYTES` or `52428800`
 
 Local source files are stored outside PostgreSQL using a storage key shaped as
 `YYYYMMDD/<sha-prefix>/<sha-prefix>/<source-file-id><extension>`. The CX database
@@ -22,8 +23,12 @@ Internal persistence boundary:
   `tenant_id + owner_user_id + source_sha256`.
 - Same-owner duplicate uploads return the existing document; different owners
   get distinct document IDs without learning about each other.
+- Upload registration accepts `content_text`, `content_base64`, or metadata-only
+  `source_sha256 + size_bytes`. Public records expose only hashes, sizes, and
+  storage metadata, not raw source bytes.
 - In the mock upload path, `content_text` is materialized to the local source
-  file path and verified against `source_sha256`.
+  file path and verified against `source_sha256`; `content_base64` follows the
+  same checksum and materialization policy for binary source bytes.
 - Document summaries use `summary_1000_0`, target 900 chars, and hard limit
   1000 chars so summary text fits within one default retrieval chunk.
 - Summary embeddings index the document summary separately from chunk

@@ -174,6 +174,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0068`](slices/0068_mo_direct_vllm_execution_regression.md) | `S6-018` MO direct vLLM execution profile regression. |
 | [`Slice 0069`](slices/0069_cx_retrieval_rerank_bridge_to_mo_vllm.md) | `S6-019` CX retrieval rerank bridge to MO direct vLLM mode. |
 | [`Slice 0070`](slices/0070_compatible_only_profile_guardrail.md) | `S6-020` Compatible-only DGX profile guardrail and legacy PCX quarantine. |
+| [`Slice 0071`](slices/0071_cx_real_file_upload_boundary_hardening.md) | `S7-001` CX real file upload boundary hardening. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
