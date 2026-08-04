@@ -24,24 +24,30 @@ from nex_cx.lexical_index import (
 from nex_cx.retrieval import (
     DEFAULT_RERANKER_ALIAS,
     DEFAULT_RETRIEVAL_QUALITY_POLICY,
+    WEIGHTED_RRF_RANKER_MIX,
     RetrievalError,
     RetrievalQualityPolicy,
     apply_rerank_scores,
     build_permission_snapshot,
+    build_query_embedding_snapshot,
     build_reranker_profile,
     build_retrieval_context_package,
     build_retrieval_quality_policy,
     build_score_summary,
     build_source_summary,
     build_warnings,
+    candidate_ranks,
+    cosine_similarity,
     document_ids_from_scope,
     matched_counts_by_chunk,
     package_hash_for,
+    query_embedding_from_payload,
     rank_retrieval_candidates,
     register_retrieval_routes,
     retrieval_quality_policy_snapshot,
     retrieval_status,
     terms_for_chunk,
+    weighted_rrf_score,
 )
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 
@@ -213,6 +219,98 @@ def build_test_client(
     return TestClient(app), store
 
 
+def build_weighted_rrf_store() -> tuple[ContentIngestionStore, str]:
+    store = ContentIngestionStore()
+    document_id = "doc-weighted"
+    chunks = [
+        {
+            "chunk_id": "chunk-vector",
+            "ordinal": 0,
+            "start_offset": 0,
+            "end_offset": 16,
+            "text_sha256": "sha-vector",
+            "text_preview": "alpha vector",
+        },
+        {
+            "chunk_id": "chunk-bm25",
+            "ordinal": 1,
+            "start_offset": 17,
+            "end_offset": 32,
+            "text_sha256": "sha-bm25",
+            "text_preview": "alpha beta bm25",
+        },
+    ]
+    store.save_chunk_set(
+        {
+            "document_id": document_id,
+            "chunk_policy": "chunk_1000_100",
+            "chunk_count": len(chunks),
+            "chunks": chunks,
+        },
+        chunk_texts={
+            "chunk-vector": "alpha vector",
+            "chunk-bm25": "alpha beta bm25",
+        },
+    )
+    store.save_lexical_index(
+        {
+            "document_id": document_id,
+            "tokenizer_used": "korean_mixed_v1",
+            "tokenizer_fallback": "korean_mixed_v1",
+            "fallback_used": False,
+            "tokenizer_profile": {
+                "bm25_tokenizer": "korean_mixed_v1",
+                "query_tokenizer_policy": "match_index_tokenizer_with_fallback",
+            },
+            "postings": [
+                {
+                    "term": "alpha",
+                    "document_frequency": 2,
+                    "occurrences": [
+                        {"chunk_id": "chunk-vector", "ordinal": 0, "count": 1},
+                        {"chunk_id": "chunk-bm25", "ordinal": 1, "count": 1},
+                    ],
+                },
+                {
+                    "term": "beta",
+                    "document_frequency": 1,
+                    "occurrences": [
+                        {"chunk_id": "chunk-bm25", "ordinal": 1, "count": 1}
+                    ],
+                },
+            ],
+        }
+    )
+    store.save_embedding_index(
+        {
+            "document_id": document_id,
+            "provider_alias": "mock-embedding-default",
+            "vector_dimension": 2,
+            "chunk_embeddings": [
+                {"chunk_id": "chunk-vector"},
+                {"chunk_id": "chunk-bm25"},
+            ],
+        },
+        embedding_vectors={
+            "chunk-vector": [1.0, 0.0],
+            "chunk-bm25": [0.0, 1.0],
+        },
+    )
+    return store, document_id
+
+
+def weighted_rrf_policy(**overrides: object) -> RetrievalQualityPolicy:
+    values = {
+        "policy_id": WEIGHTED_RRF_RANKER_MIX,
+        "ranker_mix": WEIGHTED_RRF_RANKER_MIX,
+        "bm25_weight": 0.3,
+        "vector_weight": 0.7,
+        "rrf_k": 60,
+    }
+    values.update(overrides)
+    return RetrievalQualityPolicy(**values)
+
+
 def test_document_ids_from_scope_defaults_to_all_chunk_sets(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -253,6 +351,39 @@ def test_matched_counts_and_terms_by_chunk(
     assert "trace" in terms_for_chunk(lexical, first_chunk_id)
 
 
+def test_cosine_similarity_handles_matches_and_invalid_vectors() -> None:
+    assert cosine_similarity([1.0, 0.0], [1.0, 0.0]) == 1.0
+    assert cosine_similarity([1.0, 0.0], [0.0, 1.0]) == 0.0
+    assert cosine_similarity([1.0], [1.0, 0.0]) is None
+    assert cosine_similarity([0.0, 0.0], [1.0, 0.0]) is None
+
+
+def test_candidate_ranks_honors_score_order_and_limit() -> None:
+    candidates = [
+        {"chunk": {"chunk_id": "a", "ordinal": 0}, "scores": {"bm25_score": 0.2}},
+        {"chunk": {"chunk_id": "b", "ordinal": 1}, "scores": {"bm25_score": 0.9}},
+        {"chunk": {"chunk_id": "c", "ordinal": 2}, "scores": {"bm25_score": 0.0}},
+    ]
+
+    assert candidate_ranks(candidates, score_key="bm25_score", limit=1) == {"b": 1}
+
+
+def test_weighted_rrf_score_normalizes_best_possible_rank() -> None:
+    raw_score, normalized_score = weighted_rrf_score(
+        bm25_rank=1,
+        vector_rank=1,
+        quality_policy=weighted_rrf_policy(),
+    )
+
+    assert raw_score > 0.0
+    assert normalized_score == 1.0
+    assert weighted_rrf_score(
+        bm25_rank=None,
+        vector_rank=None,
+        quality_policy=weighted_rrf_policy(bm25_weight=0.0, vector_weight=0.0),
+    ) == (0.0, 0.0)
+
+
 def test_rank_retrieval_candidates_scores_matches(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -270,6 +401,47 @@ def test_rank_retrieval_candidates_scores_matches(
     assert candidates[0]["scores"]["final_score"] >= candidates[-1]["scores"]["final_score"]
     assert "trace" in candidates[0]["matched_terms"]
     assert "trace" in candidates[0]["text"].lower()
+
+
+def test_rank_retrieval_candidates_applies_weighted_rrf_vector_and_bm25() -> None:
+    store, document_id = build_weighted_rrf_store()
+
+    candidates = rank_retrieval_candidates(
+        query_text="alpha beta",
+        query_embedding=[1.0, 0.0],
+        document_ids=[document_id],
+        store=store,
+        include_source_preview=True,
+        quality_policy=weighted_rrf_policy(),
+    )
+
+    assert [candidate["chunk"]["chunk_id"] for candidate in candidates] == [
+        "chunk-vector",
+        "chunk-bm25",
+    ]
+    assert candidates[0]["scores"]["vector_rank"] == 1
+    assert candidates[0]["scores"]["bm25_rank"] == 2
+    assert candidates[0]["scores"]["final_score"] > candidates[1]["scores"]["final_score"]
+    assert candidates[0]["scores"]["rrf_score"] > 0.0
+
+
+def test_rank_retrieval_candidates_weighted_rrf_degrades_to_bm25_without_query_vector() -> None:
+    store, document_id = build_weighted_rrf_store()
+
+    candidates = rank_retrieval_candidates(
+        query_text="alpha beta",
+        document_ids=[document_id],
+        store=store,
+        include_source_preview=True,
+        quality_policy=weighted_rrf_policy(),
+    )
+
+    assert [candidate["chunk"]["chunk_id"] for candidate in candidates] == [
+        "chunk-bm25",
+        "chunk-vector",
+    ]
+    assert candidates[0]["scores"]["bm25_rank"] == 1
+    assert candidates[0]["scores"]["vector_rank"] is None
 
 
 def test_rank_retrieval_candidates_uses_index_tokenizer_for_query(
@@ -537,15 +709,39 @@ def test_build_retrieval_quality_policy_defaults_and_snapshot() -> None:
     assert snapshot["rerank_candidate_limit"] == 7
 
 
+def test_build_retrieval_quality_policy_enables_weighted_rrf_defaults() -> None:
+    policy = build_retrieval_quality_policy(
+        {"retrieval_policy": {"policy_id": WEIGHTED_RRF_RANKER_MIX}}
+    )
+    snapshot = retrieval_quality_policy_snapshot(policy)
+
+    assert policy.policy_id == WEIGHTED_RRF_RANKER_MIX
+    assert policy.ranker_mix == WEIGHTED_RRF_RANKER_MIX
+    assert policy.reranked_ranker_mix == "weighted_rrf_vector_bm25_with_rerank"
+    assert policy.vector_weight == 0.7
+    assert policy.bm25_weight == 0.3
+    assert policy.rrf_k == 60
+    assert snapshot["vector_candidate_limit"] == 80
+    assert snapshot["bm25_candidate_limit"] == 80
+
+
 @pytest.mark.parametrize(
     "retrieval_policy",
     [
         "bad",
+        {"policy_id": ""},
+        {"ranker_mix": "unsupported"},
         {"bm25_weight": True},
         {"embedding_presence_weight": -0.1},
+        {"vector_weight": True},
         {"low_confidence_threshold": 1.1},
         {"bm25_weight": 0.8, "embedding_presence_weight": 0.3},
         {"bm25_weight": 0.0, "embedding_presence_weight": 0.0},
+        {"ranker_mix": WEIGHTED_RRF_RANKER_MIX, "bm25_weight": 0.8, "vector_weight": 0.3},
+        {"ranker_mix": WEIGHTED_RRF_RANKER_MIX, "bm25_weight": 0.0, "vector_weight": 0.0},
+        {"rrf_k": 0},
+        {"vector_candidate_limit": 0},
+        {"bm25_candidate_limit": 501},
         {"rerank_candidate_limit": 0},
         {"rerank_candidate_limit": 101},
         {"rerank_candidate_limit": 1.5},
@@ -558,6 +754,31 @@ def test_build_retrieval_quality_policy_rejects_invalid_policy(
         build_retrieval_quality_policy({"retrieval_policy": retrieval_policy})
 
     assert exc.value.error_code == "cx.retrieval_policy_invalid"
+
+
+def test_query_embedding_validation_and_snapshot() -> None:
+    query_embedding = query_embedding_from_payload({"query_embedding": [1, 0.5]})
+    snapshot = build_query_embedding_snapshot(query_embedding)
+
+    assert query_embedding == [1.0, 0.5]
+    assert snapshot["provided"] is True
+    assert snapshot["vector_dimension"] == 2
+    assert len(snapshot["embedding_sha256"]) == 64
+    assert build_query_embedding_snapshot(None) == {
+        "provided": False,
+        "embedding_sha256": None,
+        "vector_dimension": 0,
+    }
+
+
+@pytest.mark.parametrize("query_embedding", [[], "bad", [True], ["bad"]])
+def test_query_embedding_from_payload_rejects_invalid_values(
+    query_embedding: object,
+) -> None:
+    with pytest.raises(RetrievalError) as exc:
+        query_embedding_from_payload({"query_embedding": query_embedding})
+
+    assert exc.value.error_code == "cx.query_embedding_invalid"
 
 
 def test_retrieval_status_handles_no_answer_low_confidence_and_ready() -> None:
@@ -740,6 +961,33 @@ def test_build_retrieval_context_package_returns_ready(
     )
     assert package["score_summary"]["quality_policy_id"] == "retrieval_quality_v1"
     assert len(package["evidence_items"]) <= 2
+
+
+def test_build_retrieval_context_package_records_weighted_rrf_query_embedding() -> None:
+    store, document_id = build_weighted_rrf_store()
+
+    package = build_retrieval_context_package(
+        {
+            "query_text": "alpha beta",
+            "purpose": "search",
+            "document_scope": {"document_ids": [document_id]},
+            "query_embedding": [1.0, 0.0],
+            "retrieval_policy": {"policy_id": WEIGHTED_RRF_RANKER_MIX},
+        },
+        store=store,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert package["status"] == "READY"
+    assert package["query_embedding_snapshot"]["provided"] is True
+    assert "query_embedding': [1.0" not in str(package)
+    assert package["evidence_items"][0]["chunk_id"] == "chunk-vector"
+    assert package["evidence_items"][0]["scores"]["vector_rank"] == 1
+    assert package["score_summary"]["ranker_mix"] == WEIGHTED_RRF_RANKER_MIX
+    assert package["retrieval_profile"]["embedding_profile"][
+        "query_embedding_sha256"
+    ] == package["query_embedding_snapshot"]["embedding_sha256"]
 
 
 def test_build_retrieval_context_package_applies_quality_policy_override(

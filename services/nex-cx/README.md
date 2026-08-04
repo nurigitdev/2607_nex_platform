@@ -120,6 +120,12 @@ Grounded generation validation:
 - Retrieval packages expose `bm25_tokenizer_profile` so AG/debug tooling can
   inspect the BM25 tokenizer, fallback, dictionary profile, and query tokenizer
   policy used by the searched lexical index.
+- `weighted_rrf_vector_bm25_v1` is available as an opt-in retrieval policy. It
+  combines vector cosine rank and BM25 rank with default weights `0.7` and
+  `0.3`, RRF `k=60`, and candidate limits of `80` each. If no
+  `query_embedding` is supplied, it degrades to BM25-only RRF. Retrieval
+  packages record only the query embedding hash and dimension, never the raw
+  query vector.
 - Protected live RAG smoke evidence is available through
   `scripts/smoke/run_protected_live_rag_smoke.py`. It is skipped by default and
   only calls live providers when `NEX_PROTECTED_LIVE_RAG_SMOKE=1` is set.

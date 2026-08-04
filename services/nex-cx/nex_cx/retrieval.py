@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -20,6 +21,7 @@ from nex_runtime import (
     trace_id_from_headers,
     validate_authorization_header,
 )
+from nex_runtime.retrieval_policies import CURRENT_POLICY_ID, WEIGHTED_RRF_POLICY_ID
 
 from nex_cx.ingestion import ContentIngestionStore
 from nex_cx.lexical_index import query_terms_for_lexical_index
@@ -28,7 +30,14 @@ DEFAULT_TOP_K = 5
 MAX_TOP_K = 20
 LOW_CONFIDENCE_THRESHOLD = 0.2
 DEFAULT_RERANK_CANDIDATE_LIMIT = 50
+DEFAULT_WEIGHTED_RRF_K = 60
+DEFAULT_WEIGHTED_RRF_VECTOR_WEIGHT = 0.7
+DEFAULT_WEIGHTED_RRF_BM25_WEIGHT = 0.3
+DEFAULT_VECTOR_CANDIDATE_LIMIT = 80
+DEFAULT_BM25_CANDIDATE_LIMIT = 80
 DEFAULT_RERANKER_ALIAS = "mock-reranker-default"
+BM25_EMBEDDING_PRESENCE_RANKER_MIX = "bm25_with_embedding_presence"
+WEIGHTED_RRF_RANKER_MIX = WEIGHTED_RRF_POLICY_ID
 ALLOWED_PURPOSES = {
     "search",
     "grounded_answer",
@@ -48,13 +57,17 @@ class RetrievalError(Exception):
 
 @dataclass(frozen=True)
 class RetrievalQualityPolicy:
-    policy_id: str = "retrieval_quality_v1"
+    policy_id: str = CURRENT_POLICY_ID
     bm25_weight: float = 0.85
     embedding_presence_weight: float = 0.15
     embedding_presence_score: float = 0.5
+    vector_weight: float = DEFAULT_WEIGHTED_RRF_VECTOR_WEIGHT
+    rrf_k: int = DEFAULT_WEIGHTED_RRF_K
+    vector_candidate_limit: int = DEFAULT_VECTOR_CANDIDATE_LIMIT
+    bm25_candidate_limit: int = DEFAULT_BM25_CANDIDATE_LIMIT
     low_confidence_threshold: float = LOW_CONFIDENCE_THRESHOLD
     rerank_candidate_limit: int = DEFAULT_RERANK_CANDIDATE_LIMIT
-    ranker_mix: str = "bm25_with_embedding_presence"
+    ranker_mix: str = BM25_EMBEDDING_PRESENCE_RANKER_MIX
     reranked_ranker_mix: str = "bm25_embedding_with_rerank"
     neighbor_policy: str = "not_loaded_in_slice_0017"
 
@@ -203,6 +216,8 @@ def build_retrieval_context_package(
     include_neighbors = _bool_field(payload, "include_neighbors", False)
     purpose = _purpose_field(payload)
     quality_policy = build_retrieval_quality_policy(payload)
+    query_embedding = query_embedding_from_payload(payload)
+    query_embedding_snapshot = build_query_embedding_snapshot(query_embedding)
     actor_claims_ref = payload.get("actor_claims_ref", {"actor_type": "service", "actor_id": "local_mock"})
     document_ids = document_ids_from_scope(payload.get("document_scope"), store)
     candidates = rank_retrieval_candidates(
@@ -210,6 +225,7 @@ def build_retrieval_context_package(
         document_ids=document_ids,
         store=store,
         include_source_preview=include_source_preview,
+        query_embedding=query_embedding,
         rerank_client=rerank_client,
         reranker_alias=reranker_alias,
         request_id=request_id,
@@ -231,6 +247,7 @@ def build_retrieval_context_package(
         purpose=purpose,
         document_ids=document_ids,
         evidence_items=evidence_items,
+        query_embedding_hash=query_embedding_snapshot["embedding_sha256"],
         quality_policy=quality_policy,
     )
     now = _utc_now()
@@ -243,6 +260,7 @@ def build_retrieval_context_package(
         "trace_id": trace_id,
         "request_id": request_id,
         "query_text": query_text,
+        "query_embedding_snapshot": query_embedding_snapshot,
         "purpose": purpose,
         "retrieval_profile": build_retrieval_profile(
             store,
@@ -251,6 +269,7 @@ def build_retrieval_context_package(
                 candidates,
                 configured_alias=reranker_alias if rerank_client is not None else None,
             ),
+            query_embedding_hash=query_embedding_snapshot["embedding_sha256"],
             quality_policy=quality_policy,
         ),
         "permission_snapshot": build_permission_snapshot(
@@ -275,10 +294,49 @@ def rank_retrieval_candidates(
     document_ids: list[str],
     store: ContentIngestionStore,
     include_source_preview: bool,
+    query_embedding: list[float] | None = None,
     rerank_client: MoRerankClient | None = None,
     reranker_alias: str = DEFAULT_RERANKER_ALIAS,
     request_id: str = "",
     trace_id: str = "",
+    quality_policy: RetrievalQualityPolicy = DEFAULT_RETRIEVAL_QUALITY_POLICY,
+) -> list[dict[str, Any]]:
+    if quality_policy.ranker_mix == WEIGHTED_RRF_RANKER_MIX:
+        ranked = rank_weighted_rrf_candidates(
+            query_text=query_text,
+            document_ids=document_ids,
+            store=store,
+            include_source_preview=include_source_preview,
+            query_embedding=query_embedding,
+            quality_policy=quality_policy,
+        )
+    else:
+        ranked = rank_bm25_embedding_presence_candidates(
+            query_text=query_text,
+            document_ids=document_ids,
+            store=store,
+            include_source_preview=include_source_preview,
+            quality_policy=quality_policy,
+        )
+    if rerank_client is None or not ranked:
+        return ranked
+    return apply_rerank_scores(
+        query_text=query_text,
+        candidates=ranked,
+        rerank_client=rerank_client,
+        reranker_alias=reranker_alias,
+        request_id=request_id,
+        trace_id=trace_id,
+        quality_policy=quality_policy,
+    )
+
+
+def rank_bm25_embedding_presence_candidates(
+    *,
+    query_text: str,
+    document_ids: list[str],
+    store: ContentIngestionStore,
+    include_source_preview: bool,
     quality_policy: RetrievalQualityPolicy = DEFAULT_RETRIEVAL_QUALITY_POLICY,
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
@@ -315,6 +373,9 @@ def rank_retrieval_candidates(
                         "vector_score": round(vector_score, 6),
                         "bm25_score": round(bm25_score, 6),
                         "hybrid_score": round(hybrid_score, 6),
+                        "rrf_score": None,
+                        "bm25_rank": None,
+                        "vector_rank": None,
                         "rerank_score": None,
                         "final_score": round(hybrid_score, 6),
                     },
@@ -329,16 +390,163 @@ def rank_retrieval_candidates(
         ),
         reverse=True,
     )
-    if rerank_client is None or not ranked:
-        return ranked
-    return apply_rerank_scores(
-        query_text=query_text,
-        candidates=ranked,
-        rerank_client=rerank_client,
-        reranker_alias=reranker_alias,
-        request_id=request_id,
-        trace_id=trace_id,
-        quality_policy=quality_policy,
+    return ranked
+
+
+def rank_weighted_rrf_candidates(
+    *,
+    query_text: str,
+    document_ids: list[str],
+    store: ContentIngestionStore,
+    include_source_preview: bool,
+    query_embedding: list[float] | None,
+    quality_policy: RetrievalQualityPolicy,
+) -> list[dict[str, Any]]:
+    candidates_by_chunk_id: dict[str, dict[str, Any]] = {}
+    for document_id in document_ids:
+        chunk_set = store.get_chunk_set(document_id)
+        lexical_index = store.get_lexical_index(document_id)
+        if chunk_set is None or lexical_index is None:
+            continue
+        query_terms = query_terms_for_lexical_index(lexical_index, query_text)
+        embedding_index = store.get_embedding_index(document_id)
+        counts_by_chunk = matched_counts_by_chunk(lexical_index, query_terms)
+        for chunk in chunk_set["chunks"]:
+            chunk_id = chunk["chunk_id"]
+            matched_count = counts_by_chunk.get(chunk_id, 0)
+            bm25_score = (
+                min(1.0, matched_count / max(1, len(query_terms)))
+                if query_terms and matched_count > 0
+                else 0.0
+            )
+            vector_score = None
+            if query_embedding is not None and embedding_index is not None:
+                vector_score = cosine_similarity(
+                    query_embedding,
+                    store.get_embedding_vector(chunk_id),
+                )
+            if bm25_score == 0.0 and vector_score is None:
+                continue
+            chunk_text = store.get_chunk_text(chunk_id)
+            candidates_by_chunk_id[chunk_id] = {
+                "document_id": document_id,
+                "chunk": chunk,
+                "chunk_text": chunk_text or chunk["text_preview"],
+                "text": chunk_text if include_source_preview and chunk_text else chunk["text_preview"],
+                "matched_terms": sorted(query_terms & terms_for_chunk(lexical_index, chunk_id)),
+                "scores": {
+                    "vector_score": round(vector_score or 0.0, 6),
+                    "bm25_score": round(bm25_score, 6),
+                    "hybrid_score": 0.0,
+                    "rrf_score": 0.0,
+                    "bm25_rank": None,
+                    "vector_rank": None,
+                    "rerank_score": None,
+                    "final_score": 0.0,
+                },
+            }
+
+    bm25_ranks = candidate_ranks(
+        candidates_by_chunk_id.values(),
+        score_key="bm25_score",
+        limit=quality_policy.bm25_candidate_limit,
+    )
+    vector_ranks = candidate_ranks(
+        candidates_by_chunk_id.values(),
+        score_key="vector_score",
+        limit=quality_policy.vector_candidate_limit,
+    )
+    ranked: list[dict[str, Any]] = []
+    for chunk_id, candidate in candidates_by_chunk_id.items():
+        bm25_rank = bm25_ranks.get(chunk_id)
+        vector_rank = vector_ranks.get(chunk_id)
+        if bm25_rank is None and vector_rank is None:
+            continue
+        rrf_score, normalized_score = weighted_rrf_score(
+            bm25_rank=bm25_rank,
+            vector_rank=vector_rank,
+            quality_policy=quality_policy,
+        )
+        candidate = dict(candidate)
+        candidate["scores"] = {
+            **candidate["scores"],
+            "hybrid_score": normalized_score,
+            "rrf_score": rrf_score,
+            "bm25_rank": bm25_rank,
+            "vector_rank": vector_rank,
+            "final_score": normalized_score,
+        }
+        ranked.append(candidate)
+    return sorted(
+        ranked,
+        key=lambda item: (
+            item["scores"]["final_score"],
+            item["scores"]["vector_score"],
+            item["scores"]["bm25_score"],
+            -item["chunk"]["ordinal"],
+        ),
+        reverse=True,
+    )
+
+
+def candidate_ranks(
+    candidates: Iterable[dict[str, Any]],
+    *,
+    score_key: str,
+    limit: int,
+) -> dict[str, int]:
+    ranked = sorted(
+        (
+            candidate
+            for candidate in candidates
+            if candidate["scores"].get(score_key, 0.0) > 0.0
+        ),
+        key=lambda item: (
+            item["scores"][score_key],
+            -item["chunk"]["ordinal"],
+        ),
+        reverse=True,
+    )
+    return {
+        candidate["chunk"]["chunk_id"]: index + 1
+        for index, candidate in enumerate(ranked[:limit])
+    }
+
+
+def weighted_rrf_score(
+    *,
+    bm25_rank: int | None,
+    vector_rank: int | None,
+    quality_policy: RetrievalQualityPolicy,
+) -> tuple[float, float]:
+    raw_score = 0.0
+    if bm25_rank is not None:
+        raw_score += quality_policy.bm25_weight / (quality_policy.rrf_k + bm25_rank)
+    if vector_rank is not None:
+        raw_score += quality_policy.vector_weight / (quality_policy.rrf_k + vector_rank)
+
+    max_score = (
+        (quality_policy.bm25_weight + quality_policy.vector_weight)
+        / (quality_policy.rrf_k + 1)
+    )
+    if max_score <= 0.0:
+        return 0.0, 0.0
+    normalized_score = min(1.0, max(0.0, raw_score / max_score))
+    return round(raw_score, 6), round(normalized_score, 6)
+
+
+def cosine_similarity(
+    left: list[float] | None,
+    right: list[float] | None,
+) -> float | None:
+    if left is None or right is None or len(left) != len(right) or not left:
+        return None
+    left_norm = sum(value * value for value in left) ** 0.5
+    right_norm = sum(value * value for value in right) ** 0.5
+    if left_norm == 0.0 or right_norm == 0.0:
+        return None
+    return sum(a * b for a, b in zip(left, right, strict=True)) / (
+        left_norm * right_norm
     )
 
 
@@ -482,6 +690,7 @@ def build_retrieval_profile(
     document_ids: list[str],
     *,
     reranker_profile: dict[str, Any] | None = None,
+    query_embedding_hash: str | None = None,
     quality_policy: RetrievalQualityPolicy = DEFAULT_RETRIEVAL_QUALITY_POLICY,
 ) -> dict[str, Any]:
     first_document_id = document_ids[0] if document_ids else None
@@ -494,6 +703,8 @@ def build_retrieval_profile(
             "provider_alias": embedding_index.get("provider_alias") if embedding_index else None,
             "vector_dimension": embedding_index.get("vector_dimension") if embedding_index else 0,
             "index_status": "READY" if embedding_index else "MISSING",
+            "query_embedding_provided": query_embedding_hash is not None,
+            "query_embedding_sha256": query_embedding_hash,
         },
         "bm25_tokenizer": lexical_index.get("tokenizer_used") if lexical_index else None,
         "bm25_tokenizer_profile": (
@@ -587,23 +798,59 @@ def build_retrieval_quality_policy(
             detail="retrieval_policy must be an object when provided.",
         )
 
+    policy_id = _optional_policy_string(
+        policy_payload,
+        "policy_id",
+        DEFAULT_RETRIEVAL_QUALITY_POLICY.policy_id,
+    )
+    ranker_mix = _optional_policy_string(
+        policy_payload,
+        "ranker_mix",
+        WEIGHTED_RRF_RANKER_MIX
+        if policy_id == WEIGHTED_RRF_POLICY_ID
+        else DEFAULT_RETRIEVAL_QUALITY_POLICY.ranker_mix,
+    )
+    if ranker_mix not in {BM25_EMBEDDING_PRESENCE_RANKER_MIX, WEIGHTED_RRF_RANKER_MIX}:
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.retrieval_policy_invalid",
+            detail="retrieval_policy.ranker_mix is unsupported.",
+        )
+    if ranker_mix == WEIGHTED_RRF_RANKER_MIX and policy_id == CURRENT_POLICY_ID:
+        policy_id = WEIGHTED_RRF_POLICY_ID
+
+    weighted_rrf = ranker_mix == WEIGHTED_RRF_RANKER_MIX
     bm25_weight = _optional_policy_float(
         policy_payload,
         "bm25_weight",
-        DEFAULT_RETRIEVAL_QUALITY_POLICY.bm25_weight,
+        DEFAULT_WEIGHTED_RRF_BM25_WEIGHT
+        if weighted_rrf
+        else DEFAULT_RETRIEVAL_QUALITY_POLICY.bm25_weight,
     )
     embedding_presence_weight = _optional_policy_float(
         policy_payload,
         "embedding_presence_weight",
         DEFAULT_RETRIEVAL_QUALITY_POLICY.embedding_presence_weight,
     )
-    if bm25_weight + embedding_presence_weight <= 0.0:
+    vector_weight = _optional_policy_float(
+        policy_payload,
+        "vector_weight",
+        DEFAULT_WEIGHTED_RRF_VECTOR_WEIGHT
+        if weighted_rrf
+        else DEFAULT_RETRIEVAL_QUALITY_POLICY.vector_weight,
+    )
+    score_weight_sum = (
+        bm25_weight + vector_weight
+        if weighted_rrf
+        else bm25_weight + embedding_presence_weight
+    )
+    if score_weight_sum <= 0.0:
         raise RetrievalError(
             status_code=422,
             error_code="cx.retrieval_policy_invalid",
             detail="retrieval_policy score weights must have a positive sum.",
         )
-    if bm25_weight + embedding_presence_weight > 1.0:
+    if score_weight_sum > 1.0:
         raise RetrievalError(
             status_code=422,
             error_code="cx.retrieval_policy_invalid",
@@ -611,12 +858,35 @@ def build_retrieval_quality_policy(
         )
 
     return RetrievalQualityPolicy(
+        policy_id=policy_id,
         bm25_weight=bm25_weight,
         embedding_presence_weight=embedding_presence_weight,
         embedding_presence_score=_optional_policy_float(
             policy_payload,
             "embedding_presence_score",
             DEFAULT_RETRIEVAL_QUALITY_POLICY.embedding_presence_score,
+        ),
+        vector_weight=vector_weight,
+        rrf_k=_optional_policy_int(
+            policy_payload,
+            "rrf_k",
+            DEFAULT_WEIGHTED_RRF_K,
+            minimum=1,
+            maximum=1000,
+        ),
+        vector_candidate_limit=_optional_policy_int(
+            policy_payload,
+            "vector_candidate_limit",
+            DEFAULT_VECTOR_CANDIDATE_LIMIT,
+            minimum=1,
+            maximum=500,
+        ),
+        bm25_candidate_limit=_optional_policy_int(
+            policy_payload,
+            "bm25_candidate_limit",
+            DEFAULT_BM25_CANDIDATE_LIMIT,
+            minimum=1,
+            maximum=500,
         ),
         low_confidence_threshold=_optional_policy_float(
             policy_payload,
@@ -630,6 +900,12 @@ def build_retrieval_quality_policy(
             minimum=1,
             maximum=100,
         ),
+        ranker_mix=ranker_mix,
+        reranked_ranker_mix=(
+            "weighted_rrf_vector_bm25_with_rerank"
+            if weighted_rrf
+            else DEFAULT_RETRIEVAL_QUALITY_POLICY.reranked_ranker_mix
+        ),
     )
 
 
@@ -641,6 +917,10 @@ def retrieval_quality_policy_snapshot(
         "bm25_weight": quality_policy.bm25_weight,
         "embedding_presence_weight": quality_policy.embedding_presence_weight,
         "embedding_presence_score": quality_policy.embedding_presence_score,
+        "vector_weight": quality_policy.vector_weight,
+        "rrf_k": quality_policy.rrf_k,
+        "vector_candidate_limit": quality_policy.vector_candidate_limit,
+        "bm25_candidate_limit": quality_policy.bm25_candidate_limit,
         "low_confidence_threshold": quality_policy.low_confidence_threshold,
         "rerank_candidate_limit": quality_policy.rerank_candidate_limit,
         "ranker_mix": quality_policy.ranker_mix,
@@ -735,11 +1015,13 @@ def package_hash_for(
     purpose: str,
     document_ids: list[str],
     evidence_items: list[dict[str, Any]],
+    query_embedding_hash: str | None = None,
     quality_policy: RetrievalQualityPolicy = DEFAULT_RETRIEVAL_QUALITY_POLICY,
 ) -> str:
     return sha256_json(
         {
             "query_text": query_text,
+            "query_embedding_hash": query_embedding_hash,
             "purpose": purpose,
             "document_ids": document_ids,
             "retrieval_policy": retrieval_quality_policy_snapshot(quality_policy),
@@ -760,6 +1042,41 @@ def sha256_json(value: dict[str, Any]) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+
+
+def query_embedding_from_payload(payload: dict[str, Any]) -> list[float] | None:
+    value = payload.get("query_embedding")
+    if value is None:
+        return None
+    if not isinstance(value, list) or not value:
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.query_embedding_invalid",
+            detail="query_embedding must be a non-empty numeric list.",
+        )
+    if any(isinstance(item, bool) or not isinstance(item, int | float) for item in value):
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.query_embedding_invalid",
+            detail="query_embedding must be a non-empty numeric list.",
+        )
+    return [float(item) for item in value]
+
+
+def build_query_embedding_snapshot(
+    query_embedding: list[float] | None,
+) -> dict[str, Any]:
+    if query_embedding is None:
+        return {
+            "provided": False,
+            "embedding_sha256": None,
+            "vector_dimension": 0,
+        }
+    return {
+        "provided": True,
+        "embedding_sha256": sha256_json({"embedding": query_embedding}),
+        "vector_dimension": len(query_embedding),
+    }
 
 
 def _query_text(payload: dict[str, Any]) -> str:
@@ -838,6 +1155,21 @@ def _optional_policy_float(
             detail=f"retrieval_policy.{key} must be between 0.0 and 1.0.",
         )
     return round(numeric_value, 6)
+
+
+def _optional_policy_string(
+    policy_payload: dict[str, Any],
+    key: str,
+    default: str,
+) -> str:
+    value = policy_payload.get(key, default)
+    if not isinstance(value, str) or not value.strip():
+        raise RetrievalError(
+            status_code=422,
+            error_code="cx.retrieval_policy_invalid",
+            detail=f"retrieval_policy.{key} must be a non-empty string.",
+        )
+    return value.strip()
 
 
 def _optional_policy_int(
