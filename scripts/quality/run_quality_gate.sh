@@ -31,3 +31,4 @@ mkdir -p "$REPORT_DIR"
 
 "$PYTHON_BIN" scripts/smoke/run_traceable_mock_flow.py --summary
 "$PYTHON_BIN" scripts/smoke/run_generation_recovery_mock_flow.py --summary
+"$PYTHON_BIN" scripts/smoke/run_protected_live_rag_smoke.py --summary

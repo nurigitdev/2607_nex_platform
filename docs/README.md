@@ -178,6 +178,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0072`](slices/0072_cx_text_extraction_adapter_foundation.md) | `S7-002` CX text extraction adapter foundation. |
 | [`Slice 0073`](slices/0073_cx_document_processing_pipeline_job.md) | `S7-003` CX document processing pipeline job. |
 | [`Slice 0074`](slices/0074_retrieval_quality_policy_v1.md) | `S7-004` Retrieval quality policy v1. |
+| [`Slice 0075`](slices/0075_protected_live_rag_smoke_evidence.md) | `S7-005` Protected live RAG smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

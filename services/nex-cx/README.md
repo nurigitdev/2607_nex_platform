@@ -113,3 +113,6 @@ Grounded generation validation:
   weight `0.15`, embedding-presence score `0.5`, low-confidence threshold
   `0.2`, and rerank candidate limit `50`. Tests and future tenant policies can
   pass bounded overrides through `retrieval_policy`.
+- Protected live RAG smoke evidence is available through
+  `scripts/smoke/run_protected_live_rag_smoke.py`. It is skipped by default and
+  only calls live providers when `NEX_PROTECTED_LIVE_RAG_SMOKE=1` is set.
