@@ -76,6 +76,8 @@ class ContentIngestionStore:
     summary_texts: dict[str, str] = field(default_factory=dict)
     summary_embedding_indexes: dict[str, dict[str, Any]] = field(default_factory=dict)
     summary_embedding_vectors: dict[str, list[float]] = field(default_factory=dict)
+    document_processing_runs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    latest_processing_run_ids_by_document: dict[str, str] = field(default_factory=dict)
     content_repository: CxContentRepository = field(
         default_factory=InMemoryCxContentRepository
     )
@@ -278,6 +280,25 @@ class ContentIngestionStore:
         document_summary_id: str,
     ) -> list[float] | None:
         return self.summary_embedding_vectors.get(document_summary_id)
+
+    def save_document_processing_run(self, record: dict[str, Any]) -> dict[str, Any]:
+        self.document_processing_runs[record["pipeline_run_id"]] = record
+        self.latest_processing_run_ids_by_document[record["document_id"]] = record[
+            "pipeline_run_id"
+        ]
+        return record
+
+    def get_document_processing_run(self, pipeline_run_id: str) -> dict[str, Any] | None:
+        return self.document_processing_runs.get(pipeline_run_id)
+
+    def get_latest_document_processing_run(
+        self,
+        document_id: str,
+    ) -> dict[str, Any] | None:
+        pipeline_run_id = self.latest_processing_run_ids_by_document.get(document_id)
+        if pipeline_run_id is None:
+            return None
+        return self.document_processing_runs[pipeline_run_id]
 
 
 @dataclass(frozen=True)

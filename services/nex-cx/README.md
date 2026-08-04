@@ -33,6 +33,10 @@ Internal persistence boundary:
   local mock adapter performs real UTF-8 Markdown/plain-text conversion and
   emits explicit placeholders with warnings for PDF, DOCX, PPTX, and XLSX until
   real extractor backends are wired.
+- Document processing can be run as one idempotent pipeline: extraction,
+  chunking, lexical index, embedding index, summary, and summary embedding.
+  Existing outputs are recorded as `SKIPPED`; new outputs are recorded as
+  `SUCCEEDED`.
 - Document summaries use `summary_1000_0`, target 900 chars, and hard limit
   1000 chars so summary text fits within one default retrieval chunk.
 - Summary embeddings index the document summary separately from chunk
@@ -64,6 +68,8 @@ Current endpoints:
 - `POST /api/v1/documents/{document_id}/summary/run`
 - `GET /api/v1/documents/{document_id}/summary-embedding`
 - `POST /api/v1/documents/{document_id}/summary-embedding/run`
+- `GET /api/v1/documents/{document_id}/processing`
+- `POST /api/v1/documents/{document_id}/processing/run`
 - `GET /api/v1/prompts/bindings`
 - `GET /api/v1/prompts/render-events/{prompt_render_event_id}`
 - `GET /api/v1/compatibility/generation-rules`
