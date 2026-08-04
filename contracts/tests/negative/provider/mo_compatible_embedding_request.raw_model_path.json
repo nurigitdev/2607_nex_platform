@@ -1,0 +1,7 @@
+{
+  "model": "Qwen3-embedding-4B",
+  "input": [
+    "bad request"
+  ],
+  "model_path": "/home/nexpcx/2608_nex_platform/models/qwen3_embedding_4b"
+}

@@ -1,0 +1,278 @@
+openapi: 3.1.0
+info:
+  title: NeX Compatible Provider APIs
+  version: 0.0.0-slice0064
+tags:
+  - name: Provider Health
+  - name: Embeddings
+  - name: Reranking
+paths:
+  /healthz:
+    get:
+      operationId: getCompatibleProviderHealth
+      tags:
+        - Provider Health
+      responses:
+        "200":
+          description: Provider is reachable and reports safe runtime health.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompatibleProviderHealth"
+        "503":
+          description: Provider is reachable but unavailable.
+  /v1/embeddings:
+    post:
+      operationId: createCompatibleEmbeddings
+      tags:
+        - Embeddings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompatibleEmbeddingRequest"
+      responses:
+        "200":
+          description: OpenAI-compatible embedding response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompatibleEmbeddingResponse"
+        "422":
+          description: Request validation failed.
+  /v1/rerank:
+    post:
+      operationId: createCompatibleRerank
+      tags:
+        - Reranking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompatibleRerankRequest"
+      responses:
+        "200":
+          description: NeX-compatible rerank response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompatibleRerankResponse"
+        "422":
+          description: Request validation failed.
+components:
+  schemas:
+    CompatibleEmbeddingRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - model
+        - input
+      properties:
+        model:
+          type: string
+          minLength: 1
+        input:
+          oneOf:
+            - type: string
+              minLength: 1
+            - type: array
+              minItems: 1
+              items:
+                type: string
+                minLength: 1
+        encoding_format:
+          type: string
+          enum:
+            - float
+            - base64
+        dimensions:
+          type: integer
+          minimum: 1
+        user:
+          type: string
+          minLength: 1
+    CompatibleEmbeddingResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - object
+        - model
+        - data
+        - usage
+      properties:
+        object:
+          const: list
+        model:
+          type: string
+          minLength: 1
+        data:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - object
+              - embedding
+              - index
+            properties:
+              object:
+                const: embedding
+              embedding:
+                type: array
+                minItems: 1
+                items:
+                  type: number
+              index:
+                type: integer
+                minimum: 0
+        usage:
+          type: object
+          additionalProperties: false
+          required:
+            - prompt_tokens
+            - total_tokens
+          properties:
+            prompt_tokens:
+              type: integer
+              minimum: 0
+            total_tokens:
+              type: integer
+              minimum: 0
+    CompatibleRerankRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - model
+        - query
+        - documents
+      properties:
+        model:
+          type: string
+          minLength: 1
+        query:
+          type: string
+          minLength: 1
+        documents:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+        top_n:
+          type: integer
+          minimum: 1
+        return_documents:
+          type: boolean
+    CompatibleRerankResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - model
+        - results
+      properties:
+        model:
+          type: string
+          minLength: 1
+        results:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - index
+              - score
+            properties:
+              index:
+                type: integer
+                minimum: 0
+              score:
+                type: number
+              document:
+                type: string
+        usage:
+          type: object
+          additionalProperties: false
+          properties:
+            prompt_tokens:
+              type: integer
+              minimum: 0
+            total_tokens:
+              type: integer
+              minimum: 0
+    CompatibleProviderHealth:
+      type: object
+      additionalProperties: false
+      required:
+        - provider_health_schema_version
+        - status
+        - provider_capability
+        - provider_type
+        - provider_model_id
+        - model_name
+        - model_revision
+        - precision_policy
+        - requested_torch_dtype
+        - loaded_parameter_dtype
+        - dtype_match
+        - checked_at
+      properties:
+        provider_health_schema_version:
+          const: compatible_provider_health.v1
+        status:
+          type: string
+          enum:
+            - READY
+            - DEGRADED
+            - UNAVAILABLE
+        provider_capability:
+          type: string
+          enum:
+            - embedding
+            - reranking
+            - generation
+        provider_type:
+          type: string
+          minLength: 1
+        provider_model_id:
+          type: string
+          minLength: 1
+        model_name:
+          type: string
+          minLength: 1
+        model_revision:
+          type: string
+          minLength: 1
+        precision_policy:
+          type: string
+          enum:
+            - bf16_required
+            - fp16_allowed
+            - mock_no_model
+        requested_torch_dtype:
+          type: string
+          enum:
+            - bfloat16
+            - float16
+            - float32
+            - mock
+        loaded_parameter_dtype:
+          type: string
+          enum:
+            - bfloat16
+            - float16
+            - float32
+            - mock
+        dtype_match:
+          type: boolean
+        device:
+          type: string
+          minLength: 1
+        checked_at:
+          type: string
+          format: date-time
+        runtime_metadata:
+          type: object

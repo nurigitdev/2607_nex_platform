@@ -36,6 +36,16 @@
       "schema": "schemas/service/nex_mo/model_profile.v1.schema.json"
     },
     {
+      "name": "mo_compatible_embedding_request_raw_model_path",
+      "path": "tests/negative/provider/mo_compatible_embedding_request.raw_model_path.json",
+      "schema": "schemas/service/nex_mo/compatible_embedding_request.v1.schema.json"
+    },
+    {
+      "name": "mo_compatible_provider_health_fp32_loaded_for_bf16",
+      "path": "tests/negative/provider/mo_compatible_provider_health.fp32_loaded_for_bf16.json",
+      "schema": "schemas/service/nex_mo/compatible_provider_health.v1.schema.json"
+    },
+    {
       "name": "cx_generation_execution_record_raw_prompt_leak",
       "path": "tests/negative/generation/cx_generation_execution_record.raw_prompt_leak.json",
       "schema": "schemas/generation/cx_generation_execution_record.v1.schema.json"

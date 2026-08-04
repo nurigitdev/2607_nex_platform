@@ -167,6 +167,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0061`](slices/0061_local_live_provider_config_guard.md) | `S6-011` Local live provider config guard and Qwen3 reranker 0.6B update. |
 | [`Slice 0062`](slices/0062_protected_dgx_live_preflight_profile.md) | `S6-012` Protected DGX live preflight execution profile. |
 | [`Slice 0063`](slices/0063_protected_dgx_live_smoke_evidence_execution.md) | `S6-013` Protected DGX live smoke evidence execution. |
+| [`Slice 0064`](slices/0064_compatible_provider_contract_freeze.md) | `S6-014` OpenAI-compatible embedding and NeX-compatible reranker provider contract freeze. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

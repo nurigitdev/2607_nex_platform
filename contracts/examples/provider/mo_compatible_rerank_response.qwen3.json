@@ -1,0 +1,14 @@
+{
+  "model": "Qwen3-Reranker-0.6B",
+  "results": [
+    {
+      "index": 0,
+      "score": 9.75,
+      "document": "A relevant NeX platform document."
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 9,
+    "total_tokens": 9
+  }
+}

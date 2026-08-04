@@ -1,0 +1,8 @@
+{
+  "model": "Qwen3-embedding-4B",
+  "input": [
+    "nex compatible embedding provider smoke"
+  ],
+  "encoding_format": "float",
+  "dimensions": 2560
+}

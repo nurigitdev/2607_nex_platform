@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_mo/compatible_provider_health.v1.schema.json",
+  "title": "NeX Compatible Provider Health",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "provider_health_schema_version",
+    "status",
+    "provider_capability",
+    "provider_type",
+    "provider_model_id",
+    "model_name",
+    "model_revision",
+    "precision_policy",
+    "requested_torch_dtype",
+    "loaded_parameter_dtype",
+    "dtype_match",
+    "checked_at"
+  ],
+  "properties": {
+    "provider_health_schema_version": {
+      "const": "compatible_provider_health.v1"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "READY",
+        "DEGRADED",
+        "UNAVAILABLE"
+      ]
+    },
+    "provider_capability": {
+      "type": "string",
+      "enum": [
+        "embedding",
+        "reranking",
+        "generation"
+      ]
+    },
+    "provider_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider_model_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_revision": {
+      "type": "string",
+      "minLength": 1
+    },
+    "precision_policy": {
+      "type": "string",
+      "enum": [
+        "bf16_required",
+        "fp16_allowed",
+        "mock_no_model"
+      ]
+    },
+    "requested_torch_dtype": {
+      "type": "string",
+      "enum": [
+        "bfloat16",
+        "float16",
+        "float32",
+        "mock"
+      ]
+    },
+    "loaded_parameter_dtype": {
+      "type": "string",
+      "enum": [
+        "bfloat16",
+        "float16",
+        "float32",
+        "mock"
+      ]
+    },
+    "dtype_match": {
+      "type": "boolean"
+    },
+    "device": {
+      "type": "string",
+      "minLength": 1
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "runtime_metadata": {
+      "type": "object",
+      "propertyNames": {
+        "not": {
+          "pattern": "(path|dir|url|token|secret|password|key)"
+        }
+      },
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "integer",
+          "boolean",
+          "null"
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "precision_policy": {
+            "const": "bf16_required"
+          }
+        },
+        "required": [
+          "precision_policy"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requested_torch_dtype": {
+            "const": "bfloat16"
+          },
+          "loaded_parameter_dtype": {
+            "const": "bfloat16"
+          },
+          "dtype_match": {
+            "const": true
+          }
+        }
+      }
+    }
+  ]
+}

@@ -22,6 +22,8 @@ Model profile defaults:
   selected execution models and live preflight expected models agree, including
   the current DGX-Spark reranker target `Qwen3-Reranker-0.6B`.
 - Live preflight request shapes:
+  - Canonical nex-platform target providers should implement
+    `contracts/openapi/nex-compatible-providers.openapi.yaml`.
   - Embedding: `POST` to `NEX_MO_REMOTE_EMBEDDING_URL`. The generic shape is
     OpenAI-compatible `model` and `input`; the protected DGX profile uses
     `nex_pcx_embeddings_v1` with profile/model-key/texts/dimension fields.
@@ -53,6 +55,10 @@ Model profile defaults:
   The snapshot is in-memory, process-local, and read-only. It reports configured
   capability rows plus success/failure counters and last safe failure metadata;
   it does not expose provider URLs, API keys, or raw provider payloads.
+- Compatible provider `/healthz` responses must expose requested and loaded
+  parameter dtype. BF16-required models must report
+  `requested_torch_dtype=bfloat16`, `loaded_parameter_dtype=bfloat16`, and
+  `dtype_match=true`; FP32-loaded BF16 models are contract failures.
 
 Current endpoints:
 

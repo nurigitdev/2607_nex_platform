@@ -1,0 +1,10 @@
+{
+  "model": "Qwen3-Reranker-0.6B",
+  "query": "nex compatible reranker provider smoke",
+  "documents": [
+    "A relevant NeX platform document.",
+    "An unrelated note."
+  ],
+  "top_n": 1,
+  "return_documents": true
+}

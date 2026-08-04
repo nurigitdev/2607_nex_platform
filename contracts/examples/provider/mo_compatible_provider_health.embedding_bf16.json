@@ -1,0 +1,20 @@
+{
+  "provider_health_schema_version": "compatible_provider_health.v1",
+  "status": "READY",
+  "provider_capability": "embedding",
+  "provider_type": "openai-compatible-embedding",
+  "provider_model_id": "Qwen3-embedding-4B",
+  "model_name": "Qwen3-embedding-4B",
+  "model_revision": "Qwen3-embedding-4B",
+  "precision_policy": "bf16_required",
+  "requested_torch_dtype": "bfloat16",
+  "loaded_parameter_dtype": "bfloat16",
+  "dtype_match": true,
+  "device": "cuda:0",
+  "checked_at": "2026-08-04T00:00:00Z",
+  "runtime_metadata": {
+    "backend": "qwen_embedding",
+    "embedding_dimensions": 2560,
+    "mock": false
+  }
+}

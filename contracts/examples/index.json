@@ -46,6 +46,31 @@
       "schema": "schemas/service/nex_mo/model_profile.v1.schema.json"
     },
     {
+      "name": "mo_compatible_embedding_request_openai_qwen3",
+      "path": "examples/provider/mo_compatible_embedding_request.openai_qwen3.json",
+      "schema": "schemas/service/nex_mo/compatible_embedding_request.v1.schema.json"
+    },
+    {
+      "name": "mo_compatible_embedding_response_openai_qwen3",
+      "path": "examples/provider/mo_compatible_embedding_response.openai_qwen3.json",
+      "schema": "schemas/service/nex_mo/compatible_embedding_response.v1.schema.json"
+    },
+    {
+      "name": "mo_compatible_rerank_request_qwen3",
+      "path": "examples/provider/mo_compatible_rerank_request.qwen3.json",
+      "schema": "schemas/service/nex_mo/compatible_rerank_request.v1.schema.json"
+    },
+    {
+      "name": "mo_compatible_rerank_response_qwen3",
+      "path": "examples/provider/mo_compatible_rerank_response.qwen3.json",
+      "schema": "schemas/service/nex_mo/compatible_rerank_response.v1.schema.json"
+    },
+    {
+      "name": "mo_compatible_provider_health_embedding_bf16",
+      "path": "examples/provider/mo_compatible_provider_health.embedding_bf16.json",
+      "schema": "schemas/service/nex_mo/compatible_provider_health.v1.schema.json"
+    },
+    {
       "name": "cx_generation_execution_record_mock",
       "path": "examples/generation/cx_generation_execution_record.mock_success.json",
       "schema": "schemas/generation/cx_generation_execution_record.v1.schema.json"
