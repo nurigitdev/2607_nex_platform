@@ -9,13 +9,14 @@ STATEMENT_COVERAGE_MIN="${STATEMENT_COVERAGE_MIN:-95}"
 BRANCH_COVERAGE_MIN="${BRANCH_COVERAGE_MIN:-85}"
 REPORT_DIR="${REPORT_DIR:-reports/coverage}"
 
-export PYTHONPATH="services/_shared:services/nex-oa:services/nex-ag:services/nex-ae-api:services/nex-cx:services/nex-mo:scripts/db:scripts/dev:scripts/smoke:scripts/quality${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="services/_shared:services/nex-oa:services/nex-ag:services/nex-ae-api:services/nex-cx:services/nex-mo:providers/nex-compatible-provider:scripts/db:scripts/dev:scripts/smoke:scripts/quality${PYTHONPATH:+:$PYTHONPATH}"
 
 mkdir -p "$REPORT_DIR"
 
 "$PYTHON_BIN" -m pytest \
   --cov=services \
   --cov=scripts \
+  --cov=providers \
   --cov-branch \
   --cov-report=term-missing \
   --cov-report="json:$REPORT_DIR/coverage.json" \

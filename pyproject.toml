@@ -8,6 +8,7 @@ pythonpath = [
   "services/nex-ae-api",
   "services/nex-cx",
   "services/nex-mo",
+  "providers/nex-compatible-provider",
   "scripts/db",
   "scripts/dev",
   "scripts/smoke",
@@ -16,7 +17,7 @@ pythonpath = [
 
 [tool.coverage.run]
 branch = true
-source = ["services", "scripts"]
+source = ["services", "scripts", "providers"]
 omit = [
   "*/__init__.py"
 ]
