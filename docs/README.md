@@ -180,6 +180,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0074`](slices/0074_retrieval_quality_policy_v1.md) | `S7-004` Retrieval quality policy v1. |
 | [`Slice 0075`](slices/0075_protected_live_rag_smoke_evidence.md) | `S7-005` Protected live RAG smoke evidence. |
 | [`Slice 0076`](slices/0076_ag_retrieval_policy_registry.md) | `S8-001` AG retrieval policy read-only registry. |
+| [`Slice 0077`](slices/0077_cx_tokenizer_profile_alignment.md) | `S8-002` CX tokenizer profile and query alignment. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

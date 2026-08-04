@@ -272,6 +272,90 @@ def test_rank_retrieval_candidates_scores_matches(
     assert "trace" in candidates[0]["text"].lower()
 
 
+def test_rank_retrieval_candidates_uses_index_tokenizer_for_query(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, document_id = build_store_with_indexes(
+        tmp_path,
+        monkeypatch,
+        text="토큰 정합성 문서",
+        with_embedding=False,
+    )
+    chunk = store.get_chunk_set(document_id)["chunks"][0]
+    store.save_lexical_index(
+        {
+            "document_id": document_id,
+            "tokenizer_used": "mecab_ko",
+            "tokenizer_fallback": "korean_mixed_v1",
+            "fallback_used": False,
+            "postings": [
+                {
+                    "term": "mecab-query",
+                    "document_frequency": 1,
+                    "occurrences": [
+                        {
+                            "chunk_id": chunk["chunk_id"],
+                            "ordinal": chunk["ordinal"],
+                            "count": 1,
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    monkeypatch.setattr(
+        lexical_index,
+        "_mecab_ko_tokens",
+        lambda text: ["mecab-query"],
+    )
+
+    candidates = rank_retrieval_candidates(
+        query_text="일반 질의",
+        document_ids=[document_id],
+        store=store,
+        include_source_preview=True,
+    )
+
+    assert candidates[0]["matched_terms"] == ["mecab-query"]
+
+
+def test_rank_retrieval_candidates_falls_back_to_index_tokenizer_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, document_id = build_store_with_indexes(
+        tmp_path,
+        monkeypatch,
+        with_embedding=False,
+    )
+    lexical = store.get_lexical_index(document_id)
+    assert lexical is not None
+    store.save_lexical_index(
+        {
+            **lexical,
+            "tokenizer_used": "mecab_ko",
+            "tokenizer_fallback": "korean_mixed_v1",
+            "fallback_used": False,
+        }
+    )
+
+    def fail_mecab(text: str) -> list[str]:
+        raise TokenizerUnavailable("missing")
+
+    monkeypatch.setattr(lexical_index, "_mecab_ko_tokens", fail_mecab)
+
+    candidates = rank_retrieval_candidates(
+        query_text="trace quality",
+        document_ids=[document_id],
+        store=store,
+        include_source_preview=True,
+    )
+
+    assert candidates
+    assert "trace" in candidates[0]["matched_terms"]
+
+
 def test_rank_retrieval_candidates_applies_reranker_scores(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -648,6 +732,9 @@ def test_build_retrieval_context_package_returns_ready(
     assert package["status"] == "READY"
     assert package["permission_snapshot"]["actor_id"] == "user-1"
     assert package["retrieval_profile"]["embedding_profile"]["index_status"] == "READY"
+    assert package["retrieval_profile"]["bm25_tokenizer_profile"]["bm25_tokenizer"] == (
+        "korean_mixed_v1"
+    )
     assert package["retrieval_profile"]["quality_policy"]["policy_id"] == (
         "retrieval_quality_v1"
     )

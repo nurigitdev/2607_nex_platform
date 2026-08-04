@@ -48,6 +48,10 @@ Internal persistence boundary:
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`
+- Lexical index records include a tokenizer profile. Retrieval query
+  tokenization follows each index's recorded tokenizer and falls back to the
+  recorded fallback tokenizer before using the built-in mixed tokenizer for
+  legacy records.
 
 Current endpoints:
 
@@ -113,6 +117,9 @@ Grounded generation validation:
   weight `0.15`, embedding-presence score `0.5`, low-confidence threshold
   `0.2`, and rerank candidate limit `50`. Tests and future tenant policies can
   pass bounded overrides through `retrieval_policy`.
+- Retrieval packages expose `bm25_tokenizer_profile` so AG/debug tooling can
+  inspect the BM25 tokenizer, fallback, dictionary profile, and query tokenizer
+  policy used by the searched lexical index.
 - Protected live RAG smoke evidence is available through
   `scripts/smoke/run_protected_live_rag_smoke.py`. It is skipped by default and
   only calls live providers when `NEX_PROTECTED_LIVE_RAG_SMOKE=1` is set.

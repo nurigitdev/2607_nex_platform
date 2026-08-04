@@ -22,7 +22,7 @@ from nex_runtime import (
 )
 
 from nex_cx.ingestion import ContentIngestionStore
-from nex_cx.lexical_index import korean_mixed_v1_tokens
+from nex_cx.lexical_index import query_terms_for_lexical_index
 
 DEFAULT_TOP_K = 5
 MAX_TOP_K = 20
@@ -281,15 +281,14 @@ def rank_retrieval_candidates(
     trace_id: str = "",
     quality_policy: RetrievalQualityPolicy = DEFAULT_RETRIEVAL_QUALITY_POLICY,
 ) -> list[dict[str, Any]]:
-    query_terms = set(korean_mixed_v1_tokens(query_text))
-    if not query_terms:
-        return []
-
     candidates: list[dict[str, Any]] = []
     for document_id in document_ids:
         chunk_set = store.get_chunk_set(document_id)
         lexical_index = store.get_lexical_index(document_id)
         if chunk_set is None or lexical_index is None:
+            continue
+        query_terms = query_terms_for_lexical_index(lexical_index, query_text)
+        if not query_terms:
             continue
         embedding_index = store.get_embedding_index(document_id)
         counts_by_chunk = matched_counts_by_chunk(lexical_index, query_terms)
@@ -497,6 +496,9 @@ def build_retrieval_profile(
             "index_status": "READY" if embedding_index else "MISSING",
         },
         "bm25_tokenizer": lexical_index.get("tokenizer_used") if lexical_index else None,
+        "bm25_tokenizer_profile": (
+            lexical_index.get("tokenizer_profile") if lexical_index else None
+        ),
         "reranker_profile": reranker_profile or build_reranker_profile([], configured_alias=None),
         "chunk_policy": chunk_set.get("chunk_policy") if chunk_set else "chunk_1000_100",
         "source_context_policy": {

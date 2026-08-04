@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -20,6 +21,7 @@ from nex_cx.ingestion import ContentIngestionStore, CxStorageConfig, build_stora
 
 SUPPORTED_TOKENIZERS = {"mecab_ko", "korean_mixed_v1"}
 KOREAN_MIXED_PATTERN = re.compile(r"[가-힣]+|[A-Za-z0-9]+")
+MECAB_DICTIONARY_ENV = "MECAB_DICDIR"
 
 
 @dataclass(frozen=True)
@@ -176,6 +178,12 @@ def build_lexical_index(
         "tokenizer_used": tokenizer_used,
         "tokenizer_fallback": tokenizer_fallback,
         "fallback_used": fallback_used,
+        "tokenizer_profile": build_tokenizer_profile(
+            tokenizer_requested=tokenizer_requested,
+            tokenizer_used=tokenizer_used,
+            tokenizer_fallback=tokenizer_fallback,
+            fallback_used=fallback_used,
+        ),
         "chunk_count": chunk_set["chunk_count"],
         "unique_token_count": len(postings),
         "postings": postings,
@@ -190,6 +198,56 @@ def tokenize_with(tokenizer: str, text: str) -> list[str]:
     if tokenizer == "mecab_ko":
         return _mecab_ko_tokens(text)
     return korean_mixed_v1_tokens(text)
+
+
+def query_terms_for_lexical_index(
+    lexical_index: dict[str, Any],
+    query_text: str,
+) -> set[str]:
+    tokenizer_used = _tokenizer_name_or_default(
+        lexical_index.get("tokenizer_used"),
+        default="korean_mixed_v1",
+    )
+    tokenizer_fallback = _tokenizer_name_or_default(
+        lexical_index.get("tokenizer_fallback"),
+        default="korean_mixed_v1",
+    )
+    try:
+        return set(tokenize_with(tokenizer_used, query_text))
+    except TokenizerUnavailable:
+        try:
+            return set(tokenize_with(tokenizer_fallback, query_text))
+        except TokenizerUnavailable:
+            return set(korean_mixed_v1_tokens(query_text))
+
+
+def build_tokenizer_profile(
+    *,
+    tokenizer_requested: str,
+    tokenizer_used: str,
+    tokenizer_fallback: str,
+    fallback_used: bool,
+) -> dict[str, Any]:
+    return {
+        "bm25_tokenizer_requested": tokenizer_requested,
+        "bm25_tokenizer": tokenizer_used,
+        "bm25_tokenizer_fallback": tokenizer_fallback,
+        "fallback_used": fallback_used,
+        "query_tokenizer_policy": "match_index_tokenizer_with_fallback",
+        "dictionary_profile": dictionary_profile_for_tokenizer(tokenizer_used),
+        "dictionary_path_env": MECAB_DICTIONARY_ENV if tokenizer_used == "mecab_ko" else None,
+        "dictionary_path_configured": bool(os.getenv(MECAB_DICTIONARY_ENV))
+        if tokenizer_used == "mecab_ko"
+        else False,
+    }
+
+
+def dictionary_profile_for_tokenizer(tokenizer: str) -> str:
+    if tokenizer == "mecab_ko":
+        return "mecab-ko-dic"
+    if tokenizer == "korean_mixed_v1":
+        return "none_regex_korean_mixed_v1"
+    return "unknown"
 
 
 def korean_mixed_v1_tokens(text: str) -> list[str]:
@@ -246,6 +304,12 @@ def _mecab_ko_tokens(text: str) -> list[str]:
         if token:
             tokens.append(token)
     return tokens
+
+
+def _tokenizer_name_or_default(value: Any, *, default: str) -> str:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return default
 
 
 def _authorize_cx_request(

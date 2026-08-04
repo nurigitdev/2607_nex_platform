@@ -21,8 +21,11 @@ from nex_cx.lexical_index import (
     build_and_store_lexical_index,
     build_lexical_index,
     build_postings,
+    build_tokenizer_profile,
+    dictionary_profile_for_tokenizer,
     korean_mixed_v1_tokens,
     ordered_chunk_texts,
+    query_terms_for_lexical_index,
     register_lexical_index_routes,
     tokenize_with,
 )
@@ -121,6 +124,33 @@ def test_tokenize_with_uses_mecab_when_available(monkeypatch: pytest.MonkeyPatch
     assert tokenize_with("mecab_ko", "토큰") == ["mecab", "토큰"]
 
 
+def test_dictionary_profile_identifies_supported_tokenizers() -> None:
+    assert dictionary_profile_for_tokenizer("mecab_ko") == "mecab-ko-dic"
+    assert (
+        dictionary_profile_for_tokenizer("korean_mixed_v1")
+        == "none_regex_korean_mixed_v1"
+    )
+    assert dictionary_profile_for_tokenizer("unknown") == "unknown"
+
+
+def test_build_tokenizer_profile_records_dictionary_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MECAB_DICDIR", "/opt/mecab/dic")
+
+    profile = build_tokenizer_profile(
+        tokenizer_requested="mecab_ko",
+        tokenizer_used="mecab_ko",
+        tokenizer_fallback="korean_mixed_v1",
+        fallback_used=False,
+    )
+
+    assert profile["query_tokenizer_policy"] == "match_index_tokenizer_with_fallback"
+    assert profile["dictionary_profile"] == "mecab-ko-dic"
+    assert profile["dictionary_path_env"] == "MECAB_DICDIR"
+    assert profile["dictionary_path_configured"] is True
+
+
 def test_mecab_ko_tokens_parses_fake_mecab_output(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeTagger:
         def parse(self, text: str) -> str:
@@ -145,6 +175,19 @@ def test_mecab_ko_tokens_handles_empty_parse(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setitem(sys.modules, "MeCab", FakeMeCab)
 
     assert lexical_index._mecab_ko_tokens("") == []
+
+
+def test_mecab_ko_tokens_skips_empty_terms(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeTagger:
+        def parse(self, text: str) -> str:
+            return "\tUNKNOWN\nNeX\tNNP\nEOS\n"
+
+    class FakeMeCab:
+        Tagger = FakeTagger
+
+    monkeypatch.setitem(sys.modules, "MeCab", FakeMeCab)
+
+    assert lexical_index._mecab_ko_tokens("NeX") == ["nex"]
 
 
 def test_build_postings_counts_terms_per_chunk() -> None:
@@ -177,6 +220,7 @@ def test_build_lexical_index_uses_requested_tokenizer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     store, _, chunk_set = build_store_with_chunks(tmp_path)
+    monkeypatch.delenv("MECAB_DICDIR", raising=False)
     monkeypatch.setattr(lexical_index, "_mecab_ko_tokens", lambda text: ["mecab", "trace"])
 
     record = build_lexical_index(
@@ -191,6 +235,16 @@ def test_build_lexical_index_uses_requested_tokenizer(
 
     assert record["tokenizer_used"] == "mecab_ko"
     assert record["fallback_used"] is False
+    assert record["tokenizer_profile"] == {
+        "bm25_tokenizer_requested": "mecab_ko",
+        "bm25_tokenizer": "mecab_ko",
+        "bm25_tokenizer_fallback": "korean_mixed_v1",
+        "fallback_used": False,
+        "query_tokenizer_policy": "match_index_tokenizer_with_fallback",
+        "dictionary_profile": "mecab-ko-dic",
+        "dictionary_path_env": "MECAB_DICDIR",
+        "dictionary_path_configured": False,
+    }
     assert record["unique_token_count"] == 2
 
 
@@ -217,7 +271,66 @@ def test_build_lexical_index_falls_back_when_mecab_fails(
 
     assert record["tokenizer_used"] == "korean_mixed_v1"
     assert record["fallback_used"] is True
+    assert record["tokenizer_profile"]["dictionary_profile"] == (
+        "none_regex_korean_mixed_v1"
+    )
+    assert record["tokenizer_profile"]["query_tokenizer_policy"] == (
+        "match_index_tokenizer_with_fallback"
+    )
     assert any(posting["term"] == "trace" for posting in record["postings"])
+
+
+def test_query_terms_for_lexical_index_uses_recorded_tokenizer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(lexical_index, "_mecab_ko_tokens", lambda text: ["mecab", text])
+
+    terms = query_terms_for_lexical_index(
+        {
+            "tokenizer_used": "mecab_ko",
+            "tokenizer_fallback": "korean_mixed_v1",
+        },
+        "질의",
+    )
+
+    assert terms == {"mecab", "질의"}
+
+
+def test_query_terms_for_lexical_index_falls_back_to_index_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_mecab(text: str) -> list[str]:
+        raise TokenizerUnavailable("missing")
+
+    monkeypatch.setattr(lexical_index, "_mecab_ko_tokens", fail_mecab)
+
+    terms = query_terms_for_lexical_index(
+        {
+            "tokenizer_used": "mecab_ko",
+            "tokenizer_fallback": "korean_mixed_v1",
+        },
+        "NeX trace",
+    )
+
+    assert terms == {"nex", "trace"}
+
+
+def test_query_terms_for_lexical_index_falls_back_to_builtin_default() -> None:
+    terms = query_terms_for_lexical_index(
+        {
+            "tokenizer_used": "unsupported",
+            "tokenizer_fallback": "also_unsupported",
+        },
+        "NeX trace",
+    )
+
+    assert terms == {"nex", "trace"}
+
+
+def test_query_terms_for_lexical_index_defaults_missing_tokenizer_names() -> None:
+    terms = query_terms_for_lexical_index({}, "NeX trace")
+
+    assert terms == {"nex", "trace"}
 
 
 def test_build_lexical_index_reports_no_available_tokenizer(tmp_path: Path) -> None:
