@@ -63,6 +63,8 @@ def test_remote_provider_configs_use_current_env_contract() -> None:
     assert configs[2].headers()["Authorization"] == "Bearer secret"
     assert configs[2].timeout_seconds == 8.5
     assert "secret" not in str(configs[2].to_safe_summary())
+    assert "request_options" not in configs[0].to_safe_summary()
+    assert "request_options" not in configs[1].to_safe_summary()
 
 
 def test_remote_provider_configs_support_nex_pcx_request_shapes() -> None:
@@ -103,6 +105,12 @@ def test_remote_provider_configs_support_nex_pcx_request_shapes() -> None:
             }
         ],
     }
+    assert configs[0].to_safe_summary()["request_options"]["profile_name"] == (
+        "qwen3_4b_2560"
+    )
+    assert configs[1].to_safe_summary()["request_options"]["reranker_profile_name"] == (
+        "qwen3_reranker_0_6b"
+    )
 
 
 def test_remote_embedding_execution_config_uses_model_overrides() -> None:
@@ -121,6 +129,7 @@ def test_remote_embedding_execution_config_uses_model_overrides() -> None:
     assert config.deployment_id == "dgx-embedding-a"
     assert config.headers()["Authorization"] == "Bearer secret"
     assert "secret" not in str(config.to_safe_summary())
+    assert "request_options" not in config.to_safe_summary()
 
 
 def test_remote_reranker_execution_config_uses_model_overrides() -> None:
@@ -139,6 +148,7 @@ def test_remote_reranker_execution_config_uses_model_overrides() -> None:
     assert config.deployment_id == "dgx-reranker-a"
     assert config.headers()["Authorization"] == "Bearer secret"
     assert "secret" not in str(config.to_safe_summary())
+    assert "request_options" not in config.to_safe_summary()
 
 
 def test_remote_generation_execution_config_uses_vllm_base_and_profile() -> None:

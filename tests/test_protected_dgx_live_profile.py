@@ -109,6 +109,18 @@ def test_protected_dgx_live_profile_passes_and_redacts_live_values() -> None:
 
     assert evidence["status"] == "PASS"
     assert evidence["profile"]["resolved_profile"] == protected_live.DGX_PROFILE_NAME
+    assert evidence["profile"]["migration_policy"] == {
+        "schema_version": protected_live.PROFILE_MIGRATION_SCHEMA_VERSION,
+        "lane": "canonical_direct_vllm",
+        "default_for_new_work": True,
+        "legacy_pcx_shapes_allowed": False,
+        "request_shapes": {
+            "embedding": "openai_embeddings",
+            "reranking": "rerank",
+            "generation": "openai_chat_completions",
+        },
+        "legacy_profile": protected_live.DGX_PCX_LEGACY_PROFILE_NAME,
+    }
     assert evidence["effective_flags"] == {
         "NEX_MO_PROVIDER_MODE": "live",
         "NEX_MO_LIVE_PREFLIGHT": "1",
@@ -176,11 +188,25 @@ def test_protected_dgx_live_profile_keeps_legacy_pcx_defaults_separate() -> None
     defaults = protected_live.protected_profile_defaults(
         protected_live.DGX_PCX_LEGACY_PROFILE_NAME,
     )
+    policy = protected_live.profile_migration_policy(
+        protected_live.DGX_PCX_LEGACY_PROFILE_NAME,
+    )
 
     assert defaults["NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE"] == "nex_pcx_embeddings_v1"
     assert defaults["NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE"] == "nex_pcx_rerank_v1"
     assert defaults["NEX_MO_REMOTE_RERANKER_PROFILE_NAME"] == "qwen3_reranker_0_6b"
+    assert policy["lane"] == "legacy_pcx_compatibility"
+    assert policy["default_for_new_work"] is False
+    assert policy["legacy_pcx_shapes_allowed"] is True
     assert protected_live.resolve_profile_name("dgx") == protected_live.DGX_PROFILE_NAME
+
+
+def test_protected_dgx_live_profile_marks_disabled_migration_policy() -> None:
+    policy = protected_live.profile_migration_policy(None)
+
+    assert policy["lane"] == "disabled_or_unsupported"
+    assert policy["canonical_profile"] == protected_live.DGX_PROFILE_NAME
+    assert policy["legacy_profile"] == protected_live.DGX_PCX_LEGACY_PROFILE_NAME
 
 
 def test_protected_dgx_live_profile_main_summary_and_output(

@@ -66,6 +66,10 @@ Model profile defaults:
 - Direct vLLM HTTP APIs do not expose loaded parameter dtype. BF16 evidence for
   embedding/reranker providers must be collected by inspecting vLLM launch args
   or logs and confirming `--dtype bfloat16`.
+- Safe config and profile evidence treats `dgx_vllm` as the canonical lane and
+  hides NeX-PCX request options unless a PCX request shape is explicitly active.
+  The `dgx_pcx_legacy` profile remains available, but it is not the default for
+  new work.
 
 Current endpoints:
 

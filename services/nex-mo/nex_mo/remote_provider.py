@@ -100,9 +100,10 @@ class RemoteProviderPreflightConfig:
         }
         if self.legacy_endpoint_env is not None:
             payload["legacy_endpoint_env"] = self.legacy_endpoint_env
-        safe_options = _safe_request_options(self.request_options)
-        if safe_options:
-            payload["request_options"] = safe_options
+        if _request_shape_uses_pcx_options(self.request_shape):
+            safe_options = _safe_request_options(self.request_options)
+            if safe_options:
+                payload["request_options"] = safe_options
         return payload
 
 
@@ -134,7 +135,7 @@ class RemoteProviderExecutionConfig:
         return headers
 
     def to_safe_summary(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "capability": self.capability,
             "endpoint_env": self.endpoint_env,
             "configured": self.configured,
@@ -146,9 +147,10 @@ class RemoteProviderExecutionConfig:
             "authorization_env": self.api_key_env,
             "authorization_configured": bool(self.api_key),
         }
-        safe_options = _safe_request_options(self.request_options)
-        if safe_options:
-            payload["request_options"] = safe_options
+        if _request_shape_uses_pcx_options(self.request_shape):
+            safe_options = _safe_request_options(self.request_options)
+            if safe_options:
+                payload["request_options"] = safe_options
         return payload
 
 
@@ -1164,6 +1166,10 @@ def _safe_request_options(options: dict[str, Any]) -> dict[str, Any]:
             "source_score",
         }
     }
+
+
+def _request_shape_uses_pcx_options(request_shape: str) -> bool:
+    return request_shape in {NEX_PCX_EMBEDDINGS_SHAPE, NEX_PCX_RERANK_SHAPE}
 
 
 def _env_or_default(env: dict[str, str], key: str, default: str) -> str:

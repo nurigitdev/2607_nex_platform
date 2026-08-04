@@ -20,6 +20,7 @@ PROFILE_ENV = "NEX_MO_PROTECTED_LIVE_PROFILE"
 DGX_PROFILE_NAME = "dgx_vllm"
 DGX_PROFILE_ALIAS = "dgx"
 DGX_PCX_LEGACY_PROFILE_NAME = "dgx_pcx_legacy"
+PROFILE_MIGRATION_SCHEMA_VERSION = "protected_dgx_profile_migration_policy.v1"
 SUPPORTED_PROFILE_NAMES = (
     DGX_PROFILE_NAME,
     DGX_PCX_LEGACY_PROFILE_NAME,
@@ -138,6 +139,7 @@ def _profile_evidence(
             "requested_profile": requested_profile,
             "resolved_profile": resolved_profile,
             "enabled": resolved_profile is not None,
+            "migration_policy": profile_migration_policy(resolved_profile),
         },
         "effective_flags": {
             "NEX_MO_PROVIDER_MODE": effective_env.get("NEX_MO_PROVIDER_MODE"),
@@ -181,6 +183,44 @@ def resolve_profile_name(requested_profile: str) -> str | None:
     if requested_profile in {DGX_PROFILE_NAME, DGX_PCX_LEGACY_PROFILE_NAME}:
         return requested_profile
     return None
+
+
+def profile_migration_policy(profile_name: str | None) -> dict[str, Any]:
+    if profile_name == DGX_PROFILE_NAME:
+        return {
+            "schema_version": PROFILE_MIGRATION_SCHEMA_VERSION,
+            "lane": "canonical_direct_vllm",
+            "default_for_new_work": True,
+            "legacy_pcx_shapes_allowed": False,
+            "request_shapes": {
+                "embedding": "openai_embeddings",
+                "reranking": "rerank",
+                "generation": "openai_chat_completions",
+            },
+            "legacy_profile": DGX_PCX_LEGACY_PROFILE_NAME,
+        }
+    if profile_name == DGX_PCX_LEGACY_PROFILE_NAME:
+        return {
+            "schema_version": PROFILE_MIGRATION_SCHEMA_VERSION,
+            "lane": "legacy_pcx_compatibility",
+            "default_for_new_work": False,
+            "legacy_pcx_shapes_allowed": True,
+            "request_shapes": {
+                "embedding": "nex_pcx_embeddings_v1",
+                "reranking": "nex_pcx_rerank_v1",
+                "generation": "openai_chat_completions",
+            },
+            "canonical_profile": DGX_PROFILE_NAME,
+        }
+    return {
+        "schema_version": PROFILE_MIGRATION_SCHEMA_VERSION,
+        "lane": "disabled_or_unsupported",
+        "default_for_new_work": False,
+        "legacy_pcx_shapes_allowed": False,
+        "request_shapes": {},
+        "canonical_profile": DGX_PROFILE_NAME,
+        "legacy_profile": DGX_PCX_LEGACY_PROFILE_NAME,
+    }
 
 
 def protected_dgx_vllm_profile_defaults() -> dict[str, str]:

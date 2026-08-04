@@ -75,3 +75,11 @@ scripts/quality/run_quality_gate.sh
 
 The live command must be executed with endpoint and credential environment
 values supplied outside git.
+
+## Historical Note
+
+This slice records the DGX provider shape observed at the time Slice 0063 was
+implemented. Slice 0067 changed the canonical protected profile to `dgx_vllm`
+for direct vLLM/OpenAI-compatible embedding, reranking, and generation. Slice
+0070 keeps the older NeX-PCX request shapes quarantined under the explicit
+`dgx_pcx_legacy` profile.
