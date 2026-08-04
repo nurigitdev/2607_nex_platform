@@ -38,6 +38,7 @@ from nex_cx.lexical_index import register_lexical_index_routes
 from nex_cx.retrieval import register_retrieval_routes
 from nex_mo.providers import register_mock_provider_routes
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
+from nex_runtime.retrieval_policies import WEIGHTED_RRF_POLICY_ID
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
@@ -214,6 +215,20 @@ def run_traceable_mock_flow(trace_id: str = TRACE_ID) -> dict[str, Any]:
             trace_id,
             request_id,
         )
+        cx_weighted_retrieval = run_cx_retrieval(
+            cx_test_client,
+            {
+                "trace_id": trace_id,
+                "query_text": "traceable retrieval smoke evidence",
+                "document_scope": {"document_ids": [cx_upload["document_id"]]},
+                "top_k": 2,
+                "include_source_preview": True,
+                "query_embedding": [0.1, 0.2, 0.3],
+                "retrieval_policy": {"policy_id": WEIGHTED_RRF_POLICY_ID},
+            },
+            trace_id,
+            request_id,
+        )
 
         ae_app = build_service_app(SERVICE_SPECS["nex-ae-api"])
         register_chat_routes(
@@ -262,6 +277,7 @@ def run_traceable_mock_flow(trace_id: str = TRACE_ID) -> dict[str, Any]:
             "cx_chunk_set": cx_chunk_set,
             "cx_embedding_index": cx_embedding_index,
             "cx_lexical_index": cx_lexical_index,
+            "cx_weighted_retrieval": cx_weighted_retrieval,
             "cx_retrieval": retrieval_client.last_response,
             "ae": ae_response.json(),
             "cx": cx_client.last_response,
@@ -269,8 +285,100 @@ def run_traceable_mock_flow(trace_id: str = TRACE_ID) -> dict[str, Any]:
             "mo": mo_client.last_response,
             "ag": ag_response.json(),
         }
+    evidence["rag_workflow"] = build_rag_workflow_evidence(evidence)
     evidence["assertions"] = assert_trace_evidence(evidence)
     return evidence
+
+
+def build_rag_workflow_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    active_retrieval = evidence["cx_retrieval"]
+    weighted_retrieval = evidence["cx_weighted_retrieval"]
+    active_policy = active_retrieval["retrieval_profile"]["quality_policy"]
+    weighted_policy = weighted_retrieval["retrieval_profile"]["quality_policy"]
+    tokenizer_profile = active_retrieval["retrieval_profile"]["bm25_tokenizer_profile"]
+    workflow = {
+        "workflow_schema_version": "rag_workflow_evidence.v1",
+        "trace_id": evidence["trace_id"],
+        "request_id": evidence["request_id"],
+        "document": {
+            "document_id": evidence["cx_upload"]["document_id"],
+            "source_sha256": evidence["cx_upload"]["source_sha256"],
+            "chunk_count": evidence["cx_chunk_set"]["chunk_count"],
+            "embedding_dimension": evidence["cx_embedding_index"]["vector_dimension"],
+            "tokenizer_used": evidence["cx_lexical_index"]["tokenizer_used"],
+            "tokenizer_fallback_used": evidence["cx_lexical_index"]["fallback_used"],
+        },
+        "policy": {
+            "active": {
+                "policy_id": active_policy["policy_id"],
+                "policy_version": active_policy["policy_version"],
+                "policy_hash": active_policy["policy_hash"],
+                "policy_source": active_policy["policy_source"],
+                "ranker_mix": active_policy["ranker_mix"],
+            },
+            "weighted_probe": {
+                "policy_id": weighted_policy["policy_id"],
+                "policy_source": weighted_policy["policy_source"],
+                "ranker_mix": weighted_policy["ranker_mix"],
+                "vector_weight": weighted_policy["vector_weight"],
+                "bm25_weight": weighted_policy["bm25_weight"],
+                "rrf_k": weighted_policy["rrf_k"],
+            },
+        },
+        "tokenizer_profile": tokenizer_profile,
+        "retrieval": {
+            "active_package_id": active_retrieval["retrieval_package_id"],
+            "active_status": active_retrieval["status"],
+            "active_evidence_count": len(active_retrieval["evidence_items"]),
+            "weighted_package_id": weighted_retrieval["retrieval_package_id"],
+            "weighted_status": weighted_retrieval["status"],
+            "weighted_evidence_count": len(weighted_retrieval["evidence_items"]),
+            "weighted_query_embedding": weighted_retrieval["query_embedding_snapshot"],
+            "weighted_ranker_mix": weighted_retrieval["score_summary"]["ranker_mix"],
+        },
+        "generation": {
+            "cx_generation_id": evidence["cx"]["cx_generation_id"],
+            "mo_generation_id": evidence["mo"]["mo_generation_id"],
+            "status": evidence["cx"]["status"],
+            "retrieval_package_id": evidence["cx"]["request_metadata"][
+                "retrieval_package_id"
+            ],
+        },
+    }
+    workflow["assertions"] = assert_rag_workflow_evidence(workflow)
+    return workflow
+
+
+def assert_rag_workflow_evidence(workflow: dict[str, Any]) -> dict[str, bool]:
+    assertions = {
+        "active_policy_from_registry": workflow["policy"]["active"][
+            "policy_source"
+        ]
+        == "ag_registry_active",
+        "active_policy_hash_recorded": bool(workflow["policy"]["active"]["policy_hash"]),
+        "active_retrieval_ready": workflow["retrieval"]["active_status"] == "READY",
+        "weighted_policy_applied": workflow["policy"]["weighted_probe"]["policy_id"]
+        == WEIGHTED_RRF_POLICY_ID,
+        "weighted_retrieval_ready": workflow["retrieval"]["weighted_status"] == "READY",
+        "weighted_query_vector_hashed": workflow["retrieval"]["weighted_query_embedding"][
+            "provided"
+        ]
+        is True
+        and bool(
+            workflow["retrieval"]["weighted_query_embedding"]["embedding_sha256"]
+        ),
+        "tokenizer_policy_recorded": workflow["tokenizer_profile"][
+            "query_tokenizer_policy"
+        ]
+        == "match_index_tokenizer_with_fallback",
+        "generation_uses_active_retrieval": workflow["generation"][
+            "retrieval_package_id"
+        ]
+        == workflow["retrieval"]["active_package_id"],
+    }
+    if not all(assertions.values()):
+        raise AssertionError(f"RAG workflow evidence mismatch: {assertions}")
+    return assertions
 
 
 def assert_trace_evidence(evidence: dict[str, Any]) -> dict[str, bool]:
@@ -281,6 +389,8 @@ def assert_trace_evidence(evidence: dict[str, Any]) -> dict[str, bool]:
         "cx_chunk_trace": evidence["cx_chunk_set"]["trace_id"] == trace_id,
         "cx_embedding_trace": evidence["cx_embedding_index"]["trace_id"] == trace_id,
         "cx_lexical_trace": evidence["cx_lexical_index"]["trace_id"] == trace_id,
+        "cx_weighted_retrieval_trace": evidence["cx_weighted_retrieval"]["trace_id"]
+        == trace_id,
         "cx_retrieval_trace": evidence["cx_retrieval"]["trace_id"] == trace_id,
         "ae_trace": evidence["ae"]["trace_id"] == trace_id,
         "cx_generation_trace": evidence["cx"]["trace_id"] == trace_id,
@@ -295,6 +405,7 @@ def assert_trace_evidence(evidence: dict[str, Any]) -> dict[str, bool]:
         "indexed_document_lineage": evidence["cx_upload"]["document_id"]
         == evidence["cx_embedding_index"]["document_id"]
         == evidence["cx_lexical_index"]["document_id"],
+        "rag_workflow_assertions": all(evidence["rag_workflow"]["assertions"].values()),
     }
     if not all(assertions.values()):
         raise AssertionError(f"trace evidence mismatch: {assertions}")
@@ -348,6 +459,21 @@ def run_cx_post(
     return response.json()
 
 
+def run_cx_retrieval(
+    client: TestClient,
+    payload: dict[str, Any],
+    trace_id: str,
+    request_id: str,
+) -> dict[str, Any]:
+    response = client.post(
+        "/api/v1/retrieval/context",
+        json=payload,
+        headers=service_headers("nex-ae-api", "nex-cx", trace_id, request_id),
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def service_headers(
     service_id: str,
     audience: str,
@@ -386,6 +512,7 @@ def main(argv: list[str] | None = None) -> int:
             f"trace_id={evidence['trace_id']} "
             f"doc={evidence['cx_upload']['document_id']} "
             f"retrieval={evidence['cx_retrieval']['retrieval_package_id']} "
+            f"rag_workflow={evidence['rag_workflow']['workflow_schema_version']} "
             f"ae={evidence['ae']['interaction_id']} "
             f"cx={evidence['cx']['cx_generation_id']} "
             f"mo={evidence['mo']['mo_generation_id']} "

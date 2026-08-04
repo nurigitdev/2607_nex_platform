@@ -183,6 +183,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0077`](slices/0077_cx_tokenizer_profile_alignment.md) | `S8-002` CX tokenizer profile and query alignment. |
 | [`Slice 0078`](slices/0078_weighted_rrf_hybrid_retrieval.md) | `S8-003` Weighted RRF vector/BM25 hybrid retrieval. |
 | [`Slice 0079`](slices/0079_cx_active_retrieval_policy_application.md) | `S8-004` CX active retrieval policy application. |
+| [`Slice 0080`](slices/0080_rag_workflow_evidence_pack.md) | `S8-005` RAG workflow evidence pack. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
