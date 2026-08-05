@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0001 service shell baseline.
+Status: Slice 0091 service runtime persistence bootstrap.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -31,6 +31,16 @@ Both scripts load `.env.local` when present. Keep `.env.local` out of git.
 
 Persistent schema foundations live under `database/<service>/migrations/`.
 Service migrations must only reference tables in the owning service database.
+
+Runtime persistence is selected explicitly:
+
+- `NEX_PERSISTENCE_MODE=memory` is the default and keeps local regression
+  mock-first.
+- `NEX_<SERVICE>_PERSISTENCE_MODE=postgres` switches that service entrypoint to
+  SQLAlchemy-backed JobQueue and OperationalEventStore adapters.
+- Service-specific mode envs override the global mode. PostgreSQL mode requires
+  the matching service database URL and should be paired with migration/smoke
+  checks.
 
 Slice 0005 adds a mock-only OA service token path:
 

@@ -194,6 +194,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0088`](slices/0088_sqlalchemy_operational_event_store_postgres_smoke.md) | `S9-008` Persistent SQLAlchemy OperationalEventStore with SQLite regression and guarded PostgreSQL smoke. |
 | [`Slice 0089`](slices/0089_ag_jobqueue_operations_projection.md) | `S9-009` AG read-only JobQueue operations projection. |
 | [`Slice 0090`](slices/0090_cross_service_db_operations_smoke_pack.md) | `S9-010` Cross-service PostgreSQL DB operations smoke pack. |
+| [`Slice 0091`](slices/0091_service_runtime_persistence_bootstrap.md) | `S10-001` Service runtime persistence bootstrap for memory/postgres mode selection. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

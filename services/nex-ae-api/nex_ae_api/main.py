@@ -1,4 +1,4 @@
-from nex_runtime import SERVICE_SPECS, build_service_app
+from nex_runtime import SERVICE_SPECS, attach_service_persistence_runtime, build_service_app
 from nex_runtime.compatibility import register_generation_compatibility_routes
 from nex_runtime.prompts import register_prompt_registry_routes
 from nex_runtime.recovery import register_generation_recovery_policy_routes
@@ -16,7 +16,9 @@ from nex_ae_api.uploads import register_upload_routes
 from nex_ae_api.workspace import register_workspace_routes
 
 
-app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+SERVICE_SPEC = SERVICE_SPECS["nex-ae-api"]
+app = build_service_app(SERVICE_SPEC)
+SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
 register_workspace_routes(app)
 register_upload_routes(app)
 register_document_library_routes(app)

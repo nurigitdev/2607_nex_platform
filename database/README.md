@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0090 cross-service PostgreSQL operations smoke pack.
+Status: Slice 0091 service runtime persistence bootstrap.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -90,6 +90,20 @@ NEX_DB_OPERATIONS_SMOKE_SERVICES=nex-ae-api,nex-ag,nex-cx,nex-mo,nex-oa
 It checks database readiness, DB-backed JobQueue smoke, and DB-backed
 OperationalEventStore smoke for each selected service-owned test database. The
 default quality gate runs this pack in skipped summary mode.
+
+Runtime services choose memory or PostgreSQL-backed stores through the shared
+`nex_runtime.persistence` bootstrap. The mode is explicit so default regression
+tests do not silently depend on PostgreSQL:
+
+```text
+NEX_PERSISTENCE_MODE=memory
+NEX_CX_PERSISTENCE_MODE=postgres
+```
+
+Service-specific mode envs override the global mode. `memory` uses in-process
+stores. `postgres` requires the service database URL and builds SQLAlchemy
+JobQueue and OperationalEventStore adapters with service-aware API/worker pool
+settings.
 
 ## Runtime Connection Foundation
 
