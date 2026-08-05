@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0082 service migration profile and Alembic config foundation.
+Status: Slice 0083 shared service job queue foundation.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -72,6 +72,18 @@ uses the primary CX database. If vector volume later requires a separate
 database, setting this env moves vector access without changing the primary CX
 database contract. `NEX_CX_VECTOR_TEST_DATABASE_URL` mirrors that option for
 test profiles.
+
+## Service Job Queue Foundation
+
+Each service database owns the same `service_jobs` table shape. It stores the
+`common_job.v1` identity and lifecycle fields plus JSONB payload/error slots,
+availability and lock fields, and indexes needed for status scans, trace lookup,
+and subject lookup.
+
+Runtime code uses `nex_runtime.jobs` for the shared in-memory queue port,
+contract-aligned common job builder, status validation, transition rules, and
+summaries. SQL write-through is deferred until service repositories adopt the
+common queue port.
 
 ## Prompt Registry Seeds
 

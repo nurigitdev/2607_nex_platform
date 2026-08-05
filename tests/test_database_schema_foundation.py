@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DATABASE_ROOT = ROOT / "database"
+SERVICE_IDS = ("nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo")
 
 
 def read_migration(service: str) -> str:
@@ -32,6 +33,40 @@ def test_database_migrations_are_transactional_and_secret_free() -> None:
         assert compact.endswith("commit;")
         assert "schema_migrations" in compact
         assert re.search(r"nuri\d+", compact) is None
+
+
+def test_service_job_queue_foundation_exists_for_every_service_database() -> None:
+    for service_id in SERVICE_IDS:
+        compact = normalized(
+            read_migration_named(service_id, "0083_service_job_queue_foundation.sql")
+        )
+
+        assert "create table if not exists service_jobs" in compact
+        assert "job_schema_version text not null default 'common_job.v1'" in compact
+        assert "check (job_schema_version = 'common_job.v1')" in compact
+        assert "status text not null check (status in" in compact
+        for status in ("queued", "running", "succeeded", "failed", "cancelled"):
+            assert f"'{status}'" in compact
+        for column in (
+            "trace_id text not null",
+            "request_id text not null",
+            "subject_type text not null",
+            "subject_id text not null",
+            "idempotency_key text not null",
+            "links jsonb not null default '{}'::jsonb",
+            "payload jsonb not null default '{}'::jsonb",
+            "error jsonb",
+            "available_at timestamptz not null default now()",
+            "locked_by text",
+        ):
+            assert column in compact
+        assert "constraint ck_service_jobs_attempts check (attempt_count <= max_attempts)" in compact
+        assert "constraint ux_service_jobs_idempotency unique (job_type, idempotency_key)" in compact
+        assert "ix_service_jobs_status_available" in compact
+        assert "ix_service_jobs_type_status" in compact
+        assert "ix_service_jobs_trace" in compact
+        assert "ix_service_jobs_subject" in compact
+        assert "0083_service_job_queue_foundation" in compact
 
 
 def test_cx_schema_scopes_duplicate_uploads_to_active_owner_documents() -> None:

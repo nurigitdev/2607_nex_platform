@@ -15,6 +15,8 @@ from fastapi.responses import JSONResponse
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
+    build_common_job,
+    build_subject_ref,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
@@ -606,27 +608,20 @@ def build_ingestion_job(
     trace_id: str,
     created_at: str,
 ) -> dict[str, Any]:
-    return {
-        "job_schema_version": "common_job.v1",
-        "job_id": str(uuid5(NAMESPACE_URL, f"cx-ingestion-job:{upload_id}")),
-        "job_type": "cx.document_ingestion",
-        "status": "QUEUED",
-        "trace_id": trace_id,
-        "request_id": request_id,
-        "subject_ref": {
-            "type": "cx.document",
-            "id": document_id,
-        },
-        "idempotency_key": upload_id,
-        "attempt_count": 0,
-        "max_attempts": 1,
-        "retryable": True,
-        "links": {
+    return build_common_job(
+        job_id=str(uuid5(NAMESPACE_URL, f"cx-ingestion-job:{upload_id}")),
+        job_type="cx.document_ingestion",
+        trace_id=trace_id,
+        request_id=request_id,
+        subject_ref=build_subject_ref("cx.document", document_id),
+        idempotency_key=upload_id,
+        max_attempts=1,
+        retryable=True,
+        links={
             "document": f"/api/v1/documents/{document_id}",
         },
-        "created_at": created_at,
-        "updated_at": created_at,
-    }
+        created_at=created_at,
+    )
 
 
 def run_text_extraction_job(
