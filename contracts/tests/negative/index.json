@@ -136,6 +136,16 @@
       "schema": "schemas/service/nex_ag/readiness_projection.v1.schema.json"
     },
     {
+      "name": "ag_operations_projection_unknown_projection_version",
+      "path": "tests/negative/operations/ag_operations_projection.unknown_projection_version.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
+      "name": "ag_operational_event_projection_missing_pagination",
+      "path": "tests/negative/operations/ag_operational_event_projection.missing_pagination.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
       "name": "common_job_bad_status",
       "path": "tests/negative/retrieval/common_job.bad_status.json",
       "schema": "schemas/common/common_job.v1.schema.json"

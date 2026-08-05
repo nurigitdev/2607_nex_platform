@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0105 AG cross-service trace timeline projection.
+Status: Slice 0106 AG operations contract/examples freeze.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005

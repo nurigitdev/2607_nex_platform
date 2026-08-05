@@ -1,0 +1,44 @@
+{
+  "projection_schema_version": "ag_operation_source_readiness_projection.v1",
+  "checked_at": "2026-08-05T00:00:00Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "filters": {
+    "service_id": "nex-cx"
+  },
+  "runtime": {
+    "runtime_schema_version": "ag_operations_source_runtime.v1",
+    "mode": "memory",
+    "profile": "dev",
+    "selected_service_ids": [
+      "nex-cx"
+    ],
+    "registry": null
+  },
+  "sources": [
+    {
+      "service_id": "nex-cx",
+      "readiness_status": "DEFAULT_MEMORY",
+      "configured": false,
+      "source_kind": "memory-default",
+      "capabilities": {
+        "jobs": true,
+        "events": true
+      },
+      "read_only": false,
+      "job_queue": "InMemoryJobQueue",
+      "operational_event_store": "InMemoryOperationalEventStore",
+      "database_env": null,
+      "redacted_database_url": null
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "by_status": {
+      "DEFAULT_MEMORY": 1
+    },
+    "by_source_kind": {
+      "memory-default": 1
+    },
+    "read_only": 0
+  }
+}

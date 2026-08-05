@@ -112,3 +112,8 @@ Unified operations:
 - Operations query pagination uses a non-negative integer `cursor` offset,
   returns `pagination.next_cursor` when more rows exist, and caps limit at the
   shared 500-row operations ceiling.
+- The AG operations projection family is frozen under
+  `contracts/schemas/service/nex_ag/operations_projection.v1.schema.json`, with
+  positive examples in `contracts/examples/operations/`, negative examples in
+  `contracts/tests/negative/operations/`, and route documentation in
+  `contracts/openapi/nex-ag.openapi.yaml`.

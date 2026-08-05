@@ -1,0 +1,786 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/operations_projection.v1.schema.json",
+  "title": "NeX AG Operations Projection Family",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "projection_schema_version",
+    "checked_at"
+  ],
+  "properties": {
+    "projection_schema_version": {
+      "type": "string",
+      "enum": [
+        "ag_operation_source_readiness_projection.v1",
+        "ag_operational_event_projection.v1",
+        "ag_operational_event_detail_projection.v1",
+        "ag_operational_event_taxonomy_projection.v1",
+        "ag_job_operations_projection.v1",
+        "ag_job_operation_detail_projection.v1",
+        "ag_unified_operations_projection.v1",
+        "ag_cross_service_trace_timeline_projection.v1"
+      ]
+    },
+    "projection_status": {
+      "type": "string",
+      "enum": [
+        "READY",
+        "DEGRADED"
+      ]
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "request_trace_id": {
+      "$ref": "#/$defs/trace_id"
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source_readiness"
+      }
+    },
+    "filters": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "events": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/operational_event"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true
+        }
+      ]
+    },
+    "event": {
+      "$ref": "#/$defs/operational_event"
+    },
+    "event_types": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event_taxonomy_item"
+      }
+    },
+    "jobs": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/job"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true
+        }
+      ]
+    },
+    "job": {
+      "$ref": "#/$defs/job"
+    },
+    "lifecycle_timeline": {
+      "$ref": "#/$defs/lifecycle_timeline"
+    },
+    "timeline": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/timeline_item"
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "pagination": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/pagination"
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/pagination"
+          }
+        }
+      ]
+    },
+    "source_statuses": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/source_status"
+      }
+    },
+    "job_source_statuses": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/source_status"
+      }
+    },
+    "event_source_status": {
+      "$ref": "#/$defs/source_status"
+    },
+    "source_registry": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "service_id": {
+      "$ref": "#/$defs/service_id"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_operation_source_readiness_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "runtime",
+          "filters",
+          "sources",
+          "summary"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_operational_event_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "filters",
+          "events",
+          "summary",
+          "pagination"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_operational_event_detail_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "event",
+          "summary"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_operational_event_taxonomy_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "filters",
+          "event_types",
+          "summary"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_job_operations_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "filters",
+          "jobs",
+          "summary",
+          "source_statuses",
+          "pagination"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_job_operation_detail_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "service_id",
+          "job",
+          "lifecycle_timeline",
+          "summary"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_unified_operations_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "filters",
+          "jobs",
+          "events",
+          "summary",
+          "pagination"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_cross_service_trace_timeline_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "filters",
+          "timeline",
+          "summary",
+          "job_source_statuses",
+          "event_source_status",
+          "pagination"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "service_id": {
+      "type": "string",
+      "enum": [
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo"
+      ]
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "subject_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "limit",
+        "cursor",
+        "returned",
+        "total_after_filters",
+        "next_cursor"
+      ],
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "returned": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_after_filters": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "source_status": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "NOT_CONFIGURED",
+            "UNAVAILABLE"
+          ]
+        },
+        "job_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "event_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error_code": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "source_readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service_id",
+        "readiness_status",
+        "configured",
+        "source_kind",
+        "capabilities",
+        "read_only",
+        "job_queue",
+        "operational_event_store",
+        "database_env",
+        "redacted_database_url"
+      ],
+      "properties": {
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        },
+        "readiness_status": {
+          "type": "string",
+          "enum": [
+            "DEFAULT_MEMORY",
+            "READY",
+            "NOT_CONFIGURED"
+          ]
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "source_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capabilities": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "jobs",
+            "events"
+          ],
+          "properties": {
+            "jobs": {
+              "type": "boolean"
+            },
+            "events": {
+              "type": "boolean"
+            }
+          }
+        },
+        "read_only": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "job_queue": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "operational_event_store": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "database_env": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "redacted_database_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "operational_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_schema_version",
+        "event_id",
+        "service_id",
+        "event_type",
+        "severity",
+        "message",
+        "trace_id",
+        "request_id",
+        "subject_ref",
+        "details",
+        "created_at"
+      ],
+      "properties": {
+        "event_schema_version": {
+          "const": "operational_event.v1"
+        },
+        "event_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        },
+        "event_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/trace_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subject_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/subject_ref"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "event_taxonomy_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service_id",
+        "event_type",
+        "default_severity",
+        "subject_type",
+        "detail_keys",
+        "description",
+        "lifecycle_state"
+      ],
+      "properties": {
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        },
+        "event_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default_severity": {
+          "type": "string",
+          "enum": [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ]
+        },
+        "subject_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "detail_keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lifecycle_state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "job": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "job_schema_version",
+        "job_id",
+        "job_type",
+        "status",
+        "trace_id",
+        "request_id",
+        "subject_ref",
+        "idempotency_key",
+        "attempt_count",
+        "max_attempts",
+        "retryable",
+        "links",
+        "created_at",
+        "updated_at",
+        "service_id"
+      ],
+      "properties": {
+        "job_schema_version": {
+          "const": "common_job.v1"
+        },
+        "job_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "job_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "QUEUED",
+            "RUNNING",
+            "SUCCEEDED",
+            "FAILED",
+            "CANCELLED"
+          ]
+        },
+        "trace_id": {
+          "$ref": "#/$defs/trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject_ref": {
+          "$ref": "#/$defs/subject_ref"
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attempt_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "links": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        }
+      }
+    },
+    "lifecycle_timeline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "timeline_status",
+        "event_count",
+        "events",
+        "source_error"
+      ],
+      "properties": {
+        "timeline_status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "NOT_CONFIGURED",
+            "UNAVAILABLE"
+          ]
+        },
+        "event_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/operational_event"
+          }
+        },
+        "source_error": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        }
+      }
+    },
+    "timeline_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "timeline_item_type",
+        "item_id",
+        "service_id",
+        "trace_id",
+        "operation_timestamp"
+      ],
+      "properties": {
+        "timeline_item_type": {
+          "type": "string",
+          "enum": [
+            "job",
+            "event"
+          ]
+        },
+        "item_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/trace_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operation_timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "job": {
+          "$ref": "#/$defs/job"
+        },
+        "event": {
+          "$ref": "#/$defs/operational_event"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "job"
+          ]
+        },
+        {
+          "required": [
+            "event"
+          ]
+        }
+      ]
+    }
+  }
+}

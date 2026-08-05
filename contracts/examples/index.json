@@ -181,6 +181,46 @@
       "schema": "schemas/service/nex_ag/readiness_projection.v1.schema.json"
     },
     {
+      "name": "ag_operation_source_readiness_mock",
+      "path": "examples/operations/ag_operation_source_readiness.mock_success.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
+      "name": "ag_operational_event_projection_mock",
+      "path": "examples/operations/ag_operational_event_projection.mock_success.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
+      "name": "ag_operational_event_detail_mock",
+      "path": "examples/operations/ag_operational_event_detail.mock_success.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
+      "name": "ag_operational_event_taxonomy_mock",
+      "path": "examples/operations/ag_operational_event_taxonomy.mock_success.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
+      "name": "ag_job_operations_projection_mock",
+      "path": "examples/operations/ag_job_operations_projection.mock_success.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
+      "name": "ag_job_operation_detail_mock",
+      "path": "examples/operations/ag_job_operation_detail.mock_success.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
+      "name": "ag_unified_operations_projection_mock",
+      "path": "examples/operations/ag_unified_operations_projection.mock_success.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
+      "name": "ag_cross_service_trace_timeline_mock",
+      "path": "examples/operations/ag_cross_service_trace_timeline.mock_success.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
       "name": "common_job_ingestion_queued",
       "path": "examples/retrieval/common_job.ingestion_queued.json",
       "schema": "schemas/common/common_job.v1.schema.json"

@@ -1,0 +1,41 @@
+{
+  "projection_schema_version": "ag_operational_event_taxonomy_projection.v1",
+  "checked_at": "2026-08-05T00:00:00Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "filters": {
+    "service_id": "nex-cx",
+    "event_type": "cx.processing.succeeded"
+  },
+  "event_types": [
+    {
+      "service_id": "nex-cx",
+      "event_type": "cx.processing.succeeded",
+      "default_severity": "INFO",
+      "subject_type": "cx.document",
+      "detail_keys": [
+        "pipeline_run_id",
+        "job_id",
+        "job_status",
+        "step_summary"
+      ],
+      "description": "CX document processing completed successfully.",
+      "lifecycle_state": "succeeded"
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "by_service": {
+      "nex-cx": 1
+    },
+    "by_severity": {
+      "DEBUG": 0,
+      "INFO": 1,
+      "WARNING": 0,
+      "ERROR": 0,
+      "CRITICAL": 0
+    },
+    "by_subject_type": {
+      "cx.document": 1
+    }
+  }
+}

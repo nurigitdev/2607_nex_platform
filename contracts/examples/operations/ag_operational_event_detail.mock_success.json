@@ -1,0 +1,36 @@
+{
+  "projection_schema_version": "ag_operational_event_detail_projection.v1",
+  "checked_at": "2026-08-05T00:00:00Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "event": {
+    "event_schema_version": "operational_event.v1",
+    "event_id": "event-mo-001",
+    "service_id": "nex-mo",
+    "event_type": "mo.provider.failed",
+    "severity": "ERROR",
+    "message": "Provider request failed.",
+    "trace_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "subject_ref": {
+      "type": "mo.provider",
+      "id": "embedding"
+    },
+    "details": {
+      "authorization": "<redacted>",
+      "retryable": true
+    },
+    "created_at": "2026-08-05T00:00:01Z"
+  },
+  "summary": {
+    "event_id": "event-mo-001",
+    "service_id": "nex-mo",
+    "event_type": "mo.provider.failed",
+    "severity": "ERROR",
+    "trace_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "subject_ref": {
+      "type": "mo.provider",
+      "id": "embedding"
+    },
+    "created_at": "2026-08-05T00:00:01Z"
+  }
+}

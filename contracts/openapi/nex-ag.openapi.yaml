@@ -6,6 +6,7 @@ tags:
   - name: Platform
   - name: Readiness
   - name: GenerationAudit
+  - name: Operations
 paths:
   /health:
     get:
@@ -83,3 +84,349 @@ paths:
           description: Source generation, artifact handoff, or recovery request was not found.
         "503":
           description: Source service is unavailable.
+  /admin/v1/operations:
+    get:
+      operationId: getAgUnifiedOperationsProjection
+      tags:
+        - Operations
+      parameters:
+        - $ref: "#/components/parameters/serviceId"
+        - name: job_status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - QUEUED
+              - RUNNING
+              - SUCCEEDED
+              - FAILED
+              - CANCELLED
+        - name: job_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: event_severity
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/OperationalEventSeverity"
+        - name: event_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TraceId"
+        - $ref: "#/components/parameters/since"
+        - $ref: "#/components/parameters/until"
+        - $ref: "#/components/parameters/sort"
+        - $ref: "#/components/parameters/cursor"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Combined read-only jobs and operational events projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "400":
+          description: Invalid operations query or filter.
+        "401":
+          description: Service claim is missing or invalid.
+  /admin/v1/operations/sources:
+    get:
+      operationId: getAgOperationSourceReadinessProjection
+      tags:
+        - Operations
+      parameters:
+        - $ref: "#/components/parameters/serviceId"
+      responses:
+        "200":
+          description: Read-only operations source readiness projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "400":
+          description: Invalid service filter.
+        "401":
+          description: Service claim is missing or invalid.
+  /admin/v1/operations/event-taxonomy:
+    get:
+      operationId: getAgOperationalEventTaxonomyProjection
+      tags:
+        - Operations
+      parameters:
+        - $ref: "#/components/parameters/serviceId"
+        - name: event_type
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Read-only operational event taxonomy projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "400":
+          description: Invalid service filter.
+        "401":
+          description: Service claim is missing or invalid.
+  /admin/v1/operations/events:
+    get:
+      operationId: getAgOperationalEventProjection
+      tags:
+        - Operations
+      parameters:
+        - $ref: "#/components/parameters/serviceId"
+        - name: severity
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/OperationalEventSeverity"
+        - name: event_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TraceId"
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 128
+        - $ref: "#/components/parameters/since"
+        - $ref: "#/components/parameters/until"
+        - $ref: "#/components/parameters/sort"
+        - $ref: "#/components/parameters/cursor"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only operational event projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "400":
+          description: Invalid operational event query or filter.
+        "401":
+          description: Service claim is missing or invalid.
+  /admin/v1/operations/events/{event_id}:
+    get:
+      operationId: getAgOperationalEventDetailProjection
+      tags:
+        - Operations
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Read-only operational event detail projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Operational event was not found.
+  /admin/v1/operations/jobs:
+    get:
+      operationId: getAgJobOperationsProjection
+      tags:
+        - Operations
+      parameters:
+        - $ref: "#/components/parameters/serviceId"
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - QUEUED
+              - RUNNING
+              - SUCCEEDED
+              - FAILED
+              - CANCELLED
+        - name: job_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - $ref: "#/components/parameters/since"
+        - $ref: "#/components/parameters/until"
+        - $ref: "#/components/parameters/sort"
+        - $ref: "#/components/parameters/cursor"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only job operations projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "400":
+          description: Invalid job query or filter.
+        "401":
+          description: Service claim is missing or invalid.
+  /admin/v1/operations/jobs/{service_id}/{job_id}:
+    get:
+      operationId: getAgJobOperationDetailProjection
+      tags:
+        - Operations
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/ServiceId"
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Read-only job detail and lifecycle timeline projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "400":
+          description: Invalid service id.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Job source or job was not found.
+        "503":
+          description: Job source is unavailable.
+  /admin/v1/operations/traces/{trace_id}:
+    get:
+      operationId: getAgCrossServiceTraceTimelineProjection
+      tags:
+        - Operations
+      parameters:
+        - name: trace_id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/TraceId"
+        - $ref: "#/components/parameters/serviceId"
+        - $ref: "#/components/parameters/since"
+        - $ref: "#/components/parameters/until"
+        - $ref: "#/components/parameters/sort"
+        - $ref: "#/components/parameters/cursor"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only cross-service trace timeline projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "400":
+          description: Invalid trace timeline query or filter.
+        "401":
+          description: Service claim is missing or invalid.
+components:
+  parameters:
+    serviceId:
+      name: service_id
+      in: query
+      required: false
+      schema:
+        $ref: "#/components/schemas/ServiceId"
+    since:
+      name: since
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    until:
+      name: until
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    sort:
+      name: sort
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - desc
+          - asc
+    cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+        pattern: "^[0-9]+$"
+    limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+  schemas:
+    ServiceId:
+      type: string
+      enum:
+        - nex-oa
+        - nex-ag
+        - nex-ae-api
+        - nex-cx
+        - nex-mo
+    TraceId:
+      type: string
+      pattern: "^[0-9a-f]{32}$"
+    OperationalEventSeverity:
+      type: string
+      enum:
+        - DEBUG
+        - INFO
+        - WARNING
+        - ERROR
+        - CRITICAL
+    AgOperationsProjection:
+      type: object
+      required:
+        - projection_schema_version
+        - checked_at
+      properties:
+        projection_schema_version:
+          type: string
+          enum:
+            - ag_operation_source_readiness_projection.v1
+            - ag_operational_event_projection.v1
+            - ag_operational_event_detail_projection.v1
+            - ag_operational_event_taxonomy_projection.v1
+            - ag_job_operations_projection.v1
+            - ag_job_operation_detail_projection.v1
+            - ag_unified_operations_projection.v1
+            - ag_cross_service_trace_timeline_projection.v1
+        checked_at:
+          type: string
+          format: date-time
+      additionalProperties: true

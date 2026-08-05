@@ -1,0 +1,72 @@
+{
+  "projection_schema_version": "ag_cross_service_trace_timeline_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-05T00:00:00Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "filters": {
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "service_id": "nex-cx",
+    "limit": 50,
+    "since": null,
+    "until": null,
+    "sort": "asc",
+    "cursor": null
+  },
+  "timeline": [
+    {
+      "timeline_item_type": "job",
+      "item_id": "job:nex-cx:job-cx-001",
+      "service_id": "nex-cx",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "operation_timestamp": "2026-08-05T00:00:03Z",
+      "job": {
+        "job_schema_version": "common_job.v1",
+        "job_id": "job-cx-001",
+        "job_type": "cx.document_processing",
+        "status": "RUNNING",
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+        "subject_ref": {
+          "type": "cx.document",
+          "id": "doc-001"
+        },
+        "idempotency_key": "idem-cx-001",
+        "attempt_count": 1,
+        "max_attempts": 2,
+        "retryable": true,
+        "links": {
+          "document": "/api/v1/documents/doc-001"
+        },
+        "created_at": "2026-08-05T00:00:00Z",
+        "updated_at": "2026-08-05T00:00:03Z",
+        "service_id": "nex-cx"
+      }
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "by_item_type": {
+      "job": 1
+    },
+    "by_service": {
+      "nex-cx": 1
+    }
+  },
+  "job_source_statuses": {
+    "nex-cx": {
+      "status": "READY",
+      "job_count": 1
+    }
+  },
+  "event_source_status": {
+    "status": "READY",
+    "event_count": 0
+  },
+  "pagination": {
+    "limit": 50,
+    "cursor": null,
+    "returned": 1,
+    "total_after_filters": 1,
+    "next_cursor": null
+  }
+}

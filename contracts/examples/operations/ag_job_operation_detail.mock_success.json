@@ -1,0 +1,69 @@
+{
+  "projection_schema_version": "ag_job_operation_detail_projection.v1",
+  "checked_at": "2026-08-05T00:00:00Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "service_id": "nex-cx",
+  "job": {
+    "job_schema_version": "common_job.v1",
+    "job_id": "job-cx-001",
+    "job_type": "cx.document_processing",
+    "status": "RUNNING",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "subject_ref": {
+      "type": "cx.document",
+      "id": "doc-001"
+    },
+    "idempotency_key": "idem-cx-001",
+    "attempt_count": 1,
+    "max_attempts": 2,
+    "retryable": true,
+    "links": {
+      "document": "/api/v1/documents/doc-001"
+    },
+    "created_at": "2026-08-05T00:00:00Z",
+    "updated_at": "2026-08-05T00:00:03Z",
+    "service_id": "nex-cx"
+  },
+  "lifecycle_timeline": {
+    "timeline_status": "READY",
+    "event_count": 1,
+    "events": [
+      {
+        "event_schema_version": "operational_event.v1",
+        "event_id": "event-cx-001",
+        "service_id": "nex-cx",
+        "event_type": "cx.processing.started",
+        "severity": "INFO",
+        "message": "Document processing started.",
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+        "subject_ref": {
+          "type": "cx.document",
+          "id": "doc-001"
+        },
+        "details": {
+          "pipeline_run_id": "run-001",
+          "job_id": "job-cx-001",
+          "job_status": "RUNNING"
+        },
+        "created_at": "2026-08-05T00:00:01Z"
+      }
+    ],
+    "source_error": null
+  },
+  "summary": {
+    "service_id": "nex-cx",
+    "job_id": "job-cx-001",
+    "job_type": "cx.document_processing",
+    "status": "RUNNING",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "subject_ref": {
+      "type": "cx.document",
+      "id": "doc-001"
+    },
+    "attempt_count": 1,
+    "timeline_status": "READY",
+    "timeline_event_count": 1
+  }
+}

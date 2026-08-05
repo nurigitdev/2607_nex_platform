@@ -1,0 +1,103 @@
+{
+  "projection_schema_version": "ag_unified_operations_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-05T00:00:00Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "filters": {
+    "service_id": "nex-cx",
+    "job_status": "RUNNING",
+    "job_type": null,
+    "event_severity": "INFO",
+    "event_type": null,
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "limit": 50,
+    "since": null,
+    "until": null,
+    "sort": "desc",
+    "cursor": null
+  },
+  "jobs": {
+    "projection_schema_version": "ag_job_operations_projection.v1",
+    "projection_status": "READY",
+    "checked_at": "2026-08-05T00:00:00Z",
+    "filters": {
+      "service_id": "nex-cx",
+      "status": "RUNNING",
+      "job_type": null,
+      "limit": 50,
+      "since": null,
+      "until": null,
+      "sort": "desc",
+      "cursor": null
+    },
+    "jobs": [],
+    "summary": {
+      "total": 0,
+      "active": 0,
+      "terminal": 0,
+      "statuses": {}
+    },
+    "source_statuses": {},
+    "pagination": {
+      "limit": 50,
+      "cursor": null,
+      "returned": 0,
+      "total_after_filters": 0,
+      "next_cursor": null
+    }
+  },
+  "events": {
+    "projection_schema_version": "ag_operational_event_projection.v1",
+    "checked_at": "2026-08-05T00:00:00Z",
+    "filters": {
+      "service_id": "nex-cx",
+      "severity": "INFO",
+      "event_type": null,
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "q": null,
+      "limit": 50,
+      "since": null,
+      "until": null,
+      "sort": "desc",
+      "cursor": null
+    },
+    "events": [],
+    "summary": {
+      "total": 0,
+      "by_severity": {},
+      "by_service": {}
+    },
+    "pagination": {
+      "limit": 50,
+      "cursor": null,
+      "returned": 0,
+      "total_after_filters": 0,
+      "next_cursor": null
+    }
+  },
+  "summary": {
+    "jobs": {
+      "total": 0
+    },
+    "events": {
+      "total": 0
+    },
+    "source_statuses": {}
+  },
+  "pagination": {
+    "jobs": {
+      "limit": 50,
+      "cursor": null,
+      "returned": 0,
+      "total_after_filters": 0,
+      "next_cursor": null
+    },
+    "events": {
+      "limit": 50,
+      "cursor": null,
+      "returned": 0,
+      "total_after_filters": 0,
+      "next_cursor": null
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "projection_schema_version": "ag_operational_event_projection.v1",
+  "checked_at": "2026-08-05T00:00:00Z",
+  "filters": {
+    "service_id": "nex-cx"
+  },
+  "events": [],
+  "summary": {
+    "total": 0
+  }
+}

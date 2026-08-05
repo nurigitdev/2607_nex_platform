@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+from jsonschema import Draft202012Validator
 
 from nex_ag.operations import (
     AG_OPERATIONS_SOURCE_MODE_ENV,
@@ -68,11 +71,27 @@ from nex_runtime import (
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
+CONTRACT_ROOT = Path(__file__).parents[1] / "contracts"
 
 
 def auth_headers() -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-oa", audience="nex-ag")
     return {"Authorization": f"Bearer {issued.access_token}"}
+
+
+def ag_operations_projection_schema() -> dict[str, object]:
+    schema_path = (
+        CONTRACT_ROOT
+        / "schemas"
+        / "service"
+        / "nex_ag"
+        / "operations_projection.v1.schema.json"
+    )
+    return json.loads(schema_path.read_text(encoding="utf-8"))
+
+
+def assert_ag_operations_projection_contract(payload: dict[str, object]) -> None:
+    Draft202012Validator(ag_operations_projection_schema()).validate(payload)
 
 
 def build_store() -> InMemoryOperationalEventStore:
@@ -1119,6 +1138,72 @@ def test_cross_service_trace_timeline_route_rejects_bad_filters() -> None:
     assert bad_service.json()["error_code"] == "ag.job_service_invalid"
     assert bad_cursor.status_code == 400
     assert bad_cursor.json()["error_code"] == "ag.operation_cursor_invalid"
+
+
+def test_ag_operations_contract_schema_accepts_runtime_projection_family() -> None:
+    job_queues = build_job_queues()
+    event_stores = build_event_stores()
+    registry = build_operations_source_registry(
+        job_queues=job_queues,
+        event_stores=event_stores,
+    )
+    runtime = build_ag_operations_source_runtime(environ={})
+    job = job_queues["nex-cx"].get_job("job-cx-001")
+    event = build_store().get_event("event-002")
+    assert job is not None
+    assert event is not None
+
+    projections = [
+        build_operation_source_readiness_projection(
+            runtime=runtime,
+            service_id="nex-cx",
+            request_trace_id=TRACE_ID,
+        ),
+        build_operational_event_projection(
+            build_store(),
+            service_id="nex-mo",
+            severity="ERROR",
+            request_trace_id=TRACE_ID,
+        ),
+        build_operational_event_detail_projection(
+            event,
+            request_trace_id=TRACE_ID,
+        ),
+        build_operational_event_taxonomy_projection(
+            service_id="nex-cx",
+            event_type=CX_PROCESSING_EVENT_STARTED,
+            request_trace_id=TRACE_ID,
+        ),
+        build_job_operations_projection(
+            job_queues,
+            service_id="nex-cx",
+            status=RUNNING,
+            request_trace_id=TRACE_ID,
+        ),
+        build_job_operation_detail_projection(
+            job,
+            service_id="nex-cx",
+            event_store=build_store(),
+            request_trace_id=TRACE_ID,
+        ),
+        build_unified_operations_projection(
+            registry=registry,
+            service_id="nex-cx",
+            job_status=RUNNING,
+            event_severity="INFO",
+            trace_id=TRACE_ID,
+            request_trace_id=TRACE_ID,
+        ),
+        build_cross_service_trace_timeline_projection(
+            trace_id=TRACE_ID,
+            registry=registry,
+            service_id="nex-cx",
+            request_trace_id=TRACE_ID,
+        ),
+    ]
+
+    for projection in projections:
+        assert_ag_operations_projection_contract(projection)
 
 
 def test_build_operational_event_projection_filters_and_summarizes() -> None:
