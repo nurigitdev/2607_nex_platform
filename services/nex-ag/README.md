@@ -13,6 +13,7 @@ Current endpoints:
 - `GET /admin/v1/readiness/services`
 - `GET /admin/v1/readiness/providers`
 - `GET /admin/v1/generation-audit/generations/{cx_generation_id}`
+- `GET /admin/v1/operations/events`
 - `GET /admin/v1/policies/retrieval`
 - `GET /admin/v1/policies/retrieval/active`
 - `GET /admin/v1/policies/retrieval/{policy_id}`
@@ -49,3 +50,10 @@ Generation audit:
 - AG can also include an optional AE generation recovery request summary in the
   same projection, exposing requested action, policy hash status, dispatch
   target, attempt number, and retrieval reuse intent for failure audit.
+
+Operational events:
+
+- AG exposes a read-only operational event projection over the shared
+  `operational_event.v1` shape.
+- Filters include service id, severity, event type, trace id, and limit.
+- Event details are redacted by the shared runtime before AG projection.

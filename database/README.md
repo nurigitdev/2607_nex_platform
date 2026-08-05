@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0083 shared service job queue foundation.
+Status: Slice 0085 shared operational event foundation.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -84,6 +84,18 @@ Runtime code uses `nex_runtime.jobs` for the shared in-memory queue port,
 contract-aligned common job builder, status validation, transition rules, and
 summaries. SQL write-through is deferred until service repositories adopt the
 common queue port.
+
+## Operational Event Foundation
+
+Each service database also owns `service_operational_events`. It stores
+redaction-safe event identity, service, event type, severity, trace/request,
+subject, short message, JSONB details, and creation time. Indexes support AG
+service, severity, trace, and event-type scans.
+
+Runtime code uses `nex_runtime.operational_events` for event construction,
+sensitive detail redaction, validation, in-memory storage, filtering, and
+summaries. AG exposes the first read-only projection at
+`/admin/v1/operations/events`.
 
 ## Prompt Registry Seeds
 

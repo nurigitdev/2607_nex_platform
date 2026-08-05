@@ -188,6 +188,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0082`](slices/0082_service_migration_profile_alembic_foundation.md) | `S9-002` Service migration dev/test profile and Alembic config foundation. |
 | [`Slice 0083`](slices/0083_shared_service_job_queue_foundation.md) | `S9-003` Shared common job queue interface and service job table foundation. |
 | [`Slice 0084`](slices/0084_cx_processing_pipeline_jobqueue_bridge.md) | `S9-004` CX document processing pipeline bridge to the common JobQueue port. |
+| [`Slice 0085`](slices/0085_operational_event_log_foundation.md) | `S9-005` Shared operational event/log foundation and AG read-only projection. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

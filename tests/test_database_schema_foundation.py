@@ -69,6 +69,36 @@ def test_service_job_queue_foundation_exists_for_every_service_database() -> Non
         assert "0083_service_job_queue_foundation" in compact
 
 
+def test_service_operational_event_foundation_exists_for_every_service_database() -> None:
+    for service_id in SERVICE_IDS:
+        compact = normalized(
+            read_migration_named(service_id, "0085_service_operational_events_foundation.sql")
+        )
+
+        assert "create table if not exists service_operational_events" in compact
+        assert "event_schema_version text not null default 'operational_event.v1'" in compact
+        assert "check (event_schema_version = 'operational_event.v1')" in compact
+        assert "severity text not null check (severity in" in compact
+        for severity in ("debug", "info", "warning", "error", "critical"):
+            assert f"'{severity}'" in compact
+        for column in (
+            "service_id text not null",
+            "event_type text not null",
+            "trace_id text",
+            "request_id text",
+            "subject_type text",
+            "subject_id text",
+            "message text not null check (char_length(message) <= 512)",
+            "details jsonb not null default '{}'::jsonb",
+        ):
+            assert column in compact
+        assert "ix_service_operational_events_service_created" in compact
+        assert "ix_service_operational_events_severity_created" in compact
+        assert "ix_service_operational_events_trace" in compact
+        assert "ix_service_operational_events_type" in compact
+        assert "0085_service_operational_events_foundation" in compact
+
+
 def test_cx_schema_scopes_duplicate_uploads_to_active_owner_documents() -> None:
     compact = normalized(read_migration("nex-cx"))
     storage_policy = normalized(
