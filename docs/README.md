@@ -208,6 +208,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0102`](slices/0102_ag_operation_source_readiness_projection.md) | `S11-002` AG operation source readiness projection. |
 | [`Slice 0103`](slices/0103_ag_operational_event_detail_search.md) | `S11-003` AG operational event detail and log search API. |
 | [`Slice 0104`](slices/0104_ag_job_detail_lifecycle_timeline.md) | `S11-004` AG job detail and lifecycle timeline API. |
+| [`Slice 0105`](slices/0105_ag_cross_service_trace_timeline.md) | `S11-005` AG cross-service trace timeline projection. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

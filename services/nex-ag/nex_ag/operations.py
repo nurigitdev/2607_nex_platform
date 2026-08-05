@@ -960,6 +960,50 @@ def register_unified_operation_routes(
             request_trace_id=trace_id_from_headers(request),
         )
 
+    @app.get("/admin/v1/operations/traces/{trace_id}", response_model=None)
+    def get_cross_service_trace_timeline(
+        trace_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        sort: str | None = None,
+        cursor: str | None = None,
+        limit: int = Query(default=50, ge=1),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        filter_problem = _validate_job_operation_filters(
+            request,
+            service_id=service_id,
+            status=None,
+        )
+        if filter_problem is not None:
+            return filter_problem
+        query_options = _build_query_options_or_problem(
+            request,
+            limit=limit,
+            since=since,
+            until=until,
+            sort=sort,
+            cursor=cursor,
+        )
+        if isinstance(query_options, JSONResponse):
+            return query_options
+
+        return build_cross_service_trace_timeline_projection(
+            trace_id=trace_id,
+            job_queues=job_queues,
+            event_store=event_store,
+            registry=registry,
+            service_id=service_id,
+            query_options=query_options,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
 
 def build_operational_event_projection(
     store: OperationalEventStore,
@@ -1196,6 +1240,76 @@ def build_unified_operations_projection(
     return projection
 
 
+def build_cross_service_trace_timeline_projection(
+    *,
+    trace_id: str,
+    job_queues: Mapping[str, JobQueue] | None = None,
+    event_store: OperationalEventStore | None = None,
+    registry: OperationsSourceRegistry | None = None,
+    service_id: str | None = None,
+    limit: int = 50,
+    query_options: OperationQueryOptions | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    options = query_options or build_operation_query_options(limit=limit)
+    queue_stores = (
+        registry.job_queues()
+        if registry is not None
+        else job_queues or DEFAULT_JOB_QUEUE_STORES
+    )
+    selected_event_store = (
+        RegistryOperationalEventStore(registry)
+        if registry is not None
+        else event_store or DEFAULT_OPERATIONAL_EVENT_STORE
+    )
+    selected_service_ids = (
+        [service_id] if service_id is not None else sorted(SERVICE_SPECS)
+    )
+    job_items, job_source_statuses = _trace_job_timeline_items(
+        queue_stores,
+        selected_service_ids=selected_service_ids,
+        trace_id=trace_id,
+    )
+    event_items, event_source_status = _trace_event_timeline_items(
+        selected_event_store,
+        trace_id=trace_id,
+        service_id=service_id,
+    )
+    page = _apply_operation_query_options(
+        [*job_items, *event_items],
+        options,
+        timestamp_field="operation_timestamp",
+        tie_breaker_fields=("item_id",),
+    )
+    projection_status = (
+        "DEGRADED"
+        if event_source_status["status"] == "UNAVAILABLE"
+        or any(
+            source["status"] in {"NOT_CONFIGURED", "UNAVAILABLE"}
+            for source in job_source_statuses.values()
+        )
+        else "READY"
+    )
+    projection = {
+        "projection_schema_version": "ag_cross_service_trace_timeline_projection.v1",
+        "projection_status": projection_status,
+        "checked_at": _utc_now(),
+        "filters": {
+            "trace_id": trace_id,
+            "service_id": service_id,
+            **options.to_filter_dict(),
+        },
+        "timeline": page["items"],
+        "summary": summarize_trace_timeline_items(page["items"]),
+        "job_source_statuses": job_source_statuses,
+        "event_source_status": event_source_status,
+        "pagination": page["pagination"],
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
 def build_job_operations_projection(
     job_queues: Mapping[str, JobQueue],
     *,
@@ -1325,6 +1439,23 @@ def summarize_job_operations(jobs: list[dict[str, Any]]) -> dict[str, Any]:
         **summary,
         "by_service": service_counts,
         "by_job_type": job_type_counts,
+    }
+
+
+def summarize_trace_timeline_items(
+    timeline_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    by_item_type: dict[str, int] = {}
+    by_service: dict[str, int] = {}
+    for item in timeline_items:
+        item_type = str(item["timeline_item_type"])
+        service_id = str(item["service_id"])
+        by_item_type[item_type] = by_item_type.get(item_type, 0) + 1
+        by_service[service_id] = by_service.get(service_id, 0) + 1
+    return {
+        "total": len(timeline_items),
+        "by_item_type": by_item_type,
+        "by_service": by_service,
     }
 
 
@@ -1660,6 +1791,102 @@ def _operational_event_matches_query(event: dict[str, Any], query: str) -> bool:
         for part in searchable_parts
         if part is not None
     )
+
+
+def _trace_job_timeline_items(
+    job_queues: Mapping[str, JobQueue],
+    *,
+    selected_service_ids: list[str],
+    trace_id: str,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    timeline_items: list[dict[str, Any]] = []
+    source_statuses: dict[str, dict[str, Any]] = {}
+    for selected_service_id in selected_service_ids:
+        queue = job_queues.get(selected_service_id)
+        if queue is None:
+            source_statuses[selected_service_id] = {
+                "status": "NOT_CONFIGURED",
+                "job_count": 0,
+            }
+            continue
+        try:
+            jobs = [
+                job
+                for job in queue.list_jobs()
+                if job.get("trace_id") == trace_id
+            ]
+        except JobQueueError as exc:
+            source_statuses[selected_service_id] = {
+                "status": "UNAVAILABLE",
+                "job_count": 0,
+                "error_code": exc.error_code,
+                "detail": exc.detail,
+            }
+            continue
+        source_statuses[selected_service_id] = {
+            "status": "READY",
+            "job_count": len(jobs),
+        }
+        timeline_items.extend(
+            _job_trace_timeline_item(selected_service_id, job)
+            for job in jobs
+        )
+    return timeline_items, source_statuses
+
+
+def _trace_event_timeline_items(
+    event_store: OperationalEventStore,
+    *,
+    trace_id: str,
+    service_id: str | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    try:
+        events = event_store.list_events(
+            service_id=service_id,
+            trace_id=trace_id,
+            limit=normalize_operational_event_limit(500),
+        )
+    except OperationalEventError as exc:
+        return [], {
+            "status": "UNAVAILABLE",
+            "event_count": 0,
+            "error_code": exc.error_code,
+            "detail": exc.detail,
+        }
+    return [
+        _event_trace_timeline_item(event)
+        for event in events
+    ], {
+        "status": "READY",
+        "event_count": len(events),
+    }
+
+
+def _job_trace_timeline_item(service_id: str, job: dict[str, Any]) -> dict[str, Any]:
+    projected_job = _project_job_for_service(service_id, job)
+    return {
+        "timeline_item_type": "job",
+        "item_id": f"job:{service_id}:{job['job_id']}",
+        "service_id": service_id,
+        "trace_id": job["trace_id"],
+        "operation_timestamp": _job_operation_timestamp(job),
+        "job": projected_job,
+    }
+
+
+def _event_trace_timeline_item(event: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "timeline_item_type": "event",
+        "item_id": f"event:{event['event_id']}",
+        "service_id": event["service_id"],
+        "trace_id": event.get("trace_id"),
+        "operation_timestamp": event["created_at"],
+        "event": deepcopy(event),
+    }
+
+
+def _job_operation_timestamp(job: dict[str, Any]) -> str:
+    return str(job.get("updated_at") or job["created_at"])
 
 
 def _build_job_lifecycle_timeline(

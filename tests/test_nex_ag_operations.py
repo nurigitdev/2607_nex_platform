@@ -19,6 +19,7 @@ from nex_ag.operations import (
     ag_operations_source_database_env,
     attach_ag_operations_source_runtime,
     build_ag_operations_source_runtime,
+    build_cross_service_trace_timeline_projection,
     build_job_operation_detail_projection,
     build_job_operations_projection,
     build_operation_query_options,
@@ -42,6 +43,7 @@ from nex_ag.operations import (
     select_ag_operations_source_service_ids,
     summarize_operation_source_readiness,
     summarize_job_operations,
+    summarize_trace_timeline_items,
     _filter_records_by_operation_time,
     _operation_record_timestamp,
 )
@@ -949,6 +951,174 @@ def test_unified_operations_route_rejects_bad_filters() -> None:
     assert bad_cursor.json()["error_code"] == "ag.operation_cursor_invalid"
     assert bad_window.status_code == 400
     assert bad_window.json()["error_code"] == "ag.operation_time_window_invalid"
+
+
+def test_build_cross_service_trace_timeline_projection_sorts_and_summarizes() -> None:
+    registry = build_operations_source_registry(
+        job_queues=build_job_queues(),
+        event_stores=build_event_stores(),
+    )
+    projection = build_cross_service_trace_timeline_projection(
+        trace_id=TRACE_ID,
+        registry=registry,
+        query_options=build_operation_query_options(limit=3, sort="asc"),
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == (
+        "ag_cross_service_trace_timeline_projection.v1"
+    )
+    assert projection["projection_status"] == "DEGRADED"
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["filters"] == {
+        "trace_id": TRACE_ID,
+        "service_id": None,
+        "limit": 3,
+        "since": None,
+        "until": None,
+        "sort": "asc",
+        "cursor": None,
+    }
+    assert [
+        (item["timeline_item_type"], item["item_id"])
+        for item in projection["timeline"]
+    ] == [
+        ("event", "event:event-cx-001"),
+        ("job", "job:nex-cx:job-cx-001"),
+        ("job", "job:nex-cx:job-cx-002"),
+    ]
+    assert projection["summary"] == {
+        "total": 3,
+        "by_item_type": {"event": 1, "job": 2},
+        "by_service": {"nex-cx": 3},
+    }
+    assert projection["pagination"]["next_cursor"] == "3"
+    assert projection["job_source_statuses"]["nex-oa"]["status"] == "NOT_CONFIGURED"
+    assert projection["event_source_status"] == {
+        "status": "READY",
+        "event_count": 1,
+    }
+
+
+def test_cross_service_trace_timeline_projection_filters_service_and_window() -> None:
+    projection = build_cross_service_trace_timeline_projection(
+        trace_id=TRACE_ID,
+        job_queues=build_job_queues(),
+        event_store=build_store(),
+        service_id="nex-cx",
+        query_options=build_operation_query_options(
+            limit=2,
+            since="2026-08-05T00:00:01Z",
+            sort="desc",
+        ),
+    )
+
+    assert projection["projection_status"] == "READY"
+    assert projection["filters"]["service_id"] == "nex-cx"
+    assert [item["item_id"] for item in projection["timeline"]] == [
+        "job:nex-cx:job-cx-002",
+        "job:nex-cx:job-cx-001",
+    ]
+    assert projection["summary"]["by_item_type"] == {"job": 2}
+    assert projection["pagination"]["next_cursor"] is None
+
+
+def test_cross_service_trace_timeline_projection_reports_unavailable_sources() -> None:
+    projection = build_cross_service_trace_timeline_projection(
+        trace_id=TRACE_ID,
+        job_queues={"nex-cx": BrokenJobQueue()},
+        event_store=BrokenOperationalEventStore(),
+        service_id="nex-cx",
+    )
+
+    assert projection["projection_status"] == "DEGRADED"
+    assert projection["timeline"] == []
+    assert projection["summary"] == {
+        "total": 0,
+        "by_item_type": {},
+        "by_service": {},
+    }
+    assert projection["job_source_statuses"]["nex-cx"]["status"] == "UNAVAILABLE"
+    assert projection["event_source_status"] == {
+        "status": "UNAVAILABLE",
+        "event_count": 0,
+        "error_code": "operational_event.store_unavailable",
+        "detail": "operational event store is unavailable",
+    }
+
+
+def test_summarize_trace_timeline_items_counts_empty_and_unknown_services() -> None:
+    assert summarize_trace_timeline_items([]) == {
+        "total": 0,
+        "by_item_type": {},
+        "by_service": {},
+    }
+    assert summarize_trace_timeline_items(
+        [
+            {
+                "timeline_item_type": "custom",
+                "service_id": "nex-cx",
+            }
+        ]
+    ) == {
+        "total": 1,
+        "by_item_type": {"custom": 1},
+        "by_service": {"nex-cx": 1},
+    }
+
+
+def test_cross_service_trace_timeline_route_requires_auth_and_returns_projection() -> None:
+    registry = build_operations_source_registry(
+        job_queues=build_job_queues(),
+        event_stores=build_event_stores(),
+    )
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_unified_operation_routes(app, registry=registry)
+    client = TestClient(app)
+
+    missing_auth = client.get(f"/admin/v1/operations/traces/{TRACE_ID}")
+    response = client.get(
+        f"/admin/v1/operations/traces/{TRACE_ID}",
+        params={"service_id": "nex-cx", "sort": "asc", "limit": 2},
+        headers={
+            **auth_headers(),
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        },
+    )
+
+    assert missing_auth.status_code == 401
+    assert missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["request_trace_id"] == TRACE_ID
+    assert payload["filters"]["trace_id"] == TRACE_ID
+    assert payload["filters"]["service_id"] == "nex-cx"
+    assert [item["timeline_item_type"] for item in payload["timeline"]] == [
+        "event",
+        "job",
+    ]
+
+
+def test_cross_service_trace_timeline_route_rejects_bad_filters() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_unified_operation_routes(app)
+    client = TestClient(app)
+
+    bad_service = client.get(
+        f"/admin/v1/operations/traces/{TRACE_ID}",
+        params={"service_id": "nex-unknown"},
+        headers=auth_headers(),
+    )
+    bad_cursor = client.get(
+        f"/admin/v1/operations/traces/{TRACE_ID}",
+        params={"cursor": "before"},
+        headers=auth_headers(),
+    )
+
+    assert bad_service.status_code == 400
+    assert bad_service.json()["error_code"] == "ag.job_service_invalid"
+    assert bad_cursor.status_code == 400
+    assert bad_cursor.json()["error_code"] == "ag.operation_cursor_invalid"
 
 
 def test_build_operational_event_projection_filters_and_summarizes() -> None:

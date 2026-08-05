@@ -20,6 +20,7 @@ Current endpoints:
 - `GET /admin/v1/operations/jobs`
 - `GET /admin/v1/operations/jobs/{service_id}/{job_id}`
 - `GET /admin/v1/operations/sources`
+- `GET /admin/v1/operations/traces/{trace_id}`
 - `GET /admin/v1/policies/retrieval`
 - `GET /admin/v1/policies/retrieval/active`
 - `GET /admin/v1/policies/retrieval/{policy_id}`
@@ -105,6 +106,9 @@ Unified operations:
   trace id, `since`, `until`, `sort`, `cursor`, and limit.
 - The response embeds the existing job and event projection shapes plus a
   combined summary and optional source registry summary.
+- `GET /admin/v1/operations/traces/{trace_id}` returns
+  `ag_cross_service_trace_timeline_projection.v1`, mixing matching jobs and
+  events into one timestamped cross-service timeline.
 - Operations query pagination uses a non-negative integer `cursor` offset,
   returns `pagination.next_cursor` when more rows exist, and caps limit at the
   shared 500-row operations ceiling.
