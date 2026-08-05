@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0101 AG operations query contract hardening.
+Status: Slice 0102 AG operation source readiness projection.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005

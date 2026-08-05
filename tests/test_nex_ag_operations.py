@@ -21,6 +21,7 @@ from nex_ag.operations import (
     build_ag_operations_source_runtime,
     build_job_operations_projection,
     build_operation_query_options,
+    build_operation_source_readiness_projection,
     build_operations_source_registry,
     build_operational_event_taxonomy_projection,
     build_operational_event_projection,
@@ -31,10 +32,12 @@ from nex_ag.operations import (
     normalize_ag_operations_source_mode,
     normalize_ag_operations_source_profile,
     register_job_operation_routes,
+    register_operation_source_readiness_routes,
     register_operational_event_taxonomy_routes,
     register_operational_event_routes,
     register_unified_operation_routes,
     select_ag_operations_source_service_ids,
+    summarize_operation_source_readiness,
     summarize_job_operations,
     _filter_records_by_operation_time,
     _operation_record_timestamp,
@@ -441,6 +444,109 @@ def test_ag_operations_source_runtime_builds_postgres_read_only_registry() -> No
         )
 
 
+def test_operation_source_readiness_projection_reports_default_memory_runtime() -> None:
+    runtime = build_ag_operations_source_runtime(environ={})
+
+    projection = build_operation_source_readiness_projection(
+        runtime=runtime,
+        service_id="nex-cx",
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == (
+        "ag_operation_source_readiness_projection.v1"
+    )
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["runtime"]["mode"] == "memory"
+    assert projection["sources"] == [
+        {
+            "service_id": "nex-cx",
+            "readiness_status": "DEFAULT_MEMORY",
+            "configured": False,
+            "source_kind": "memory-default",
+            "capabilities": {
+                "jobs": True,
+                "events": True,
+            },
+            "read_only": False,
+            "job_queue": "InMemoryJobQueue",
+            "operational_event_store": "InMemoryOperationalEventStore",
+            "database_env": None,
+            "redacted_database_url": None,
+        }
+    ]
+    assert projection["summary"] == {
+        "total": 1,
+        "by_status": {"DEFAULT_MEMORY": 1},
+        "by_source_kind": {"memory-default": 1},
+        "read_only": 0,
+    }
+
+
+def test_operation_source_readiness_projection_reports_postgres_sources() -> None:
+    runtime = build_ag_operations_source_runtime(
+        environ={
+            AG_OPERATIONS_SOURCE_MODE_ENV: "postgres",
+            AG_OPERATIONS_SOURCE_PROFILE_ENV: "test",
+            AG_OPERATIONS_SOURCE_SERVICES_ENV: "nex-cx",
+            "NEX_CX_TEST_DATABASE_URL": "postgresql://nex_cx_user:secret@localhost/nex_cx_test",
+        },
+        engine_factory=lambda database_url, *, pool_settings: SimpleNamespace(
+            database_url=database_url,
+            pool_settings=pool_settings,
+        ),
+        session_factory_builder=lambda engine: f"session:{engine.pool_settings.workload}",
+    )
+
+    projection = build_operation_source_readiness_projection(runtime=runtime)
+
+    assert projection["runtime"]["profile"] == "test"
+    assert projection["sources"][0]["service_id"] == "nex-cx"
+    assert projection["sources"][0]["readiness_status"] == "READY"
+    assert projection["sources"][0]["source_kind"] == "postgres-read"
+    assert projection["sources"][0]["read_only"] is True
+    assert projection["sources"][0]["database_env"] == "NEX_CX_TEST_DATABASE_URL"
+    assert projection["sources"][0]["redacted_database_url"].endswith(
+        "nex_cx_user:***@localhost/nex_cx_test"
+    )
+    assert projection["summary"]["read_only"] == 1
+    assert "secret" not in str(projection)
+
+
+def test_operation_source_readiness_projection_reports_not_configured_registry_source() -> None:
+    runtime = build_ag_operations_source_runtime(
+        environ={
+            AG_OPERATIONS_SOURCE_MODE_ENV: "postgres",
+            AG_OPERATIONS_SOURCE_PROFILE_ENV: "test",
+            AG_OPERATIONS_SOURCE_SERVICES_ENV: "nex-cx",
+            "NEX_CX_TEST_DATABASE_URL": "postgresql://nex_cx_user:secret@localhost/nex_cx_test",
+        },
+        engine_factory=lambda database_url, *, pool_settings: SimpleNamespace(
+            database_url=database_url,
+            pool_settings=pool_settings,
+        ),
+        session_factory_builder=lambda engine: f"session:{engine.pool_settings.workload}",
+    )
+
+    projection = build_operation_source_readiness_projection(
+        runtime=runtime,
+        service_id="nex-mo",
+    )
+
+    assert projection["sources"][0]["readiness_status"] == "NOT_CONFIGURED"
+    assert projection["sources"][0]["read_only"] is None
+    assert projection["summary"]["by_status"] == {"NOT_CONFIGURED": 1}
+
+
+def test_summarize_operation_source_readiness_counts_empty_sources() -> None:
+    assert summarize_operation_source_readiness([]) == {
+        "total": 0,
+        "by_status": {},
+        "by_source_kind": {},
+        "read_only": 0,
+    }
+
+
 @pytest.mark.parametrize(
     "environ, expected",
     [
@@ -595,6 +701,59 @@ def test_operations_routes_accept_source_registry() -> None:
     assert events_response.json()["events"][0]["event_id"] == "event-mo-001"
     assert jobs_response.status_code == 200
     assert jobs_response.json()["jobs"][0]["job_id"] == "job-ae-001"
+
+
+def test_operation_source_readiness_route_requires_auth_and_filters_service() -> None:
+    runtime = build_ag_operations_source_runtime(environ={})
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_operation_source_readiness_routes(app, runtime=runtime)
+    client = TestClient(app)
+
+    missing_auth = client.get("/admin/v1/operations/sources")
+    response = client.get(
+        "/admin/v1/operations/sources",
+        params={"service_id": "nex-cx"},
+        headers={
+            **auth_headers(),
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        },
+    )
+
+    assert missing_auth.status_code == 401
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["request_trace_id"] == TRACE_ID
+    assert payload["filters"] == {"service_id": "nex-cx"}
+    assert payload["sources"][0]["service_id"] == "nex-cx"
+    assert payload["sources"][0]["readiness_status"] == "DEFAULT_MEMORY"
+
+
+def test_operation_source_readiness_route_reads_runtime_from_app_state() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    runtime = attach_ag_operations_source_runtime(app, environ={})
+    register_operation_source_readiness_routes(app)
+
+    response = TestClient(app).get(
+        "/admin/v1/operations/sources",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["runtime"] == runtime.to_summary()
+
+
+def test_operation_source_readiness_route_rejects_bad_service() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_operation_source_readiness_routes(app)
+
+    response = TestClient(app).get(
+        "/admin/v1/operations/sources",
+        params={"service_id": "nex-unknown"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "ag.operation_source_service_invalid"
 
 
 def test_build_unified_operations_projection_combines_jobs_events_and_registry_summary() -> None:

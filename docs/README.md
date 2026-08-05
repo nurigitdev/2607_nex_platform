@@ -205,6 +205,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0099`](slices/0099_ag_runtime_db_backed_operations_wiring.md) | `S10-009` AG runtime DB-backed operations source wiring. |
 | [`Slice 0100`](slices/0100_ag_cross_service_observability_smoke.md) | `S10-010` AG cross-service DB-backed observability smoke. |
 | [`Slice 0101`](slices/0101_ag_operations_query_contract_hardening.md) | `S11-001` AG operations query contract hardening. |
+| [`Slice 0102`](slices/0102_ag_operation_source_readiness_projection.md) | `S11-002` AG operation source readiness projection. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

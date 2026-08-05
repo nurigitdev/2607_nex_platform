@@ -715,6 +715,41 @@ def register_operational_event_taxonomy_routes(
         )
 
 
+def register_operation_source_readiness_routes(
+    app: FastAPI,
+    *,
+    runtime: AgOperationsSourceRuntime | None = None,
+) -> None:
+    @app.get("/admin/v1/operations/sources", response_model=None)
+    def list_operation_source_readiness(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        if service_id is not None and service_id not in SERVICE_SPECS:
+            return problem_response(
+                request,
+                status_code=400,
+                error_code="ag.operation_source_service_invalid",
+                title="Invalid operation source service filter",
+                detail=f"Unsupported operation source service: {service_id}",
+                type_uri="https://nex-platform.local/problems/operation-source-service-invalid",
+            )
+        selected_runtime = runtime or getattr(
+            request.app.state,
+            "nex_ag_operations_source_runtime",
+            None,
+        )
+        return build_operation_source_readiness_projection(
+            runtime=selected_runtime,
+            service_id=service_id,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
+
 def register_job_operation_routes(
     app: FastAPI,
     *,
@@ -902,6 +937,58 @@ def build_operational_event_taxonomy_projection(
     if request_trace_id is not None:
         projection["request_trace_id"] = request_trace_id
     return projection
+
+
+def build_operation_source_readiness_projection(
+    *,
+    runtime: AgOperationsSourceRuntime | None,
+    service_id: str | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    selected_runtime = runtime or AgOperationsSourceRuntime(
+        mode="memory",
+        profile="dev",
+        selected_service_ids=tuple(sorted(SERVICE_SPECS)),
+        registry=None,
+    )
+    source_statuses = _operation_source_statuses(
+        selected_runtime,
+        service_id=service_id,
+    )
+    projection = {
+        "projection_schema_version": "ag_operation_source_readiness_projection.v1",
+        "checked_at": _utc_now(),
+        "filters": {
+            "service_id": service_id,
+        },
+        "runtime": selected_runtime.to_summary(),
+        "sources": source_statuses,
+        "summary": summarize_operation_source_readiness(source_statuses),
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
+def summarize_operation_source_readiness(
+    sources: list[dict[str, Any]],
+) -> dict[str, Any]:
+    by_status: dict[str, int] = {}
+    by_source_kind: dict[str, int] = {}
+    read_only_count = 0
+    for source in sources:
+        status = str(source["readiness_status"])
+        source_kind = str(source["source_kind"])
+        by_status[status] = by_status.get(status, 0) + 1
+        by_source_kind[source_kind] = by_source_kind.get(source_kind, 0) + 1
+        if source["read_only"] is True:
+            read_only_count += 1
+    return {
+        "total": len(sources),
+        "by_status": by_status,
+        "by_source_kind": by_source_kind,
+        "read_only": read_only_count,
+    }
 
 
 def build_unified_operations_projection(
@@ -1180,6 +1267,86 @@ def _build_query_options_or_problem(
             detail=exc.detail,
             type_uri="https://nex-platform.local/problems/operations-query-invalid",
         )
+
+
+def _operation_source_statuses(
+    runtime: AgOperationsSourceRuntime,
+    *,
+    service_id: str | None,
+) -> list[dict[str, Any]]:
+    selected_service_ids = (
+        [service_id]
+        if service_id is not None
+        else list(runtime.selected_service_ids)
+    )
+    return [
+        _operation_source_status(runtime, selected_service_id)
+        for selected_service_id in selected_service_ids
+    ]
+
+
+def _operation_source_status(
+    runtime: AgOperationsSourceRuntime,
+    service_id: str,
+) -> dict[str, Any]:
+    source = runtime.registry.get(service_id) if runtime.registry is not None else None
+    if source is None and runtime.registry is None and runtime.mode == "memory":
+        return {
+            "service_id": service_id,
+            "readiness_status": "DEFAULT_MEMORY",
+            "configured": False,
+            "source_kind": "memory-default",
+            "capabilities": {
+                "jobs": True,
+                "events": True,
+            },
+            "read_only": False,
+            "job_queue": "InMemoryJobQueue",
+            "operational_event_store": "InMemoryOperationalEventStore",
+            "database_env": None,
+            "redacted_database_url": None,
+        }
+    if source is None:
+        return {
+            "service_id": service_id,
+            "readiness_status": "NOT_CONFIGURED",
+            "configured": False,
+            "source_kind": "none",
+            "capabilities": {
+                "jobs": False,
+                "events": False,
+            },
+            "read_only": None,
+            "job_queue": None,
+            "operational_event_store": None,
+            "database_env": None,
+            "redacted_database_url": None,
+        }
+    source_summary = source.to_summary()
+    return {
+        "service_id": service_id,
+        "readiness_status": "READY",
+        "configured": True,
+        "source_kind": source.source_kind,
+        "capabilities": source_summary["capabilities"],
+        "read_only": _operation_source_is_read_only(source),
+        "job_queue": source_summary["job_queue"],
+        "operational_event_store": source_summary["operational_event_store"],
+        "database_env": source_summary.get("database_env"),
+        "redacted_database_url": source_summary.get("redacted_database_url"),
+    }
+
+
+def _operation_source_is_read_only(source: OperationsSource) -> bool:
+    job_read_only = (
+        source.job_queue is None
+        or isinstance(source.job_queue, ReadOnlyJobQueue)
+    )
+    event_read_only = (
+        source.operational_event_store is None
+        or isinstance(source.operational_event_store, ReadOnlyOperationalEventStore)
+    )
+    return job_read_only and event_read_only
 
 
 def _operations_source_read_only_job_error() -> JobQueueError:

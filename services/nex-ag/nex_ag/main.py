@@ -3,6 +3,7 @@ from nex_ag.generation_audit import register_generation_audit_routes
 from nex_ag.operations import (
     attach_ag_operations_source_runtime,
     register_job_operation_routes,
+    register_operation_source_readiness_routes,
     register_operational_event_taxonomy_routes,
     register_operational_event_routes,
     register_unified_operation_routes,
@@ -19,6 +20,7 @@ OPERATIONS_SOURCE_REGISTRY = OPERATIONS_SOURCE_RUNTIME.registry
 register_readiness_routes(app)
 register_generation_audit_routes(app)
 register_retrieval_policy_routes(app)
+register_operation_source_readiness_routes(app, runtime=OPERATIONS_SOURCE_RUNTIME)
 register_unified_operation_routes(app, registry=OPERATIONS_SOURCE_REGISTRY)
 register_operational_event_taxonomy_routes(app)
 register_operational_event_routes(app, registry=OPERATIONS_SOURCE_REGISTRY)

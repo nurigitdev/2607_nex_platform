@@ -17,6 +17,7 @@ Current endpoints:
 - `GET /admin/v1/operations/event-taxonomy`
 - `GET /admin/v1/operations/events`
 - `GET /admin/v1/operations/jobs`
+- `GET /admin/v1/operations/sources`
 - `GET /admin/v1/policies/retrieval`
 - `GET /admin/v1/policies/retrieval/active`
 - `GET /admin/v1/policies/retrieval/{policy_id}`
@@ -84,6 +85,10 @@ Job operations:
 - `NEX_AG_CROSS_SERVICE_OBSERVABILITY_SMOKE=1` runs a guarded test-profile
   smoke that creates CX processing job/event rows and verifies AG can observe
   them through `GET /admin/v1/operations`.
+- `GET /admin/v1/operations/sources` exposes the current operations source
+  runtime, selected service ids, source capability/read-only status, and safe
+  redacted database env metadata. Source readiness statuses are
+  `DEFAULT_MEMORY`, `READY`, or `NOT_CONFIGURED`.
 
 Unified operations:
 
