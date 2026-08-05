@@ -23,6 +23,7 @@ from .database import (
     required_database_url,
     service_database_settings,
     service_database_env_prefix,
+    sqlalchemy_database_url,
 )
 from .env import load_env_file, merge_pythonpath
 from .jobs import (
@@ -38,6 +39,7 @@ from .jobs import (
     InMemoryJobQueue,
     JobQueue,
     JobQueueError,
+    SqlAlchemyJobQueue,
     build_common_job,
     build_subject_ref,
     summarize_jobs,
@@ -99,6 +101,7 @@ __all__ = [
     "ServiceSpec",
     "ServiceClaims",
     "SqlAlchemyUnitOfWork",
+    "SqlAlchemyJobQueue",
     "TERMINAL_JOB_STATUSES",
     "build_engine",
     "build_common_job",
@@ -125,6 +128,7 @@ __all__ = [
     "select_generation_recovery_policy",
     "service_database_settings",
     "service_database_env_prefix",
+    "sqlalchemy_database_url",
     "summarize_jobs",
     "summarize_operational_events",
     "trace_id_from_headers",

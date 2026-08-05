@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0086 DB runtime pool/session/unit-of-work foundation.
+Status: Slice 0087 persistent SQLAlchemy JobQueue adapter foundation.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -111,9 +111,26 @@ availability and lock fields, and indexes needed for status scans, trace lookup,
 and subject lookup.
 
 Runtime code uses `nex_runtime.jobs` for the shared in-memory queue port,
-contract-aligned common job builder, status validation, transition rules, and
-summaries. SQL write-through is deferred until service repositories adopt the
-common queue port.
+contract-aligned common job builder, status validation, transition rules,
+worker claim, summaries, and the persistent `SqlAlchemyJobQueue` adapter.
+
+`SqlAlchemyJobQueue` stores and reads the common job shape through the
+service-owned `service_jobs` table. It keeps the external job payload aligned to
+`common_job.v1`, preserves idempotent enqueue by `job_type + idempotency_key`,
+uses short transactions for enqueue/transition/claim, and supports worker claim
+with PostgreSQL `FOR UPDATE SKIP LOCKED` when the backend is PostgreSQL.
+
+Optional PostgreSQL write smoke is guarded by:
+
+```text
+NEX_DB_JOBQUEUE_SMOKE=1
+NEX_DB_JOBQUEUE_SMOKE_SERVICE=nex-cx
+NEX_DB_JOBQUEUE_SMOKE_PROFILE=test
+```
+
+The smoke is intentionally limited to the test profile. It applies service
+migrations, enqueues a short smoke job, validates idempotency, claims it,
+completes it, and removes the smoke row.
 
 ## Operational Event Foundation
 

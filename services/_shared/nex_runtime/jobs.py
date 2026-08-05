@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
+
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
 COMMON_JOB_SCHEMA_VERSION = "common_job.v1"
 
@@ -53,6 +58,15 @@ class JobQueue(Protocol):
         ...
 
     def cancel_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
+        ...
+
+    def claim_next_job(
+        self,
+        worker_id: str,
+        *,
+        job_type: str | None = None,
+        updated_at: str | None = None,
+    ) -> dict[str, Any] | None:
         ...
 
     def list_jobs(
@@ -285,6 +299,32 @@ class InMemoryJobQueue:
     def cancel_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
         return self._transition(job_id, CANCELLED, updated_at=updated_at)
 
+    def claim_next_job(
+        self,
+        worker_id: str,
+        *,
+        job_type: str | None = None,
+        updated_at: str | None = None,
+    ) -> dict[str, Any] | None:
+        _required_string(worker_id, "worker_id")
+        candidates = [
+            job
+            for job in self.jobs.values()
+            if job["status"] == QUEUED
+            and job["attempt_count"] < job["max_attempts"]
+            and (job_type is None or job["job_type"] == job_type)
+        ]
+        if not candidates:
+            return None
+        candidates.sort(
+            key=lambda job: (
+                str(job.get("available_at", job["created_at"])),
+                str(job["created_at"]),
+                str(job["job_id"]),
+            )
+        )
+        return self.start_job(str(candidates[0]["job_id"]), updated_at=updated_at)
+
     def list_jobs(
         self,
         *,
@@ -320,6 +360,390 @@ class InMemoryJobQueue:
         return deepcopy(updated)
 
 
+class SqlAlchemyJobQueue:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def enqueue(self, job: dict[str, Any]) -> dict[str, Any]:
+        validate_common_job(job)
+        if job["status"] != QUEUED:
+            raise JobQueueError(
+                error_code="job.enqueue_status_invalid",
+                detail="only QUEUED jobs can be enqueued",
+                status_code=422,
+        )
+        job_to_store = deepcopy(job)
+        try:
+            return self._run_in_transaction(lambda session: self._enqueue(session, job_to_store))
+        except JobQueueError:
+            raise
+        except IntegrityError as exc:
+            raise JobQueueError(
+                error_code="job.duplicate_id",
+                detail=f"job already exists: {job_to_store['job_id']}",
+                status_code=409,
+            ) from exc
+        except SQLAlchemyError as exc:
+            raise _job_store_unavailable() from exc
+
+    def get_job(self, job_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_job(session, job_id)
+        except SQLAlchemyError as exc:
+            raise _job_store_unavailable() from exc
+
+    def start_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
+        return self._transition(job_id, RUNNING, updated_at=updated_at)
+
+    def complete_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
+        return self._transition(job_id, SUCCEEDED, updated_at=updated_at)
+
+    def fail_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
+        return self._transition(job_id, FAILED, updated_at=updated_at)
+
+    def cancel_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
+        return self._transition(job_id, CANCELLED, updated_at=updated_at)
+
+    def claim_next_job(
+        self,
+        worker_id: str,
+        *,
+        job_type: str | None = None,
+        updated_at: str | None = None,
+    ) -> dict[str, Any] | None:
+        _required_string(worker_id, "worker_id")
+        now = updated_at or _utc_now()
+        try:
+            return self._run_in_transaction(
+                lambda session: self._claim_next_job(
+                    session,
+                    worker_id=worker_id,
+                    job_type=job_type,
+                    updated_at=now,
+                )
+            )
+        except JobQueueError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _job_store_unavailable() from exc
+
+    def list_jobs(
+        self,
+        *,
+        job_type: str | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        where_clauses: list[str] = []
+        params: dict[str, Any] = {}
+        if job_type is not None:
+            where_clauses.append("job_type = :job_type")
+            params["job_type"] = job_type
+        if status is not None:
+            where_clauses.append("status = :status")
+            params["status"] = status
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(
+                    text(
+                        f"""
+                        SELECT {_JOB_SELECT_COLUMNS}
+                        FROM service_jobs
+                        {where_sql}
+                        ORDER BY created_at, job_id
+                        """
+                    ),
+                    params,
+                ).mappings()
+                return [_job_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _job_store_unavailable() from exc
+
+    def summary(self) -> dict[str, Any]:
+        return summarize_jobs(self.list_jobs())
+
+    def _run_in_transaction(self, operation: Callable[[Session], Any]) -> Any:
+        session = self._session_factory()
+        try:
+            try:
+                result = operation(session)
+                session.commit()
+                return result
+            except Exception:
+                session.rollback()
+                raise
+        finally:
+            session.close()
+
+    def _enqueue(self, session: Session, job: dict[str, Any]) -> dict[str, Any]:
+        existing = self._select_idempotent_job(
+            session,
+            job_type=str(job["job_type"]),
+            idempotency_key=str(job["idempotency_key"]),
+        )
+        if existing is not None:
+            return existing
+        duplicate_id = self._select_job(session, str(job["job_id"]))
+        if duplicate_id is not None:
+            raise JobQueueError(
+                error_code="job.duplicate_id",
+                detail=f"job already exists: {job['job_id']}",
+                status_code=409,
+            )
+        self._insert_job(session, job)
+        stored = self._select_job(session, str(job["job_id"]))
+        assert stored is not None
+        return stored
+
+    def _claim_next_job(
+        self,
+        session: Session,
+        *,
+        worker_id: str,
+        job_type: str | None,
+        updated_at: str,
+    ) -> dict[str, Any] | None:
+        job = self._select_claim_candidate(
+            session,
+            job_type=job_type,
+            available_at=updated_at,
+        )
+        if job is None:
+            return None
+        updated = transition_common_job(job, RUNNING, updated_at=updated_at)
+        self._update_job_transition(
+            session,
+            updated,
+            locked_by=worker_id,
+            locked_at=updated_at,
+        )
+        stored = self._select_job(session, str(updated["job_id"]))
+        assert stored is not None
+        return stored
+
+    def _transition(
+        self,
+        job_id: str,
+        status: str,
+        *,
+        updated_at: str | None,
+    ) -> dict[str, Any]:
+        try:
+            return self._run_in_transaction(
+                lambda session: self._transition_job(
+                    session,
+                    job_id=job_id,
+                    status=status,
+                    updated_at=updated_at,
+                )
+            )
+        except JobQueueError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _job_store_unavailable() from exc
+
+    def _transition_job(
+        self,
+        session: Session,
+        *,
+        job_id: str,
+        status: str,
+        updated_at: str | None,
+    ) -> dict[str, Any]:
+        job = self._select_job(session, job_id, for_update=True)
+        if job is None:
+            raise JobQueueError(
+                error_code="job.not_found",
+                detail=f"job was not found: {job_id}",
+                status_code=404,
+            )
+        updated = transition_common_job(job, status, updated_at=updated_at)
+        if updated == job:
+            return updated
+        self._update_job_transition(session, updated)
+        stored = self._select_job(session, job_id)
+        assert stored is not None
+        return stored
+
+    def _select_idempotent_job(
+        self,
+        session: Session,
+        *,
+        job_type: str,
+        idempotency_key: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_JOB_SELECT_COLUMNS}
+                FROM service_jobs
+                WHERE job_type = :job_type AND idempotency_key = :idempotency_key
+                """
+            ),
+            {"job_type": job_type, "idempotency_key": idempotency_key},
+        ).mappings().first()
+        return _job_from_row(row) if row is not None else None
+
+    def _select_job(
+        self,
+        session: Session,
+        job_id: str,
+        *,
+        for_update: bool = False,
+    ) -> dict[str, Any] | None:
+        lock_sql = " FOR UPDATE" if for_update and _dialect_name(session) == "postgresql" else ""
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_JOB_SELECT_COLUMNS}
+                FROM service_jobs
+                WHERE job_id = :job_id
+                {lock_sql}
+                """
+            ),
+            {"job_id": job_id},
+        ).mappings().first()
+        return _job_from_row(row) if row is not None else None
+
+    def _select_claim_candidate(
+        self,
+        session: Session,
+        *,
+        job_type: str | None,
+        available_at: str,
+    ) -> dict[str, Any] | None:
+        where_clauses = [
+            "status = :status",
+            "available_at <= :available_at",
+            "attempt_count < max_attempts",
+        ]
+        params: dict[str, Any] = {
+            "status": QUEUED,
+            "available_at": available_at,
+        }
+        if job_type is not None:
+            where_clauses.append("job_type = :job_type")
+            params["job_type"] = job_type
+        lock_sql = (
+            "FOR UPDATE SKIP LOCKED"
+            if _dialect_name(session) == "postgresql"
+            else ""
+        )
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_JOB_SELECT_COLUMNS}
+                FROM service_jobs
+                WHERE {' AND '.join(where_clauses)}
+                ORDER BY available_at, created_at, job_id
+                LIMIT 1
+                {lock_sql}
+                """
+            ),
+            params,
+        ).mappings().first()
+        return _job_from_row(row) if row is not None else None
+
+    def _insert_job(self, session: Session, job: dict[str, Any]) -> None:
+        json_links, json_payload, json_error = _json_sql_expressions(session)
+        session.execute(
+            text(
+                f"""
+                INSERT INTO service_jobs (
+                    job_id,
+                    job_schema_version,
+                    job_type,
+                    status,
+                    trace_id,
+                    request_id,
+                    subject_type,
+                    subject_id,
+                    idempotency_key,
+                    attempt_count,
+                    max_attempts,
+                    retryable,
+                    links,
+                    payload,
+                    error,
+                    available_at,
+                    locked_at,
+                    locked_by,
+                    started_at,
+                    completed_at,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    :job_id,
+                    :job_schema_version,
+                    :job_type,
+                    :status,
+                    :trace_id,
+                    :request_id,
+                    :subject_type,
+                    :subject_id,
+                    :idempotency_key,
+                    :attempt_count,
+                    :max_attempts,
+                    :retryable,
+                    {json_links},
+                    {json_payload},
+                    {json_error},
+                    :available_at,
+                    :locked_at,
+                    :locked_by,
+                    :started_at,
+                    :completed_at,
+                    :created_at,
+                    :updated_at
+                )
+                """
+            ),
+            _job_insert_params(job),
+        )
+
+    def _update_job_transition(
+        self,
+        session: Session,
+        job: dict[str, Any],
+        *,
+        locked_by: str | None = None,
+        locked_at: str | None = None,
+    ) -> None:
+        status = str(job["status"])
+        updated_at = str(job["updated_at"])
+        terminal_completed_at = updated_at if status in TERMINAL_JOB_STATUSES else None
+        running_started_at = updated_at if status == RUNNING else None
+        active_locked_by = locked_by if status not in TERMINAL_JOB_STATUSES else None
+        active_locked_at = locked_at if status not in TERMINAL_JOB_STATUSES else None
+        session.execute(
+            text(
+                """
+                UPDATE service_jobs
+                SET status = :status,
+                    attempt_count = :attempt_count,
+                    updated_at = :updated_at,
+                    started_at = COALESCE(started_at, :started_at),
+                    completed_at = COALESCE(:completed_at, completed_at),
+                    locked_by = :locked_by,
+                    locked_at = :locked_at
+                WHERE job_id = :job_id
+                """
+            ),
+            {
+                "job_id": job["job_id"],
+                "status": status,
+                "attempt_count": job["attempt_count"],
+                "updated_at": updated_at,
+                "started_at": running_started_at,
+                "completed_at": terminal_completed_at,
+                "locked_by": active_locked_by,
+                "locked_at": active_locked_at,
+            },
+        )
+
+
 def _required_string(value: object, field_name: str) -> str:
     if not isinstance(value, str) or not value:
         raise JobQueueError(
@@ -332,3 +756,121 @@ def _required_string(value: object, field_name: str) -> str:
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+_JOB_SELECT_COLUMNS = """
+    job_id,
+    job_schema_version,
+    job_type,
+    status,
+    trace_id,
+    request_id,
+    subject_type,
+    subject_id,
+    idempotency_key,
+    attempt_count,
+    max_attempts,
+    retryable,
+    links,
+    created_at,
+    updated_at
+"""
+
+
+def _job_insert_params(job: dict[str, Any]) -> dict[str, Any]:
+    subject_ref = job["subject_ref"]
+    return {
+        "job_id": job["job_id"],
+        "job_schema_version": job["job_schema_version"],
+        "job_type": job["job_type"],
+        "status": job["status"],
+        "trace_id": job["trace_id"],
+        "request_id": job["request_id"],
+        "subject_type": subject_ref["type"],
+        "subject_id": subject_ref["id"],
+        "idempotency_key": job["idempotency_key"],
+        "attempt_count": job["attempt_count"],
+        "max_attempts": job["max_attempts"],
+        "retryable": job["retryable"],
+        "links": _json_dumps(job["links"]),
+        "payload": _json_dumps(job.get("payload", {})),
+        "error": _json_dumps(job["error"]) if job.get("error") is not None else None,
+        "available_at": job.get("available_at", job["created_at"]),
+        "locked_at": job.get("locked_at"),
+        "locked_by": job.get("locked_by"),
+        "started_at": job.get("started_at"),
+        "completed_at": job.get("completed_at"),
+        "created_at": job["created_at"],
+        "updated_at": job["updated_at"],
+    }
+
+
+def _job_from_row(row: Any) -> dict[str, Any]:
+    return validate_common_job(
+        {
+            "job_schema_version": row["job_schema_version"],
+            "job_id": row["job_id"],
+            "job_type": row["job_type"],
+            "status": row["status"],
+            "trace_id": row["trace_id"],
+            "request_id": row["request_id"],
+            "subject_ref": {
+                "type": row["subject_type"],
+                "id": row["subject_id"],
+            },
+            "idempotency_key": row["idempotency_key"],
+            "attempt_count": int(row["attempt_count"]),
+            "max_attempts": int(row["max_attempts"]),
+            "retryable": bool(row["retryable"]),
+            "links": _json_loads(row["links"], default={}),
+            "created_at": _timestamp_to_wire(row["created_at"]),
+            "updated_at": _timestamp_to_wire(row["updated_at"]),
+        }
+    )
+
+
+def _json_sql_expressions(session: Session) -> tuple[str, str, str]:
+    if _dialect_name(session) == "postgresql":
+        return (
+            "CAST(:links AS JSONB)",
+            "CAST(:payload AS JSONB)",
+            "CAST(:error AS JSONB)",
+        )
+    return (":links", ":payload", ":error")
+
+
+def _json_dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _json_loads(value: Any, *, default: Any) -> Any:
+    if value is None:
+        return deepcopy(default)
+    if isinstance(value, (dict, list)):
+        return deepcopy(value)
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if isinstance(value, str):
+        return json.loads(value)
+    return deepcopy(default)
+
+
+def _timestamp_to_wire(value: Any) -> str:
+    if isinstance(value, datetime):
+        observed = value
+        if observed.tzinfo is None:
+            observed = observed.replace(tzinfo=UTC)
+        return observed.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return str(value)
+
+
+def _dialect_name(session: Session) -> str:
+    return session.get_bind().dialect.name
+
+
+def _job_store_unavailable() -> JobQueueError:
+    return JobQueueError(
+        error_code="job.store_unavailable",
+        detail="job queue store is unavailable",
+        status_code=503,
+    )

@@ -187,6 +187,7 @@ def build_engine(
     pool_pre_ping: bool = True,
     pool_settings: DatabasePoolSettings | None = None,
 ) -> Engine:
+    sqlalchemy_url = sqlalchemy_database_url(database_url)
     settings = pool_settings or DatabasePoolSettings(
         service_id="unknown",
         env_prefix="NEX",
@@ -194,12 +195,18 @@ def build_engine(
         pool_pre_ping=pool_pre_ping,
     )
     engine = create_engine(
-        database_url,
+        sqlalchemy_url,
         future=True,
-        **_engine_pool_kwargs(database_url, settings),
+        **_engine_pool_kwargs(sqlalchemy_url, settings),
     )
     _install_statement_timeout(engine, settings.statement_timeout_ms)
     return engine
+
+
+def sqlalchemy_database_url(database_url: str) -> str:
+    if database_url.startswith("postgresql://"):
+        return f"postgresql+psycopg://{database_url.removeprefix('postgresql://')}"
+    return database_url
 
 
 def build_session_factory(engine: Engine) -> sessionmaker[Session]:
@@ -458,4 +465,7 @@ def _install_statement_timeout(engine: Engine, statement_timeout_ms: int) -> Non
     @event.listens_for(engine, "connect")
     def _set_statement_timeout(dbapi_connection: Any, connection_record: Any) -> None:
         with dbapi_connection.cursor() as cursor:
-            cursor.execute("SET statement_timeout = %s", (statement_timeout_ms,))
+            cursor.execute(
+                "SELECT set_config('statement_timeout', %s, false)",
+                (str(statement_timeout_ms),),
+            )

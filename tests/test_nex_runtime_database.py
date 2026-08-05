@@ -18,6 +18,7 @@ from nex_runtime import (
     required_database_url,
     service_database_settings,
     service_database_env_prefix,
+    sqlalchemy_database_url,
 )
 
 
@@ -271,6 +272,17 @@ def test_build_engine_applies_pool_settings_without_connecting_to_postgres() -> 
     assert engine.pool._max_overflow == 4
     assert engine.pool._timeout == 7.5
     assert engine.pool._recycle == 99
+
+
+def test_build_engine_normalizes_bare_postgresql_url_to_psycopg_driver() -> None:
+    assert (
+        sqlalchemy_database_url("postgresql://user:secret@localhost/nex_cx_dev")
+        == "postgresql+psycopg://user:secret@localhost/nex_cx_dev"
+    )
+
+    engine = build_engine("postgresql://user:secret@localhost/nex_cx_dev")
+
+    assert engine.url.drivername == "postgresql+psycopg"
 
 
 def test_build_engine_allows_statement_timeout_to_be_disabled() -> None:
