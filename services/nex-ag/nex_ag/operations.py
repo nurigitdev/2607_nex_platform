@@ -277,6 +277,53 @@ def register_job_operation_routes(
         )
 
 
+def register_unified_operation_routes(
+    app: FastAPI,
+    *,
+    job_queues: Mapping[str, JobQueue] | None = None,
+    event_store: OperationalEventStore | None = None,
+    registry: OperationsSourceRegistry | None = None,
+) -> None:
+    @app.get("/admin/v1/operations", response_model=None)
+    def list_unified_operations(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        job_status: str | None = None,
+        job_type: str | None = None,
+        event_severity: str | None = None,
+        event_type: str | None = None,
+        trace_id: str | None = None,
+        limit: int = Query(default=50, ge=1),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        filter_problem = _validate_unified_operation_filters(
+            request,
+            service_id=service_id,
+            job_status=job_status,
+            event_severity=event_severity,
+        )
+        if filter_problem is not None:
+            return filter_problem
+
+        return build_unified_operations_projection(
+            job_queues=job_queues,
+            event_store=event_store,
+            registry=registry,
+            service_id=service_id,
+            job_status=job_status,
+            job_type=job_type,
+            event_severity=event_severity,
+            event_type=event_type,
+            trace_id=trace_id,
+            limit=limit,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
+
 def build_operational_event_projection(
     store: OperationalEventStore,
     *,
@@ -308,6 +355,81 @@ def build_operational_event_projection(
         "events": events,
         "summary": summarize_operational_events(events),
     }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
+def build_unified_operations_projection(
+    *,
+    job_queues: Mapping[str, JobQueue] | None = None,
+    event_store: OperationalEventStore | None = None,
+    registry: OperationsSourceRegistry | None = None,
+    service_id: str | None = None,
+    job_status: str | None = None,
+    job_type: str | None = None,
+    event_severity: str | None = None,
+    event_type: str | None = None,
+    trace_id: str | None = None,
+    limit: int = 50,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    normalized_limit = normalize_job_limit(limit)
+    queue_stores = (
+        registry.job_queues()
+        if registry is not None
+        else job_queues or DEFAULT_JOB_QUEUE_STORES
+    )
+    selected_event_store = (
+        RegistryOperationalEventStore(registry)
+        if registry is not None
+        else event_store or DEFAULT_OPERATIONAL_EVENT_STORE
+    )
+    job_projection = build_job_operations_projection(
+        queue_stores,
+        service_id=service_id,
+        status=job_status,
+        job_type=job_type,
+        limit=normalized_limit,
+    )
+    event_projection = build_operational_event_projection(
+        selected_event_store,
+        service_id=service_id,
+        severity=event_severity,
+        event_type=event_type,
+        trace_id=trace_id,
+        limit=normalized_limit,
+    )
+    projection_status = (
+        "DEGRADED"
+        if job_projection["projection_status"] == "DEGRADED"
+        else "READY"
+    )
+    projection = {
+        "projection_schema_version": "ag_unified_operations_projection.v1",
+        "projection_status": projection_status,
+        "checked_at": _utc_now(),
+        "filters": {
+            "service_id": service_id,
+            "job_status": job_status.upper() if job_status is not None else None,
+            "job_type": job_type,
+            "event_severity": (
+                event_severity.upper() if event_severity is not None else None
+            ),
+            "event_type": event_type,
+            "trace_id": trace_id,
+            "limit": normalized_limit,
+        },
+        "jobs": job_projection,
+        "events": event_projection,
+        "summary": {
+            "jobs": job_projection["summary"],
+            "events": event_projection["summary"],
+            "source_statuses": job_projection["source_statuses"],
+        },
+    }
+    if registry is not None:
+        projection["source_registry"] = registry.to_summary()
     if request_trace_id is not None:
         projection["request_trace_id"] = request_trace_id
     return projection
@@ -441,6 +563,32 @@ def _validate_job_operation_filters(
             title="Invalid job status filter",
             detail=f"Unsupported job status: {status}",
             type_uri="https://nex-platform.local/problems/job-status-invalid",
+        )
+    return None
+
+
+def _validate_unified_operation_filters(
+    request: Request,
+    *,
+    service_id: str | None,
+    job_status: str | None,
+    event_severity: str | None,
+) -> JSONResponse | None:
+    job_problem = _validate_job_operation_filters(
+        request,
+        service_id=service_id,
+        status=job_status,
+    )
+    if job_problem is not None:
+        return job_problem
+    if event_severity is not None and event_severity.upper() not in OPERATIONAL_EVENT_SEVERITIES:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.operational_event_severity_invalid",
+            title="Invalid operational event severity",
+            detail=f"Unsupported operational event severity: {event_severity}",
+            type_uri="https://nex-platform.local/problems/operational-event-severity-invalid",
         )
     return None
 

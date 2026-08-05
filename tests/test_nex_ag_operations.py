@@ -9,8 +9,10 @@ from nex_ag.operations import (
     build_job_operations_projection,
     build_operations_source_registry,
     build_operational_event_projection,
+    build_unified_operations_projection,
     register_job_operation_routes,
     register_operational_event_routes,
+    register_unified_operation_routes,
     summarize_job_operations,
 )
 from nex_runtime import (
@@ -291,6 +293,125 @@ def test_operations_routes_accept_source_registry() -> None:
     assert events_response.json()["events"][0]["event_id"] == "event-mo-001"
     assert jobs_response.status_code == 200
     assert jobs_response.json()["jobs"][0]["job_id"] == "job-ae-001"
+
+
+def test_build_unified_operations_projection_combines_jobs_events_and_registry_summary() -> None:
+    registry = build_operations_source_registry(
+        job_queues=build_job_queues(),
+        event_stores=build_event_stores(),
+    )
+
+    projection = build_unified_operations_projection(
+        registry=registry,
+        service_id="nex-cx",
+        job_status="running",
+        event_severity="info",
+        limit=9999,
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == "ag_unified_operations_projection.v1"
+    assert projection["projection_status"] == "READY"
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["filters"] == {
+        "service_id": "nex-cx",
+        "job_status": RUNNING,
+        "job_type": None,
+        "event_severity": "INFO",
+        "event_type": None,
+        "trace_id": None,
+        "limit": 500,
+    }
+    assert [job["job_id"] for job in projection["jobs"]["jobs"]] == ["job-cx-001"]
+    assert [event["event_id"] for event in projection["events"]["events"]] == [
+        "event-cx-001"
+    ]
+    assert projection["summary"]["jobs"]["statuses"][RUNNING] == 1
+    assert projection["summary"]["events"]["by_severity"]["INFO"] == 1
+    assert projection["source_registry"]["service_count"] == 3
+
+
+def test_build_unified_operations_projection_supports_direct_injection_and_degraded_jobs() -> None:
+    projection = build_unified_operations_projection(
+        job_queues={
+            **build_job_queues(),
+            "nex-mo": BrokenJobQueue(),
+        },
+        event_store=build_store(),
+        limit=2,
+    )
+
+    assert projection["projection_status"] == "DEGRADED"
+    assert [job["job_id"] for job in projection["jobs"]["jobs"]] == [
+        "job-ae-001",
+        "job-cx-002",
+    ]
+    assert [event["event_id"] for event in projection["events"]["events"]] == [
+        "event-002",
+        "event-001",
+    ]
+    assert "source_registry" not in projection
+
+
+def test_unified_operations_route_requires_auth_and_returns_projection() -> None:
+    registry = build_operations_source_registry(
+        job_queues=build_job_queues(),
+        event_stores=build_event_stores(),
+    )
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_unified_operation_routes(app, registry=registry)
+    client = TestClient(app)
+
+    missing_auth = client.get("/admin/v1/operations")
+    response = client.get(
+        "/admin/v1/operations",
+        params={
+            "service_id": "nex-cx",
+            "job_status": "RUNNING",
+            "event_severity": "INFO",
+        },
+        headers={
+            **auth_headers(),
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        },
+    )
+
+    assert missing_auth.status_code == 401
+    assert missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["request_trace_id"] == TRACE_ID
+    assert payload["jobs"]["jobs"][0]["job_id"] == "job-cx-001"
+    assert payload["events"]["events"][0]["event_id"] == "event-cx-001"
+
+
+def test_unified_operations_route_rejects_bad_filters() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_unified_operation_routes(app)
+    client = TestClient(app)
+
+    bad_status = client.get(
+        "/admin/v1/operations",
+        params={"job_status": "BLOCKED"},
+        headers=auth_headers(),
+    )
+    bad_service = client.get(
+        "/admin/v1/operations",
+        params={"service_id": "nex-unknown"},
+        headers=auth_headers(),
+    )
+    bad_severity = client.get(
+        "/admin/v1/operations",
+        params={"event_severity": "NOTICE"},
+        headers=auth_headers(),
+    )
+
+    assert bad_status.status_code == 400
+    assert bad_status.json()["error_code"] == "ag.job_status_invalid"
+    assert bad_service.status_code == 400
+    assert bad_service.json()["error_code"] == "ag.job_service_invalid"
+    assert bad_severity.status_code == 400
+    assert bad_severity.json()["error_code"] == "ag.operational_event_severity_invalid"
 
 
 def test_build_operational_event_projection_filters_and_summarizes() -> None:

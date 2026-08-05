@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0096 AG operations source registry.
+Status: Slice 0097 AG unified operations projection.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005

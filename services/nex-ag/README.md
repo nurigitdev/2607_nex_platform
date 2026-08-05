@@ -13,6 +13,7 @@ Current endpoints:
 - `GET /admin/v1/readiness/services`
 - `GET /admin/v1/readiness/providers`
 - `GET /admin/v1/generation-audit/generations/{cx_generation_id}`
+- `GET /admin/v1/operations`
 - `GET /admin/v1/operations/events`
 - `GET /admin/v1/operations/jobs`
 - `GET /admin/v1/policies/retrieval`
@@ -70,3 +71,12 @@ Job operations:
   registry. Default runtime registration is still mock-first, while future
   DB-backed per-service sources can be injected without changing endpoint
   shapes.
+
+Unified operations:
+
+- AG exposes `GET /admin/v1/operations` as a combined read-only projection over
+  jobs and operational events.
+- Filters include service id, job status, job type, event severity, event type,
+  trace id, and limit.
+- The response embeds the existing job and event projection shapes plus a
+  combined summary and optional source registry summary.
