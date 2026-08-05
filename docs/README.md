@@ -212,6 +212,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0106`](slices/0106_ag_operations_contract_examples_freeze.md) | `S11-006` AG operations contract/examples freeze. |
 | [`Slice 0107`](slices/0107_ag_operations_rollup_metrics_projection.md) | `S11-007` AG operations rollup metrics projection. |
 | [`Slice 0108`](slices/0108_ag_operations_dashboard_snapshot_projection.md) | `S11-008` AG operations dashboard snapshot projection. |
+| [`Slice 0109`](slices/0109_ag_operations_issue_candidate_projection.md) | `S11-009` AG operations issue candidate projection. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

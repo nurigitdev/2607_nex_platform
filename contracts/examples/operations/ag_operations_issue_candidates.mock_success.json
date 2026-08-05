@@ -1,0 +1,117 @@
+{
+  "projection_schema_version": "ag_operations_issue_candidate_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-05T00:00:00Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "filters": {
+    "service_id": "nex-cx",
+    "since": null,
+    "until": null,
+    "recent_limit": 2
+  },
+  "rules": [
+    {
+      "rule_id": "operations_source_unavailable.v1",
+      "severity": "ERROR",
+      "title": "Operations source unavailable",
+      "description": "A configured operations source could not be read.",
+      "enabled": true,
+      "signal_type": "source_status"
+    },
+    {
+      "rule_id": "operations_source_not_configured.v1",
+      "severity": "WARNING",
+      "title": "Operations source not configured",
+      "description": "A selected service is missing an operations source.",
+      "enabled": true,
+      "signal_type": "source_status"
+    },
+    {
+      "rule_id": "failed_jobs_present.v1",
+      "severity": "ERROR",
+      "title": "Failed jobs observed",
+      "description": "One or more failed jobs were observed in the selected window.",
+      "enabled": true,
+      "signal_type": "job_status"
+    },
+    {
+      "rule_id": "error_events_present.v1",
+      "severity": "ERROR",
+      "title": "Error events observed",
+      "description": "One or more ERROR operational events were observed.",
+      "enabled": true,
+      "signal_type": "event_severity"
+    },
+    {
+      "rule_id": "critical_events_present.v1",
+      "severity": "CRITICAL",
+      "title": "Critical events observed",
+      "description": "One or more CRITICAL operational events were observed.",
+      "enabled": true,
+      "signal_type": "event_severity"
+    },
+    {
+      "rule_id": "active_jobs_review.v1",
+      "severity": "INFO",
+      "title": "Active jobs need review",
+      "description": "One or more QUEUED or RUNNING jobs are active in the selected window.",
+      "enabled": true,
+      "signal_type": "job_status"
+    }
+  ],
+  "issue_candidates": [
+    {
+      "candidate_id": "nex-cx:signal:failed_jobs_present.v1",
+      "rule_id": "failed_jobs_present.v1",
+      "service_id": "nex-cx",
+      "severity": "ERROR",
+      "title": "Failed jobs observed",
+      "detail": "1 failed job(s) observed for nex-cx.",
+      "signal": {
+        "count": 1,
+        "threshold": 1
+      }
+    },
+    {
+      "candidate_id": "nex-cx:signal:active_jobs_review.v1",
+      "rule_id": "active_jobs_review.v1",
+      "service_id": "nex-cx",
+      "severity": "INFO",
+      "title": "Active jobs need review",
+      "detail": "1 active job(s) observed for nex-cx.",
+      "signal": {
+        "count": 1,
+        "threshold": 1
+      }
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "by_severity": {
+      "DEBUG": 0,
+      "INFO": 1,
+      "WARNING": 0,
+      "ERROR": 1,
+      "CRITICAL": 0
+    },
+    "by_service": {
+      "nex-cx": 2
+    },
+    "by_rule": {
+      "failed_jobs_present.v1": 1,
+      "active_jobs_review.v1": 1
+    }
+  },
+  "job_source_statuses": {
+    "nex-cx": {
+      "status": "READY",
+      "job_count": 2
+    }
+  },
+  "event_source_statuses": {
+    "nex-cx": {
+      "status": "READY",
+      "event_count": 1
+    }
+  }
+}

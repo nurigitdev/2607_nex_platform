@@ -226,6 +226,11 @@
       "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
     },
     {
+      "name": "ag_operations_issue_candidates_mock",
+      "path": "examples/operations/ag_operations_issue_candidates.mock_success.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
       "name": "ag_cross_service_trace_timeline_mock",
       "path": "examples/operations/ag_cross_service_trace_timeline.mock_success.json",
       "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"

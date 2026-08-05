@@ -16,6 +16,7 @@ Current endpoints:
 - `GET /admin/v1/operations`
 - `GET /admin/v1/operations/rollups`
 - `GET /admin/v1/operations/dashboard`
+- `GET /admin/v1/operations/issue-candidates`
 - `GET /admin/v1/operations/event-taxonomy`
 - `GET /admin/v1/operations/events`
 - `GET /admin/v1/operations/events/{event_id}`
@@ -118,6 +119,10 @@ Unified operations:
   `ag_operations_dashboard_snapshot_projection.v1`, combining source readiness,
   rollups, recent failed jobs/events, active jobs, and degraded source signals
   for the first AG operations dashboard screen.
+- `GET /admin/v1/operations/issue-candidates` returns
+  `ag_operations_issue_candidate_projection.v1`, applying deterministic
+  read-only rules to operations dashboard signals. Notification delivery,
+  acknowledgements, and incident mutation are intentionally deferred.
 - Operations query pagination uses a non-negative integer `cursor` offset,
   returns `pagination.next_cursor` when more rows exist, and caps limit at the
   shared 500-row operations ceiling.

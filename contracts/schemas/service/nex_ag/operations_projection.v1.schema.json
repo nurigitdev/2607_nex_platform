@@ -21,6 +21,7 @@
         "ag_unified_operations_projection.v1",
         "ag_operations_rollup_metrics_projection.v1",
         "ag_operations_dashboard_snapshot_projection.v1",
+        "ag_operations_issue_candidate_projection.v1",
         "ag_cross_service_trace_timeline_projection.v1"
       ]
     },
@@ -134,6 +135,18 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/dashboard_degraded_source"
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/issue_candidate_rule"
+      }
+    },
+    "issue_candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/issue_candidate"
       }
     },
     "summary": {
@@ -341,6 +354,26 @@
           "recent_failures",
           "active_jobs",
           "degraded_sources",
+          "job_source_statuses",
+          "event_source_statuses"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_operations_issue_candidate_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "filters",
+          "rules",
+          "issue_candidates",
+          "summary",
           "job_source_statuses",
           "event_source_statuses"
         ]
@@ -692,6 +725,97 @@
         "error_code": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "issue_candidate_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule_id",
+        "severity",
+        "title",
+        "description",
+        "enabled",
+        "signal_type"
+      ],
+      "properties": {
+        "rule_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "signal_type": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "issue_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "rule_id",
+        "service_id",
+        "severity",
+        "title",
+        "detail",
+        "signal"
+      ],
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rule_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        },
+        "signal": {
+          "type": "object",
+          "additionalProperties": true
         }
       }
     },

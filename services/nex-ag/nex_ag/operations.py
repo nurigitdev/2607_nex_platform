@@ -57,6 +57,56 @@ AG_OPERATIONS_SOURCE_PROFILES = ("dev", "test")
 AG_OPERATION_SORT_ORDERS = ("desc", "asc")
 MAX_OPERATION_EVENT_QUERY_LENGTH = 128
 MAX_DASHBOARD_RECENT_LIMIT = 20
+OPERATIONS_ISSUE_CANDIDATE_RULES = (
+    {
+        "rule_id": "operations_source_unavailable.v1",
+        "severity": "ERROR",
+        "title": "Operations source unavailable",
+        "description": "A configured operations source could not be read.",
+        "enabled": True,
+        "signal_type": "source_status",
+    },
+    {
+        "rule_id": "operations_source_not_configured.v1",
+        "severity": "WARNING",
+        "title": "Operations source not configured",
+        "description": "A selected service is missing an operations source.",
+        "enabled": True,
+        "signal_type": "source_status",
+    },
+    {
+        "rule_id": "failed_jobs_present.v1",
+        "severity": "ERROR",
+        "title": "Failed jobs observed",
+        "description": "One or more failed jobs were observed in the selected window.",
+        "enabled": True,
+        "signal_type": "job_status",
+    },
+    {
+        "rule_id": "error_events_present.v1",
+        "severity": "ERROR",
+        "title": "Error events observed",
+        "description": "One or more ERROR operational events were observed.",
+        "enabled": True,
+        "signal_type": "event_severity",
+    },
+    {
+        "rule_id": "critical_events_present.v1",
+        "severity": "CRITICAL",
+        "title": "Critical events observed",
+        "description": "One or more CRITICAL operational events were observed.",
+        "enabled": True,
+        "signal_type": "event_severity",
+    },
+    {
+        "rule_id": "active_jobs_review.v1",
+        "severity": "INFO",
+        "title": "Active jobs need review",
+        "description": "One or more QUEUED or RUNNING jobs are active in the selected window.",
+        "enabled": True,
+        "signal_type": "job_status",
+    },
+)
 
 _AG_OPERATIONS_SOURCE_MODE_ALIASES = {
     "": "memory",
@@ -1048,6 +1098,53 @@ def register_unified_operation_routes(
             request_trace_id=trace_id_from_headers(request),
         )
 
+    @app.get("/admin/v1/operations/issue-candidates", response_model=None)
+    def get_operations_issue_candidates(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        recent_limit: int = Query(default=5, ge=1),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        filter_problem = _validate_job_operation_filters(
+            request,
+            service_id=service_id,
+            status=None,
+        )
+        if filter_problem is not None:
+            return filter_problem
+        query_options = _build_query_options_or_problem(
+            request,
+            limit=500,
+            since=since,
+            until=until,
+            sort=None,
+            cursor=None,
+        )
+        if isinstance(query_options, JSONResponse):
+            return query_options
+
+        selected_runtime = runtime or getattr(
+            request.app.state,
+            "nex_ag_operations_source_runtime",
+            None,
+        )
+        return build_operations_issue_candidate_projection(
+            job_queues=job_queues,
+            event_store=event_store,
+            registry=registry,
+            runtime=selected_runtime,
+            service_id=service_id,
+            recent_limit=recent_limit,
+            query_options=query_options,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
     @app.get("/admin/v1/operations/traces/{trace_id}", response_model=None)
     def get_cross_service_trace_timeline(
         trace_id: str,
@@ -1320,6 +1417,47 @@ def build_unified_operations_projection(
             "jobs": job_projection["pagination"],
             "events": event_projection["pagination"],
         },
+    }
+    if registry is not None:
+        projection["source_registry"] = registry.to_summary()
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
+def build_operations_issue_candidate_projection(
+    *,
+    job_queues: Mapping[str, JobQueue] | None = None,
+    event_store: OperationalEventStore | None = None,
+    registry: OperationsSourceRegistry | None = None,
+    runtime: AgOperationsSourceRuntime | None = None,
+    service_id: str | None = None,
+    recent_limit: int = 5,
+    limit: int = 500,
+    query_options: OperationQueryOptions | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    options = query_options or build_operation_query_options(limit=limit)
+    dashboard = build_operations_dashboard_snapshot_projection(
+        job_queues=job_queues,
+        event_store=event_store,
+        registry=registry,
+        runtime=runtime,
+        service_id=service_id,
+        recent_limit=recent_limit,
+        query_options=options,
+    )
+    candidates = build_operations_issue_candidates(dashboard)
+    projection = {
+        "projection_schema_version": "ag_operations_issue_candidate_projection.v1",
+        "projection_status": dashboard["projection_status"],
+        "checked_at": _utc_now(),
+        "filters": dashboard["filters"],
+        "rules": operations_issue_candidate_rules(),
+        "issue_candidates": candidates,
+        "summary": summarize_operations_issue_candidates(candidates),
+        "job_source_statuses": dashboard["job_source_statuses"],
+        "event_source_statuses": dashboard["event_source_statuses"],
     }
     if registry is not None:
         projection["source_registry"] = registry.to_summary()
@@ -1734,6 +1872,50 @@ def normalize_dashboard_recent_limit(limit: int) -> int:
     if limit > MAX_DASHBOARD_RECENT_LIMIT:
         return MAX_DASHBOARD_RECENT_LIMIT
     return limit
+
+
+def operations_issue_candidate_rules() -> list[dict[str, Any]]:
+    return [dict(rule) for rule in OPERATIONS_ISSUE_CANDIDATE_RULES]
+
+
+def build_operations_issue_candidates(
+    dashboard_snapshot: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    candidates.extend(
+        _issue_candidates_from_degraded_sources(
+            dashboard_snapshot["degraded_sources"]
+        )
+    )
+    candidates.extend(
+        _issue_candidates_from_rollups(dashboard_snapshot["rollups"])
+    )
+    candidates.extend(
+        _issue_candidates_from_active_jobs(dashboard_snapshot["active_jobs"])
+    )
+    return candidates
+
+
+def summarize_operations_issue_candidates(
+    candidates: list[dict[str, Any]],
+) -> dict[str, Any]:
+    by_severity = {severity: 0 for severity in OPERATIONAL_EVENT_SEVERITIES}
+    by_service: dict[str, int] = {}
+    by_rule: dict[str, int] = {}
+    for candidate in candidates:
+        severity = str(candidate["severity"])
+        if severity in by_severity:
+            by_severity[severity] += 1
+        service_id = str(candidate["service_id"])
+        rule_id = str(candidate["rule_id"])
+        by_service[service_id] = by_service.get(service_id, 0) + 1
+        by_rule[rule_id] = by_rule.get(rule_id, 0) + 1
+    return {
+        "total": len(candidates),
+        "by_severity": by_severity,
+        "by_service": by_service,
+        "by_rule": by_rule,
+    }
 
 
 def summarize_operations_rollup_metrics(
@@ -2292,6 +2474,133 @@ def _dashboard_degraded_sources(
                 degraded_source["error_code"] = source_status["error_code"]
             degraded.append(degraded_source)
     return degraded
+
+
+def _issue_candidates_from_degraded_sources(
+    degraded_sources: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for source in degraded_sources:
+        status = str(source["status"])
+        rule_id = (
+            "operations_source_unavailable.v1"
+            if status == "UNAVAILABLE"
+            else "operations_source_not_configured.v1"
+        )
+        severity = "ERROR" if status == "UNAVAILABLE" else "WARNING"
+        candidates.append(
+            _operations_issue_candidate(
+                rule_id=rule_id,
+                service_id=str(source["service_id"]),
+                severity=severity,
+                title=(
+                    "Operations source unavailable"
+                    if status == "UNAVAILABLE"
+                    else "Operations source not configured"
+                ),
+                detail=(
+                    f"{source['source_type']} source for {source['service_id']} "
+                    f"is {status}."
+                ),
+                signal={
+                    "source_type": source["source_type"],
+                    "status": status,
+                    "detail": source.get("detail"),
+                    "error_code": source.get("error_code"),
+                },
+            )
+        )
+    return candidates
+
+
+def _issue_candidates_from_rollups(
+    rollups: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for rollup in rollups:
+        service_id = str(rollup["service_id"])
+        failed_count = int(rollup["jobs"]["statuses"].get("FAILED", 0))
+        error_count = int(rollup["events"]["by_severity"].get("ERROR", 0))
+        critical_count = int(rollup["events"]["by_severity"].get("CRITICAL", 0))
+        if failed_count > 0:
+            candidates.append(
+                _operations_issue_candidate(
+                    rule_id="failed_jobs_present.v1",
+                    service_id=service_id,
+                    severity="ERROR",
+                    title="Failed jobs observed",
+                    detail=f"{failed_count} failed job(s) observed for {service_id}.",
+                    signal={"count": failed_count, "threshold": 1},
+                )
+            )
+        if error_count > 0:
+            candidates.append(
+                _operations_issue_candidate(
+                    rule_id="error_events_present.v1",
+                    service_id=service_id,
+                    severity="ERROR",
+                    title="Error events observed",
+                    detail=f"{error_count} ERROR event(s) observed for {service_id}.",
+                    signal={"count": error_count, "threshold": 1},
+                )
+            )
+        if critical_count > 0:
+            candidates.append(
+                _operations_issue_candidate(
+                    rule_id="critical_events_present.v1",
+                    service_id=service_id,
+                    severity="CRITICAL",
+                    title="Critical events observed",
+                    detail=(
+                        f"{critical_count} CRITICAL event(s) observed "
+                        f"for {service_id}."
+                    ),
+                    signal={"count": critical_count, "threshold": 1},
+                )
+            )
+    return candidates
+
+
+def _issue_candidates_from_active_jobs(
+    active_jobs: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    active_counts: dict[str, int] = {}
+    for job in active_jobs:
+        service_id = str(job["service_id"])
+        active_counts[service_id] = active_counts.get(service_id, 0) + 1
+    return [
+        _operations_issue_candidate(
+            rule_id="active_jobs_review.v1",
+            service_id=service_id,
+            severity="INFO",
+            title="Active jobs need review",
+            detail=f"{count} active job(s) observed for {service_id}.",
+            signal={"count": count, "threshold": 1},
+        )
+        for service_id, count in sorted(active_counts.items())
+        if count > 0
+    ]
+
+
+def _operations_issue_candidate(
+    *,
+    rule_id: str,
+    service_id: str,
+    severity: str,
+    title: str,
+    detail: str,
+    signal: dict[str, Any],
+) -> dict[str, Any]:
+    signal_key = signal.get("source_type") or signal.get("status") or "signal"
+    return {
+        "candidate_id": f"{service_id}:{signal_key}:{rule_id}",
+        "rule_id": rule_id,
+        "service_id": service_id,
+        "severity": severity,
+        "title": title,
+        "detail": detail,
+        "signal": signal,
+    }
 
 
 def _operations_rollup_jobs_for_service(
