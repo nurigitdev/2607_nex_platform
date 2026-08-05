@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0098 service operational event taxonomy registry.
+Status: Slice 0099 AG runtime DB-backed operations wiring.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -41,6 +41,19 @@ Runtime persistence is selected explicitly:
 - Service-specific mode envs override the global mode. PostgreSQL mode requires
   the matching service database URL and should be paired with migration/smoke
   checks.
+
+AG operations projections can also attach read-only PostgreSQL sources for
+selected service databases:
+
+```text
+NEX_AG_OPERATIONS_SOURCE_MODE=postgres
+NEX_AG_OPERATIONS_SOURCE_PROFILE=dev
+NEX_AG_OPERATIONS_SOURCE_SERVICES=nex-ae-api,nex-ag,nex-cx,nex-mo,nex-oa
+```
+
+The default mode is `memory`. PostgreSQL source mode uses the selected
+service-owned database envs, wraps JobQueue and OperationalEventStore adapters
+as read-only, and keeps AG from writing into other service databases.
 
 Route and worker code should emit operational events through the shared
 `OperationalEventEmitter`. It resolves the service persistence store from

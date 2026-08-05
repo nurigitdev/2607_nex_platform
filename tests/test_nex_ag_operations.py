@@ -1,20 +1,35 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import pytest
 from fastapi.testclient import TestClient
 
 from nex_ag.operations import (
+    AG_OPERATIONS_SOURCE_MODE_ENV,
+    AG_OPERATIONS_SOURCE_PROFILE_ENV,
+    AG_OPERATIONS_SOURCE_SERVICES_ENV,
+    OperationsSourceConfigError,
     OperationsSource,
     OperationsSourceRegistry,
     RegistryOperationalEventStore,
+    ReadOnlyJobQueue,
+    ReadOnlyOperationalEventStore,
+    ag_operations_source_database_env,
+    attach_ag_operations_source_runtime,
+    build_ag_operations_source_runtime,
     build_job_operations_projection,
     build_operations_source_registry,
     build_operational_event_taxonomy_projection,
     build_operational_event_projection,
     build_unified_operations_projection,
+    normalize_ag_operations_source_mode,
+    normalize_ag_operations_source_profile,
     register_job_operation_routes,
     register_operational_event_taxonomy_routes,
     register_operational_event_routes,
     register_unified_operation_routes,
+    select_ag_operations_source_service_ids,
     summarize_job_operations,
 )
 from nex_runtime import (
@@ -24,6 +39,7 @@ from nex_runtime import (
     InMemoryOperationalEventStore,
     InMemoryJobQueue,
     JobQueueError,
+    OperationalEventError,
     RUNNING,
     SERVICE_SPECS,
     SUCCEEDED,
@@ -200,6 +216,180 @@ def build_event_stores() -> dict[str, InMemoryOperationalEventStore]:
         )
     )
     return {"nex-cx": cx_store, "nex-mo": mo_store}
+
+
+def test_ag_operations_source_config_helpers_normalize_runtime_inputs() -> None:
+    assert normalize_ag_operations_source_mode(None) == "memory"
+    assert normalize_ag_operations_source_mode("postgresql") == "postgres"
+    assert normalize_ag_operations_source_profile(None) == "dev"
+    assert normalize_ag_operations_source_profile("TEST") == "test"
+    assert ag_operations_source_database_env("nex-cx") == "NEX_CX_DATABASE_URL"
+    assert (
+        ag_operations_source_database_env("nex-cx", profile="test")
+        == "NEX_CX_TEST_DATABASE_URL"
+    )
+    assert select_ag_operations_source_service_ids("nex-cx,nex-ae-api,nex-cx") == (
+        "nex-ae-api",
+        "nex-cx",
+    )
+    assert select_ag_operations_source_service_ids(None) == tuple(sorted(SERVICE_SPECS))
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        lambda queue, job: queue.enqueue(job),
+        lambda queue, job: queue.start_job(job["job_id"]),
+        lambda queue, job: queue.complete_job(job["job_id"]),
+        lambda queue, job: queue.fail_job(job["job_id"]),
+        lambda queue, job: queue.cancel_job(job["job_id"]),
+        lambda queue, job: queue.claim_next_job("ag-reader"),
+    ],
+)
+def test_read_only_job_queue_allows_reads_and_rejects_writes(operation) -> None:
+    delegate = InMemoryJobQueue()
+    job = delegate.enqueue(
+        sample_job(
+            job_id="job-read-only-001",
+            idempotency_key="idem-read-only-001",
+        )
+    )
+    queue = ReadOnlyJobQueue(delegate)
+
+    assert queue.get_job("job-read-only-001") == job
+    assert [stored["job_id"] for stored in queue.list_jobs()] == ["job-read-only-001"]
+    with pytest.raises(JobQueueError, match="read-only"):
+        operation(queue, job)
+
+
+def test_read_only_operational_event_store_allows_reads_and_rejects_append() -> None:
+    delegate = build_event_stores()["nex-cx"]
+    store = ReadOnlyOperationalEventStore(delegate)
+
+    event = store.get_event("event-cx-001")
+    assert event is not None
+    assert event["event_id"] == "event-cx-001"
+    assert [stored["event_id"] for stored in store.list_events(service_id="nex-cx")] == [
+        "event-cx-001"
+    ]
+    with pytest.raises(OperationalEventError, match="read-only"):
+        store.append(event)
+
+
+def test_ag_operations_source_runtime_defaults_to_memory_without_registry() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+
+    runtime = attach_ag_operations_source_runtime(app, environ={})
+
+    assert runtime.mode == "memory"
+    assert runtime.profile == "dev"
+    assert runtime.registry is None
+    assert app.state.nex_ag_operations_source_runtime is runtime
+    assert runtime.to_summary()["registry"] is None
+
+
+def test_ag_operations_source_runtime_builds_postgres_read_only_registry() -> None:
+    engine_calls: list[dict[str, str]] = []
+    session_calls: list[object] = []
+
+    def fake_engine_factory(database_url: str, *, pool_settings: object) -> object:
+        engine_calls.append(
+            {
+                "database_url": database_url,
+                "service_id": pool_settings.service_id,
+                "workload": pool_settings.workload,
+            }
+        )
+        return SimpleNamespace(database_url=database_url, pool_settings=pool_settings)
+
+    def fake_session_factory_builder(engine: object) -> object:
+        session_calls.append(engine)
+        return f"session:{engine.pool_settings.service_id}:{engine.pool_settings.workload}"
+
+    runtime = build_ag_operations_source_runtime(
+        environ={
+            AG_OPERATIONS_SOURCE_MODE_ENV: "postgres",
+            AG_OPERATIONS_SOURCE_PROFILE_ENV: "test",
+            AG_OPERATIONS_SOURCE_SERVICES_ENV: "nex-cx,nex-ae-api,nex-cx",
+            "NEX_CX_TEST_DATABASE_URL": "postgresql://nex_cx_user:secret@localhost/nex_cx_test",
+            "NEX_AE_TEST_DATABASE_URL": "postgresql://nex_ae_user:secret@localhost/nex_ae_test",
+        },
+        engine_factory=fake_engine_factory,
+        session_factory_builder=fake_session_factory_builder,
+    )
+
+    assert runtime.mode == "postgres"
+    assert runtime.profile == "test"
+    assert runtime.selected_service_ids == ("nex-ae-api", "nex-cx")
+    assert runtime.registry is not None
+    assert [call["service_id"] for call in engine_calls] == [
+        "nex-ae-api",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-cx",
+    ]
+    assert [call["workload"] for call in engine_calls] == [
+        "api",
+        "worker",
+        "api",
+        "worker",
+    ]
+    assert len(session_calls) == 4
+
+    source = runtime.registry.get("nex-cx")
+    assert source is not None
+    assert source.source_kind == "postgres-read"
+    assert source.database_env == "NEX_CX_TEST_DATABASE_URL"
+    assert source.to_summary()["redacted_database_url"].endswith(
+        "nex_cx_user:***@localhost/nex_cx_test"
+    )
+    assert isinstance(source.job_queue, ReadOnlyJobQueue)
+    assert isinstance(source.operational_event_store, ReadOnlyOperationalEventStore)
+    with pytest.raises(JobQueueError, match="read-only"):
+        source.job_queue.enqueue(
+            sample_job(
+                job_id="job-runtime-read-only",
+                idempotency_key="idem-runtime-read-only",
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "environ, expected",
+    [
+        ({AG_OPERATIONS_SOURCE_MODE_ENV: "filesystem"}, "unsupported AG operations source mode"),
+        ({AG_OPERATIONS_SOURCE_PROFILE_ENV: "prod"}, "unsupported AG operations source profile"),
+        (
+            {AG_OPERATIONS_SOURCE_SERVICES_ENV: "nex-cx,nex-unknown"},
+            "unknown AG operations source services",
+        ),
+        (
+            {AG_OPERATIONS_SOURCE_SERVICES_ENV: ", ,"},
+            "selected no services",
+        ),
+        (
+            {
+                AG_OPERATIONS_SOURCE_MODE_ENV: "postgres",
+                AG_OPERATIONS_SOURCE_SERVICES_ENV: "nex-cx",
+            },
+            "missing database URL env NEX_CX_DATABASE_URL",
+        ),
+        (
+            {
+                AG_OPERATIONS_SOURCE_MODE_ENV: "postgres",
+                AG_OPERATIONS_SOURCE_SERVICES_ENV: "nex-cx",
+                "NEX_CX_DATABASE_URL": "postgresql://nex_cx_user:<password>@localhost/nex_cx_dev",
+            },
+            "placeholder password",
+        ),
+    ],
+)
+def test_ag_operations_source_runtime_rejects_invalid_config(
+    environ: dict[str, str],
+    expected: str,
+) -> None:
+    with pytest.raises(OperationsSourceConfigError, match=expected):
+        build_ag_operations_source_runtime(environ=environ)
 
 
 def test_operations_source_registry_registers_sources_and_reports_capabilities() -> None:

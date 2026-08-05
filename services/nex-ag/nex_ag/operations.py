@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse
@@ -22,10 +23,18 @@ from nex_runtime import (
     OperationalEventError,
     OperationalEventTypeSpec,
     SERVICE_SPECS,
+    SqlAlchemyJobQueue,
+    SqlAlchemyOperationalEventStore,
+    build_engine,
+    build_session_factory,
+    database_pool_settings,
     list_operational_event_taxonomy,
     normalize_job_limit,
     normalize_operational_event_limit,
     problem_response,
+    redact_database_url,
+    required_database_url,
+    service_database_env_prefix,
     summarize_operational_event_taxonomy,
     summarize_jobs,
     summarize_operational_events,
@@ -39,6 +48,106 @@ DEFAULT_JOB_QUEUE_STORES = {
     for service_id in sorted(SERVICE_SPECS)
 }
 
+AG_OPERATIONS_SOURCE_MODE_ENV = "NEX_AG_OPERATIONS_SOURCE_MODE"
+AG_OPERATIONS_SOURCE_PROFILE_ENV = "NEX_AG_OPERATIONS_SOURCE_PROFILE"
+AG_OPERATIONS_SOURCE_SERVICES_ENV = "NEX_AG_OPERATIONS_SOURCE_SERVICES"
+AG_OPERATIONS_SOURCE_MODES = ("memory", "postgres")
+AG_OPERATIONS_SOURCE_PROFILES = ("dev", "test")
+
+_AG_OPERATIONS_SOURCE_MODE_ALIASES = {
+    "": "memory",
+    "inmemory": "memory",
+    "in-memory": "memory",
+    "in_memory": "memory",
+    "local_mock": "memory",
+    "mock": "memory",
+    "memory": "memory",
+    "db": "postgres",
+    "persistent": "postgres",
+    "postgres": "postgres",
+    "postgresql": "postgres",
+    "sqlalchemy": "postgres",
+}
+
+EngineFactory = Callable[..., Any]
+SessionFactoryBuilder = Callable[[Any], Any]
+
+
+class OperationsSourceConfigError(ValueError):
+    pass
+
+
+class ReadOnlyJobQueue:
+    def __init__(self, delegate: JobQueue) -> None:
+        self.delegate = delegate
+
+    def enqueue(self, job: dict[str, Any]) -> dict[str, Any]:
+        raise _operations_source_read_only_job_error()
+
+    def get_job(self, job_id: str) -> dict[str, Any] | None:
+        return self.delegate.get_job(job_id)
+
+    def start_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
+        raise _operations_source_read_only_job_error()
+
+    def complete_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
+        raise _operations_source_read_only_job_error()
+
+    def fail_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
+        raise _operations_source_read_only_job_error()
+
+    def cancel_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
+        raise _operations_source_read_only_job_error()
+
+    def claim_next_job(
+        self,
+        worker_id: str,
+        *,
+        job_type: str | None = None,
+        updated_at: str | None = None,
+    ) -> dict[str, Any] | None:
+        raise _operations_source_read_only_job_error()
+
+    def list_jobs(
+        self,
+        *,
+        job_type: str | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return self.delegate.list_jobs(job_type=job_type, status=status)
+
+
+class ReadOnlyOperationalEventStore:
+    def __init__(self, delegate: OperationalEventStore) -> None:
+        self.delegate = delegate
+
+    def append(self, event: dict[str, Any]) -> dict[str, Any]:
+        raise OperationalEventError(
+            error_code="ag.operations_source.read_only",
+            detail="AG operations source registry is read-only.",
+            status_code=405,
+        )
+
+    def get_event(self, event_id: str) -> dict[str, Any] | None:
+        return self.delegate.get_event(event_id)
+
+    def list_events(
+        self,
+        *,
+        service_id: str | None = None,
+        severity: str | None = None,
+        event_type: str | None = None,
+        trace_id: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        return self.delegate.list_events(
+            service_id=service_id,
+            severity=severity,
+            event_type=event_type,
+            trace_id=trace_id,
+            limit=limit,
+        )
+
 
 @dataclass(frozen=True)
 class OperationsSource:
@@ -46,15 +155,23 @@ class OperationsSource:
     job_queue: JobQueue | None = None
     operational_event_store: OperationalEventStore | None = None
     source_kind: str = "memory"
+    database_env: str | None = None
+    redacted_database_url: str | None = None
 
     def __post_init__(self) -> None:
         if self.service_id not in SERVICE_SPECS:
             raise ValueError(f"unsupported operations source service: {self.service_id}")
         if not self.source_kind:
             raise ValueError("source_kind must be a non-empty string")
+        if self.database_env is not None and not self.database_env:
+            raise ValueError("database_env must be a non-empty string when provided")
+        if self.redacted_database_url is not None and not self.redacted_database_url:
+            raise ValueError(
+                "redacted_database_url must be a non-empty string when provided"
+            )
 
     def to_summary(self) -> dict[str, Any]:
-        return {
+        summary = {
             "service_id": self.service_id,
             "source_kind": self.source_kind,
             "job_queue": (
@@ -71,6 +188,32 @@ class OperationsSource:
                 "jobs": self.job_queue is not None,
                 "events": self.operational_event_store is not None,
             },
+        }
+        if self.database_env is not None:
+            summary["database_env"] = self.database_env
+        if self.redacted_database_url is not None:
+            summary["redacted_database_url"] = self.redacted_database_url
+        return summary
+
+
+@dataclass(frozen=True)
+class AgOperationsSourceRuntime:
+    mode: str
+    profile: str
+    selected_service_ids: tuple[str, ...]
+    registry: OperationsSourceRegistry | None = field(default=None, repr=False)
+
+    def to_summary(self) -> dict[str, Any]:
+        return {
+            "runtime_schema_version": "ag_operations_source_runtime.v1",
+            "mode": self.mode,
+            "profile": self.profile,
+            "selected_service_ids": list(self.selected_service_ids),
+            "registry": (
+                self.registry.to_summary()
+                if self.registry is not None
+                else None
+            ),
         }
 
 
@@ -190,6 +333,175 @@ def build_operations_source_registry(
             )
         )
     return registry
+
+
+def attach_ag_operations_source_runtime(
+    app: FastAPI,
+    *,
+    environ: Mapping[str, str] | None = None,
+    mode: str | None = None,
+    engine_factory: EngineFactory = build_engine,
+    session_factory_builder: SessionFactoryBuilder = build_session_factory,
+) -> AgOperationsSourceRuntime:
+    runtime = build_ag_operations_source_runtime(
+        environ=environ,
+        mode=mode,
+        engine_factory=engine_factory,
+        session_factory_builder=session_factory_builder,
+    )
+    app.state.nex_ag_operations_source_runtime = runtime
+    return runtime
+
+
+def build_ag_operations_source_runtime(
+    *,
+    environ: Mapping[str, str] | None = None,
+    mode: str | None = None,
+    engine_factory: EngineFactory = build_engine,
+    session_factory_builder: SessionFactoryBuilder = build_session_factory,
+) -> AgOperationsSourceRuntime:
+    env = environ if environ is not None else os.environ
+    resolved_mode = normalize_ag_operations_source_mode(
+        mode or env.get(AG_OPERATIONS_SOURCE_MODE_ENV)
+    )
+    profile = normalize_ag_operations_source_profile(
+        env.get(AG_OPERATIONS_SOURCE_PROFILE_ENV)
+    )
+    selected_service_ids = select_ag_operations_source_service_ids(
+        env.get(AG_OPERATIONS_SOURCE_SERVICES_ENV)
+    )
+    if resolved_mode == "memory":
+        return AgOperationsSourceRuntime(
+            mode=resolved_mode,
+            profile=profile,
+            selected_service_ids=selected_service_ids,
+            registry=None,
+        )
+
+    registry = OperationsSourceRegistry()
+    for service_id in selected_service_ids:
+        registry.register(
+            _build_postgres_operations_source(
+                service_id=service_id,
+                profile=profile,
+                environ=env,
+                engine_factory=engine_factory,
+                session_factory_builder=session_factory_builder,
+            )
+        )
+    return AgOperationsSourceRuntime(
+        mode=resolved_mode,
+        profile=profile,
+        selected_service_ids=selected_service_ids,
+        registry=registry,
+    )
+
+
+def normalize_ag_operations_source_mode(value: str | None) -> str:
+    raw_value = "" if value is None else value.strip().lower()
+    try:
+        return _AG_OPERATIONS_SOURCE_MODE_ALIASES[raw_value]
+    except KeyError as exc:
+        raise OperationsSourceConfigError(
+            "unsupported AG operations source mode: "
+            f"{value}; expected one of {', '.join(AG_OPERATIONS_SOURCE_MODES)}"
+        ) from exc
+
+
+def normalize_ag_operations_source_profile(value: str | None) -> str:
+    raw_value = "dev" if value is None or not value.strip() else value.strip().lower()
+    if raw_value not in AG_OPERATIONS_SOURCE_PROFILES:
+        raise OperationsSourceConfigError(
+            "unsupported AG operations source profile: "
+            f"{value}; expected one of {', '.join(AG_OPERATIONS_SOURCE_PROFILES)}"
+        )
+    return raw_value
+
+
+def select_ag_operations_source_service_ids(raw_value: str | None) -> tuple[str, ...]:
+    if raw_value is None or not raw_value.strip():
+        return tuple(sorted(SERVICE_SPECS))
+    selected = sorted(
+        {
+            service_id.strip()
+            for service_id in raw_value.split(",")
+            if service_id.strip()
+        }
+    )
+    if not selected:
+        raise OperationsSourceConfigError(
+            f"{AG_OPERATIONS_SOURCE_SERVICES_ENV} selected no services"
+        )
+    unknown_services = [
+        service_id
+        for service_id in selected
+        if service_id not in SERVICE_SPECS
+    ]
+    if unknown_services:
+        raise OperationsSourceConfigError(
+            f"unknown AG operations source services: {', '.join(unknown_services)}"
+        )
+    return tuple(selected)
+
+
+def ag_operations_source_database_env(service_id: str, *, profile: str = "dev") -> str:
+    if service_id not in SERVICE_SPECS:
+        raise OperationsSourceConfigError(
+            f"unknown AG operations source service: {service_id}"
+        )
+    normalized_profile = normalize_ag_operations_source_profile(profile)
+    if normalized_profile == "dev":
+        return SERVICE_SPECS[service_id].database_env
+    try:
+        return f"{service_database_env_prefix(service_id)}_TEST_DATABASE_URL"
+    except ValueError as exc:
+        raise OperationsSourceConfigError(str(exc)) from exc
+
+
+def _build_postgres_operations_source(
+    *,
+    service_id: str,
+    profile: str,
+    environ: Mapping[str, str],
+    engine_factory: EngineFactory,
+    session_factory_builder: SessionFactoryBuilder,
+) -> OperationsSource:
+    database_env = ag_operations_source_database_env(service_id, profile=profile)
+    try:
+        database_url = required_database_url(database_env, environ)
+        api_engine = engine_factory(
+            database_url,
+            pool_settings=database_pool_settings(
+                service_id,
+                workload="api",
+                environ=environ,
+            ),
+        )
+        worker_engine = engine_factory(
+            database_url,
+            pool_settings=database_pool_settings(
+                service_id,
+                workload="worker",
+                environ=environ,
+            ),
+        )
+    except ValueError as exc:
+        raise OperationsSourceConfigError(
+            f"invalid AG operations source database config for {service_id}: {exc}"
+        ) from exc
+
+    return OperationsSource(
+        service_id=service_id,
+        job_queue=ReadOnlyJobQueue(
+            SqlAlchemyJobQueue(session_factory_builder(worker_engine))
+        ),
+        operational_event_store=ReadOnlyOperationalEventStore(
+            SqlAlchemyOperationalEventStore(session_factory_builder(api_engine))
+        ),
+        source_kind="postgres-read",
+        database_env=database_env,
+        redacted_database_url=redact_database_url(database_url),
+    )
 
 
 def register_operational_event_routes(
@@ -654,6 +966,14 @@ def _validate_unified_operation_filters(
             type_uri="https://nex-platform.local/problems/operational-event-severity-invalid",
         )
     return None
+
+
+def _operations_source_read_only_job_error() -> JobQueueError:
+    return JobQueueError(
+        error_code="ag.operations_source.read_only",
+        detail="AG operations source registry is read-only.",
+        status_code=405,
+    )
 
 
 def _project_job_for_service(service_id: str, job: dict[str, Any]) -> dict[str, Any]:

@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0095 CX processing PostgreSQL OperationalEvent smoke.
+Status: Slice 0099 AG runtime DB-backed operations wiring.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -104,6 +104,21 @@ Service-specific mode envs override the global mode. `memory` uses in-process
 stores. `postgres` requires the service database URL and builds SQLAlchemy
 JobQueue and OperationalEventStore adapters with service-aware API/worker pool
 settings.
+
+AG has a separate read-only operations source mode for observing service-owned
+databases without changing each service's own runtime mode:
+
+```text
+NEX_AG_OPERATIONS_SOURCE_MODE=postgres
+NEX_AG_OPERATIONS_SOURCE_PROFILE=dev
+NEX_AG_OPERATIONS_SOURCE_SERVICES=nex-ae-api,nex-ag,nex-cx,nex-mo,nex-oa
+```
+
+`dev` reads the primary `NEX_*_DATABASE_URL` envs. `test` reads
+`NEX_*_TEST_DATABASE_URL` envs for guarded smoke execution. The AG source
+registry wraps DB-backed JobQueue and OperationalEventStore adapters as
+read-only, preserving service database ownership while enabling unified
+operations monitoring.
 
 CX processing has an additional route-level PostgreSQL smoke:
 

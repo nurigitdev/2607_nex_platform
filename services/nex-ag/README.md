@@ -71,9 +71,14 @@ Job operations:
 - The projection summarizes active/terminal jobs, status counts, service
   counts, job-type counts, and per-service source availability.
 - Jobs and events can now be supplied through a shared operations source
-  registry. Default runtime registration is still mock-first, while future
-  DB-backed per-service sources can be injected without changing endpoint
-  shapes.
+  registry. Default runtime registration is still mock-first.
+- Set `NEX_AG_OPERATIONS_SOURCE_MODE=postgres` to build a read-only registry
+  from selected service databases. `NEX_AG_OPERATIONS_SOURCE_PROFILE` chooses
+  `dev` or `test` database env names, and
+  `NEX_AG_OPERATIONS_SOURCE_SERVICES` limits the observed service ids.
+- PostgreSQL operations sources are wrapped as read-only so AG can list jobs
+  and events without enqueueing jobs or appending event rows into service-owned
+  databases.
 
 Unified operations:
 
