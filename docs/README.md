@@ -214,6 +214,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0108`](slices/0108_ag_operations_dashboard_snapshot_projection.md) | `S11-008` AG operations dashboard snapshot projection. |
 | [`Slice 0109`](slices/0109_ag_operations_issue_candidate_projection.md) | `S11-009` AG operations issue candidate projection. |
 | [`Slice 0110`](slices/0110_ag_operations_dashboard_smoke_evidence_pack.md) | `S11-010` AG operations dashboard smoke evidence pack. |
+| [`Slice 0111`](slices/0111_worker_heartbeat_contract_foundation.md) | `S12-001` Worker heartbeat contract foundation for service worker liveness. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

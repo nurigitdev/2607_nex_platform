@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/worker_heartbeat.v1.schema.json",
+  "title": "NeX Worker Heartbeat",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "heartbeat_schema_version",
+    "service_id",
+    "worker_id",
+    "worker_type",
+    "status",
+    "active_job_id",
+    "trace_id",
+    "started_at",
+    "last_seen_at",
+    "metadata"
+  ],
+  "properties": {
+    "heartbeat_schema_version": {
+      "const": "worker_heartbeat.v1"
+    },
+    "service_id": {
+      "type": "string",
+      "enum": [
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo"
+      ]
+    },
+    "worker_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "worker_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "STARTING",
+        "IDLE",
+        "BUSY",
+        "STOPPING",
+        "STOPPED",
+        "ERROR"
+      ]
+    },
+    "active_job_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_seen_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

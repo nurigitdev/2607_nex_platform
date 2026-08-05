@@ -21,6 +21,11 @@
       "schema": "schemas/common/prompt_render_event.v1.schema.json"
     },
     {
+      "name": "worker_heartbeat_bad_status",
+      "path": "tests/negative/common/worker_heartbeat.bad_status.json",
+      "schema": "schemas/common/worker_heartbeat.v1.schema.json"
+    },
+    {
       "name": "service_claims_user_token_use",
       "path": "tests/negative/auth/service_claims.user_token_use.json",
       "schema": "schemas/common/service_claims.v1.schema.json"

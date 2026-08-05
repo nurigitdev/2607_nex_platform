@@ -1,6 +1,6 @@
 # Contract Package
 
-Status: Contract catalog through Slice 0011.
+Status: Contract catalog through Slice 0111.
 
 This directory is the canonical home for shared JSON Schemas, OpenAPI
 descriptions, contract examples, and negative fixtures.
@@ -54,7 +54,7 @@ reject them. The validation command fails if a negative fixture becomes valid.
 ## Current Contract Families
 
 - Common envelopes: contract manifest, problem+json, trace refs, service claims,
-  common job.
+  common job, and worker heartbeat.
 - Generation: MO provider route, MO model profile, CX generation execution
   record, AE chat interaction.
 - Retrieval/content ingestion: CX upload registration, queued ingestion job,

@@ -21,6 +21,11 @@
       "schema": "schemas/common/prompt_render_event.v1.schema.json"
     },
     {
+      "name": "worker_heartbeat_busy",
+      "path": "examples/common/worker_heartbeat.busy.json",
+      "schema": "schemas/common/worker_heartbeat.v1.schema.json"
+    },
+    {
       "name": "service_claims_ae_to_cx",
       "path": "examples/auth/service_claims.ae_to_cx.json",
       "schema": "schemas/common/service_claims.v1.schema.json"

@@ -1,0 +1,14 @@
+{
+  "heartbeat_schema_version": "worker_heartbeat.v1",
+  "service_id": "nex-cx",
+  "worker_id": "cx-worker-001",
+  "worker_type": "cx.document_processing.worker",
+  "status": "BROKEN",
+  "active_job_id": "job-001",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "started_at": "2026-08-05T00:00:00Z",
+  "last_seen_at": "2026-08-05T00:00:02Z",
+  "metadata": {
+    "queue": "cx.document_processing"
+  }
+}

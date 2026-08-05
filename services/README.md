@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0110 AG operations dashboard smoke evidence pack.
+Status: Slice 0111 worker heartbeat contract foundation.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -60,6 +60,11 @@ Route and worker code should emit operational events through the shared
 `app.state.nex_persistence` when available, keeps memory fallback behavior for
 local regression, and offers `safe_emit()` for observability writes that must not
 fail the primary request or job.
+
+Service workers should also report `worker_heartbeat.v1` payloads through the
+shared worker heartbeat runtime. Slice 0111 defines the mock-first contract,
+status vocabulary, stale-threshold helper, and summary shape; persistence is
+introduced separately so AG can later project worker liveness across services.
 
 Slice 0005 adds a mock-only OA service token path:
 
