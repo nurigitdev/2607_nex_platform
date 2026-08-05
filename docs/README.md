@@ -201,6 +201,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0095`](slices/0095_cx_processing_postgres_operational_event_smoke.md) | `S10-005` CX processing route PostgreSQL-backed OperationalEvent smoke. |
 | [`Slice 0096`](slices/0096_ag_operations_source_registry.md) | `S10-006` AG operations source registry for jobs and events. |
 | [`Slice 0097`](slices/0097_ag_unified_operations_projection.md) | `S10-007` AG unified operations projection over jobs and events. |
+| [`Slice 0098`](slices/0098_service_operational_event_taxonomy_registry.md) | `S10-008` Service operational event taxonomy registry. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

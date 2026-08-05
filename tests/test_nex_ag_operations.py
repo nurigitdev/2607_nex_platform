@@ -8,14 +8,18 @@ from nex_ag.operations import (
     RegistryOperationalEventStore,
     build_job_operations_projection,
     build_operations_source_registry,
+    build_operational_event_taxonomy_projection,
     build_operational_event_projection,
     build_unified_operations_projection,
     register_job_operation_routes,
+    register_operational_event_taxonomy_routes,
     register_operational_event_routes,
     register_unified_operation_routes,
     summarize_job_operations,
 )
 from nex_runtime import (
+    CX_PROCESSING_EVENT_FAILED,
+    CX_PROCESSING_EVENT_STARTED,
     FAILED,
     InMemoryOperationalEventStore,
     InMemoryJobQueue,
@@ -443,6 +447,64 @@ def test_build_operational_event_projection_can_omit_request_trace_id() -> None:
     assert "request_trace_id" not in projection
     assert projection["filters"]["limit"] == 1
     assert len(projection["events"]) == 1
+
+
+def test_build_operational_event_taxonomy_projection_filters_and_summarizes() -> None:
+    projection = build_operational_event_taxonomy_projection(
+        service_id="nex-cx",
+        event_type=CX_PROCESSING_EVENT_STARTED,
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == (
+        "ag_operational_event_taxonomy_projection.v1"
+    )
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["filters"] == {
+        "service_id": "nex-cx",
+        "event_type": CX_PROCESSING_EVENT_STARTED,
+    }
+    assert [item["event_type"] for item in projection["event_types"]] == [
+        CX_PROCESSING_EVENT_STARTED
+    ]
+    assert projection["summary"]["by_service"] == {"nex-cx": 1}
+
+
+def test_operational_event_taxonomy_route_requires_auth_returns_filtered_projection() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_operational_event_taxonomy_routes(app)
+    client = TestClient(app)
+
+    missing_auth = client.get("/admin/v1/operations/event-taxonomy")
+    response = client.get(
+        "/admin/v1/operations/event-taxonomy",
+        params={"event_type": CX_PROCESSING_EVENT_FAILED},
+        headers={
+            **auth_headers(),
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        },
+    )
+
+    assert missing_auth.status_code == 401
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["request_trace_id"] == TRACE_ID
+    assert payload["event_types"][0]["event_type"] == CX_PROCESSING_EVENT_FAILED
+    assert payload["event_types"][0]["default_severity"] == "ERROR"
+
+
+def test_operational_event_taxonomy_route_rejects_bad_service() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_operational_event_taxonomy_routes(app)
+
+    response = TestClient(app).get(
+        "/admin/v1/operations/event-taxonomy",
+        params={"service_id": "nex-unknown"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "ag.event_taxonomy_service_invalid"
 
 
 def test_operational_events_route_requires_auth() -> None:

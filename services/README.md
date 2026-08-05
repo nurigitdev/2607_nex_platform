@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0097 AG unified operations projection.
+Status: Slice 0098 service operational event taxonomy registry.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005

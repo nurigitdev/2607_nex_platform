@@ -10,6 +10,9 @@ from fastapi.responses import JSONResponse
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
+    CX_PROCESSING_EVENT_FAILED,
+    CX_PROCESSING_EVENT_STARTED,
+    CX_PROCESSING_EVENT_SUCCEEDED,
     InMemoryJobQueue,
     JobQueue,
     JobQueueError,
@@ -56,9 +59,9 @@ PIPELINE_STEPS = (
     "summary",
     "summary_embedding",
 )
-PROCESSING_EVENT_STARTED = "cx.processing.started"
-PROCESSING_EVENT_SUCCEEDED = "cx.processing.succeeded"
-PROCESSING_EVENT_FAILED = "cx.processing.failed"
+PROCESSING_EVENT_STARTED = CX_PROCESSING_EVENT_STARTED
+PROCESSING_EVENT_SUCCEEDED = CX_PROCESSING_EVENT_SUCCEEDED
+PROCESSING_EVENT_FAILED = CX_PROCESSING_EVENT_FAILED
 
 
 @dataclass(frozen=True)

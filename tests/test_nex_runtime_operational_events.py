@@ -10,18 +10,26 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 import nex_runtime.operational_events as runtime_events
 from nex_runtime import (
+    CX_PROCESSING_EVENT_FAILED,
+    CX_PROCESSING_EVENT_STARTED,
+    CX_PROCESSING_EVENT_SUCCEEDED,
+    DEFAULT_OPERATIONAL_EVENT_TAXONOMY,
     DatabasePoolSettings,
     InMemoryOperationalEventStore,
     OperationalEventEmitter,
     OperationalEventError,
     OperationalEventEmitResult,
+    OperationalEventTypeSpec,
     SqlAlchemyOperationalEventStore,
     build_engine,
     build_session_factory,
     build_operational_event,
+    list_operational_event_taxonomy,
     normalize_operational_event_limit,
     operational_event_emitter_from_app,
+    operational_event_taxonomy_by_type,
     redact_operational_details,
+    summarize_operational_event_taxonomy,
     summarize_operational_events,
     validate_operational_event,
 )
@@ -218,6 +226,67 @@ def test_operational_event_store_is_idempotent_by_event_id_and_summarizes() -> N
     )
     assert summary["by_service"] == {"nex-cx": 1, "unknown-service": 1}
     assert "NOTICE" not in summary["by_severity"]
+
+
+def test_operational_event_taxonomy_lists_filters_and_summarizes_cx_processing_specs() -> None:
+    taxonomy = list_operational_event_taxonomy()
+    cx_taxonomy = list_operational_event_taxonomy(service_id="nex-cx")
+    failed = list_operational_event_taxonomy(event_type=CX_PROCESSING_EVENT_FAILED)
+    by_type = operational_event_taxonomy_by_type()
+    summary = summarize_operational_event_taxonomy(taxonomy)
+
+    assert [item["event_type"] for item in cx_taxonomy] == [
+        CX_PROCESSING_EVENT_FAILED,
+        CX_PROCESSING_EVENT_STARTED,
+        CX_PROCESSING_EVENT_SUCCEEDED,
+    ]
+    assert failed == [by_type[CX_PROCESSING_EVENT_FAILED]]
+    assert by_type[CX_PROCESSING_EVENT_STARTED]["default_severity"] == "INFO"
+    assert by_type[CX_PROCESSING_EVENT_SUCCEEDED]["detail_keys"] == [
+        "pipeline_run_id",
+        "job_id",
+        "job_status",
+        "step_summary",
+    ]
+    assert summary["total"] == len(DEFAULT_OPERATIONAL_EVENT_TAXONOMY)
+    assert summary["by_service"] == {"nex-cx": 3}
+    assert summary["by_severity"]["INFO"] == 2
+    assert summary["by_severity"]["ERROR"] == 1
+    assert summary["by_subject_type"] == {"cx.document": 3}
+
+
+def test_operational_event_taxonomy_rejects_invalid_or_sensitive_shapes() -> None:
+    with pytest.raises(OperationalEventError) as bad_severity:
+        OperationalEventTypeSpec(
+            service_id="nex-cx",
+            event_type="cx.bad",
+            default_severity="NOTICE",
+            subject_type="cx.document",
+            detail_keys=(),
+            description="Bad severity.",
+        )
+    with pytest.raises(OperationalEventError) as bad_detail_key:
+        OperationalEventTypeSpec(
+            service_id="nex-cx",
+            event_type="cx.bad",
+            default_severity="INFO",
+            subject_type="cx.document",
+            detail_keys=("api_key",),
+            description="Bad detail key.",
+        )
+    with pytest.raises(OperationalEventError) as empty_detail_key:
+        OperationalEventTypeSpec(
+            service_id="nex-cx",
+            event_type="cx.bad",
+            default_severity="INFO",
+            subject_type="cx.document",
+            detail_keys=("",),
+            description="Bad detail key.",
+        )
+
+    assert bad_severity.value.error_code == "operational_event_taxonomy.severity_invalid"
+    assert bad_detail_key.value.error_code == "operational_event_taxonomy.detail_key_sensitive"
+    assert empty_detail_key.value.error_code == "operational_event_taxonomy.detail_key_invalid"
 
 
 def test_operational_event_emit_result_summarizes_success_and_failure() -> None:

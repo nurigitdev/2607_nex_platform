@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
+    DEFAULT_OPERATIONAL_EVENT_TAXONOMY,
     InMemoryJobQueue,
     InMemoryOperationalEventStore,
     JOB_STATUSES,
@@ -19,10 +20,13 @@ from nex_runtime import (
     OPERATIONAL_EVENT_SEVERITIES,
     OperationalEventStore,
     OperationalEventError,
+    OperationalEventTypeSpec,
     SERVICE_SPECS,
+    list_operational_event_taxonomy,
     normalize_job_limit,
     normalize_operational_event_limit,
     problem_response,
+    summarize_operational_event_taxonomy,
     summarize_jobs,
     summarize_operational_events,
     trace_id_from_headers,
@@ -234,6 +238,38 @@ def register_operational_event_routes(
         )
 
 
+def register_operational_event_taxonomy_routes(
+    app: FastAPI,
+    *,
+    taxonomy: tuple[OperationalEventTypeSpec, ...] = DEFAULT_OPERATIONAL_EVENT_TAXONOMY,
+) -> None:
+    @app.get("/admin/v1/operations/event-taxonomy", response_model=None)
+    def list_operational_event_taxonomy_route(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        event_type: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        if service_id is not None and service_id not in SERVICE_SPECS:
+            return problem_response(
+                request,
+                status_code=400,
+                error_code="ag.event_taxonomy_service_invalid",
+                title="Invalid event taxonomy service filter",
+                detail=f"Unsupported event taxonomy service: {service_id}",
+                type_uri="https://nex-platform.local/problems/event-taxonomy-service-invalid",
+            )
+        return build_operational_event_taxonomy_projection(
+            service_id=service_id,
+            event_type=event_type,
+            taxonomy=taxonomy,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
+
 def register_job_operation_routes(
     app: FastAPI,
     *,
@@ -354,6 +390,33 @@ def build_operational_event_projection(
         },
         "events": events,
         "summary": summarize_operational_events(events),
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
+def build_operational_event_taxonomy_projection(
+    *,
+    service_id: str | None = None,
+    event_type: str | None = None,
+    taxonomy: tuple[OperationalEventTypeSpec, ...] = DEFAULT_OPERATIONAL_EVENT_TAXONOMY,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    event_types = list_operational_event_taxonomy(
+        service_id=service_id,
+        event_type=event_type,
+        taxonomy=taxonomy,
+    )
+    projection = {
+        "projection_schema_version": "ag_operational_event_taxonomy_projection.v1",
+        "checked_at": _utc_now(),
+        "filters": {
+            "service_id": service_id,
+            "event_type": event_type,
+        },
+        "event_types": event_types,
+        "summary": summarize_operational_event_taxonomy(event_types),
     }
     if request_trace_id is not None:
         projection["request_trace_id"] = request_trace_id

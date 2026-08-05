@@ -15,6 +15,9 @@ OPERATIONAL_EVENT_SCHEMA_VERSION = "operational_event.v1"
 OPERATIONAL_EVENT_SEVERITIES = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 DEFAULT_OPERATIONAL_EVENT_LIMIT = 50
 MAX_OPERATIONAL_EVENT_LIMIT = 500
+CX_PROCESSING_EVENT_STARTED = "cx.processing.started"
+CX_PROCESSING_EVENT_SUCCEEDED = "cx.processing.succeeded"
+CX_PROCESSING_EVENT_FAILED = "cx.processing.failed"
 
 SENSITIVE_DETAIL_KEY_PARTS = (
     "api_key",
@@ -57,6 +60,54 @@ class OperationalEventStore(Protocol):
         limit: int = DEFAULT_OPERATIONAL_EVENT_LIMIT,
     ) -> list[dict[str, Any]]:
         ...
+
+
+@dataclass(frozen=True)
+class OperationalEventTypeSpec:
+    service_id: str
+    event_type: str
+    default_severity: str
+    subject_type: str
+    detail_keys: tuple[str, ...]
+    description: str
+    lifecycle_state: str | None = None
+
+    def __post_init__(self) -> None:
+        _required_string(self.service_id, "service_id")
+        _required_string(self.event_type, "event_type")
+        _required_string(self.subject_type, "subject_type")
+        _required_string(self.description, "description")
+        normalized_severity = self.default_severity.upper()
+        if normalized_severity not in OPERATIONAL_EVENT_SEVERITIES:
+            raise OperationalEventError(
+                error_code="operational_event_taxonomy.severity_invalid",
+                detail=f"unsupported taxonomy severity: {self.default_severity}",
+            )
+        object.__setattr__(self, "default_severity", normalized_severity)
+        if any(not isinstance(key, str) or not key for key in self.detail_keys):
+            raise OperationalEventError(
+                error_code="operational_event_taxonomy.detail_key_invalid",
+                detail="taxonomy detail keys must be non-empty strings",
+            )
+        sensitive_keys = [
+            key for key in self.detail_keys if _is_sensitive_detail_key(key)
+        ]
+        if sensitive_keys:
+            raise OperationalEventError(
+                error_code="operational_event_taxonomy.detail_key_sensitive",
+                detail=f"taxonomy detail keys must be redaction-safe: {', '.join(sensitive_keys)}",
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "service_id": self.service_id,
+            "event_type": self.event_type,
+            "default_severity": self.default_severity,
+            "subject_type": self.subject_type,
+            "detail_keys": list(self.detail_keys),
+            "description": self.description,
+            "lifecycle_state": self.lifecycle_state,
+        }
 
 
 @dataclass(frozen=True)
@@ -550,6 +601,89 @@ def _required_string(value: object, field_name: str) -> str:
 def _is_sensitive_detail_key(key: str) -> bool:
     lowered = key.lower()
     return any(part in lowered for part in SENSITIVE_DETAIL_KEY_PARTS)
+
+
+DEFAULT_OPERATIONAL_EVENT_TAXONOMY: tuple[OperationalEventTypeSpec, ...] = (
+    OperationalEventTypeSpec(
+        service_id="nex-cx",
+        event_type=CX_PROCESSING_EVENT_STARTED,
+        default_severity="INFO",
+        subject_type="cx.document",
+        detail_keys=("pipeline_run_id", "job_id", "job_status"),
+        description="CX document processing started.",
+        lifecycle_state="started",
+    ),
+    OperationalEventTypeSpec(
+        service_id="nex-cx",
+        event_type=CX_PROCESSING_EVENT_SUCCEEDED,
+        default_severity="INFO",
+        subject_type="cx.document",
+        detail_keys=("pipeline_run_id", "job_id", "job_status", "step_summary"),
+        description="CX document processing completed successfully.",
+        lifecycle_state="succeeded",
+    ),
+    OperationalEventTypeSpec(
+        service_id="nex-cx",
+        event_type=CX_PROCESSING_EVENT_FAILED,
+        default_severity="ERROR",
+        subject_type="cx.document",
+        detail_keys=(
+            "pipeline_run_id",
+            "job_id",
+            "job_status",
+            "step_summary",
+            "failed_step",
+        ),
+        description="CX document processing failed.",
+        lifecycle_state="failed",
+    ),
+)
+
+
+def list_operational_event_taxonomy(
+    *,
+    service_id: str | None = None,
+    event_type: str | None = None,
+    taxonomy: tuple[OperationalEventTypeSpec, ...] = DEFAULT_OPERATIONAL_EVENT_TAXONOMY,
+) -> list[dict[str, Any]]:
+    specs = [
+        spec.to_dict()
+        for spec in taxonomy
+        if (service_id is None or spec.service_id == service_id)
+        and (event_type is None or spec.event_type == event_type)
+    ]
+    return sorted(specs, key=lambda spec: (spec["service_id"], spec["event_type"]))
+
+
+def operational_event_taxonomy_by_type(
+    taxonomy: tuple[OperationalEventTypeSpec, ...] = DEFAULT_OPERATIONAL_EVENT_TAXONOMY,
+) -> dict[str, dict[str, Any]]:
+    return {
+        spec["event_type"]: spec
+        for spec in list_operational_event_taxonomy(taxonomy=taxonomy)
+    }
+
+
+def summarize_operational_event_taxonomy(
+    taxonomy_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    by_service: dict[str, int] = {}
+    by_severity = {severity: 0 for severity in OPERATIONAL_EVENT_SEVERITIES}
+    by_subject_type: dict[str, int] = {}
+    for item in taxonomy_items:
+        service_id = str(item["service_id"])
+        severity = str(item["default_severity"])
+        subject_type = str(item["subject_type"])
+        by_service[service_id] = by_service.get(service_id, 0) + 1
+        if severity in by_severity:
+            by_severity[severity] += 1
+        by_subject_type[subject_type] = by_subject_type.get(subject_type, 0) + 1
+    return {
+        "total": len(taxonomy_items),
+        "by_service": by_service,
+        "by_severity": by_severity,
+        "by_subject_type": by_subject_type,
+    }
 
 
 def _utc_now() -> str:

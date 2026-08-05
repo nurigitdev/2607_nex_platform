@@ -242,6 +242,10 @@ job status, step summary, and failed step when applicable. They do not contain
 raw source text, extracted Markdown, summaries, prompts, vectors, provider
 URLs, or API keys.
 
+These event types are also registered in the shared operational event taxonomy.
+AG exposes the taxonomy at `GET /admin/v1/operations/event-taxonomy`, including
+service, default severity, subject type, lifecycle state, and safe detail keys.
+
 Optional PostgreSQL write smoke is guarded by:
 
 ```text
