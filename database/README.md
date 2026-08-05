@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0087 persistent SQLAlchemy JobQueue adapter foundation.
+Status: Slice 0088 persistent SQLAlchemy OperationalEventStore foundation.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -56,6 +56,27 @@ service id, profile, database env, database URL, and future
 `database/<service>/alembic/` script locations. Alembic is therefore available
 for future SQLAlchemy model revisions without changing the current SQL
 migration execution contract.
+
+## SQLite Regression And PostgreSQL Compatibility
+
+PostgreSQL migration SQL is the canonical database schema. SQLite DDL used in
+unit tests is only a fast behavioral fixture; it is not a compatibility claim
+for PostgreSQL DDL.
+
+Default regression tests use SQLite where practical to keep the suite fast and
+to preserve statement and branch coverage for repository behavior. PostgreSQL
+specific behavior must be verified by guarded smoke tests against `*_test`
+databases, especially for:
+
+- `JSONB` storage and serialization
+- `TIMESTAMPTZ` parsing, ordering, and timezone normalization
+- boolean and check constraint behavior
+- unique constraints and idempotent write races
+- row locking and `FOR UPDATE SKIP LOCKED`
+
+DB persistence slices should therefore leave both a fast SQLite regression and
+an optional PostgreSQL smoke when the implementation depends on PostgreSQL
+runtime semantics.
 
 ## Runtime Connection Foundation
 
@@ -140,9 +161,24 @@ subject, short message, JSONB details, and creation time. Indexes support AG
 service, severity, trace, and event-type scans.
 
 Runtime code uses `nex_runtime.operational_events` for event construction,
-sensitive detail redaction, validation, in-memory storage, filtering, and
-summaries. AG exposes the first read-only projection at
-`/admin/v1/operations/events`.
+sensitive detail redaction, validation, in-memory storage, filtering, summaries,
+and the persistent `SqlAlchemyOperationalEventStore` adapter. The SQLAlchemy
+adapter stores and reads the `operational_event.v1` shape through the
+service-owned `service_operational_events` table while keeping JSONB details
+redacted before persistence.
+
+Optional PostgreSQL write smoke is guarded by:
+
+```text
+NEX_DB_OPERATIONAL_EVENT_SMOKE=1
+NEX_DB_OPERATIONAL_EVENT_SMOKE_SERVICE=nex-cx
+NEX_DB_OPERATIONAL_EVENT_SMOKE_PROFILE=test
+```
+
+The smoke is intentionally limited to the test profile. It applies service
+migrations, appends one redaction-guarded smoke event, validates idempotency,
+checks list filters and summary output, and removes the smoke row. AG exposes
+the first read-only projection at `/admin/v1/operations/events`.
 
 ## Prompt Registry Seeds
 

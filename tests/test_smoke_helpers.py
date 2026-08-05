@@ -9,6 +9,7 @@ import pytest
 import check_backend_service_endpoints as endpoint_smoke
 import check_db_readiness as db_smoke
 import run_postgres_jobqueue_smoke as jobqueue_smoke
+import run_postgres_operational_event_smoke as event_smoke
 
 
 class FakeHttpResponse:
@@ -399,4 +400,167 @@ def test_postgres_jobqueue_smoke_main_prints_summary_and_full_evidence(
     assert "postgres_jobqueue_smoke=skipped" in capsys.readouterr().out
 
     assert jobqueue_smoke.main([]) == 0
+    assert '"status": "SKIPPED"' in capsys.readouterr().out
+
+
+def test_postgres_operational_event_smoke_skips_by_default() -> None:
+    evidence = event_smoke.run_postgres_operational_event_smoke(environ={})
+
+    assert evidence["status"] == "SKIPPED"
+    assert event_smoke.summary_line(evidence) == (
+        "postgres_operational_event_smoke=skipped reason=NEX_DB_OPERATIONAL_EVENT_SMOKE"
+    )
+
+
+def test_postgres_operational_event_smoke_rejects_non_test_profile() -> None:
+    evidence = event_smoke.run_postgres_operational_event_smoke(
+        environ={
+            "NEX_DB_OPERATIONAL_EVENT_SMOKE": "1",
+            "NEX_DB_OPERATIONAL_EVENT_SMOKE_PROFILE": "dev",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "profile_not_allowed"
+
+
+def test_postgres_operational_event_smoke_reports_pass_without_leaking_database_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration_calls: list[tuple[str, str]] = []
+
+    class FakeOperationalEventStore:
+        def __init__(self, session_factory: object) -> None:
+            self.session_factory = session_factory
+            self.event: dict[str, object] | None = None
+
+        def append(self, event: dict[str, object]) -> dict[str, object]:
+            if self.event is None:
+                self.event = dict(event)
+            return dict(self.event)
+
+        def list_events(self, **filters: object) -> list[dict[str, object]]:
+            assert filters["severity"] == "warning"
+            assert self.event is not None
+            return [dict(self.event)]
+
+        def summary(self) -> dict[str, object]:
+            assert self.event is not None
+            return {"by_service": {self.event["service_id"]: 1}}
+
+    monkeypatch.setattr(
+        event_smoke,
+        "service_database_env",
+        lambda service_id, profile: f"{service_id}:{profile}:env",
+    )
+    monkeypatch.setattr(
+        event_smoke,
+        "service_database_url",
+        lambda service_id, profile, environ: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        event_smoke,
+        "run_service_migrations",
+        lambda service_id, database_url, profile: migration_calls.append((service_id, profile)),
+    )
+    monkeypatch.setattr(event_smoke, "database_pool_settings", lambda *args, **kwargs: object())
+    monkeypatch.setattr(event_smoke, "build_engine", lambda *args, **kwargs: FakeSqlEngine())
+    monkeypatch.setattr(event_smoke, "build_session_factory", lambda engine: object())
+    monkeypatch.setattr(event_smoke, "SqlAlchemyOperationalEventStore", FakeOperationalEventStore)
+
+    evidence = event_smoke.run_postgres_operational_event_smoke(
+        environ={
+            "NEX_DB_OPERATIONAL_EVENT_SMOKE": "1",
+            "NEX_DB_OPERATIONAL_EVENT_SMOKE_SERVICE": "nex-cx",
+        }
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["checks"] == {
+        "append": True,
+        "idempotency": True,
+        "redaction": True,
+        "list_filter": True,
+        "summary": True,
+    }
+    assert evidence["redacted_database_url"] == "postgresql://user:***@localhost/db"
+    assert "secret" not in str(evidence)
+    assert "must be redacted" not in str(evidence)
+    assert migration_calls == [("nex-cx", "test")]
+    assert event_smoke.summary_line(evidence) == (
+        "postgres_operational_event_smoke=pass service=nex-cx db_env=nex-cx:test:env"
+    )
+
+
+def test_postgres_operational_event_smoke_reports_configuration_and_execution_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    direct_failure = event_smoke._failure(
+        "direct_failure",
+        "boom",
+        service_id="nex-cx",
+        profile="test",
+        database_env="NEX_CX_TEST_DATABASE_URL",
+    )
+    assert direct_failure["database_env"] == "NEX_CX_TEST_DATABASE_URL"
+
+    monkeypatch.setattr(
+        event_smoke,
+        "service_database_env",
+        lambda *args, **kwargs: "NEX_CX_TEST_DATABASE_URL",
+    )
+
+    def raise_migration_error(*args: object, **kwargs: object) -> None:
+        raise event_smoke.MigrationError("missing database URL env NEX_CX_TEST_DATABASE_URL")
+
+    monkeypatch.setattr(event_smoke, "service_database_url", raise_migration_error)
+    config_failure = event_smoke.run_postgres_operational_event_smoke(
+        environ={"NEX_DB_OPERATIONAL_EVENT_SMOKE": "1"}
+    )
+
+    assert config_failure["status"] == "FAIL"
+    assert config_failure["failure_code"] == "configuration_invalid"
+
+    monkeypatch.setattr(
+        event_smoke,
+        "service_database_url",
+        lambda *args, **kwargs: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(event_smoke, "run_service_migrations", lambda *args, **kwargs: None)
+    monkeypatch.setattr(event_smoke, "database_pool_settings", lambda *args, **kwargs: object())
+
+    def raise_runtime_error(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(event_smoke, "build_engine", raise_runtime_error)
+    execution_failure = event_smoke.run_postgres_operational_event_smoke(
+        environ={"NEX_DB_OPERATIONAL_EVENT_SMOKE": "1"}
+    )
+
+    assert execution_failure["status"] == "FAIL"
+    assert execution_failure["failure_code"] == "execution_failed"
+    assert event_smoke.summary_line(execution_failure) == (
+        "postgres_operational_event_smoke=fail service=nex-cx reason=execution_failed"
+    )
+
+
+def test_postgres_operational_event_smoke_main_prints_summary_and_full_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(event_smoke, "load_env_file", lambda path: None)
+    monkeypatch.setattr(
+        event_smoke,
+        "run_postgres_operational_event_smoke",
+        lambda: {
+            "smoke_schema_version": "postgres_operational_event_smoke.v1",
+            "status": "SKIPPED",
+            "skip_reason": "NEX_DB_OPERATIONAL_EVENT_SMOKE is not enabled.",
+        },
+    )
+
+    assert event_smoke.main(["--summary"]) == 0
+    assert "postgres_operational_event_smoke=skipped" in capsys.readouterr().out
+
+    assert event_smoke.main([]) == 0
     assert '"status": "SKIPPED"' in capsys.readouterr().out

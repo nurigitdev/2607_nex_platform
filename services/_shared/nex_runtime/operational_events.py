@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 from uuid import NAMESPACE_URL, uuid5
+
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
 OPERATIONAL_EVENT_SCHEMA_VERSION = "operational_event.v1"
 OPERATIONAL_EVENT_SEVERITIES = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
@@ -219,6 +224,158 @@ class InMemoryOperationalEventStore:
         return summarize_operational_events(self.list_events(limit=MAX_OPERATIONAL_EVENT_LIMIT))
 
 
+class SqlAlchemyOperationalEventStore:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def append(self, event: dict[str, Any]) -> dict[str, Any]:
+        event_to_store = deepcopy(validate_operational_event(event))
+        try:
+            return self._run_in_transaction(
+                lambda session: self._append_event(session, event_to_store)
+            )
+        except IntegrityError as exc:
+            existing = self.get_event(str(event_to_store["event_id"]))
+            if existing is not None:
+                return existing
+            raise _event_store_unavailable() from exc
+        except SQLAlchemyError as exc:
+            raise _event_store_unavailable() from exc
+
+    def get_event(self, event_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_event(session, event_id)
+        except SQLAlchemyError as exc:
+            raise _event_store_unavailable() from exc
+
+    def list_events(
+        self,
+        *,
+        service_id: str | None = None,
+        severity: str | None = None,
+        event_type: str | None = None,
+        trace_id: str | None = None,
+        limit: int = DEFAULT_OPERATIONAL_EVENT_LIMIT,
+    ) -> list[dict[str, Any]]:
+        normalized_limit = normalize_operational_event_limit(limit)
+        normalized_severity = severity.upper() if severity is not None else None
+        where_clauses: list[str] = []
+        params: dict[str, Any] = {"limit": normalized_limit}
+        if service_id is not None:
+            where_clauses.append("service_id = :service_id")
+            params["service_id"] = service_id
+        if normalized_severity is not None:
+            where_clauses.append("severity = :severity")
+            params["severity"] = normalized_severity
+        if event_type is not None:
+            where_clauses.append("event_type = :event_type")
+            params["event_type"] = event_type
+        if trace_id is not None:
+            where_clauses.append("trace_id = :trace_id")
+            params["trace_id"] = trace_id
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(
+                    text(
+                        f"""
+                        SELECT {_EVENT_SELECT_COLUMNS}
+                        FROM service_operational_events
+                        {where_sql}
+                        ORDER BY created_at DESC, event_id DESC
+                        LIMIT :limit
+                        """
+                    ),
+                    params,
+                ).mappings()
+                return [_event_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _event_store_unavailable() from exc
+
+    def summary(self) -> dict[str, Any]:
+        return summarize_operational_events(
+            self.list_events(limit=MAX_OPERATIONAL_EVENT_LIMIT)
+        )
+
+    def _run_in_transaction(self, operation: Callable[[Session], Any]) -> Any:
+        session = self._session_factory()
+        try:
+            try:
+                result = operation(session)
+                session.commit()
+                return result
+            except Exception:
+                session.rollback()
+                raise
+        finally:
+            session.close()
+
+    def _append_event(self, session: Session, event: dict[str, Any]) -> dict[str, Any]:
+        existing = self._select_event(session, str(event["event_id"]))
+        if existing is not None:
+            return existing
+        self._insert_event(session, event)
+        stored = self._select_event(session, str(event["event_id"]))
+        assert stored is not None
+        return stored
+
+    def _select_event(
+        self,
+        session: Session,
+        event_id: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_EVENT_SELECT_COLUMNS}
+                FROM service_operational_events
+                WHERE event_id = :event_id
+                """
+            ),
+            {"event_id": event_id},
+        ).mappings().first()
+        return _event_from_row(row) if row is not None else None
+
+    def _insert_event(self, session: Session, event: dict[str, Any]) -> None:
+        details_expression = _details_sql_expression(session)
+        session.execute(
+            text(
+                f"""
+                INSERT INTO service_operational_events (
+                    event_id,
+                    event_schema_version,
+                    service_id,
+                    event_type,
+                    severity,
+                    trace_id,
+                    request_id,
+                    subject_type,
+                    subject_id,
+                    message,
+                    details,
+                    created_at
+                )
+                VALUES (
+                    :event_id,
+                    :event_schema_version,
+                    :service_id,
+                    :event_type,
+                    :severity,
+                    :trace_id,
+                    :request_id,
+                    :subject_type,
+                    :subject_id,
+                    :message,
+                    {details_expression},
+                    :created_at
+                )
+                """
+            ),
+            _event_insert_params(event),
+        )
+
+
 def normalize_operational_event_limit(limit: int) -> int:
     if limit < 1:
         return 1
@@ -263,3 +420,106 @@ def _is_sensitive_detail_key(key: str) -> bool:
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+_EVENT_SELECT_COLUMNS = """
+    event_id,
+    event_schema_version,
+    service_id,
+    event_type,
+    severity,
+    trace_id,
+    request_id,
+    subject_type,
+    subject_id,
+    message,
+    details,
+    created_at
+"""
+
+
+def _event_insert_params(event: dict[str, Any]) -> dict[str, Any]:
+    subject_ref = event.get("subject_ref")
+    subject_type = subject_ref["type"] if subject_ref is not None else None
+    subject_id = subject_ref["id"] if subject_ref is not None else None
+    return {
+        "event_id": event["event_id"],
+        "event_schema_version": event["event_schema_version"],
+        "service_id": event["service_id"],
+        "event_type": event["event_type"],
+        "severity": event["severity"],
+        "trace_id": event.get("trace_id"),
+        "request_id": event.get("request_id"),
+        "subject_type": subject_type,
+        "subject_id": subject_id,
+        "message": event["message"],
+        "details": _json_dumps(event["details"]),
+        "created_at": event["created_at"],
+    }
+
+
+def _event_from_row(row: Any) -> dict[str, Any]:
+    subject_ref = None
+    if row["subject_type"] is not None or row["subject_id"] is not None:
+        subject_ref = {
+            "type": row["subject_type"],
+            "id": row["subject_id"],
+        }
+    return validate_operational_event(
+        {
+            "event_schema_version": row["event_schema_version"],
+            "event_id": row["event_id"],
+            "service_id": row["service_id"],
+            "event_type": row["event_type"],
+            "severity": row["severity"],
+            "message": row["message"],
+            "trace_id": row["trace_id"],
+            "request_id": row["request_id"],
+            "subject_ref": subject_ref,
+            "details": _json_loads(row["details"], default={}),
+            "created_at": _timestamp_to_wire(row["created_at"]),
+        }
+    )
+
+
+def _details_sql_expression(session: Session) -> str:
+    if _dialect_name(session) == "postgresql":
+        return "CAST(:details AS JSONB)"
+    return ":details"
+
+
+def _json_dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _json_loads(value: Any, *, default: Any) -> Any:
+    if value is None:
+        return deepcopy(default)
+    if isinstance(value, (dict, list)):
+        return deepcopy(value)
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if isinstance(value, str):
+        return json.loads(value)
+    return deepcopy(default)
+
+
+def _timestamp_to_wire(value: Any) -> str:
+    if isinstance(value, datetime):
+        observed = value
+        if observed.tzinfo is None:
+            observed = observed.replace(tzinfo=UTC)
+        return observed.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return str(value)
+
+
+def _dialect_name(session: Session) -> str:
+    return session.get_bind().dialect.name
+
+
+def _event_store_unavailable() -> OperationalEventError:
+    return OperationalEventError(
+        error_code="operational_event.store_unavailable",
+        detail="operational event store is unavailable",
+        status_code=503,
+    )
