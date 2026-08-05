@@ -18,6 +18,7 @@ Current endpoints:
 - `GET /admin/v1/operations/events`
 - `GET /admin/v1/operations/events/{event_id}`
 - `GET /admin/v1/operations/jobs`
+- `GET /admin/v1/operations/jobs/{service_id}/{job_id}`
 - `GET /admin/v1/operations/sources`
 - `GET /admin/v1/policies/retrieval`
 - `GET /admin/v1/policies/retrieval/active`
@@ -76,6 +77,9 @@ Job operations:
   `cursor`, and limit.
 - The projection summarizes active/terminal jobs, status counts, service
   counts, job-type counts, and per-service source availability.
+- `GET /admin/v1/operations/jobs/{service_id}/{job_id}` returns
+  `ag_job_operation_detail_projection.v1` for one service-scoped job and a
+  lifecycle timeline assembled from matching operational events.
 - Jobs and events can now be supplied through a shared operations source
   registry. Default runtime registration is still mock-first.
 - Set `NEX_AG_OPERATIONS_SOURCE_MODE=postgres` to build a read-only registry

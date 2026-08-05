@@ -785,12 +785,18 @@ def register_job_operation_routes(
     app: FastAPI,
     *,
     job_queues: Mapping[str, JobQueue] | None = None,
+    event_store: OperationalEventStore | None = None,
     registry: OperationsSourceRegistry | None = None,
 ) -> None:
     queue_stores = (
         registry.job_queues()
         if registry is not None
         else job_queues or DEFAULT_JOB_QUEUE_STORES
+    )
+    selected_event_store = (
+        RegistryOperationalEventStore(registry)
+        if registry is not None
+        else event_store or DEFAULT_OPERATIONAL_EVENT_STORE
     )
 
     @app.get("/admin/v1/operations/jobs", response_model=None)
@@ -834,6 +840,62 @@ def register_job_operation_routes(
             status=status,
             job_type=job_type,
             query_options=query_options,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
+    @app.get("/admin/v1/operations/jobs/{service_id}/{job_id}", response_model=None)
+    def get_operational_job_detail(
+        service_id: str,
+        job_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        filter_problem = _validate_job_operation_filters(
+            request,
+            service_id=service_id,
+            status=None,
+        )
+        if filter_problem is not None:
+            return filter_problem
+
+        queue = queue_stores.get(service_id)
+        if queue is None:
+            return problem_response(
+                request,
+                status_code=404,
+                error_code="ag.job_source_not_configured",
+                title="Job source not configured",
+                detail=f"AG has no job source configured for service: {service_id}",
+                type_uri="https://nex-platform.local/problems/job-source-not-configured",
+            )
+        try:
+            job = queue.get_job(job_id)
+        except JobQueueError as exc:
+            return problem_response(
+                request,
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                title="Job source unavailable",
+                detail=exc.detail,
+                type_uri="https://nex-platform.local/problems/job-source-unavailable",
+            )
+        if job is None:
+            return problem_response(
+                request,
+                status_code=404,
+                error_code="ag.job_not_found",
+                title="Job not found",
+                detail=f"Job was not found for {service_id}: {job_id}",
+                type_uri="https://nex-platform.local/problems/job-not-found",
+            )
+        return build_job_operation_detail_projection(
+            job,
+            service_id=service_id,
+            event_store=selected_event_store,
             request_trace_id=trace_id_from_headers(request),
         )
 
@@ -1213,6 +1275,43 @@ def build_job_operations_projection(
     return projection
 
 
+def build_job_operation_detail_projection(
+    job: dict[str, Any],
+    *,
+    service_id: str,
+    event_store: OperationalEventStore | None = None,
+    event_limit: int = 50,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    lifecycle_timeline = _build_job_lifecycle_timeline(
+        job,
+        service_id=service_id,
+        event_store=event_store,
+        event_limit=event_limit,
+    )
+    projection = {
+        "projection_schema_version": "ag_job_operation_detail_projection.v1",
+        "checked_at": _utc_now(),
+        "service_id": service_id,
+        "job": _project_job_for_service(service_id, job),
+        "lifecycle_timeline": lifecycle_timeline,
+        "summary": {
+            "service_id": service_id,
+            "job_id": job["job_id"],
+            "job_type": job["job_type"],
+            "status": job["status"],
+            "trace_id": job["trace_id"],
+            "subject_ref": deepcopy(job.get("subject_ref")),
+            "attempt_count": job["attempt_count"],
+            "timeline_status": lifecycle_timeline["timeline_status"],
+            "timeline_event_count": lifecycle_timeline["event_count"],
+        },
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
 def summarize_job_operations(jobs: list[dict[str, Any]]) -> dict[str, Any]:
     summary = summarize_jobs(jobs)
     service_counts: dict[str, int] = {}
@@ -1561,6 +1660,74 @@ def _operational_event_matches_query(event: dict[str, Any], query: str) -> bool:
         for part in searchable_parts
         if part is not None
     )
+
+
+def _build_job_lifecycle_timeline(
+    job: dict[str, Any],
+    *,
+    service_id: str,
+    event_store: OperationalEventStore | None,
+    event_limit: int,
+) -> dict[str, Any]:
+    normalized_event_limit = normalize_operational_event_limit(event_limit)
+    if event_store is None:
+        return {
+            "timeline_status": "NOT_CONFIGURED",
+            "event_count": 0,
+            "events": [],
+            "source_error": None,
+        }
+    try:
+        events = event_store.list_events(
+            service_id=service_id,
+            trace_id=str(job["trace_id"]),
+            limit=normalized_event_limit,
+        )
+    except OperationalEventError as exc:
+        return {
+            "timeline_status": "UNAVAILABLE",
+            "event_count": 0,
+            "events": [],
+            "source_error": {
+                "error_code": exc.error_code,
+                "detail": exc.detail,
+                "status_code": exc.status_code,
+            },
+        }
+    lifecycle_events = [
+        event
+        for event in events
+        if _operational_event_matches_job(job, event)
+    ]
+    lifecycle_events.sort(
+        key=lambda event: (
+            _operation_record_timestamp(event, timestamp_field="created_at"),
+            str(event.get("event_id", "")),
+        )
+    )
+    lifecycle_events = lifecycle_events[:normalized_event_limit]
+    return {
+        "timeline_status": "READY",
+        "event_count": len(lifecycle_events),
+        "events": lifecycle_events,
+        "source_error": None,
+    }
+
+
+def _operational_event_matches_job(
+    job: dict[str, Any],
+    event: dict[str, Any],
+) -> bool:
+    details = event.get("details")
+    if isinstance(details, Mapping) and details.get("job_id") == job.get("job_id"):
+        return True
+    return _subject_refs_match(event.get("subject_ref"), job.get("subject_ref"))
+
+
+def _subject_refs_match(left: object, right: object) -> bool:
+    if not isinstance(left, Mapping) or not isinstance(right, Mapping):
+        return False
+    return left.get("type") == right.get("type") and left.get("id") == right.get("id")
 
 
 def _project_job_for_service(service_id: str, job: dict[str, Any]) -> dict[str, Any]:

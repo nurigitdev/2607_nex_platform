@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0103 AG operational event detail and log search API.
+Status: Slice 0104 AG job detail and lifecycle timeline API.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005

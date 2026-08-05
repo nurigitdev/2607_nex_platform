@@ -19,6 +19,7 @@ from nex_ag.operations import (
     ag_operations_source_database_env,
     attach_ag_operations_source_runtime,
     build_ag_operations_source_runtime,
+    build_job_operation_detail_projection,
     build_job_operations_projection,
     build_operation_query_options,
     build_operation_source_readiness_projection,
@@ -194,6 +195,30 @@ class BrokenJobQueue:
 
     def claim_next_job(self, worker_id, *, job_type=None, updated_at=None):
         raise AssertionError("not used")
+
+
+class UnavailableJobQueue(BrokenJobQueue):
+    def get_job(self, job_id):
+        raise JobQueueError(
+            error_code="job.store_unavailable",
+            detail="job queue store is unavailable",
+            status_code=503,
+        )
+
+
+class BrokenOperationalEventStore:
+    def append(self, event):
+        raise AssertionError("not used")
+
+    def get_event(self, event_id):
+        raise AssertionError("not used")
+
+    def list_events(self, **kwargs):
+        raise OperationalEventError(
+            error_code="operational_event.store_unavailable",
+            detail="operational event store is unavailable",
+            status_code=503,
+        )
 
 
 def build_event_stores() -> dict[str, InMemoryOperationalEventStore]:
@@ -1280,6 +1305,60 @@ def test_build_job_operations_projection_applies_query_options_before_paging() -
     }
 
 
+def test_build_job_operation_detail_projection_includes_lifecycle_timeline() -> None:
+    job = build_job_queues()["nex-cx"].get_job("job-cx-001")
+    assert job is not None
+
+    projection = build_job_operation_detail_projection(
+        job,
+        service_id="nex-cx",
+        event_store=build_store(),
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == (
+        "ag_job_operation_detail_projection.v1"
+    )
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["job"]["service_id"] == "nex-cx"
+    assert projection["job"]["job_id"] == "job-cx-001"
+    assert projection["summary"]["timeline_status"] == "READY"
+    assert projection["summary"]["timeline_event_count"] == 1
+    timeline_event_ids = [
+        event["event_id"]
+        for event in projection["lifecycle_timeline"]["events"]
+    ]
+    assert timeline_event_ids == ["event-001"]
+
+
+def test_build_job_operation_detail_projection_reports_timeline_source_states() -> None:
+    job = build_job_queues()["nex-cx"].get_job("job-cx-001")
+    assert job is not None
+
+    not_configured = build_job_operation_detail_projection(
+        job,
+        service_id="nex-cx",
+    )
+    unavailable = build_job_operation_detail_projection(
+        job,
+        service_id="nex-cx",
+        event_store=BrokenOperationalEventStore(),
+    )
+
+    assert not_configured["lifecycle_timeline"] == {
+        "timeline_status": "NOT_CONFIGURED",
+        "event_count": 0,
+        "events": [],
+        "source_error": None,
+    }
+    assert unavailable["lifecycle_timeline"]["timeline_status"] == "UNAVAILABLE"
+    assert unavailable["lifecycle_timeline"]["source_error"] == {
+        "error_code": "operational_event.store_unavailable",
+        "detail": "operational event store is unavailable",
+        "status_code": 503,
+    }
+
+
 def test_summarize_job_operations_counts_empty_and_unknown_shapes() -> None:
     assert summarize_job_operations([])["by_service"] == {}
 
@@ -1329,6 +1408,77 @@ def test_job_operations_route_returns_filtered_projection() -> None:
     assert payload["filters"]["job_type"] == "ae.artifact_render"
     assert payload["jobs"][0]["job_id"] == "job-ae-001"
     assert payload["summary"]["statuses"][SUCCEEDED] == 1
+
+
+def test_job_operation_detail_route_requires_auth_returns_job_and_404() -> None:
+    registry = build_operations_source_registry(
+        job_queues=build_job_queues(),
+        event_stores=build_event_stores(),
+    )
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_job_operation_routes(app, registry=registry)
+    client = TestClient(app)
+
+    missing_auth = client.get("/admin/v1/operations/jobs/nex-cx/job-cx-001")
+    response = client.get(
+        "/admin/v1/operations/jobs/nex-cx/job-cx-001",
+        headers={
+            **auth_headers(),
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        },
+    )
+    missing_job = client.get(
+        "/admin/v1/operations/jobs/nex-cx/job-missing",
+        headers=auth_headers(),
+    )
+
+    assert missing_auth.status_code == 401
+    assert missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["request_trace_id"] == TRACE_ID
+    assert payload["job"]["job_id"] == "job-cx-001"
+    assert payload["lifecycle_timeline"]["timeline_status"] == "READY"
+    timeline_event_ids = [
+        event["event_id"]
+        for event in payload["lifecycle_timeline"]["events"]
+    ]
+    assert timeline_event_ids == ["event-cx-001"]
+    assert missing_job.status_code == 404
+    assert missing_job.json()["error_code"] == "ag.job_not_found"
+
+
+def test_job_operation_detail_route_rejects_bad_or_unavailable_sources() -> None:
+    registry = build_operations_source_registry(job_queues=build_job_queues())
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_job_operation_routes(app, registry=registry)
+    client = TestClient(app)
+
+    bad_service = client.get(
+        "/admin/v1/operations/jobs/nex-unknown/job-001",
+        headers=auth_headers(),
+    )
+    missing_source = client.get(
+        "/admin/v1/operations/jobs/nex-mo/job-001",
+        headers=auth_headers(),
+    )
+
+    unavailable_app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_job_operation_routes(
+        unavailable_app,
+        job_queues={"nex-cx": UnavailableJobQueue()},
+    )
+    unavailable = TestClient(unavailable_app).get(
+        "/admin/v1/operations/jobs/nex-cx/job-001",
+        headers=auth_headers(),
+    )
+
+    assert bad_service.status_code == 400
+    assert bad_service.json()["error_code"] == "ag.job_service_invalid"
+    assert missing_source.status_code == 404
+    assert missing_source.json()["error_code"] == "ag.job_source_not_configured"
+    assert unavailable.status_code == 503
+    assert unavailable.json()["error_code"] == "job.store_unavailable"
 
 
 def test_job_operations_route_rejects_bad_filters() -> None:
