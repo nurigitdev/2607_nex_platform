@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
 from copy import deepcopy
@@ -54,6 +55,7 @@ AG_OPERATIONS_SOURCE_SERVICES_ENV = "NEX_AG_OPERATIONS_SOURCE_SERVICES"
 AG_OPERATIONS_SOURCE_MODES = ("memory", "postgres")
 AG_OPERATIONS_SOURCE_PROFILES = ("dev", "test")
 AG_OPERATION_SORT_ORDERS = ("desc", "asc")
+MAX_OPERATION_EVENT_QUERY_LENGTH = 128
 
 _AG_OPERATIONS_SOURCE_MODE_ALIASES = {
     "": "memory",
@@ -643,6 +645,7 @@ def register_operational_event_routes(
         severity: str | None = None,
         event_type: str | None = None,
         trace_id: str | None = None,
+        q: str | None = None,
         since: str | None = None,
         until: str | None = None,
         sort: str | None = None,
@@ -671,6 +674,9 @@ def register_operational_event_routes(
         )
         if isinstance(query_options, JSONResponse):
             return query_options
+        normalized_query = _normalize_event_search_query_or_problem(request, q)
+        if isinstance(normalized_query, JSONResponse):
+            return normalized_query
 
         return build_operational_event_projection(
             event_store,
@@ -678,7 +684,32 @@ def register_operational_event_routes(
             severity=severity,
             event_type=event_type,
             trace_id=trace_id,
+            q=normalized_query,
             query_options=query_options,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
+    @app.get("/admin/v1/operations/events/{event_id}", response_model=None)
+    def get_operational_event_detail(
+        event_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        event = event_store.get_event(event_id)
+        if event is None:
+            return problem_response(
+                request,
+                status_code=404,
+                error_code="ag.operational_event_not_found",
+                title="Operational event not found",
+                detail=f"Operational event was not found: {event_id}",
+                type_uri="https://nex-platform.local/problems/operational-event-not-found",
+            )
+        return build_operational_event_detail_projection(
+            event,
             request_trace_id=trace_id_from_headers(request),
         )
 
@@ -875,6 +906,7 @@ def build_operational_event_projection(
     severity: str | None = None,
     event_type: str | None = None,
     trace_id: str | None = None,
+    q: str | None = None,
     limit: int = 50,
     query_options: OperationQueryOptions | None = None,
     request_trace_id: str | None = None,
@@ -887,6 +919,12 @@ def build_operational_event_projection(
         trace_id=trace_id,
         limit=normalize_operational_event_limit(500),
     )
+    if q is not None:
+        events = [
+            event
+            for event in events
+            if _operational_event_matches_query(event, q)
+        ]
     events = _apply_operation_query_options(
         events,
         options,
@@ -901,11 +939,36 @@ def build_operational_event_projection(
             "severity": severity.upper() if severity is not None else None,
             "event_type": event_type,
             "trace_id": trace_id,
+            "q": q,
             **options.to_filter_dict(),
         },
         "events": events["items"],
         "summary": summarize_operational_events(events["items"]),
         "pagination": events["pagination"],
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
+def build_operational_event_detail_projection(
+    event: dict[str, Any],
+    *,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    projection = {
+        "projection_schema_version": "ag_operational_event_detail_projection.v1",
+        "checked_at": _utc_now(),
+        "event": deepcopy(event),
+        "summary": {
+            "event_id": event["event_id"],
+            "service_id": event["service_id"],
+            "event_type": event["event_type"],
+            "severity": event["severity"],
+            "trace_id": event.get("trace_id"),
+            "subject_ref": deepcopy(event.get("subject_ref")),
+            "created_at": event["created_at"],
+        },
     }
     if request_trace_id is not None:
         projection["request_trace_id"] = request_trace_id
@@ -1269,6 +1332,38 @@ def _build_query_options_or_problem(
         )
 
 
+def _normalize_event_search_query_or_problem(
+    request: Request,
+    value: str | None,
+) -> str | None | JSONResponse:
+    try:
+        return normalize_operation_event_search_query(value)
+    except OperationsQueryError as exc:
+        return problem_response(
+            request,
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            title="Invalid operational event search query",
+            detail=exc.detail,
+            type_uri="https://nex-platform.local/problems/operational-event-query-invalid",
+        )
+
+
+def normalize_operation_event_search_query(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip()
+    if len(normalized) > MAX_OPERATION_EVENT_QUERY_LENGTH:
+        raise OperationsQueryError(
+            error_code="ag.operation_event_query_invalid",
+            detail=(
+                "operational event search query must be "
+                f"{MAX_OPERATION_EVENT_QUERY_LENGTH} characters or fewer."
+            ),
+        )
+    return normalized
+
+
 def _operation_source_statuses(
     runtime: AgOperationsSourceRuntime,
     *,
@@ -1440,6 +1535,32 @@ def _parse_operation_timestamp(
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
+
+
+def _operational_event_matches_query(event: dict[str, Any], query: str) -> bool:
+    lowered_query = query.lower()
+    searchable_parts = [
+        event.get("event_id"),
+        event.get("service_id"),
+        event.get("event_type"),
+        event.get("severity"),
+        event.get("message"),
+        event.get("trace_id"),
+        event.get("request_id"),
+    ]
+    subject_ref = event.get("subject_ref")
+    if isinstance(subject_ref, Mapping):
+        searchable_parts.extend(subject_ref.values())
+    details = event.get("details")
+    if isinstance(details, Mapping):
+        searchable_parts.append(
+            json.dumps(details, ensure_ascii=False, sort_keys=True)
+        )
+    return any(
+        lowered_query in str(part).lower()
+        for part in searchable_parts
+        if part is not None
+    )
 
 
 def _project_job_for_service(service_id: str, job: dict[str, Any]) -> dict[str, Any]:

@@ -23,9 +23,11 @@ from nex_ag.operations import (
     build_operation_query_options,
     build_operation_source_readiness_projection,
     build_operations_source_registry,
+    build_operational_event_detail_projection,
     build_operational_event_taxonomy_projection,
     build_operational_event_projection,
     build_unified_operations_projection,
+    normalize_operation_event_search_query,
     normalize_operation_cursor,
     normalize_operation_sort,
     normalize_operation_timestamp,
@@ -940,6 +942,7 @@ def test_build_operational_event_projection_filters_and_summarizes() -> None:
         "severity": "ERROR",
         "event_type": None,
         "trace_id": None,
+        "q": None,
         "limit": 500,
         "since": None,
         "until": None,
@@ -958,6 +961,58 @@ def test_build_operational_event_projection_can_omit_request_trace_id() -> None:
     assert "request_trace_id" not in projection
     assert projection["filters"]["limit"] == 1
     assert len(projection["events"]) == 1
+
+
+def test_build_operational_event_projection_applies_text_query() -> None:
+    by_message = build_operational_event_projection(build_store(), q="provider")
+    by_subject = build_operational_event_projection(build_store(), q="doc-001")
+    by_detail = build_operational_event_projection(build_store(), q="run-001")
+    no_match = build_operational_event_projection(build_store(), q="not-observed")
+
+    assert [event["event_id"] for event in by_message["events"]] == ["event-002"]
+    assert by_message["filters"]["q"] == "provider"
+    assert by_message["pagination"]["total_after_filters"] == 1
+    assert [event["event_id"] for event in by_subject["events"]] == ["event-001"]
+    assert [event["event_id"] for event in by_detail["events"]] == ["event-001"]
+    assert no_match["events"] == []
+    assert no_match["summary"]["total"] == 0
+
+
+def test_normalize_operation_event_search_query_strips_and_rejects_long_values() -> None:
+    assert normalize_operation_event_search_query("  Provider  ") == "Provider"
+    assert normalize_operation_event_search_query("   ") is None
+
+    with pytest.raises(OperationsQueryError) as exc_info:
+        normalize_operation_event_search_query("x" * 129)
+
+    assert exc_info.value.error_code == "ag.operation_event_query_invalid"
+
+
+def test_build_operational_event_detail_projection_returns_safe_event_summary() -> None:
+    event = build_store().get_event("event-002")
+    assert event is not None
+
+    projection = build_operational_event_detail_projection(
+        event,
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == (
+        "ag_operational_event_detail_projection.v1"
+    )
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["event"]["event_id"] == "event-002"
+    assert projection["event"]["details"]["authorization"] == "<redacted>"
+    assert projection["summary"] == {
+        "event_id": "event-002",
+        "service_id": "nex-mo",
+        "event_type": "mo.provider.failed",
+        "severity": "ERROR",
+        "trace_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_ref": {"type": "mo.provider", "id": "embedding"},
+        "created_at": "2026-08-05T00:00:01Z",
+    }
+    assert "Bearer private" not in str(projection)
 
 
 def test_build_operational_event_taxonomy_projection_filters_and_summarizes() -> None:
@@ -1034,7 +1089,7 @@ def test_operational_events_route_returns_filtered_projection() -> None:
 
     response = TestClient(app).get(
         "/admin/v1/operations/events",
-        params={"service_id": "nex-cx", "limit": 1},
+        params={"service_id": "nex-cx", "q": "doc-001", "limit": 1},
         headers={
             **auth_headers(),
             "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
@@ -1045,8 +1100,38 @@ def test_operational_events_route_returns_filtered_projection() -> None:
     payload = response.json()
     assert payload["request_trace_id"] == TRACE_ID
     assert payload["filters"]["service_id"] == "nex-cx"
+    assert payload["filters"]["q"] == "doc-001"
     assert payload["events"][0]["event_id"] == "event-001"
     assert payload["summary"]["total"] == 1
+
+
+def test_operational_event_detail_route_requires_auth_returns_event_and_404() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_operational_event_routes(app, store=build_store())
+    client = TestClient(app)
+
+    missing_auth = client.get("/admin/v1/operations/events/event-001")
+    response = client.get(
+        "/admin/v1/operations/events/event-001",
+        headers={
+            **auth_headers(),
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        },
+    )
+    missing_event = client.get(
+        "/admin/v1/operations/events/event-missing",
+        headers=auth_headers(),
+    )
+
+    assert missing_auth.status_code == 401
+    assert missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["request_trace_id"] == TRACE_ID
+    assert payload["event"]["event_id"] == "event-001"
+    assert payload["summary"]["subject_ref"] == {"type": "cx.document", "id": "doc-001"}
+    assert missing_event.status_code == 404
+    assert missing_event.json()["error_code"] == "ag.operational_event_not_found"
 
 
 def test_operational_events_route_applies_sort_cursor_and_window() -> None:
@@ -1093,6 +1178,14 @@ def test_operational_events_route_rejects_bad_severity() -> None:
     )
     assert bad_sort.status_code == 400
     assert bad_sort.json()["error_code"] == "ag.operation_sort_invalid"
+
+    bad_query = TestClient(app).get(
+        "/admin/v1/operations/events",
+        params={"q": "x" * 129},
+        headers=auth_headers(),
+    )
+    assert bad_query.status_code == 400
+    assert bad_query.json()["error_code"] == "ag.operation_event_query_invalid"
 
 
 def test_normalize_job_limit_clamps_bounds() -> None:

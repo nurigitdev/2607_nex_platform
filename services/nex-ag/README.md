@@ -16,6 +16,7 @@ Current endpoints:
 - `GET /admin/v1/operations`
 - `GET /admin/v1/operations/event-taxonomy`
 - `GET /admin/v1/operations/events`
+- `GET /admin/v1/operations/events/{event_id}`
 - `GET /admin/v1/operations/jobs`
 - `GET /admin/v1/operations/sources`
 - `GET /admin/v1/policies/retrieval`
@@ -59,9 +60,11 @@ Operational events:
 
 - AG exposes a read-only operational event projection over the shared
   `operational_event.v1` shape.
-- Filters include service id, severity, event type, trace id, `since`, `until`,
-  `sort`, `cursor`, and limit.
+- Filters include service id, severity, event type, trace id, text query `q`,
+  `since`, `until`, `sort`, `cursor`, and limit.
 - Event details are redacted by the shared runtime before AG projection.
+- `GET /admin/v1/operations/events/{event_id}` returns
+  `ag_operational_event_detail_projection.v1` for a single redacted event.
 - AG also exposes a read-only event taxonomy projection so operators can inspect
   known event types, default severity, subject type, and safe detail keys.
 
