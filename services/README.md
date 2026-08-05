@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0113 AG worker runtime projection.
+Status: Slice 0114 worker heartbeat issue candidates.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005

@@ -217,6 +217,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0111`](slices/0111_worker_heartbeat_contract_foundation.md) | `S12-001` Worker heartbeat contract foundation for service worker liveness. |
 | [`Slice 0112`](slices/0112_worker_heartbeat_persistence_foundation.md) | `S12-002` Worker heartbeat persistence foundation with SQLite regression. |
 | [`Slice 0113`](slices/0113_ag_worker_runtime_projection.md) | `S12-003` AG worker runtime projection over heartbeat stores. |
+| [`Slice 0114`](slices/0114_worker_stuck_job_issue_candidates.md) | `S12-004` Worker heartbeat based stuck job issue candidate rules. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

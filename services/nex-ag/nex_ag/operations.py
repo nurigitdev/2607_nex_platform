@@ -119,6 +119,22 @@ OPERATIONS_ISSUE_CANDIDATE_RULES = (
         "enabled": True,
         "signal_type": "job_status",
     },
+    {
+        "rule_id": "stale_worker_heartbeat.v1",
+        "severity": "WARNING",
+        "title": "Stale worker heartbeat observed",
+        "description": "One or more worker heartbeats exceeded the configured stale threshold.",
+        "enabled": True,
+        "signal_type": "worker_heartbeat",
+    },
+    {
+        "rule_id": "active_job_without_fresh_worker.v1",
+        "severity": "WARNING",
+        "title": "Active job missing fresh worker",
+        "description": "One or more RUNNING jobs have no fresh BUSY worker heartbeat.",
+        "enabled": True,
+        "signal_type": "job_worker_reconciliation",
+    },
 )
 
 _AG_OPERATIONS_SOURCE_MODE_ALIASES = {
@@ -1170,6 +1186,7 @@ def register_unified_operation_routes(
         since: str | None = None,
         until: str | None = None,
         recent_limit: int = Query(default=5, ge=1),
+        stale_after_seconds: int = Query(default=DEFAULT_WORKER_STALE_AFTER_SECONDS, ge=1),
     ):
         auth_problem = _authorize_ag_request(request, authorization)
         if auth_problem is not None:
@@ -1201,10 +1218,12 @@ def register_unified_operation_routes(
         return build_operations_issue_candidate_projection(
             job_queues=job_queues,
             event_store=event_store,
+            worker_heartbeat_stores=worker_heartbeat_stores,
             registry=registry,
             runtime=selected_runtime,
             service_id=service_id,
             recent_limit=recent_limit,
+            stale_after_seconds=stale_after_seconds,
             query_options=query_options,
             request_trace_id=trace_id_from_headers(request),
         )
@@ -1541,15 +1560,19 @@ def build_operations_issue_candidate_projection(
     *,
     job_queues: Mapping[str, JobQueue] | None = None,
     event_store: OperationalEventStore | None = None,
+    worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
     service_id: str | None = None,
     recent_limit: int = 5,
+    stale_after_seconds: int = DEFAULT_WORKER_STALE_AFTER_SECONDS,
     limit: int = 500,
     query_options: OperationQueryOptions | None = None,
+    checked_at: str | None = None,
     request_trace_id: str | None = None,
 ) -> dict[str, Any]:
     options = query_options or build_operation_query_options(limit=limit)
+    observed_at = checked_at or _utc_now()
     dashboard = build_operations_dashboard_snapshot_projection(
         job_queues=job_queues,
         event_store=event_store,
@@ -1559,11 +1582,36 @@ def build_operations_issue_candidate_projection(
         recent_limit=recent_limit,
         query_options=options,
     )
-    candidates = build_operations_issue_candidates(dashboard)
+    worker_projection = None
+    if _worker_reconciliation_enabled(
+        registry=registry,
+        worker_heartbeat_stores=worker_heartbeat_stores,
+    ):
+        worker_projection = build_worker_runtime_projection(
+            worker_heartbeat_stores=worker_heartbeat_stores,
+            registry=registry,
+            service_id=service_id,
+            stale_after_seconds=stale_after_seconds,
+            query_options=options,
+            checked_at=observed_at,
+        )
+    candidates = build_operations_issue_candidates(
+        dashboard,
+        worker_runtime_projection=worker_projection,
+    )
+    projection_status = (
+        "DEGRADED"
+        if dashboard["projection_status"] == "DEGRADED"
+        or (
+            worker_projection is not None
+            and worker_projection["projection_status"] == "DEGRADED"
+        )
+        else "READY"
+    )
     projection = {
         "projection_schema_version": "ag_operations_issue_candidate_projection.v1",
-        "projection_status": dashboard["projection_status"],
-        "checked_at": _utc_now(),
+        "projection_status": projection_status,
+        "checked_at": observed_at,
         "filters": dashboard["filters"],
         "rules": operations_issue_candidate_rules(),
         "issue_candidates": candidates,
@@ -1571,6 +1619,11 @@ def build_operations_issue_candidate_projection(
         "job_source_statuses": dashboard["job_source_statuses"],
         "event_source_statuses": dashboard["event_source_statuses"],
     }
+    if worker_projection is not None:
+        projection["filters"]["stale_after_seconds"] = worker_projection["filters"][
+            "stale_after_seconds"
+        ]
+        projection["worker_source_statuses"] = worker_projection["source_statuses"]
     if registry is not None:
         projection["source_registry"] = registry.to_summary()
     if request_trace_id is not None:
@@ -2103,6 +2156,8 @@ def operations_issue_candidate_rules() -> list[dict[str, Any]]:
 
 def build_operations_issue_candidates(
     dashboard_snapshot: Mapping[str, Any],
+    *,
+    worker_runtime_projection: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     candidates.extend(
@@ -2116,6 +2171,23 @@ def build_operations_issue_candidates(
     candidates.extend(
         _issue_candidates_from_active_jobs(dashboard_snapshot["active_jobs"])
     )
+    if worker_runtime_projection is not None:
+        candidates.extend(
+            _issue_candidates_from_worker_source_statuses(
+                worker_runtime_projection["source_statuses"]
+            )
+        )
+        candidates.extend(
+            _issue_candidates_from_stale_workers(
+                worker_runtime_projection["workers"]
+            )
+        )
+        candidates.extend(
+            _issue_candidates_from_active_jobs_without_fresh_workers(
+                dashboard_snapshot["active_jobs"],
+                worker_runtime_projection["workers"],
+            )
+        )
     return candidates
 
 
@@ -2851,6 +2923,109 @@ def _issue_candidates_from_active_jobs(
     ]
 
 
+def _issue_candidates_from_worker_source_statuses(
+    source_statuses: Mapping[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for service_id, source_status in sorted(source_statuses.items()):
+        status = str(source_status["status"])
+        if status == "READY":
+            continue
+        rule_id = (
+            "operations_source_unavailable.v1"
+            if status == "UNAVAILABLE"
+            else "operations_source_not_configured.v1"
+        )
+        severity = "ERROR" if status == "UNAVAILABLE" else "WARNING"
+        candidates.append(
+            _operations_issue_candidate(
+                rule_id=rule_id,
+                service_id=service_id,
+                severity=severity,
+                title=(
+                    "Operations source unavailable"
+                    if status == "UNAVAILABLE"
+                    else "Operations source not configured"
+                ),
+                detail=f"workers source for {service_id} is {status}.",
+                signal={
+                    "source_type": "workers",
+                    "status": status,
+                    "detail": source_status.get("detail"),
+                    "error_code": source_status.get("error_code"),
+                },
+            )
+        )
+    return candidates
+
+
+def _issue_candidates_from_stale_workers(
+    workers: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    stale_workers_by_service: dict[str, list[str]] = {}
+    stale_after_by_service: dict[str, int] = {}
+    for worker in workers:
+        if worker.get("stale") is not True:
+            continue
+        service_id = str(worker["service_id"])
+        stale_workers_by_service.setdefault(service_id, []).append(str(worker["worker_id"]))
+        stale_after_by_service[service_id] = int(worker["stale_after_seconds"])
+    return [
+        _operations_issue_candidate(
+            rule_id="stale_worker_heartbeat.v1",
+            service_id=service_id,
+            severity="WARNING",
+            title="Stale worker heartbeat observed",
+            detail=f"{len(worker_ids)} stale worker heartbeat(s) observed for {service_id}.",
+            signal={
+                "count": len(worker_ids),
+                "threshold": stale_after_by_service[service_id],
+                "worker_ids": sorted(worker_ids),
+            },
+        )
+        for service_id, worker_ids in sorted(stale_workers_by_service.items())
+        if worker_ids
+    ]
+
+
+def _issue_candidates_from_active_jobs_without_fresh_workers(
+    active_jobs: list[dict[str, Any]],
+    workers: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    fresh_busy_jobs = {
+        (str(worker["service_id"]), str(worker["active_job_id"]))
+        for worker in workers
+        if worker.get("stale") is False
+        and worker.get("status") == "BUSY"
+        and worker.get("active_job_id") is not None
+    }
+    missing_by_service: dict[str, list[str]] = {}
+    for job in active_jobs:
+        if job.get("status") != "RUNNING":
+            continue
+        service_id = str(job["service_id"])
+        job_id = str(job["job_id"])
+        if (service_id, job_id) in fresh_busy_jobs:
+            continue
+        missing_by_service.setdefault(service_id, []).append(job_id)
+    return [
+        _operations_issue_candidate(
+            rule_id="active_job_without_fresh_worker.v1",
+            service_id=service_id,
+            severity="WARNING",
+            title="Active job missing fresh worker",
+            detail=f"{len(job_ids)} RUNNING job(s) lack a fresh BUSY worker heartbeat for {service_id}.",
+            signal={
+                "count": len(job_ids),
+                "threshold": 1,
+                "job_ids": sorted(job_ids),
+            },
+        )
+        for service_id, job_ids in sorted(missing_by_service.items())
+        if job_ids
+    ]
+
+
 def _operations_issue_candidate(
     *,
     rule_id: str,
@@ -2870,6 +3045,16 @@ def _operations_issue_candidate(
         "detail": detail,
         "signal": signal,
     }
+
+
+def _worker_reconciliation_enabled(
+    *,
+    registry: OperationsSourceRegistry | None,
+    worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None,
+) -> bool:
+    if registry is not None:
+        return bool(registry.worker_heartbeat_stores())
+    return worker_heartbeat_stores is not None
 
 
 def _operations_rollup_jobs_for_service(

@@ -191,6 +191,12 @@
         "$ref": "#/$defs/source_status"
       }
     },
+    "worker_source_statuses": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/source_status"
+      }
+    },
     "event_source_status": {
       "$ref": "#/$defs/source_status"
     },

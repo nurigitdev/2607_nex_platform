@@ -1558,6 +1558,8 @@ def test_build_operations_issue_candidate_projection_flags_service_scope() -> No
         "error_events_present.v1",
         "critical_events_present.v1",
         "active_jobs_review.v1",
+        "stale_worker_heartbeat.v1",
+        "active_job_without_fresh_worker.v1",
     ]
     assert [
         (candidate["rule_id"], candidate["service_id"], candidate["severity"])
@@ -1615,6 +1617,169 @@ def test_operations_issue_candidate_projection_flags_degraded_and_error_event_so
         for candidate in projection["issue_candidates"]
     ]
     assert len(candidate_ids) == len(set(candidate_ids))
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_issue_candidate_projection_flags_worker_reconciliation() -> None:
+    registry = build_operations_source_registry(
+        job_queues=build_job_queues(),
+        event_stores=build_event_stores(),
+        worker_heartbeat_stores=build_worker_heartbeat_stores(),
+    )
+
+    projection = build_operations_issue_candidate_projection(
+        registry=registry,
+        service_id="nex-cx",
+        recent_limit=2,
+        stale_after_seconds=60,
+        checked_at="2026-08-05T00:01:20Z",
+    )
+
+    assert projection["projection_status"] == "READY"
+    assert projection["filters"]["stale_after_seconds"] == 60
+    assert projection["worker_source_statuses"]["nex-cx"] == {
+        "status": "READY",
+        "worker_count": 2,
+    }
+    assert [
+        (candidate["rule_id"], candidate["severity"])
+        for candidate in projection["issue_candidates"]
+    ] == [
+        ("failed_jobs_present.v1", "ERROR"),
+        ("active_jobs_review.v1", "INFO"),
+        ("stale_worker_heartbeat.v1", "WARNING"),
+        ("active_job_without_fresh_worker.v1", "WARNING"),
+    ]
+    assert projection["summary"]["by_rule"] == {
+        "failed_jobs_present.v1": 1,
+        "active_jobs_review.v1": 1,
+        "stale_worker_heartbeat.v1": 1,
+        "active_job_without_fresh_worker.v1": 1,
+    }
+    stale_candidate = next(
+        candidate
+        for candidate in projection["issue_candidates"]
+        if candidate["rule_id"] == "stale_worker_heartbeat.v1"
+    )
+    missing_worker_candidate = next(
+        candidate
+        for candidate in projection["issue_candidates"]
+        if candidate["rule_id"] == "active_job_without_fresh_worker.v1"
+    )
+    assert stale_candidate["signal"]["worker_ids"] == ["cx-worker-001"]
+    assert missing_worker_candidate["signal"]["job_ids"] == ["job-cx-001"]
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_issue_candidate_projection_suppresses_worker_gap_when_worker_is_fresh() -> None:
+    fresh_store = InMemoryWorkerHeartbeatStore()
+    fresh_store.upsert_heartbeat(
+        build_worker_heartbeat(
+            service_id="nex-cx",
+            worker_id="cx-worker-fresh",
+            worker_type="cx.document_processing.worker",
+            status="BUSY",
+            active_job_id="job-cx-001",
+            trace_id=TRACE_ID,
+            started_at="2026-08-05T00:00:00Z",
+            last_seen_at="2026-08-05T00:01:10Z",
+            metadata={},
+        )
+    )
+
+    projection = build_operations_issue_candidate_projection(
+        registry=build_operations_source_registry(
+            job_queues=build_job_queues(),
+            worker_heartbeat_stores={"nex-cx": fresh_store},
+        ),
+        service_id="nex-cx",
+        stale_after_seconds=60,
+        checked_at="2026-08-05T00:01:20Z",
+    )
+
+    assert "active_job_without_fresh_worker.v1" not in projection["summary"]["by_rule"]
+    assert "stale_worker_heartbeat.v1" not in projection["summary"]["by_rule"]
+    assert projection["worker_source_statuses"]["nex-cx"]["status"] == "READY"
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_issue_candidate_projection_reconciles_workers_by_service() -> None:
+    cx_queue = InMemoryJobQueue()
+    cx_queue.enqueue(
+        sample_job(
+            job_id="shared-job-001",
+            idempotency_key="idem-cx-shared-001",
+        )
+    )
+    cx_queue.start_job("shared-job-001", updated_at="2026-08-05T00:00:03Z")
+    mo_queue = InMemoryJobQueue()
+    mo_queue.enqueue(
+        sample_job(
+            job_id="shared-job-001",
+            job_type="mo.provider_request",
+            subject_ref=build_subject_ref("mo.provider", "reranker"),
+            idempotency_key="idem-mo-shared-001",
+        )
+    )
+    mo_queue.start_job("shared-job-001", updated_at="2026-08-05T00:00:04Z")
+    cx_worker_store = InMemoryWorkerHeartbeatStore()
+    cx_worker_store.upsert_heartbeat(
+        build_worker_heartbeat(
+            service_id="nex-cx",
+            worker_id="cx-worker-shared-001",
+            worker_type="cx.document_processing.worker",
+            status="BUSY",
+            active_job_id="shared-job-001",
+            trace_id=TRACE_ID,
+            started_at="2026-08-05T00:00:00Z",
+            last_seen_at="2026-08-05T00:01:10Z",
+            metadata={},
+        )
+    )
+
+    projection = build_operations_issue_candidate_projection(
+        registry=build_operations_source_registry(
+            job_queues={"nex-cx": cx_queue, "nex-mo": mo_queue},
+            worker_heartbeat_stores={
+                "nex-cx": cx_worker_store,
+                "nex-mo": InMemoryWorkerHeartbeatStore(),
+            },
+        ),
+        stale_after_seconds=60,
+        checked_at="2026-08-05T00:01:20Z",
+    )
+
+    missing_worker_candidates = [
+        candidate
+        for candidate in projection["issue_candidates"]
+        if candidate["rule_id"] == "active_job_without_fresh_worker.v1"
+    ]
+    assert [
+        (candidate["service_id"], candidate["signal"]["job_ids"])
+        for candidate in missing_worker_candidates
+    ] == [("nex-mo", ["shared-job-001"])]
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_issue_candidate_projection_flags_worker_source_unavailable() -> None:
+    projection = build_operations_issue_candidate_projection(
+        job_queues={"nex-cx": build_job_queues()["nex-cx"]},
+        event_store=build_store(),
+        worker_heartbeat_stores={"nex-cx": BrokenWorkerHeartbeatStore()},
+        service_id="nex-cx",
+    )
+
+    assert projection["projection_status"] == "DEGRADED"
+    assert projection["worker_source_statuses"]["nex-cx"]["status"] == "UNAVAILABLE"
+    assert (
+        "operations_source_unavailable.v1",
+        "nex-cx",
+        "ERROR",
+    ) in {
+        (candidate["rule_id"], candidate["service_id"], candidate["severity"])
+        for candidate in projection["issue_candidates"]
+    }
+    assert projection["summary"]["by_rule"]["operations_source_unavailable.v1"] == 1
     assert_ag_operations_projection_contract(projection)
 
 

@@ -57,6 +57,22 @@
       "description": "One or more QUEUED or RUNNING jobs are active in the selected window.",
       "enabled": true,
       "signal_type": "job_status"
+    },
+    {
+      "rule_id": "stale_worker_heartbeat.v1",
+      "severity": "WARNING",
+      "title": "Stale worker heartbeat observed",
+      "description": "One or more worker heartbeats exceeded the configured stale threshold.",
+      "enabled": true,
+      "signal_type": "worker_heartbeat"
+    },
+    {
+      "rule_id": "active_job_without_fresh_worker.v1",
+      "severity": "WARNING",
+      "title": "Active job missing fresh worker",
+      "description": "One or more RUNNING jobs have no fresh BUSY worker heartbeat.",
+      "enabled": true,
+      "signal_type": "job_worker_reconciliation"
     }
   ],
   "issue_candidates": [
