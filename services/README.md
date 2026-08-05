@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0099 AG runtime DB-backed operations wiring.
+Status: Slice 0100 AG cross-service DB-backed observability smoke.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005

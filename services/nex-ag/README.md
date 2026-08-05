@@ -79,6 +79,9 @@ Job operations:
 - PostgreSQL operations sources are wrapped as read-only so AG can list jobs
   and events without enqueueing jobs or appending event rows into service-owned
   databases.
+- `NEX_AG_CROSS_SERVICE_OBSERVABILITY_SMOKE=1` runs a guarded test-profile
+  smoke that creates CX processing job/event rows and verifies AG can observe
+  them through `GET /admin/v1/operations`.
 
 Unified operations:
 

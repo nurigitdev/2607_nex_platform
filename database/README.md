@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0099 AG runtime DB-backed operations wiring.
+Status: Slice 0100 AG cross-service DB-backed observability smoke.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -143,6 +143,19 @@ It builds the same CX app in PostgreSQL persistence mode, runs the processing
 route, verifies durable `cx.processing.started` and `cx.processing.succeeded`
 rows in `service_operational_events`, checks deterministic event IDs and
 redaction-safe details, and deletes the smoke job/event rows afterwards.
+
+AG has a guarded cross-service observability smoke for the read-only operations
+source registry:
+
+```text
+NEX_AG_CROSS_SERVICE_OBSERVABILITY_SMOKE=1
+NEX_AG_CROSS_SERVICE_OBSERVABILITY_SMOKE_PROFILE=test
+```
+
+It writes a CX processing job and lifecycle events into the CX test database,
+builds AG with `NEX_AG_OPERATIONS_SOURCE_MODE=postgres`, verifies
+`GET /admin/v1/operations` can see the CX job and events through the DB-backed
+registry, and deletes the smoke rows afterwards.
 
 ## Runtime Connection Foundation
 
