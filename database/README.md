@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0094 CX processing lifecycle operational events.
+Status: Slice 0095 CX processing PostgreSQL OperationalEvent smoke.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -116,6 +116,18 @@ It builds a CX app with `NEX_CX_PERSISTENCE_MODE=postgres`, uploads a smoke
 document, runs the processing route, verifies the durable `service_jobs` row,
 and deletes the smoke row. This proves the runtime bootstrap is actually used
 by the route layer, not only by adapter-level tests.
+
+CX processing also has a route-level PostgreSQL OperationalEvent smoke:
+
+```text
+NEX_CX_PROCESSING_POSTGRES_EVENT_SMOKE=1
+NEX_CX_PROCESSING_POSTGRES_EVENT_SMOKE_PROFILE=test
+```
+
+It builds the same CX app in PostgreSQL persistence mode, runs the processing
+route, verifies durable `cx.processing.started` and `cx.processing.succeeded`
+rows in `service_operational_events`, checks deterministic event IDs and
+redaction-safe details, and deletes the smoke job/event rows afterwards.
 
 ## Runtime Connection Foundation
 

@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 import check_backend_service_endpoints as endpoint_smoke
 import check_db_readiness as db_smoke
+import run_cx_processing_postgres_event_smoke as cx_processing_event_smoke
 import run_cx_processing_postgres_jobqueue_smoke as cx_processing_smoke
 import run_postgres_jobqueue_smoke as jobqueue_smoke
 import run_postgres_operational_event_smoke as event_smoke
@@ -1004,6 +1005,283 @@ def test_cx_processing_postgres_jobqueue_smoke_main_prints_summary_and_full_evid
     assert '"status": "SKIPPED"' in capsys.readouterr().out
 
 
+def test_cx_processing_postgres_event_smoke_skips_by_default() -> None:
+    evidence = cx_processing_event_smoke.run_cx_processing_postgres_event_smoke(environ={})
+
+    assert evidence["status"] == "SKIPPED"
+    assert cx_processing_event_smoke.summary_line(evidence) == (
+        "cx_processing_postgres_event_smoke=skipped "
+        "reason=NEX_CX_PROCESSING_POSTGRES_EVENT_SMOKE"
+    )
+
+
+def test_cx_processing_postgres_event_smoke_rejects_non_test_profile() -> None:
+    evidence = cx_processing_event_smoke.run_cx_processing_postgres_event_smoke(
+        environ={
+            "NEX_CX_PROCESSING_POSTGRES_EVENT_SMOKE": "1",
+            "NEX_CX_PROCESSING_POSTGRES_EVENT_SMOKE_PROFILE": "dev",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "profile_not_allowed"
+
+
+def test_cx_processing_postgres_event_smoke_reports_pass_without_leaking_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration_calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        cx_processing_event_smoke,
+        "service_database_env",
+        lambda service_id, profile: f"{service_id}:{profile}:env",
+    )
+    monkeypatch.setattr(
+        cx_processing_event_smoke,
+        "service_database_url",
+        lambda service_id, profile, environ: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        cx_processing_event_smoke,
+        "run_service_migrations",
+        lambda service_id, database_url, profile: migration_calls.append((service_id, profile)),
+    )
+    monkeypatch.setattr(
+        cx_processing_event_smoke,
+        "_execute_processing_event_route_smoke",
+        lambda database_url, runtime_environ: {
+            "pipeline_run_id": "pipeline-001",
+            "document_id": "doc-001",
+            "job_id": "job-001",
+            "event_ids": ["event-started", "event-succeeded"],
+            "checks": {
+                "route_succeeded": True,
+                "runtime_mode": True,
+                "started_event_persisted": True,
+                "succeeded_event_persisted": True,
+                "failed_event_absent": True,
+                "redaction_safe": True,
+            },
+        },
+    )
+
+    evidence = cx_processing_event_smoke.run_cx_processing_postgres_event_smoke(
+        environ={"NEX_CX_PROCESSING_POSTGRES_EVENT_SMOKE": "1"}
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["database_env"] == "nex-cx:test:env"
+    assert evidence["checks"]["succeeded_event_persisted"] is True
+    assert evidence["redacted_database_url"] == "postgresql://user:***@localhost/db"
+    assert "secret" not in str(evidence)
+    assert migration_calls == [("nex-cx", "test")]
+    assert cx_processing_event_smoke.summary_line(evidence) == (
+        "cx_processing_postgres_event_smoke=pass service=nex-cx db_env=nex-cx:test:env"
+    )
+
+
+def test_cx_processing_postgres_event_smoke_reports_config_and_execution_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_migration_error(*args: object, **kwargs: object) -> None:
+        raise cx_processing_event_smoke.MigrationError("missing database URL env")
+
+    monkeypatch.setattr(cx_processing_event_smoke, "service_database_url", raise_migration_error)
+    config_failure = cx_processing_event_smoke.run_cx_processing_postgres_event_smoke(
+        environ={"NEX_CX_PROCESSING_POSTGRES_EVENT_SMOKE": "1"}
+    )
+
+    assert config_failure["status"] == "FAIL"
+    assert config_failure["failure_code"] == "configuration_invalid"
+
+    monkeypatch.setattr(
+        cx_processing_event_smoke,
+        "service_database_url",
+        lambda *args, **kwargs: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        cx_processing_event_smoke,
+        "run_service_migrations",
+        lambda *args, **kwargs: None,
+    )
+
+    def raise_runtime_error(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        cx_processing_event_smoke,
+        "_execute_processing_event_route_smoke",
+        raise_runtime_error,
+    )
+    execution_failure = cx_processing_event_smoke.run_cx_processing_postgres_event_smoke(
+        environ={"NEX_CX_PROCESSING_POSTGRES_EVENT_SMOKE": "1"}
+    )
+
+    assert execution_failure["status"] == "FAIL"
+    assert execution_failure["failure_code"] == "execution_failed"
+    assert cx_processing_event_smoke.summary_line(execution_failure) == (
+        "cx_processing_postgres_event_smoke=fail service=nex-cx reason=execution_failed"
+    )
+
+
+def test_cx_processing_postgres_event_smoke_execute_route_with_sqlite_fixture(
+    tmp_path,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'cx-processing-event-smoke.sqlite'}"
+    engine = cx_processing_event_smoke.build_engine(database_url)
+    _create_sqlite_service_jobs_table(engine)
+    _create_sqlite_service_operational_events_table(engine)
+
+    evidence = cx_processing_event_smoke._execute_processing_event_route_smoke(
+        database_url=database_url,
+        runtime_environ={
+            "NEX_CX_DATABASE_URL": database_url,
+            "NEX_CX_PERSISTENCE_MODE": "postgres",
+        },
+    )
+
+    assert evidence["checks"] == {
+        "route_succeeded": True,
+        "runtime_mode": True,
+        "started_event_persisted": True,
+        "succeeded_event_persisted": True,
+        "failed_event_absent": True,
+        "started_event_id": True,
+        "succeeded_event_id": True,
+        "started_severity": True,
+        "succeeded_severity": True,
+        "started_subject": True,
+        "succeeded_subject": True,
+        "started_details": True,
+        "succeeded_details": True,
+        "redaction_safe": True,
+    }
+    assert len(evidence["event_ids"]) == 2
+    with engine.begin() as connection:
+        remaining_jobs = connection.execute(text("SELECT count(*) FROM service_jobs")).scalar_one()
+        remaining_events = connection.execute(
+            text("SELECT count(*) FROM service_operational_events")
+        ).scalar_one()
+    assert remaining_jobs == 0
+    assert remaining_events == 0
+
+
+def test_cx_processing_postgres_event_smoke_helpers_cover_event_edges(tmp_path) -> None:
+    pipeline_run = {
+        "pipeline_run_id": "pipeline-001",
+        "job": {"job_id": "job-001"},
+        "step_summary": {"total": 6, "succeeded": 6, "skipped": 0, "failed": 0},
+    }
+    started_event = {
+        "event_id": cx_processing_event_smoke.processing_event_id(
+            pipeline_run_id="pipeline-001",
+            event_type=cx_processing_event_smoke.PROCESSING_EVENT_STARTED,
+        ),
+        "event_type": cx_processing_event_smoke.PROCESSING_EVENT_STARTED,
+        "severity": "INFO",
+        "subject_type": "cx.document",
+        "subject_id": "doc-001",
+        "details": {
+            "pipeline_run_id": "pipeline-001",
+            "job_id": "job-001",
+            "job_status": "RUNNING",
+        },
+    }
+    succeeded_event = {
+        "event_id": cx_processing_event_smoke.processing_event_id(
+            pipeline_run_id="pipeline-001",
+            event_type=cx_processing_event_smoke.PROCESSING_EVENT_SUCCEEDED,
+        ),
+        "event_type": cx_processing_event_smoke.PROCESSING_EVENT_SUCCEEDED,
+        "severity": "INFO",
+        "subject_type": "cx.document",
+        "subject_id": "doc-001",
+        "details": {
+            "pipeline_run_id": "pipeline-001",
+            "job_id": "job-001",
+            "job_status": "SUCCEEDED",
+            "step_summary": pipeline_run["step_summary"],
+        },
+    }
+
+    checks = cx_processing_event_smoke._processing_event_checks(
+        stored_events=[started_event, succeeded_event],
+        pipeline_run=pipeline_run,
+        document_id="doc-001",
+    )
+    missing_checks = cx_processing_event_smoke._processing_event_checks(
+        stored_events=[],
+        pipeline_run=pipeline_run,
+        document_id="doc-001",
+    )
+
+    assert all(checks.values())
+    assert missing_checks["started_event_persisted"] is False
+    assert missing_checks["failed_event_absent"] is True
+    assert cx_processing_event_smoke._event_value(None, "event_id") is None
+    assert cx_processing_event_smoke._event_details(None) == {}
+    assert cx_processing_event_smoke._event_details({"details": []}) == {}
+    assert cx_processing_event_smoke._subject_matches(None, document_id="doc-001") is False
+    assert cx_processing_event_smoke._json_loads(None, default={"fallback": True}) == {
+        "fallback": True
+    }
+    assert cx_processing_event_smoke._json_loads({"already": "dict"}, default={}) == {
+        "already": "dict"
+    }
+    assert cx_processing_event_smoke._json_loads(b'{"from":"bytes"}', default={}) == {
+        "from": "bytes"
+    }
+    assert cx_processing_event_smoke._json_loads(123, default={"fallback": True}) == {
+        "fallback": True
+    }
+    assert (
+        cx_processing_event_smoke._events_are_redaction_safe(
+            [{"details": {"source_text": "hidden"}}]
+        )
+        is False
+    )
+
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'cx-processing-event-helper.sqlite'}"
+    engine = cx_processing_event_smoke.build_engine(database_url)
+    _create_sqlite_service_operational_events_table(engine)
+    assert (
+        cx_processing_event_smoke._read_stored_processing_events(
+            engine,
+            trace_id="missing",
+            request_id="missing",
+        )
+        == []
+    )
+    cx_processing_event_smoke._delete_smoke_processing_events(
+        engine,
+        trace_id="missing",
+        request_id="missing",
+    )
+
+
+def test_cx_processing_postgres_event_smoke_main_prints_summary_and_full_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cx_processing_event_smoke, "load_env_file", lambda path: None)
+    monkeypatch.setattr(
+        cx_processing_event_smoke,
+        "run_cx_processing_postgres_event_smoke",
+        lambda: {
+            "smoke_schema_version": "cx_processing_postgres_event_smoke.v1",
+            "status": "SKIPPED",
+            "skip_reason": "NEX_CX_PROCESSING_POSTGRES_EVENT_SMOKE is not enabled.",
+        },
+    )
+
+    assert cx_processing_event_smoke.main(["--summary"]) == 0
+    assert "cx_processing_postgres_event_smoke=skipped" in capsys.readouterr().out
+
+    assert cx_processing_event_smoke.main([]) == 0
+    assert '"status": "SKIPPED"' in capsys.readouterr().out
+
+
 def _create_sqlite_service_jobs_table(engine: object) -> None:
     with engine.begin() as connection:
         connection.execute(
@@ -1033,6 +1311,30 @@ def _create_sqlite_service_jobs_table(engine: object) -> None:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     UNIQUE (job_type, idempotency_key)
+                )
+                """
+            )
+        )
+
+
+def _create_sqlite_service_operational_events_table(engine: object) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE service_operational_events (
+                    event_id TEXT PRIMARY KEY,
+                    event_schema_version TEXT NOT NULL DEFAULT 'operational_event.v1',
+                    service_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    severity TEXT NOT NULL,
+                    trace_id TEXT,
+                    request_id TEXT,
+                    subject_type TEXT,
+                    subject_id TEXT,
+                    message TEXT NOT NULL,
+                    details TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL
                 )
                 """
             )

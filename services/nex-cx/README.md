@@ -134,3 +134,7 @@ Grounded generation validation:
 - Protected live RAG smoke evidence is available through
   `scripts/smoke/run_protected_live_rag_smoke.py`. It is skipped by default and
   only calls live providers when `NEX_PROTECTED_LIVE_RAG_SMOKE=1` is set.
+- CX processing PostgreSQL operational event evidence is available through
+  `scripts/smoke/run_cx_processing_postgres_event_smoke.py`. It is skipped by
+  default and only writes to the CX test database when
+  `NEX_CX_PROCESSING_POSTGRES_EVENT_SMOKE=1` is set with the `test` profile.

@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0094 CX processing lifecycle operational events.
+Status: Slice 0095 CX processing PostgreSQL OperationalEvent smoke.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
