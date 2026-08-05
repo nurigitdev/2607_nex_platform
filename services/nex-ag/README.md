@@ -14,6 +14,7 @@ Current endpoints:
 - `GET /admin/v1/readiness/providers`
 - `GET /admin/v1/generation-audit/generations/{cx_generation_id}`
 - `GET /admin/v1/operations/events`
+- `GET /admin/v1/operations/jobs`
 - `GET /admin/v1/policies/retrieval`
 - `GET /admin/v1/policies/retrieval/active`
 - `GET /admin/v1/policies/retrieval/{policy_id}`
@@ -57,3 +58,13 @@ Operational events:
   `operational_event.v1` shape.
 - Filters include service id, severity, event type, trace id, and limit.
 - Event details are redacted by the shared runtime before AG projection.
+
+Job operations:
+
+- AG exposes a read-only job operations projection over the shared
+  `common_job.v1` shape.
+- Filters include service id, status, job type, and limit.
+- The projection summarizes active/terminal jobs, status counts, service
+  counts, job-type counts, and per-service source availability.
+- Default runtime registration is mock-first. DB-backed per-service queues can
+  be injected later without changing the AG endpoint shape.

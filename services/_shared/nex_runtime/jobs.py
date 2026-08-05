@@ -11,6 +11,8 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 COMMON_JOB_SCHEMA_VERSION = "common_job.v1"
+DEFAULT_JOB_LIMIT = 50
+MAX_JOB_LIMIT = 500
 
 QUEUED = "QUEUED"
 RUNNING = "RUNNING"
@@ -253,6 +255,14 @@ def summarize_jobs(jobs: list[dict[str, Any]]) -> dict[str, Any]:
         "terminal": counts[SUCCEEDED] + counts[FAILED] + counts[CANCELLED],
         "statuses": counts,
     }
+
+
+def normalize_job_limit(limit: int) -> int:
+    if limit < 1:
+        return 1
+    if limit > MAX_JOB_LIMIT:
+        return MAX_JOB_LIMIT
+    return limit
 
 
 @dataclass

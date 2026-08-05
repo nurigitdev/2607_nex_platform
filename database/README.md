@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0088 persistent SQLAlchemy OperationalEventStore foundation.
+Status: Slice 0089 AG JobQueue operations projection foundation.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -152,6 +152,13 @@ NEX_DB_JOBQUEUE_SMOKE_PROFILE=test
 The smoke is intentionally limited to the test profile. It applies service
 migrations, enqueues a short smoke job, validates idempotency, claims it,
 completes it, and removes the smoke row.
+
+AG exposes a read-only job operations projection at
+`GET /admin/v1/operations/jobs`. It aggregates injected per-service `JobQueue`
+ports, applies service/status/job-type/limit filters, summarizes active and
+terminal work, and reports per-service source availability. The default AG
+runtime registration remains mock-first; DB-backed queue injection is deferred
+until service runtime bootstrap wiring is introduced.
 
 ## Operational Event Foundation
 
