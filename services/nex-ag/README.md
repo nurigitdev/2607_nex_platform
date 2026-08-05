@@ -14,6 +14,7 @@ Current endpoints:
 - `GET /admin/v1/readiness/providers`
 - `GET /admin/v1/generation-audit/generations/{cx_generation_id}`
 - `GET /admin/v1/operations`
+- `GET /admin/v1/operations/rollups`
 - `GET /admin/v1/operations/event-taxonomy`
 - `GET /admin/v1/operations/events`
 - `GET /admin/v1/operations/events/{event_id}`
@@ -109,6 +110,9 @@ Unified operations:
 - `GET /admin/v1/operations/traces/{trace_id}` returns
   `ag_cross_service_trace_timeline_projection.v1`, mixing matching jobs and
   events into one timestamped cross-service timeline.
+- `GET /admin/v1/operations/rollups` returns
+  `ag_operations_rollup_metrics_projection.v1`, aggregating per-service job
+  and event totals plus source status counts for operator dashboards.
 - Operations query pagination uses a non-negative integer `cursor` offset,
   returns `pagination.next_cursor` when more rows exist, and caps limit at the
   shared 500-row operations ceiling.

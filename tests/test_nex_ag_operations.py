@@ -27,6 +27,7 @@ from nex_ag.operations import (
     build_job_operations_projection,
     build_operation_query_options,
     build_operation_source_readiness_projection,
+    build_operations_rollup_metrics_projection,
     build_operations_source_registry,
     build_operational_event_detail_projection,
     build_operational_event_taxonomy_projection,
@@ -46,6 +47,7 @@ from nex_ag.operations import (
     select_ag_operations_source_service_ids,
     summarize_operation_source_readiness,
     summarize_job_operations,
+    summarize_operations_rollup_metrics,
     summarize_trace_timeline_items,
     _filter_records_by_operation_time,
     _operation_record_timestamp,
@@ -926,6 +928,226 @@ def test_unified_operations_route_requires_auth_and_returns_projection() -> None
     assert payload["events"]["events"][0]["event_id"] == "event-cx-001"
 
 
+def test_build_operations_rollup_metrics_projection_summarizes_sources() -> None:
+    registry = build_operations_source_registry(
+        job_queues=build_job_queues(),
+        event_stores=build_event_stores(),
+    )
+
+    projection = build_operations_rollup_metrics_projection(
+        registry=registry,
+        service_id="nex-cx",
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == (
+        "ag_operations_rollup_metrics_projection.v1"
+    )
+    assert projection["projection_status"] == "READY"
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["filters"] == {
+        "service_id": "nex-cx",
+        "since": None,
+        "until": None,
+    }
+    assert projection["rollups"] == [
+        {
+            "service_id": "nex-cx",
+            "jobs": {
+                "total": 2,
+                "active": 1,
+                "terminal": 1,
+                "statuses": {
+                    "QUEUED": 0,
+                    "RUNNING": 1,
+                    "SUCCEEDED": 0,
+                    "FAILED": 1,
+                    "CANCELLED": 0,
+                },
+                "by_job_type": {"cx.document_processing": 2},
+            },
+            "events": {
+                "total": 1,
+                "by_severity": {
+                    "DEBUG": 0,
+                    "INFO": 1,
+                    "WARNING": 0,
+                    "ERROR": 0,
+                    "CRITICAL": 0,
+                },
+                "by_event_type": {"cx.processing.succeeded": 1},
+            },
+            "source_status": {
+                "jobs": "READY",
+                "events": "READY",
+            },
+        }
+    ]
+    assert projection["summary"]["jobs"]["total"] == 2
+    assert projection["summary"]["events"]["total"] == 1
+    assert projection["summary"]["source_statuses"] == {
+        "jobs": {"READY": 1},
+        "events": {"READY": 1},
+    }
+    assert projection["job_source_statuses"]["nex-cx"] == {
+        "status": "READY",
+        "job_count": 2,
+    }
+    assert projection["event_source_statuses"]["nex-cx"] == {
+        "status": "READY",
+        "event_count": 1,
+    }
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_rollup_metrics_projection_applies_time_window() -> None:
+    projection = build_operations_rollup_metrics_projection(
+        registry=build_operations_source_registry(
+            job_queues=build_job_queues(),
+            event_stores=build_event_stores(),
+        ),
+        service_id="nex-cx",
+        query_options=build_operation_query_options(
+            limit=500,
+            since="2026-08-05T00:00:04Z",
+        ),
+    )
+
+    assert projection["filters"]["since"] == "2026-08-05T00:00:04Z"
+    assert projection["rollups"][0]["jobs"]["total"] == 1
+    assert projection["rollups"][0]["jobs"]["statuses"][FAILED] == 1
+    assert projection["rollups"][0]["events"]["total"] == 0
+    assert projection["summary"]["jobs"]["by_service"] == {"nex-cx": 1}
+    assert projection["summary"]["events"]["by_service"] == {"nex-cx": 0}
+
+
+def test_operations_rollup_metrics_projection_reports_degraded_sources() -> None:
+    not_configured = build_operations_rollup_metrics_projection(
+        registry=build_operations_source_registry(event_stores=build_event_stores()),
+        service_id="nex-mo",
+    )
+    missing_events = build_operations_rollup_metrics_projection(
+        registry=build_operations_source_registry(job_queues=build_job_queues()),
+        service_id="nex-ae-api",
+    )
+    unavailable = build_operations_rollup_metrics_projection(
+        job_queues={"nex-cx": BrokenJobQueue()},
+        event_store=BrokenOperationalEventStore(),
+        service_id="nex-cx",
+    )
+
+    assert not_configured["projection_status"] == "DEGRADED"
+    assert not_configured["job_source_statuses"]["nex-mo"] == {
+        "status": "NOT_CONFIGURED",
+        "job_count": 0,
+    }
+    assert not_configured["event_source_statuses"]["nex-mo"]["status"] == "READY"
+    assert missing_events["projection_status"] == "DEGRADED"
+    assert missing_events["job_source_statuses"]["nex-ae-api"]["status"] == "READY"
+    assert missing_events["event_source_statuses"]["nex-ae-api"] == {
+        "status": "NOT_CONFIGURED",
+        "event_count": 0,
+    }
+    assert unavailable["projection_status"] == "DEGRADED"
+    assert unavailable["rollups"][0]["jobs"]["total"] == 0
+    assert unavailable["rollups"][0]["events"]["total"] == 0
+    assert unavailable["job_source_statuses"]["nex-cx"]["status"] == "UNAVAILABLE"
+    assert unavailable["event_source_statuses"]["nex-cx"]["status"] == "UNAVAILABLE"
+    assert unavailable["summary"]["source_statuses"] == {
+        "jobs": {"UNAVAILABLE": 1},
+        "events": {"UNAVAILABLE": 1},
+    }
+    assert_ag_operations_projection_contract(unavailable)
+
+
+def test_summarize_operations_rollup_metrics_counts_empty() -> None:
+    assert summarize_operations_rollup_metrics([]) == {
+        "service_count": 0,
+        "jobs": {
+            "total": 0,
+            "active": 0,
+            "terminal": 0,
+            "statuses": {
+                "QUEUED": 0,
+                "RUNNING": 0,
+                "SUCCEEDED": 0,
+                "FAILED": 0,
+                "CANCELLED": 0,
+            },
+            "by_service": {},
+        },
+        "events": {
+            "total": 0,
+            "by_severity": {
+                "DEBUG": 0,
+                "INFO": 0,
+                "WARNING": 0,
+                "ERROR": 0,
+                "CRITICAL": 0,
+            },
+            "by_service": {},
+        },
+        "source_statuses": {
+            "jobs": {},
+            "events": {},
+        },
+    }
+
+
+def test_operations_rollup_metrics_route_requires_auth_returns_projection() -> None:
+    registry = build_operations_source_registry(
+        job_queues=build_job_queues(),
+        event_stores=build_event_stores(),
+    )
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_unified_operation_routes(app, registry=registry)
+    client = TestClient(app)
+
+    missing_auth = client.get("/admin/v1/operations/rollups")
+    response = client.get(
+        "/admin/v1/operations/rollups",
+        params={"service_id": "nex-cx"},
+        headers={
+            **auth_headers(),
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        },
+    )
+
+    assert missing_auth.status_code == 401
+    assert missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["request_trace_id"] == TRACE_ID
+    assert payload["projection_status"] == "READY"
+    assert payload["rollups"][0]["service_id"] == "nex-cx"
+    assert payload["summary"]["jobs"]["total"] == 2
+
+
+def test_operations_rollup_metrics_route_rejects_bad_filters() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_unified_operation_routes(app)
+    client = TestClient(app)
+
+    bad_service = client.get(
+        "/admin/v1/operations/rollups",
+        params={"service_id": "nex-unknown"},
+        headers=auth_headers(),
+    )
+    bad_window = client.get(
+        "/admin/v1/operations/rollups",
+        params={
+            "since": "2026-08-05T00:00:02Z",
+            "until": "2026-08-05T00:00:01Z",
+        },
+        headers=auth_headers(),
+    )
+
+    assert bad_service.status_code == 400
+    assert bad_service.json()["error_code"] == "ag.job_service_invalid"
+    assert bad_window.status_code == 400
+    assert bad_window.json()["error_code"] == "ag.operation_time_window_invalid"
+
+
 def test_unified_operations_route_rejects_bad_filters() -> None:
     app = build_service_app(SERVICE_SPECS["nex-ag"])
     register_unified_operation_routes(app)
@@ -1192,6 +1414,11 @@ def test_ag_operations_contract_schema_accepts_runtime_projection_family() -> No
             job_status=RUNNING,
             event_severity="INFO",
             trace_id=TRACE_ID,
+            request_trace_id=TRACE_ID,
+        ),
+        build_operations_rollup_metrics_projection(
+            registry=registry,
+            service_id="nex-cx",
             request_trace_id=TRACE_ID,
         ),
         build_cross_service_trace_timeline_projection(

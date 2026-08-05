@@ -960,6 +960,45 @@ def register_unified_operation_routes(
             request_trace_id=trace_id_from_headers(request),
         )
 
+    @app.get("/admin/v1/operations/rollups", response_model=None)
+    def get_operations_rollup_metrics(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        filter_problem = _validate_job_operation_filters(
+            request,
+            service_id=service_id,
+            status=None,
+        )
+        if filter_problem is not None:
+            return filter_problem
+        query_options = _build_query_options_or_problem(
+            request,
+            limit=500,
+            since=since,
+            until=until,
+            sort=None,
+            cursor=None,
+        )
+        if isinstance(query_options, JSONResponse):
+            return query_options
+
+        return build_operations_rollup_metrics_projection(
+            job_queues=job_queues,
+            event_store=event_store,
+            registry=registry,
+            service_id=service_id,
+            query_options=query_options,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
     @app.get("/admin/v1/operations/traces/{trace_id}", response_model=None)
     def get_cross_service_trace_timeline(
         trace_id: str,
@@ -1240,6 +1279,94 @@ def build_unified_operations_projection(
     return projection
 
 
+def build_operations_rollup_metrics_projection(
+    *,
+    job_queues: Mapping[str, JobQueue] | None = None,
+    event_store: OperationalEventStore | None = None,
+    registry: OperationsSourceRegistry | None = None,
+    service_id: str | None = None,
+    limit: int = 500,
+    query_options: OperationQueryOptions | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    options = query_options or build_operation_query_options(limit=limit)
+    queue_stores = (
+        registry.job_queues()
+        if registry is not None
+        else job_queues or DEFAULT_JOB_QUEUE_STORES
+    )
+    selected_event_store = (
+        RegistryOperationalEventStore(registry)
+        if registry is not None
+        else event_store or DEFAULT_OPERATIONAL_EVENT_STORE
+    )
+    configured_event_service_ids = (
+        set(registry.event_stores())
+        if registry is not None
+        else None
+    )
+    selected_service_ids = (
+        [service_id] if service_id is not None else sorted(SERVICE_SPECS)
+    )
+
+    rollups: list[dict[str, Any]] = []
+    job_source_statuses: dict[str, dict[str, Any]] = {}
+    event_source_statuses: dict[str, dict[str, Any]] = {}
+    for selected_service_id in selected_service_ids:
+        jobs, job_source_status = _operations_rollup_jobs_for_service(
+            queue_stores,
+            service_id=selected_service_id,
+            options=options,
+        )
+        events, event_source_status = _operations_rollup_events_for_service(
+            selected_event_store,
+            service_id=selected_service_id,
+            options=options,
+            configured_service_ids=configured_event_service_ids,
+        )
+        job_source_statuses[selected_service_id] = job_source_status
+        event_source_statuses[selected_service_id] = event_source_status
+        rollups.append(
+            {
+                "service_id": selected_service_id,
+                "jobs": jobs,
+                "events": events,
+                "source_status": {
+                    "jobs": job_source_status["status"],
+                    "events": event_source_status["status"],
+                },
+            }
+        )
+
+    projection_status = (
+        "DEGRADED"
+        if any(
+            source["status"] != "READY"
+            for source in [*job_source_statuses.values(), *event_source_statuses.values()]
+        )
+        else "READY"
+    )
+    projection = {
+        "projection_schema_version": "ag_operations_rollup_metrics_projection.v1",
+        "projection_status": projection_status,
+        "checked_at": _utc_now(),
+        "filters": {
+            "service_id": service_id,
+            "since": options.since,
+            "until": options.until,
+        },
+        "rollups": rollups,
+        "summary": summarize_operations_rollup_metrics(rollups),
+        "job_source_statuses": job_source_statuses,
+        "event_source_statuses": event_source_statuses,
+    }
+    if registry is not None:
+        projection["source_registry"] = registry.to_summary()
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
 def build_cross_service_trace_timeline_projection(
     *,
     trace_id: str,
@@ -1456,6 +1583,59 @@ def summarize_trace_timeline_items(
         "total": len(timeline_items),
         "by_item_type": by_item_type,
         "by_service": by_service,
+    }
+
+
+def summarize_operations_rollup_metrics(
+    rollups: list[dict[str, Any]],
+) -> dict[str, Any]:
+    job_statuses = {status: 0 for status in JOB_STATUSES}
+    event_severities = {severity: 0 for severity in OPERATIONAL_EVENT_SEVERITIES}
+    jobs_by_service: dict[str, int] = {}
+    events_by_service: dict[str, int] = {}
+    source_statuses = {
+        "jobs": {},
+        "events": {},
+    }
+    total_jobs = 0
+    active_jobs = 0
+    terminal_jobs = 0
+    total_events = 0
+    for rollup in rollups:
+        service_id = str(rollup["service_id"])
+        jobs = rollup["jobs"]
+        events = rollup["events"]
+        total_jobs += int(jobs["total"])
+        active_jobs += int(jobs["active"])
+        terminal_jobs += int(jobs["terminal"])
+        total_events += int(events["total"])
+        jobs_by_service[service_id] = int(jobs["total"])
+        events_by_service[service_id] = int(events["total"])
+        for status, count in jobs["statuses"].items():
+            if status in job_statuses:
+                job_statuses[status] += int(count)
+        for severity, count in events["by_severity"].items():
+            if severity in event_severities:
+                event_severities[severity] += int(count)
+        for source_kind in ("jobs", "events"):
+            source_status = str(rollup["source_status"][source_kind])
+            source_counts = source_statuses[source_kind]
+            source_counts[source_status] = source_counts.get(source_status, 0) + 1
+    return {
+        "service_count": len(rollups),
+        "jobs": {
+            "total": total_jobs,
+            "active": active_jobs,
+            "terminal": terminal_jobs,
+            "statuses": job_statuses,
+            "by_service": jobs_by_service,
+        },
+        "events": {
+            "total": total_events,
+            "by_severity": event_severities,
+            "by_service": events_by_service,
+        },
+        "source_statuses": source_statuses,
     }
 
 
@@ -1834,6 +2014,77 @@ def _trace_job_timeline_items(
     return timeline_items, source_statuses
 
 
+def _operations_rollup_jobs_for_service(
+    job_queues: Mapping[str, JobQueue],
+    *,
+    service_id: str,
+    options: OperationQueryOptions,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    queue = job_queues.get(service_id)
+    if queue is None:
+        return _empty_job_rollup(), {
+            "status": "NOT_CONFIGURED",
+            "job_count": 0,
+        }
+    try:
+        jobs = queue.list_jobs()
+    except JobQueueError as exc:
+        return _empty_job_rollup(), {
+            "status": "UNAVAILABLE",
+            "job_count": 0,
+            "error_code": exc.error_code,
+            "detail": exc.detail,
+        }
+    jobs = _filter_records_by_operation_time(
+        jobs,
+        options,
+        timestamp_field="updated_at",
+    )
+    projected_jobs = [
+        _project_job_for_service(service_id, job)
+        for job in jobs
+    ]
+    return _rollup_jobs(projected_jobs), {
+        "status": "READY",
+        "job_count": len(projected_jobs),
+    }
+
+
+def _operations_rollup_events_for_service(
+    event_store: OperationalEventStore,
+    *,
+    service_id: str,
+    options: OperationQueryOptions,
+    configured_service_ids: set[str] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if configured_service_ids is not None and service_id not in configured_service_ids:
+        return _empty_event_rollup(), {
+            "status": "NOT_CONFIGURED",
+            "event_count": 0,
+        }
+    try:
+        events = event_store.list_events(
+            service_id=service_id,
+            limit=normalize_operational_event_limit(500),
+        )
+    except OperationalEventError as exc:
+        return _empty_event_rollup(), {
+            "status": "UNAVAILABLE",
+            "event_count": 0,
+            "error_code": exc.error_code,
+            "detail": exc.detail,
+        }
+    events = _filter_records_by_operation_time(
+        events,
+        options,
+        timestamp_field="created_at",
+    )
+    return _rollup_events(events), {
+        "status": "READY",
+        "event_count": len(events),
+    }
+
+
 def _trace_event_timeline_items(
     event_store: OperationalEventStore,
     *,
@@ -1887,6 +2138,38 @@ def _event_trace_timeline_item(event: dict[str, Any]) -> dict[str, Any]:
 
 def _job_operation_timestamp(job: dict[str, Any]) -> str:
     return str(job.get("updated_at") or job["created_at"])
+
+
+def _rollup_jobs(jobs: list[dict[str, Any]]) -> dict[str, Any]:
+    summary = summarize_job_operations(jobs)
+    return {
+        "total": summary["total"],
+        "active": summary["active"],
+        "terminal": summary["terminal"],
+        "statuses": summary["statuses"],
+        "by_job_type": summary["by_job_type"],
+    }
+
+
+def _rollup_events(events: list[dict[str, Any]]) -> dict[str, Any]:
+    summary = summarize_operational_events(events)
+    by_event_type: dict[str, int] = {}
+    for event in events:
+        event_type = str(event.get("event_type", "unknown"))
+        by_event_type[event_type] = by_event_type.get(event_type, 0) + 1
+    return {
+        "total": summary["total"],
+        "by_severity": summary["by_severity"],
+        "by_event_type": by_event_type,
+    }
+
+
+def _empty_job_rollup() -> dict[str, Any]:
+    return _rollup_jobs([])
+
+
+def _empty_event_rollup() -> dict[str, Any]:
+    return _rollup_events([])
 
 
 def _build_job_lifecycle_timeline(

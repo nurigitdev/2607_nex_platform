@@ -19,6 +19,7 @@
         "ag_job_operations_projection.v1",
         "ag_job_operation_detail_projection.v1",
         "ag_unified_operations_projection.v1",
+        "ag_operations_rollup_metrics_projection.v1",
         "ag_cross_service_trace_timeline_projection.v1"
       ]
     },
@@ -99,6 +100,12 @@
         "$ref": "#/$defs/timeline_item"
       }
     },
+    "rollups": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/operations_rollup"
+      }
+    },
     "summary": {
       "type": "object",
       "additionalProperties": true
@@ -123,6 +130,12 @@
       }
     },
     "job_source_statuses": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/source_status"
+      }
+    },
+    "event_source_statuses": {
       "type": "object",
       "additionalProperties": {
         "$ref": "#/$defs/source_status"
@@ -264,6 +277,25 @@
       "if": {
         "properties": {
           "projection_schema_version": {
+            "const": "ag_operations_rollup_metrics_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "filters",
+          "rollups",
+          "summary",
+          "job_source_statuses",
+          "event_source_statuses"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
             "const": "ag_cross_service_trace_timeline_projection.v1"
           }
         }
@@ -380,6 +412,173 @@
         },
         "detail": {
           "type": "string"
+        }
+      }
+    },
+    "operations_rollup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service_id",
+        "jobs",
+        "events",
+        "source_status"
+      ],
+      "properties": {
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        },
+        "jobs": {
+          "$ref": "#/$defs/job_rollup_metrics"
+        },
+        "events": {
+          "$ref": "#/$defs/event_rollup_metrics"
+        },
+        "source_status": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "jobs",
+            "events"
+          ],
+          "properties": {
+            "jobs": {
+              "type": "string",
+              "enum": [
+                "READY",
+                "NOT_CONFIGURED",
+                "UNAVAILABLE"
+              ]
+            },
+            "events": {
+              "type": "string",
+              "enum": [
+                "READY",
+                "NOT_CONFIGURED",
+                "UNAVAILABLE"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "job_rollup_metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "active",
+        "terminal",
+        "statuses",
+        "by_job_type"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "active": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "terminal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "statuses": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "QUEUED",
+            "RUNNING",
+            "SUCCEEDED",
+            "FAILED",
+            "CANCELLED"
+          ],
+          "properties": {
+            "QUEUED": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "RUNNING": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "SUCCEEDED": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "FAILED": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "CANCELLED": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "by_job_type": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "event_rollup_metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "by_severity",
+        "by_event_type"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_severity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ],
+          "properties": {
+            "DEBUG": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "INFO": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "WARNING": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "ERROR": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "CRITICAL": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "by_event_type": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
         }
       }
     },

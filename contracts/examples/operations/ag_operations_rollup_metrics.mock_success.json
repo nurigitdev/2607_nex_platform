@@ -1,0 +1,99 @@
+{
+  "projection_schema_version": "ag_operations_rollup_metrics_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-05T00:00:00Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "filters": {
+    "service_id": "nex-cx",
+    "since": null,
+    "until": null
+  },
+  "rollups": [
+    {
+      "service_id": "nex-cx",
+      "jobs": {
+        "total": 2,
+        "active": 1,
+        "terminal": 1,
+        "statuses": {
+          "QUEUED": 0,
+          "RUNNING": 1,
+          "SUCCEEDED": 0,
+          "FAILED": 1,
+          "CANCELLED": 0
+        },
+        "by_job_type": {
+          "cx.document_processing": 2
+        }
+      },
+      "events": {
+        "total": 1,
+        "by_severity": {
+          "DEBUG": 0,
+          "INFO": 1,
+          "WARNING": 0,
+          "ERROR": 0,
+          "CRITICAL": 0
+        },
+        "by_event_type": {
+          "cx.processing.succeeded": 1
+        }
+      },
+      "source_status": {
+        "jobs": "READY",
+        "events": "READY"
+      }
+    }
+  ],
+  "summary": {
+    "service_count": 1,
+    "jobs": {
+      "total": 2,
+      "active": 1,
+      "terminal": 1,
+      "statuses": {
+        "QUEUED": 0,
+        "RUNNING": 1,
+        "SUCCEEDED": 0,
+        "FAILED": 1,
+        "CANCELLED": 0
+      },
+      "by_service": {
+        "nex-cx": 2
+      }
+    },
+    "events": {
+      "total": 1,
+      "by_severity": {
+        "DEBUG": 0,
+        "INFO": 1,
+        "WARNING": 0,
+        "ERROR": 0,
+        "CRITICAL": 0
+      },
+      "by_service": {
+        "nex-cx": 1
+      }
+    },
+    "source_statuses": {
+      "jobs": {
+        "READY": 1
+      },
+      "events": {
+        "READY": 1
+      }
+    }
+  },
+  "job_source_statuses": {
+    "nex-cx": {
+      "status": "READY",
+      "job_count": 2
+    }
+  },
+  "event_source_statuses": {
+    "nex-cx": {
+      "status": "READY",
+      "event_count": 1
+    }
+  }
+}
