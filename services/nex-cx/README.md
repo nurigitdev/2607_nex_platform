@@ -36,7 +36,8 @@ Internal persistence boundary:
 - Document processing can be run as one idempotent pipeline: extraction,
   chunking, lexical index, embedding index, summary, and summary embedding.
   Existing outputs are recorded as `SKIPPED`; new outputs are recorded as
-  `SUCCEEDED`.
+  `SUCCEEDED`. Processing emits redaction-safe operational events for started,
+  succeeded, and failed lifecycle states.
 - Document summaries use `summary_1000_0`, target 900 chars, and hard limit
   1000 chars so summary text fits within one default retrieval chunk.
 - Summary embeddings index the document summary separately from chunk

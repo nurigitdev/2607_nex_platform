@@ -197,6 +197,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0091`](slices/0091_service_runtime_persistence_bootstrap.md) | `S10-001` Service runtime persistence bootstrap for memory/postgres mode selection. |
 | [`Slice 0092`](slices/0092_cx_processing_postgres_jobqueue_runtime_smoke.md) | `S10-002` CX processing route PostgreSQL-backed JobQueue runtime smoke. |
 | [`Slice 0093`](slices/0093_shared_operational_event_emitter.md) | `S10-003` Shared operational event emitter for route and worker write-through. |
+| [`Slice 0094`](slices/0094_cx_processing_operational_events.md) | `S10-004` CX processing lifecycle operational events. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

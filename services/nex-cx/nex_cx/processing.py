@@ -13,8 +13,11 @@ from nex_runtime import (
     InMemoryJobQueue,
     JobQueue,
     JobQueueError,
+    OperationalEventEmitResult,
+    OperationalEventEmitter,
     build_common_job,
     build_subject_ref,
+    operational_event_emitter_from_app,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
@@ -53,6 +56,9 @@ PIPELINE_STEPS = (
     "summary",
     "summary_embedding",
 )
+PROCESSING_EVENT_STARTED = "cx.processing.started"
+PROCESSING_EVENT_SUCCEEDED = "cx.processing.succeeded"
+PROCESSING_EVENT_FAILED = "cx.processing.failed"
 
 
 @dataclass(frozen=True)
@@ -74,11 +80,17 @@ def register_processing_routes(
     embedding_alias: str | None = None,
     prompt_store: PromptRegistryStore | None = None,
     job_queue: JobQueue | None = None,
+    event_emitter: OperationalEventEmitter | None = None,
 ) -> None:
     config = storage_config or build_storage_config()
     client = mo_client or build_default_mo_embedding_client()
     alias = embedding_alias or DEFAULT_EMBEDDING_ALIAS
     queue = job_queue or InMemoryJobQueue()
+    emitter = (
+        event_emitter
+        if event_emitter is not None
+        else operational_event_emitter_from_app(app, service_id="nex-cx")
+    )
 
     @app.post("/api/v1/documents/{document_id}/processing/run", response_model=None)
     def run_processing(
@@ -99,6 +111,7 @@ def register_processing_routes(
                 embedding_alias=alias,
                 prompt_store=prompt_store,
                 job_queue=queue,
+                event_emitter=emitter,
                 request_id=request_id_from_headers(request),
                 trace_id=trace_id_from_headers(request),
             )
@@ -139,6 +152,7 @@ def run_document_processing_pipeline(
     trace_id: str,
     prompt_store: PromptRegistryStore | None = None,
     job_queue: JobQueue | None = None,
+    event_emitter: OperationalEventEmitter | None = None,
 ) -> dict[str, Any]:
     started_at = _utc_now()
     pipeline_run_id = str(
@@ -156,6 +170,18 @@ def run_document_processing_pipeline(
     )
     if existing_run is not None:
         return existing_run
+    _safe_emit_processing_event(
+        event_emitter,
+        event_type=PROCESSING_EVENT_STARTED,
+        severity="INFO",
+        message="CX document processing started.",
+        document_id=document_id,
+        pipeline_run_id=pipeline_run_id,
+        request_id=request_id,
+        trace_id=trace_id,
+        job=job,
+        created_at=started_at,
+    )
     steps: list[dict[str, Any]] = []
 
     try:
@@ -245,13 +271,28 @@ def run_document_processing_pipeline(
             status="FAILED",
             job=_safe_fail_job(queue, job["job_id"]),
         )
-        store.save_document_processing_run(failed_run)
+        saved_failed_run = store.save_document_processing_run(failed_run)
+        _safe_emit_processing_event(
+            event_emitter,
+            event_type=PROCESSING_EVENT_FAILED,
+            severity="ERROR",
+            message="CX document processing failed.",
+            document_id=document_id,
+            pipeline_run_id=pipeline_run_id,
+            request_id=request_id,
+            trace_id=trace_id,
+            job=saved_failed_run.get("job"),
+            step_summary=saved_failed_run["step_summary"],
+            failed_step=failed_step,
+            created_at=saved_failed_run["completed_at"],
+        )
         raise _pipeline_error_from_exception(
             exc,
-            pipeline_run=failed_run,
+            pipeline_run=saved_failed_run,
             failed_step=failed_step,
         ) from exc
 
+    completed_job = queue.complete_job(job["job_id"])
     record = build_pipeline_run_record(
         document_id=document_id,
         pipeline_run_id=pipeline_run_id,
@@ -260,9 +301,23 @@ def run_document_processing_pipeline(
         started_at=started_at,
         steps=steps,
         status="SUCCEEDED",
-        job=queue.complete_job(job["job_id"]),
+        job=completed_job,
     )
-    return store.save_document_processing_run(record)
+    saved_record = store.save_document_processing_run(record)
+    _safe_emit_processing_event(
+        event_emitter,
+        event_type=PROCESSING_EVENT_SUCCEEDED,
+        severity="INFO",
+        message="CX document processing succeeded.",
+        document_id=document_id,
+        pipeline_run_id=pipeline_run_id,
+        request_id=request_id,
+        trace_id=trace_id,
+        job=saved_record.get("job"),
+        step_summary=saved_record["step_summary"],
+        created_at=saved_record["completed_at"],
+    )
+    return saved_record
 
 
 def build_processing_job(
@@ -287,6 +342,55 @@ def build_processing_job(
             "processing": f"/api/v1/documents/{document_id}/processing",
         },
         created_at=created_at,
+    )
+
+
+def processing_event_id(
+    *,
+    pipeline_run_id: str,
+    event_type: str,
+) -> str:
+    return str(uuid5(NAMESPACE_URL, f"cx-processing-event:{pipeline_run_id}:{event_type}"))
+
+
+def _safe_emit_processing_event(
+    event_emitter: OperationalEventEmitter | None,
+    *,
+    event_type: str,
+    severity: str,
+    message: str,
+    document_id: str,
+    pipeline_run_id: str,
+    request_id: str,
+    trace_id: str,
+    job: dict[str, Any] | None = None,
+    step_summary: dict[str, Any] | None = None,
+    failed_step: str | None = None,
+    created_at: str | None = None,
+) -> OperationalEventEmitResult | None:
+    if event_emitter is None:
+        return None
+    details: dict[str, Any] = {"pipeline_run_id": pipeline_run_id}
+    if job is not None:
+        details["job_id"] = str(job["job_id"])
+        details["job_status"] = str(job["status"])
+    if step_summary is not None:
+        details["step_summary"] = dict(step_summary)
+    if failed_step is not None:
+        details["failed_step"] = failed_step
+    return event_emitter.safe_emit(
+        event_type=event_type,
+        severity=severity,
+        message=message,
+        trace_id=trace_id,
+        request_id=request_id,
+        subject_ref=build_subject_ref("cx.document", document_id),
+        details=details,
+        created_at=created_at,
+        event_id=processing_event_id(
+            pipeline_run_id=pipeline_run_id,
+            event_type=event_type,
+        ),
     )
 
 

@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0093 shared operational event emitter.
+Status: Slice 0094 CX processing lifecycle operational events.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -218,6 +218,17 @@ Route and worker code should write events through `OperationalEventEmitter`.
 behavior. `safe_emit()` returns a compact success/failure result and never
 raises for event logging failures, so observability write-through cannot fail
 the primary request or job.
+
+CX document processing now emits:
+
+- `cx.processing.started`
+- `cx.processing.succeeded`
+- `cx.processing.failed`
+
+The event subject is the `cx.document`. Details contain pipeline/job IDs,
+job status, step summary, and failed step when applicable. They do not contain
+raw source text, extracted Markdown, summaries, prompts, vectors, provider
+URLs, or API keys.
 
 Optional PostgreSQL write smoke is guarded by:
 
