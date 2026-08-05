@@ -53,6 +53,7 @@ AG_OPERATIONS_SOURCE_PROFILE_ENV = "NEX_AG_OPERATIONS_SOURCE_PROFILE"
 AG_OPERATIONS_SOURCE_SERVICES_ENV = "NEX_AG_OPERATIONS_SOURCE_SERVICES"
 AG_OPERATIONS_SOURCE_MODES = ("memory", "postgres")
 AG_OPERATIONS_SOURCE_PROFILES = ("dev", "test")
+AG_OPERATION_SORT_ORDERS = ("desc", "asc")
 
 _AG_OPERATIONS_SOURCE_MODE_ALIASES = {
     "": "memory",
@@ -75,6 +76,52 @@ SessionFactoryBuilder = Callable[[Any], Any]
 
 class OperationsSourceConfigError(ValueError):
     pass
+
+
+class OperationsQueryError(ValueError):
+    def __init__(
+        self,
+        *,
+        error_code: str,
+        detail: str,
+        status_code: int = 400,
+    ) -> None:
+        super().__init__(detail)
+        self.error_code = error_code
+        self.detail = detail
+        self.status_code = status_code
+
+
+@dataclass(frozen=True)
+class OperationQueryOptions:
+    limit: int
+    since: str | None = None
+    until: str | None = None
+    sort: str = "desc"
+    cursor: str | None = None
+
+    @property
+    def offset(self) -> int:
+        return int(self.cursor or "0")
+
+    def to_filter_dict(self) -> dict[str, Any]:
+        return {
+            "limit": self.limit,
+            "since": self.since,
+            "until": self.until,
+            "sort": self.sort,
+            "cursor": self.cursor,
+        }
+
+    def pagination(self, *, total: int, returned: int) -> dict[str, Any]:
+        next_offset = self.offset + returned
+        return {
+            "limit": self.limit,
+            "cursor": self.cursor,
+            "returned": returned,
+            "total_after_filters": total,
+            "next_cursor": str(next_offset) if next_offset < total else None,
+        }
 
 
 class ReadOnlyJobQueue:
@@ -458,6 +505,78 @@ def ag_operations_source_database_env(service_id: str, *, profile: str = "dev") 
         raise OperationsSourceConfigError(str(exc)) from exc
 
 
+def build_operation_query_options(
+    *,
+    limit: int,
+    since: str | None = None,
+    until: str | None = None,
+    sort: str | None = None,
+    cursor: str | None = None,
+) -> OperationQueryOptions:
+    normalized_limit = normalize_job_limit(limit)
+    normalized_sort = normalize_operation_sort(sort)
+    normalized_cursor = normalize_operation_cursor(cursor)
+    normalized_since = normalize_operation_timestamp(since, field_name="since")
+    normalized_until = normalize_operation_timestamp(until, field_name="until")
+    if (
+        normalized_since is not None
+        and normalized_until is not None
+        and _parse_operation_timestamp(normalized_since)
+        > _parse_operation_timestamp(normalized_until)
+    ):
+        raise OperationsQueryError(
+            error_code="ag.operation_time_window_invalid",
+            detail="since must be less than or equal to until.",
+        )
+    return OperationQueryOptions(
+        limit=normalized_limit,
+        since=normalized_since,
+        until=normalized_until,
+        sort=normalized_sort,
+        cursor=normalized_cursor,
+    )
+
+
+def normalize_operation_sort(value: str | None) -> str:
+    normalized = "desc" if value is None or not value.strip() else value.strip().lower()
+    if normalized not in AG_OPERATION_SORT_ORDERS:
+        raise OperationsQueryError(
+            error_code="ag.operation_sort_invalid",
+            detail=(
+                f"Unsupported operation sort: {value}; expected one of "
+                f"{', '.join(AG_OPERATION_SORT_ORDERS)}."
+            ),
+        )
+    return normalized
+
+
+def normalize_operation_cursor(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    raw_value = value.strip()
+    try:
+        offset = int(raw_value)
+    except ValueError as exc:
+        raise OperationsQueryError(
+            error_code="ag.operation_cursor_invalid",
+            detail="cursor must be a non-negative integer offset.",
+        ) from exc
+    if offset < 0:
+        raise OperationsQueryError(
+            error_code="ag.operation_cursor_invalid",
+            detail="cursor must be a non-negative integer offset.",
+        )
+    return str(offset)
+
+
+def normalize_operation_timestamp(value: str | None, *, field_name: str) -> str | None:
+    if value is None or not value.strip():
+        return None
+    raw_value = value.strip()
+    parsed = _parse_operation_timestamp(raw_value, field_name=field_name)
+    return parsed.isoformat().replace("+00:00", "Z")
+
+
 def _build_postgres_operations_source(
     *,
     service_id: str,
@@ -524,6 +643,10 @@ def register_operational_event_routes(
         severity: str | None = None,
         event_type: str | None = None,
         trace_id: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        sort: str | None = None,
+        cursor: str | None = None,
         limit: int = Query(default=50, ge=1),
     ):
         auth_problem = _authorize_ag_request(request, authorization)
@@ -538,6 +661,16 @@ def register_operational_event_routes(
                 detail=f"Unsupported operational event severity: {severity}",
                 type_uri="https://nex-platform.local/problems/operational-event-severity-invalid",
             )
+        query_options = _build_query_options_or_problem(
+            request,
+            limit=limit,
+            since=since,
+            until=until,
+            sort=sort,
+            cursor=cursor,
+        )
+        if isinstance(query_options, JSONResponse):
+            return query_options
 
         return build_operational_event_projection(
             event_store,
@@ -545,7 +678,7 @@ def register_operational_event_routes(
             severity=severity,
             event_type=event_type,
             trace_id=trace_id,
-            limit=limit,
+            query_options=query_options,
             request_trace_id=trace_id_from_headers(request),
         )
 
@@ -601,6 +734,10 @@ def register_job_operation_routes(
         service_id: str | None = None,
         status: str | None = None,
         job_type: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        sort: str | None = None,
+        cursor: str | None = None,
         limit: int = Query(default=50, ge=1),
     ):
         auth_problem = _authorize_ag_request(request, authorization)
@@ -614,13 +751,23 @@ def register_job_operation_routes(
         )
         if filter_problem is not None:
             return filter_problem
+        query_options = _build_query_options_or_problem(
+            request,
+            limit=limit,
+            since=since,
+            until=until,
+            sort=sort,
+            cursor=cursor,
+        )
+        if isinstance(query_options, JSONResponse):
+            return query_options
 
         return build_job_operations_projection(
             queue_stores,
             service_id=service_id,
             status=status,
             job_type=job_type,
-            limit=limit,
+            query_options=query_options,
             request_trace_id=trace_id_from_headers(request),
         )
 
@@ -642,6 +789,10 @@ def register_unified_operation_routes(
         event_severity: str | None = None,
         event_type: str | None = None,
         trace_id: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        sort: str | None = None,
+        cursor: str | None = None,
         limit: int = Query(default=50, ge=1),
     ):
         auth_problem = _authorize_ag_request(request, authorization)
@@ -656,6 +807,16 @@ def register_unified_operation_routes(
         )
         if filter_problem is not None:
             return filter_problem
+        query_options = _build_query_options_or_problem(
+            request,
+            limit=limit,
+            since=since,
+            until=until,
+            sort=sort,
+            cursor=cursor,
+        )
+        if isinstance(query_options, JSONResponse):
+            return query_options
 
         return build_unified_operations_projection(
             job_queues=job_queues,
@@ -667,7 +828,7 @@ def register_unified_operation_routes(
             event_severity=event_severity,
             event_type=event_type,
             trace_id=trace_id,
-            limit=limit,
+            query_options=query_options,
             request_trace_id=trace_id_from_headers(request),
         )
 
@@ -680,15 +841,22 @@ def build_operational_event_projection(
     event_type: str | None = None,
     trace_id: str | None = None,
     limit: int = 50,
+    query_options: OperationQueryOptions | None = None,
     request_trace_id: str | None = None,
 ) -> dict[str, Any]:
-    normalized_limit = normalize_operational_event_limit(limit)
+    options = query_options or build_operation_query_options(limit=limit)
     events = store.list_events(
         service_id=service_id,
         severity=severity,
         event_type=event_type,
         trace_id=trace_id,
-        limit=normalized_limit,
+        limit=normalize_operational_event_limit(500),
+    )
+    events = _apply_operation_query_options(
+        events,
+        options,
+        timestamp_field="created_at",
+        tie_breaker_fields=("event_id",),
     )
     projection = {
         "projection_schema_version": "ag_operational_event_projection.v1",
@@ -698,10 +866,11 @@ def build_operational_event_projection(
             "severity": severity.upper() if severity is not None else None,
             "event_type": event_type,
             "trace_id": trace_id,
-            "limit": normalized_limit,
+            **options.to_filter_dict(),
         },
-        "events": events,
-        "summary": summarize_operational_events(events),
+        "events": events["items"],
+        "summary": summarize_operational_events(events["items"]),
+        "pagination": events["pagination"],
     }
     if request_trace_id is not None:
         projection["request_trace_id"] = request_trace_id
@@ -747,9 +916,10 @@ def build_unified_operations_projection(
     event_type: str | None = None,
     trace_id: str | None = None,
     limit: int = 50,
+    query_options: OperationQueryOptions | None = None,
     request_trace_id: str | None = None,
 ) -> dict[str, Any]:
-    normalized_limit = normalize_job_limit(limit)
+    options = query_options or build_operation_query_options(limit=limit)
     queue_stores = (
         registry.job_queues()
         if registry is not None
@@ -765,7 +935,7 @@ def build_unified_operations_projection(
         service_id=service_id,
         status=job_status,
         job_type=job_type,
-        limit=normalized_limit,
+        query_options=options,
     )
     event_projection = build_operational_event_projection(
         selected_event_store,
@@ -773,7 +943,7 @@ def build_unified_operations_projection(
         severity=event_severity,
         event_type=event_type,
         trace_id=trace_id,
-        limit=normalized_limit,
+        query_options=options,
     )
     projection_status = (
         "DEGRADED"
@@ -793,7 +963,7 @@ def build_unified_operations_projection(
             ),
             "event_type": event_type,
             "trace_id": trace_id,
-            "limit": normalized_limit,
+            **options.to_filter_dict(),
         },
         "jobs": job_projection,
         "events": event_projection,
@@ -801,6 +971,10 @@ def build_unified_operations_projection(
             "jobs": job_projection["summary"],
             "events": event_projection["summary"],
             "source_statuses": job_projection["source_statuses"],
+        },
+        "pagination": {
+            "jobs": job_projection["pagination"],
+            "events": event_projection["pagination"],
         },
     }
     if registry is not None:
@@ -817,9 +991,10 @@ def build_job_operations_projection(
     status: str | None = None,
     job_type: str | None = None,
     limit: int = 50,
+    query_options: OperationQueryOptions | None = None,
     request_trace_id: str | None = None,
 ) -> dict[str, Any]:
-    normalized_limit = normalize_job_limit(limit)
+    options = query_options or build_operation_query_options(limit=limit)
     normalized_status = status.upper() if status is not None else None
     selected_service_ids = [service_id] if service_id is not None else sorted(SERVICE_SPECS)
     projected_jobs: list[dict[str, Any]] = []
@@ -843,6 +1018,11 @@ def build_job_operations_projection(
                 "detail": exc.detail,
             }
             continue
+        service_jobs = _filter_records_by_operation_time(
+            service_jobs,
+            options,
+            timestamp_field="updated_at",
+        )
         source_statuses[selected_service_id] = {
             "status": "READY",
             "job_count": len(service_jobs),
@@ -852,7 +1032,12 @@ def build_job_operations_projection(
             for job in service_jobs
         )
 
-    projected_jobs = _sort_projected_jobs(projected_jobs)[:normalized_limit]
+    page = _apply_operation_query_options(
+        projected_jobs,
+        options,
+        timestamp_field="updated_at",
+        tie_breaker_fields=("created_at", "service_id", "job_id"),
+    )
     projection_status = (
         "DEGRADED"
         if any(source["status"] in {"NOT_CONFIGURED", "UNAVAILABLE"} for source in source_statuses.values())
@@ -866,11 +1051,12 @@ def build_job_operations_projection(
             "service_id": service_id,
             "status": normalized_status,
             "job_type": job_type,
-            "limit": normalized_limit,
+            **options.to_filter_dict(),
         },
-        "jobs": projected_jobs,
-        "summary": summarize_job_operations(projected_jobs),
+        "jobs": page["items"],
+        "summary": summarize_job_operations(page["items"]),
         "source_statuses": source_statuses,
+        "pagination": page["pagination"],
     }
     if request_trace_id is not None:
         projection["request_trace_id"] = request_trace_id
@@ -968,6 +1154,34 @@ def _validate_unified_operation_filters(
     return None
 
 
+def _build_query_options_or_problem(
+    request: Request,
+    *,
+    limit: int,
+    since: str | None,
+    until: str | None,
+    sort: str | None,
+    cursor: str | None,
+) -> OperationQueryOptions | JSONResponse:
+    try:
+        return build_operation_query_options(
+            limit=limit,
+            since=since,
+            until=until,
+            sort=sort,
+            cursor=cursor,
+        )
+    except OperationsQueryError as exc:
+        return problem_response(
+            request,
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            title="Invalid operations query",
+            detail=exc.detail,
+            type_uri="https://nex-platform.local/problems/operations-query-invalid",
+        )
+
+
 def _operations_source_read_only_job_error() -> JobQueueError:
     return JobQueueError(
         error_code="ag.operations_source.read_only",
@@ -976,23 +1190,95 @@ def _operations_source_read_only_job_error() -> JobQueueError:
     )
 
 
+def _apply_operation_query_options(
+    records: list[dict[str, Any]],
+    options: OperationQueryOptions,
+    *,
+    timestamp_field: str,
+    tie_breaker_fields: tuple[str, ...],
+) -> dict[str, Any]:
+    filtered = _filter_records_by_operation_time(
+        records,
+        options,
+        timestamp_field=timestamp_field,
+    )
+    reverse = options.sort == "desc"
+    filtered.sort(
+        key=lambda record: (
+            _operation_record_timestamp(record, timestamp_field=timestamp_field),
+            *[str(record.get(field, "")) for field in tie_breaker_fields],
+        ),
+        reverse=reverse,
+    )
+    offset = options.offset
+    items = filtered[offset : offset + options.limit]
+    return {
+        "items": items,
+        "pagination": options.pagination(total=len(filtered), returned=len(items)),
+    }
+
+
+def _filter_records_by_operation_time(
+    records: list[dict[str, Any]],
+    options: OperationQueryOptions,
+    *,
+    timestamp_field: str,
+) -> list[dict[str, Any]]:
+    since_dt = (
+        _parse_operation_timestamp(options.since)
+        if options.since is not None
+        else None
+    )
+    until_dt = (
+        _parse_operation_timestamp(options.until)
+        if options.until is not None
+        else None
+    )
+    filtered: list[dict[str, Any]] = []
+    for record in records:
+        timestamp = _operation_record_timestamp(record, timestamp_field=timestamp_field)
+        if since_dt is not None and timestamp < since_dt:
+            continue
+        if until_dt is not None and timestamp > until_dt:
+            continue
+        filtered.append(record)
+    return filtered
+
+
+def _operation_record_timestamp(
+    record: dict[str, Any],
+    *,
+    timestamp_field: str,
+) -> datetime:
+    value = record.get(timestamp_field)
+    if value is None and timestamp_field == "updated_at":
+        value = record.get("created_at")
+    if value is None:
+        return datetime.min.replace(tzinfo=UTC)
+    return _parse_operation_timestamp(str(value), field_name=timestamp_field)
+
+
+def _parse_operation_timestamp(
+    value: str,
+    *,
+    field_name: str = "timestamp",
+) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise OperationsQueryError(
+            error_code="ag.operation_timestamp_invalid",
+            detail=f"{field_name} must be an ISO-8601 timestamp.",
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
 def _project_job_for_service(service_id: str, job: dict[str, Any]) -> dict[str, Any]:
     projected = deepcopy(job)
     projected["service_id"] = service_id
     return projected
-
-
-def _sort_projected_jobs(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(
-        jobs,
-        key=lambda job: (
-            str(job.get("updated_at", "")),
-            str(job.get("created_at", "")),
-            str(job.get("service_id", "")),
-            str(job.get("job_id", "")),
-        ),
-        reverse=True,
-    )
 
 
 def _utc_now() -> str:

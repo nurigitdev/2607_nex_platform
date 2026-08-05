@@ -9,6 +9,7 @@ from nex_ag.operations import (
     AG_OPERATIONS_SOURCE_MODE_ENV,
     AG_OPERATIONS_SOURCE_PROFILE_ENV,
     AG_OPERATIONS_SOURCE_SERVICES_ENV,
+    OperationsQueryError,
     OperationsSourceConfigError,
     OperationsSource,
     OperationsSourceRegistry,
@@ -19,10 +20,14 @@ from nex_ag.operations import (
     attach_ag_operations_source_runtime,
     build_ag_operations_source_runtime,
     build_job_operations_projection,
+    build_operation_query_options,
     build_operations_source_registry,
     build_operational_event_taxonomy_projection,
     build_operational_event_projection,
     build_unified_operations_projection,
+    normalize_operation_cursor,
+    normalize_operation_sort,
+    normalize_operation_timestamp,
     normalize_ag_operations_source_mode,
     normalize_ag_operations_source_profile,
     register_job_operation_routes,
@@ -31,6 +36,8 @@ from nex_ag.operations import (
     register_unified_operation_routes,
     select_ag_operations_source_service_ids,
     summarize_job_operations,
+    _filter_records_by_operation_time,
+    _operation_record_timestamp,
 )
 from nex_runtime import (
     CX_PROCESSING_EVENT_FAILED,
@@ -235,6 +242,86 @@ def test_ag_operations_source_config_helpers_normalize_runtime_inputs() -> None:
     assert select_ag_operations_source_service_ids(None) == tuple(sorted(SERVICE_SPECS))
 
 
+def test_operation_query_options_normalize_sort_cursor_and_timestamps() -> None:
+    options = build_operation_query_options(
+        limit=9999,
+        since="2026-08-05T00:00:00+09:00",
+        until="2026-08-05T00:00:01Z",
+        sort="ASC",
+        cursor="002",
+    )
+
+    assert options.limit == 500
+    assert options.since == "2026-08-04T15:00:00Z"
+    assert options.until == "2026-08-05T00:00:01Z"
+    assert options.sort == "asc"
+    assert options.cursor == "2"
+    assert options.offset == 2
+    assert options.to_filter_dict() == {
+        "limit": 500,
+        "since": "2026-08-04T15:00:00Z",
+        "until": "2026-08-05T00:00:01Z",
+        "sort": "asc",
+        "cursor": "2",
+    }
+    assert options.pagination(total=4, returned=2)["next_cursor"] is None
+
+
+@pytest.mark.parametrize(
+    "operation, expected_code",
+    [
+        (lambda: normalize_operation_sort("latest"), "ag.operation_sort_invalid"),
+        (lambda: normalize_operation_cursor("-1"), "ag.operation_cursor_invalid"),
+        (lambda: normalize_operation_cursor("abc"), "ag.operation_cursor_invalid"),
+        (
+            lambda: normalize_operation_timestamp("not-a-date", field_name="since"),
+            "ag.operation_timestamp_invalid",
+        ),
+        (
+            lambda: build_operation_query_options(
+                limit=10,
+                since="2026-08-05T00:00:02Z",
+                until="2026-08-05T00:00:01Z",
+            ),
+            "ag.operation_time_window_invalid",
+        ),
+    ],
+)
+def test_operation_query_options_reject_invalid_inputs(operation, expected_code) -> None:
+    with pytest.raises(OperationsQueryError) as exc_info:
+        operation()
+
+    assert exc_info.value.error_code == expected_code
+
+
+def test_operation_query_helpers_cover_timestamp_fallback_edges() -> None:
+    options = build_operation_query_options(
+        limit=10,
+        since="2026-08-05T00:00:00",
+        until="2026-08-05T00:00:01Z",
+    )
+    records = [
+        {"record_id": "missing"},
+        {"record_id": "fallback", "created_at": "2026-08-05T00:00:01Z"},
+        {"record_id": "too-new", "updated_at": "2026-08-05T00:00:02Z"},
+    ]
+
+    assert options.since == "2026-08-05T00:00:00Z"
+    assert _operation_record_timestamp(
+        {"created_at": "2026-08-05T00:00:01Z"},
+        timestamp_field="updated_at",
+    ).isoformat().endswith("+00:00")
+    assert _operation_record_timestamp({}, timestamp_field="updated_at").year == 1
+    assert [
+        record["record_id"]
+        for record in _filter_records_by_operation_time(
+            records,
+            options,
+            timestamp_field="updated_at",
+        )
+    ] == ["fallback"]
+
+
 @pytest.mark.parametrize(
     "operation",
     [
@@ -392,6 +479,11 @@ def test_ag_operations_source_runtime_rejects_invalid_config(
         build_ag_operations_source_runtime(environ=environ)
 
 
+def test_ag_operations_source_database_env_rejects_unknown_service() -> None:
+    with pytest.raises(OperationsSourceConfigError, match="unknown AG operations source"):
+        ag_operations_source_database_env("nex-unknown")
+
+
 def test_operations_source_registry_registers_sources_and_reports_capabilities() -> None:
     job_queues = build_job_queues()
     event_stores = build_event_stores()
@@ -431,6 +523,20 @@ def test_operations_source_registry_rejects_unknown_or_empty_source_shapes() -> 
         raise AssertionError("expected empty source kind failure")
 
     try:
+        OperationsSource(service_id="nex-cx", database_env="")
+    except ValueError as exc:
+        assert "database_env" in str(exc)
+    else:
+        raise AssertionError("expected empty database env failure")
+
+    try:
+        OperationsSource(service_id="nex-cx", redacted_database_url="")
+    except ValueError as exc:
+        assert "redacted_database_url" in str(exc)
+    else:
+        raise AssertionError("expected empty redacted database url failure")
+
+    try:
         registry.get("nex-unknown")
     except ValueError as exc:
         assert "unsupported operations source service" in str(exc)
@@ -446,12 +552,14 @@ def test_registry_operational_event_store_aggregates_and_filters_events() -> Non
     cx_events = registry_store.list_events(service_id="nex-cx", limit=10)
     missing = registry_store.list_events(service_id="nex-ag", limit=10)
     mo_event = registry_store.get_event("event-mo-001")
+    absent_event = registry_store.get_event("event-missing")
 
     assert [event["event_id"] for event in events] == ["event-mo-001", "event-cx-001"]
     assert [event["event_id"] for event in cx_events] == ["event-cx-001"]
     assert missing == []
     assert mo_event is not None
     assert mo_event["details"]["service_token"] == "<redacted>"
+    assert absent_event is None
     assert "private" not in str(events)
 
     try:
@@ -515,6 +623,10 @@ def test_build_unified_operations_projection_combines_jobs_events_and_registry_s
         "event_type": None,
         "trace_id": None,
         "limit": 500,
+        "since": None,
+        "until": None,
+        "sort": "desc",
+        "cursor": None,
     }
     assert [job["job_id"] for job in projection["jobs"]["jobs"]] == ["job-cx-001"]
     assert [event["event_id"] for event in projection["events"]["events"]] == [
@@ -523,6 +635,8 @@ def test_build_unified_operations_projection_combines_jobs_events_and_registry_s
     assert projection["summary"]["jobs"]["statuses"][RUNNING] == 1
     assert projection["summary"]["events"]["by_severity"]["INFO"] == 1
     assert projection["source_registry"]["service_count"] == 3
+    assert projection["pagination"]["jobs"]["total_after_filters"] == 1
+    assert projection["pagination"]["events"]["total_after_filters"] == 1
 
 
 def test_build_unified_operations_projection_supports_direct_injection_and_degraded_jobs() -> None:
@@ -545,6 +659,32 @@ def test_build_unified_operations_projection_supports_direct_injection_and_degra
         "event-001",
     ]
     assert "source_registry" not in projection
+
+
+def test_unified_operations_projection_applies_time_window_sort_and_cursor() -> None:
+    registry = build_operations_source_registry(
+        job_queues=build_job_queues(),
+        event_stores=build_event_stores(),
+    )
+    options = build_operation_query_options(
+        limit=1,
+        since="2026-08-05T00:00:01Z",
+        sort="asc",
+    )
+
+    projection = build_unified_operations_projection(
+        registry=registry,
+        query_options=options,
+    )
+
+    assert projection["filters"]["since"] == "2026-08-05T00:00:01Z"
+    assert projection["filters"]["sort"] == "asc"
+    assert [job["job_id"] for job in projection["jobs"]["jobs"]] == ["job-cx-001"]
+    assert projection["pagination"]["jobs"]["next_cursor"] == "1"
+    assert [event["event_id"] for event in projection["events"]["events"]] == [
+        "event-mo-001"
+    ]
+    assert projection["pagination"]["events"]["next_cursor"] is None
 
 
 def test_unified_operations_route_requires_auth_and_returns_projection() -> None:
@@ -599,6 +739,19 @@ def test_unified_operations_route_rejects_bad_filters() -> None:
         params={"event_severity": "NOTICE"},
         headers=auth_headers(),
     )
+    bad_cursor = client.get(
+        "/admin/v1/operations",
+        params={"cursor": "before"},
+        headers=auth_headers(),
+    )
+    bad_window = client.get(
+        "/admin/v1/operations",
+        params={
+            "since": "2026-08-05T00:00:02Z",
+            "until": "2026-08-05T00:00:01Z",
+        },
+        headers=auth_headers(),
+    )
 
     assert bad_status.status_code == 400
     assert bad_status.json()["error_code"] == "ag.job_status_invalid"
@@ -606,6 +759,10 @@ def test_unified_operations_route_rejects_bad_filters() -> None:
     assert bad_service.json()["error_code"] == "ag.job_service_invalid"
     assert bad_severity.status_code == 400
     assert bad_severity.json()["error_code"] == "ag.operational_event_severity_invalid"
+    assert bad_cursor.status_code == 400
+    assert bad_cursor.json()["error_code"] == "ag.operation_cursor_invalid"
+    assert bad_window.status_code == 400
+    assert bad_window.json()["error_code"] == "ag.operation_time_window_invalid"
 
 
 def test_build_operational_event_projection_filters_and_summarizes() -> None:
@@ -625,9 +782,14 @@ def test_build_operational_event_projection_filters_and_summarizes() -> None:
         "event_type": None,
         "trace_id": None,
         "limit": 500,
+        "since": None,
+        "until": None,
+        "sort": "desc",
+        "cursor": None,
     }
     assert [event["event_id"] for event in projection["events"]] == ["event-002"]
     assert projection["summary"]["by_severity"]["ERROR"] == 1
+    assert projection["pagination"]["returned"] == 1
     assert "Bearer private" not in str(projection)
 
 
@@ -728,6 +890,30 @@ def test_operational_events_route_returns_filtered_projection() -> None:
     assert payload["summary"]["total"] == 1
 
 
+def test_operational_events_route_applies_sort_cursor_and_window() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_operational_event_routes(app, store=build_store())
+
+    response = TestClient(app).get(
+        "/admin/v1/operations/events",
+        params={
+            "since": "2026-08-05T00:00:00Z",
+            "sort": "asc",
+            "limit": 1,
+            "cursor": "1",
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["filters"]["sort"] == "asc"
+    assert payload["filters"]["cursor"] == "1"
+    assert [event["event_id"] for event in payload["events"]] == ["event-002"]
+    assert payload["pagination"]["returned"] == 1
+    assert payload["pagination"]["next_cursor"] is None
+
+
 def test_operational_events_route_rejects_bad_severity() -> None:
     app = build_service_app(SERVICE_SPECS["nex-ag"])
     register_operational_event_routes(app, store=build_store())
@@ -740,6 +926,14 @@ def test_operational_events_route_rejects_bad_severity() -> None:
 
     assert response.status_code == 400
     assert response.json()["error_code"] == "ag.operational_event_severity_invalid"
+
+    bad_sort = TestClient(app).get(
+        "/admin/v1/operations/events",
+        params={"sort": "latest"},
+        headers=auth_headers(),
+    )
+    assert bad_sort.status_code == 400
+    assert bad_sort.json()["error_code"] == "ag.operation_sort_invalid"
 
 
 def test_normalize_job_limit_clamps_bounds() -> None:
@@ -765,6 +959,10 @@ def test_build_job_operations_projection_aggregates_filters_and_summarizes() -> 
         "status": FAILED,
         "job_type": None,
         "limit": 500,
+        "since": None,
+        "until": None,
+        "sort": "desc",
+        "cursor": None,
     }
     assert [job["job_id"] for job in projection["jobs"]] == ["job-cx-002"]
     assert projection["jobs"][0]["service_id"] == "nex-cx"
@@ -774,6 +972,13 @@ def test_build_job_operations_projection_aggregates_filters_and_summarizes() -> 
     assert projection["source_statuses"]["nex-cx"] == {
         "status": "READY",
         "job_count": 1,
+    }
+    assert projection["pagination"] == {
+        "limit": 500,
+        "cursor": None,
+        "returned": 1,
+        "total_after_filters": 1,
+        "next_cursor": None,
     }
 
 
@@ -797,6 +1002,29 @@ def test_build_job_operations_projection_sorts_limits_and_reports_degraded_sourc
     assert projection["source_statuses"]["nex-oa"] == {
         "status": "NOT_CONFIGURED",
         "job_count": 0,
+    }
+
+
+def test_build_job_operations_projection_applies_query_options_before_paging() -> None:
+    projection = build_job_operations_projection(
+        build_job_queues(),
+        query_options=build_operation_query_options(
+            limit=1,
+            since="2026-08-05T00:00:04Z",
+            until="2026-08-05T00:00:07Z",
+            sort="asc",
+        ),
+    )
+
+    assert [job["job_id"] for job in projection["jobs"]] == ["job-cx-002"]
+    assert projection["source_statuses"]["nex-cx"]["job_count"] == 1
+    assert projection["source_statuses"]["nex-ae-api"]["job_count"] == 1
+    assert projection["pagination"] == {
+        "limit": 1,
+        "cursor": None,
+        "returned": 1,
+        "total_after_filters": 2,
+        "next_cursor": "1",
     }
 
 
@@ -866,8 +1094,15 @@ def test_job_operations_route_rejects_bad_filters() -> None:
         params={"service_id": "nex-unknown"},
         headers=auth_headers(),
     )
+    bad_cursor = client.get(
+        "/admin/v1/operations/jobs",
+        params={"cursor": "-1"},
+        headers=auth_headers(),
+    )
 
     assert bad_status.status_code == 400
     assert bad_status.json()["error_code"] == "ag.job_status_invalid"
     assert bad_service.status_code == 400
     assert bad_service.json()["error_code"] == "ag.job_service_invalid"
+    assert bad_cursor.status_code == 400
+    assert bad_cursor.json()["error_code"] == "ag.operation_cursor_invalid"

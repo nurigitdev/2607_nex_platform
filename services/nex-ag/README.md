@@ -58,7 +58,8 @@ Operational events:
 
 - AG exposes a read-only operational event projection over the shared
   `operational_event.v1` shape.
-- Filters include service id, severity, event type, trace id, and limit.
+- Filters include service id, severity, event type, trace id, `since`, `until`,
+  `sort`, `cursor`, and limit.
 - Event details are redacted by the shared runtime before AG projection.
 - AG also exposes a read-only event taxonomy projection so operators can inspect
   known event types, default severity, subject type, and safe detail keys.
@@ -67,7 +68,8 @@ Job operations:
 
 - AG exposes a read-only job operations projection over the shared
   `common_job.v1` shape.
-- Filters include service id, status, job type, and limit.
+- Filters include service id, status, job type, `since`, `until`, `sort`,
+  `cursor`, and limit.
 - The projection summarizes active/terminal jobs, status counts, service
   counts, job-type counts, and per-service source availability.
 - Jobs and events can now be supplied through a shared operations source
@@ -88,6 +90,9 @@ Unified operations:
 - AG exposes `GET /admin/v1/operations` as a combined read-only projection over
   jobs and operational events.
 - Filters include service id, job status, job type, event severity, event type,
-  trace id, and limit.
+  trace id, `since`, `until`, `sort`, `cursor`, and limit.
 - The response embeds the existing job and event projection shapes plus a
   combined summary and optional source registry summary.
+- Operations query pagination uses a non-negative integer `cursor` offset,
+  returns `pagination.next_cursor` when more rows exist, and caps limit at the
+  shared 500-row operations ceiling.
