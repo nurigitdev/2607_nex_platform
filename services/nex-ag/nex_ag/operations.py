@@ -12,10 +12,12 @@ from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
+    DEFAULT_WORKER_STALE_AFTER_SECONDS,
     DEFAULT_SERVICE_SCOPE,
     DEFAULT_OPERATIONAL_EVENT_TAXONOMY,
     InMemoryJobQueue,
     InMemoryOperationalEventStore,
+    InMemoryWorkerHeartbeatStore,
     JOB_STATUSES,
     JobQueue,
     JobQueueError,
@@ -26,6 +28,10 @@ from nex_runtime import (
     SERVICE_SPECS,
     SqlAlchemyJobQueue,
     SqlAlchemyOperationalEventStore,
+    SqlAlchemyWorkerHeartbeatStore,
+    WORKER_HEARTBEAT_STATUSES,
+    WorkerHeartbeatError,
+    WorkerHeartbeatStore,
     build_engine,
     build_session_factory,
     database_pool_settings,
@@ -36,16 +42,23 @@ from nex_runtime import (
     redact_database_url,
     required_database_url,
     service_database_env_prefix,
+    normalize_worker_stale_after_seconds,
     summarize_operational_event_taxonomy,
     summarize_jobs,
     summarize_operational_events,
+    summarize_worker_heartbeats,
     trace_id_from_headers,
     validate_authorization_header,
+    worker_heartbeat_is_stale,
 )
 
 DEFAULT_OPERATIONAL_EVENT_STORE = InMemoryOperationalEventStore()
 DEFAULT_JOB_QUEUE_STORES = {
     service_id: InMemoryJobQueue()
+    for service_id in sorted(SERVICE_SPECS)
+}
+DEFAULT_WORKER_HEARTBEAT_STORES = {
+    service_id: InMemoryWorkerHeartbeatStore()
     for service_id in sorted(SERVICE_SPECS)
 }
 
@@ -249,11 +262,40 @@ class ReadOnlyOperationalEventStore:
         )
 
 
+class ReadOnlyWorkerHeartbeatStore:
+    def __init__(self, delegate: WorkerHeartbeatStore) -> None:
+        self.delegate = delegate
+
+    def upsert_heartbeat(self, heartbeat: dict[str, Any]) -> dict[str, Any]:
+        raise WorkerHeartbeatError(
+            error_code="ag.operations_source.read_only",
+            detail="AG operations source registry is read-only.",
+            status_code=405,
+        )
+
+    def get_heartbeat(self, service_id: str, worker_id: str) -> dict[str, Any] | None:
+        return self.delegate.get_heartbeat(service_id, worker_id)
+
+    def list_heartbeats(
+        self,
+        *,
+        service_id: str | None = None,
+        worker_type: str | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return self.delegate.list_heartbeats(
+            service_id=service_id,
+            worker_type=worker_type,
+            status=status,
+        )
+
+
 @dataclass(frozen=True)
 class OperationsSource:
     service_id: str
     job_queue: JobQueue | None = None
     operational_event_store: OperationalEventStore | None = None
+    worker_heartbeat_store: WorkerHeartbeatStore | None = None
     source_kind: str = "memory"
     database_env: str | None = None
     redacted_database_url: str | None = None
@@ -284,9 +326,15 @@ class OperationsSource:
                 if self.operational_event_store is not None
                 else None
             ),
+            "worker_heartbeat_store": (
+                self.worker_heartbeat_store.__class__.__name__
+                if self.worker_heartbeat_store is not None
+                else None
+            ),
             "capabilities": {
                 "jobs": self.job_queue is not None,
                 "events": self.operational_event_store is not None,
+                "workers": self.worker_heartbeat_store is not None,
             },
         }
         if self.database_env is not None:
@@ -345,6 +393,13 @@ class OperationsSourceRegistry:
             service_id: source.operational_event_store
             for service_id, source in self.sources.items()
             if source.operational_event_store is not None
+        }
+
+    def worker_heartbeat_stores(self) -> dict[str, WorkerHeartbeatStore]:
+        return {
+            service_id: source.worker_heartbeat_store
+            for service_id, source in self.sources.items()
+            if source.worker_heartbeat_store is not None
         }
 
     def to_summary(self) -> dict[str, Any]:
@@ -417,11 +472,13 @@ def build_operations_source_registry(
     *,
     job_queues: Mapping[str, JobQueue] | None = None,
     event_stores: Mapping[str, OperationalEventStore] | None = None,
+    worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     source_kind: str = "memory",
 ) -> OperationsSourceRegistry:
     queue_map = job_queues or {}
     event_store_map = event_stores or {}
-    source_ids = sorted(set(queue_map) | set(event_store_map))
+    worker_store_map = worker_heartbeat_stores or {}
+    source_ids = sorted(set(queue_map) | set(event_store_map) | set(worker_store_map))
     registry = OperationsSourceRegistry()
     for service_id in source_ids:
         registry.register(
@@ -429,6 +486,7 @@ def build_operations_source_registry(
                 service_id=service_id,
                 job_queue=queue_map.get(service_id),
                 operational_event_store=event_store_map.get(service_id),
+                worker_heartbeat_store=worker_store_map.get(service_id),
                 source_kind=source_kind,
             )
         )
@@ -662,13 +720,18 @@ def _build_postgres_operations_source(
             f"invalid AG operations source database config for {service_id}: {exc}"
         ) from exc
 
+    worker_session_factory = session_factory_builder(worker_engine)
+    api_session_factory = session_factory_builder(api_engine)
     return OperationsSource(
         service_id=service_id,
         job_queue=ReadOnlyJobQueue(
-            SqlAlchemyJobQueue(session_factory_builder(worker_engine))
+            SqlAlchemyJobQueue(worker_session_factory)
         ),
         operational_event_store=ReadOnlyOperationalEventStore(
-            SqlAlchemyOperationalEventStore(session_factory_builder(api_engine))
+            SqlAlchemyOperationalEventStore(api_session_factory)
+        ),
+        worker_heartbeat_store=ReadOnlyWorkerHeartbeatStore(
+            SqlAlchemyWorkerHeartbeatStore(worker_session_factory)
         ),
         source_kind="postgres-read",
         database_env=database_env,
@@ -956,6 +1019,7 @@ def register_unified_operation_routes(
     *,
     job_queues: Mapping[str, JobQueue] | None = None,
     event_store: OperationalEventStore | None = None,
+    worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
 ) -> None:
@@ -1141,6 +1205,54 @@ def register_unified_operation_routes(
             runtime=selected_runtime,
             service_id=service_id,
             recent_limit=recent_limit,
+            query_options=query_options,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
+    @app.get("/admin/v1/operations/workers", response_model=None)
+    def list_worker_runtime_projection(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        worker_type: str | None = None,
+        status: str | None = None,
+        stale_after_seconds: int = Query(default=DEFAULT_WORKER_STALE_AFTER_SECONDS, ge=1),
+        since: str | None = None,
+        until: str | None = None,
+        sort: str | None = None,
+        cursor: str | None = None,
+        limit: int = Query(default=50, ge=1),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        filter_problem = _validate_worker_runtime_filters(
+            request,
+            service_id=service_id,
+            status=status,
+            worker_type=worker_type,
+        )
+        if filter_problem is not None:
+            return filter_problem
+        query_options = _build_query_options_or_problem(
+            request,
+            limit=limit,
+            since=since,
+            until=until,
+            sort=sort,
+            cursor=cursor,
+        )
+        if isinstance(query_options, JSONResponse):
+            return query_options
+
+        return build_worker_runtime_projection(
+            worker_heartbeat_stores=worker_heartbeat_stores,
+            registry=registry,
+            service_id=service_id,
+            worker_type=worker_type,
+            status=status,
+            stale_after_seconds=stale_after_seconds,
             query_options=query_options,
             request_trace_id=trace_id_from_headers(request),
         )
@@ -1458,6 +1570,117 @@ def build_operations_issue_candidate_projection(
         "summary": summarize_operations_issue_candidates(candidates),
         "job_source_statuses": dashboard["job_source_statuses"],
         "event_source_statuses": dashboard["event_source_statuses"],
+    }
+    if registry is not None:
+        projection["source_registry"] = registry.to_summary()
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
+def build_worker_runtime_projection(
+    *,
+    worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
+    registry: OperationsSourceRegistry | None = None,
+    service_id: str | None = None,
+    worker_type: str | None = None,
+    status: str | None = None,
+    stale_after_seconds: int = DEFAULT_WORKER_STALE_AFTER_SECONDS,
+    limit: int = 50,
+    query_options: OperationQueryOptions | None = None,
+    checked_at: str | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    options = query_options or build_operation_query_options(limit=limit)
+    normalized_status = status.upper() if status is not None else None
+    normalized_worker_type = worker_type.strip() if worker_type is not None else None
+    normalized_stale_after = normalize_worker_stale_after_seconds(stale_after_seconds)
+    observed_at = checked_at or _utc_now()
+    stores = (
+        registry.worker_heartbeat_stores()
+        if registry is not None
+        else worker_heartbeat_stores or DEFAULT_WORKER_HEARTBEAT_STORES
+    )
+    selected_service_ids = (
+        [service_id] if service_id is not None else sorted(SERVICE_SPECS)
+    )
+
+    projected_workers: list[dict[str, Any]] = []
+    source_statuses: dict[str, dict[str, Any]] = {}
+    for selected_service_id in selected_service_ids:
+        store = stores.get(selected_service_id)
+        if store is None:
+            source_statuses[selected_service_id] = {
+                "status": "NOT_CONFIGURED",
+                "worker_count": 0,
+            }
+            continue
+        try:
+            workers = store.list_heartbeats(
+                service_id=selected_service_id,
+                worker_type=normalized_worker_type,
+                status=normalized_status,
+            )
+        except WorkerHeartbeatError as exc:
+            source_statuses[selected_service_id] = {
+                "status": "UNAVAILABLE",
+                "worker_count": 0,
+                "error_code": exc.error_code,
+                "detail": exc.detail,
+            }
+            continue
+        workers = _filter_records_by_operation_time(
+            workers,
+            options,
+            timestamp_field="last_seen_at",
+        )
+        source_statuses[selected_service_id] = {
+            "status": "READY",
+            "worker_count": len(workers),
+        }
+        projected_workers.extend(
+            _project_worker_for_service(
+                selected_service_id,
+                worker,
+                stale_after_seconds=normalized_stale_after,
+                checked_at=observed_at,
+            )
+            for worker in workers
+        )
+
+    page = _apply_operation_query_options(
+        projected_workers,
+        options,
+        timestamp_field="last_seen_at",
+        tie_breaker_fields=("service_id", "worker_type", "worker_id"),
+    )
+    projection_status = (
+        "DEGRADED"
+        if any(
+            source["status"] in {"NOT_CONFIGURED", "UNAVAILABLE"}
+            for source in source_statuses.values()
+        )
+        else "READY"
+    )
+    projection = {
+        "projection_schema_version": "ag_worker_runtime_projection.v1",
+        "projection_status": projection_status,
+        "checked_at": observed_at,
+        "filters": {
+            "service_id": service_id,
+            "worker_type": normalized_worker_type,
+            "status": normalized_status,
+            "stale_after_seconds": normalized_stale_after,
+            **options.to_filter_dict(),
+        },
+        "workers": page["items"],
+        "summary": summarize_worker_heartbeats(
+            page["items"],
+            stale_after_seconds=normalized_stale_after,
+            checked_at=observed_at,
+        ),
+        "source_statuses": source_statuses,
+        "pagination": page["pagination"],
     }
     if registry is not None:
         projection["source_registry"] = registry.to_summary()
@@ -2046,6 +2269,43 @@ def _validate_unified_operation_filters(
     return None
 
 
+def _validate_worker_runtime_filters(
+    request: Request,
+    *,
+    service_id: str | None,
+    status: str | None,
+    worker_type: str | None,
+) -> JSONResponse | None:
+    if service_id is not None and service_id not in SERVICE_SPECS:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.worker_service_invalid",
+            title="Invalid worker service filter",
+            detail=f"Unsupported worker service: {service_id}",
+            type_uri="https://nex-platform.local/problems/worker-service-invalid",
+        )
+    if status is not None and status.upper() not in WORKER_HEARTBEAT_STATUSES:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.worker_status_invalid",
+            title="Invalid worker status filter",
+            detail=f"Unsupported worker status: {status}",
+            type_uri="https://nex-platform.local/problems/worker-status-invalid",
+        )
+    if worker_type is not None and not worker_type.strip():
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.worker_type_invalid",
+            title="Invalid worker type filter",
+            detail="worker_type must be a non-empty string when provided.",
+            type_uri="https://nex-platform.local/problems/worker-type-invalid",
+        )
+    return None
+
+
 def _build_query_options_or_problem(
     request: Request,
     *,
@@ -2136,10 +2396,12 @@ def _operation_source_status(
             "capabilities": {
                 "jobs": True,
                 "events": True,
+                "workers": True,
             },
             "read_only": False,
             "job_queue": "InMemoryJobQueue",
             "operational_event_store": "InMemoryOperationalEventStore",
+            "worker_heartbeat_store": "InMemoryWorkerHeartbeatStore",
             "database_env": None,
             "redacted_database_url": None,
         }
@@ -2152,10 +2414,12 @@ def _operation_source_status(
             "capabilities": {
                 "jobs": False,
                 "events": False,
+                "workers": False,
             },
             "read_only": None,
             "job_queue": None,
             "operational_event_store": None,
+            "worker_heartbeat_store": None,
             "database_env": None,
             "redacted_database_url": None,
         }
@@ -2169,6 +2433,7 @@ def _operation_source_status(
         "read_only": _operation_source_is_read_only(source),
         "job_queue": source_summary["job_queue"],
         "operational_event_store": source_summary["operational_event_store"],
+        "worker_heartbeat_store": source_summary["worker_heartbeat_store"],
         "database_env": source_summary.get("database_env"),
         "redacted_database_url": source_summary.get("redacted_database_url"),
     }
@@ -2183,7 +2448,11 @@ def _operation_source_is_read_only(source: OperationsSource) -> bool:
         source.operational_event_store is None
         or isinstance(source.operational_event_store, ReadOnlyOperationalEventStore)
     )
-    return job_read_only and event_read_only
+    worker_read_only = (
+        source.worker_heartbeat_store is None
+        or isinstance(source.worker_heartbeat_store, ReadOnlyWorkerHeartbeatStore)
+    )
+    return job_read_only and event_read_only and worker_read_only
 
 
 def _operations_source_read_only_job_error() -> JobQueueError:
@@ -2832,6 +3101,24 @@ def _subject_refs_match(left: object, right: object) -> bool:
 def _project_job_for_service(service_id: str, job: dict[str, Any]) -> dict[str, Any]:
     projected = deepcopy(job)
     projected["service_id"] = service_id
+    return projected
+
+
+def _project_worker_for_service(
+    service_id: str,
+    worker: dict[str, Any],
+    *,
+    stale_after_seconds: int,
+    checked_at: str,
+) -> dict[str, Any]:
+    projected = deepcopy(worker)
+    projected["service_id"] = service_id
+    projected["stale"] = worker_heartbeat_is_stale(
+        projected,
+        stale_after_seconds=stale_after_seconds,
+        checked_at=checked_at,
+    )
+    projected["stale_after_seconds"] = stale_after_seconds
     return projected
 
 

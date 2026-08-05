@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0112 worker heartbeat persistence foundation.
+Status: Slice 0113 AG worker runtime projection.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -52,8 +52,9 @@ NEX_AG_OPERATIONS_SOURCE_SERVICES=nex-ae-api,nex-ag,nex-cx,nex-mo,nex-oa
 ```
 
 The default mode is `memory`. PostgreSQL source mode uses the selected
-service-owned database envs, wraps JobQueue and OperationalEventStore adapters
-as read-only, and keeps AG from writing into other service databases.
+service-owned database envs, wraps JobQueue, OperationalEventStore, and
+WorkerHeartbeatStore adapters as read-only, and keeps AG from writing into
+other service databases.
 
 Route and worker code should emit operational events through the shared
 `OperationalEventEmitter`. It resolves the service persistence store from

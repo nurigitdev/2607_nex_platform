@@ -22,6 +22,7 @@
         "ag_operations_rollup_metrics_projection.v1",
         "ag_operations_dashboard_snapshot_projection.v1",
         "ag_operations_issue_candidate_projection.v1",
+        "ag_worker_runtime_projection.v1",
         "ag_cross_service_trace_timeline_projection.v1"
       ]
     },
@@ -100,6 +101,12 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/timeline_item"
+      }
+    },
+    "workers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/worker_heartbeat"
       }
     },
     "rollups": {
@@ -383,6 +390,25 @@
       "if": {
         "properties": {
           "projection_schema_version": {
+            "const": "ag_worker_runtime_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "filters",
+          "workers",
+          "summary",
+          "source_statuses",
+          "pagination"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
             "const": "ag_cross_service_trace_timeline_projection.v1"
           }
         }
@@ -491,6 +517,10 @@
           "minimum": 0
         },
         "event_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "worker_count": {
           "type": "integer",
           "minimum": 0
         },
@@ -831,6 +861,7 @@
         "read_only",
         "job_queue",
         "operational_event_store",
+        "worker_heartbeat_store",
         "database_env",
         "redacted_database_url"
       ],
@@ -858,13 +889,17 @@
           "additionalProperties": false,
           "required": [
             "jobs",
-            "events"
+            "events",
+            "workers"
           ],
           "properties": {
             "jobs": {
               "type": "boolean"
             },
             "events": {
+              "type": "boolean"
+            },
+            "workers": {
               "type": "boolean"
             }
           }
@@ -887,6 +922,12 @@
             "null"
           ]
         },
+        "worker_heartbeat_store": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "database_env": {
           "type": [
             "string",
@@ -898,6 +939,86 @@
             "string",
             "null"
           ]
+        }
+      }
+    },
+    "worker_heartbeat": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "heartbeat_schema_version",
+        "service_id",
+        "worker_id",
+        "worker_type",
+        "status",
+        "active_job_id",
+        "trace_id",
+        "started_at",
+        "last_seen_at",
+        "metadata",
+        "stale",
+        "stale_after_seconds"
+      ],
+      "properties": {
+        "heartbeat_schema_version": {
+          "const": "worker_heartbeat.v1"
+        },
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        },
+        "worker_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "worker_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "STARTING",
+            "IDLE",
+            "BUSY",
+            "STOPPING",
+            "STOPPED",
+            "ERROR"
+          ]
+        },
+        "active_job_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/trace_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "last_seen_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "stale": {
+          "type": "boolean"
+        },
+        "stale_after_seconds": {
+          "type": "integer",
+          "minimum": 1
         }
       }
     },

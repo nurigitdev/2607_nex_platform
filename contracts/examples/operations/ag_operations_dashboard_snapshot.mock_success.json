@@ -17,11 +17,13 @@
       "source_kind": "memory",
       "capabilities": {
         "jobs": true,
-        "events": true
+        "events": true,
+        "workers": true
       },
       "read_only": false,
       "job_queue": "InMemoryJobQueue",
       "operational_event_store": "InMemoryOperationalEventStore",
+      "worker_heartbeat_store": "InMemoryWorkerHeartbeatStore",
       "database_env": null,
       "redacted_database_url": null
     }

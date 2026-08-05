@@ -1,0 +1,24 @@
+{
+  "projection_schema_version": "ag_worker_runtime_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-05T00:01:20Z",
+  "filters": {
+    "service_id": "nex-cx"
+  },
+  "summary": {
+    "total": 0
+  },
+  "source_statuses": {
+    "nex-cx": {
+      "status": "READY",
+      "worker_count": 0
+    }
+  },
+  "pagination": {
+    "limit": 50,
+    "cursor": null,
+    "returned": 0,
+    "total_after_filters": 0,
+    "next_cursor": null
+  }
+}

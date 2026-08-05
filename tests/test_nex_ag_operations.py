@@ -19,6 +19,7 @@ from nex_ag.operations import (
     RegistryOperationalEventStore,
     ReadOnlyJobQueue,
     ReadOnlyOperationalEventStore,
+    ReadOnlyWorkerHeartbeatStore,
     ag_operations_source_database_env,
     attach_ag_operations_source_runtime,
     build_ag_operations_source_runtime,
@@ -31,6 +32,7 @@ from nex_ag.operations import (
     build_operations_issue_candidate_projection,
     build_operations_rollup_metrics_projection,
     build_operations_source_registry,
+    build_worker_runtime_projection,
     build_operational_event_detail_projection,
     build_operational_event_taxonomy_projection,
     build_operational_event_projection,
@@ -63,15 +65,18 @@ from nex_runtime import (
     FAILED,
     InMemoryOperationalEventStore,
     InMemoryJobQueue,
+    InMemoryWorkerHeartbeatStore,
     JobQueueError,
     OperationalEventError,
     RUNNING,
     SERVICE_SPECS,
     SUCCEEDED,
+    WorkerHeartbeatError,
     build_common_job,
     build_operational_event,
     build_service_app,
     build_subject_ref,
+    build_worker_heartbeat,
     issue_mock_service_token,
     normalize_job_limit,
 )
@@ -249,6 +254,21 @@ class BrokenOperationalEventStore:
         )
 
 
+class BrokenWorkerHeartbeatStore:
+    def upsert_heartbeat(self, heartbeat):
+        raise AssertionError("not used")
+
+    def get_heartbeat(self, service_id, worker_id):
+        raise AssertionError("not used")
+
+    def list_heartbeats(self, *, service_id=None, worker_type=None, status=None):
+        raise WorkerHeartbeatError(
+            error_code="worker_heartbeat.store_unavailable",
+            detail="worker heartbeat store is unavailable",
+            status_code=503,
+        )
+
+
 def build_event_stores() -> dict[str, InMemoryOperationalEventStore]:
     cx_store = InMemoryOperationalEventStore()
     cx_store.append(
@@ -278,6 +298,51 @@ def build_event_stores() -> dict[str, InMemoryOperationalEventStore]:
             subject_ref={"type": "mo.provider", "id": "reranker"},
             details={"service_token": "private"},
             created_at="2026-08-05T00:00:01Z",
+        )
+    )
+    return {"nex-cx": cx_store, "nex-mo": mo_store}
+
+
+def build_worker_heartbeat_stores() -> dict[str, InMemoryWorkerHeartbeatStore]:
+    cx_store = InMemoryWorkerHeartbeatStore()
+    cx_store.upsert_heartbeat(
+        build_worker_heartbeat(
+            service_id="nex-cx",
+            worker_id="cx-worker-001",
+            worker_type="cx.document_processing.worker",
+            status="BUSY",
+            active_job_id="job-cx-001",
+            trace_id=TRACE_ID,
+            started_at="2026-08-05T00:00:00Z",
+            last_seen_at="2026-08-05T00:00:10Z",
+            metadata={"queue": "cx.document_processing"},
+        )
+    )
+    cx_store.upsert_heartbeat(
+        build_worker_heartbeat(
+            service_id="nex-cx",
+            worker_id="cx-worker-002",
+            worker_type="cx.document_processing.worker",
+            status="IDLE",
+            active_job_id=None,
+            trace_id=None,
+            started_at="2026-08-05T00:00:00Z",
+            last_seen_at="2026-08-05T00:01:00Z",
+            metadata={"queue": "cx.document_processing"},
+        )
+    )
+    mo_store = InMemoryWorkerHeartbeatStore()
+    mo_store.upsert_heartbeat(
+        build_worker_heartbeat(
+            service_id="nex-mo",
+            worker_id="mo-worker-001",
+            worker_type="mo.provider.worker",
+            status="IDLE",
+            active_job_id=None,
+            trace_id=None,
+            started_at="2026-08-05T00:00:00Z",
+            last_seen_at="2026-08-05T00:00:45Z",
+            metadata={"provider_family": "embedding"},
         )
     )
     return {"nex-cx": cx_store, "nex-mo": mo_store}
@@ -421,6 +486,21 @@ def test_read_only_operational_event_store_allows_reads_and_rejects_append() -> 
         store.append(event)
 
 
+def test_read_only_worker_heartbeat_store_allows_reads_and_rejects_writes() -> None:
+    delegate = build_worker_heartbeat_stores()["nex-cx"]
+    store = ReadOnlyWorkerHeartbeatStore(delegate)
+
+    heartbeat = store.get_heartbeat("nex-cx", "cx-worker-001")
+    assert heartbeat is not None
+    assert heartbeat["worker_id"] == "cx-worker-001"
+    assert [item["worker_id"] for item in store.list_heartbeats(service_id="nex-cx")] == [
+        "cx-worker-001",
+        "cx-worker-002",
+    ]
+    with pytest.raises(WorkerHeartbeatError, match="read-only"):
+        store.upsert_heartbeat(heartbeat)
+
+
 def test_ag_operations_source_runtime_defaults_to_memory_without_registry() -> None:
     app = build_service_app(SERVICE_SPECS["nex-ag"])
 
@@ -490,6 +570,7 @@ def test_ag_operations_source_runtime_builds_postgres_read_only_registry() -> No
     )
     assert isinstance(source.job_queue, ReadOnlyJobQueue)
     assert isinstance(source.operational_event_store, ReadOnlyOperationalEventStore)
+    assert isinstance(source.worker_heartbeat_store, ReadOnlyWorkerHeartbeatStore)
     with pytest.raises(JobQueueError, match="read-only"):
         source.job_queue.enqueue(
             sample_job(
@@ -522,10 +603,12 @@ def test_operation_source_readiness_projection_reports_default_memory_runtime() 
             "capabilities": {
                 "jobs": True,
                 "events": True,
+                "workers": True,
             },
             "read_only": False,
             "job_queue": "InMemoryJobQueue",
             "operational_event_store": "InMemoryOperationalEventStore",
+            "worker_heartbeat_store": "InMemoryWorkerHeartbeatStore",
             "database_env": None,
             "redacted_database_url": None,
         }
@@ -651,18 +734,22 @@ def test_operations_source_registry_registers_sources_and_reports_capabilities()
     registry = build_operations_source_registry(
         job_queues=job_queues,
         event_stores=event_stores,
+        worker_heartbeat_stores=build_worker_heartbeat_stores(),
         source_kind="memory-test",
     )
 
     assert registry.service_ids() == ["nex-ae-api", "nex-cx", "nex-mo"]
     assert registry.get("nex-cx").job_queue is job_queues["nex-cx"]
     assert registry.get("nex-cx").operational_event_store is event_stores["nex-cx"]
+    assert registry.get("nex-cx").worker_heartbeat_store is not None
     assert sorted(registry.job_queues()) == ["nex-ae-api", "nex-cx"]
     assert sorted(registry.event_stores()) == ["nex-cx", "nex-mo"]
+    assert sorted(registry.worker_heartbeat_stores()) == ["nex-cx", "nex-mo"]
     assert registry.to_summary()["registry_schema_version"] == "ag_operations_source_registry.v1"
     assert registry.to_summary()["sources"]["nex-mo"]["capabilities"] == {
         "jobs": False,
         "events": True,
+        "workers": True,
     }
 
 
@@ -756,6 +843,139 @@ def test_operations_routes_accept_source_registry() -> None:
     assert events_response.json()["events"][0]["event_id"] == "event-mo-001"
     assert jobs_response.status_code == 200
     assert jobs_response.json()["jobs"][0]["job_id"] == "job-ae-001"
+
+
+def test_build_worker_runtime_projection_filters_and_marks_stale_workers() -> None:
+    registry = build_operations_source_registry(
+        worker_heartbeat_stores=build_worker_heartbeat_stores(),
+    )
+
+    projection = build_worker_runtime_projection(
+        registry=registry,
+        service_id="nex-cx",
+        status="busy",
+        stale_after_seconds=60,
+        checked_at="2026-08-05T00:01:20Z",
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == "ag_worker_runtime_projection.v1"
+    assert projection["projection_status"] == "READY"
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["filters"] == {
+        "service_id": "nex-cx",
+        "worker_type": None,
+        "status": "BUSY",
+        "stale_after_seconds": 60,
+        "limit": 50,
+        "since": None,
+        "until": None,
+        "sort": "desc",
+        "cursor": None,
+    }
+    assert [worker["worker_id"] for worker in projection["workers"]] == [
+        "cx-worker-001"
+    ]
+    assert projection["workers"][0]["stale"] is True
+    assert projection["summary"]["total"] == 1
+    assert projection["summary"]["stale"] == 1
+    assert projection["source_statuses"]["nex-cx"] == {
+        "status": "READY",
+        "worker_count": 1,
+    }
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_worker_runtime_projection_reports_degraded_sources_and_applies_paging() -> None:
+    projection = build_worker_runtime_projection(
+        registry=build_operations_source_registry(
+            worker_heartbeat_stores=build_worker_heartbeat_stores(),
+        ),
+        query_options=build_operation_query_options(limit=2, sort="asc"),
+        checked_at="2026-08-05T00:01:20Z",
+    )
+
+    assert projection["projection_status"] == "DEGRADED"
+    assert [worker["worker_id"] for worker in projection["workers"]] == [
+        "cx-worker-001",
+        "mo-worker-001",
+    ]
+    assert projection["pagination"]["next_cursor"] == "2"
+    assert projection["source_statuses"]["nex-oa"] == {
+        "status": "NOT_CONFIGURED",
+        "worker_count": 0,
+    }
+    assert projection["source_registry"]["sources"]["nex-cx"]["capabilities"]["workers"] is True
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_worker_runtime_projection_reports_unavailable_source() -> None:
+    projection = build_worker_runtime_projection(
+        worker_heartbeat_stores={"nex-cx": BrokenWorkerHeartbeatStore()},
+        service_id="nex-cx",
+    )
+
+    assert projection["projection_status"] == "DEGRADED"
+    assert projection["workers"] == []
+    assert projection["source_statuses"]["nex-cx"] == {
+        "status": "UNAVAILABLE",
+        "worker_count": 0,
+        "error_code": "worker_heartbeat.store_unavailable",
+        "detail": "worker heartbeat store is unavailable",
+    }
+    assert projection["summary"]["total"] == 0
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_worker_runtime_route_requires_auth_returns_projection_and_rejects_bad_filters() -> None:
+    registry = build_operations_source_registry(
+        worker_heartbeat_stores=build_worker_heartbeat_stores(),
+    )
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_unified_operation_routes(app, registry=registry)
+    client = TestClient(app)
+
+    missing_auth = client.get("/admin/v1/operations/workers")
+    response = client.get(
+        "/admin/v1/operations/workers",
+        params={
+            "service_id": "nex-cx",
+            "status": "BUSY",
+            "stale_after_seconds": 60,
+        },
+        headers={
+            **auth_headers(),
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        },
+    )
+    bad_service = client.get(
+        "/admin/v1/operations/workers",
+        params={"service_id": "nex-unknown"},
+        headers=auth_headers(),
+    )
+    bad_status = client.get(
+        "/admin/v1/operations/workers",
+        params={"status": "BROKEN"},
+        headers=auth_headers(),
+    )
+    bad_worker_type = client.get(
+        "/admin/v1/operations/workers",
+        params={"worker_type": ""},
+        headers=auth_headers(),
+    )
+
+    assert missing_auth.status_code == 401
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["request_trace_id"] == TRACE_ID
+    assert payload["workers"][0]["worker_id"] == "cx-worker-001"
+    assert payload["source_statuses"]["nex-cx"]["status"] == "READY"
+    assert bad_service.status_code == 400
+    assert bad_service.json()["error_code"] == "ag.worker_service_invalid"
+    assert bad_status.status_code == 400
+    assert bad_status.json()["error_code"] == "ag.worker_status_invalid"
+    assert bad_worker_type.status_code == 400
+    assert bad_worker_type.json()["error_code"] == "ag.worker_type_invalid"
 
 
 def test_operation_source_readiness_route_requires_auth_and_filters_service() -> None:
@@ -1776,6 +1996,14 @@ def test_ag_operations_contract_schema_accepts_runtime_projection_family() -> No
         build_operations_issue_candidate_projection(
             registry=registry,
             service_id="nex-cx",
+            request_trace_id=TRACE_ID,
+        ),
+        build_worker_runtime_projection(
+            registry=build_operations_source_registry(
+                worker_heartbeat_stores=build_worker_heartbeat_stores(),
+            ),
+            service_id="nex-cx",
+            checked_at="2026-08-05T00:01:20Z",
             request_trace_id=TRACE_ID,
         ),
         build_cross_service_trace_timeline_projection(

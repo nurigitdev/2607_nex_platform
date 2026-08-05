@@ -1,0 +1,68 @@
+{
+  "projection_schema_version": "ag_worker_runtime_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-05T00:01:20Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "filters": {
+    "service_id": "nex-cx",
+    "worker_type": null,
+    "status": "BUSY",
+    "stale_after_seconds": 60,
+    "limit": 50,
+    "since": null,
+    "until": null,
+    "sort": "desc",
+    "cursor": null
+  },
+  "workers": [
+    {
+      "heartbeat_schema_version": "worker_heartbeat.v1",
+      "service_id": "nex-cx",
+      "worker_id": "cx-worker-001",
+      "worker_type": "cx.document_processing.worker",
+      "status": "BUSY",
+      "active_job_id": "job-cx-001",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "started_at": "2026-08-05T00:00:00Z",
+      "last_seen_at": "2026-08-05T00:00:10Z",
+      "metadata": {
+        "queue": "cx.document_processing"
+      },
+      "stale": true,
+      "stale_after_seconds": 60
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "active": 1,
+    "stale": 1,
+    "statuses": {
+      "STARTING": 0,
+      "IDLE": 0,
+      "BUSY": 1,
+      "STOPPING": 0,
+      "STOPPED": 0,
+      "ERROR": 0
+    },
+    "services": {
+      "nex-oa": 0,
+      "nex-ag": 0,
+      "nex-ae-api": 0,
+      "nex-cx": 1,
+      "nex-mo": 0
+    }
+  },
+  "source_statuses": {
+    "nex-cx": {
+      "status": "READY",
+      "worker_count": 1
+    }
+  },
+  "pagination": {
+    "limit": 50,
+    "cursor": null,
+    "returned": 1,
+    "total_after_filters": 1,
+    "next_cursor": null
+  }
+}

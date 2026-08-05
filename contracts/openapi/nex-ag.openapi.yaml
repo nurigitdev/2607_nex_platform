@@ -212,6 +212,53 @@ paths:
           description: Invalid issue candidate query or filter.
         "401":
           description: Service claim is missing or invalid.
+  /admin/v1/operations/workers:
+    get:
+      operationId: getAgWorkerRuntimeProjection
+      tags:
+        - Operations
+      parameters:
+        - $ref: "#/components/parameters/serviceId"
+        - name: worker_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - STARTING
+              - IDLE
+              - BUSY
+              - STOPPING
+              - STOPPED
+              - ERROR
+        - name: stale_after_seconds
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 60
+        - $ref: "#/components/parameters/since"
+        - $ref: "#/components/parameters/until"
+        - $ref: "#/components/parameters/sort"
+        - $ref: "#/components/parameters/cursor"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only worker heartbeat runtime projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "400":
+          description: Invalid worker runtime query or filter.
+        "401":
+          description: Service claim is missing or invalid.
   /admin/v1/operations/sources:
     get:
       operationId: getAgOperationSourceReadinessProjection
@@ -502,6 +549,7 @@ components:
             - ag_operations_rollup_metrics_projection.v1
             - ag_operations_dashboard_snapshot_projection.v1
             - ag_operations_issue_candidate_projection.v1
+            - ag_worker_runtime_projection.v1
             - ag_cross_service_trace_timeline_projection.v1
         checked_at:
           type: string
