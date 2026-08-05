@@ -8,10 +8,14 @@ import pytest
 import run_migrations
 from run_migrations import (
     MigrationError,
+    MigrationRunResult,
+    build_alembic_config,
     format_result,
     load_migrations,
     run_service_migrations,
+    service_database_env,
     service_database_url,
+    service_migration_settings,
     validate_migration_sql,
 )
 
@@ -151,6 +155,86 @@ def test_service_database_url_rejects_missing_and_placeholder_values() -> None:
         )
 
 
+def test_service_database_env_supports_dev_and_test_profiles() -> None:
+    assert service_database_env("nex-cx") == "NEX_CX_DATABASE_URL"
+    assert service_database_env("nex-cx", profile="test") == "NEX_CX_TEST_DATABASE_URL"
+
+    with pytest.raises(MigrationError, match="unknown database profile"):
+        service_database_env("nex-cx", profile="prod")
+
+    with pytest.raises(MigrationError, match="unknown service id"):
+        service_database_env("unknown-service", profile="test")
+
+
+def test_service_database_url_uses_test_profile_env() -> None:
+    assert (
+        service_database_url(
+            "nex-cx",
+            profile="test",
+            environ={"NEX_CX_TEST_DATABASE_URL": "postgresql://user:secret@localhost/nex_cx_test"},
+        )
+        == "postgresql://user:secret@localhost/nex_cx_test"
+    )
+
+
+def test_service_migration_settings_redacts_url_and_sets_paths(tmp_path: Path) -> None:
+    settings = service_migration_settings(
+        "nex-ae-api",
+        profile="test",
+        environ={
+            "NEX_AE_TEST_DATABASE_URL": "postgresql://nex_ae_user:secret@localhost/nex_ae_test"
+        },
+        database_root=tmp_path,
+    )
+
+    assert settings.database_env == "NEX_AE_TEST_DATABASE_URL"
+    assert settings.redacted_database_url == "postgresql://nex_ae_user:***@localhost/nex_ae_test"
+    assert settings.migrations_dir == tmp_path / "nex-ae-api" / "migrations"
+    assert settings.alembic_script_location == tmp_path / "nex-ae-api" / "alembic"
+
+
+def test_service_migration_settings_can_skip_database_url_for_dry_run(tmp_path: Path) -> None:
+    settings = service_migration_settings(
+        "nex-mo",
+        profile="test",
+        environ={},
+        database_root=tmp_path,
+        require_database_url=False,
+    )
+
+    assert settings.database_env == "NEX_MO_TEST_DATABASE_URL"
+    assert settings.database_url == ""
+    assert settings.redacted_database_url == ""
+
+
+def test_build_alembic_config_uses_service_settings(tmp_path: Path) -> None:
+    settings = service_migration_settings(
+        "nex-oa",
+        environ={"NEX_OA_DATABASE_URL": "postgresql://nex_oa_user:secret@localhost/nex_oa_dev"},
+        database_root=tmp_path,
+    )
+
+    config = build_alembic_config(settings)
+
+    assert config.get_main_option("script_location") == str(tmp_path / "nex-oa" / "alembic")
+    assert config.get_main_option("sqlalchemy.url") == settings.database_url
+    assert config.get_main_option("nex.service_id") == "nex-oa"
+    assert config.get_main_option("nex.database_profile") == "dev"
+    assert config.get_main_option("nex.database_env") == "NEX_OA_DATABASE_URL"
+
+
+def test_build_alembic_config_requires_database_url(tmp_path: Path) -> None:
+    settings = service_migration_settings(
+        "nex-oa",
+        environ={},
+        database_root=tmp_path,
+        require_database_url=False,
+    )
+
+    with pytest.raises(MigrationError, match="requires a database URL"):
+        build_alembic_config(settings)
+
+
 def test_main_reports_missing_env_without_leaking_password(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -179,3 +263,56 @@ def test_main_dry_run_lists_plan_without_database_env(
 
     captured = capsys.readouterr()
     assert captured.out.strip() == "nex-cx: DRY_RUN planned=0023_first"
+
+
+def test_main_uses_test_profile_database_url(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_run_service_migrations(
+        service_id: str,
+        *,
+        database_url: str,
+        database_root: Path,
+        dry_run: bool,
+        profile: str,
+    ) -> MigrationRunResult:
+        calls.append(
+            {
+                "service_id": service_id,
+                "database_url": database_url,
+                "database_root": database_root,
+                "dry_run": dry_run,
+                "profile": profile,
+            }
+        )
+        return MigrationRunResult(
+            service_id=service_id,
+            planned=("0023_first",),
+            applied=("0023_first",),
+            skipped=(),
+            dry_run=dry_run,
+            profile=profile,
+        )
+
+    monkeypatch.setattr(run_migrations, "load_env_file", lambda path: None)
+    monkeypatch.setattr(run_migrations, "run_service_migrations", fake_run_service_migrations)
+    monkeypatch.setenv(
+        "NEX_CX_TEST_DATABASE_URL",
+        "postgresql://nex_cx_user:secret@localhost/nex_cx_test",
+    )
+
+    assert run_migrations.main(["--service", "nex-cx", "--profile", "test"]) == 0
+
+    assert calls == [
+        {
+            "service_id": "nex-cx",
+            "database_url": "postgresql://nex_cx_user:secret@localhost/nex_cx_test",
+            "database_root": run_migrations.DATABASE_ROOT,
+            "dry_run": False,
+            "profile": "test",
+        }
+    ]
+    assert capsys.readouterr().out.strip() == "nex-cx profile=test: applied=0023_first skipped=none"

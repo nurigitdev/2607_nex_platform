@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0081 DB connection readiness foundation.
+Status: Slice 0082 service migration profile and Alembic config foundation.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -38,12 +38,24 @@ Local migrations are applied by the service-owned runner:
 
 ```bash
 ./.venv/bin/python scripts/db/run_migrations.py --service nex-cx --dry-run
+./.venv/bin/python scripts/db/run_migrations.py --service nex-cx --profile test --dry-run
 ./.venv/bin/python scripts/db/run_migrations.py --all
 ```
 
 The runner reads `.env.local`, rejects placeholder database URLs, creates the
 `schema_migrations` state table before checking applied versions, and executes
 only migrations that have not already been recorded.
+
+`--profile dev` reads the primary service database envs and is the default.
+`--profile test` reads the matching `NEX_*_TEST_DATABASE_URL` envs so regression
+database setup can use the same service-owned migration runner.
+
+Existing migrations remain SQL files under `database/<service>/migrations/`.
+The runner now also exposes per-service Alembic configuration objects with
+service id, profile, database env, database URL, and future
+`database/<service>/alembic/` script locations. Alembic is therefore available
+for future SQLAlchemy model revisions without changing the current SQL
+migration execution contract.
 
 ## Runtime Connection Foundation
 
