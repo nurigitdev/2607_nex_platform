@@ -10,6 +10,11 @@ from fastapi.responses import JSONResponse
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
+    InMemoryJobQueue,
+    JobQueue,
+    JobQueueError,
+    build_common_job,
+    build_subject_ref,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
@@ -68,10 +73,12 @@ def register_processing_routes(
     mo_client: MoEmbeddingClient | None = None,
     embedding_alias: str | None = None,
     prompt_store: PromptRegistryStore | None = None,
+    job_queue: JobQueue | None = None,
 ) -> None:
     config = storage_config or build_storage_config()
     client = mo_client or build_default_mo_embedding_client()
     alias = embedding_alias or DEFAULT_EMBEDDING_ALIAS
+    queue = job_queue or InMemoryJobQueue()
 
     @app.post("/api/v1/documents/{document_id}/processing/run", response_model=None)
     def run_processing(
@@ -91,6 +98,7 @@ def register_processing_routes(
                 mo_client=client,
                 embedding_alias=alias,
                 prompt_store=prompt_store,
+                job_queue=queue,
                 request_id=request_id_from_headers(request),
                 trace_id=trace_id_from_headers(request),
             )
@@ -130,11 +138,24 @@ def run_document_processing_pipeline(
     request_id: str,
     trace_id: str,
     prompt_store: PromptRegistryStore | None = None,
+    job_queue: JobQueue | None = None,
 ) -> dict[str, Any]:
     started_at = _utc_now()
     pipeline_run_id = str(
         uuid5(NAMESPACE_URL, f"cx-processing:{document_id}:{request_id}:{trace_id}")
     )
+    queue = job_queue or InMemoryJobQueue()
+    job, existing_run = _enqueue_or_resume_processing_job(
+        queue,
+        document_id=document_id,
+        pipeline_run_id=pipeline_run_id,
+        request_id=request_id,
+        trace_id=trace_id,
+        created_at=started_at,
+        store=store,
+    )
+    if existing_run is not None:
+        return existing_run
     steps: list[dict[str, Any]] = []
 
     try:
@@ -222,6 +243,7 @@ def run_document_processing_pipeline(
             started_at=started_at,
             steps=steps,
             status="FAILED",
+            job=_safe_fail_job(queue, job["job_id"]),
         )
         store.save_document_processing_run(failed_run)
         raise _pipeline_error_from_exception(
@@ -238,8 +260,76 @@ def run_document_processing_pipeline(
         started_at=started_at,
         steps=steps,
         status="SUCCEEDED",
+        job=queue.complete_job(job["job_id"]),
     )
     return store.save_document_processing_run(record)
+
+
+def build_processing_job(
+    *,
+    document_id: str,
+    pipeline_run_id: str,
+    request_id: str,
+    trace_id: str,
+    created_at: str,
+) -> dict[str, Any]:
+    return build_common_job(
+        job_id=str(uuid5(NAMESPACE_URL, f"cx-processing-job:{pipeline_run_id}")),
+        job_type="cx.document_processing",
+        trace_id=trace_id,
+        request_id=request_id,
+        subject_ref=build_subject_ref("cx.document", document_id),
+        idempotency_key=pipeline_run_id,
+        max_attempts=1,
+        retryable=True,
+        links={
+            "document": f"/api/v1/documents/{document_id}",
+            "processing": f"/api/v1/documents/{document_id}/processing",
+        },
+        created_at=created_at,
+    )
+
+
+def _enqueue_or_resume_processing_job(
+    queue: JobQueue,
+    *,
+    document_id: str,
+    pipeline_run_id: str,
+    request_id: str,
+    trace_id: str,
+    created_at: str,
+    store: ContentIngestionStore,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    job = queue.enqueue(
+        build_processing_job(
+            document_id=document_id,
+            pipeline_run_id=pipeline_run_id,
+            request_id=request_id,
+            trace_id=trace_id,
+            created_at=created_at,
+        )
+    )
+    if job["status"] == "QUEUED":
+        return queue.start_job(job["job_id"], updated_at=created_at), None
+    if job["status"] == "RUNNING":
+        return job, None
+
+    existing_run = store.get_document_processing_run(pipeline_run_id)
+    if existing_run is not None:
+        return job, existing_run
+    raise ProcessingPipelineError(
+        status_code=409,
+        error_code="cx.processing_job_terminal",
+        detail=f"Processing job is already terminal: {job['job_id']}",
+        retryable=False,
+    )
+
+
+def _safe_fail_job(queue: JobQueue, job_id: str) -> dict[str, Any] | None:
+    try:
+        return queue.fail_job(job_id)
+    except JobQueueError:
+        return queue.get_job(job_id)
 
 
 def extraction_job_id_for_document(store: ContentIngestionStore, document_id: str) -> str:
@@ -280,9 +370,10 @@ def build_pipeline_run_record(
     started_at: str,
     steps: list[dict[str, Any]],
     status: str,
+    job: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     completed_at = _utc_now()
-    return {
+    record = {
         "pipeline_schema_version": "cx_document_processing_pipeline.v1",
         "pipeline_run_id": pipeline_run_id,
         "document_id": document_id,
@@ -299,6 +390,26 @@ def build_pipeline_run_record(
         "started_at": started_at,
         "completed_at": completed_at,
         "updated_at": completed_at,
+    }
+    if job is not None:
+        record["job"] = processing_job_snapshot(job)
+    return record
+
+
+def processing_job_snapshot(job: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "job_schema_version": job["job_schema_version"],
+        "job_id": job["job_id"],
+        "job_type": job["job_type"],
+        "status": job["status"],
+        "subject_ref": dict(job["subject_ref"]),
+        "idempotency_key": job["idempotency_key"],
+        "attempt_count": job["attempt_count"],
+        "max_attempts": job["max_attempts"],
+        "retryable": job["retryable"],
+        "links": dict(job["links"]),
+        "created_at": job["created_at"],
+        "updated_at": job["updated_at"],
     }
 
 
@@ -413,6 +524,9 @@ def _processing_problem_response(
             "failed_step": exc.failed_step,
             "step_summary": exc.pipeline_run["step_summary"],
         }
+        if "job" in exc.pipeline_run:
+            details["job_id"] = exc.pipeline_run["job"]["job_id"]
+            details["job_status"] = exc.pipeline_run["job"]["status"]
     return problem_response(
         request,
         status_code=exc.status_code,

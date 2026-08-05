@@ -14,17 +14,24 @@ from nex_cx.ingestion import (
 )
 from nex_cx.processing import (
     ProcessingPipelineError,
+    _enqueue_or_resume_processing_job,
+    _failed_step_id,
+    _safe_fail_job,
     build_pipeline_run_record,
+    build_processing_job,
     extraction_job_id_for_document,
     output_ref_for_step,
+    processing_job_snapshot,
     register_processing_routes,
     run_document_processing_pipeline,
     safe_error_from_exception,
 )
-from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
+from nex_runtime import InMemoryJobQueue, SERVICE_SPECS, build_service_app, issue_mock_service_token
+from nex_runtime.jobs import JobQueueError
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
+NOW = "2026-08-05T00:00:00Z"
 
 
 class FakeMoEmbeddingClient:
@@ -82,6 +89,8 @@ def auth_headers() -> dict[str, str]:
 
 def build_test_client(
     tmp_path: Path,
+    *,
+    job_queue: InMemoryJobQueue | None = None,
 ) -> tuple[TestClient, ContentIngestionStore, FakeMoEmbeddingClient]:
     app = build_service_app(SERVICE_SPECS["nex-cx"])
     store = ContentIngestionStore()
@@ -94,6 +103,7 @@ def build_test_client(
         storage_config=config,
         mo_client=mo_client,
         embedding_alias="mock-embedding-default",
+        job_queue=job_queue,
     )
     return TestClient(app), store, mo_client
 
@@ -122,6 +132,7 @@ def test_run_document_processing_pipeline_builds_all_indexes_and_summaries(
 ) -> None:
     store = ContentIngestionStore()
     mo_client = FakeMoEmbeddingClient()
+    job_queue = InMemoryJobQueue()
     document = save_source_document(store, tmp_path)
 
     run = run_document_processing_pipeline(
@@ -132,10 +143,15 @@ def test_run_document_processing_pipeline_builds_all_indexes_and_summaries(
         embedding_alias="mock-embedding-default",
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
+        job_queue=job_queue,
     )
 
     assert run["pipeline_schema_version"] == "cx_document_processing_pipeline.v1"
     assert run["status"] == "SUCCEEDED"
+    assert run["job"]["job_type"] == "cx.document_processing"
+    assert run["job"]["status"] == "SUCCEEDED"
+    assert run["job"]["attempt_count"] == 1
+    assert job_queue.get_job(run["job"]["job_id"])["status"] == "SUCCEEDED"
     assert [step["status"] for step in run["steps"]] == ["SUCCEEDED"] * 6
     assert run["step_summary"] == {"total": 6, "succeeded": 6, "skipped": 0, "failed": 0}
     assert store.get_extraction_result(document["document_id"]) is not None
@@ -179,10 +195,104 @@ def test_run_document_processing_pipeline_is_idempotent_for_existing_outputs(
     assert len(mo_client.calls) == 2
 
 
+def test_run_document_processing_pipeline_reuses_terminal_job_for_same_request(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    mo_client = FakeMoEmbeddingClient()
+    job_queue = InMemoryJobQueue()
+    document = save_source_document(store, tmp_path)
+    first = run_document_processing_pipeline(
+        document["document_id"],
+        store=store,
+        storage_config=storage_config(tmp_path),
+        mo_client=mo_client,
+        embedding_alias="mock-embedding-default",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        job_queue=job_queue,
+    )
+
+    second = run_document_processing_pipeline(
+        document["document_id"],
+        store=store,
+        storage_config=storage_config(tmp_path),
+        mo_client=mo_client,
+        embedding_alias="mock-embedding-default",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        job_queue=job_queue,
+    )
+
+    assert second == first
+    assert len(mo_client.calls) == 2
+    assert job_queue.summary()["statuses"]["SUCCEEDED"] == 1
+
+
+def test_processing_job_resume_handles_running_and_orphaned_terminal_jobs(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    queue = InMemoryJobQueue()
+    pipeline_run_id = "run-001"
+    job = build_processing_job(
+        document_id="doc-001",
+        pipeline_run_id=pipeline_run_id,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        created_at=NOW,
+    )
+    queue.enqueue(job)
+    running = queue.start_job(job["job_id"])
+
+    resumed, existing_run = _enqueue_or_resume_processing_job(
+        queue,
+        document_id="doc-001",
+        pipeline_run_id=pipeline_run_id,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        created_at=NOW,
+        store=store,
+    )
+    assert resumed == running
+    assert existing_run is None
+
+    queue.complete_job(job["job_id"])
+    try:
+        _enqueue_or_resume_processing_job(
+            queue,
+            document_id="doc-001",
+            pipeline_run_id=pipeline_run_id,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            created_at=NOW,
+            store=store,
+        )
+    except ProcessingPipelineError as exc:
+        assert exc.error_code == "cx.processing_job_terminal"
+    else:
+        raise AssertionError("expected terminal job error without stored pipeline run")
+
+
+def test_safe_fail_job_returns_current_snapshot_when_transition_fails() -> None:
+    class FailingQueue:
+        def fail_job(self, job_id: str):
+            raise JobQueueError("job.transition_invalid", "cannot fail")
+
+        def get_job(self, job_id: str):
+            return {"job_id": job_id, "status": "SUCCEEDED"}
+
+    assert _safe_fail_job(FailingQueue(), "job-001") == {
+        "job_id": "job-001",
+        "status": "SUCCEEDED",
+    }
+
+
 def test_run_document_processing_pipeline_records_failed_step(
     tmp_path: Path,
 ) -> None:
     store = ContentIngestionStore()
+    job_queue = InMemoryJobQueue()
     metadata_only = build_upload_registration(
         {
             "filename": "source.pdf",
@@ -205,6 +315,7 @@ def test_run_document_processing_pipeline_records_failed_step(
             embedding_alias="mock-embedding-default",
             request_id=REQUEST_ID,
             trace_id=TRACE_ID,
+            job_queue=job_queue,
         )
     except ProcessingPipelineError as exc:
         error = exc
@@ -218,12 +329,15 @@ def test_run_document_processing_pipeline_records_failed_step(
     assert error.failed_step == "extraction"
     assert failed is not None
     assert failed["status"] == "FAILED"
+    assert failed["job"]["status"] == "FAILED"
+    assert job_queue.get_job(failed["job"]["job_id"])["status"] == "FAILED"
     assert failed["step_summary"] == {"total": 1, "succeeded": 0, "skipped": 0, "failed": 1}
     assert store.get_latest_document_processing_run(metadata_only["document_id"]) == failed
 
 
 def test_processing_routes_run_and_read_latest_pipeline(tmp_path: Path) -> None:
-    client, store, mo_client = build_test_client(tmp_path)
+    job_queue = InMemoryJobQueue()
+    client, store, mo_client = build_test_client(tmp_path, job_queue=job_queue)
     uploaded = client.post(
         "/api/v1/documents/uploads",
         json={
@@ -246,6 +360,8 @@ def test_processing_routes_run_and_read_latest_pipeline(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert latest.status_code == 200
     assert latest.json()["pipeline_run_id"] == response.json()["pipeline_run_id"]
+    assert latest.json()["job"]["status"] == "SUCCEEDED"
+    assert job_queue.summary()["statuses"]["SUCCEEDED"] == 1
     assert store.get_latest_document_processing_run(uploaded["document_id"]) == response.json()
     assert len(mo_client.calls) == 2
 
@@ -272,6 +388,7 @@ def test_processing_route_problem_includes_safe_pipeline_details(tmp_path: Path)
     assert response.status_code == 404
     assert response.json()["error_code"] == "cx.document_not_found"
     assert response.json()["details"]["failed_step"] == "extraction"
+    assert response.json()["details"]["job_status"] == "FAILED"
     assert response.json()["details"]["step_summary"] == {
         "total": 1,
         "succeeded": 0,
@@ -290,6 +407,13 @@ def test_processing_read_reports_not_found(tmp_path: Path) -> None:
 
 
 def test_processing_helpers_return_safe_metadata() -> None:
+    job = build_processing_job(
+        document_id="doc-1",
+        pipeline_run_id="run-1",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        created_at="2026-08-04T00:00:00Z",
+    )
     summary_ref = output_ref_for_step(
         "summary",
         {
@@ -308,6 +432,16 @@ def test_processing_helpers_return_safe_metadata() -> None:
             {"step_id": "summary", "status": "SKIPPED", "output_ref": summary_ref, "error": None}
         ],
         status="SUCCEEDED",
+        job={**job, "status": "SUCCEEDED", "attempt_count": 1},
+    )
+    run_without_job = build_pipeline_run_record(
+        document_id="doc-1",
+        pipeline_run_id="run-2",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        started_at="2026-08-04T00:00:00Z",
+        steps=[],
+        status="SUCCEEDED",
     )
 
     assert summary_ref == {
@@ -316,6 +450,12 @@ def test_processing_helpers_return_safe_metadata() -> None:
         "document_id": "doc-1",
     }
     assert run["step_summary"] == {"total": 1, "succeeded": 0, "skipped": 1, "failed": 0}
+    assert run["job"] == processing_job_snapshot(
+        {**job, "status": "SUCCEEDED", "attempt_count": 1}
+    )
+    assert run["job"]["links"]["processing"] == "/api/v1/documents/doc-1/processing"
+    assert "job" not in run_without_job
+    assert _failed_step_id(run_without_job["steps"]) is None
     assert safe_error_from_exception(ValueError("boom")) == {
         "error_code": "cx.processing_step_failed",
         "detail": "Document processing step failed.",
