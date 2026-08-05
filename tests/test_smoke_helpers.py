@@ -7,6 +7,7 @@ from urllib.error import HTTPError, URLError
 import pytest
 from sqlalchemy import text
 
+import run_ag_operations_dashboard_smoke as ag_operations_dashboard_smoke
 import run_ag_cross_service_observability_smoke as ag_observability_smoke
 import check_backend_service_endpoints as endpoint_smoke
 import check_db_readiness as db_smoke
@@ -141,6 +142,40 @@ def test_endpoint_main_returns_failure_when_any_check_fails(
     monkeypatch.setattr(endpoint_smoke, "_fetch", lambda url: (False, "boom"))
 
     assert endpoint_smoke.main() == 1
+
+
+def test_ag_operations_dashboard_smoke_passes_mock_pack() -> None:
+    evidence = ag_operations_dashboard_smoke.run_ag_operations_dashboard_smoke()
+
+    assert evidence["status"] == "PASS"
+    assert evidence["endpoint_count"] == 11
+    assert all(evidence["checks"].values())
+    assert evidence["counts"] == {
+        "sources": 1,
+        "events": 1,
+        "jobs": 2,
+        "trace_timeline": 3,
+        "rollups": 1,
+        "dashboard_degraded_sources": 0,
+        "issue_candidates": 2,
+    }
+    assert ag_operations_dashboard_smoke.summary_line(evidence) == (
+        "ag_operations_dashboard_smoke=pass endpoints=11 jobs=2 events=1 issues=2"
+    )
+    assert "private" not in json.dumps(evidence, ensure_ascii=False)
+
+
+def test_ag_operations_dashboard_smoke_reports_failed_summary() -> None:
+    assert ag_operations_dashboard_smoke.summary_line(
+        {"status": "FAIL", "counts": {}}
+    ) == "ag_operations_dashboard_smoke=fail"
+
+
+def test_ag_operations_dashboard_smoke_main_prints_summary(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert ag_operations_dashboard_smoke.main(["--summary"]) == 0
+    assert "ag_operations_dashboard_smoke=pass" in capsys.readouterr().out
 
 
 def test_db_smoke_reports_missing_url(

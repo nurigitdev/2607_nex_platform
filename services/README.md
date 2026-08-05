@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0109 AG operations issue candidate projection.
+Status: Slice 0110 AG operations dashboard smoke evidence pack.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005

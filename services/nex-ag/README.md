@@ -123,6 +123,8 @@ Unified operations:
   `ag_operations_issue_candidate_projection.v1`, applying deterministic
   read-only rules to operations dashboard signals. Notification delivery,
   acknowledgements, and incident mutation are intentionally deferred.
+- The mock-first AG operations dashboard smoke covers the full operations
+  endpoint family and is included in `scripts/quality/run_quality_gate.sh`.
 - Operations query pagination uses a non-negative integer `cursor` offset,
   returns `pagination.next_cursor` when more rows exist, and caps limit at the
   shared 500-row operations ceiling.
