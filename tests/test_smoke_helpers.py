@@ -5,9 +5,11 @@ import json
 from urllib.error import HTTPError, URLError
 
 import pytest
+from sqlalchemy import text
 
 import check_backend_service_endpoints as endpoint_smoke
 import check_db_readiness as db_smoke
+import run_cx_processing_postgres_jobqueue_smoke as cx_processing_smoke
 import run_postgres_jobqueue_smoke as jobqueue_smoke
 import run_postgres_operational_event_smoke as event_smoke
 import run_postgres_operations_smoke_pack as operations_smoke
@@ -812,3 +814,226 @@ def test_postgres_operations_smoke_pack_main_prints_summary_and_full_evidence(
 
     assert operations_smoke.main([]) == 0
     assert '"status": "SKIPPED"' in capsys.readouterr().out
+
+
+def test_cx_processing_postgres_jobqueue_smoke_skips_by_default() -> None:
+    evidence = cx_processing_smoke.run_cx_processing_postgres_jobqueue_smoke(environ={})
+
+    assert evidence["status"] == "SKIPPED"
+    assert cx_processing_smoke.summary_line(evidence) == (
+        "cx_processing_postgres_jobqueue_smoke=skipped "
+        "reason=NEX_CX_PROCESSING_POSTGRES_JOBQUEUE_SMOKE"
+    )
+
+
+def test_cx_processing_postgres_jobqueue_smoke_rejects_non_test_profile() -> None:
+    evidence = cx_processing_smoke.run_cx_processing_postgres_jobqueue_smoke(
+        environ={
+            "NEX_CX_PROCESSING_POSTGRES_JOBQUEUE_SMOKE": "1",
+            "NEX_CX_PROCESSING_POSTGRES_JOBQUEUE_SMOKE_PROFILE": "dev",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "profile_not_allowed"
+
+
+def test_cx_processing_postgres_jobqueue_smoke_reports_pass_without_leaking_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration_calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        cx_processing_smoke,
+        "service_database_env",
+        lambda service_id, profile: f"{service_id}:{profile}:env",
+    )
+    monkeypatch.setattr(
+        cx_processing_smoke,
+        "service_database_url",
+        lambda service_id, profile, environ: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        cx_processing_smoke,
+        "run_service_migrations",
+        lambda service_id, database_url, profile: migration_calls.append((service_id, profile)),
+    )
+    monkeypatch.setattr(
+        cx_processing_smoke,
+        "_execute_processing_route_smoke",
+        lambda database_url, runtime_environ: {
+            "pipeline_run_id": "pipeline-001",
+            "document_id": "doc-001",
+            "job_id": "job-001",
+            "checks": {
+                "route_succeeded": True,
+                "runtime_mode": True,
+                "response_job_succeeded": True,
+                "stored_job_succeeded": True,
+                "stored_job_type": True,
+                "stored_attempt_count": True,
+                "stored_subject": True,
+            },
+        },
+    )
+
+    evidence = cx_processing_smoke.run_cx_processing_postgres_jobqueue_smoke(
+        environ={"NEX_CX_PROCESSING_POSTGRES_JOBQUEUE_SMOKE": "1"}
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["database_env"] == "nex-cx:test:env"
+    assert evidence["checks"]["stored_job_succeeded"] is True
+    assert evidence["redacted_database_url"] == "postgresql://user:***@localhost/db"
+    assert "secret" not in str(evidence)
+    assert migration_calls == [("nex-cx", "test")]
+    assert cx_processing_smoke.summary_line(evidence) == (
+        "cx_processing_postgres_jobqueue_smoke=pass service=nex-cx db_env=nex-cx:test:env"
+    )
+
+
+def test_cx_processing_postgres_jobqueue_smoke_reports_config_and_execution_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_migration_error(*args: object, **kwargs: object) -> None:
+        raise cx_processing_smoke.MigrationError("missing database URL env")
+
+    monkeypatch.setattr(cx_processing_smoke, "service_database_url", raise_migration_error)
+    config_failure = cx_processing_smoke.run_cx_processing_postgres_jobqueue_smoke(
+        environ={"NEX_CX_PROCESSING_POSTGRES_JOBQUEUE_SMOKE": "1"}
+    )
+
+    assert config_failure["status"] == "FAIL"
+    assert config_failure["failure_code"] == "configuration_invalid"
+
+    monkeypatch.setattr(
+        cx_processing_smoke,
+        "service_database_url",
+        lambda *args, **kwargs: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(cx_processing_smoke, "run_service_migrations", lambda *args, **kwargs: None)
+
+    def raise_runtime_error(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cx_processing_smoke, "_execute_processing_route_smoke", raise_runtime_error)
+    execution_failure = cx_processing_smoke.run_cx_processing_postgres_jobqueue_smoke(
+        environ={"NEX_CX_PROCESSING_POSTGRES_JOBQUEUE_SMOKE": "1"}
+    )
+
+    assert execution_failure["status"] == "FAIL"
+    assert execution_failure["failure_code"] == "execution_failed"
+    assert cx_processing_smoke.summary_line(execution_failure) == (
+        "cx_processing_postgres_jobqueue_smoke=fail service=nex-cx reason=execution_failed"
+    )
+
+
+def test_cx_processing_postgres_jobqueue_smoke_execute_route_with_sqlite_fixture(
+    tmp_path,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'cx-processing-smoke.sqlite'}"
+    engine = cx_processing_smoke.build_engine(database_url)
+    _create_sqlite_service_jobs_table(engine)
+
+    evidence = cx_processing_smoke._execute_processing_route_smoke(
+        database_url=database_url,
+        runtime_environ={
+            "NEX_CX_DATABASE_URL": database_url,
+            "NEX_CX_PERSISTENCE_MODE": "postgres",
+        },
+    )
+
+    assert evidence["checks"] == {
+        "route_succeeded": True,
+        "runtime_mode": True,
+        "response_job_succeeded": True,
+        "stored_job_succeeded": True,
+        "stored_job_type": True,
+        "stored_attempt_count": True,
+        "stored_subject": True,
+    }
+    assert isinstance(evidence["job_id"], str)
+    assert evidence["job_id"]
+    with engine.begin() as connection:
+        remaining = connection.execute(text("SELECT count(*) FROM service_jobs")).scalar_one()
+    assert remaining == 0
+
+
+def test_cx_processing_postgres_jobqueue_smoke_helpers_cover_error_edges(tmp_path) -> None:
+    assert cx_processing_smoke.StaticMoEmbeddingClient().create_embeddings(
+        ["one", "two"],
+        alias="alias",
+        request_id="request",
+        trace_id="trace",
+    )["usage"]["total_tokens"] == 2
+
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'missing-job.sqlite'}"
+    engine = cx_processing_smoke.build_engine(database_url)
+    _create_sqlite_service_jobs_table(engine)
+
+    with pytest.raises(RuntimeError, match="stored processing job"):
+        cx_processing_smoke._read_stored_processing_job(engine, job_id="missing")
+
+    cx_processing_smoke._delete_smoke_processing_jobs(
+        engine,
+        trace_id="trace",
+        request_id="request",
+        job_id=None,
+    )
+
+
+def test_cx_processing_postgres_jobqueue_smoke_main_prints_summary_and_full_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cx_processing_smoke, "load_env_file", lambda path: None)
+    monkeypatch.setattr(
+        cx_processing_smoke,
+        "run_cx_processing_postgres_jobqueue_smoke",
+        lambda: {
+            "smoke_schema_version": "cx_processing_postgres_jobqueue_smoke.v1",
+            "status": "SKIPPED",
+            "skip_reason": "NEX_CX_PROCESSING_POSTGRES_JOBQUEUE_SMOKE is not enabled.",
+        },
+    )
+
+    assert cx_processing_smoke.main(["--summary"]) == 0
+    assert "cx_processing_postgres_jobqueue_smoke=skipped" in capsys.readouterr().out
+
+    assert cx_processing_smoke.main([]) == 0
+    assert '"status": "SKIPPED"' in capsys.readouterr().out
+
+
+def _create_sqlite_service_jobs_table(engine: object) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE service_jobs (
+                    job_id TEXT PRIMARY KEY,
+                    job_schema_version TEXT NOT NULL DEFAULT 'common_job.v1',
+                    job_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    trace_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    subject_type TEXT NOT NULL,
+                    subject_id TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    max_attempts INTEGER NOT NULL DEFAULT 1,
+                    retryable INTEGER NOT NULL DEFAULT 1,
+                    links TEXT NOT NULL DEFAULT '{}',
+                    payload TEXT NOT NULL DEFAULT '{}',
+                    error TEXT,
+                    available_at TEXT NOT NULL,
+                    locked_at TEXT,
+                    locked_by TEXT,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE (job_type, idempotency_key)
+                )
+                """
+            )
+        )

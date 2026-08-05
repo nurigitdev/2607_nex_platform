@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0091 service runtime persistence bootstrap.
+Status: Slice 0092 CX processing PostgreSQL JobQueue runtime smoke.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -104,6 +104,18 @@ Service-specific mode envs override the global mode. `memory` uses in-process
 stores. `postgres` requires the service database URL and builds SQLAlchemy
 JobQueue and OperationalEventStore adapters with service-aware API/worker pool
 settings.
+
+CX processing has an additional route-level PostgreSQL smoke:
+
+```text
+NEX_CX_PROCESSING_POSTGRES_JOBQUEUE_SMOKE=1
+NEX_CX_PROCESSING_POSTGRES_JOBQUEUE_SMOKE_PROFILE=test
+```
+
+It builds a CX app with `NEX_CX_PERSISTENCE_MODE=postgres`, uploads a smoke
+document, runs the processing route, verifies the durable `service_jobs` row,
+and deletes the smoke row. This proves the runtime bootstrap is actually used
+by the route layer, not only by adapter-level tests.
 
 ## Runtime Connection Foundation
 
