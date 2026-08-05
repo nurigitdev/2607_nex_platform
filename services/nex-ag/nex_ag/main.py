@@ -21,7 +21,11 @@ register_readiness_routes(app)
 register_generation_audit_routes(app)
 register_retrieval_policy_routes(app)
 register_operation_source_readiness_routes(app, runtime=OPERATIONS_SOURCE_RUNTIME)
-register_unified_operation_routes(app, registry=OPERATIONS_SOURCE_REGISTRY)
+register_unified_operation_routes(
+    app,
+    registry=OPERATIONS_SOURCE_REGISTRY,
+    runtime=OPERATIONS_SOURCE_RUNTIME,
+)
 register_operational_event_taxonomy_routes(app)
 register_operational_event_routes(app, registry=OPERATIONS_SOURCE_REGISTRY)
 register_job_operation_routes(app, registry=OPERATIONS_SOURCE_REGISTRY)

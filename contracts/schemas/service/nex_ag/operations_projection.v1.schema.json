@@ -20,6 +20,7 @@
         "ag_job_operation_detail_projection.v1",
         "ag_unified_operations_projection.v1",
         "ag_operations_rollup_metrics_projection.v1",
+        "ag_operations_dashboard_snapshot_projection.v1",
         "ag_cross_service_trace_timeline_projection.v1"
       ]
     },
@@ -104,6 +105,35 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/operations_rollup"
+      }
+    },
+    "operation_sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source_readiness"
+      }
+    },
+    "source_readiness_summary": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "rollup_summary": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "recent_failures": {
+      "$ref": "#/$defs/dashboard_recent_failures"
+    },
+    "active_jobs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/job"
+      }
+    },
+    "degraded_sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/dashboard_degraded_source"
       }
     },
     "summary": {
@@ -287,6 +317,30 @@
           "filters",
           "rollups",
           "summary",
+          "job_source_statuses",
+          "event_source_statuses"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_operations_dashboard_snapshot_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "filters",
+          "operation_sources",
+          "source_readiness_summary",
+          "rollups",
+          "rollup_summary",
+          "recent_failures",
+          "active_jobs",
+          "degraded_sources",
           "job_source_statuses",
           "event_source_statuses"
         ]
@@ -579,6 +633,65 @@
             "type": "integer",
             "minimum": 0
           }
+        }
+      }
+    },
+    "dashboard_recent_failures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "jobs",
+        "events"
+      ],
+      "properties": {
+        "jobs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/job"
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/operational_event"
+          }
+        }
+      }
+    },
+    "dashboard_degraded_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_type",
+        "service_id",
+        "status",
+        "detail"
+      ],
+      "properties": {
+        "source_type": {
+          "type": "string",
+          "enum": [
+            "readiness",
+            "jobs",
+            "events"
+          ]
+        },
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error_code": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },

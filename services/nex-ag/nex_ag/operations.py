@@ -56,6 +56,7 @@ AG_OPERATIONS_SOURCE_MODES = ("memory", "postgres")
 AG_OPERATIONS_SOURCE_PROFILES = ("dev", "test")
 AG_OPERATION_SORT_ORDERS = ("desc", "asc")
 MAX_OPERATION_EVENT_QUERY_LENGTH = 128
+MAX_DASHBOARD_RECENT_LIMIT = 20
 
 _AG_OPERATIONS_SOURCE_MODE_ALIASES = {
     "": "memory",
@@ -906,6 +907,7 @@ def register_unified_operation_routes(
     job_queues: Mapping[str, JobQueue] | None = None,
     event_store: OperationalEventStore | None = None,
     registry: OperationsSourceRegistry | None = None,
+    runtime: AgOperationsSourceRuntime | None = None,
 ) -> None:
     @app.get("/admin/v1/operations", response_model=None)
     def list_unified_operations(
@@ -995,6 +997,53 @@ def register_unified_operation_routes(
             event_store=event_store,
             registry=registry,
             service_id=service_id,
+            query_options=query_options,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
+    @app.get("/admin/v1/operations/dashboard", response_model=None)
+    def get_operations_dashboard_snapshot(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        recent_limit: int = Query(default=5, ge=1),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        filter_problem = _validate_job_operation_filters(
+            request,
+            service_id=service_id,
+            status=None,
+        )
+        if filter_problem is not None:
+            return filter_problem
+        query_options = _build_query_options_or_problem(
+            request,
+            limit=500,
+            since=since,
+            until=until,
+            sort=None,
+            cursor=None,
+        )
+        if isinstance(query_options, JSONResponse):
+            return query_options
+
+        selected_runtime = runtime or getattr(
+            request.app.state,
+            "nex_ag_operations_source_runtime",
+            None,
+        )
+        return build_operations_dashboard_snapshot_projection(
+            job_queues=job_queues,
+            event_store=event_store,
+            registry=registry,
+            runtime=selected_runtime,
+            service_id=service_id,
+            recent_limit=recent_limit,
             query_options=query_options,
             request_trace_id=trace_id_from_headers(request),
         )
@@ -1271,6 +1320,99 @@ def build_unified_operations_projection(
             "jobs": job_projection["pagination"],
             "events": event_projection["pagination"],
         },
+    }
+    if registry is not None:
+        projection["source_registry"] = registry.to_summary()
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
+def build_operations_dashboard_snapshot_projection(
+    *,
+    job_queues: Mapping[str, JobQueue] | None = None,
+    event_store: OperationalEventStore | None = None,
+    registry: OperationsSourceRegistry | None = None,
+    runtime: AgOperationsSourceRuntime | None = None,
+    service_id: str | None = None,
+    recent_limit: int = 5,
+    limit: int = 500,
+    query_options: OperationQueryOptions | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    options = query_options or build_operation_query_options(limit=limit)
+    normalized_recent_limit = normalize_dashboard_recent_limit(recent_limit)
+    selected_runtime = _dashboard_source_runtime(
+        runtime=runtime,
+        registry=registry,
+    )
+    readiness_projection = build_operation_source_readiness_projection(
+        runtime=selected_runtime,
+        service_id=service_id,
+    )
+    rollup_projection = build_operations_rollup_metrics_projection(
+        job_queues=job_queues,
+        event_store=event_store,
+        registry=registry,
+        service_id=service_id,
+        query_options=options,
+    )
+    queue_stores = (
+        registry.job_queues()
+        if registry is not None
+        else job_queues or DEFAULT_JOB_QUEUE_STORES
+    )
+    selected_event_store = (
+        RegistryOperationalEventStore(registry)
+        if registry is not None
+        else event_store or DEFAULT_OPERATIONAL_EVENT_STORE
+    )
+    recent_failures = {
+        "jobs": _dashboard_job_candidates(
+            queue_stores,
+            service_id=service_id,
+            statuses={"FAILED"},
+            options=options,
+            limit=normalized_recent_limit,
+        ),
+        "events": _dashboard_failure_event_candidates(
+            selected_event_store,
+            service_id=service_id,
+            options=options,
+            limit=normalized_recent_limit,
+        ),
+    }
+    active_jobs = _dashboard_job_candidates(
+        queue_stores,
+        service_id=service_id,
+        statuses={"QUEUED", "RUNNING"},
+        options=options,
+        limit=normalized_recent_limit,
+    )
+    degraded_sources = _dashboard_degraded_sources(
+        operation_sources=readiness_projection["sources"],
+        job_source_statuses=rollup_projection["job_source_statuses"],
+        event_source_statuses=rollup_projection["event_source_statuses"],
+    )
+    projection = {
+        "projection_schema_version": "ag_operations_dashboard_snapshot_projection.v1",
+        "projection_status": "DEGRADED" if degraded_sources else "READY",
+        "checked_at": _utc_now(),
+        "filters": {
+            "service_id": service_id,
+            "since": options.since,
+            "until": options.until,
+            "recent_limit": normalized_recent_limit,
+        },
+        "operation_sources": readiness_projection["sources"],
+        "source_readiness_summary": readiness_projection["summary"],
+        "rollups": rollup_projection["rollups"],
+        "rollup_summary": rollup_projection["summary"],
+        "recent_failures": recent_failures,
+        "active_jobs": active_jobs,
+        "degraded_sources": degraded_sources,
+        "job_source_statuses": rollup_projection["job_source_statuses"],
+        "event_source_statuses": rollup_projection["event_source_statuses"],
     }
     if registry is not None:
         projection["source_registry"] = registry.to_summary()
@@ -1584,6 +1726,14 @@ def summarize_trace_timeline_items(
         "by_item_type": by_item_type,
         "by_service": by_service,
     }
+
+
+def normalize_dashboard_recent_limit(limit: int) -> int:
+    if limit < 1:
+        return 1
+    if limit > MAX_DASHBOARD_RECENT_LIMIT:
+        return MAX_DASHBOARD_RECENT_LIMIT
+    return limit
 
 
 def summarize_operations_rollup_metrics(
@@ -2012,6 +2162,136 @@ def _trace_job_timeline_items(
             for job in jobs
         )
     return timeline_items, source_statuses
+
+
+def _dashboard_source_runtime(
+    *,
+    runtime: AgOperationsSourceRuntime | None,
+    registry: OperationsSourceRegistry | None,
+) -> AgOperationsSourceRuntime:
+    if runtime is not None:
+        return runtime
+    return AgOperationsSourceRuntime(
+        mode="memory",
+        profile="dev",
+        selected_service_ids=tuple(sorted(SERVICE_SPECS)),
+        registry=registry,
+    )
+
+
+def _dashboard_job_candidates(
+    job_queues: Mapping[str, JobQueue],
+    *,
+    service_id: str | None,
+    statuses: set[str],
+    options: OperationQueryOptions,
+    limit: int,
+) -> list[dict[str, Any]]:
+    selected_service_ids = (
+        [service_id] if service_id is not None else sorted(SERVICE_SPECS)
+    )
+    jobs: list[dict[str, Any]] = []
+    for selected_service_id in selected_service_ids:
+        queue = job_queues.get(selected_service_id)
+        if queue is None:
+            continue
+        try:
+            service_jobs = [
+                job
+                for job in queue.list_jobs()
+                if str(job.get("status")) in statuses
+            ]
+        except JobQueueError:
+            continue
+        jobs.extend(
+            _project_job_for_service(selected_service_id, job)
+            for job in service_jobs
+        )
+    dashboard_options = OperationQueryOptions(
+        limit=limit,
+        since=options.since,
+        until=options.until,
+        sort="desc",
+        cursor=None,
+    )
+    return _apply_operation_query_options(
+        jobs,
+        dashboard_options,
+        timestamp_field="updated_at",
+        tie_breaker_fields=("created_at", "service_id", "job_id"),
+    )["items"]
+
+
+def _dashboard_failure_event_candidates(
+    event_store: OperationalEventStore,
+    *,
+    service_id: str | None,
+    options: OperationQueryOptions,
+    limit: int,
+) -> list[dict[str, Any]]:
+    try:
+        events = event_store.list_events(
+            service_id=service_id,
+            limit=normalize_operational_event_limit(500),
+        )
+    except OperationalEventError:
+        return []
+    failure_events = [
+        event
+        for event in events
+        if str(event.get("severity")) in {"ERROR", "CRITICAL"}
+    ]
+    dashboard_options = OperationQueryOptions(
+        limit=limit,
+        since=options.since,
+        until=options.until,
+        sort="desc",
+        cursor=None,
+    )
+    return _apply_operation_query_options(
+        failure_events,
+        dashboard_options,
+        timestamp_field="created_at",
+        tie_breaker_fields=("event_id",),
+    )["items"]
+
+
+def _dashboard_degraded_sources(
+    *,
+    operation_sources: list[dict[str, Any]],
+    job_source_statuses: Mapping[str, dict[str, Any]],
+    event_source_statuses: Mapping[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    degraded: list[dict[str, Any]] = []
+    for source in operation_sources:
+        readiness_status = str(source["readiness_status"])
+        if readiness_status not in {"READY", "DEFAULT_MEMORY"}:
+            degraded.append(
+                {
+                    "source_type": "readiness",
+                    "service_id": source["service_id"],
+                    "status": readiness_status,
+                    "detail": source["source_kind"],
+                }
+            )
+    for source_type, statuses in (
+        ("jobs", job_source_statuses),
+        ("events", event_source_statuses),
+    ):
+        for service_id, source_status in statuses.items():
+            status = str(source_status["status"])
+            if status == "READY":
+                continue
+            degraded_source = {
+                "source_type": source_type,
+                "service_id": service_id,
+                "status": status,
+                "detail": source_status.get("detail"),
+            }
+            if source_status.get("error_code") is not None:
+                degraded_source["error_code"] = source_status["error_code"]
+            degraded.append(degraded_source)
+    return degraded
 
 
 def _operations_rollup_jobs_for_service(

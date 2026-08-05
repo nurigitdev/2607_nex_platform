@@ -158,6 +158,33 @@ paths:
           description: Invalid rollup query or filter.
         "401":
           description: Service claim is missing or invalid.
+  /admin/v1/operations/dashboard:
+    get:
+      operationId: getAgOperationsDashboardSnapshotProjection
+      tags:
+        - Operations
+      parameters:
+        - $ref: "#/components/parameters/serviceId"
+        - $ref: "#/components/parameters/since"
+        - $ref: "#/components/parameters/until"
+        - name: recent_limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+      responses:
+        "200":
+          description: Read-only operations dashboard snapshot projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "400":
+          description: Invalid dashboard query or filter.
+        "401":
+          description: Service claim is missing or invalid.
   /admin/v1/operations/sources:
     get:
       operationId: getAgOperationSourceReadinessProjection
@@ -446,6 +473,7 @@ components:
             - ag_job_operation_detail_projection.v1
             - ag_unified_operations_projection.v1
             - ag_operations_rollup_metrics_projection.v1
+            - ag_operations_dashboard_snapshot_projection.v1
             - ag_cross_service_trace_timeline_projection.v1
         checked_at:
           type: string

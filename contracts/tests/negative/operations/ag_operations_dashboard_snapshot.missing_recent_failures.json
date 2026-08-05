@@ -1,0 +1,17 @@
+{
+  "projection_schema_version": "ag_operations_dashboard_snapshot_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-05T00:00:00Z",
+  "filters": {
+    "service_id": "nex-cx",
+    "recent_limit": 1
+  },
+  "operation_sources": [],
+  "source_readiness_summary": {},
+  "rollups": [],
+  "rollup_summary": {},
+  "active_jobs": [],
+  "degraded_sources": [],
+  "job_source_statuses": {},
+  "event_source_statuses": {}
+}

@@ -15,6 +15,7 @@ Current endpoints:
 - `GET /admin/v1/generation-audit/generations/{cx_generation_id}`
 - `GET /admin/v1/operations`
 - `GET /admin/v1/operations/rollups`
+- `GET /admin/v1/operations/dashboard`
 - `GET /admin/v1/operations/event-taxonomy`
 - `GET /admin/v1/operations/events`
 - `GET /admin/v1/operations/events/{event_id}`
@@ -113,6 +114,10 @@ Unified operations:
 - `GET /admin/v1/operations/rollups` returns
   `ag_operations_rollup_metrics_projection.v1`, aggregating per-service job
   and event totals plus source status counts for operator dashboards.
+- `GET /admin/v1/operations/dashboard` returns
+  `ag_operations_dashboard_snapshot_projection.v1`, combining source readiness,
+  rollups, recent failed jobs/events, active jobs, and degraded source signals
+  for the first AG operations dashboard screen.
 - Operations query pagination uses a non-negative integer `cursor` offset,
   returns `pagination.next_cursor` when more rows exist, and caps limit at the
   shared 500-row operations ceiling.
