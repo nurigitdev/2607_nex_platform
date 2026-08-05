@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0089 AG JobQueue operations projection foundation.
+Status: Slice 0090 cross-service PostgreSQL operations smoke pack.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -77,6 +77,19 @@ databases, especially for:
 DB persistence slices should therefore leave both a fast SQLite regression and
 an optional PostgreSQL smoke when the implementation depends on PostgreSQL
 runtime semantics.
+
+The cross-service operations smoke pack extends this split with a guarded
+test-profile-only runner:
+
+```text
+NEX_DB_OPERATIONS_SMOKE=1
+NEX_DB_OPERATIONS_SMOKE_PROFILE=test
+NEX_DB_OPERATIONS_SMOKE_SERVICES=nex-ae-api,nex-ag,nex-cx,nex-mo,nex-oa
+```
+
+It checks database readiness, DB-backed JobQueue smoke, and DB-backed
+OperationalEventStore smoke for each selected service-owned test database. The
+default quality gate runs this pack in skipped summary mode.
 
 ## Runtime Connection Foundation
 

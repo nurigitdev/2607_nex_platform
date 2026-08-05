@@ -10,6 +10,7 @@ import check_backend_service_endpoints as endpoint_smoke
 import check_db_readiness as db_smoke
 import run_postgres_jobqueue_smoke as jobqueue_smoke
 import run_postgres_operational_event_smoke as event_smoke
+import run_postgres_operations_smoke_pack as operations_smoke
 
 
 class FakeHttpResponse:
@@ -563,4 +564,251 @@ def test_postgres_operational_event_smoke_main_prints_summary_and_full_evidence(
     assert "postgres_operational_event_smoke=skipped" in capsys.readouterr().out
 
     assert event_smoke.main([]) == 0
+    assert '"status": "SKIPPED"' in capsys.readouterr().out
+
+
+def test_postgres_operations_smoke_pack_skips_by_default() -> None:
+    evidence = operations_smoke.run_postgres_operations_smoke_pack(environ={})
+
+    assert evidence["status"] == "SKIPPED"
+    assert operations_smoke.summary_line(evidence) == (
+        "postgres_operations_smoke_pack=skipped reason=NEX_DB_OPERATIONS_SMOKE"
+    )
+
+
+def test_postgres_operations_smoke_pack_rejects_bad_profile_and_services() -> None:
+    bad_profile = operations_smoke.run_postgres_operations_smoke_pack(
+        environ={
+            "NEX_DB_OPERATIONS_SMOKE": "1",
+            "NEX_DB_OPERATIONS_SMOKE_PROFILE": "dev",
+        }
+    )
+    bad_service = operations_smoke.run_postgres_operations_smoke_pack(
+        environ={
+            "NEX_DB_OPERATIONS_SMOKE": "1",
+            "NEX_DB_OPERATIONS_SMOKE_SERVICES": "nex-cx,nex-unknown",
+        }
+    )
+    no_services = operations_smoke.run_postgres_operations_smoke_pack(
+        environ={
+            "NEX_DB_OPERATIONS_SMOKE": "1",
+            "NEX_DB_OPERATIONS_SMOKE_SERVICES": ", ,",
+        }
+    )
+
+    assert bad_profile["status"] == "FAIL"
+    assert bad_profile["failure_code"] == "profile_not_allowed"
+    assert bad_service["failure_code"] == "service_invalid"
+    assert no_services["failure_code"] == "service_selection_empty"
+
+
+def test_postgres_operations_smoke_pack_reports_pass_without_leaking_database_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, str, str]] = []
+
+    monkeypatch.setattr(
+        operations_smoke,
+        "service_database_env",
+        lambda service_id, profile: f"{service_id}:{profile}:env",
+    )
+    monkeypatch.setattr(
+        operations_smoke,
+        "service_database_url",
+        lambda service_id, profile, environ: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        operations_smoke,
+        "check_database_readiness",
+        lambda database_env, environ: {
+            "name": "database",
+            "ok": True,
+            "database_env": database_env,
+            "database_name": "nex_example_test",
+            "database_user": "nex_example_user",
+            "latency_ms": 1,
+        },
+    )
+
+    def fake_jobqueue(environ: dict[str, str]) -> dict[str, object]:
+        calls.append(
+            (
+                "jobqueue",
+                environ["NEX_DB_JOBQUEUE_SMOKE_SERVICE"],
+                environ["NEX_DB_JOBQUEUE_SMOKE_PROFILE"],
+            )
+        )
+        return {
+            "smoke_schema_version": "postgres_jobqueue_smoke.v1",
+            "status": "PASS",
+            "service_id": environ["NEX_DB_JOBQUEUE_SMOKE_SERVICE"],
+            "profile": environ["NEX_DB_JOBQUEUE_SMOKE_PROFILE"],
+            "database_env": f"{environ['NEX_DB_JOBQUEUE_SMOKE_SERVICE']}:test:env",
+            "checks": {"enqueue": True},
+            "redacted_database_url": "postgresql://user:***@localhost/db",
+        }
+
+    def fake_event(environ: dict[str, str]) -> dict[str, object]:
+        calls.append(
+            (
+                "event",
+                environ["NEX_DB_OPERATIONAL_EVENT_SMOKE_SERVICE"],
+                environ["NEX_DB_OPERATIONAL_EVENT_SMOKE_PROFILE"],
+            )
+        )
+        return {
+            "smoke_schema_version": "postgres_operational_event_smoke.v1",
+            "status": "PASS",
+            "service_id": environ["NEX_DB_OPERATIONAL_EVENT_SMOKE_SERVICE"],
+            "profile": environ["NEX_DB_OPERATIONAL_EVENT_SMOKE_PROFILE"],
+            "database_env": f"{environ['NEX_DB_OPERATIONAL_EVENT_SMOKE_SERVICE']}:test:env",
+            "checks": {"append": True},
+            "redacted_database_url": "postgresql://user:***@localhost/db",
+        }
+
+    monkeypatch.setattr(operations_smoke, "run_postgres_jobqueue_smoke", fake_jobqueue)
+    monkeypatch.setattr(operations_smoke, "run_postgres_operational_event_smoke", fake_event)
+
+    evidence = operations_smoke.run_postgres_operations_smoke_pack(
+        environ={
+            "NEX_DB_OPERATIONS_SMOKE": "1",
+            "NEX_DB_OPERATIONS_SMOKE_SERVICES": "nex-cx,nex-ag",
+        }
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["service_count"] == 2
+    assert evidence["checks"] == {
+        "all_readiness": True,
+        "all_jobqueue": True,
+        "all_operational_events": True,
+    }
+    assert "secret" not in str(evidence)
+    assert operations_smoke.summary_line(evidence) == (
+        "postgres_operations_smoke_pack=pass services=2 profile=test"
+    )
+    assert calls == [
+        ("jobqueue", "nex-cx", "test"),
+        ("event", "nex-cx", "test"),
+        ("jobqueue", "nex-ag", "test"),
+        ("event", "nex-ag", "test"),
+    ]
+
+
+def test_postgres_operations_smoke_pack_reports_readiness_and_subsmoke_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        operations_smoke,
+        "service_database_env",
+        lambda service_id, profile: f"{service_id}:{profile}:env",
+    )
+    monkeypatch.setattr(
+        operations_smoke,
+        "service_database_url",
+        lambda service_id, profile, environ: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        operations_smoke,
+        "check_database_readiness",
+        lambda database_env, environ: {
+            "name": "database",
+            "ok": database_env.startswith("nex-cx"),
+            "database_env": database_env,
+            "error_code": "DATABASE_CONNECTION_FAILED",
+            "latency_ms": 1,
+        },
+    )
+    monkeypatch.setattr(
+        operations_smoke,
+        "run_postgres_jobqueue_smoke",
+        lambda environ: {
+            "smoke_schema_version": "postgres_jobqueue_smoke.v1",
+            "status": "FAIL",
+            "service_id": environ["NEX_DB_JOBQUEUE_SMOKE_SERVICE"],
+            "profile": "test",
+            "failure_code": "execution_failed",
+        },
+    )
+    monkeypatch.setattr(
+        operations_smoke,
+        "run_postgres_operational_event_smoke",
+        lambda environ: {
+            "smoke_schema_version": "postgres_operational_event_smoke.v1",
+            "status": "PASS",
+            "service_id": environ["NEX_DB_OPERATIONAL_EVENT_SMOKE_SERVICE"],
+            "profile": "test",
+            "checks": {},
+        },
+    )
+
+    evidence = operations_smoke.run_postgres_operations_smoke_pack(
+        environ={
+            "NEX_DB_OPERATIONS_SMOKE": "1",
+            "NEX_DB_OPERATIONS_SMOKE_SERVICES": "nex-cx,nex-ag",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "service_smoke_failed"
+    assert evidence["failed_services"] == ["nex-cx", "nex-ag"]
+    service_by_id = {service["service_id"]: service for service in evidence["services"]}
+    assert service_by_id["nex-cx"]["failure_code"] == "subsmoke_failed"
+    assert service_by_id["nex-cx"]["checks"]["jobqueue"] == "FAIL"
+    assert service_by_id["nex-ag"]["failure_code"] == "readiness_failed"
+    assert service_by_id["nex-ag"]["checks"] == {
+        "readiness": "FAIL",
+        "jobqueue": "SKIPPED",
+        "operational_events": "SKIPPED",
+    }
+    assert operations_smoke.summary_line(evidence) == (
+        "postgres_operations_smoke_pack=fail services=2 reason=service_smoke_failed"
+    )
+
+
+def test_postgres_operations_smoke_pack_reports_configuration_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        operations_smoke,
+        "service_database_env",
+        lambda service_id, profile: f"{service_id}:{profile}:env",
+    )
+
+    def raise_migration_error(*args: object, **kwargs: object) -> None:
+        raise operations_smoke.MigrationError("missing database URL env")
+
+    monkeypatch.setattr(operations_smoke, "service_database_url", raise_migration_error)
+
+    evidence = operations_smoke.run_postgres_operations_smoke_pack(
+        environ={
+            "NEX_DB_OPERATIONS_SMOKE": "1",
+            "NEX_DB_OPERATIONS_SMOKE_SERVICES": "nex-cx",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["services"][0]["failure_code"] == "configuration_invalid"
+    assert evidence["services"][0]["checks"]["readiness"] == "FAIL"
+
+
+def test_postgres_operations_smoke_pack_main_prints_summary_and_full_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(operations_smoke, "load_env_file", lambda path: None)
+    monkeypatch.setattr(
+        operations_smoke,
+        "run_postgres_operations_smoke_pack",
+        lambda: {
+            "smoke_schema_version": "postgres_operations_smoke_pack.v1",
+            "status": "SKIPPED",
+            "skip_reason": "NEX_DB_OPERATIONS_SMOKE is not enabled.",
+        },
+    )
+
+    assert operations_smoke.main(["--summary"]) == 0
+    assert "postgres_operations_smoke_pack=skipped" in capsys.readouterr().out
+
+    assert operations_smoke.main([]) == 0
     assert '"status": "SKIPPED"' in capsys.readouterr().out
