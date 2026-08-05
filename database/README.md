@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0085 shared operational event foundation.
+Status: Slice 0086 DB runtime pool/session/unit-of-work foundation.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -63,6 +63,8 @@ Runtime services use `nex_runtime.database` for:
 
 - required database URL lookup and placeholder-password rejection
 - SQLAlchemy engine/session factory construction
+- service-aware DB pool settings
+- request/worker unit-of-work transaction boundaries
 - redacted database URL rendering for diagnostics
 - `/ready` database identity checks through `select current_database(), current_user`
 - optional CX vector database routing
@@ -72,6 +74,34 @@ uses the primary CX database. If vector volume later requires a separate
 database, setting this env moves vector access without changing the primary CX
 database contract. `NEX_CX_VECTOR_TEST_DATABASE_URL` mirrors that option for
 test profiles.
+
+### Pool And Transaction Defaults
+
+`nex_runtime.database.database_pool_settings` resolves service-specific pool
+configuration from `NEX_<SERVICE>_DB_*` env names. Empty env values use runtime
+defaults.
+
+| Workload | Pool Size | Max Overflow | Statement Timeout |
+| --- | ---: | ---: | ---: |
+| API request | 5 | 10 | 30000 ms |
+| Worker/job | 3 | 3 | 60000 ms |
+
+Supported env suffixes are:
+
+- `DB_POOL_SIZE`
+- `DB_MAX_OVERFLOW`
+- `DB_POOL_TIMEOUT_SECONDS`
+- `DB_POOL_RECYCLE_SECONDS`
+- `DB_POOL_PRE_PING`
+- `DB_STATEMENT_TIMEOUT_MS`
+
+Worker overrides use `DB_WORKER_*` before falling back to the base service
+values, for example `NEX_CX_DB_WORKER_POOL_SIZE`.
+
+Transaction rule: keep DB transactions short. Do not hold an open transaction
+while doing file I/O, embedding/reranker/generation provider calls, or other
+slow external operations. Pipeline and worker code should record job/event state
+in short unit-of-work blocks around each durable state change.
 
 ## Service Job Queue Foundation
 
