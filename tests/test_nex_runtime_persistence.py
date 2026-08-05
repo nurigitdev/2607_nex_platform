@@ -8,6 +8,7 @@ import pytest
 from nex_runtime import (
     InMemoryJobQueue,
     InMemoryOperationalEventStore,
+    InMemoryWorkerHeartbeatStore,
     PERSISTENCE_MODE_MEMORY,
     PERSISTENCE_MODE_POSTGRES,
     PersistenceConfigError,
@@ -15,6 +16,7 @@ from nex_runtime import (
     ServicePersistenceRuntime,
     SqlAlchemyJobQueue,
     SqlAlchemyOperationalEventStore,
+    SqlAlchemyWorkerHeartbeatStore,
     attach_service_persistence_runtime,
     build_service_app,
     build_service_persistence_runtime,
@@ -59,6 +61,7 @@ def test_memory_runtime_is_default_and_does_not_require_database_url() -> None:
     assert runtime.redacted_database_url is None
     assert isinstance(runtime.job_queue, InMemoryJobQueue)
     assert isinstance(runtime.operational_event_store, InMemoryOperationalEventStore)
+    assert isinstance(runtime.worker_heartbeat_store, InMemoryWorkerHeartbeatStore)
     assert runtime.to_summary() == {
         "service_id": "nex-cx",
         "mode": "memory",
@@ -66,6 +69,7 @@ def test_memory_runtime_is_default_and_does_not_require_database_url() -> None:
         "redacted_database_url": None,
         "job_queue": "InMemoryJobQueue",
         "operational_event_store": "InMemoryOperationalEventStore",
+        "worker_heartbeat_store": "InMemoryWorkerHeartbeatStore",
     }
 
 
@@ -119,6 +123,7 @@ def test_postgres_runtime_builds_sqlalchemy_stores_with_api_and_worker_pools() -
     assert runtime.redacted_database_url == "postgresql://nex_cx_user:***@localhost/nex_cx_dev"
     assert isinstance(runtime.job_queue, SqlAlchemyJobQueue)
     assert isinstance(runtime.operational_event_store, SqlAlchemyOperationalEventStore)
+    assert isinstance(runtime.worker_heartbeat_store, SqlAlchemyWorkerHeartbeatStore)
     assert [call["workload"] for call in engine_calls] == ["api", "worker"]
     assert [call["pool_size"] for call in engine_calls] == [7, 2]
     assert len(session_calls) == 2

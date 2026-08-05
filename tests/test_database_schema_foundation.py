@@ -99,6 +99,39 @@ def test_service_operational_event_foundation_exists_for_every_service_database(
         assert "0085_service_operational_events_foundation" in compact
 
 
+def test_service_worker_heartbeat_foundation_exists_for_every_service_database() -> None:
+    for service_id in SERVICE_IDS:
+        compact = normalized(
+            read_migration_named(service_id, "0112_service_worker_heartbeat_foundation.sql")
+        )
+
+        assert "create table if not exists service_worker_heartbeats" in compact
+        assert "heartbeat_schema_version text not null default 'worker_heartbeat.v1'" in compact
+        assert "check (heartbeat_schema_version = 'worker_heartbeat.v1')" in compact
+        assert "status text not null check (status in" in compact
+        for status in ("starting", "idle", "busy", "stopping", "stopped", "error"):
+            assert f"'{status}'" in compact
+        for column in (
+            "service_id text not null",
+            "worker_id text not null",
+            "worker_type text not null",
+            "active_job_id text",
+            "trace_id text",
+            "started_at timestamptz not null",
+            "last_seen_at timestamptz not null",
+            "metadata jsonb not null default '{}'::jsonb",
+            "primary key (service_id, worker_id)",
+        ):
+            assert column in compact
+        assert "constraint ck_service_worker_heartbeats_busy_job check" in compact
+        assert "constraint ck_service_worker_heartbeats_last_seen_order check" in compact
+        assert "ix_service_worker_heartbeats_service_status" in compact
+        assert "ix_service_worker_heartbeats_type_status" in compact
+        assert "ix_service_worker_heartbeats_last_seen" in compact
+        assert "ix_service_worker_heartbeats_active_job" in compact
+        assert "0112_service_worker_heartbeat_foundation" in compact
+
+
 def test_cx_schema_scopes_duplicate_uploads_to_active_owner_documents() -> None:
     compact = normalized(read_migration("nex-cx"))
     storage_policy = normalized(

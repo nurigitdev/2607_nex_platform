@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0100 AG cross-service DB-backed observability smoke.
+Status: Slice 0112 service worker heartbeat persistence foundation.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -102,8 +102,8 @@ NEX_CX_PERSISTENCE_MODE=postgres
 
 Service-specific mode envs override the global mode. `memory` uses in-process
 stores. `postgres` requires the service database URL and builds SQLAlchemy
-JobQueue and OperationalEventStore adapters with service-aware API/worker pool
-settings.
+JobQueue, OperationalEventStore, and WorkerHeartbeatStore adapters with
+service-aware API/worker pool settings.
 
 AG has a separate read-only operations source mode for observing service-owned
 databases without changing each service's own runtime mode:
@@ -258,6 +258,19 @@ Route and worker code should write events through `OperationalEventEmitter`.
 behavior. `safe_emit()` returns a compact success/failure result and never
 raises for event logging failures, so observability write-through cannot fail
 the primary request or job.
+
+## Worker Heartbeat Foundation
+
+Each service database also owns `service_worker_heartbeats`. It stores the
+`worker_heartbeat.v1` service id, worker identity, worker type, status, optional
+active job id, trace id, timestamps, and JSONB metadata. The primary key is
+`service_id + worker_id`, so heartbeat writes are idempotent upserts by worker.
+
+Runtime code uses `nex_runtime.worker_heartbeats` for contract construction,
+validation, stale-threshold checks, summaries, in-memory storage, app-state
+fallback lookup, and the persistent `SqlAlchemyWorkerHeartbeatStore` adapter.
+The adapter uses the service-owned `service_worker_heartbeats` table and is
+wired into `ServicePersistenceRuntime` beside JobQueue and OperationalEventStore.
 
 CX document processing now emits:
 

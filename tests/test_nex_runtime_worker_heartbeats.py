@@ -7,17 +7,22 @@ from typing import Any
 
 import jsonschema
 import pytest
+from sqlalchemy import text
 
 import nex_runtime.worker_heartbeats as runtime_worker_heartbeats
 from nex_runtime import (
     BUSY,
     ERROR,
     IDLE,
+    InMemoryWorkerHeartbeatStore,
     STARTING,
     STOPPED,
     STOPPING,
+    SqlAlchemyWorkerHeartbeatStore,
     WORKER_HEARTBEAT_SCHEMA_VERSION,
     WorkerHeartbeatError,
+    build_engine,
+    build_session_factory,
     build_worker_heartbeat,
     normalize_worker_stale_after_seconds,
     summarize_worker_heartbeats,
@@ -29,6 +34,33 @@ NOW = "2026-08-05T00:00:00Z"
 LATER = "2026-08-05T00:00:30Z"
 STALE_CHECK = "2026-08-05T00:01:15Z"
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
+
+
+def sqlite_worker_heartbeat_store() -> SqlAlchemyWorkerHeartbeatStore:
+    engine = build_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE service_worker_heartbeats (
+                    service_id TEXT NOT NULL,
+                    worker_id TEXT NOT NULL,
+                    heartbeat_schema_version TEXT NOT NULL DEFAULT 'worker_heartbeat.v1',
+                    worker_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    active_job_id TEXT,
+                    trace_id TEXT,
+                    started_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL,
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (service_id, worker_id)
+                )
+                """
+            )
+        )
+    return SqlAlchemyWorkerHeartbeatStore(build_session_factory(engine))
 
 
 def sample_heartbeat(**overrides: Any) -> dict[str, Any]:
@@ -170,3 +202,141 @@ def test_datetime_helper_accepts_aware_datetime_string_and_utc_now_shape() -> No
 
     assert observed == datetime(2026, 8, 5, 0, 0, 0, tzinfo=UTC)
     assert runtime_worker_heartbeats._utc_now().endswith("Z")
+
+
+def test_in_memory_worker_heartbeat_store_upserts_filters_and_returns_copies() -> None:
+    store = InMemoryWorkerHeartbeatStore()
+    stored = store.upsert_heartbeat(sample_heartbeat())
+    stored["metadata"]["queue"] = "mutated"
+    store.upsert_heartbeat(
+        sample_heartbeat(
+            service_id="nex-mo",
+            worker_id="mo-worker-001",
+            worker_type="mo.embedding.worker",
+            status=IDLE,
+            active_job_id=None,
+        )
+    )
+
+    refreshed = store.upsert_heartbeat(
+        sample_heartbeat(
+            worker_id="cx-worker-001",
+            status=IDLE,
+            active_job_id=None,
+            last_seen_at="2026-08-05T00:00:45Z",
+        )
+    )
+
+    assert refreshed["status"] == IDLE
+    assert store.get_heartbeat("nex-cx", "cx-worker-001")["metadata"] == {
+        "queue": "cx.document_processing"
+    }
+    assert store.get_heartbeat("nex-cx", "missing") is None
+    assert [item["worker_id"] for item in store.list_heartbeats(service_id="nex-cx")] == [
+        "cx-worker-001"
+    ]
+    assert [item["worker_id"] for item in store.list_heartbeats(status="idle")] == [
+        "cx-worker-001",
+        "mo-worker-001",
+    ]
+    assert store.summary()["total"] == 2
+
+
+def test_worker_heartbeat_store_rejects_invalid_filters() -> None:
+    store = InMemoryWorkerHeartbeatStore()
+
+    with pytest.raises(WorkerHeartbeatError) as service_error:
+        store.list_heartbeats(service_id="unknown")
+    assert service_error.value.error_code == "worker_heartbeat.service_invalid"
+
+    with pytest.raises(WorkerHeartbeatError) as status_error:
+        store.list_heartbeats(status="BROKEN")
+    assert status_error.value.error_code == "worker_heartbeat.status_invalid"
+
+    with pytest.raises(WorkerHeartbeatError) as worker_error:
+        store.get_heartbeat("nex-cx", "")
+    assert worker_error.value.error_code == "worker_heartbeat.field_invalid"
+
+
+def test_sqlalchemy_worker_heartbeat_store_upserts_filters_and_summarizes() -> None:
+    store = sqlite_worker_heartbeat_store()
+    assert store.get_heartbeat("nex-cx", "missing") is None
+
+    first = store.upsert_heartbeat(sample_heartbeat())
+    first["metadata"]["queue"] = "mutated"
+    store.upsert_heartbeat(
+        sample_heartbeat(
+            service_id="nex-mo",
+            worker_id="mo-worker-001",
+            worker_type="mo.embedding.worker",
+            status=IDLE,
+            active_job_id=None,
+        )
+    )
+    updated = store.upsert_heartbeat(
+        sample_heartbeat(
+            status=ERROR,
+            active_job_id=None,
+            last_seen_at="2026-08-05T00:00:45Z",
+            metadata={"queue": "cx.document_processing", "failure": "provider_timeout"},
+        )
+    )
+
+    assert updated["status"] == ERROR
+    assert store.get_heartbeat("nex-cx", "cx-worker-001")["metadata"] == {
+        "failure": "provider_timeout",
+        "queue": "cx.document_processing",
+    }
+    assert [item["worker_id"] for item in store.list_heartbeats(worker_type="mo.embedding.worker")] == [
+        "mo-worker-001"
+    ]
+    assert [item["worker_id"] for item in store.list_heartbeats(service_id="nex-cx", status=ERROR)] == [
+        "cx-worker-001"
+    ]
+    assert store.summary()["statuses"][ERROR] == 1
+
+
+def test_sqlalchemy_worker_heartbeat_store_reports_unavailable_store() -> None:
+    store = SqlAlchemyWorkerHeartbeatStore(
+        build_session_factory(build_engine("sqlite+pysqlite:///:memory:"))
+    )
+
+    with pytest.raises(WorkerHeartbeatError) as get_error:
+        store.get_heartbeat("nex-cx", "cx-worker-001")
+    assert get_error.value.error_code == "worker_heartbeat.store_unavailable"
+    assert get_error.value.status_code == 503
+
+    with pytest.raises(WorkerHeartbeatError) as upsert_error:
+        store.upsert_heartbeat(sample_heartbeat())
+    assert upsert_error.value.error_code == "worker_heartbeat.store_unavailable"
+
+    with pytest.raises(WorkerHeartbeatError) as list_error:
+        store.list_heartbeats()
+    assert list_error.value.error_code == "worker_heartbeat.store_unavailable"
+
+
+def test_worker_heartbeat_sqlalchemy_helpers_cover_backend_edges() -> None:
+    postgres_engine = build_engine("postgresql://user:secret@localhost/nex_cx_dev")
+    postgres_session = build_session_factory(postgres_engine)()
+    try:
+        assert runtime_worker_heartbeats._metadata_sql_expression(postgres_session) == (
+            "CAST(:metadata AS JSONB)"
+        )
+    finally:
+        postgres_session.close()
+
+    assert runtime_worker_heartbeats._json_loads(None, default={"fallback": "yes"}) == {
+        "fallback": "yes"
+    }
+    assert runtime_worker_heartbeats._json_loads({"already": "dict"}, default={}) == {
+        "already": "dict"
+    }
+    assert runtime_worker_heartbeats._json_loads(b'{"from":"bytes"}', default={}) == {
+        "from": "bytes"
+    }
+    assert runtime_worker_heartbeats._json_loads(123, default={"fallback": "yes"}) == {
+        "fallback": "yes"
+    }
+    assert runtime_worker_heartbeats._timestamp_to_wire(datetime(2026, 8, 5, 0, 0, 0)) == (
+        "2026-08-05T00:00:00Z"
+    )

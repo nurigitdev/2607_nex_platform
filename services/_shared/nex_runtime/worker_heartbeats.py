@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Callable, Protocol
+
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
 
 WORKER_HEARTBEAT_SCHEMA_VERSION = "worker_heartbeat.v1"
@@ -37,6 +43,23 @@ class WorkerHeartbeatError(Exception):
         self.error_code = error_code
         self.detail = detail
         self.status_code = status_code
+
+
+class WorkerHeartbeatStore(Protocol):
+    def upsert_heartbeat(self, heartbeat: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+    def get_heartbeat(self, service_id: str, worker_id: str) -> dict[str, Any] | None:
+        ...
+
+    def list_heartbeats(
+        self,
+        *,
+        service_id: str | None = None,
+        worker_type: str | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        ...
 
 
 def build_worker_heartbeat(
@@ -205,6 +228,242 @@ def normalize_worker_stale_after_seconds(stale_after_seconds: int) -> int:
     return stale_after_seconds
 
 
+@dataclass
+class InMemoryWorkerHeartbeatStore:
+    heartbeats: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
+
+    def upsert_heartbeat(self, heartbeat: dict[str, Any]) -> dict[str, Any]:
+        normalized = validate_worker_heartbeat(heartbeat)
+        key = (normalized["service_id"], normalized["worker_id"])
+        self.heartbeats[key] = deepcopy(normalized)
+        return deepcopy(self.heartbeats[key])
+
+    def get_heartbeat(self, service_id: str, worker_id: str) -> dict[str, Any] | None:
+        _validate_service_id(service_id)
+        _required_string(worker_id, "worker_id")
+        heartbeat = self.heartbeats.get((service_id, worker_id))
+        return deepcopy(heartbeat) if heartbeat is not None else None
+
+    def list_heartbeats(
+        self,
+        *,
+        service_id: str | None = None,
+        worker_type: str | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        normalized_service_id = _validate_service_id(service_id) if service_id is not None else None
+        normalized_worker_type = _required_string(worker_type, "worker_type") if worker_type is not None else None
+        normalized_status = _validate_status(status) if status is not None else None
+        heartbeats = [
+            deepcopy(heartbeat)
+            for heartbeat in self.heartbeats.values()
+            if (normalized_service_id is None or heartbeat["service_id"] == normalized_service_id)
+            and (normalized_worker_type is None or heartbeat["worker_type"] == normalized_worker_type)
+            and (normalized_status is None or heartbeat["status"] == normalized_status)
+        ]
+        return sorted(
+            heartbeats,
+            key=lambda heartbeat: (
+                heartbeat["service_id"],
+                heartbeat["worker_type"],
+                heartbeat["worker_id"],
+            ),
+        )
+
+    def summary(self) -> dict[str, Any]:
+        return summarize_worker_heartbeats(self.list_heartbeats())
+
+
+class SqlAlchemyWorkerHeartbeatStore:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def upsert_heartbeat(self, heartbeat: dict[str, Any]) -> dict[str, Any]:
+        heartbeat_to_store = deepcopy(validate_worker_heartbeat(heartbeat))
+        try:
+            return self._run_in_transaction(
+                lambda session: self._upsert_heartbeat(session, heartbeat_to_store)
+            )
+        except WorkerHeartbeatError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _heartbeat_store_unavailable() from exc
+
+    def get_heartbeat(self, service_id: str, worker_id: str) -> dict[str, Any] | None:
+        _validate_service_id(service_id)
+        _required_string(worker_id, "worker_id")
+        try:
+            with self._session_factory() as session:
+                return self._select_heartbeat(session, service_id, worker_id)
+        except SQLAlchemyError as exc:
+            raise _heartbeat_store_unavailable() from exc
+
+    def list_heartbeats(
+        self,
+        *,
+        service_id: str | None = None,
+        worker_type: str | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        normalized_service_id = _validate_service_id(service_id) if service_id is not None else None
+        normalized_worker_type = _required_string(worker_type, "worker_type") if worker_type is not None else None
+        normalized_status = _validate_status(status) if status is not None else None
+        where_clauses: list[str] = []
+        params: dict[str, Any] = {}
+        if normalized_service_id is not None:
+            where_clauses.append("service_id = :service_id")
+            params["service_id"] = normalized_service_id
+        if normalized_worker_type is not None:
+            where_clauses.append("worker_type = :worker_type")
+            params["worker_type"] = normalized_worker_type
+        if normalized_status is not None:
+            where_clauses.append("status = :status")
+            params["status"] = normalized_status
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(
+                    text(
+                        f"""
+                        SELECT {_HEARTBEAT_SELECT_COLUMNS}
+                        FROM service_worker_heartbeats
+                        {where_sql}
+                        ORDER BY service_id, worker_type, worker_id
+                        """
+                    ),
+                    params,
+                ).mappings()
+                return [_heartbeat_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _heartbeat_store_unavailable() from exc
+
+    def summary(self) -> dict[str, Any]:
+        return summarize_worker_heartbeats(self.list_heartbeats())
+
+    def _run_in_transaction(self, operation: Callable[[Session], Any]) -> Any:
+        session = self._session_factory()
+        try:
+            try:
+                result = operation(session)
+                session.commit()
+                return result
+            except Exception:
+                session.rollback()
+                raise
+        finally:
+            session.close()
+
+    def _upsert_heartbeat(self, session: Session, heartbeat: dict[str, Any]) -> dict[str, Any]:
+        existing = self._select_heartbeat(
+            session,
+            str(heartbeat["service_id"]),
+            str(heartbeat["worker_id"]),
+        )
+        if existing is None:
+            self._insert_heartbeat(session, heartbeat)
+        else:
+            self._update_heartbeat(session, heartbeat)
+        stored = self._select_heartbeat(
+            session,
+            str(heartbeat["service_id"]),
+            str(heartbeat["worker_id"]),
+        )
+        assert stored is not None
+        return stored
+
+    def _select_heartbeat(
+        self,
+        session: Session,
+        service_id: str,
+        worker_id: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_HEARTBEAT_SELECT_COLUMNS}
+                FROM service_worker_heartbeats
+                WHERE service_id = :service_id AND worker_id = :worker_id
+                """
+            ),
+            {"service_id": service_id, "worker_id": worker_id},
+        ).mappings().first()
+        return _heartbeat_from_row(row) if row is not None else None
+
+    def _insert_heartbeat(self, session: Session, heartbeat: dict[str, Any]) -> None:
+        metadata_expression = _metadata_sql_expression(session)
+        session.execute(
+            text(
+                f"""
+                INSERT INTO service_worker_heartbeats (
+                    service_id,
+                    worker_id,
+                    heartbeat_schema_version,
+                    worker_type,
+                    status,
+                    active_job_id,
+                    trace_id,
+                    started_at,
+                    last_seen_at,
+                    metadata,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    :service_id,
+                    :worker_id,
+                    :heartbeat_schema_version,
+                    :worker_type,
+                    :status,
+                    :active_job_id,
+                    :trace_id,
+                    :started_at,
+                    :last_seen_at,
+                    {metadata_expression},
+                    :created_at,
+                    :updated_at
+                )
+                """
+            ),
+            _heartbeat_params(heartbeat),
+        )
+
+    def _update_heartbeat(self, session: Session, heartbeat: dict[str, Any]) -> None:
+        metadata_expression = _metadata_sql_expression(session)
+        session.execute(
+            text(
+                f"""
+                UPDATE service_worker_heartbeats
+                SET heartbeat_schema_version = :heartbeat_schema_version,
+                    worker_type = :worker_type,
+                    status = :status,
+                    active_job_id = :active_job_id,
+                    trace_id = :trace_id,
+                    started_at = :started_at,
+                    last_seen_at = :last_seen_at,
+                    metadata = {metadata_expression},
+                    updated_at = :updated_at
+                WHERE service_id = :service_id AND worker_id = :worker_id
+                """
+            ),
+            _heartbeat_params(heartbeat),
+        )
+
+
+def worker_heartbeat_store_from_app(app: Any) -> WorkerHeartbeatStore:
+    state = getattr(app, "state", None)
+    persistence = getattr(state, "nex_persistence", None) if state is not None else None
+    store = getattr(persistence, "worker_heartbeat_store", None)
+    if store is not None:
+        return store
+    if state is None:
+        return InMemoryWorkerHeartbeatStore()
+    fallback_store = getattr(state, "_nex_worker_heartbeat_store", None)
+    if fallback_store is None:
+        fallback_store = InMemoryWorkerHeartbeatStore()
+        setattr(state, "_nex_worker_heartbeat_store", fallback_store)
+    return fallback_store
+
+
 def _required_string(value: object, field_name: str) -> str:
     if not isinstance(value, str) or not value:
         raise WorkerHeartbeatError(
@@ -212,6 +471,26 @@ def _required_string(value: object, field_name: str) -> str:
             detail=f"{field_name} must be a non-empty string",
         )
     return value
+
+
+def _validate_service_id(service_id: str) -> str:
+    _required_string(service_id, "service_id")
+    if service_id not in SERVICE_IDS:
+        raise WorkerHeartbeatError(
+            error_code="worker_heartbeat.service_invalid",
+            detail=f"unknown service_id: {service_id}",
+        )
+    return service_id
+
+
+def _validate_status(status: str) -> str:
+    normalized_status = _required_string(status, "status").upper()
+    if normalized_status not in WORKER_HEARTBEAT_STATUSES:
+        raise WorkerHeartbeatError(
+            error_code="worker_heartbeat.status_invalid",
+            detail=f"unknown worker heartbeat status: {status}",
+        )
+    return normalized_status
 
 
 def _is_trace_id(value: object) -> bool:
@@ -238,3 +517,95 @@ def _parse_wire_datetime(value: object, field_name: str) -> datetime:
     if observed.tzinfo is None:
         observed = observed.replace(tzinfo=UTC)
     return observed.astimezone(UTC)
+
+
+_HEARTBEAT_SELECT_COLUMNS = """
+    service_id,
+    worker_id,
+    heartbeat_schema_version,
+    worker_type,
+    status,
+    active_job_id,
+    trace_id,
+    started_at,
+    last_seen_at,
+    metadata
+"""
+
+
+def _heartbeat_params(heartbeat: dict[str, Any]) -> dict[str, Any]:
+    timestamp = _utc_now()
+    return {
+        "service_id": heartbeat["service_id"],
+        "worker_id": heartbeat["worker_id"],
+        "heartbeat_schema_version": heartbeat["heartbeat_schema_version"],
+        "worker_type": heartbeat["worker_type"],
+        "status": heartbeat["status"],
+        "active_job_id": heartbeat["active_job_id"],
+        "trace_id": heartbeat["trace_id"],
+        "started_at": heartbeat["started_at"],
+        "last_seen_at": heartbeat["last_seen_at"],
+        "metadata": _json_dumps(heartbeat["metadata"]),
+        "created_at": timestamp,
+        "updated_at": timestamp,
+    }
+
+
+def _heartbeat_from_row(row: Any) -> dict[str, Any]:
+    return validate_worker_heartbeat(
+        {
+            "heartbeat_schema_version": row["heartbeat_schema_version"],
+            "service_id": row["service_id"],
+            "worker_id": row["worker_id"],
+            "worker_type": row["worker_type"],
+            "status": row["status"],
+            "active_job_id": row["active_job_id"],
+            "trace_id": row["trace_id"],
+            "started_at": _timestamp_to_wire(row["started_at"]),
+            "last_seen_at": _timestamp_to_wire(row["last_seen_at"]),
+            "metadata": _json_loads(row["metadata"], default={}),
+        }
+    )
+
+
+def _metadata_sql_expression(session: Session) -> str:
+    if _dialect_name(session) == "postgresql":
+        return "CAST(:metadata AS JSONB)"
+    return ":metadata"
+
+
+def _json_dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _json_loads(value: Any, *, default: Any) -> Any:
+    if value is None:
+        return deepcopy(default)
+    if isinstance(value, (dict, list)):
+        return deepcopy(value)
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if isinstance(value, str):
+        return json.loads(value)
+    return deepcopy(default)
+
+
+def _timestamp_to_wire(value: Any) -> str:
+    if isinstance(value, datetime):
+        observed = value
+        if observed.tzinfo is None:
+            observed = observed.replace(tzinfo=UTC)
+        return observed.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return str(value)
+
+
+def _dialect_name(session: Session) -> str:
+    return session.get_bind().dialect.name
+
+
+def _heartbeat_store_unavailable() -> WorkerHeartbeatError:
+    return WorkerHeartbeatError(
+        error_code="worker_heartbeat.store_unavailable",
+        detail="worker heartbeat store is unavailable",
+        status_code=503,
+    )

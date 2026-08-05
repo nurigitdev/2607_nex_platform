@@ -23,6 +23,11 @@ from .operational_events import (
     OperationalEventStore,
     SqlAlchemyOperationalEventStore,
 )
+from .worker_heartbeats import (
+    InMemoryWorkerHeartbeatStore,
+    SqlAlchemyWorkerHeartbeatStore,
+    WorkerHeartbeatStore,
+)
 
 PERSISTENCE_MODE_MEMORY = "memory"
 PERSISTENCE_MODE_POSTGRES = "postgres"
@@ -59,6 +64,7 @@ class ServicePersistenceRuntime:
     redacted_database_url: str | None
     job_queue: JobQueue
     operational_event_store: OperationalEventStore
+    worker_heartbeat_store: WorkerHeartbeatStore
     api_engine: Engine | None = field(default=None, repr=False)
     worker_engine: Engine | None = field(default=None, repr=False)
     api_session_factory: sessionmaker[Session] | None = field(default=None, repr=False)
@@ -72,6 +78,7 @@ class ServicePersistenceRuntime:
             "redacted_database_url": self.redacted_database_url,
             "job_queue": self.job_queue.__class__.__name__,
             "operational_event_store": self.operational_event_store.__class__.__name__,
+            "worker_heartbeat_store": self.worker_heartbeat_store.__class__.__name__,
         }
 
 
@@ -96,6 +103,7 @@ def build_service_persistence_runtime(
             redacted_database_url=None,
             job_queue=InMemoryJobQueue(),
             operational_event_store=InMemoryOperationalEventStore(),
+            worker_heartbeat_store=InMemoryWorkerHeartbeatStore(),
         )
 
     try:
@@ -120,6 +128,7 @@ def build_service_persistence_runtime(
         redacted_database_url=redact_database_url(database_url),
         job_queue=SqlAlchemyJobQueue(worker_session_factory),
         operational_event_store=SqlAlchemyOperationalEventStore(api_session_factory),
+        worker_heartbeat_store=SqlAlchemyWorkerHeartbeatStore(worker_session_factory),
         api_engine=api_engine,
         worker_engine=worker_engine,
         api_session_factory=api_session_factory,
