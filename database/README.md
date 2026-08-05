@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0092 CX processing PostgreSQL JobQueue runtime smoke.
+Status: Slice 0093 shared operational event emitter.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -208,10 +208,16 @@ service, severity, trace, and event-type scans.
 
 Runtime code uses `nex_runtime.operational_events` for event construction,
 sensitive detail redaction, validation, in-memory storage, filtering, summaries,
-and the persistent `SqlAlchemyOperationalEventStore` adapter. The SQLAlchemy
-adapter stores and reads the `operational_event.v1` shape through the
-service-owned `service_operational_events` table while keeping JSONB details
-redacted before persistence.
+safe emit results, and the persistent `SqlAlchemyOperationalEventStore`
+adapter. The SQLAlchemy adapter stores and reads the `operational_event.v1`
+shape through the service-owned `service_operational_events` table while keeping
+JSONB details redacted before persistence.
+
+Route and worker code should write events through `OperationalEventEmitter`.
+`emit()` preserves normal validation/store errors for callers that need strict
+behavior. `safe_emit()` returns a compact success/failure result and never
+raises for event logging failures, so observability write-through cannot fail
+the primary request or job.
 
 Optional PostgreSQL write smoke is guarded by:
 

@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0091 service runtime persistence bootstrap.
+Status: Slice 0093 shared operational event emitter.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -41,6 +41,12 @@ Runtime persistence is selected explicitly:
 - Service-specific mode envs override the global mode. PostgreSQL mode requires
   the matching service database URL and should be paired with migration/smoke
   checks.
+
+Route and worker code should emit operational events through the shared
+`OperationalEventEmitter`. It resolves the service persistence store from
+`app.state.nex_persistence` when available, keeps memory fallback behavior for
+local regression, and offers `safe_emit()` for observability writes that must not
+fail the primary request or job.
 
 Slice 0005 adds a mock-only OA service token path:
 

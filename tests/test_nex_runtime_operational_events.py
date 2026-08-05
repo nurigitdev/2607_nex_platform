@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -11,12 +12,15 @@ import nex_runtime.operational_events as runtime_events
 from nex_runtime import (
     DatabasePoolSettings,
     InMemoryOperationalEventStore,
+    OperationalEventEmitter,
     OperationalEventError,
+    OperationalEventEmitResult,
     SqlAlchemyOperationalEventStore,
     build_engine,
     build_session_factory,
     build_operational_event,
     normalize_operational_event_limit,
+    operational_event_emitter_from_app,
     redact_operational_details,
     summarize_operational_events,
     validate_operational_event,
@@ -214,6 +218,221 @@ def test_operational_event_store_is_idempotent_by_event_id_and_summarizes() -> N
     )
     assert summary["by_service"] == {"nex-cx": 1, "unknown-service": 1}
     assert "NOTICE" not in summary["by_severity"]
+
+
+def test_operational_event_emit_result_summarizes_success_and_failure() -> None:
+    source_event = sample_event()
+    success = OperationalEventEmitResult.emitted(source_event)
+    failure = OperationalEventEmitResult.failed(
+        error_code="operational_event.store_unavailable",
+        detail="store unavailable",
+        status_code=503,
+    )
+
+    assert success.to_summary() == {
+        "ok": True,
+        "event_id": "event-001",
+        "service_id": "nex-cx",
+        "event_type": "cx.processing.completed",
+        "severity": "INFO",
+    }
+    assert failure.to_summary() == {
+        "ok": False,
+        "error_code": "operational_event.store_unavailable",
+        "detail": "store unavailable",
+        "status_code": 503,
+    }
+
+    source_event["severity"] = "CRITICAL"
+    assert success.event is not None
+    assert success.event["severity"] == "INFO"
+
+
+def test_operational_event_emitter_emits_service_scoped_redacted_events() -> None:
+    store = InMemoryOperationalEventStore()
+    emitter = OperationalEventEmitter(service_id="nex-cx", store=store)
+
+    event = emitter.emit(
+        event_type="cx.processing.completed",
+        severity="info",
+        message="Document processing completed.",
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        subject_ref={"type": "cx.document", "id": "doc-001"},
+        details={"safe": "yes", "password": "hidden"},
+        created_at=NOW,
+        event_id="emitted-event-001",
+    )
+
+    assert event["service_id"] == "nex-cx"
+    assert event["severity"] == "INFO"
+    assert event["details"] == {"safe": "yes", "password": "<redacted>"}
+    assert store.get_event("emitted-event-001") == event
+
+
+def test_operational_event_emitter_safe_emit_returns_success_result() -> None:
+    store = InMemoryOperationalEventStore()
+    emitter = OperationalEventEmitter(service_id="nex-cx", store=store)
+
+    result = emitter.safe_emit(
+        event_type="cx.processing.completed",
+        severity="info",
+        message="Document processing completed.",
+        details={"source_text": "private document text"},
+        created_at=NOW,
+        event_id="safe-event-001",
+    )
+
+    assert result.ok is True
+    assert result.error_code is None
+    assert result.event is not None
+    assert result.event["details"]["source_text"] == "<redacted>"
+    assert "private document text" not in str(result)
+    assert store.get_event("safe-event-001") == result.event
+
+
+def test_operational_event_emitter_safe_emit_reports_validation_failure_without_storing() -> None:
+    store = InMemoryOperationalEventStore()
+    emitter = OperationalEventEmitter(service_id="nex-cx", store=store)
+
+    result = emitter.safe_emit(
+        event_type="cx.processing.completed",
+        severity="notice",
+        message="Document processing completed.",
+        created_at=NOW,
+        event_id="invalid-event-001",
+    )
+
+    assert result.ok is False
+    assert result.error_code == "operational_event.severity_invalid"
+    assert result.status_code == 422
+    assert store.get_event("invalid-event-001") is None
+
+
+def test_operational_event_emitter_safe_emit_reports_store_failures() -> None:
+    class BrokenStore:
+        def append(self, event: dict[str, Any]) -> dict[str, Any]:
+            raise OperationalEventError(
+                error_code="operational_event.store_unavailable",
+                detail="operational event store is unavailable",
+                status_code=503,
+            )
+
+        def get_event(self, event_id: str) -> dict[str, Any] | None:
+            return None
+
+        def list_events(self, **kwargs: Any) -> list[dict[str, Any]]:
+            return []
+
+    emitter = OperationalEventEmitter(service_id="nex-cx", store=BrokenStore())
+
+    result = emitter.safe_emit(
+        event_type="cx.processing.completed",
+        severity="info",
+        message="Document processing completed.",
+        created_at=NOW,
+        event_id="broken-event-001",
+    )
+
+    assert result.to_summary() == {
+        "ok": False,
+        "error_code": "operational_event.store_unavailable",
+        "detail": "operational event store is unavailable",
+        "status_code": 503,
+    }
+
+
+def test_operational_event_emitter_safe_emit_hides_unexpected_exception_detail() -> None:
+    class ExplodingStore:
+        def append(self, event: dict[str, Any]) -> dict[str, Any]:
+            raise RuntimeError("connection failed with secret-token")
+
+        def get_event(self, event_id: str) -> dict[str, Any] | None:
+            return None
+
+        def list_events(self, **kwargs: Any) -> list[dict[str, Any]]:
+            return []
+
+    emitter = OperationalEventEmitter(service_id="nex-cx", store=ExplodingStore())
+
+    result = emitter.safe_emit(
+        event_type="cx.processing.completed",
+        severity="info",
+        message="Document processing completed.",
+        created_at=NOW,
+        event_id="exploding-event-001",
+    )
+
+    assert result.ok is False
+    assert result.error_code == "operational_event.emit_failed"
+    assert result.detail == "operational event emission failed"
+    assert "secret-token" not in str(result.to_summary())
+
+
+def test_operational_event_emitter_from_app_uses_persistence_store_and_explicit_override() -> None:
+    persistence_store = InMemoryOperationalEventStore()
+    explicit_store = InMemoryOperationalEventStore()
+    app = SimpleNamespace(
+        state=SimpleNamespace(
+            nex_persistence=SimpleNamespace(operational_event_store=persistence_store)
+        )
+    )
+
+    persisted_emitter = operational_event_emitter_from_app(app, service_id="nex-cx")
+    override_emitter = operational_event_emitter_from_app(
+        app,
+        service_id="nex-cx",
+        store=explicit_store,
+    )
+
+    persisted_emitter.emit(
+        event_type="cx.processing.started",
+        severity="info",
+        message="Document processing started.",
+        created_at=NOW,
+        event_id="persisted-event-001",
+    )
+    override_emitter.emit(
+        event_type="cx.processing.started",
+        severity="info",
+        message="Document processing started.",
+        created_at=NOW,
+        event_id="override-event-001",
+    )
+
+    assert persistence_store.get_event("persisted-event-001") is not None
+    assert persistence_store.get_event("override-event-001") is None
+    assert explicit_store.get_event("override-event-001") is not None
+
+
+def test_operational_event_emitter_from_app_keeps_memory_fallback_on_state() -> None:
+    app = SimpleNamespace(state=SimpleNamespace())
+    first = operational_event_emitter_from_app(app, service_id="nex-cx")
+    second = operational_event_emitter_from_app(app, service_id="nex-cx")
+
+    first.emit(
+        event_type="cx.processing.started",
+        severity="info",
+        message="Document processing started.",
+        created_at=NOW,
+        event_id="fallback-event-001",
+    )
+
+    assert second.store.get_event("fallback-event-001") is not None
+
+
+def test_operational_event_emitter_from_app_without_state_uses_private_memory_store() -> None:
+    emitter = operational_event_emitter_from_app(SimpleNamespace(), service_id="nex-cx")
+
+    event = emitter.emit(
+        event_type="cx.processing.started",
+        severity="info",
+        message="Document processing started.",
+        created_at=NOW,
+        event_id="stateless-event-001",
+    )
+
+    assert emitter.store.get_event("stateless-event-001") == event
 
 
 def test_sqlalchemy_operational_event_store_filters_sorts_limits_and_returns_copies() -> None:

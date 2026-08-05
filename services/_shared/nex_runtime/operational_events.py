@@ -59,6 +59,140 @@ class OperationalEventStore(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class OperationalEventEmitResult:
+    ok: bool
+    event: dict[str, Any] | None = None
+    error_code: str | None = None
+    detail: str | None = None
+    status_code: int | None = None
+
+    @classmethod
+    def emitted(cls, event: dict[str, Any]) -> OperationalEventEmitResult:
+        return cls(ok=True, event=deepcopy(event))
+
+    @classmethod
+    def failed(
+        cls,
+        *,
+        error_code: str,
+        detail: str,
+        status_code: int,
+    ) -> OperationalEventEmitResult:
+        return cls(
+            ok=False,
+            error_code=error_code,
+            detail=detail,
+            status_code=status_code,
+        )
+
+    def to_summary(self) -> dict[str, Any]:
+        if self.ok and self.event is not None:
+            return {
+                "ok": True,
+                "event_id": self.event["event_id"],
+                "service_id": self.event["service_id"],
+                "event_type": self.event["event_type"],
+                "severity": self.event["severity"],
+            }
+        return {
+            "ok": False,
+            "error_code": self.error_code,
+            "detail": self.detail,
+            "status_code": self.status_code,
+        }
+
+
+class OperationalEventEmitter:
+    def __init__(
+        self,
+        *,
+        service_id: str,
+        store: OperationalEventStore,
+    ) -> None:
+        self.service_id = _required_string(service_id, "service_id")
+        self.store = store
+
+    def emit(
+        self,
+        *,
+        event_type: str,
+        severity: str,
+        message: str,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        subject_ref: dict[str, str] | None = None,
+        details: dict[str, Any] | None = None,
+        created_at: str | None = None,
+        event_id: str | None = None,
+    ) -> dict[str, Any]:
+        event = build_operational_event(
+            service_id=self.service_id,
+            event_type=event_type,
+            severity=severity,
+            message=message,
+            trace_id=trace_id,
+            request_id=request_id,
+            subject_ref=subject_ref,
+            details=details,
+            created_at=created_at,
+            event_id=event_id,
+        )
+        return self.store.append(event)
+
+    def safe_emit(
+        self,
+        *,
+        event_type: str,
+        severity: str,
+        message: str,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        subject_ref: dict[str, str] | None = None,
+        details: dict[str, Any] | None = None,
+        created_at: str | None = None,
+        event_id: str | None = None,
+    ) -> OperationalEventEmitResult:
+        try:
+            return OperationalEventEmitResult.emitted(
+                self.emit(
+                    event_type=event_type,
+                    severity=severity,
+                    message=message,
+                    trace_id=trace_id,
+                    request_id=request_id,
+                    subject_ref=subject_ref,
+                    details=details,
+                    created_at=created_at,
+                    event_id=event_id,
+                )
+            )
+        except OperationalEventError as exc:
+            return OperationalEventEmitResult.failed(
+                error_code=exc.error_code,
+                detail=exc.detail,
+                status_code=exc.status_code,
+            )
+        except Exception:
+            return OperationalEventEmitResult.failed(
+                error_code="operational_event.emit_failed",
+                detail="operational event emission failed",
+                status_code=503,
+            )
+
+
+def operational_event_emitter_from_app(
+    app: Any,
+    *,
+    service_id: str,
+    store: OperationalEventStore | None = None,
+) -> OperationalEventEmitter:
+    return OperationalEventEmitter(
+        service_id=service_id,
+        store=store if store is not None else _operational_event_store_from_app(app),
+    )
+
+
 def build_operational_event(
     *,
     service_id: str,
@@ -523,3 +657,18 @@ def _event_store_unavailable() -> OperationalEventError:
         detail="operational event store is unavailable",
         status_code=503,
     )
+
+
+def _operational_event_store_from_app(app: Any) -> OperationalEventStore:
+    state = getattr(app, "state", None)
+    persistence = getattr(state, "nex_persistence", None) if state is not None else None
+    store = getattr(persistence, "operational_event_store", None)
+    if store is not None:
+        return store
+    if state is None:
+        return InMemoryOperationalEventStore()
+    fallback_store = getattr(state, "_nex_operational_event_store", None)
+    if fallback_store is None:
+        fallback_store = InMemoryOperationalEventStore()
+        setattr(state, "_nex_operational_event_store", fallback_store)
+    return fallback_store
