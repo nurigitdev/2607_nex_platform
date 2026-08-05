@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from copy import deepcopy
 from collections.abc import Mapping
+from copy import deepcopy
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import FastAPI, Header, Query, Request
@@ -17,6 +18,7 @@ from nex_runtime import (
     JobQueueError,
     OPERATIONAL_EVENT_SEVERITIES,
     OperationalEventStore,
+    OperationalEventError,
     SERVICE_SPECS,
     normalize_job_limit,
     normalize_operational_event_limit,
@@ -34,12 +36,169 @@ DEFAULT_JOB_QUEUE_STORES = {
 }
 
 
+@dataclass(frozen=True)
+class OperationsSource:
+    service_id: str
+    job_queue: JobQueue | None = None
+    operational_event_store: OperationalEventStore | None = None
+    source_kind: str = "memory"
+
+    def __post_init__(self) -> None:
+        if self.service_id not in SERVICE_SPECS:
+            raise ValueError(f"unsupported operations source service: {self.service_id}")
+        if not self.source_kind:
+            raise ValueError("source_kind must be a non-empty string")
+
+    def to_summary(self) -> dict[str, Any]:
+        return {
+            "service_id": self.service_id,
+            "source_kind": self.source_kind,
+            "job_queue": (
+                self.job_queue.__class__.__name__
+                if self.job_queue is not None
+                else None
+            ),
+            "operational_event_store": (
+                self.operational_event_store.__class__.__name__
+                if self.operational_event_store is not None
+                else None
+            ),
+            "capabilities": {
+                "jobs": self.job_queue is not None,
+                "events": self.operational_event_store is not None,
+            },
+        }
+
+
+@dataclass
+class OperationsSourceRegistry:
+    sources: dict[str, OperationsSource] = field(default_factory=dict)
+
+    def register(self, source: OperationsSource) -> OperationsSource:
+        self.sources[source.service_id] = source
+        return source
+
+    def get(self, service_id: str) -> OperationsSource | None:
+        if service_id not in SERVICE_SPECS:
+            raise ValueError(f"unsupported operations source service: {service_id}")
+        return self.sources.get(service_id)
+
+    def service_ids(self) -> list[str]:
+        return sorted(self.sources)
+
+    def job_queues(self) -> dict[str, JobQueue]:
+        return {
+            service_id: source.job_queue
+            for service_id, source in self.sources.items()
+            if source.job_queue is not None
+        }
+
+    def event_stores(self) -> dict[str, OperationalEventStore]:
+        return {
+            service_id: source.operational_event_store
+            for service_id, source in self.sources.items()
+            if source.operational_event_store is not None
+        }
+
+    def to_summary(self) -> dict[str, Any]:
+        source_summaries = {
+            service_id: source.to_summary()
+            for service_id, source in sorted(self.sources.items())
+        }
+        return {
+            "registry_schema_version": "ag_operations_source_registry.v1",
+            "service_count": len(source_summaries),
+            "sources": source_summaries,
+        }
+
+
+class RegistryOperationalEventStore:
+    def __init__(self, registry: OperationsSourceRegistry) -> None:
+        self.registry = registry
+
+    def append(self, event: dict[str, Any]) -> dict[str, Any]:
+        raise OperationalEventError(
+            error_code="ag.operations_registry.read_only",
+            detail="AG operations registry event store is read-only.",
+            status_code=405,
+        )
+
+    def get_event(self, event_id: str) -> dict[str, Any] | None:
+        for store in self.registry.event_stores().values():
+            event = store.get_event(event_id)
+            if event is not None:
+                return event
+        return None
+
+    def list_events(
+        self,
+        *,
+        service_id: str | None = None,
+        severity: str | None = None,
+        event_type: str | None = None,
+        trace_id: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        normalized_limit = normalize_operational_event_limit(limit)
+        event_stores = self.registry.event_stores()
+        selected_service_ids = [service_id] if service_id is not None else sorted(SERVICE_SPECS)
+        events: list[dict[str, Any]] = []
+        for selected_service_id in selected_service_ids:
+            store = event_stores.get(selected_service_id)
+            if store is None:
+                continue
+            events.extend(
+                store.list_events(
+                    service_id=selected_service_id,
+                    severity=severity,
+                    event_type=event_type,
+                    trace_id=trace_id,
+                    limit=normalized_limit,
+                )
+            )
+        events.sort(
+            key=lambda event: (
+                str(event.get("created_at", "")),
+                str(event.get("event_id", "")),
+            ),
+            reverse=True,
+        )
+        return events[:normalized_limit]
+
+
+def build_operations_source_registry(
+    *,
+    job_queues: Mapping[str, JobQueue] | None = None,
+    event_stores: Mapping[str, OperationalEventStore] | None = None,
+    source_kind: str = "memory",
+) -> OperationsSourceRegistry:
+    queue_map = job_queues or {}
+    event_store_map = event_stores or {}
+    source_ids = sorted(set(queue_map) | set(event_store_map))
+    registry = OperationsSourceRegistry()
+    for service_id in source_ids:
+        registry.register(
+            OperationsSource(
+                service_id=service_id,
+                job_queue=queue_map.get(service_id),
+                operational_event_store=event_store_map.get(service_id),
+                source_kind=source_kind,
+            )
+        )
+    return registry
+
+
 def register_operational_event_routes(
     app: FastAPI,
     *,
     store: OperationalEventStore | None = None,
+    registry: OperationsSourceRegistry | None = None,
 ) -> None:
-    event_store = store or DEFAULT_OPERATIONAL_EVENT_STORE
+    event_store = store or (
+        RegistryOperationalEventStore(registry)
+        if registry is not None
+        else DEFAULT_OPERATIONAL_EVENT_STORE
+    )
 
     @app.get("/admin/v1/operations/events", response_model=None)
     def list_operational_events(
@@ -79,8 +238,13 @@ def register_job_operation_routes(
     app: FastAPI,
     *,
     job_queues: Mapping[str, JobQueue] | None = None,
+    registry: OperationsSourceRegistry | None = None,
 ) -> None:
-    queue_stores = job_queues or DEFAULT_JOB_QUEUE_STORES
+    queue_stores = (
+        registry.job_queues()
+        if registry is not None
+        else job_queues or DEFAULT_JOB_QUEUE_STORES
+    )
 
     @app.get("/admin/v1/operations/jobs", response_model=None)
     def list_operational_jobs(

@@ -3,7 +3,11 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from nex_ag.operations import (
+    OperationsSource,
+    OperationsSourceRegistry,
+    RegistryOperationalEventStore,
     build_job_operations_projection,
+    build_operations_source_registry,
     build_operational_event_projection,
     register_job_operation_routes,
     register_operational_event_routes,
@@ -156,6 +160,137 @@ class BrokenJobQueue:
 
     def claim_next_job(self, worker_id, *, job_type=None, updated_at=None):
         raise AssertionError("not used")
+
+
+def build_event_stores() -> dict[str, InMemoryOperationalEventStore]:
+    cx_store = InMemoryOperationalEventStore()
+    cx_store.append(
+        build_operational_event(
+            event_id="event-cx-001",
+            service_id="nex-cx",
+            event_type="cx.processing.succeeded",
+            severity="INFO",
+            message="Document processing succeeded.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            subject_ref={"type": "cx.document", "id": "doc-001"},
+            details={"pipeline_run_id": "run-001"},
+            created_at="2026-08-05T00:00:00Z",
+        )
+    )
+    mo_store = InMemoryOperationalEventStore()
+    mo_store.append(
+        build_operational_event(
+            event_id="event-mo-001",
+            service_id="nex-mo",
+            event_type="mo.provider.failed",
+            severity="ERROR",
+            message="Provider request failed.",
+            trace_id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            request_id=REQUEST_ID,
+            subject_ref={"type": "mo.provider", "id": "reranker"},
+            details={"service_token": "private"},
+            created_at="2026-08-05T00:00:01Z",
+        )
+    )
+    return {"nex-cx": cx_store, "nex-mo": mo_store}
+
+
+def test_operations_source_registry_registers_sources_and_reports_capabilities() -> None:
+    job_queues = build_job_queues()
+    event_stores = build_event_stores()
+    registry = build_operations_source_registry(
+        job_queues=job_queues,
+        event_stores=event_stores,
+        source_kind="memory-test",
+    )
+
+    assert registry.service_ids() == ["nex-ae-api", "nex-cx", "nex-mo"]
+    assert registry.get("nex-cx").job_queue is job_queues["nex-cx"]
+    assert registry.get("nex-cx").operational_event_store is event_stores["nex-cx"]
+    assert sorted(registry.job_queues()) == ["nex-ae-api", "nex-cx"]
+    assert sorted(registry.event_stores()) == ["nex-cx", "nex-mo"]
+    assert registry.to_summary()["registry_schema_version"] == "ag_operations_source_registry.v1"
+    assert registry.to_summary()["sources"]["nex-mo"]["capabilities"] == {
+        "jobs": False,
+        "events": True,
+    }
+
+
+def test_operations_source_registry_rejects_unknown_or_empty_source_shapes() -> None:
+    registry = OperationsSourceRegistry()
+
+    try:
+        OperationsSource(service_id="nex-unknown")
+    except ValueError as exc:
+        assert "unsupported operations source service" in str(exc)
+    else:
+        raise AssertionError("expected unknown service failure")
+
+    try:
+        OperationsSource(service_id="nex-cx", source_kind="")
+    except ValueError as exc:
+        assert "source_kind" in str(exc)
+    else:
+        raise AssertionError("expected empty source kind failure")
+
+    try:
+        registry.get("nex-unknown")
+    except ValueError as exc:
+        assert "unsupported operations source service" in str(exc)
+    else:
+        raise AssertionError("expected unknown registry lookup failure")
+
+
+def test_registry_operational_event_store_aggregates_and_filters_events() -> None:
+    registry = build_operations_source_registry(event_stores=build_event_stores())
+    registry_store = RegistryOperationalEventStore(registry)
+
+    events = registry_store.list_events(limit=10)
+    cx_events = registry_store.list_events(service_id="nex-cx", limit=10)
+    missing = registry_store.list_events(service_id="nex-ag", limit=10)
+    mo_event = registry_store.get_event("event-mo-001")
+
+    assert [event["event_id"] for event in events] == ["event-mo-001", "event-cx-001"]
+    assert [event["event_id"] for event in cx_events] == ["event-cx-001"]
+    assert missing == []
+    assert mo_event is not None
+    assert mo_event["details"]["service_token"] == "<redacted>"
+    assert "private" not in str(events)
+
+    try:
+        registry_store.append(build_store().list_events(limit=1)[0])
+    except Exception as exc:
+        assert getattr(exc, "error_code") == "ag.operations_registry.read_only"
+    else:
+        raise AssertionError("expected read-only registry append failure")
+
+
+def test_operations_routes_accept_source_registry() -> None:
+    registry = build_operations_source_registry(
+        job_queues=build_job_queues(),
+        event_stores=build_event_stores(),
+    )
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_operational_event_routes(app, registry=registry)
+    register_job_operation_routes(app, registry=registry)
+    client = TestClient(app)
+
+    events_response = client.get(
+        "/admin/v1/operations/events",
+        params={"service_id": "nex-mo", "severity": "ERROR"},
+        headers=auth_headers(),
+    )
+    jobs_response = client.get(
+        "/admin/v1/operations/jobs",
+        params={"service_id": "nex-ae-api"},
+        headers=auth_headers(),
+    )
+
+    assert events_response.status_code == 200
+    assert events_response.json()["events"][0]["event_id"] == "event-mo-001"
+    assert jobs_response.status_code == 200
+    assert jobs_response.json()["jobs"][0]["job_id"] == "job-ae-001"
 
 
 def test_build_operational_event_projection_filters_and_summarizes() -> None:

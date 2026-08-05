@@ -199,6 +199,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0093`](slices/0093_shared_operational_event_emitter.md) | `S10-003` Shared operational event emitter for route and worker write-through. |
 | [`Slice 0094`](slices/0094_cx_processing_operational_events.md) | `S10-004` CX processing lifecycle operational events. |
 | [`Slice 0095`](slices/0095_cx_processing_postgres_operational_event_smoke.md) | `S10-005` CX processing route PostgreSQL-backed OperationalEvent smoke. |
+| [`Slice 0096`](slices/0096_ag_operations_source_registry.md) | `S10-006` AG operations source registry for jobs and events. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

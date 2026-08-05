@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0095 CX processing PostgreSQL OperationalEvent smoke.
+Status: Slice 0096 AG operations source registry.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005

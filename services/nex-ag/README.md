@@ -66,5 +66,7 @@ Job operations:
 - Filters include service id, status, job type, and limit.
 - The projection summarizes active/terminal jobs, status counts, service
   counts, job-type counts, and per-service source availability.
-- Default runtime registration is mock-first. DB-backed per-service queues can
-  be injected later without changing the AG endpoint shape.
+- Jobs and events can now be supplied through a shared operations source
+  registry. Default runtime registration is still mock-first, while future
+  DB-backed per-service sources can be injected without changing endpoint
+  shapes.
