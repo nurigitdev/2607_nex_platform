@@ -137,9 +137,16 @@ def test_db_smoke_reports_connection_success(
     monkeypatch.setattr(db_smoke, "DATABASE_ENVS", {"nex-test": "NEX_TEST_DATABASE_URL"})
     monkeypatch.setenv("NEX_TEST_DATABASE_URL", "postgresql://example")
     monkeypatch.setattr(
-        db_smoke.psycopg,
-        "connect",
-        lambda database_url, connect_timeout: FakeDbConnection(),
+        db_smoke,
+        "check_database_readiness",
+        lambda env_name, environ: {
+            "name": "database",
+            "ok": True,
+            "database_env": env_name,
+            "database_name": "nex_example_dev",
+            "database_user": "nex_example_user",
+            "latency_ms": 1,
+        },
     )
 
     assert db_smoke.main() == 0
@@ -152,12 +159,40 @@ def test_db_smoke_reports_connection_failure(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def fail_connect(database_url: str, connect_timeout: int) -> FakeDbConnection:
-        raise RuntimeError("down")
-
     monkeypatch.setattr(db_smoke, "DATABASE_ENVS", {"nex-test": "NEX_TEST_DATABASE_URL"})
     monkeypatch.setenv("NEX_TEST_DATABASE_URL", "postgresql://example")
-    monkeypatch.setattr(db_smoke.psycopg, "connect", fail_connect)
+    monkeypatch.setattr(
+        db_smoke,
+        "check_database_readiness",
+        lambda env_name, environ: {
+            "name": "database",
+            "ok": False,
+            "database_env": env_name,
+            "error_code": "DATABASE_CONNECTION_FAILED",
+            "latency_ms": 1,
+        },
+    )
 
     assert db_smoke.main() == 1
     assert "connection failed" in capsys.readouterr().out
+
+
+def test_db_smoke_reports_placeholder_url(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(db_smoke, "DATABASE_ENVS", {"nex-test": "NEX_TEST_DATABASE_URL"})
+    monkeypatch.setattr(
+        db_smoke,
+        "check_database_readiness",
+        lambda env_name, environ: {
+            "name": "database",
+            "ok": False,
+            "database_env": env_name,
+            "error_code": "DATABASE_URL_PLACEHOLDER",
+            "latency_ms": 0,
+        },
+    )
+
+    assert db_smoke.main() == 1
+    assert "placeholder NEX_TEST_DATABASE_URL" in capsys.readouterr().out

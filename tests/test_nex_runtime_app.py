@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
-import nex_runtime.app as runtime_app
+import nex_runtime.database as runtime_database
 
 
 class FakeCursor:
@@ -19,8 +19,8 @@ class FakeCursor:
     def execute(self, sql: str) -> None:
         self.sql = sql
 
-    def fetchone(self) -> tuple[int]:
-        return (1,)
+    def fetchone(self) -> tuple[str, str]:
+        return ("nex_oa_dev", "nex_oa_user")
 
 
 class FakeConnection:
@@ -99,14 +99,17 @@ def test_ready_returns_ready_when_database_check_passes(
 
     spec = SERVICE_SPECS["nex-oa"]
     monkeypatch.setenv(spec.database_env, "postgresql://example")
-    monkeypatch.setattr(runtime_app.psycopg, "connect", fake_connect)
+    monkeypatch.setattr(runtime_database.psycopg, "connect", fake_connect)
 
     client = TestClient(build_service_app(spec))
     response = client.get("/ready")
 
+    check = response.json()["checks"][0]
     assert response.status_code == 200
     assert response.json()["readiness_status"] == "READY"
-    assert response.json()["checks"][0]["ok"] is True
+    assert check["ok"] is True
+    assert check["database_name"] == "nex_oa_dev"
+    assert check["database_user"] == "nex_oa_user"
     assert calls == [("postgresql://example", 2)]
 
 
@@ -118,13 +121,28 @@ def test_ready_reports_database_connection_failure(
 
     spec = SERVICE_SPECS["nex-ag"]
     monkeypatch.setenv(spec.database_env, "postgresql://example")
-    monkeypatch.setattr(runtime_app.psycopg, "connect", fail_connect)
+    monkeypatch.setattr(runtime_database.psycopg, "connect", fail_connect)
 
     client = TestClient(build_service_app(spec))
     response = client.get("/ready")
 
     assert response.status_code == 503
     assert response.json()["checks"][0]["error_code"] == "DATABASE_CONNECTION_FAILED"
+
+
+def test_ready_rejects_placeholder_database_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = SERVICE_SPECS["nex-cx"]
+    monkeypatch.setenv(spec.database_env, "postgresql://nex_cx_user:<password>@localhost/db")
+
+    client = TestClient(build_service_app(spec))
+    response = client.get("/ready")
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["checks"][0]["error_code"] == "DATABASE_URL_PLACEHOLDER"
+    assert "<password>" not in str(payload)
 
 
 @pytest.mark.parametrize("service_id", sorted(SERVICE_SPECS))

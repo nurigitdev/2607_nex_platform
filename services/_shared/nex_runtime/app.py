@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import os
-import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-import psycopg
 from fastapi import FastAPI, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -18,6 +16,7 @@ from .auth import (
     validate_authorization_header,
     validate_mock_service_token,
 )
+from .database import check_database_readiness
 from .problem import problem_response
 
 
@@ -106,7 +105,7 @@ def build_service_app(spec: ServiceSpec) -> FastAPI:
 
     @app.get("/ready")
     def ready(response: Response) -> dict[str, Any]:
-        check = _check_database(spec.database_env)
+        check = check_database_readiness(spec.database_env)
         readiness_status = "READY" if check["ok"] else "NOT_READY"
         if readiness_status != "READY":
             response.status_code = 503
@@ -236,45 +235,6 @@ def _auth_problem_response(
         detail=result.detail or "Service claim validation failed.",
         type_uri="https://nex-platform.local/problems/authentication-failed",
     )
-
-
-def _check_database(database_env: str) -> dict[str, Any]:
-    database_url = os.getenv(database_env)
-    started = time.perf_counter()
-    if not database_url:
-        return {
-            "name": "database",
-            "ok": False,
-            "database_env": database_env,
-            "error_code": "DATABASE_URL_MISSING",
-            "latency_ms": 0,
-        }
-
-    try:
-        with psycopg.connect(database_url, connect_timeout=2) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute("select 1")
-                cursor.fetchone()
-    except Exception:
-        return {
-            "name": "database",
-            "ok": False,
-            "database_env": database_env,
-            "error_code": "DATABASE_CONNECTION_FAILED",
-            "latency_ms": _elapsed_ms(started),
-        }
-
-    return {
-        "name": "database",
-        "ok": True,
-        "database_env": database_env,
-        "latency_ms": _elapsed_ms(started),
-    }
-
-
-def _elapsed_ms(started: float) -> int:
-    return round((time.perf_counter() - started) * 1000)
-
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")

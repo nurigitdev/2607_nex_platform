@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0029 prompt registry seed.
+Status: Slice 0081 DB connection readiness foundation.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -44,6 +44,22 @@ Local migrations are applied by the service-owned runner:
 The runner reads `.env.local`, rejects placeholder database URLs, creates the
 `schema_migrations` state table before checking applied versions, and executes
 only migrations that have not already been recorded.
+
+## Runtime Connection Foundation
+
+Runtime services use `nex_runtime.database` for:
+
+- required database URL lookup and placeholder-password rejection
+- SQLAlchemy engine/session factory construction
+- redacted database URL rendering for diagnostics
+- `/ready` database identity checks through `select current_database(), current_user`
+- optional CX vector database routing
+
+`NEX_CX_VECTOR_DATABASE_URL` is optional. When it is empty, CX vector storage
+uses the primary CX database. If vector volume later requires a separate
+database, setting this env moves vector access without changing the primary CX
+database contract. `NEX_CX_VECTOR_TEST_DATABASE_URL` mirrors that option for
+test profiles.
 
 ## Prompt Registry Seeds
 
