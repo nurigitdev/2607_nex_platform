@@ -22,6 +22,8 @@ Current endpoints:
 - `GET /admin/v1/operations/events/{event_id}`
 - `GET /admin/v1/operations/jobs`
 - `GET /admin/v1/operations/jobs/{service_id}/{job_id}`
+- `POST /admin/v1/operations/jobs/{service_id}/{job_id}/cancel`
+- `POST /admin/v1/operations/jobs/{service_id}/{job_id}/retry`
 - `GET /admin/v1/operations/sources`
 - `GET /admin/v1/operations/traces/{trace_id}`
 - `GET /admin/v1/operations/workers`
@@ -105,6 +107,9 @@ Job operations:
   actions. The client targets each service's `/internal/v1/jobs/...` routes,
   propagates request id and traceparent headers, and uses
   `NEX_AG_TO_<SERVICE>_SERVICE_TOKEN` when configured.
+- AG exposes `cancel` and `retry` job operation endpoints. They return
+  `ag_job_control_dispatch.v1` and preserve the service-local
+  `service_job_control.v1` response under `service_response`.
 - `NEX_AG_CROSS_SERVICE_OBSERVABILITY_SMOKE=1` runs a guarded test-profile
   smoke that creates CX processing job/event rows and verifies AG can observe
   them through `GET /admin/v1/operations`.

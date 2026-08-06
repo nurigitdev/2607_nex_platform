@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 
 from nex_ag.operations import (
+    AG_JOB_CONTROL_DISPATCH_SCHEMA_VERSION,
     AG_OPERATIONS_SOURCE_MODE_ENV,
     AG_OPERATIONS_SOURCE_PROFILE_ENV,
     AG_OPERATIONS_SOURCE_SERVICES_ENV,
@@ -25,6 +26,7 @@ from nex_ag.operations import (
     build_ag_operations_source_runtime,
     build_cross_service_trace_timeline_projection,
     build_job_operation_detail_projection,
+    build_job_control_dispatch_projection,
     build_job_operations_projection,
     build_operation_query_options,
     build_operation_source_readiness_projection,
@@ -60,6 +62,7 @@ from nex_ag.operations import (
     _filter_records_by_operation_time,
     _operation_record_timestamp,
 )
+from nex_ag.job_control import AgJobControlError
 from nex_runtime import (
     CX_PROCESSING_EVENT_FAILED,
     CX_PROCESSING_EVENT_STARTED,
@@ -238,6 +241,94 @@ class UnavailableJobQueue(BrokenJobQueue):
             detail="job queue store is unavailable",
             status_code=503,
         )
+
+
+class RecordingJobControlClient:
+    def __init__(self, *, error: AgJobControlError | None = None) -> None:
+        self.error = error
+        self.calls: list[dict[str, object]] = []
+
+    def get_job(self, service_id, job_id, *, request_id, trace_id):
+        raise AssertionError("not used")
+
+    def cancel_job(self, service_id, job_id, *, request_id, trace_id, observed_at=None):
+        self.calls.append(
+            {
+                "action": "cancel",
+                "service_id": service_id,
+                "job_id": job_id,
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "observed_at": observed_at,
+            }
+        )
+        if self.error is not None:
+            raise self.error
+        return service_job_control_response(
+            service_id=service_id,
+            job_id=job_id,
+            action="cancel",
+            status="CANCELLED",
+        )
+
+    def retry_job(
+        self,
+        service_id,
+        job_id,
+        *,
+        request_id,
+        trace_id,
+        error_code=None,
+        detail=None,
+        observed_at=None,
+    ):
+        self.calls.append(
+            {
+                "action": "retry",
+                "service_id": service_id,
+                "job_id": job_id,
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "error_code": error_code,
+                "detail": detail,
+                "observed_at": observed_at,
+            }
+        )
+        if self.error is not None:
+            raise self.error
+        return service_job_control_response(
+            service_id=service_id,
+            job_id=job_id,
+            action="retry",
+            status="QUEUED",
+        )
+
+
+def service_job_control_response(
+    *,
+    service_id: str,
+    job_id: str,
+    action: str,
+    status: str,
+) -> dict[str, object]:
+    return {
+        "job_control_schema_version": "service_job_control.v1",
+        "service_id": service_id,
+        "action": action,
+        "job": {
+            "service_id": service_id,
+            "job_id": job_id,
+            "job_type": "cx.document_processing",
+            "status": status,
+        },
+        "controls": {
+            "can_cancel": False,
+            "can_retry": False,
+            "terminal": status in {"SUCCEEDED", "FAILED", "CANCELLED"},
+            "dead_lettered": False,
+            "allowed_actions": ["read"],
+        },
+    }
 
 
 class BrokenOperationalEventStore:
@@ -2958,6 +3049,138 @@ def test_job_operation_detail_route_rejects_bad_or_unavailable_sources() -> None
     assert missing_source.json()["error_code"] == "ag.job_source_not_configured"
     assert unavailable.status_code == 503
     assert unavailable.json()["error_code"] == "job.store_unavailable"
+
+
+def test_job_control_dispatch_projection_wraps_service_response() -> None:
+    projection = build_job_control_dispatch_projection(
+        service_id="nex-cx",
+        job_id="job-cx-001",
+        action="cancel",
+        service_response=service_job_control_response(
+            service_id="nex-cx",
+            job_id="job-cx-001",
+            action="cancel",
+            status="CANCELLED",
+        ),
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == AG_JOB_CONTROL_DISPATCH_SCHEMA_VERSION
+    assert projection["dispatch_status"] == "SUCCEEDED"
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["summary"] == {
+        "service_id": "nex-cx",
+        "job_id": "job-cx-001",
+        "action": "cancel",
+        "job_status": "CANCELLED",
+        "allowed_actions": ["read"],
+    }
+
+
+def test_job_control_routes_dispatch_cancel_and_retry_to_service_client() -> None:
+    control_client = RecordingJobControlClient()
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_job_operation_routes(
+        app,
+        job_queues=build_job_queues(),
+        job_control_client=control_client,
+    )
+    client = TestClient(app)
+    headers = {
+        **auth_headers(),
+        "X-Request-ID": REQUEST_ID,
+        "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+    }
+
+    cancel = client.post(
+        "/admin/v1/operations/jobs/nex-cx/job-cx-001/cancel",
+        json={"observed_at": "2026-08-05T00:00:08Z"},
+        headers=headers,
+    )
+    retry = client.post(
+        "/admin/v1/operations/jobs/nex-cx/job-cx-001/retry",
+        json={
+            "error_code": "operator.retry",
+            "detail": "Operator requested retry.",
+            "observed_at": "2026-08-05T00:00:09Z",
+        },
+        headers=headers,
+    )
+
+    assert cancel.status_code == 200
+    assert retry.status_code == 200
+    assert cancel.json()["projection_schema_version"] == AG_JOB_CONTROL_DISPATCH_SCHEMA_VERSION
+    assert retry.json()["service_response"]["action"] == "retry"
+    assert control_client.calls == [
+        {
+            "action": "cancel",
+            "service_id": "nex-cx",
+            "job_id": "job-cx-001",
+            "request_id": REQUEST_ID,
+            "trace_id": TRACE_ID,
+            "observed_at": "2026-08-05T00:00:08Z",
+        },
+        {
+            "action": "retry",
+            "service_id": "nex-cx",
+            "job_id": "job-cx-001",
+            "request_id": REQUEST_ID,
+            "trace_id": TRACE_ID,
+            "error_code": "operator.retry",
+            "detail": "Operator requested retry.",
+            "observed_at": "2026-08-05T00:00:09Z",
+        },
+    ]
+
+
+def test_job_control_routes_require_auth_and_validate_service_and_payload() -> None:
+    control_client = RecordingJobControlClient()
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_job_operation_routes(app, job_control_client=control_client)
+    client = TestClient(app)
+
+    missing_auth = client.post("/admin/v1/operations/jobs/nex-cx/job-cx-001/cancel")
+    bad_service = client.post(
+        "/admin/v1/operations/jobs/nex-unknown/job-cx-001/retry",
+        headers=auth_headers(),
+    )
+    bad_payload = client.post(
+        "/admin/v1/operations/jobs/nex-cx/job-cx-001/retry",
+        json={"error_code": ""},
+        headers=auth_headers(),
+    )
+
+    assert missing_auth.status_code == 401
+    assert missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert bad_service.status_code == 400
+    assert bad_service.json()["error_code"] == "ag.job_service_invalid"
+    assert bad_payload.status_code == 422
+    assert bad_payload.json()["error_code"] == "ag.job_control_payload_invalid"
+    assert control_client.calls == []
+
+
+def test_job_control_routes_map_service_client_errors() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_job_operation_routes(
+        app,
+        job_control_client=RecordingJobControlClient(
+            error=AgJobControlError(
+                status_code=409,
+                error_code="job.retry_status_invalid",
+                detail="only RUNNING jobs can be retried",
+                retryable=False,
+            )
+        ),
+    )
+
+    response = TestClient(app).post(
+        "/admin/v1/operations/jobs/nex-cx/job-cx-001/retry",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error_code"] == "job.retry_status_invalid"
+    assert response.json()["type"].endswith("/job-control-dispatch-failed")
 
 
 def test_job_operations_route_rejects_bad_filters() -> None:

@@ -41,6 +41,7 @@ from nex_runtime import (
     problem_response,
     redact_database_url,
     required_database_url,
+    request_id_from_headers,
     service_database_env_prefix,
     normalize_worker_stale_after_seconds,
     summarize_operational_event_taxonomy,
@@ -50,6 +51,11 @@ from nex_runtime import (
     trace_id_from_headers,
     validate_authorization_header,
     worker_heartbeat_is_stale,
+)
+from nex_ag.job_control import (
+    AgJobControlClient,
+    AgJobControlError,
+    build_default_ag_job_control_client,
 )
 
 DEFAULT_OPERATIONAL_EVENT_STORE = InMemoryOperationalEventStore()
@@ -68,6 +74,7 @@ AG_OPERATIONS_SOURCE_SERVICES_ENV = "NEX_AG_OPERATIONS_SOURCE_SERVICES"
 AG_OPERATIONS_SOURCE_MODES = ("memory", "postgres")
 AG_OPERATIONS_SOURCE_PROFILES = ("dev", "test")
 AG_OPERATION_SORT_ORDERS = ("desc", "asc")
+AG_JOB_CONTROL_DISPATCH_SCHEMA_VERSION = "ag_job_control_dispatch.v1"
 MAX_OPERATION_EVENT_QUERY_LENGTH = 128
 MAX_DASHBOARD_RECENT_LIMIT = 20
 OPERATIONS_ISSUE_CANDIDATE_RULES = (
@@ -917,6 +924,7 @@ def register_job_operation_routes(
     job_queues: Mapping[str, JobQueue] | None = None,
     event_store: OperationalEventStore | None = None,
     registry: OperationsSourceRegistry | None = None,
+    job_control_client: AgJobControlClient | None = None,
 ) -> None:
     queue_stores = (
         registry.job_queues()
@@ -928,6 +936,7 @@ def register_job_operation_routes(
         if registry is not None
         else event_store or DEFAULT_OPERATIONAL_EVENT_STORE
     )
+    control_client = job_control_client or build_default_ag_job_control_client()
 
     @app.get("/admin/v1/operations/jobs", response_model=None)
     def list_operational_jobs(
@@ -1026,6 +1035,84 @@ def register_job_operation_routes(
             job,
             service_id=service_id,
             event_store=selected_event_store,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
+    @app.post("/admin/v1/operations/jobs/{service_id}/{job_id}/cancel", response_model=None)
+    def cancel_operational_job(
+        service_id: str,
+        job_id: str,
+        request: Request,
+        payload: dict[str, Any] | None = None,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        filter_problem = _validate_job_operation_filters(
+            request,
+            service_id=service_id,
+            status=None,
+        )
+        if filter_problem is not None:
+            return filter_problem
+
+        try:
+            service_response = control_client.cancel_job(
+                service_id,
+                job_id,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                observed_at=_job_control_payload_string(payload, "observed_at"),
+            )
+        except AgJobControlError as exc:
+            return _job_control_dispatch_problem_response(request, exc)
+        return build_job_control_dispatch_projection(
+            service_id=service_id,
+            job_id=job_id,
+            action="cancel",
+            service_response=service_response,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
+    @app.post("/admin/v1/operations/jobs/{service_id}/{job_id}/retry", response_model=None)
+    def retry_operational_job(
+        service_id: str,
+        job_id: str,
+        request: Request,
+        payload: dict[str, Any] | None = None,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        filter_problem = _validate_job_operation_filters(
+            request,
+            service_id=service_id,
+            status=None,
+        )
+        if filter_problem is not None:
+            return filter_problem
+
+        try:
+            service_response = control_client.retry_job(
+                service_id,
+                job_id,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                error_code=_job_control_payload_string(payload, "error_code"),
+                detail=_job_control_payload_string(payload, "detail"),
+                observed_at=_job_control_payload_string(payload, "observed_at"),
+            )
+        except AgJobControlError as exc:
+            return _job_control_dispatch_problem_response(request, exc)
+        return build_job_control_dispatch_projection(
+            service_id=service_id,
+            job_id=job_id,
+            action="retry",
+            service_response=service_response,
             request_trace_id=trace_id_from_headers(request),
         )
 
@@ -2326,6 +2413,42 @@ def build_job_operation_detail_projection(
     return projection
 
 
+def build_job_control_dispatch_projection(
+    *,
+    service_id: str,
+    job_id: str,
+    action: str,
+    service_response: dict[str, Any],
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    service_job = service_response.get("job")
+    job_status = service_job.get("status") if isinstance(service_job, Mapping) else None
+    controls = service_response.get("controls")
+    projection = {
+        "projection_schema_version": AG_JOB_CONTROL_DISPATCH_SCHEMA_VERSION,
+        "dispatch_status": "SUCCEEDED",
+        "checked_at": _utc_now(),
+        "service_id": service_id,
+        "job_id": job_id,
+        "action": action,
+        "service_response": deepcopy(service_response),
+        "summary": {
+            "service_id": service_id,
+            "job_id": job_id,
+            "action": action,
+            "job_status": job_status,
+            "allowed_actions": (
+                deepcopy(controls.get("allowed_actions"))
+                if isinstance(controls, Mapping)
+                else []
+            ),
+        },
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
 def summarize_job_operations(jobs: list[dict[str, Any]]) -> dict[str, Any]:
     summary = summarize_jobs(jobs)
     service_counts: dict[str, int] = {}
@@ -2530,6 +2653,35 @@ def _validate_job_operation_filters(
             type_uri="https://nex-platform.local/problems/job-status-invalid",
         )
     return None
+
+
+def _job_control_payload_string(payload: dict[str, Any] | None, key: str) -> str | None:
+    if payload is None or key not in payload or payload[key] is None:
+        return None
+    value = payload[key]
+    if not isinstance(value, str) or not value:
+        raise AgJobControlError(
+            status_code=422,
+            error_code="ag.job_control_payload_invalid",
+            detail=f"{key} must be a non-empty string when supplied.",
+            retryable=False,
+        )
+    return value
+
+
+def _job_control_dispatch_problem_response(
+    request: Request,
+    exc: AgJobControlError,
+) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="Job control dispatch failed",
+        detail=exc.detail,
+        retryable=exc.retryable,
+        type_uri="https://nex-platform.local/problems/job-control-dispatch-failed",
+    )
 
 
 def _validate_unified_operation_filters(
