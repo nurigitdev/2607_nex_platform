@@ -10,14 +10,19 @@ from fastapi.responses import JSONResponse
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
+    BUSY,
     CX_PROCESSING_EVENT_FAILED,
     CX_PROCESSING_EVENT_STARTED,
     CX_PROCESSING_EVENT_SUCCEEDED,
+    ERROR,
+    IDLE,
     InMemoryJobQueue,
     JobQueue,
     JobQueueError,
     OperationalEventEmitResult,
     OperationalEventEmitter,
+    WorkerHeartbeatEmitResult,
+    WorkerHeartbeatEmitter,
     build_common_job,
     build_subject_ref,
     operational_event_emitter_from_app,
@@ -25,6 +30,7 @@ from nex_runtime import (
     request_id_from_headers,
     trace_id_from_headers,
     validate_authorization_header,
+    worker_heartbeat_emitter_from_app,
 )
 from nex_runtime.prompts import PromptRegistryStore
 
@@ -62,6 +68,8 @@ PIPELINE_STEPS = (
 PROCESSING_EVENT_STARTED = CX_PROCESSING_EVENT_STARTED
 PROCESSING_EVENT_SUCCEEDED = CX_PROCESSING_EVENT_SUCCEEDED
 PROCESSING_EVENT_FAILED = CX_PROCESSING_EVENT_FAILED
+CX_PROCESSING_WORKER_ID = "cx-processing-inline-worker"
+CX_PROCESSING_WORKER_TYPE = "cx.document_processing.worker"
 
 
 @dataclass(frozen=True)
@@ -84,6 +92,7 @@ def register_processing_routes(
     prompt_store: PromptRegistryStore | None = None,
     job_queue: JobQueue | None = None,
     event_emitter: OperationalEventEmitter | None = None,
+    worker_heartbeat_emitter: WorkerHeartbeatEmitter | None = None,
 ) -> None:
     config = storage_config or build_storage_config()
     client = mo_client or build_default_mo_embedding_client()
@@ -93,6 +102,17 @@ def register_processing_routes(
         event_emitter
         if event_emitter is not None
         else operational_event_emitter_from_app(app, service_id="nex-cx")
+    )
+    heartbeat_emitter = (
+        worker_heartbeat_emitter
+        if worker_heartbeat_emitter is not None
+        else worker_heartbeat_emitter_from_app(
+            app,
+            service_id="nex-cx",
+            worker_id=CX_PROCESSING_WORKER_ID,
+            worker_type=CX_PROCESSING_WORKER_TYPE,
+            metadata={"queue": "cx.document_processing", "runtime": "inline"},
+        )
     )
 
     @app.post("/api/v1/documents/{document_id}/processing/run", response_model=None)
@@ -115,6 +135,7 @@ def register_processing_routes(
                 prompt_store=prompt_store,
                 job_queue=queue,
                 event_emitter=emitter,
+                worker_heartbeat_emitter=heartbeat_emitter,
                 request_id=request_id_from_headers(request),
                 trace_id=trace_id_from_headers(request),
             )
@@ -156,6 +177,7 @@ def run_document_processing_pipeline(
     prompt_store: PromptRegistryStore | None = None,
     job_queue: JobQueue | None = None,
     event_emitter: OperationalEventEmitter | None = None,
+    worker_heartbeat_emitter: WorkerHeartbeatEmitter | None = None,
 ) -> dict[str, Any]:
     started_at = _utc_now()
     pipeline_run_id = str(
@@ -184,6 +206,15 @@ def run_document_processing_pipeline(
         trace_id=trace_id,
         job=job,
         created_at=started_at,
+    )
+    _safe_emit_processing_worker_heartbeat(
+        worker_heartbeat_emitter,
+        status=BUSY,
+        document_id=document_id,
+        pipeline_run_id=pipeline_run_id,
+        trace_id=trace_id,
+        job=job,
+        observed_at=started_at,
     )
     steps: list[dict[str, Any]] = []
 
@@ -289,6 +320,17 @@ def run_document_processing_pipeline(
             failed_step=failed_step,
             created_at=saved_failed_run["completed_at"],
         )
+        _safe_emit_processing_worker_heartbeat(
+            worker_heartbeat_emitter,
+            status=ERROR,
+            document_id=document_id,
+            pipeline_run_id=pipeline_run_id,
+            trace_id=trace_id,
+            job=saved_failed_run.get("job"),
+            step_summary=saved_failed_run["step_summary"],
+            failed_step=failed_step,
+            observed_at=saved_failed_run["completed_at"],
+        )
         raise _pipeline_error_from_exception(
             exc,
             pipeline_run=saved_failed_run,
@@ -319,6 +361,16 @@ def run_document_processing_pipeline(
         job=saved_record.get("job"),
         step_summary=saved_record["step_summary"],
         created_at=saved_record["completed_at"],
+    )
+    _safe_emit_processing_worker_heartbeat(
+        worker_heartbeat_emitter,
+        status=IDLE,
+        document_id=document_id,
+        pipeline_run_id=pipeline_run_id,
+        trace_id=trace_id,
+        job=saved_record.get("job"),
+        step_summary=saved_record["step_summary"],
+        observed_at=saved_record["completed_at"],
     )
     return saved_record
 
@@ -394,6 +446,42 @@ def _safe_emit_processing_event(
             pipeline_run_id=pipeline_run_id,
             event_type=event_type,
         ),
+    )
+
+
+def _safe_emit_processing_worker_heartbeat(
+    worker_heartbeat_emitter: WorkerHeartbeatEmitter | None,
+    *,
+    status: str,
+    document_id: str,
+    pipeline_run_id: str,
+    trace_id: str,
+    job: dict[str, Any] | None,
+    step_summary: dict[str, Any] | None = None,
+    failed_step: str | None = None,
+    observed_at: str | None = None,
+) -> WorkerHeartbeatEmitResult | None:
+    if worker_heartbeat_emitter is None:
+        return None
+    metadata: dict[str, Any] = {
+        "document_id": document_id,
+        "pipeline_run_id": pipeline_run_id,
+    }
+    active_job_id = None
+    if job is not None:
+        active_job_id = str(job["job_id"]) if status in (BUSY, ERROR) else None
+        metadata["job_id"] = str(job["job_id"])
+        metadata["job_status"] = str(job["status"])
+    if step_summary is not None:
+        metadata["step_summary"] = dict(step_summary)
+    if failed_step is not None:
+        metadata["failed_step"] = failed_step
+    return worker_heartbeat_emitter.safe_emit(
+        status=status,
+        active_job_id=active_job_id,
+        trace_id=trace_id,
+        metadata=metadata,
+        observed_at=observed_at,
     )
 
 

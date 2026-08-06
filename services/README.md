@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0115 worker heartbeat emitter runtime helper.
+Status: Slice 0116 CX processing worker heartbeat integration.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -67,6 +67,11 @@ shared worker heartbeat runtime. It defines the status vocabulary, emitter,
 safe emission result, stale-threshold helper, summary shape, in-memory store,
 SQLAlchemy-backed service table adapter, and `app.state.nex_persistence` lookup
 path so AG can project worker liveness across services.
+
+`nex-cx` processing routes currently run the MVP document pipeline inline, but
+they still report the inline worker as `cx-processing-inline-worker` with
+`cx.document_processing.worker` so the same heartbeat projection and stuck-job
+rules apply before a separate worker process is introduced.
 
 Slice 0005 adds a mock-only OA service token path:
 

@@ -14,6 +14,8 @@ from nex_cx.ingestion import (
     sha256_text,
 )
 from nex_cx.processing import (
+    CX_PROCESSING_WORKER_ID,
+    CX_PROCESSING_WORKER_TYPE,
     PROCESSING_EVENT_FAILED,
     PROCESSING_EVENT_STARTED,
     PROCESSING_EVENT_SUCCEEDED,
@@ -21,6 +23,7 @@ from nex_cx.processing import (
     _enqueue_or_resume_processing_job,
     _failed_step_id,
     _safe_emit_processing_event,
+    _safe_emit_processing_worker_heartbeat,
     _safe_fail_job,
     build_pipeline_run_record,
     build_processing_job,
@@ -33,10 +36,15 @@ from nex_cx.processing import (
     safe_error_from_exception,
 )
 from nex_runtime import (
+    BUSY,
+    ERROR,
+    IDLE,
     InMemoryJobQueue,
     InMemoryOperationalEventStore,
+    InMemoryWorkerHeartbeatStore,
     OperationalEventEmitter,
     SERVICE_SPECS,
+    WorkerHeartbeatEmitter,
     build_service_app,
     issue_mock_service_token,
 )
@@ -45,6 +53,7 @@ from nex_runtime.jobs import JobQueueError
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
 NOW = "2026-08-05T00:00:00Z"
+LATER = "2026-08-05T00:00:30Z"
 
 
 class FakeMoEmbeddingClient:
@@ -75,6 +84,17 @@ class FakeMoEmbeddingClient:
                 "total_tokens": len(inputs),
             },
         }
+
+
+class ExplodingWorkerHeartbeatStore:
+    def upsert_heartbeat(self, heartbeat: dict[str, Any]) -> dict[str, Any]:
+        raise RuntimeError("worker heartbeat store unavailable")
+
+    def get_heartbeat(self, service_id: str, worker_id: str) -> dict[str, Any] | None:
+        return None
+
+    def list_heartbeats(self, **kwargs: Any) -> list[dict[str, Any]]:
+        return []
 
 
 def storage_config(tmp_path: Path) -> CxStorageConfig:
@@ -221,6 +241,50 @@ def test_run_document_processing_pipeline_emits_started_and_succeeded_events(
     assert "Pipeline source text" not in str(events)
 
 
+def test_run_document_processing_pipeline_updates_worker_heartbeat_on_success(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    mo_client = FakeMoEmbeddingClient()
+    job_queue = InMemoryJobQueue()
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_emitter = WorkerHeartbeatEmitter(
+        service_id="nex-cx",
+        worker_id=CX_PROCESSING_WORKER_ID,
+        worker_type=CX_PROCESSING_WORKER_TYPE,
+        store=heartbeat_store,
+        started_at=NOW,
+        metadata={"queue": "cx.document_processing"},
+    )
+    document = save_source_document(store, tmp_path)
+
+    run = run_document_processing_pipeline(
+        document["document_id"],
+        store=store,
+        storage_config=storage_config(tmp_path),
+        mo_client=mo_client,
+        embedding_alias="mock-embedding-default",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        job_queue=job_queue,
+        worker_heartbeat_emitter=heartbeat_emitter,
+    )
+
+    heartbeat = heartbeat_store.get_heartbeat("nex-cx", CX_PROCESSING_WORKER_ID)
+    assert heartbeat is not None
+    assert heartbeat["status"] == IDLE
+    assert heartbeat["active_job_id"] is None
+    assert heartbeat["trace_id"] == TRACE_ID
+    assert heartbeat["metadata"] == {
+        "document_id": document["document_id"],
+        "job_id": run["job"]["job_id"],
+        "job_status": "SUCCEEDED",
+        "pipeline_run_id": run["pipeline_run_id"],
+        "queue": "cx.document_processing",
+        "step_summary": {"total": 6, "succeeded": 6, "skipped": 0, "failed": 0},
+    }
+
+
 def test_run_document_processing_pipeline_emits_failed_event(
     tmp_path: Path,
 ) -> None:
@@ -273,6 +337,63 @@ def test_run_document_processing_pipeline_emits_failed_event(
     }
 
 
+def test_run_document_processing_pipeline_updates_worker_heartbeat_on_failure(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    job_queue = InMemoryJobQueue()
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_emitter = WorkerHeartbeatEmitter(
+        service_id="nex-cx",
+        worker_id=CX_PROCESSING_WORKER_ID,
+        worker_type=CX_PROCESSING_WORKER_TYPE,
+        store=heartbeat_store,
+        started_at=NOW,
+    )
+    metadata_only = build_upload_registration(
+        {
+            "filename": "source.pdf",
+            "source_sha256": "a" * 64,
+            "size_bytes": 10,
+        },
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.save_upload_registration(metadata_only)
+
+    try:
+        run_document_processing_pipeline(
+            metadata_only["document_id"],
+            store=store,
+            storage_config=storage_config(tmp_path),
+            mo_client=FakeMoEmbeddingClient(),
+            embedding_alias="mock-embedding-default",
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            job_queue=job_queue,
+            worker_heartbeat_emitter=heartbeat_emitter,
+        )
+    except ProcessingPipelineError as exc:
+        failed_run = exc.pipeline_run
+    else:
+        raise AssertionError("expected pipeline failure")
+
+    assert failed_run is not None
+    heartbeat = heartbeat_store.get_heartbeat("nex-cx", CX_PROCESSING_WORKER_ID)
+    assert heartbeat is not None
+    assert heartbeat["status"] == ERROR
+    assert heartbeat["active_job_id"] == failed_run["job"]["job_id"]
+    assert heartbeat["metadata"]["job_status"] == "FAILED"
+    assert heartbeat["metadata"]["failed_step"] == "extraction"
+    assert heartbeat["metadata"]["step_summary"] == {
+        "total": 1,
+        "succeeded": 0,
+        "skipped": 0,
+        "failed": 1,
+    }
+
+
 def test_run_document_processing_pipeline_isolates_operational_event_failures(
     tmp_path: Path,
 ) -> None:
@@ -300,6 +421,35 @@ def test_run_document_processing_pipeline_isolates_operational_event_failures(
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
         event_emitter=emitter,
+    )
+
+    assert run["status"] == "SUCCEEDED"
+    assert len(mo_client.calls) == 2
+
+
+def test_run_document_processing_pipeline_isolates_worker_heartbeat_failures(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    mo_client = FakeMoEmbeddingClient()
+    document = save_source_document(store, tmp_path)
+    heartbeat_emitter = WorkerHeartbeatEmitter(
+        service_id="nex-cx",
+        worker_id=CX_PROCESSING_WORKER_ID,
+        worker_type=CX_PROCESSING_WORKER_TYPE,
+        store=ExplodingWorkerHeartbeatStore(),
+        started_at=NOW,
+    )
+
+    run = run_document_processing_pipeline(
+        document["document_id"],
+        store=store,
+        storage_config=storage_config(tmp_path),
+        mo_client=mo_client,
+        embedding_alias="mock-embedding-default",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        worker_heartbeat_emitter=heartbeat_emitter,
     )
 
     assert run["status"] == "SUCCEEDED"
@@ -548,6 +698,45 @@ def test_processing_route_emits_events_to_app_persistence_store(tmp_path: Path) 
     assert events[0]["details"]["pipeline_run_id"] == response.json()["pipeline_run_id"]
 
 
+def test_processing_route_emits_worker_heartbeat_to_app_persistence_store(tmp_path: Path) -> None:
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    store = ContentIngestionStore()
+    mo_client = FakeMoEmbeddingClient()
+    config = storage_config(tmp_path)
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    app.state.nex_persistence = SimpleNamespace(worker_heartbeat_store=heartbeat_store)
+    register_ingestion_routes(app, store=store, storage_config=config)
+    register_processing_routes(
+        app,
+        store=store,
+        storage_config=config,
+        mo_client=mo_client,
+        embedding_alias="mock-embedding-default",
+    )
+    client = TestClient(app)
+    uploaded = client.post(
+        "/api/v1/documents/uploads",
+        json={
+            "filename": "source.txt",
+            "content_type": "text/plain",
+            "content_text": "route heartbeat text",
+        },
+        headers=auth_headers(),
+    ).json()
+
+    response = client.post(
+        f"/api/v1/documents/{uploaded['document_id']}/processing/run",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    heartbeat = heartbeat_store.get_heartbeat("nex-cx", CX_PROCESSING_WORKER_ID)
+    assert heartbeat is not None
+    assert heartbeat["worker_type"] == CX_PROCESSING_WORKER_TYPE
+    assert heartbeat["status"] == IDLE
+    assert heartbeat["metadata"]["pipeline_run_id"] == response.json()["pipeline_run_id"]
+
+
 def test_processing_routes_require_service_claim(tmp_path: Path) -> None:
     client, _, _ = build_test_client(tmp_path)
 
@@ -681,6 +870,54 @@ def test_processing_event_helpers_build_stable_safe_events() -> None:
     )
     assert result.event["subject_ref"] == {"type": "cx.document", "id": "doc-1"}
     assert result.event["details"] == {"pipeline_run_id": "run-1"}
+
+
+def test_processing_worker_heartbeat_helper_is_safe_and_builds_metadata() -> None:
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    emitter = WorkerHeartbeatEmitter(
+        service_id="nex-cx",
+        worker_id=CX_PROCESSING_WORKER_ID,
+        worker_type=CX_PROCESSING_WORKER_TYPE,
+        store=heartbeat_store,
+        started_at=NOW,
+        metadata={"queue": "cx.document_processing"},
+    )
+    job = {
+        "job_id": "job-001",
+        "status": "RUNNING",
+    }
+
+    skipped_result = _safe_emit_processing_worker_heartbeat(
+        None,
+        status=BUSY,
+        document_id="doc-1",
+        pipeline_run_id="run-1",
+        trace_id=TRACE_ID,
+        job=job,
+    )
+    result = _safe_emit_processing_worker_heartbeat(
+        emitter,
+        status=BUSY,
+        document_id="doc-1",
+        pipeline_run_id="run-1",
+        trace_id=TRACE_ID,
+        job=job,
+        observed_at=LATER,
+    )
+
+    assert skipped_result is None
+    assert result is not None
+    assert result.ok is True
+    assert result.heartbeat is not None
+    assert result.heartbeat["status"] == BUSY
+    assert result.heartbeat["active_job_id"] == "job-001"
+    assert result.heartbeat["metadata"] == {
+        "document_id": "doc-1",
+        "job_id": "job-001",
+        "job_status": "RUNNING",
+        "pipeline_run_id": "run-1",
+        "queue": "cx.document_processing",
+    }
 
 
 def test_extraction_job_id_for_document_reports_missing_document() -> None:

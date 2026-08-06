@@ -219,6 +219,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0113`](slices/0113_ag_worker_runtime_projection.md) | `S12-003` AG worker runtime projection over heartbeat stores. |
 | [`Slice 0114`](slices/0114_worker_stuck_job_issue_candidates.md) | `S12-004` Worker heartbeat based stuck job issue candidate rules. |
 | [`Slice 0115`](slices/0115_worker_heartbeat_emitter_runtime_helper.md) | `S12-005` Worker heartbeat emitter/runtime helper for service workers. |
+| [`Slice 0116`](slices/0116_cx_processing_worker_heartbeat_integration.md) | `S12-006` CX processing pipeline worker heartbeat integration. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
