@@ -59,6 +59,13 @@ from .jobs import (
     transition_common_job,
     validate_common_job,
 )
+from .job_control import (
+    SERVICE_JOB_CONTROL_SCHEMA_VERSION,
+    build_service_job_control_response,
+    build_service_job_controls,
+    project_service_job_control_job,
+    register_service_job_control_routes,
+)
 from .operational_events import (
     CX_PROCESSING_EVENT_FAILED,
     CX_PROCESSING_EVENT_STARTED,
@@ -206,6 +213,7 @@ __all__ = [
     "SqlAlchemyOperationalEventStore",
     "SERVICE_SPECS",
     "SERVICE_IDS",
+    "SERVICE_JOB_CONTROL_SCHEMA_VERSION",
     "STARTING",
     "STOPPED",
     "STOPPING",
@@ -235,6 +243,8 @@ __all__ = [
     "build_job_error",
     "build_operational_event",
     "build_service_app",
+    "build_service_job_control_response",
+    "build_service_job_controls",
     "build_session_factory",
     "build_subject_ref",
     "build_unit_of_work",
@@ -255,6 +265,7 @@ __all__ = [
     "persistence_mode_env_names",
     "plan_job_retry",
     "problem_response",
+    "project_service_job_control_job",
     "redact_operational_details",
     "redact_database_url",
     "recovery_action_allowed",
@@ -262,6 +273,7 @@ __all__ = [
     "required_database_url",
     "request_id_from_headers",
     "register_generation_recovery_policy_routes",
+    "register_service_job_control_routes",
     "run_worker_batch",
     "run_worker_once",
     "select_generation_recovery_policy",

@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0124 common job retry/backoff/dead-letter policy.
+Status: Slice 0125 service-local job control API foundation.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -79,6 +79,19 @@ requeue RUNNING jobs with bounded exponential backoff by updating
 `available_at`; exhausted or non-retryable jobs are represented as `FAILED`
 with `error.dead_lettered=true`. The common job status enum is unchanged, so the
 existing PostgreSQL DDL and contract status vocabulary remain stable.
+
+Every service entrypoint exposes an authenticated internal job control surface:
+
+```text
+GET /internal/v1/jobs/{job_id}
+POST /internal/v1/jobs/{job_id}/cancel
+POST /internal/v1/jobs/{job_id}/retry
+```
+
+These routes operate only on the service-local `SERVICE_PERSISTENCE.job_queue`
+adapter and require a service claim with the target service as audience. The
+projection intentionally omits job `payload`; terminal dead-letter requeue is
+reserved for a later audited operator workflow.
 
 `nex-cx` processing routes still support the MVP inline run path, but they now
 also expose an enqueue-first path for background worker execution. Inline runs

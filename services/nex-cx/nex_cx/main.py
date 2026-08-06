@@ -1,4 +1,9 @@
-from nex_runtime import SERVICE_SPECS, attach_service_persistence_runtime, build_service_app
+from nex_runtime import (
+    SERVICE_SPECS,
+    attach_service_persistence_runtime,
+    build_service_app,
+    register_service_job_control_routes,
+)
 from nex_runtime.compatibility import register_generation_compatibility_routes
 from nex_runtime.prompts import register_prompt_registry_routes
 from nex_runtime.recovery import register_generation_recovery_policy_routes
@@ -17,6 +22,11 @@ from nex_cx.summaries import register_summary_routes
 SERVICE_SPEC = SERVICE_SPECS["nex-cx"]
 app = build_service_app(SERVICE_SPEC)
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
+register_service_job_control_routes(
+    app,
+    service_id=SERVICE_SPEC.service_id,
+    job_queue=SERVICE_PERSISTENCE.job_queue,
+)
 register_generation_routes(app, retrieval_store=DEFAULT_INGESTION_STORE)
 register_generation_compatibility_routes(app, expected_audience="nex-cx")
 register_generation_recovery_policy_routes(app, expected_audience="nex-cx")

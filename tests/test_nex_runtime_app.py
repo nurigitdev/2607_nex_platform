@@ -244,3 +244,6 @@ def test_service_entrypoints_import(module_name: str, service_id: str) -> None:
     assert module.app.title == f"{SERVICE_SPECS[service_id].display_name} Service"
     assert module.SERVICE_PERSISTENCE is module.app.state.nex_persistence
     assert module.SERVICE_PERSISTENCE.to_summary()["service_id"] == service_id
+    assert "/internal/v1/jobs/{job_id}" in {
+        getattr(route, "path", "") for route in module.app.routes
+    }
