@@ -110,6 +110,9 @@ Job operations:
 - AG exposes `cancel` and `retry` job operation endpoints. They return
   `ag_job_control_dispatch.v1` and preserve the service-local
   `service_job_control.v1` response under `service_response`.
+- Job control dispatches emit AG-owned operational events:
+  `ag.job_control.succeeded` or `ag.job_control.failed`. The audit write uses
+  AG's local persistence store and never writes into target service databases.
 - `NEX_AG_CROSS_SERVICE_OBSERVABILITY_SMOKE=1` runs a guarded test-profile
   smoke that creates CX processing job/event rows and verifies AG can observe
   them through `GET /admin/v1/operations`.

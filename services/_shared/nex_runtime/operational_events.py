@@ -21,6 +21,8 @@ CX_PROCESSING_EVENT_FAILED = "cx.processing.failed"
 CX_WORKER_LIFECYCLE_EVENT_BUSY = "cx.worker.lifecycle.busy"
 CX_WORKER_LIFECYCLE_EVENT_IDLE = "cx.worker.lifecycle.idle"
 CX_WORKER_LIFECYCLE_EVENT_ERROR = "cx.worker.lifecycle.error"
+AG_JOB_CONTROL_EVENT_SUCCEEDED = "ag.job_control.succeeded"
+AG_JOB_CONTROL_EVENT_FAILED = "ag.job_control.failed"
 
 SENSITIVE_DETAIL_KEY_PARTS = (
     "api_key",
@@ -607,6 +609,39 @@ def _is_sensitive_detail_key(key: str) -> bool:
 
 
 DEFAULT_OPERATIONAL_EVENT_TAXONOMY: tuple[OperationalEventTypeSpec, ...] = (
+    OperationalEventTypeSpec(
+        service_id="nex-ag",
+        event_type=AG_JOB_CONTROL_EVENT_SUCCEEDED,
+        default_severity="INFO",
+        subject_type="job",
+        detail_keys=(
+            "target_service_id",
+            "target_job_id",
+            "action",
+            "dispatch_status",
+            "job_status",
+            "service_job_control_schema_version",
+        ),
+        description="AG dispatched a service-local job control action successfully.",
+        lifecycle_state="succeeded",
+    ),
+    OperationalEventTypeSpec(
+        service_id="nex-ag",
+        event_type=AG_JOB_CONTROL_EVENT_FAILED,
+        default_severity="ERROR",
+        subject_type="job",
+        detail_keys=(
+            "target_service_id",
+            "target_job_id",
+            "action",
+            "dispatch_status",
+            "error_code",
+            "status_code",
+            "retryable",
+        ),
+        description="AG failed to dispatch a service-local job control action.",
+        lifecycle_state="failed",
+    ),
     OperationalEventTypeSpec(
         service_id="nex-cx",
         event_type=CX_PROCESSING_EVENT_STARTED,

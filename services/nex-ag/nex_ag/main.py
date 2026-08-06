@@ -33,9 +33,21 @@ register_retrieval_policy_routes(app)
 register_operation_source_readiness_routes(app, runtime=OPERATIONS_SOURCE_RUNTIME)
 register_unified_operation_routes(
     app,
+    event_store=SERVICE_PERSISTENCE.operational_event_store,
     registry=OPERATIONS_SOURCE_REGISTRY,
     runtime=OPERATIONS_SOURCE_RUNTIME,
 )
 register_operational_event_taxonomy_routes(app)
-register_operational_event_routes(app, registry=OPERATIONS_SOURCE_REGISTRY)
-register_job_operation_routes(app, registry=OPERATIONS_SOURCE_REGISTRY)
+if OPERATIONS_SOURCE_REGISTRY is None:
+    register_operational_event_routes(
+        app,
+        store=SERVICE_PERSISTENCE.operational_event_store,
+    )
+else:
+    register_operational_event_routes(app, registry=OPERATIONS_SOURCE_REGISTRY)
+register_job_operation_routes(
+    app,
+    event_store=SERVICE_PERSISTENCE.operational_event_store,
+    registry=OPERATIONS_SOURCE_REGISTRY,
+    audit_event_store=SERVICE_PERSISTENCE.operational_event_store,
+)

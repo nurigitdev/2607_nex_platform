@@ -64,6 +64,8 @@ from nex_ag.operations import (
 )
 from nex_ag.job_control import AgJobControlError
 from nex_runtime import (
+    AG_JOB_CONTROL_EVENT_FAILED,
+    AG_JOB_CONTROL_EVENT_SUCCEEDED,
     CX_PROCESSING_EVENT_FAILED,
     CX_PROCESSING_EVENT_STARTED,
     FAILED,
@@ -3068,6 +3070,10 @@ def test_job_control_dispatch_projection_wraps_service_response() -> None:
     assert projection["projection_schema_version"] == AG_JOB_CONTROL_DISPATCH_SCHEMA_VERSION
     assert projection["dispatch_status"] == "SUCCEEDED"
     assert projection["request_trace_id"] == TRACE_ID
+    assert projection["audit_event"] == {
+        "ok": False,
+        "error_code": "ag.job_control_audit_not_requested",
+    }
     assert projection["summary"] == {
         "service_id": "nex-cx",
         "job_id": "job-cx-001",
@@ -3079,11 +3085,13 @@ def test_job_control_dispatch_projection_wraps_service_response() -> None:
 
 def test_job_control_routes_dispatch_cancel_and_retry_to_service_client() -> None:
     control_client = RecordingJobControlClient()
+    audit_store = InMemoryOperationalEventStore()
     app = build_service_app(SERVICE_SPECS["nex-ag"])
     register_job_operation_routes(
         app,
         job_queues=build_job_queues(),
         job_control_client=control_client,
+        audit_event_store=audit_store,
     )
     client = TestClient(app)
     headers = {
@@ -3110,7 +3118,16 @@ def test_job_control_routes_dispatch_cancel_and_retry_to_service_client() -> Non
     assert cancel.status_code == 200
     assert retry.status_code == 200
     assert cancel.json()["projection_schema_version"] == AG_JOB_CONTROL_DISPATCH_SCHEMA_VERSION
+    assert cancel.json()["audit_event"]["event_type"] == AG_JOB_CONTROL_EVENT_SUCCEEDED
     assert retry.json()["service_response"]["action"] == "retry"
+    assert retry.json()["audit_event"]["ok"] is True
+    audit_events = audit_store.list_events(service_id="nex-ag", limit=10)
+    assert [event["event_type"] for event in audit_events] == [
+        AG_JOB_CONTROL_EVENT_SUCCEEDED,
+        AG_JOB_CONTROL_EVENT_SUCCEEDED,
+    ]
+    assert audit_events[0]["details"]["action"] == "retry"
+    assert audit_events[1]["details"]["action"] == "cancel"
     assert control_client.calls == [
         {
             "action": "cancel",
@@ -3140,6 +3157,11 @@ def test_job_control_routes_require_auth_and_validate_service_and_payload() -> N
     client = TestClient(app)
 
     missing_auth = client.post("/admin/v1/operations/jobs/nex-cx/job-cx-001/cancel")
+    retry_missing_auth = client.post("/admin/v1/operations/jobs/nex-cx/job-cx-001/retry")
+    cancel_bad_service = client.post(
+        "/admin/v1/operations/jobs/nex-unknown/job-cx-001/cancel",
+        headers=auth_headers(),
+    )
     bad_service = client.post(
         "/admin/v1/operations/jobs/nex-unknown/job-cx-001/retry",
         headers=auth_headers(),
@@ -3152,6 +3174,10 @@ def test_job_control_routes_require_auth_and_validate_service_and_payload() -> N
 
     assert missing_auth.status_code == 401
     assert missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert retry_missing_auth.status_code == 401
+    assert retry_missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert cancel_bad_service.status_code == 400
+    assert cancel_bad_service.json()["error_code"] == "ag.job_service_invalid"
     assert bad_service.status_code == 400
     assert bad_service.json()["error_code"] == "ag.job_service_invalid"
     assert bad_payload.status_code == 422
@@ -3160,6 +3186,7 @@ def test_job_control_routes_require_auth_and_validate_service_and_payload() -> N
 
 
 def test_job_control_routes_map_service_client_errors() -> None:
+    audit_store = InMemoryOperationalEventStore()
     app = build_service_app(SERVICE_SPECS["nex-ag"])
     register_job_operation_routes(
         app,
@@ -3171,6 +3198,7 @@ def test_job_control_routes_map_service_client_errors() -> None:
                 retryable=False,
             )
         ),
+        audit_event_store=audit_store,
     )
 
     response = TestClient(app).post(
@@ -3181,6 +3209,32 @@ def test_job_control_routes_map_service_client_errors() -> None:
     assert response.status_code == 409
     assert response.json()["error_code"] == "job.retry_status_invalid"
     assert response.json()["type"].endswith("/job-control-dispatch-failed")
+    assert response.json()["details"]["audit_event"]["event_type"] == AG_JOB_CONTROL_EVENT_FAILED
+    audit_events = audit_store.list_events(service_id="nex-ag", limit=10)
+    assert audit_events[0]["event_type"] == AG_JOB_CONTROL_EVENT_FAILED
+    assert audit_events[0]["details"]["error_code"] == "job.retry_status_invalid"
+
+
+def test_job_control_route_still_succeeds_when_audit_emit_fails() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_job_operation_routes(
+        app,
+        job_control_client=RecordingJobControlClient(),
+        audit_event_store=BrokenOperationalEventStore(),
+    )
+
+    response = TestClient(app).post(
+        "/admin/v1/operations/jobs/nex-cx/job-cx-001/cancel",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["audit_event"] == {
+        "ok": False,
+        "error_code": "operational_event.emit_failed",
+        "detail": "operational event emission failed",
+        "status_code": 503,
+    }
 
 
 def test_job_operations_route_rejects_bad_filters() -> None:

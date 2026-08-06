@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0125 service-local job control API foundation.
+Status: Slice 0128 job control audit operational events.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -92,6 +92,11 @@ These routes operate only on the service-local `SERVICE_PERSISTENCE.job_queue`
 adapter and require a service claim with the target service as audience. The
 projection intentionally omits job `payload`; terminal dead-letter requeue is
 reserved for a later audited operator workflow.
+
+AG job control dispatches are audited as AG-owned operational events. Successful
+dispatches emit `ag.job_control.succeeded`; failed dispatches emit
+`ag.job_control.failed`. Audit emission is safe: event-store errors are returned
+as audit summaries but do not block the underlying control response.
 
 `nex-cx` processing routes still support the MVP inline run path, but they now
 also expose an enqueue-first path for background worker execution. Inline runs

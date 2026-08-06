@@ -174,6 +174,14 @@ def test_http_ag_job_control_client_maps_problem_responses(monkeypatch) -> None:
 
 
 def test_http_ag_job_control_client_maps_transport_and_json_failures(monkeypatch) -> None:
+    assert str(
+        AgJobControlError(
+            status_code=503,
+            error_code="example",
+            detail="example failure",
+        )
+    ) == "example failure"
+
     def fail_request(method, url, **kwargs):
         raise httpx.ConnectError("connection refused")
 
@@ -194,6 +202,16 @@ def test_http_ag_job_control_client_maps_transport_and_json_failures(monkeypatch
         client.get_job("nex-cx", "job-001", request_id=REQUEST_ID, trace_id=TRACE_ID)
 
     assert invalid_response.value.error_code == "ag.job_control_response_invalid"
+
+    def malformed_json(method, url, **kwargs):
+        return httpx.Response(200, content=b"{not-json")
+
+    monkeypatch.setattr("nex_ag.job_control.httpx.request", malformed_json)
+    with pytest.raises(AgJobControlError) as malformed_response:
+        client.get_job("nex-cx", "job-001", request_id=REQUEST_ID, trace_id=TRACE_ID)
+
+    assert malformed_response.value.status_code == 200
+    assert malformed_response.value.error_code == "ag.job_control_response_invalid"
 
 
 def test_http_ag_job_control_client_rejects_invalid_or_missing_service_endpoint() -> None:

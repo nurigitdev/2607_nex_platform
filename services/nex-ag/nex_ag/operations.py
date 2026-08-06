@@ -12,6 +12,8 @@ from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
+    AG_JOB_CONTROL_EVENT_FAILED,
+    AG_JOB_CONTROL_EVENT_SUCCEEDED,
     DEFAULT_WORKER_STALE_AFTER_SECONDS,
     DEFAULT_SERVICE_SCOPE,
     DEFAULT_OPERATIONAL_EVENT_TAXONOMY,
@@ -24,6 +26,8 @@ from nex_runtime import (
     OPERATIONAL_EVENT_SEVERITIES,
     OperationalEventStore,
     OperationalEventError,
+    OperationalEventEmitResult,
+    OperationalEventEmitter,
     OperationalEventTypeSpec,
     SERVICE_SPECS,
     SqlAlchemyJobQueue,
@@ -923,6 +927,7 @@ def register_job_operation_routes(
     *,
     job_queues: Mapping[str, JobQueue] | None = None,
     event_store: OperationalEventStore | None = None,
+    audit_event_store: OperationalEventStore | None = None,
     registry: OperationsSourceRegistry | None = None,
     job_control_client: AgJobControlClient | None = None,
 ) -> None:
@@ -937,6 +942,10 @@ def register_job_operation_routes(
         else event_store or DEFAULT_OPERATIONAL_EVENT_STORE
     )
     control_client = job_control_client or build_default_ag_job_control_client()
+    audit_emitter = OperationalEventEmitter(
+        service_id="nex-ag",
+        store=audit_event_store or event_store or DEFAULT_OPERATIONAL_EVENT_STORE,
+    )
 
     @app.get("/admin/v1/operations/jobs", response_model=None)
     def list_operational_jobs(
@@ -1058,22 +1067,47 @@ def register_job_operation_routes(
         if filter_problem is not None:
             return filter_problem
 
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
         try:
             service_response = control_client.cancel_job(
                 service_id,
                 job_id,
-                request_id=request_id_from_headers(request),
-                trace_id=trace_id_from_headers(request),
+                request_id=request_id,
+                trace_id=trace_id,
                 observed_at=_job_control_payload_string(payload, "observed_at"),
             )
         except AgJobControlError as exc:
-            return _job_control_dispatch_problem_response(request, exc)
+            audit_result = emit_job_control_audit_event(
+                audit_emitter,
+                service_id=service_id,
+                job_id=job_id,
+                action="cancel",
+                request_id=request_id,
+                trace_id=trace_id,
+                error=exc,
+            )
+            return _job_control_dispatch_problem_response(
+                request,
+                exc,
+                audit_result=audit_result,
+            )
+        audit_result = emit_job_control_audit_event(
+            audit_emitter,
+            service_id=service_id,
+            job_id=job_id,
+            action="cancel",
+            request_id=request_id,
+            trace_id=trace_id,
+            service_response=service_response,
+        )
         return build_job_control_dispatch_projection(
             service_id=service_id,
             job_id=job_id,
             action="cancel",
             service_response=service_response,
-            request_trace_id=trace_id_from_headers(request),
+            audit_result=audit_result,
+            request_trace_id=trace_id,
         )
 
     @app.post("/admin/v1/operations/jobs/{service_id}/{job_id}/retry", response_model=None)
@@ -1096,24 +1130,49 @@ def register_job_operation_routes(
         if filter_problem is not None:
             return filter_problem
 
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
         try:
             service_response = control_client.retry_job(
                 service_id,
                 job_id,
-                request_id=request_id_from_headers(request),
-                trace_id=trace_id_from_headers(request),
+                request_id=request_id,
+                trace_id=trace_id,
                 error_code=_job_control_payload_string(payload, "error_code"),
                 detail=_job_control_payload_string(payload, "detail"),
                 observed_at=_job_control_payload_string(payload, "observed_at"),
             )
         except AgJobControlError as exc:
-            return _job_control_dispatch_problem_response(request, exc)
+            audit_result = emit_job_control_audit_event(
+                audit_emitter,
+                service_id=service_id,
+                job_id=job_id,
+                action="retry",
+                request_id=request_id,
+                trace_id=trace_id,
+                error=exc,
+            )
+            return _job_control_dispatch_problem_response(
+                request,
+                exc,
+                audit_result=audit_result,
+            )
+        audit_result = emit_job_control_audit_event(
+            audit_emitter,
+            service_id=service_id,
+            job_id=job_id,
+            action="retry",
+            request_id=request_id,
+            trace_id=trace_id,
+            service_response=service_response,
+        )
         return build_job_control_dispatch_projection(
             service_id=service_id,
             job_id=job_id,
             action="retry",
             service_response=service_response,
-            request_trace_id=trace_id_from_headers(request),
+            audit_result=audit_result,
+            request_trace_id=trace_id,
         )
 
 
@@ -2419,6 +2478,7 @@ def build_job_control_dispatch_projection(
     job_id: str,
     action: str,
     service_response: dict[str, Any],
+    audit_result: OperationalEventEmitResult | None = None,
     request_trace_id: str | None = None,
 ) -> dict[str, Any]:
     service_job = service_response.get("job")
@@ -2432,6 +2492,11 @@ def build_job_control_dispatch_projection(
         "job_id": job_id,
         "action": action,
         "service_response": deepcopy(service_response),
+        "audit_event": (
+            audit_result.to_summary()
+            if audit_result is not None
+            else {"ok": False, "error_code": "ag.job_control_audit_not_requested"}
+        ),
         "summary": {
             "service_id": service_id,
             "job_id": job_id,
@@ -2447,6 +2512,58 @@ def build_job_control_dispatch_projection(
     if request_trace_id is not None:
         projection["request_trace_id"] = request_trace_id
     return projection
+
+
+def emit_job_control_audit_event(
+    emitter: OperationalEventEmitter,
+    *,
+    service_id: str,
+    job_id: str,
+    action: str,
+    request_id: str,
+    trace_id: str,
+    service_response: dict[str, Any] | None = None,
+    error: AgJobControlError | None = None,
+) -> OperationalEventEmitResult:
+    if error is not None:
+        return emitter.safe_emit(
+            event_type=AG_JOB_CONTROL_EVENT_FAILED,
+            severity="ERROR",
+            message=f"AG failed to dispatch {action} for {service_id} job {job_id}.",
+            trace_id=trace_id,
+            request_id=request_id,
+            subject_ref={"type": "job", "id": f"{service_id}:{job_id}"},
+            details={
+                "target_service_id": service_id,
+                "target_job_id": job_id,
+                "action": action,
+                "dispatch_status": "FAILED",
+                "error_code": error.error_code,
+                "status_code": error.status_code,
+                "retryable": error.retryable,
+            },
+        )
+    service_job = (service_response or {}).get("job")
+    return emitter.safe_emit(
+        event_type=AG_JOB_CONTROL_EVENT_SUCCEEDED,
+        severity="INFO",
+        message=f"AG dispatched {action} for {service_id} job {job_id}.",
+        trace_id=trace_id,
+        request_id=request_id,
+        subject_ref={"type": "job", "id": f"{service_id}:{job_id}"},
+        details={
+            "target_service_id": service_id,
+            "target_job_id": job_id,
+            "action": action,
+            "dispatch_status": "SUCCEEDED",
+            "job_status": (
+                service_job.get("status") if isinstance(service_job, Mapping) else None
+            ),
+            "service_job_control_schema_version": (service_response or {}).get(
+                "job_control_schema_version"
+            ),
+        },
+    )
 
 
 def summarize_job_operations(jobs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -2672,6 +2789,8 @@ def _job_control_payload_string(payload: dict[str, Any] | None, key: str) -> str
 def _job_control_dispatch_problem_response(
     request: Request,
     exc: AgJobControlError,
+    *,
+    audit_result: OperationalEventEmitResult | None = None,
 ) -> JSONResponse:
     return problem_response(
         request,
@@ -2681,6 +2800,13 @@ def _job_control_dispatch_problem_response(
         detail=exc.detail,
         retryable=exc.retryable,
         type_uri="https://nex-platform.local/problems/job-control-dispatch-failed",
+        details={
+            "audit_event": (
+                audit_result.to_summary()
+                if audit_result is not None
+                else {"ok": False, "error_code": "ag.job_control_audit_not_requested"}
+            )
+        },
     )
 
 
