@@ -1276,6 +1276,59 @@ def register_unified_operation_routes(
             request_trace_id=trace_id_from_headers(request),
         )
 
+    @app.get("/admin/v1/operations/workers/{service_id}/{worker_id}", response_model=None)
+    def get_worker_detail_projection(
+        service_id: str,
+        worker_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        stale_after_seconds: int = Query(default=DEFAULT_WORKER_STALE_AFTER_SECONDS, ge=1),
+        event_limit: int = Query(default=50, ge=1),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        filter_problem = _validate_worker_runtime_filters(
+            request,
+            service_id=service_id,
+            status=None,
+            worker_type=None,
+        )
+        if filter_problem is not None:
+            return filter_problem
+        if not worker_id.strip():
+            return problem_response(
+                request,
+                status_code=400,
+                error_code="ag.worker_id_invalid",
+                title="Invalid worker id",
+                detail="worker_id must be a non-empty string.",
+                type_uri="https://nex-platform.local/problems/worker-id-invalid",
+            )
+
+        try:
+            return build_worker_detail_projection(
+                worker_heartbeat_stores=worker_heartbeat_stores,
+                job_queues=job_queues,
+                event_store=event_store,
+                registry=registry,
+                service_id=service_id,
+                worker_id=worker_id,
+                stale_after_seconds=stale_after_seconds,
+                event_limit=event_limit,
+                request_trace_id=trace_id_from_headers(request),
+            )
+        except OperationsQueryError as exc:
+            return problem_response(
+                request,
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                title="Worker detail query failed",
+                detail=exc.detail,
+                type_uri="https://nex-platform.local/problems/worker-detail-query-failed",
+            )
+
     @app.get("/admin/v1/operations/traces/{trace_id}", response_model=None)
     def get_cross_service_trace_timeline(
         trace_id: str,
@@ -1734,6 +1787,170 @@ def build_worker_runtime_projection(
         ),
         "source_statuses": source_statuses,
         "pagination": page["pagination"],
+    }
+    if registry is not None:
+        projection["source_registry"] = registry.to_summary()
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
+def build_worker_detail_projection(
+    *,
+    service_id: str,
+    worker_id: str,
+    worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
+    job_queues: Mapping[str, JobQueue] | None = None,
+    event_store: OperationalEventStore | None = None,
+    registry: OperationsSourceRegistry | None = None,
+    stale_after_seconds: int = DEFAULT_WORKER_STALE_AFTER_SECONDS,
+    event_limit: int = 50,
+    checked_at: str | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    normalized_worker_id = worker_id.strip()
+    if service_id not in SERVICE_SPECS:
+        raise OperationsQueryError(
+            error_code="ag.worker_service_invalid",
+            detail=f"Unsupported worker service: {service_id}",
+            status_code=400,
+        )
+    if not normalized_worker_id:
+        raise OperationsQueryError(
+            error_code="ag.worker_id_invalid",
+            detail="worker_id must be a non-empty string.",
+            status_code=400,
+        )
+
+    normalized_stale_after = normalize_worker_stale_after_seconds(stale_after_seconds)
+    observed_at = checked_at or _utc_now()
+    worker_stores = (
+        registry.worker_heartbeat_stores()
+        if registry is not None
+        else (
+            DEFAULT_WORKER_HEARTBEAT_STORES
+            if worker_heartbeat_stores is None
+            else worker_heartbeat_stores
+        )
+    )
+    job_stores = (
+        registry.job_queues()
+        if registry is not None
+        else (
+            DEFAULT_JOB_QUEUE_STORES
+            if job_queues is None
+            else job_queues
+        )
+    )
+    selected_event_store = event_store
+    if registry is not None:
+        selected_event_store = (
+            RegistryOperationalEventStore(registry)
+            if service_id in registry.event_stores()
+            else None
+        )
+
+    worker_store = worker_stores.get(service_id)
+    worker: dict[str, Any] | None = None
+    worker_source_status: dict[str, Any]
+    if worker_store is None:
+        worker_source_status = {
+            "status": "NOT_CONFIGURED",
+            "worker_count": 0,
+        }
+    else:
+        try:
+            worker = worker_store.get_heartbeat(service_id, normalized_worker_id)
+        except WorkerHeartbeatError as exc:
+            worker_source_status = {
+                "status": "UNAVAILABLE",
+                "worker_count": 0,
+                "error_code": exc.error_code,
+                "detail": exc.detail,
+            }
+        else:
+            if worker is None:
+                raise OperationsQueryError(
+                    error_code="ag.worker_not_found",
+                    detail=f"Worker was not found for {service_id}: {normalized_worker_id}",
+                    status_code=404,
+                )
+            worker_source_status = {
+                "status": "READY",
+                "worker_count": 1,
+            }
+
+    projected_worker = (
+        _project_worker_for_service(
+            service_id,
+            worker,
+            stale_after_seconds=normalized_stale_after,
+            checked_at=observed_at,
+        )
+        if worker is not None
+        else None
+    )
+    active_job, job_source_status = _worker_active_job_for_service(
+        worker,
+        service_id=service_id,
+        job_stores=job_stores,
+    )
+    lifecycle_timeline = _build_worker_lifecycle_timeline(
+        worker,
+        service_id=service_id,
+        event_store=selected_event_store,
+        event_limit=event_limit,
+    )
+    source_statuses = {
+        "workers": worker_source_status,
+        "jobs": job_source_status,
+        "events": {
+            "status": lifecycle_timeline["timeline_status"],
+            "event_count": lifecycle_timeline["event_count"],
+            **(
+                {
+                    "error_code": lifecycle_timeline["source_error"]["error_code"],
+                    "detail": lifecycle_timeline["source_error"]["detail"],
+                }
+                if lifecycle_timeline["source_error"] is not None
+                else {}
+            ),
+        },
+    }
+    projection_status = (
+        "DEGRADED"
+        if any(source["status"] != "READY" for source in source_statuses.values())
+        else "READY"
+    )
+    projection = {
+        "projection_schema_version": "ag_worker_detail_projection.v1",
+        "projection_status": projection_status,
+        "checked_at": observed_at,
+        "service_id": service_id,
+        "worker": projected_worker,
+        "active_job": active_job,
+        "worker_lifecycle_timeline": lifecycle_timeline,
+        "summary": {
+            "service_id": service_id,
+            "worker_id": normalized_worker_id,
+            "worker_found": projected_worker is not None,
+            "worker_type": (
+                projected_worker["worker_type"] if projected_worker is not None else None
+            ),
+            "status": projected_worker["status"] if projected_worker is not None else None,
+            "stale": projected_worker["stale"] if projected_worker is not None else None,
+            "active_job_id": (
+                projected_worker["active_job_id"] if projected_worker is not None else None
+            ),
+            "active_job_status": active_job["status"] if active_job is not None else None,
+            "timeline_status": lifecycle_timeline["timeline_status"],
+            "timeline_event_count": lifecycle_timeline["event_count"],
+            "source_statuses": {
+                source_kind: source_status["status"]
+                for source_kind, source_status in source_statuses.items()
+            },
+        },
+        "source_statuses": source_statuses,
     }
     if registry is not None:
         projection["source_registry"] = registry.to_summary()
@@ -3265,6 +3482,121 @@ def _build_job_lifecycle_timeline(
         "events": lifecycle_events,
         "source_error": None,
     }
+
+
+def _worker_active_job_for_service(
+    worker: dict[str, Any] | None,
+    *,
+    service_id: str,
+    job_stores: Mapping[str, JobQueue],
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    active_job_id = worker.get("active_job_id") if worker is not None else None
+    if active_job_id is None:
+        return None, {
+            "status": "READY",
+            "job_count": 0,
+        }
+    queue = job_stores.get(service_id)
+    if queue is None:
+        return None, {
+            "status": "NOT_CONFIGURED",
+            "job_count": 0,
+        }
+    try:
+        job = queue.get_job(str(active_job_id))
+    except JobQueueError as exc:
+        return None, {
+            "status": "UNAVAILABLE",
+            "job_count": 0,
+            "error_code": exc.error_code,
+            "detail": exc.detail,
+        }
+    if job is None:
+        return None, {
+            "status": "READY",
+            "job_count": 0,
+        }
+    return _project_job_for_service(service_id, job), {
+        "status": "READY",
+        "job_count": 1,
+    }
+
+
+def _build_worker_lifecycle_timeline(
+    worker: dict[str, Any] | None,
+    *,
+    service_id: str,
+    event_store: OperationalEventStore | None,
+    event_limit: int,
+) -> dict[str, Any]:
+    normalized_event_limit = normalize_operational_event_limit(event_limit)
+    if worker is None:
+        return {
+            "timeline_status": "READY",
+            "event_count": 0,
+            "events": [],
+            "source_error": None,
+        }
+    if event_store is None:
+        return {
+            "timeline_status": "NOT_CONFIGURED",
+            "event_count": 0,
+            "events": [],
+            "source_error": None,
+        }
+    try:
+        events = event_store.list_events(
+            service_id=service_id,
+            trace_id=worker.get("trace_id"),
+            limit=normalized_event_limit,
+        )
+    except OperationalEventError as exc:
+        return {
+            "timeline_status": "UNAVAILABLE",
+            "event_count": 0,
+            "events": [],
+            "source_error": {
+                "error_code": exc.error_code,
+                "detail": exc.detail,
+                "status_code": exc.status_code,
+            },
+        }
+    lifecycle_events = [
+        event
+        for event in events
+        if _operational_event_matches_worker(worker, event)
+    ]
+    lifecycle_events.sort(
+        key=lambda event: (
+            _operation_record_timestamp(event, timestamp_field="created_at"),
+            str(event.get("event_id", "")),
+        )
+    )
+    lifecycle_events = lifecycle_events[:normalized_event_limit]
+    return {
+        "timeline_status": "READY",
+        "event_count": len(lifecycle_events),
+        "events": lifecycle_events,
+        "source_error": None,
+    }
+
+
+def _operational_event_matches_worker(
+    worker: dict[str, Any],
+    event: dict[str, Any],
+) -> bool:
+    worker_id = worker.get("worker_id")
+    subject_ref = event.get("subject_ref")
+    if (
+        isinstance(subject_ref, Mapping)
+        and subject_ref.get("type") == "worker"
+        and subject_ref.get("id") == worker_id
+    ):
+        return True
+    details = event.get("details")
+    if isinstance(details, Mapping) and details.get("worker_id") == worker_id:
+        return True
+    return False
 
 
 def _operational_event_matches_job(

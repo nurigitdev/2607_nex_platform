@@ -1,0 +1,105 @@
+{
+  "projection_schema_version": "ag_worker_detail_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-05T00:01:20Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "service_id": "nex-cx",
+  "worker": {
+    "heartbeat_schema_version": "worker_heartbeat.v1",
+    "service_id": "nex-cx",
+    "worker_id": "cx-worker-001",
+    "worker_type": "cx.document_processing.worker",
+    "status": "BUSY",
+    "active_job_id": "job-cx-001",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "started_at": "2026-08-05T00:00:00Z",
+    "last_seen_at": "2026-08-05T00:00:10Z",
+    "metadata": {
+      "queue": "cx.document_processing"
+    },
+    "stale": true,
+    "stale_after_seconds": 60
+  },
+  "active_job": {
+    "job_schema_version": "common_job.v1",
+    "job_id": "job-cx-001",
+    "job_type": "cx.document_processing",
+    "status": "RUNNING",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "subject_ref": {
+      "type": "cx.document",
+      "id": "doc-001"
+    },
+    "idempotency_key": "idem-cx-001",
+    "attempt_count": 1,
+    "max_attempts": 2,
+    "retryable": true,
+    "links": {
+      "document": "/api/v1/documents/doc-001"
+    },
+    "created_at": "2026-08-05T00:00:00Z",
+    "updated_at": "2026-08-05T00:00:03Z",
+    "service_id": "nex-cx"
+  },
+  "worker_lifecycle_timeline": {
+    "timeline_status": "READY",
+    "event_count": 1,
+    "events": [
+      {
+        "event_schema_version": "operational_event.v1",
+        "event_id": "event-cx-worker-001",
+        "service_id": "nex-cx",
+        "event_type": "cx.worker.lifecycle.busy",
+        "severity": "INFO",
+        "message": "CX processing worker started job.",
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+        "subject_ref": {
+          "type": "worker",
+          "id": "cx-worker-001"
+        },
+        "details": {
+          "worker_id": "cx-worker-001",
+          "worker_type": "cx.document_processing.worker",
+          "worker_status": "BUSY",
+          "active_job_id": "job-cx-001",
+          "job_id": "job-cx-001"
+        },
+        "created_at": "2026-08-05T00:00:04Z"
+      }
+    ],
+    "source_error": null
+  },
+  "summary": {
+    "service_id": "nex-cx",
+    "worker_id": "cx-worker-001",
+    "worker_found": true,
+    "worker_type": "cx.document_processing.worker",
+    "status": "BUSY",
+    "stale": true,
+    "active_job_id": "job-cx-001",
+    "active_job_status": "RUNNING",
+    "timeline_status": "READY",
+    "timeline_event_count": 1,
+    "source_statuses": {
+      "workers": "READY",
+      "jobs": "READY",
+      "events": "READY"
+    }
+  },
+  "source_statuses": {
+    "workers": {
+      "status": "READY",
+      "worker_count": 1
+    },
+    "jobs": {
+      "status": "READY",
+      "job_count": 1
+    },
+    "events": {
+      "status": "READY",
+      "event_count": 1
+    }
+  }
+}

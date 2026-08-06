@@ -32,6 +32,7 @@ from nex_ag.operations import (
     build_operations_issue_candidate_projection,
     build_operations_rollup_metrics_projection,
     build_operations_source_registry,
+    build_worker_detail_projection,
     build_worker_runtime_projection,
     build_operational_event_detail_projection,
     build_operational_event_taxonomy_projection,
@@ -259,7 +260,11 @@ class BrokenWorkerHeartbeatStore:
         raise AssertionError("not used")
 
     def get_heartbeat(self, service_id, worker_id):
-        raise AssertionError("not used")
+        raise WorkerHeartbeatError(
+            error_code="worker_heartbeat.store_unavailable",
+            detail="worker heartbeat store is unavailable",
+            status_code=503,
+        )
 
     def list_heartbeats(self, *, service_id=None, worker_type=None, status=None):
         raise WorkerHeartbeatError(
@@ -301,6 +306,45 @@ def build_event_stores() -> dict[str, InMemoryOperationalEventStore]:
         )
     )
     return {"nex-cx": cx_store, "nex-mo": mo_store}
+
+
+def build_worker_lifecycle_event_stores() -> dict[str, InMemoryOperationalEventStore]:
+    cx_store = InMemoryOperationalEventStore()
+    cx_store.append(
+        build_operational_event(
+            event_id="event-cx-worker-001",
+            service_id="nex-cx",
+            event_type="cx.worker.lifecycle.busy",
+            severity="INFO",
+            message="CX processing worker started job.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            subject_ref={"type": "worker", "id": "cx-worker-001"},
+            details={
+                "worker_id": "cx-worker-001",
+                "worker_type": "cx.document_processing.worker",
+                "worker_status": "BUSY",
+                "active_job_id": "job-cx-001",
+                "job_id": "job-cx-001",
+            },
+            created_at="2026-08-05T00:00:04Z",
+        )
+    )
+    cx_store.append(
+        build_operational_event(
+            event_id="event-cx-worker-unrelated",
+            service_id="nex-cx",
+            event_type="cx.worker.lifecycle.idle",
+            severity="INFO",
+            message="Another worker is idle.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            subject_ref={"type": "worker", "id": "cx-worker-other"},
+            details={"worker_id": "cx-worker-other"},
+            created_at="2026-08-05T00:00:05Z",
+        )
+    )
+    return {"nex-cx": cx_store}
 
 
 def build_worker_heartbeat_stores() -> dict[str, InMemoryWorkerHeartbeatStore]:
@@ -927,6 +971,161 @@ def test_worker_runtime_projection_reports_unavailable_source() -> None:
     assert_ag_operations_projection_contract(projection)
 
 
+def test_build_worker_detail_projection_correlates_active_job_and_lifecycle_events() -> None:
+    registry = build_operations_source_registry(
+        job_queues=build_job_queues(),
+        event_stores=build_worker_lifecycle_event_stores(),
+        worker_heartbeat_stores=build_worker_heartbeat_stores(),
+    )
+
+    projection = build_worker_detail_projection(
+        registry=registry,
+        service_id="nex-cx",
+        worker_id="cx-worker-001",
+        stale_after_seconds=60,
+        checked_at="2026-08-05T00:01:20Z",
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == "ag_worker_detail_projection.v1"
+    assert projection["projection_status"] == "READY"
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["worker"]["worker_id"] == "cx-worker-001"
+    assert projection["worker"]["stale"] is True
+    assert projection["active_job"]["job_id"] == "job-cx-001"
+    assert projection["active_job"]["status"] == RUNNING
+    assert projection["worker_lifecycle_timeline"]["timeline_status"] == "READY"
+    assert [
+        event["event_id"]
+        for event in projection["worker_lifecycle_timeline"]["events"]
+    ] == ["event-cx-worker-001"]
+    assert projection["summary"]["active_job_status"] == RUNNING
+    assert projection["source_statuses"] == {
+        "workers": {
+            "status": "READY",
+            "worker_count": 1,
+        },
+        "jobs": {
+            "status": "READY",
+            "job_count": 1,
+        },
+        "events": {
+            "status": "READY",
+            "event_count": 1,
+        },
+    }
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_build_worker_detail_projection_reports_source_states() -> None:
+    not_configured = build_worker_detail_projection(
+        worker_heartbeat_stores={},
+        job_queues={},
+        service_id="nex-cx",
+        worker_id="cx-worker-001",
+    )
+    degraded = build_worker_detail_projection(
+        worker_heartbeat_stores={"nex-cx": BrokenWorkerHeartbeatStore()},
+        job_queues={},
+        event_store=BrokenOperationalEventStore(),
+        service_id="nex-cx",
+        worker_id="cx-worker-001",
+    )
+    unavailable_correlations = build_worker_detail_projection(
+        worker_heartbeat_stores=build_worker_heartbeat_stores(),
+        job_queues={"nex-cx": UnavailableJobQueue()},
+        event_store=BrokenOperationalEventStore(),
+        service_id="nex-cx",
+        worker_id="cx-worker-001",
+        checked_at="2026-08-05T00:01:20Z",
+    )
+    idle = build_worker_detail_projection(
+        worker_heartbeat_stores=build_worker_heartbeat_stores(),
+        job_queues={},
+        service_id="nex-cx",
+        worker_id="cx-worker-002",
+        checked_at="2026-08-05T00:01:20Z",
+    )
+
+    assert not_configured["projection_status"] == "DEGRADED"
+    assert not_configured["worker"] is None
+    assert not_configured["source_statuses"]["workers"] == {
+        "status": "NOT_CONFIGURED",
+        "worker_count": 0,
+    }
+    assert not_configured["summary"]["source_statuses"] == {
+        "workers": "NOT_CONFIGURED",
+        "jobs": "READY",
+        "events": "READY",
+    }
+    assert_ag_operations_projection_contract(not_configured)
+
+    assert degraded["projection_status"] == "DEGRADED"
+    assert degraded["worker"] is None
+    assert degraded["active_job"] is None
+    assert degraded["source_statuses"]["workers"] == {
+        "status": "UNAVAILABLE",
+        "worker_count": 0,
+        "error_code": "worker_heartbeat.store_unavailable",
+        "detail": "worker heartbeat store is unavailable",
+    }
+    assert degraded["source_statuses"]["events"]["status"] == "READY"
+    assert degraded["summary"]["worker_found"] is False
+    assert_ag_operations_projection_contract(degraded)
+
+    assert unavailable_correlations["projection_status"] == "DEGRADED"
+    assert unavailable_correlations["worker"]["worker_id"] == "cx-worker-001"
+    assert unavailable_correlations["active_job"] is None
+    assert unavailable_correlations["source_statuses"]["jobs"] == {
+        "status": "UNAVAILABLE",
+        "job_count": 0,
+        "error_code": "job.store_unavailable",
+        "detail": "job queue store is unavailable",
+    }
+    assert unavailable_correlations["source_statuses"]["events"] == {
+        "status": "UNAVAILABLE",
+        "event_count": 0,
+        "error_code": "operational_event.store_unavailable",
+        "detail": "operational event store is unavailable",
+    }
+    assert unavailable_correlations["worker_lifecycle_timeline"]["source_error"] == {
+        "error_code": "operational_event.store_unavailable",
+        "detail": "operational event store is unavailable",
+        "status_code": 503,
+    }
+    assert_ag_operations_projection_contract(unavailable_correlations)
+
+    assert idle["projection_status"] == "DEGRADED"
+    assert idle["worker"]["worker_id"] == "cx-worker-002"
+    assert idle["active_job"] is None
+    assert idle["source_statuses"]["jobs"] == {"status": "READY", "job_count": 0}
+    assert idle["source_statuses"]["events"] == {
+        "status": "NOT_CONFIGURED",
+        "event_count": 0,
+    }
+    assert_ag_operations_projection_contract(idle)
+
+
+def test_build_worker_detail_projection_rejects_bad_service_or_missing_worker() -> None:
+    with pytest.raises(OperationsQueryError) as bad_service:
+        build_worker_detail_projection(
+            worker_heartbeat_stores=build_worker_heartbeat_stores(),
+            service_id="nex-unknown",
+            worker_id="cx-worker-001",
+        )
+    with pytest.raises(OperationsQueryError) as missing_worker:
+        build_worker_detail_projection(
+            worker_heartbeat_stores=build_worker_heartbeat_stores(),
+            service_id="nex-cx",
+            worker_id="cx-worker-missing",
+        )
+
+    assert bad_service.value.error_code == "ag.worker_service_invalid"
+    assert bad_service.value.status_code == 400
+    assert missing_worker.value.error_code == "ag.worker_not_found"
+    assert missing_worker.value.status_code == 404
+
+
 def test_worker_runtime_route_requires_auth_returns_projection_and_rejects_bad_filters() -> None:
     registry = build_operations_source_registry(
         worker_heartbeat_stores=build_worker_heartbeat_stores(),
@@ -976,6 +1175,54 @@ def test_worker_runtime_route_requires_auth_returns_projection_and_rejects_bad_f
     assert bad_status.json()["error_code"] == "ag.worker_status_invalid"
     assert bad_worker_type.status_code == 400
     assert bad_worker_type.json()["error_code"] == "ag.worker_type_invalid"
+
+
+def test_worker_detail_route_requires_auth_returns_projection_and_rejects_bad_inputs() -> None:
+    registry = build_operations_source_registry(
+        job_queues=build_job_queues(),
+        event_stores=build_worker_lifecycle_event_stores(),
+        worker_heartbeat_stores=build_worker_heartbeat_stores(),
+    )
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_unified_operation_routes(app, registry=registry)
+    client = TestClient(app)
+
+    missing_auth = client.get("/admin/v1/operations/workers/nex-cx/cx-worker-001")
+    response = client.get(
+        "/admin/v1/operations/workers/nex-cx/cx-worker-001",
+        params={"stale_after_seconds": 60},
+        headers={
+            **auth_headers(),
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        },
+    )
+    missing_worker = client.get(
+        "/admin/v1/operations/workers/nex-cx/cx-worker-missing",
+        headers=auth_headers(),
+    )
+    bad_service = client.get(
+        "/admin/v1/operations/workers/nex-unknown/cx-worker-001",
+        headers=auth_headers(),
+    )
+    bad_worker_id = client.get(
+        "/admin/v1/operations/workers/nex-cx/%20",
+        headers=auth_headers(),
+    )
+
+    assert missing_auth.status_code == 401
+    assert missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["request_trace_id"] == TRACE_ID
+    assert payload["worker"]["worker_id"] == "cx-worker-001"
+    assert payload["active_job"]["job_id"] == "job-cx-001"
+    assert payload["worker_lifecycle_timeline"]["event_count"] == 1
+    assert missing_worker.status_code == 404
+    assert missing_worker.json()["error_code"] == "ag.worker_not_found"
+    assert bad_service.status_code == 400
+    assert bad_service.json()["error_code"] == "ag.worker_service_invalid"
+    assert bad_worker_id.status_code == 400
+    assert bad_worker_id.json()["error_code"] == "ag.worker_id_invalid"
 
 
 def test_operation_source_readiness_route_requires_auth_and_filters_service() -> None:

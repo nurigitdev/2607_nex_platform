@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0117 worker lifecycle operational events.
+Status: Slice 0118 AG worker detail and job correlation API.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -77,6 +77,12 @@ The CX inline worker also emits operational events for `BUSY`, `IDLE`, and
 `ERROR` lifecycle transitions. These events are separate from the processing
 started/succeeded/failed events so AG can correlate job state, heartbeat state,
 and event timeline without reading worker heartbeat storage directly.
+
+AG exposes a worker detail projection at
+`GET /admin/v1/operations/workers/{service_id}/{worker_id}`. The projection
+reads the selected service worker heartbeat, correlates `active_job_id` through
+the service job queue, and returns matching worker lifecycle operational events
+as one debug surface.
 
 Slice 0005 adds a mock-only OA service token path:
 

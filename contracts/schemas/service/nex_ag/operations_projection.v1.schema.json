@@ -23,6 +23,7 @@
         "ag_operations_dashboard_snapshot_projection.v1",
         "ag_operations_issue_candidate_projection.v1",
         "ag_worker_runtime_projection.v1",
+        "ag_worker_detail_projection.v1",
         "ag_cross_service_trace_timeline_projection.v1"
       ]
     },
@@ -94,7 +95,20 @@
     "job": {
       "$ref": "#/$defs/job"
     },
+    "active_job": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/job"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "lifecycle_timeline": {
+      "$ref": "#/$defs/lifecycle_timeline"
+    },
+    "worker_lifecycle_timeline": {
       "$ref": "#/$defs/lifecycle_timeline"
     },
     "timeline": {
@@ -108,6 +122,16 @@
       "items": {
         "$ref": "#/$defs/worker_heartbeat"
       }
+    },
+    "worker": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/worker_heartbeat"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "rollups": {
       "type": "array",
@@ -408,6 +432,26 @@
           "summary",
           "source_statuses",
           "pagination"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_worker_detail_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "service_id",
+          "worker",
+          "active_job",
+          "worker_lifecycle_timeline",
+          "summary",
+          "source_statuses"
         ]
       }
     },
