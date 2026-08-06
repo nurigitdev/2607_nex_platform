@@ -101,6 +101,10 @@ Job operations:
 - PostgreSQL operations sources are wrapped as read-only so AG can list jobs
   and events without enqueueing jobs or appending event rows into service-owned
   databases.
+- AG has a service-local job control HTTP client foundation for future operator
+  actions. The client targets each service's `/internal/v1/jobs/...` routes,
+  propagates request id and traceparent headers, and uses
+  `NEX_AG_TO_<SERVICE>_SERVICE_TOKEN` when configured.
 - `NEX_AG_CROSS_SERVICE_OBSERVABILITY_SMOKE=1` runs a guarded test-profile
   smoke that creates CX processing job/event rows and verifies AG can observe
   them through `GET /admin/v1/operations`.
