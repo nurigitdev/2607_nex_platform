@@ -148,19 +148,21 @@ def test_ag_operations_dashboard_smoke_passes_mock_pack() -> None:
     evidence = ag_operations_dashboard_smoke.run_ag_operations_dashboard_smoke()
 
     assert evidence["status"] == "PASS"
-    assert evidence["endpoint_count"] == 11
+    assert evidence["endpoint_count"] == 13
     assert all(evidence["checks"].values())
     assert evidence["counts"] == {
         "sources": 1,
         "events": 1,
         "jobs": 2,
-        "trace_timeline": 3,
+        "workers": 1,
+        "worker_detail_events": 1,
+        "trace_timeline": 4,
         "rollups": 1,
         "dashboard_degraded_sources": 0,
         "issue_candidates": 2,
     }
     assert ag_operations_dashboard_smoke.summary_line(evidence) == (
-        "ag_operations_dashboard_smoke=pass endpoints=11 jobs=2 events=1 issues=2"
+        "ag_operations_dashboard_smoke=pass endpoints=13 jobs=2 workers=1 events=1 issues=2"
     )
     assert "private" not in json.dumps(evidence, ensure_ascii=False)
 

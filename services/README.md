@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0118 AG worker detail and job correlation API.
+Status: Slice 0119 AG worker observability smoke evidence.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -83,6 +83,10 @@ AG exposes a worker detail projection at
 reads the selected service worker heartbeat, correlates `active_job_id` through
 the service job queue, and returns matching worker lifecycle operational events
 as one debug surface.
+
+The mock-first AG operations dashboard smoke exercises both the worker runtime
+list and worker detail projection so the heartbeat/job/event correlation path is
+covered by the default quality gate.
 
 Slice 0005 adds a mock-only OA service token path:
 

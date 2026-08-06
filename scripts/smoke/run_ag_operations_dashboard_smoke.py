@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -30,11 +31,13 @@ from nex_ag.operations import (  # noqa: E402
 from nex_runtime import (  # noqa: E402
     InMemoryJobQueue,
     InMemoryOperationalEventStore,
+    InMemoryWorkerHeartbeatStore,
     SERVICE_SPECS,
     build_common_job,
     build_operational_event,
     build_service_app,
     build_subject_ref,
+    build_worker_heartbeat,
     issue_mock_service_token,
 )
 
@@ -48,6 +51,7 @@ def run_ag_operations_dashboard_smoke() -> dict[str, Any]:
     registry = build_operations_source_registry(
         job_queues=_build_job_queues(),
         event_stores=_build_event_stores(),
+        worker_heartbeat_stores=_build_worker_heartbeat_stores(),
     )
     runtime = AgOperationsSourceRuntime(
         mode="memory",
@@ -139,6 +143,26 @@ def _build_event_stores() -> dict[str, InMemoryOperationalEventStore]:
             created_at="2026-08-05T00:00:00Z",
         )
     )
+    cx_store.append(
+        build_operational_event(
+            event_id="smoke-event-cx-worker-001",
+            service_id="nex-cx",
+            event_type="cx.worker.lifecycle.busy",
+            severity="INFO",
+            message="Smoke CX worker started job.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            subject_ref={"type": "worker", "id": "smoke-worker-cx-001"},
+            details={
+                "worker_id": "smoke-worker-cx-001",
+                "worker_type": "cx.document_processing.worker",
+                "worker_status": "BUSY",
+                "active_job_id": "smoke-job-cx-001",
+                "job_id": "smoke-job-cx-001",
+            },
+            created_at="2026-08-05T00:00:04Z",
+        )
+    )
     mo_store = InMemoryOperationalEventStore()
     mo_store.append(
         build_operational_event(
@@ -158,6 +182,29 @@ def _build_event_stores() -> dict[str, InMemoryOperationalEventStore]:
         "nex-cx": cx_store,
         "nex-mo": mo_store,
     }
+
+
+def _build_worker_heartbeat_stores() -> dict[str, InMemoryWorkerHeartbeatStore]:
+    cx_store = InMemoryWorkerHeartbeatStore()
+    observed_at = _utc_now()
+    cx_store.upsert_heartbeat(
+        build_worker_heartbeat(
+            service_id="nex-cx",
+            worker_id="smoke-worker-cx-001",
+            worker_type="cx.document_processing.worker",
+            status="BUSY",
+            active_job_id="smoke-job-cx-001",
+            trace_id=TRACE_ID,
+            started_at=observed_at,
+            last_seen_at=observed_at,
+            metadata={"queue": "cx.document_processing", "smoke": True},
+        )
+    )
+    return {"nex-cx": cx_store}
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _sample_job(**overrides: Any) -> dict[str, Any]:
@@ -213,6 +260,16 @@ def _read_operations_projections(client: TestClient) -> dict[str, dict[str, Any]
             client,
             "/admin/v1/operations/jobs/nex-cx/smoke-job-cx-001",
         ),
+        "workers": _get_json(
+            client,
+            "/admin/v1/operations/workers",
+            params={"service_id": "nex-cx", "stale_after_seconds": 60},
+        ),
+        "worker_detail": _get_json(
+            client,
+            "/admin/v1/operations/workers/nex-cx/smoke-worker-cx-001",
+            params={"stale_after_seconds": 60},
+        ),
         "trace_timeline": _get_json(
             client,
             f"/admin/v1/operations/traces/{TRACE_ID}",
@@ -231,7 +288,11 @@ def _read_operations_projections(client: TestClient) -> dict[str, dict[str, Any]
         "issue_candidates": _get_json(
             client,
             "/admin/v1/operations/issue-candidates",
-            params={"service_id": "nex-cx", "recent_limit": 2},
+            params={
+                "service_id": "nex-cx",
+                "recent_limit": 2,
+                "stale_after_seconds": 315360000,
+            },
         ),
     }
 
@@ -262,6 +323,8 @@ def _ag_operations_dashboard_smoke_checks(
     issue_candidates = projections["issue_candidates"]
     event_detail = projections["event_detail"]
     job_detail = projections["job_detail"]
+    workers = projections["workers"]
+    worker_detail = projections["worker_detail"]
     trace_timeline = projections["trace_timeline"]
     expected_versions = {
         "sources": "ag_operation_source_readiness_projection.v1",
@@ -271,6 +334,8 @@ def _ag_operations_dashboard_smoke_checks(
         "event_detail": "ag_operational_event_detail_projection.v1",
         "jobs": "ag_job_operations_projection.v1",
         "job_detail": "ag_job_operation_detail_projection.v1",
+        "workers": "ag_worker_runtime_projection.v1",
+        "worker_detail": "ag_worker_detail_projection.v1",
         "trace_timeline": "ag_cross_service_trace_timeline_projection.v1",
         "rollups": "ag_operations_rollup_metrics_projection.v1",
         "dashboard": "ag_operations_dashboard_snapshot_projection.v1",
@@ -284,7 +349,7 @@ def _ag_operations_dashboard_smoke_checks(
         "source_ready": projections["sources"]["sources"][0]["readiness_status"] == "READY",
         "unified_jobs_and_events_visible": (
             projections["unified"]["jobs"]["summary"]["total"] == 2
-            and projections["unified"]["events"]["summary"]["total"] == 1
+            and projections["unified"]["events"]["summary"]["total"] == 2
         ),
         "event_detail_redacted": "private" not in json.dumps(
             event_detail,
@@ -293,13 +358,25 @@ def _ag_operations_dashboard_smoke_checks(
         "job_detail_timeline_ready": (
             job_detail["lifecycle_timeline"]["timeline_status"] == "READY"
         ),
+        "worker_runtime_visible": (
+            workers["workers"][0]["worker_id"] == "smoke-worker-cx-001"
+            and workers["workers"][0]["active_job_id"] == "smoke-job-cx-001"
+        ),
+        "worker_detail_correlates_job_event": (
+            worker_detail["worker"]["worker_id"] == "smoke-worker-cx-001"
+            and worker_detail["active_job"]["job_id"] == "smoke-job-cx-001"
+            and worker_detail["worker_lifecycle_timeline"]["events"][0]["event_id"]
+            == "smoke-event-cx-worker-001"
+            and worker_detail["summary"]["source_statuses"]
+            == {"workers": "READY", "jobs": "READY", "events": "READY"}
+        ),
         "trace_timeline_mixes_jobs_events": {
             item["timeline_item_type"]
             for item in trace_timeline["timeline"]
         } == {"job", "event"},
         "rollup_counts": (
             projections["rollups"]["rollups"][0]["jobs"]["total"] == 2
-            and projections["rollups"]["rollups"][0]["events"]["total"] == 1
+            and projections["rollups"]["rollups"][0]["events"]["total"] == 2
         ),
         "dashboard_failure_and_active_jobs": (
             dashboard["recent_failures"]["jobs"][0]["job_id"] == "smoke-job-cx-002"
@@ -317,6 +394,10 @@ def _projection_counts(projections: dict[str, dict[str, Any]]) -> dict[str, int]
         "sources": len(projections["sources"]["sources"]),
         "events": len(projections["events"]["events"]),
         "jobs": len(projections["jobs"]["jobs"]),
+        "workers": len(projections["workers"]["workers"]),
+        "worker_detail_events": len(
+            projections["worker_detail"]["worker_lifecycle_timeline"]["events"]
+        ),
         "trace_timeline": len(projections["trace_timeline"]["timeline"]),
         "rollups": len(projections["rollups"]["rollups"]),
         "dashboard_degraded_sources": len(projections["dashboard"]["degraded_sources"]),
@@ -330,7 +411,8 @@ def summary_line(evidence: dict[str, Any]) -> str:
         return (
             "ag_operations_dashboard_smoke=pass "
             f"endpoints={evidence['endpoint_count']} "
-            f"jobs={counts['jobs']} events={counts['events']} "
+            f"jobs={counts['jobs']} workers={counts['workers']} "
+            f"events={counts['events']} "
             f"issues={counts['issue_candidates']}"
         )
     return "ag_operations_dashboard_smoke=fail"
