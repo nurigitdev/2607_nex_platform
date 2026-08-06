@@ -188,6 +188,29 @@ def test_iter_openapi_files_handles_missing_directory(tmp_path: Path) -> None:
     assert validate_contracts.iter_openapi_files(tmp_path) == []
 
 
+def test_nex_ag_openapi_includes_worker_detail_contract() -> None:
+    openapi_path = (
+        Path(__file__).parents[1] / "contracts" / "openapi" / "nex-ag.openapi.yaml"
+    )
+    spec = yaml.safe_load(openapi_path.read_text(encoding="utf-8"))
+
+    worker_detail = spec["paths"]["/admin/v1/operations/workers/{service_id}/{worker_id}"]["get"]
+    parameter_names = {parameter["name"] for parameter in worker_detail["parameters"]}
+    projection_versions = spec["components"]["schemas"]["AgOperationsProjection"][
+        "properties"
+    ]["projection_schema_version"]["enum"]
+
+    assert worker_detail["operationId"] == "getAgWorkerDetailProjection"
+    assert parameter_names == {
+        "service_id",
+        "worker_id",
+        "stale_after_seconds",
+        "event_limit",
+    }
+    assert "ag_worker_runtime_projection.v1" in projection_versions
+    assert "ag_worker_detail_projection.v1" in projection_versions
+
+
 def test_load_structured_file_rejects_unsupported_suffix(tmp_path: Path) -> None:
     unsupported = tmp_path / "payload.txt"
     unsupported.write_text("hello", encoding="utf-8")

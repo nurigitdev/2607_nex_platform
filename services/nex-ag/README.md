@@ -24,6 +24,8 @@ Current endpoints:
 - `GET /admin/v1/operations/jobs/{service_id}/{job_id}`
 - `GET /admin/v1/operations/sources`
 - `GET /admin/v1/operations/traces/{trace_id}`
+- `GET /admin/v1/operations/workers`
+- `GET /admin/v1/operations/workers/{service_id}/{worker_id}`
 - `GET /admin/v1/policies/retrieval`
 - `GET /admin/v1/policies/retrieval/active`
 - `GET /admin/v1/policies/retrieval/{policy_id}`
@@ -84,6 +86,12 @@ Job operations:
 - `GET /admin/v1/operations/jobs/{service_id}/{job_id}` returns
   `ag_job_operation_detail_projection.v1` for one service-scoped job and a
   lifecycle timeline assembled from matching operational events.
+- `GET /admin/v1/operations/workers` returns
+  `ag_worker_runtime_projection.v1` for worker heartbeat liveness across
+  configured service sources.
+- `GET /admin/v1/operations/workers/{service_id}/{worker_id}` returns
+  `ag_worker_detail_projection.v1`, correlating the worker heartbeat with its
+  active job and matching worker lifecycle operational events.
 - Jobs and events can now be supplied through a shared operations source
   registry. Default runtime registration is still mock-first.
 - Set `NEX_AG_OPERATIONS_SOURCE_MODE=postgres` to build a read-only registry
