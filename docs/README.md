@@ -227,6 +227,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0121`](slices/0121_postgresql_test_smoke_suite_runner.md) | `S13-001` PostgreSQL test smoke suite runner and evidence pack. |
 | [`Slice 0122`](slices/0122_service_worker_runner_foundation.md) | `S13-002` Shared service worker runner foundation. |
 | [`Slice 0123`](slices/0123_cx_document_processing_background_worker.md) | `S13-003` CX document processing background worker path. |
+| [`Slice 0124`](slices/0124_job_retry_backoff_dead_letter_policy.md) | `S13-004` Common job retry, backoff, and dead-letter policy. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

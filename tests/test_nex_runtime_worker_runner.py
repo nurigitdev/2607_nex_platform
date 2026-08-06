@@ -10,6 +10,7 @@ from nex_runtime import (
     FAILED,
     IDLE,
     QUEUED,
+    RUNNING,
     SUCCEEDED,
     InMemoryJobQueue,
     InMemoryWorkerHeartbeatStore,
@@ -49,9 +50,18 @@ class BrokenClaimQueue:
         )
 
 
-class TerminalOnFailQueue(InMemoryJobQueue):
-    def fail_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
-        return self.complete_job(job_id, updated_at=updated_at)
+class BrokenRetryQueue(InMemoryJobQueue):
+    def retry_job(
+        self,
+        job_id: str,
+        *,
+        error: dict[str, Any] | None = None,
+        failed_at: str | None = None,
+        policy=None,
+    ) -> dict[str, Any]:
+        from nex_runtime import JobQueueError
+
+        raise JobQueueError("job.retry_unavailable", "retry is unavailable")
 
 
 def sample_job(**overrides: Any) -> dict[str, Any]:
@@ -162,7 +172,7 @@ def test_run_worker_once_claims_handles_and_completes_job() -> None:
     assert execution.to_summary()["completed_status"] == SUCCEEDED
 
 
-def test_run_worker_once_fails_job_when_handler_raises() -> None:
+def test_run_worker_once_requeues_job_when_handler_raises() -> None:
     class HandlerError(Exception):
         error_code = "cx.processing_step_failed"
         detail = "Document processing step failed."
@@ -188,11 +198,36 @@ def test_run_worker_once_fails_job_when_handler_raises() -> None:
     assert execution.error_code == "cx.processing_step_failed"
     assert execution.error_detail == "Document processing step failed."
     assert stored is not None
-    assert stored["status"] == FAILED
+    assert stored["status"] == "QUEUED"
+    assert stored["available_at"] == "2026-08-05T00:00:34Z"
+    assert stored["error"]["error_code"] == "cx.processing_step_failed"
+    assert stored["error"]["dead_lettered"] is False
     assert heartbeat is not None
     assert heartbeat["status"] == ERROR
     assert heartbeat["active_job_id"] == "job-001"
     assert heartbeat["metadata"]["error_code"] == "cx.processing_step_failed"
+
+
+def test_run_worker_once_dead_letters_exhausted_handler_failure() -> None:
+    queue = InMemoryJobQueue()
+    queue.enqueue(sample_job(max_attempts=1))
+    emitter, _ = heartbeat_emitter()
+
+    execution = run_worker_once(
+        config=config(),
+        queue=queue,
+        heartbeat_emitter=emitter,
+        handler=lambda job: (_ for _ in ()).throw(RuntimeError("boom")),
+        clock=StaticClock(),
+    )
+
+    stored = queue.get_job("job-001")
+    assert execution.status == FAILED
+    assert execution.completed_job is not None
+    assert execution.completed_job["status"] == FAILED
+    assert stored is not None
+    assert stored["retryable"] is False
+    assert stored["error"]["dead_lettered"] is True
 
 
 def test_run_worker_once_reports_queue_claim_failure_without_raising() -> None:
@@ -214,8 +249,8 @@ def test_run_worker_once_reports_queue_claim_failure_without_raising() -> None:
     assert heartbeat["metadata"]["error_code"] == "job.store_unavailable"
 
 
-def test_run_worker_once_returns_current_job_when_fail_transition_is_not_possible() -> None:
-    queue = TerminalOnFailQueue()
+def test_run_worker_once_returns_current_job_when_retry_is_not_possible() -> None:
+    queue = BrokenRetryQueue()
     queue.enqueue(sample_job())
     emitter, _ = heartbeat_emitter()
 
@@ -229,8 +264,8 @@ def test_run_worker_once_returns_current_job_when_fail_transition_is_not_possibl
 
     assert execution.status == FAILED
     assert execution.completed_job is not None
-    assert execution.completed_job["status"] == SUCCEEDED
-    assert queue.get_job("job-001")["status"] == SUCCEEDED
+    assert execution.completed_job["status"] == RUNNING
+    assert queue.get_job("job-001")["status"] == RUNNING
 
 
 def test_run_worker_batch_processes_until_idle_and_summarizes() -> None:

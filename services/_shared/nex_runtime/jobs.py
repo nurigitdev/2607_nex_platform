@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Callable, Protocol
 
 from sqlalchemy import text
@@ -23,6 +23,12 @@ CANCELLED = "CANCELLED"
 JOB_STATUSES = (QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED)
 TERMINAL_JOB_STATUSES = (SUCCEEDED, FAILED, CANCELLED)
 ACTIVE_JOB_STATUSES = (QUEUED, RUNNING)
+RETRY_ACTION_REQUEUE = "REQUEUE"
+RETRY_ACTION_DEAD_LETTER = "DEAD_LETTER"
+JOB_RETRY_ACTIONS = (RETRY_ACTION_REQUEUE, RETRY_ACTION_DEAD_LETTER)
+DEFAULT_RETRY_INITIAL_DELAY_SECONDS = 30
+DEFAULT_RETRY_MAX_DELAY_SECONDS = 900
+DEFAULT_RETRY_BACKOFF_MULTIPLIER = 2.0
 
 VALID_JOB_TRANSITIONS: dict[str, tuple[str, ...]] = {
     QUEUED: (RUNNING, CANCELLED),
@@ -59,6 +65,16 @@ class JobQueue(Protocol):
     def fail_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
         ...
 
+    def retry_job(
+        self,
+        job_id: str,
+        *,
+        error: dict[str, Any] | None = None,
+        failed_at: str | None = None,
+        policy: JobRetryPolicy | None = None,
+    ) -> dict[str, Any]:
+        ...
+
     def cancel_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
         ...
 
@@ -78,6 +94,55 @@ class JobQueue(Protocol):
         status: str | None = None,
     ) -> list[dict[str, Any]]:
         ...
+
+
+@dataclass(frozen=True)
+class JobRetryPolicy:
+    initial_delay_seconds: int = DEFAULT_RETRY_INITIAL_DELAY_SECONDS
+    max_delay_seconds: int = DEFAULT_RETRY_MAX_DELAY_SECONDS
+    backoff_multiplier: float = DEFAULT_RETRY_BACKOFF_MULTIPLIER
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.initial_delay_seconds, int) or self.initial_delay_seconds < 0:
+            raise JobQueueError(
+                error_code="job_retry_policy.initial_delay_invalid",
+                detail="initial_delay_seconds must be a non-negative integer",
+                status_code=422,
+            )
+        if not isinstance(self.max_delay_seconds, int) or self.max_delay_seconds < 0:
+            raise JobQueueError(
+                error_code="job_retry_policy.max_delay_invalid",
+                detail="max_delay_seconds must be a non-negative integer",
+                status_code=422,
+            )
+        if self.max_delay_seconds < self.initial_delay_seconds:
+            raise JobQueueError(
+                error_code="job_retry_policy.max_delay_invalid",
+                detail="max_delay_seconds must be greater than or equal to initial_delay_seconds",
+                status_code=422,
+            )
+        if not isinstance(self.backoff_multiplier, (int, float)) or self.backoff_multiplier < 1:
+            raise JobQueueError(
+                error_code="job_retry_policy.multiplier_invalid",
+                detail="backoff_multiplier must be greater than or equal to 1",
+                status_code=422,
+            )
+
+
+@dataclass(frozen=True)
+class JobRetryDecision:
+    action: str
+    failed_at: str
+    available_at: str | None
+    error: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "action": self.action,
+            "failed_at": self.failed_at,
+            "available_at": self.available_at,
+            "error": deepcopy(self.error),
+        }
 
 
 def build_common_job(
@@ -112,6 +177,61 @@ def build_common_job(
         "updated_at": now,
     }
     return validate_common_job(job)
+
+
+def build_job_error(
+    *,
+    error_code: str,
+    detail: str,
+    retryable: bool,
+    dead_lettered: bool = False,
+) -> dict[str, Any]:
+    return {
+        "error_code": _required_string(error_code, "error.error_code"),
+        "detail": _required_string(detail, "error.detail"),
+        "retryable": bool(retryable),
+        "dead_lettered": bool(dead_lettered),
+    }
+
+
+def plan_job_retry(
+    job: dict[str, Any],
+    *,
+    error: dict[str, Any] | None = None,
+    failed_at: str | None = None,
+    policy: JobRetryPolicy | None = None,
+) -> JobRetryDecision:
+    normalized = validate_common_job(job)
+    if normalized["status"] != RUNNING:
+        raise JobQueueError(
+            error_code="job.retry_status_invalid",
+            detail="only RUNNING jobs can be retried",
+            status_code=409,
+        )
+    observed_failed_at = failed_at or _utc_now()
+    retryable = (
+        bool(normalized["retryable"])
+        and int(normalized["attempt_count"]) < int(normalized["max_attempts"])
+    )
+    safe_error = _normalize_job_error(error, retryable=retryable)
+    if not retryable:
+        return JobRetryDecision(
+            action=RETRY_ACTION_DEAD_LETTER,
+            failed_at=observed_failed_at,
+            available_at=None,
+            error={**safe_error, "retryable": False, "dead_lettered": True},
+        )
+    retry_policy = policy or JobRetryPolicy()
+    delay_seconds = _retry_delay_seconds(
+        attempt_count=int(normalized["attempt_count"]),
+        policy=retry_policy,
+    )
+    return JobRetryDecision(
+        action=RETRY_ACTION_REQUEUE,
+        failed_at=observed_failed_at,
+        available_at=_add_seconds(observed_failed_at, delay_seconds),
+        error={**safe_error, "retryable": True, "dead_lettered": False},
+    )
 
 
 def build_subject_ref(subject_type: str, subject_id: str) -> dict[str, str]:
@@ -306,6 +426,35 @@ class InMemoryJobQueue:
     def fail_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
         return self._transition(job_id, FAILED, updated_at=updated_at)
 
+    def retry_job(
+        self,
+        job_id: str,
+        *,
+        error: dict[str, Any] | None = None,
+        failed_at: str | None = None,
+        policy: JobRetryPolicy | None = None,
+    ) -> dict[str, Any]:
+        job = self.jobs.get(job_id)
+        if job is None:
+            raise JobQueueError(
+                error_code="job.not_found",
+                detail=f"job was not found: {job_id}",
+                status_code=404,
+            )
+        decision = plan_job_retry(job, error=error, failed_at=failed_at, policy=policy)
+        updated = deepcopy(job)
+        updated["updated_at"] = decision.failed_at
+        updated["error"] = decision.error
+        if decision.action == RETRY_ACTION_REQUEUE:
+            updated["status"] = QUEUED
+            updated["available_at"] = decision.available_at
+        else:
+            updated["status"] = FAILED
+            updated["retryable"] = False
+            updated["available_at"] = decision.failed_at
+        self.jobs[job_id] = updated
+        return deepcopy(updated)
+
     def cancel_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
         return self._transition(job_id, CANCELLED, updated_at=updated_at)
 
@@ -317,11 +466,13 @@ class InMemoryJobQueue:
         updated_at: str | None = None,
     ) -> dict[str, Any] | None:
         _required_string(worker_id, "worker_id")
+        observed_at = updated_at or _utc_now()
         candidates = [
             job
             for job in self.jobs.values()
             if job["status"] == QUEUED
             and job["attempt_count"] < job["max_attempts"]
+            and _available_at_is_ready(str(job.get("available_at", job["created_at"])), observed_at)
             and (job_type is None or job["job_type"] == job_type)
         ]
         if not candidates:
@@ -333,7 +484,7 @@ class InMemoryJobQueue:
                 str(job["job_id"]),
             )
         )
-        return self.start_job(str(candidates[0]["job_id"]), updated_at=updated_at)
+        return self.start_job(str(candidates[0]["job_id"]), updated_at=observed_at)
 
     def list_jobs(
         self,
@@ -411,6 +562,29 @@ class SqlAlchemyJobQueue:
 
     def fail_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
         return self._transition(job_id, FAILED, updated_at=updated_at)
+
+    def retry_job(
+        self,
+        job_id: str,
+        *,
+        error: dict[str, Any] | None = None,
+        failed_at: str | None = None,
+        policy: JobRetryPolicy | None = None,
+    ) -> dict[str, Any]:
+        try:
+            return self._run_in_transaction(
+                lambda session: self._retry_job(
+                    session,
+                    job_id=job_id,
+                    error=error,
+                    failed_at=failed_at,
+                    policy=policy,
+                )
+            )
+        except JobQueueError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _job_store_unavailable() from exc
 
     def cancel_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
         return self._transition(job_id, CANCELLED, updated_at=updated_at)
@@ -572,6 +746,28 @@ class SqlAlchemyJobQueue:
         if updated == job:
             return updated
         self._update_job_transition(session, updated)
+        stored = self._select_job(session, job_id)
+        assert stored is not None
+        return stored
+
+    def _retry_job(
+        self,
+        session: Session,
+        *,
+        job_id: str,
+        error: dict[str, Any] | None,
+        failed_at: str | None,
+        policy: JobRetryPolicy | None,
+    ) -> dict[str, Any]:
+        job = self._select_job(session, job_id, for_update=True)
+        if job is None:
+            raise JobQueueError(
+                error_code="job.not_found",
+                detail=f"job was not found: {job_id}",
+                status_code=404,
+            )
+        decision = plan_job_retry(job, error=error, failed_at=failed_at, policy=policy)
+        self._update_job_retry_decision(session, job, decision)
         stored = self._select_job(session, job_id)
         assert stored is not None
         return stored
@@ -753,6 +949,49 @@ class SqlAlchemyJobQueue:
             },
         )
 
+    def _update_job_retry_decision(
+        self,
+        session: Session,
+        job: dict[str, Any],
+        decision: JobRetryDecision,
+    ) -> None:
+        _, _, json_error = _json_sql_expressions(session)
+        if decision.action == RETRY_ACTION_REQUEUE:
+            status = QUEUED
+            retryable = True
+            available_at = decision.available_at
+            completed_at = None
+        else:
+            status = FAILED
+            retryable = False
+            available_at = decision.failed_at
+            completed_at = decision.failed_at
+        session.execute(
+            text(
+                f"""
+                UPDATE service_jobs
+                SET status = :status,
+                    retryable = :retryable,
+                    error = {json_error},
+                    available_at = :available_at,
+                    locked_by = NULL,
+                    locked_at = NULL,
+                    completed_at = :completed_at,
+                    updated_at = :updated_at
+                WHERE job_id = :job_id
+                """
+            ),
+            {
+                "job_id": job["job_id"],
+                "status": status,
+                "retryable": retryable,
+                "error": _json_dumps(decision.error),
+                "available_at": available_at,
+                "completed_at": completed_at,
+                "updated_at": decision.failed_at,
+            },
+        )
+
 
 def _required_string(value: object, field_name: str) -> str:
     if not isinstance(value, str) or not value:
@@ -766,6 +1005,44 @@ def _required_string(value: object, field_name: str) -> str:
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _normalize_job_error(error: dict[str, Any] | None, *, retryable: bool) -> dict[str, Any]:
+    if error is None:
+        return build_job_error(
+            error_code="job.execution_failed",
+            detail="job execution failed",
+            retryable=retryable,
+        )
+    return build_job_error(
+        error_code=str(error.get("error_code", "job.execution_failed")),
+        detail=str(error.get("detail", "job execution failed")),
+        retryable=retryable,
+        dead_lettered=bool(error.get("dead_lettered", False)),
+    )
+
+
+def _retry_delay_seconds(*, attempt_count: int, policy: JobRetryPolicy) -> int:
+    exponent = max(attempt_count - 1, 0)
+    raw_delay = policy.initial_delay_seconds * (float(policy.backoff_multiplier) ** exponent)
+    return min(int(raw_delay), policy.max_delay_seconds)
+
+
+def _add_seconds(timestamp: str, seconds: int) -> str:
+    observed = _parse_wire_datetime(timestamp)
+    return (observed + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
+
+
+def _parse_wire_datetime(value: str) -> datetime:
+    normalized = value.replace("Z", "+00:00")
+    observed = datetime.fromisoformat(normalized)
+    if observed.tzinfo is None:
+        observed = observed.replace(tzinfo=UTC)
+    return observed.astimezone(UTC)
+
+
+def _available_at_is_ready(available_at: str, observed_at: str) -> bool:
+    return _parse_wire_datetime(available_at) <= _parse_wire_datetime(observed_at)
 
 
 _JOB_SELECT_COLUMNS = """
@@ -782,6 +1059,8 @@ _JOB_SELECT_COLUMNS = """
     max_attempts,
     retryable,
     links,
+    error,
+    available_at,
     created_at,
     updated_at
 """
@@ -833,6 +1112,8 @@ def _job_from_row(row: Any) -> dict[str, Any]:
             "max_attempts": int(row["max_attempts"]),
             "retryable": bool(row["retryable"]),
             "links": _json_loads(row["links"], default={}),
+            "error": _json_loads(row["error"], default=None),
+            "available_at": _timestamp_to_wire(row["available_at"]),
             "created_at": _timestamp_to_wire(row["created_at"]),
             "updated_at": _timestamp_to_wire(row["updated_at"]),
         }

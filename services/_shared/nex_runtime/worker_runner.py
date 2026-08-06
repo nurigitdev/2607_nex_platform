@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Callable, Protocol
 
-from .jobs import FAILED, JobQueue, JobQueueError, SUCCEEDED
+from .jobs import FAILED, JobQueue, JobQueueError, SUCCEEDED, build_job_error
 from .worker_heartbeats import (
     BUSY,
     ERROR,
@@ -194,7 +194,18 @@ def run_worker_once(
     try:
         handler_result = handler(deepcopy(job)) or {}
     except Exception as exc:
-        failed_job = _safe_fail_job(queue, str(job["job_id"]), updated_at=observed_clock())
+        error_code = str(getattr(exc, "error_code", "worker_runner.handler_failed"))
+        error_detail = str(getattr(exc, "detail", exc.__class__.__name__))
+        failed_job = _safe_retry_job(
+            queue,
+            str(job["job_id"]),
+            error=build_job_error(
+                error_code=error_code,
+                detail=error_detail,
+                retryable=True,
+            ),
+            failed_at=observed_clock(),
+        )
         heartbeat_results.append(
             _heartbeat_summary(
                 heartbeat_emitter.safe_emit(
@@ -203,9 +214,7 @@ def run_worker_once(
                     trace_id=str(job["trace_id"]),
                     metadata={
                         **_job_metadata(failed_job or job),
-                        "error_code": str(
-                            getattr(exc, "error_code", "worker_runner.handler_failed")
-                        ),
+                        "error_code": error_code,
                     },
                     observed_at=observed_clock(),
                 )
@@ -215,8 +224,8 @@ def run_worker_once(
             status=FAILED,
             job=job,
             completed_job=failed_job,
-            error_code=str(getattr(exc, "error_code", "worker_runner.handler_failed")),
-            error_detail=str(getattr(exc, "detail", exc.__class__.__name__)),
+            error_code=error_code,
+            error_detail=error_detail,
             heartbeat_results=tuple(heartbeat_results),
         )
 
@@ -279,14 +288,15 @@ def run_worker_batch(
     )
 
 
-def _safe_fail_job(
+def _safe_retry_job(
     queue: JobQueue,
     job_id: str,
     *,
-    updated_at: str,
+    error: dict[str, Any],
+    failed_at: str,
 ) -> dict[str, Any] | None:
     try:
-        return queue.fail_job(job_id, updated_at=updated_at)
+        return queue.retry_job(job_id, error=error, failed_at=failed_at)
     except JobQueueError:
         return queue.get_job(job_id)
 

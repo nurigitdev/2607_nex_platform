@@ -14,16 +14,21 @@ from nex_runtime import (
     CANCELLED,
     DatabasePoolSettings,
     FAILED,
+    RETRY_ACTION_DEAD_LETTER,
+    RETRY_ACTION_REQUEUE,
     QUEUED,
     RUNNING,
     SUCCEEDED,
     InMemoryJobQueue,
+    JobRetryPolicy,
     JobQueueError,
     SqlAlchemyJobQueue,
     build_engine,
     build_common_job,
+    build_job_error,
     build_session_factory,
     build_subject_ref,
+    plan_job_retry,
     summarize_jobs,
     transition_common_job,
     validate_common_job,
@@ -165,6 +170,51 @@ def test_transition_common_job_rejects_invalid_status_and_exhausted_attempts() -
     assert exc_info.value.error_code == "job.attempts_exhausted"
 
 
+def test_job_retry_policy_plans_requeue_and_dead_letter_decisions() -> None:
+    policy = JobRetryPolicy(
+        initial_delay_seconds=10,
+        max_delay_seconds=25,
+        backoff_multiplier=3,
+    )
+    running = sample_job(status=RUNNING, attempt_count=2, max_attempts=4)
+    requeue = plan_job_retry(
+        running,
+        error=build_job_error(
+            error_code="cx.processing_step_failed",
+            detail="Document processing step failed.",
+            retryable=True,
+        ),
+        failed_at=NOW,
+        policy=policy,
+    )
+    exhausted = plan_job_retry(
+        sample_job(status=RUNNING, attempt_count=2, max_attempts=2),
+        failed_at=NOW,
+        policy=policy,
+    )
+    non_retryable = plan_job_retry(
+        sample_job(status=RUNNING, attempt_count=1, max_attempts=3, retryable=False),
+        failed_at=NOW,
+        policy=policy,
+    )
+
+    assert requeue.action == RETRY_ACTION_REQUEUE
+    assert requeue.available_at == "2026-08-05T00:00:25Z"
+    assert requeue.error["dead_lettered"] is False
+    assert exhausted.action == RETRY_ACTION_DEAD_LETTER
+    assert exhausted.error["dead_lettered"] is True
+    assert exhausted.error["retryable"] is False
+    assert non_retryable.action == RETRY_ACTION_DEAD_LETTER
+
+    with pytest.raises(JobQueueError) as invalid_status:
+        plan_job_retry(sample_job(status=QUEUED), failed_at=NOW)
+    with pytest.raises(JobQueueError) as invalid_policy:
+        JobRetryPolicy(initial_delay_seconds=10, max_delay_seconds=5)
+
+    assert invalid_status.value.error_code == "job.retry_status_invalid"
+    assert invalid_policy.value.error_code == "job_retry_policy.max_delay_invalid"
+
+
 def test_in_memory_job_queue_enqueues_idempotently_and_returns_copies() -> None:
     queue = InMemoryJobQueue()
     job = sample_job()
@@ -267,6 +317,47 @@ def test_in_memory_job_queue_claims_next_matching_queued_job() -> None:
     assert claimed["job_id"] == "job-ready"
     assert claimed["status"] == RUNNING
     assert claimed["attempt_count"] == 1
+
+
+def test_in_memory_job_queue_retries_with_backoff_then_dead_letters() -> None:
+    queue = InMemoryJobQueue()
+    queue.enqueue(sample_job(max_attempts=2))
+    running = queue.claim_next_job("worker-001", updated_at=LATER)
+
+    assert running is not None
+    retry = queue.retry_job(
+        running["job_id"],
+        error=build_job_error(
+            error_code="cx.processing_step_failed",
+            detail="Document processing step failed.",
+            retryable=True,
+        ),
+        failed_at="2026-08-05T00:00:02Z",
+        policy=JobRetryPolicy(initial_delay_seconds=5, max_delay_seconds=10),
+    )
+    too_early = queue.claim_next_job(
+        "worker-001",
+        job_type="cx.document_processing",
+        updated_at="2026-08-05T00:00:06Z",
+    )
+    second = queue.claim_next_job(
+        "worker-001",
+        job_type="cx.document_processing",
+        updated_at="2026-08-05T00:00:07Z",
+    )
+    dead_lettered = queue.retry_job(
+        second["job_id"],
+        failed_at="2026-08-05T00:00:08Z",
+    )
+
+    assert retry["status"] == QUEUED
+    assert retry["available_at"] == "2026-08-05T00:00:07Z"
+    assert retry["error"]["error_code"] == "cx.processing_step_failed"
+    assert too_early is None
+    assert second["attempt_count"] == 2
+    assert dead_lettered["status"] == FAILED
+    assert dead_lettered["retryable"] is False
+    assert dead_lettered["error"]["dead_lettered"] is True
 
 
 def test_in_memory_job_queue_claim_returns_none_and_rejects_blank_worker() -> None:
@@ -399,6 +490,54 @@ def test_sqlalchemy_job_queue_claims_next_available_job_and_skips_exhausted_atte
 
     with pytest.raises(JobQueueError, match="worker_id"):
         queue.claim_next_job("")
+
+
+def test_sqlalchemy_job_queue_retries_with_available_at_and_dead_letters() -> None:
+    queue = sqlite_job_queue()
+    queue.enqueue(sample_job(max_attempts=2))
+    running = queue.claim_next_job("worker-001", updated_at=LATER)
+
+    assert running is not None
+    retry = queue.retry_job(
+        running["job_id"],
+        error=build_job_error(
+            error_code="cx.processing_step_failed",
+            detail="Document processing step failed.",
+            retryable=True,
+        ),
+        failed_at="2026-08-05T00:00:02Z",
+        policy=JobRetryPolicy(initial_delay_seconds=5, max_delay_seconds=10),
+    )
+    too_early = queue.claim_next_job(
+        "worker-001",
+        job_type="cx.document_processing",
+        updated_at="2026-08-05T00:00:06Z",
+    )
+    second = queue.claim_next_job(
+        "worker-001",
+        job_type="cx.document_processing",
+        updated_at="2026-08-05T00:00:07Z",
+    )
+    dead_lettered = queue.retry_job(
+        second["job_id"],
+        failed_at="2026-08-05T00:00:08Z",
+    )
+
+    assert retry["status"] == QUEUED
+    assert retry["available_at"] == "2026-08-05T00:00:07Z"
+    assert retry["error"]["error_code"] == "cx.processing_step_failed"
+    assert too_early is None
+    assert second["attempt_count"] == 2
+    assert dead_lettered["status"] == FAILED
+    assert dead_lettered["retryable"] is False
+    assert dead_lettered["error"]["dead_lettered"] is True
+    assert queue.get_job("missing") is None
+    with pytest.raises(JobQueueError) as missing:
+        queue.retry_job("missing")
+    with pytest.raises(JobQueueError) as invalid_status:
+        queue.retry_job(dead_lettered["job_id"])
+    assert missing.value.error_code == "job.not_found"
+    assert invalid_status.value.error_code == "job.retry_status_invalid"
 
 
 def test_sqlalchemy_job_queue_json_and_timestamp_helpers_cover_backend_edges() -> None:

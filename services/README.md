@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0123 CX document processing background worker path.
+Status: Slice 0124 common job retry/backoff/dead-letter policy.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -73,6 +73,12 @@ execution helper around service-owned JobQueue adapters. It claims jobs by
 `job_type`, emits STARTING/BUSY/IDLE/ERROR heartbeats through the injected
 worker heartbeat emitter, calls a service-owned job handler, and completes or
 fails the job without adding service-private domain logic to `_shared`.
+
+JobQueue adapters support a common retry decision path. Handler failures can
+requeue RUNNING jobs with bounded exponential backoff by updating
+`available_at`; exhausted or non-retryable jobs are represented as `FAILED`
+with `error.dead_lettered=true`. The common job status enum is unchanged, so the
+existing PostgreSQL DDL and contract status vocabulary remain stable.
 
 `nex-cx` processing routes still support the MVP inline run path, but they now
 also expose an enqueue-first path for background worker execution. Inline runs
