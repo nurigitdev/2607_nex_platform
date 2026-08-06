@@ -14,6 +14,7 @@ from nex_cx.ingestion import (
     sha256_text,
 )
 from nex_cx.processing import (
+    CX_PROCESSING_BACKGROUND_WORKER_ID,
     CX_PROCESSING_WORKER_ID,
     CX_PROCESSING_WORKER_TYPE,
     PROCESSING_EVENT_FAILED,
@@ -30,13 +31,16 @@ from nex_cx.processing import (
     _safe_emit_processing_worker_lifecycle_event,
     _safe_fail_job,
     build_pipeline_run_record,
+    build_queued_pipeline_run_record,
     build_processing_job,
+    enqueue_document_processing_pipeline,
     extraction_job_id_for_document,
     output_ref_for_step,
     processing_event_id,
     processing_worker_event_id,
     processing_job_snapshot,
     register_processing_routes,
+    run_cx_document_processing_worker_once,
     run_document_processing_pipeline,
     safe_error_from_exception,
 )
@@ -223,6 +227,120 @@ def test_run_document_processing_pipeline_builds_all_indexes_and_summaries(
     assert store.get_summary_embedding_index(document["document_id"]) is not None
     assert len(mo_client.calls) == 2
     assert "Pipeline source text" not in str(run)
+
+
+def test_enqueue_document_processing_pipeline_queues_without_running_steps(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    job_queue = InMemoryJobQueue()
+    document = save_source_document(store, tmp_path)
+
+    queued = enqueue_document_processing_pipeline(
+        document["document_id"],
+        store=store,
+        job_queue=job_queue,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        created_at=NOW,
+    )
+    duplicate = enqueue_document_processing_pipeline(
+        document["document_id"],
+        store=store,
+        job_queue=job_queue,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        created_at=LATER,
+    )
+
+    assert duplicate == queued
+    assert queued["status"] == "QUEUED"
+    assert queued["queued_at"] == NOW
+    assert queued["started_at"] is None
+    assert queued["completed_at"] is None
+    assert queued["steps"] == []
+    assert queued["step_summary"] == {"total": 0, "succeeded": 0, "skipped": 0, "failed": 0}
+    assert queued["job"]["status"] == "QUEUED"
+    assert job_queue.get_job(queued["job"]["job_id"])["status"] == "QUEUED"
+    assert store.get_latest_document_processing_run(document["document_id"]) == queued
+
+
+def test_cx_document_processing_worker_claims_queued_job_and_runs_pipeline(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    mo_client = FakeMoEmbeddingClient()
+    job_queue = InMemoryJobQueue()
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_emitter = WorkerHeartbeatEmitter(
+        service_id="nex-cx",
+        worker_id=CX_PROCESSING_BACKGROUND_WORKER_ID,
+        worker_type=CX_PROCESSING_WORKER_TYPE,
+        store=heartbeat_store,
+        started_at=NOW,
+        metadata={"queue": "cx.document_processing", "runtime": "background"},
+    )
+    document = save_source_document(store, tmp_path)
+    queued = enqueue_document_processing_pipeline(
+        document["document_id"],
+        store=store,
+        job_queue=job_queue,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    execution = run_cx_document_processing_worker_once(
+        store=store,
+        storage_config=storage_config(tmp_path),
+        mo_client=mo_client,
+        embedding_alias="mock-embedding-default",
+        job_queue=job_queue,
+        worker_heartbeat_emitter=heartbeat_emitter,
+    )
+
+    latest = store.get_latest_document_processing_run(document["document_id"])
+    heartbeat = heartbeat_store.get_heartbeat("nex-cx", CX_PROCESSING_BACKGROUND_WORKER_ID)
+    assert execution.status == "SUCCEEDED"
+    assert execution.job is not None
+    assert execution.job["job_id"] == queued["job"]["job_id"]
+    assert execution.handler_result["pipeline_run_id"] == queued["pipeline_run_id"]
+    assert latest is not None
+    assert latest["status"] == "SUCCEEDED"
+    assert latest["job"]["status"] == "SUCCEEDED"
+    assert job_queue.get_job(queued["job"]["job_id"])["status"] == "SUCCEEDED"
+    assert heartbeat is not None
+    assert heartbeat["status"] == IDLE
+    assert heartbeat["metadata"]["runtime"] == "background"
+    assert len(mo_client.calls) == 2
+
+
+def test_cx_document_processing_worker_reports_idle_without_queued_job(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_emitter = WorkerHeartbeatEmitter(
+        service_id="nex-cx",
+        worker_id=CX_PROCESSING_BACKGROUND_WORKER_ID,
+        worker_type=CX_PROCESSING_WORKER_TYPE,
+        store=heartbeat_store,
+        started_at=NOW,
+    )
+
+    execution = run_cx_document_processing_worker_once(
+        store=store,
+        storage_config=storage_config(tmp_path),
+        mo_client=FakeMoEmbeddingClient(),
+        embedding_alias="mock-embedding-default",
+        job_queue=InMemoryJobQueue(),
+        worker_heartbeat_emitter=heartbeat_emitter,
+    )
+
+    heartbeat = heartbeat_store.get_heartbeat("nex-cx", CX_PROCESSING_BACKGROUND_WORKER_ID)
+    assert execution.status == IDLE
+    assert execution.job is None
+    assert heartbeat is not None
+    assert heartbeat["status"] == IDLE
 
 
 def test_run_document_processing_pipeline_emits_started_and_succeeded_events(
@@ -721,6 +839,48 @@ def test_processing_routes_run_and_read_latest_pipeline(tmp_path: Path) -> None:
     assert len(mo_client.calls) == 2
 
 
+def test_processing_routes_enqueue_and_worker_can_complete_pipeline(tmp_path: Path) -> None:
+    job_queue = InMemoryJobQueue()
+    client, store, mo_client = build_test_client(tmp_path, job_queue=job_queue)
+    uploaded = client.post(
+        "/api/v1/documents/uploads",
+        json={
+            "filename": "source.txt",
+            "content_type": "text/plain",
+            "content_text": "route enqueue worker text",
+        },
+        headers=auth_headers(),
+    ).json()
+
+    queued_response = client.post(
+        f"/api/v1/documents/{uploaded['document_id']}/processing/enqueue",
+        headers=auth_headers(),
+    )
+    queued = queued_response.json()
+    latest_queued = client.get(
+        f"/api/v1/documents/{uploaded['document_id']}/processing",
+        headers=auth_headers(),
+    ).json()
+    execution = run_cx_document_processing_worker_once(
+        store=store,
+        storage_config=storage_config(tmp_path),
+        mo_client=mo_client,
+        embedding_alias="mock-embedding-default",
+        job_queue=job_queue,
+    )
+    latest_done = client.get(
+        f"/api/v1/documents/{uploaded['document_id']}/processing",
+        headers=auth_headers(),
+    ).json()
+
+    assert queued_response.status_code == 202
+    assert queued["status"] == "QUEUED"
+    assert latest_queued["pipeline_run_id"] == queued["pipeline_run_id"]
+    assert execution.status == "SUCCEEDED"
+    assert latest_done["status"] == "SUCCEEDED"
+    assert latest_done["job"]["job_id"] == queued["job"]["job_id"]
+
+
 def test_processing_route_emits_events_to_app_persistence_store(tmp_path: Path) -> None:
     app = build_service_app(SERVICE_SPECS["nex-cx"])
     store = ContentIngestionStore()
@@ -884,6 +1044,14 @@ def test_processing_helpers_return_safe_metadata() -> None:
         steps=[],
         status="SUCCEEDED",
     )
+    queued = build_queued_pipeline_run_record(
+        document_id="doc-1",
+        pipeline_run_id="run-queued",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        queued_at=NOW,
+        job=job,
+    )
 
     assert summary_ref == {
         "type": "cx.document_summary",
@@ -897,6 +1065,9 @@ def test_processing_helpers_return_safe_metadata() -> None:
     assert run["job"]["links"]["processing"] == "/api/v1/documents/doc-1/processing"
     assert "job" not in run_without_job
     assert _failed_step_id(run_without_job["steps"]) is None
+    assert queued["status"] == "QUEUED"
+    assert queued["step_summary"] == {"total": 0, "succeeded": 0, "skipped": 0, "failed": 0}
+    assert queued["job"]["status"] == "QUEUED"
     assert safe_error_from_exception(ValueError("boom")) == {
         "error_code": "cx.processing_step_failed",
         "detail": "Document processing step failed.",

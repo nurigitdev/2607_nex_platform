@@ -20,10 +20,13 @@ from nex_runtime import (
     ERROR,
     IDLE,
     InMemoryJobQueue,
+    InMemoryWorkerHeartbeatStore,
     JobQueue,
     JobQueueError,
     OperationalEventEmitResult,
     OperationalEventEmitter,
+    WorkerJobExecution,
+    WorkerRunnerConfig,
     WorkerHeartbeatEmitResult,
     WorkerHeartbeatEmitter,
     build_common_job,
@@ -34,6 +37,7 @@ from nex_runtime import (
     trace_id_from_headers,
     validate_authorization_header,
     worker_heartbeat_emitter_from_app,
+    run_worker_once,
 )
 from nex_runtime.prompts import PromptRegistryStore
 
@@ -75,6 +79,7 @@ PROCESSING_WORKER_EVENT_BUSY = CX_WORKER_LIFECYCLE_EVENT_BUSY
 PROCESSING_WORKER_EVENT_IDLE = CX_WORKER_LIFECYCLE_EVENT_IDLE
 PROCESSING_WORKER_EVENT_ERROR = CX_WORKER_LIFECYCLE_EVENT_ERROR
 CX_PROCESSING_WORKER_ID = "cx-processing-inline-worker"
+CX_PROCESSING_BACKGROUND_WORKER_ID = "cx-processing-worker"
 CX_PROCESSING_WORKER_TYPE = "cx.document_processing.worker"
 
 
@@ -148,6 +153,28 @@ def register_processing_routes(
         except ProcessingPipelineError as exc:
             return _processing_problem_response(request, exc)
 
+    @app.post("/api/v1/documents/{document_id}/processing/enqueue", response_model=None)
+    def enqueue_processing(
+        document_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_cx_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            record = enqueue_document_processing_pipeline(
+                document_id,
+                store=store,
+                job_queue=queue,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+            )
+            return JSONResponse(status_code=202, content=record)
+        except ProcessingPipelineError as exc:
+            return _processing_problem_response(request, exc)
+
     @app.get("/api/v1/documents/{document_id}/processing", response_model=None)
     def get_latest_processing(
         document_id: str,
@@ -171,6 +198,99 @@ def register_processing_routes(
         return record
 
 
+def enqueue_document_processing_pipeline(
+    document_id: str,
+    *,
+    store: ContentIngestionStore,
+    job_queue: JobQueue | None = None,
+    request_id: str,
+    trace_id: str,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    queued_at = created_at or _utc_now()
+    pipeline_run_id = str(
+        uuid5(NAMESPACE_URL, f"cx-processing:{document_id}:{request_id}:{trace_id}")
+    )
+    queue = job_queue or InMemoryJobQueue()
+    job, existing_run = _enqueue_or_resume_processing_job(
+        queue,
+        document_id=document_id,
+        pipeline_run_id=pipeline_run_id,
+        request_id=request_id,
+        trace_id=trace_id,
+        created_at=queued_at,
+        store=store,
+        start_immediately=False,
+    )
+    if existing_run is not None:
+        return existing_run
+    record = build_queued_pipeline_run_record(
+        document_id=document_id,
+        pipeline_run_id=pipeline_run_id,
+        request_id=request_id,
+        trace_id=trace_id,
+        queued_at=queued_at,
+        job=job,
+    )
+    return store.save_document_processing_run(record)
+
+
+def run_cx_document_processing_worker_once(
+    *,
+    store: ContentIngestionStore,
+    storage_config: CxStorageConfig,
+    mo_client: MoEmbeddingClient,
+    embedding_alias: str,
+    job_queue: JobQueue,
+    worker_id: str = CX_PROCESSING_BACKGROUND_WORKER_ID,
+    prompt_store: PromptRegistryStore | None = None,
+    event_emitter: OperationalEventEmitter | None = None,
+    worker_heartbeat_emitter: WorkerHeartbeatEmitter | None = None,
+) -> WorkerJobExecution:
+    heartbeat_emitter = worker_heartbeat_emitter or WorkerHeartbeatEmitter(
+        service_id="nex-cx",
+        worker_id=worker_id,
+        worker_type=CX_PROCESSING_WORKER_TYPE,
+        store=InMemoryWorkerHeartbeatStore(),
+        metadata={"queue": "cx.document_processing", "runtime": "background"},
+    )
+
+    def handle_processing_job(job: dict[str, Any]) -> dict[str, Any]:
+        pipeline_run = run_document_processing_pipeline(
+            str(job["subject_ref"]["id"]),
+            store=store,
+            storage_config=storage_config,
+            mo_client=mo_client,
+            embedding_alias=embedding_alias,
+            prompt_store=prompt_store,
+            job_queue=job_queue,
+            event_emitter=event_emitter,
+            worker_heartbeat_emitter=heartbeat_emitter,
+            request_id=str(job["request_id"]),
+            trace_id=str(job["trace_id"]),
+            pipeline_run_id=str(job["idempotency_key"]),
+        )
+        return {
+            "pipeline_run_id": pipeline_run["pipeline_run_id"],
+            "document_id": pipeline_run["document_id"],
+            "pipeline_status": pipeline_run["status"],
+            "step_summary": dict(pipeline_run["step_summary"]),
+        }
+
+    return run_worker_once(
+        config=WorkerRunnerConfig(
+            service_id="nex-cx",
+            worker_id=worker_id,
+            worker_type=CX_PROCESSING_WORKER_TYPE,
+            job_type="cx.document_processing",
+        ),
+        queue=job_queue,
+        heartbeat_emitter=heartbeat_emitter,
+        handler=handle_processing_job,
+        handler_finalizes_job=True,
+    )
+
+
 def run_document_processing_pipeline(
     document_id: str,
     *,
@@ -184,16 +304,17 @@ def run_document_processing_pipeline(
     job_queue: JobQueue | None = None,
     event_emitter: OperationalEventEmitter | None = None,
     worker_heartbeat_emitter: WorkerHeartbeatEmitter | None = None,
+    pipeline_run_id: str | None = None,
 ) -> dict[str, Any]:
     started_at = _utc_now()
-    pipeline_run_id = str(
+    resolved_pipeline_run_id = pipeline_run_id or str(
         uuid5(NAMESPACE_URL, f"cx-processing:{document_id}:{request_id}:{trace_id}")
     )
     queue = job_queue or InMemoryJobQueue()
     job, existing_run = _enqueue_or_resume_processing_job(
         queue,
         document_id=document_id,
-        pipeline_run_id=pipeline_run_id,
+        pipeline_run_id=resolved_pipeline_run_id,
         request_id=request_id,
         trace_id=trace_id,
         created_at=started_at,
@@ -207,7 +328,7 @@ def run_document_processing_pipeline(
         severity="INFO",
         message="CX document processing started.",
         document_id=document_id,
-        pipeline_run_id=pipeline_run_id,
+        pipeline_run_id=resolved_pipeline_run_id,
         request_id=request_id,
         trace_id=trace_id,
         job=job,
@@ -217,7 +338,7 @@ def run_document_processing_pipeline(
         worker_heartbeat_emitter,
         status=BUSY,
         document_id=document_id,
-        pipeline_run_id=pipeline_run_id,
+        pipeline_run_id=resolved_pipeline_run_id,
         trace_id=trace_id,
         job=job,
         observed_at=started_at,
@@ -229,7 +350,7 @@ def run_document_processing_pipeline(
         message="CX processing worker claimed a job.",
         status=BUSY,
         document_id=document_id,
-        pipeline_run_id=pipeline_run_id,
+        pipeline_run_id=resolved_pipeline_run_id,
         request_id=request_id,
         trace_id=trace_id,
         job=job,
@@ -317,7 +438,7 @@ def run_document_processing_pipeline(
         failed_step = _failed_step_id(steps)
         failed_run = build_pipeline_run_record(
             document_id=document_id,
-            pipeline_run_id=pipeline_run_id,
+            pipeline_run_id=resolved_pipeline_run_id,
             request_id=request_id,
             trace_id=trace_id,
             started_at=started_at,
@@ -332,7 +453,7 @@ def run_document_processing_pipeline(
             severity="ERROR",
             message="CX document processing failed.",
             document_id=document_id,
-            pipeline_run_id=pipeline_run_id,
+            pipeline_run_id=resolved_pipeline_run_id,
             request_id=request_id,
             trace_id=trace_id,
             job=saved_failed_run.get("job"),
@@ -344,7 +465,7 @@ def run_document_processing_pipeline(
             worker_heartbeat_emitter,
             status=ERROR,
             document_id=document_id,
-            pipeline_run_id=pipeline_run_id,
+            pipeline_run_id=resolved_pipeline_run_id,
             trace_id=trace_id,
             job=saved_failed_run.get("job"),
             step_summary=saved_failed_run["step_summary"],
@@ -358,7 +479,7 @@ def run_document_processing_pipeline(
             message="CX processing worker reported an error.",
             status=ERROR,
             document_id=document_id,
-            pipeline_run_id=pipeline_run_id,
+            pipeline_run_id=resolved_pipeline_run_id,
             request_id=request_id,
             trace_id=trace_id,
             job=saved_failed_run.get("job"),
@@ -376,7 +497,7 @@ def run_document_processing_pipeline(
     completed_job = queue.complete_job(job["job_id"])
     record = build_pipeline_run_record(
         document_id=document_id,
-        pipeline_run_id=pipeline_run_id,
+        pipeline_run_id=resolved_pipeline_run_id,
         request_id=request_id,
         trace_id=trace_id,
         started_at=started_at,
@@ -391,7 +512,7 @@ def run_document_processing_pipeline(
         severity="INFO",
         message="CX document processing succeeded.",
         document_id=document_id,
-        pipeline_run_id=pipeline_run_id,
+        pipeline_run_id=resolved_pipeline_run_id,
         request_id=request_id,
         trace_id=trace_id,
         job=saved_record.get("job"),
@@ -402,7 +523,7 @@ def run_document_processing_pipeline(
         worker_heartbeat_emitter,
         status=IDLE,
         document_id=document_id,
-        pipeline_run_id=pipeline_run_id,
+        pipeline_run_id=resolved_pipeline_run_id,
         trace_id=trace_id,
         job=saved_record.get("job"),
         step_summary=saved_record["step_summary"],
@@ -415,7 +536,7 @@ def run_document_processing_pipeline(
         message="CX processing worker returned idle.",
         status=IDLE,
         document_id=document_id,
-        pipeline_run_id=pipeline_run_id,
+        pipeline_run_id=resolved_pipeline_run_id,
         request_id=request_id,
         trace_id=trace_id,
         job=saved_record.get("job"),
@@ -607,6 +728,7 @@ def _enqueue_or_resume_processing_job(
     trace_id: str,
     created_at: str,
     store: ContentIngestionStore,
+    start_immediately: bool = True,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     job = queue.enqueue(
         build_processing_job(
@@ -618,6 +740,9 @@ def _enqueue_or_resume_processing_job(
         )
     )
     if job["status"] == "QUEUED":
+        if not start_immediately:
+            existing_run = store.get_document_processing_run(pipeline_run_id)
+            return job, existing_run
         return queue.start_job(job["job_id"], updated_at=created_at), None
     if job["status"] == "RUNNING":
         return job, None
@@ -702,6 +827,37 @@ def build_pipeline_run_record(
     if job is not None:
         record["job"] = processing_job_snapshot(job)
     return record
+
+
+def build_queued_pipeline_run_record(
+    *,
+    document_id: str,
+    pipeline_run_id: str,
+    request_id: str,
+    trace_id: str,
+    queued_at: str,
+    job: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "pipeline_schema_version": "cx_document_processing_pipeline.v1",
+        "pipeline_run_id": pipeline_run_id,
+        "document_id": document_id,
+        "status": "QUEUED",
+        "trace_id": trace_id,
+        "request_id": request_id,
+        "steps": [],
+        "step_summary": {
+            "total": 0,
+            "succeeded": 0,
+            "skipped": 0,
+            "failed": 0,
+        },
+        "queued_at": queued_at,
+        "started_at": None,
+        "completed_at": None,
+        "updated_at": queued_at,
+        "job": processing_job_snapshot(job),
+    }
 
 
 def processing_job_snapshot(job: dict[str, Any]) -> dict[str, Any]:

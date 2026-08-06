@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0122 shared service worker runner foundation.
+Status: Slice 0123 CX document processing background worker path.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -74,10 +74,11 @@ execution helper around service-owned JobQueue adapters. It claims jobs by
 worker heartbeat emitter, calls a service-owned job handler, and completes or
 fails the job without adding service-private domain logic to `_shared`.
 
-`nex-cx` processing routes currently run the MVP document pipeline inline, but
-they still report the inline worker as `cx-processing-inline-worker` with
-`cx.document_processing.worker` so the same heartbeat projection and stuck-job
-rules apply before a separate worker process is introduced.
+`nex-cx` processing routes still support the MVP inline run path, but they now
+also expose an enqueue-first path for background worker execution. Inline runs
+report `cx-processing-inline-worker`; background execution uses
+`cx-processing-worker`. Both use `cx.document_processing.worker` so the same
+heartbeat projection and stuck-job rules apply across execution modes.
 
 The CX inline worker also emits operational events for `BUSY`, `IDLE`, and
 `ERROR` lifecycle transitions. These events are separate from the processing

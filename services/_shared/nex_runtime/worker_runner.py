@@ -125,6 +125,7 @@ def run_worker_once(
     queue: JobQueue,
     heartbeat_emitter: WorkerHeartbeatEmitter,
     handler: WorkerJobHandler,
+    handler_finalizes_job: bool = False,
     clock: WorkerClock | None = None,
 ) -> WorkerJobExecution:
     observed_clock = clock or _utc_now
@@ -219,7 +220,12 @@ def run_worker_once(
             heartbeat_results=tuple(heartbeat_results),
         )
 
-    completed_job = queue.complete_job(str(job["job_id"]), updated_at=observed_clock())
+    completed_job = (
+        queue.get_job(str(job["job_id"]))
+        if handler_finalizes_job
+        else queue.complete_job(str(job["job_id"]), updated_at=observed_clock())
+    )
+    completed_job = completed_job or job
     heartbeat_results.append(
         _heartbeat_summary(
             heartbeat_emitter.safe_emit(
@@ -231,7 +237,7 @@ def run_worker_once(
         )
     )
     return WorkerJobExecution(
-        status=SUCCEEDED,
+        status=str(completed_job["status"]),
         job=job,
         completed_job=completed_job,
         handler_result=handler_result,
@@ -245,6 +251,7 @@ def run_worker_batch(
     queue: JobQueue,
     heartbeat_emitter: WorkerHeartbeatEmitter,
     handler: WorkerJobHandler,
+    handler_finalizes_job: bool = False,
     stop_on_failure: bool = True,
     clock: WorkerClock | None = None,
 ) -> WorkerBatchResult:
@@ -255,6 +262,7 @@ def run_worker_batch(
             queue=queue,
             heartbeat_emitter=heartbeat_emitter,
             handler=handler,
+            handler_finalizes_job=handler_finalizes_job,
             clock=clock,
         )
         executions.append(execution)
