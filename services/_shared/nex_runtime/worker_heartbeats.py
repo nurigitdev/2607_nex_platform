@@ -62,6 +62,234 @@ class WorkerHeartbeatStore(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class WorkerHeartbeatEmitResult:
+    ok: bool
+    heartbeat: dict[str, Any] | None = None
+    error_code: str | None = None
+    detail: str | None = None
+    status_code: int | None = None
+
+    @classmethod
+    def emitted(cls, heartbeat: dict[str, Any]) -> WorkerHeartbeatEmitResult:
+        return cls(ok=True, heartbeat=deepcopy(heartbeat))
+
+    @classmethod
+    def failed(
+        cls,
+        *,
+        error_code: str,
+        detail: str,
+        status_code: int,
+    ) -> WorkerHeartbeatEmitResult:
+        return cls(
+            ok=False,
+            error_code=error_code,
+            detail=detail,
+            status_code=status_code,
+        )
+
+    def to_summary(self) -> dict[str, Any]:
+        if self.ok and self.heartbeat is not None:
+            return {
+                "ok": True,
+                "service_id": self.heartbeat["service_id"],
+                "worker_id": self.heartbeat["worker_id"],
+                "worker_type": self.heartbeat["worker_type"],
+                "status": self.heartbeat["status"],
+                "active_job_id": self.heartbeat["active_job_id"],
+            }
+        return {
+            "ok": False,
+            "error_code": self.error_code,
+            "detail": self.detail,
+            "status_code": self.status_code,
+        }
+
+
+class WorkerHeartbeatEmitter:
+    def __init__(
+        self,
+        *,
+        service_id: str,
+        worker_id: str,
+        worker_type: str,
+        store: WorkerHeartbeatStore,
+        started_at: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        observed_started_at = started_at or _utc_now()
+        self.service_id = _validate_service_id(service_id)
+        self.worker_id = _required_string(worker_id, "worker_id")
+        self.worker_type = _required_string(worker_type, "worker_type")
+        self.store = store
+        self.started_at = observed_started_at
+        self.metadata = deepcopy(metadata) if metadata is not None else {}
+        build_worker_heartbeat(
+            service_id=self.service_id,
+            worker_id=self.worker_id,
+            worker_type=self.worker_type,
+            status=IDLE,
+            active_job_id=None,
+            started_at=self.started_at,
+            last_seen_at=self.started_at,
+            metadata=self.metadata,
+        )
+
+    def emit(
+        self,
+        *,
+        status: str,
+        active_job_id: str | None = None,
+        trace_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        observed_at: str | None = None,
+    ) -> dict[str, Any]:
+        heartbeat = build_worker_heartbeat(
+            service_id=self.service_id,
+            worker_id=self.worker_id,
+            worker_type=self.worker_type,
+            status=status,
+            active_job_id=active_job_id,
+            trace_id=trace_id,
+            started_at=self.started_at,
+            last_seen_at=observed_at,
+            metadata=self._merged_metadata(metadata),
+        )
+        return self.store.upsert_heartbeat(heartbeat)
+
+    def safe_emit(
+        self,
+        *,
+        status: str,
+        active_job_id: str | None = None,
+        trace_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        observed_at: str | None = None,
+    ) -> WorkerHeartbeatEmitResult:
+        try:
+            return WorkerHeartbeatEmitResult.emitted(
+                self.emit(
+                    status=status,
+                    active_job_id=active_job_id,
+                    trace_id=trace_id,
+                    metadata=metadata,
+                    observed_at=observed_at,
+                )
+            )
+        except WorkerHeartbeatError as exc:
+            return WorkerHeartbeatEmitResult.failed(
+                error_code=exc.error_code,
+                detail=exc.detail,
+                status_code=exc.status_code,
+            )
+        except Exception:
+            return WorkerHeartbeatEmitResult.failed(
+                error_code="worker_heartbeat.emit_failed",
+                detail="worker heartbeat emission failed",
+                status_code=503,
+            )
+
+    def starting(
+        self,
+        *,
+        trace_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        observed_at: str | None = None,
+    ) -> dict[str, Any]:
+        return self.emit(
+            status=STARTING,
+            trace_id=trace_id,
+            metadata=metadata,
+            observed_at=observed_at,
+        )
+
+    def idle(
+        self,
+        *,
+        trace_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        observed_at: str | None = None,
+    ) -> dict[str, Any]:
+        return self.emit(
+            status=IDLE,
+            trace_id=trace_id,
+            metadata=metadata,
+            observed_at=observed_at,
+        )
+
+    def busy(
+        self,
+        *,
+        active_job_id: str,
+        trace_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        observed_at: str | None = None,
+    ) -> dict[str, Any]:
+        return self.emit(
+            status=BUSY,
+            active_job_id=active_job_id,
+            trace_id=trace_id,
+            metadata=metadata,
+            observed_at=observed_at,
+        )
+
+    def stopping(
+        self,
+        *,
+        trace_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        observed_at: str | None = None,
+    ) -> dict[str, Any]:
+        return self.emit(
+            status=STOPPING,
+            trace_id=trace_id,
+            metadata=metadata,
+            observed_at=observed_at,
+        )
+
+    def stopped(
+        self,
+        *,
+        trace_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        observed_at: str | None = None,
+    ) -> dict[str, Any]:
+        return self.emit(
+            status=STOPPED,
+            trace_id=trace_id,
+            metadata=metadata,
+            observed_at=observed_at,
+        )
+
+    def error(
+        self,
+        *,
+        active_job_id: str | None = None,
+        trace_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        observed_at: str | None = None,
+    ) -> dict[str, Any]:
+        return self.emit(
+            status=ERROR,
+            active_job_id=active_job_id,
+            trace_id=trace_id,
+            metadata=metadata,
+            observed_at=observed_at,
+        )
+
+    def _merged_metadata(self, metadata: dict[str, Any] | None) -> dict[str, Any]:
+        merged = deepcopy(self.metadata)
+        if metadata is not None:
+            if not isinstance(metadata, dict):
+                raise WorkerHeartbeatError(
+                    error_code="worker_heartbeat.metadata_invalid",
+                    detail="metadata must be an object",
+                )
+            merged.update(deepcopy(metadata))
+        return merged
+
+
 def build_worker_heartbeat(
     *,
     service_id: str,
@@ -462,6 +690,26 @@ def worker_heartbeat_store_from_app(app: Any) -> WorkerHeartbeatStore:
         fallback_store = InMemoryWorkerHeartbeatStore()
         setattr(state, "_nex_worker_heartbeat_store", fallback_store)
     return fallback_store
+
+
+def worker_heartbeat_emitter_from_app(
+    app: Any,
+    *,
+    service_id: str,
+    worker_id: str,
+    worker_type: str,
+    store: WorkerHeartbeatStore | None = None,
+    started_at: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> WorkerHeartbeatEmitter:
+    return WorkerHeartbeatEmitter(
+        service_id=service_id,
+        worker_id=worker_id,
+        worker_type=worker_type,
+        store=store if store is not None else worker_heartbeat_store_from_app(app),
+        started_at=started_at,
+        metadata=metadata,
+    )
 
 
 def _required_string(value: object, field_name: str) -> str:

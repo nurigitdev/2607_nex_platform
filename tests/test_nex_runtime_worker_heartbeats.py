@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import jsonschema
@@ -20,6 +21,8 @@ from nex_runtime import (
     STOPPING,
     SqlAlchemyWorkerHeartbeatStore,
     WORKER_HEARTBEAT_SCHEMA_VERSION,
+    WorkerHeartbeatEmitter,
+    WorkerHeartbeatEmitResult,
     WorkerHeartbeatError,
     build_engine,
     build_session_factory,
@@ -27,6 +30,7 @@ from nex_runtime import (
     normalize_worker_stale_after_seconds,
     summarize_worker_heartbeats,
     validate_worker_heartbeat,
+    worker_heartbeat_emitter_from_app,
     worker_heartbeat_is_stale,
 )
 
@@ -76,6 +80,23 @@ def sample_heartbeat(**overrides: Any) -> dict[str, Any]:
         metadata=overrides.pop("metadata", {"queue": "cx.document_processing"}),
     )
     return {**heartbeat, **overrides}
+
+
+class ExplodingWorkerHeartbeatStore:
+    def upsert_heartbeat(self, heartbeat: dict[str, Any]) -> dict[str, Any]:
+        raise RuntimeError("store down")
+
+    def get_heartbeat(self, service_id: str, worker_id: str) -> dict[str, Any] | None:
+        raise AssertionError("not used")
+
+    def list_heartbeats(
+        self,
+        *,
+        service_id: str | None = None,
+        worker_type: str | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        raise AssertionError("not used")
 
 
 def test_build_worker_heartbeat_matches_contract_schema_and_returns_copies() -> None:
@@ -240,6 +261,110 @@ def test_in_memory_worker_heartbeat_store_upserts_filters_and_returns_copies() -
         "mo-worker-001",
     ]
     assert store.summary()["total"] == 2
+
+
+def test_worker_heartbeat_emitter_records_lifecycle_states_and_summaries() -> None:
+    store = InMemoryWorkerHeartbeatStore()
+    emitter = WorkerHeartbeatEmitter(
+        service_id="nex-cx",
+        worker_id="cx-worker-001",
+        worker_type="cx.document_processing.worker",
+        store=store,
+        started_at=NOW,
+        metadata={"queue": "cx.document_processing", "runtime": "pytest"},
+    )
+
+    starting = emitter.starting(observed_at=NOW)
+    busy = emitter.busy(
+        active_job_id="job-001",
+        trace_id=TRACE_ID,
+        metadata={"attempt": 1, "queue": "priority"},
+        observed_at=LATER,
+    )
+    idle_result = emitter.safe_emit(
+        status=IDLE,
+        metadata={"attempt": 1},
+        observed_at="2026-08-05T00:00:45Z",
+    )
+    stopped = emitter.stopped(observed_at="2026-08-05T00:01:00Z")
+
+    assert starting["status"] == STARTING
+    assert busy["status"] == BUSY
+    assert busy["active_job_id"] == "job-001"
+    assert busy["trace_id"] == TRACE_ID
+    assert busy["metadata"] == {
+        "attempt": 1,
+        "queue": "priority",
+        "runtime": "pytest",
+    }
+    assert idle_result.ok
+    assert idle_result.to_summary() == {
+        "ok": True,
+        "service_id": "nex-cx",
+        "worker_id": "cx-worker-001",
+        "worker_type": "cx.document_processing.worker",
+        "status": IDLE,
+        "active_job_id": None,
+    }
+    assert stopped["status"] == STOPPED
+    assert store.get_heartbeat("nex-cx", "cx-worker-001")["status"] == STOPPED
+    assert WorkerHeartbeatEmitResult.emitted(busy).heartbeat == busy
+
+
+def test_worker_heartbeat_emitter_reports_safe_validation_and_store_failures() -> None:
+    emitter = WorkerHeartbeatEmitter(
+        service_id="nex-cx",
+        worker_id="cx-worker-001",
+        worker_type="cx.document_processing.worker",
+        store=InMemoryWorkerHeartbeatStore(),
+        started_at=NOW,
+    )
+
+    missing_job = emitter.safe_emit(status=BUSY, observed_at=LATER)
+    bad_metadata = emitter.safe_emit(status=IDLE, metadata=[], observed_at=LATER)  # type: ignore[arg-type]
+    store_failure = WorkerHeartbeatEmitter(
+        service_id="nex-cx",
+        worker_id="cx-worker-002",
+        worker_type="cx.document_processing.worker",
+        store=ExplodingWorkerHeartbeatStore(),
+        started_at=NOW,
+    ).safe_emit(status=IDLE, observed_at=LATER)
+
+    assert missing_job.to_summary() == {
+        "ok": False,
+        "error_code": "worker_heartbeat.active_job_required",
+        "detail": "BUSY worker heartbeats require active_job_id",
+        "status_code": 422,
+    }
+    assert bad_metadata.error_code == "worker_heartbeat.metadata_invalid"
+    assert store_failure.to_summary() == {
+        "ok": False,
+        "error_code": "worker_heartbeat.emit_failed",
+        "detail": "worker heartbeat emission failed",
+        "status_code": 503,
+    }
+
+
+def test_worker_heartbeat_emitter_from_app_uses_state_fallback_store() -> None:
+    app = SimpleNamespace(state=SimpleNamespace())
+    emitter = worker_heartbeat_emitter_from_app(
+        app,
+        service_id="nex-cx",
+        worker_id="cx-worker-001",
+        worker_type="cx.document_processing.worker",
+        started_at=NOW,
+    )
+
+    heartbeat = emitter.error(
+        active_job_id="job-001",
+        trace_id=TRACE_ID,
+        metadata={"failure": "provider_timeout"},
+        observed_at=LATER,
+    )
+
+    fallback_store = app.state._nex_worker_heartbeat_store
+    assert heartbeat["status"] == ERROR
+    assert fallback_store.get_heartbeat("nex-cx", "cx-worker-001") == heartbeat
 
 
 def test_worker_heartbeat_store_rejects_invalid_filters() -> None:
