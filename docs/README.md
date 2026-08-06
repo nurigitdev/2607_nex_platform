@@ -224,6 +224,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0118`](slices/0118_ag_worker_detail_job_correlation_api.md) | `S12-008` AG worker detail API with active job and lifecycle event correlation. |
 | [`Slice 0119`](slices/0119_ag_worker_observability_smoke_evidence.md) | `S12-009` AG worker observability smoke evidence for runtime and detail projections. |
 | [`Slice 0120`](slices/0120_ag_worker_observability_openapi_freeze.md) | `S12-010` AG worker observability OpenAPI contract freeze. |
+| [`Slice 0121`](slices/0121_postgresql_test_smoke_suite_runner.md) | `S13-001` PostgreSQL test smoke suite runner and evidence pack. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
