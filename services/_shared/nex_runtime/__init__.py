@@ -106,6 +106,15 @@ from .worker_heartbeats import (
     worker_heartbeat_store_from_app,
     worker_heartbeat_is_stale,
 )
+from .worker_runner import (
+    WorkerBatchResult,
+    WorkerJobExecution,
+    WorkerJobHandler,
+    WorkerRunnerConfig,
+    WorkerRunnerError,
+    run_worker_batch,
+    run_worker_once,
+)
 from .persistence import (
     PERSISTENCE_MODE_MEMORY,
     PERSISTENCE_MODE_POSTGRES,
@@ -197,6 +206,11 @@ __all__ = [
     "WorkerHeartbeatEmitResult",
     "WorkerHeartbeatError",
     "WorkerHeartbeatStore",
+    "WorkerBatchResult",
+    "WorkerJobExecution",
+    "WorkerJobHandler",
+    "WorkerRunnerConfig",
+    "WorkerRunnerError",
     "attach_service_persistence_runtime",
     "build_engine",
     "build_common_job",
@@ -228,6 +242,8 @@ __all__ = [
     "required_database_url",
     "request_id_from_headers",
     "register_generation_recovery_policy_routes",
+    "run_worker_batch",
+    "run_worker_once",
     "select_generation_recovery_policy",
     "service_database_settings",
     "service_database_env_prefix",

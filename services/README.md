@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0121 PostgreSQL test smoke suite runner/evidence pack.
+Status: Slice 0122 shared service worker runner foundation.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -67,6 +67,12 @@ shared worker heartbeat runtime. It defines the status vocabulary, emitter,
 safe emission result, stale-threshold helper, summary shape, in-memory store,
 SQLAlchemy-backed service table adapter, and `app.state.nex_persistence` lookup
 path so AG can project worker liveness across services.
+
+The shared `nex_runtime.worker_runner` module provides a small bounded worker
+execution helper around service-owned JobQueue adapters. It claims jobs by
+`job_type`, emits STARTING/BUSY/IDLE/ERROR heartbeats through the injected
+worker heartbeat emitter, calls a service-owned job handler, and completes or
+fails the job without adding service-private domain logic to `_shared`.
 
 `nex-cx` processing routes currently run the MVP document pipeline inline, but
 they still report the inline worker as `cx-processing-inline-worker` with
