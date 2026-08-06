@@ -19,17 +19,22 @@ from nex_cx.processing import (
     PROCESSING_EVENT_FAILED,
     PROCESSING_EVENT_STARTED,
     PROCESSING_EVENT_SUCCEEDED,
+    PROCESSING_WORKER_EVENT_BUSY,
+    PROCESSING_WORKER_EVENT_ERROR,
+    PROCESSING_WORKER_EVENT_IDLE,
     ProcessingPipelineError,
     _enqueue_or_resume_processing_job,
     _failed_step_id,
     _safe_emit_processing_event,
     _safe_emit_processing_worker_heartbeat,
+    _safe_emit_processing_worker_lifecycle_event,
     _safe_fail_job,
     build_pipeline_run_record,
     build_processing_job,
     extraction_job_id_for_document,
     output_ref_for_step,
     processing_event_id,
+    processing_worker_event_id,
     processing_job_snapshot,
     register_processing_routes,
     run_document_processing_pipeline,
@@ -45,6 +50,7 @@ from nex_runtime import (
     OperationalEventEmitter,
     SERVICE_SPECS,
     WorkerHeartbeatEmitter,
+    WorkerHeartbeatEmitResult,
     build_service_app,
     issue_mock_service_token,
 )
@@ -160,6 +166,28 @@ def save_source_document(
     return store.save_upload_registration(document, source_text=text)
 
 
+def event_by_type(events: list[dict[str, Any]], event_type: str) -> dict[str, Any]:
+    return next(event for event in events if event["event_type"] == event_type)
+
+
+def processing_event_types(events: list[dict[str, Any]]) -> set[str]:
+    return {
+        event["event_type"]
+        for event in events
+        if event["event_type"]
+        in {PROCESSING_EVENT_STARTED, PROCESSING_EVENT_SUCCEEDED, PROCESSING_EVENT_FAILED}
+    }
+
+
+def worker_event_types(events: list[dict[str, Any]]) -> set[str]:
+    return {
+        event["event_type"]
+        for event in events
+        if event["event_type"]
+        in {PROCESSING_WORKER_EVENT_BUSY, PROCESSING_WORKER_EVENT_IDLE, PROCESSING_WORKER_EVENT_ERROR}
+    }
+
+
 def test_run_document_processing_pipeline_builds_all_indexes_and_summaries(
     tmp_path: Path,
 ) -> None:
@@ -220,23 +248,48 @@ def test_run_document_processing_pipeline_emits_started_and_succeeded_events(
     )
 
     events = event_store.list_events(trace_id=TRACE_ID, limit=10)
-    event_types = [event["event_type"] for event in events]
+    started_event = event_by_type(events, PROCESSING_EVENT_STARTED)
+    succeeded_event = event_by_type(events, PROCESSING_EVENT_SUCCEEDED)
+    busy_event = event_by_type(events, PROCESSING_WORKER_EVENT_BUSY)
+    idle_event = event_by_type(events, PROCESSING_WORKER_EVENT_IDLE)
 
-    assert event_types == [PROCESSING_EVENT_SUCCEEDED, PROCESSING_EVENT_STARTED]
-    assert events[0]["subject_ref"] == {
+    assert processing_event_types(events) == {
+        PROCESSING_EVENT_STARTED,
+        PROCESSING_EVENT_SUCCEEDED,
+    }
+    assert worker_event_types(events) == {
+        PROCESSING_WORKER_EVENT_BUSY,
+        PROCESSING_WORKER_EVENT_IDLE,
+    }
+    assert succeeded_event["subject_ref"] == {
         "type": "cx.document",
         "id": document["document_id"],
     }
-    assert events[0]["details"] == {
+    assert succeeded_event["details"] == {
         "pipeline_run_id": run["pipeline_run_id"],
         "job_id": run["job"]["job_id"],
         "job_status": "SUCCEEDED",
         "step_summary": {"total": 6, "succeeded": 6, "skipped": 0, "failed": 0},
     }
-    assert events[1]["details"] == {
+    assert started_event["details"] == {
         "pipeline_run_id": run["pipeline_run_id"],
         "job_id": run["job"]["job_id"],
         "job_status": "RUNNING",
+    }
+    assert busy_event["subject_ref"] == {
+        "type": "worker",
+        "id": CX_PROCESSING_WORKER_ID,
+    }
+    assert busy_event["details"]["worker_status"] == BUSY
+    assert busy_event["details"]["active_job_id"] == run["job"]["job_id"]
+    assert busy_event["details"]["heartbeat_emit_ok"] is None
+    assert idle_event["details"]["worker_status"] == IDLE
+    assert idle_event["details"]["job_status"] == "SUCCEEDED"
+    assert idle_event["details"]["step_summary"] == {
+        "total": 6,
+        "succeeded": 6,
+        "skipped": 0,
+        "failed": 0,
     }
     assert "Pipeline source text" not in str(events)
 
@@ -323,18 +376,28 @@ def test_run_document_processing_pipeline_emits_failed_event(
 
     assert failed_run is not None
     events = event_store.list_events(trace_id=TRACE_ID, limit=10)
-    assert [event["event_type"] for event in events] == [
+    failed_event = event_by_type(events, PROCESSING_EVENT_FAILED)
+    error_event = event_by_type(events, PROCESSING_WORKER_EVENT_ERROR)
+    assert processing_event_types(events) == {
         PROCESSING_EVENT_FAILED,
         PROCESSING_EVENT_STARTED,
-    ]
-    assert events[0]["severity"] == "ERROR"
-    assert events[0]["details"] == {
+    }
+    assert worker_event_types(events) == {
+        PROCESSING_WORKER_EVENT_BUSY,
+        PROCESSING_WORKER_EVENT_ERROR,
+    }
+    assert failed_event["severity"] == "ERROR"
+    assert failed_event["details"] == {
         "pipeline_run_id": failed_run["pipeline_run_id"],
         "job_id": failed_run["job"]["job_id"],
         "job_status": "FAILED",
         "step_summary": {"total": 1, "succeeded": 0, "skipped": 0, "failed": 1},
         "failed_step": "extraction",
     }
+    assert error_event["severity"] == "ERROR"
+    assert error_event["details"]["worker_status"] == ERROR
+    assert error_event["details"]["active_job_id"] == failed_run["job"]["job_id"]
+    assert error_event["details"]["failed_step"] == "extraction"
 
 
 def test_run_document_processing_pipeline_updates_worker_heartbeat_on_failure(
@@ -691,11 +754,18 @@ def test_processing_route_emits_events_to_app_persistence_store(tmp_path: Path) 
 
     assert response.status_code == 200
     events = event_store.list_events(trace_id=TRACE_ID, limit=10)
-    assert [event["event_type"] for event in events] == [
+    assert processing_event_types(events) == {
         PROCESSING_EVENT_SUCCEEDED,
         PROCESSING_EVENT_STARTED,
-    ]
-    assert events[0]["details"]["pipeline_run_id"] == response.json()["pipeline_run_id"]
+    }
+    assert worker_event_types(events) == {
+        PROCESSING_WORKER_EVENT_BUSY,
+        PROCESSING_WORKER_EVENT_IDLE,
+    }
+    succeeded_event = event_by_type(events, PROCESSING_EVENT_SUCCEEDED)
+    idle_event = event_by_type(events, PROCESSING_WORKER_EVENT_IDLE)
+    assert succeeded_event["details"]["pipeline_run_id"] == response.json()["pipeline_run_id"]
+    assert idle_event["details"]["heartbeat_emit_ok"] is True
 
 
 def test_processing_route_emits_worker_heartbeat_to_app_persistence_store(tmp_path: Path) -> None:
@@ -870,6 +940,77 @@ def test_processing_event_helpers_build_stable_safe_events() -> None:
     )
     assert result.event["subject_ref"] == {"type": "cx.document", "id": "doc-1"}
     assert result.event["details"] == {"pipeline_run_id": "run-1"}
+
+
+def test_processing_worker_lifecycle_event_helper_builds_stable_safe_events() -> None:
+    event_store = InMemoryOperationalEventStore()
+    emitter = OperationalEventEmitter(service_id="nex-cx", store=event_store)
+    failed_heartbeat = WorkerHeartbeatEmitResult.failed(
+        error_code="worker_heartbeat.emit_failed",
+        detail="worker heartbeat emission failed",
+        status_code=503,
+    )
+    job = {
+        "job_id": "job-001",
+        "status": "FAILED",
+    }
+
+    skipped_result = _safe_emit_processing_worker_lifecycle_event(
+        None,
+        event_type=PROCESSING_WORKER_EVENT_ERROR,
+        severity="ERROR",
+        message="CX processing worker reported an error.",
+        status=ERROR,
+        document_id="doc-1",
+        pipeline_run_id="run-1",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        job=job,
+        heartbeat_result=failed_heartbeat,
+    )
+    result = _safe_emit_processing_worker_lifecycle_event(
+        emitter,
+        event_type=PROCESSING_WORKER_EVENT_ERROR,
+        severity="ERROR",
+        message="CX processing worker reported an error.",
+        status=ERROR,
+        document_id="doc-1",
+        pipeline_run_id="run-1",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        job=job,
+        heartbeat_result=failed_heartbeat,
+        step_summary={"total": 1, "succeeded": 0, "skipped": 0, "failed": 1},
+        failed_step="extraction",
+        created_at=NOW,
+    )
+
+    assert skipped_result is None
+    assert result is not None
+    assert result.ok is True
+    assert result.event is not None
+    assert result.event["event_id"] == processing_worker_event_id(
+        pipeline_run_id="run-1",
+        event_type=PROCESSING_WORKER_EVENT_ERROR,
+    )
+    assert result.event["subject_ref"] == {
+        "type": "worker",
+        "id": CX_PROCESSING_WORKER_ID,
+    }
+    assert result.event["details"] == {
+        "worker_id": CX_PROCESSING_WORKER_ID,
+        "worker_type": CX_PROCESSING_WORKER_TYPE,
+        "worker_status": ERROR,
+        "pipeline_run_id": "run-1",
+        "document_id": "doc-1",
+        "heartbeat_emit_ok": False,
+        "heartbeat_error_code": "worker_heartbeat.emit_failed",
+        "active_job_id": "job-001",
+        "job_id": "job-001",
+        "job_status": "FAILED",
+        "step_summary": {"total": 1, "succeeded": 0, "skipped": 0, "failed": 1},
+        "failed_step": "extraction",
+    }
 
 
 def test_processing_worker_heartbeat_helper_is_safe_and_builds_metadata() -> None:

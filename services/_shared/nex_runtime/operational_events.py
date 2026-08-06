@@ -18,6 +18,9 @@ MAX_OPERATIONAL_EVENT_LIMIT = 500
 CX_PROCESSING_EVENT_STARTED = "cx.processing.started"
 CX_PROCESSING_EVENT_SUCCEEDED = "cx.processing.succeeded"
 CX_PROCESSING_EVENT_FAILED = "cx.processing.failed"
+CX_WORKER_LIFECYCLE_EVENT_BUSY = "cx.worker.lifecycle.busy"
+CX_WORKER_LIFECYCLE_EVENT_IDLE = "cx.worker.lifecycle.idle"
+CX_WORKER_LIFECYCLE_EVENT_ERROR = "cx.worker.lifecycle.error"
 
 SENSITIVE_DETAIL_KEY_PARTS = (
     "api_key",
@@ -636,6 +639,68 @@ DEFAULT_OPERATIONAL_EVENT_TAXONOMY: tuple[OperationalEventTypeSpec, ...] = (
         ),
         description="CX document processing failed.",
         lifecycle_state="failed",
+    ),
+    OperationalEventTypeSpec(
+        service_id="nex-cx",
+        event_type=CX_WORKER_LIFECYCLE_EVENT_BUSY,
+        default_severity="INFO",
+        subject_type="worker",
+        detail_keys=(
+            "worker_id",
+            "worker_type",
+            "worker_status",
+            "active_job_id",
+            "pipeline_run_id",
+            "document_id",
+            "job_id",
+            "job_status",
+            "heartbeat_emit_ok",
+            "heartbeat_error_code",
+        ),
+        description="CX processing worker claimed a job and became busy.",
+        lifecycle_state="busy",
+    ),
+    OperationalEventTypeSpec(
+        service_id="nex-cx",
+        event_type=CX_WORKER_LIFECYCLE_EVENT_IDLE,
+        default_severity="INFO",
+        subject_type="worker",
+        detail_keys=(
+            "worker_id",
+            "worker_type",
+            "worker_status",
+            "pipeline_run_id",
+            "document_id",
+            "job_id",
+            "job_status",
+            "step_summary",
+            "heartbeat_emit_ok",
+            "heartbeat_error_code",
+        ),
+        description="CX processing worker completed a job and returned idle.",
+        lifecycle_state="idle",
+    ),
+    OperationalEventTypeSpec(
+        service_id="nex-cx",
+        event_type=CX_WORKER_LIFECYCLE_EVENT_ERROR,
+        default_severity="ERROR",
+        subject_type="worker",
+        detail_keys=(
+            "worker_id",
+            "worker_type",
+            "worker_status",
+            "active_job_id",
+            "pipeline_run_id",
+            "document_id",
+            "job_id",
+            "job_status",
+            "step_summary",
+            "failed_step",
+            "heartbeat_emit_ok",
+            "heartbeat_error_code",
+        ),
+        description="CX processing worker failed a job and reported error state.",
+        lifecycle_state="error",
     ),
 )
 

@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0116 CX processing worker heartbeat integration.
+Status: Slice 0117 worker lifecycle operational events.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -72,6 +72,11 @@ path so AG can project worker liveness across services.
 they still report the inline worker as `cx-processing-inline-worker` with
 `cx.document_processing.worker` so the same heartbeat projection and stuck-job
 rules apply before a separate worker process is introduced.
+
+The CX inline worker also emits operational events for `BUSY`, `IDLE`, and
+`ERROR` lifecycle transitions. These events are separate from the processing
+started/succeeded/failed events so AG can correlate job state, heartbeat state,
+and event timeline without reading worker heartbeat storage directly.
 
 Slice 0005 adds a mock-only OA service token path:
 

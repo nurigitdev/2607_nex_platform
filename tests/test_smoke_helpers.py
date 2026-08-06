@@ -1168,6 +1168,7 @@ def test_cx_processing_postgres_event_smoke_execute_route_with_sqlite_fixture(
     engine = cx_processing_event_smoke.build_engine(database_url)
     _create_sqlite_service_jobs_table(engine)
     _create_sqlite_service_operational_events_table(engine)
+    _create_sqlite_service_worker_heartbeats_table(engine)
 
     evidence = cx_processing_event_smoke._execute_processing_event_route_smoke(
         database_url=database_url,
@@ -1183,24 +1184,39 @@ def test_cx_processing_postgres_event_smoke_execute_route_with_sqlite_fixture(
         "started_event_persisted": True,
         "succeeded_event_persisted": True,
         "failed_event_absent": True,
+        "worker_busy_event_persisted": True,
+        "worker_idle_event_persisted": True,
+        "worker_error_event_absent": True,
         "started_event_id": True,
         "succeeded_event_id": True,
+        "worker_busy_event_id": True,
+        "worker_idle_event_id": True,
         "started_severity": True,
         "succeeded_severity": True,
+        "worker_busy_severity": True,
+        "worker_idle_severity": True,
         "started_subject": True,
         "succeeded_subject": True,
+        "worker_busy_subject": True,
+        "worker_idle_subject": True,
         "started_details": True,
         "succeeded_details": True,
+        "worker_busy_details": True,
+        "worker_idle_details": True,
         "redaction_safe": True,
     }
-    assert len(evidence["event_ids"]) == 2
+    assert len(evidence["event_ids"]) == 4
     with engine.begin() as connection:
         remaining_jobs = connection.execute(text("SELECT count(*) FROM service_jobs")).scalar_one()
         remaining_events = connection.execute(
             text("SELECT count(*) FROM service_operational_events")
         ).scalar_one()
+        remaining_heartbeats = connection.execute(
+            text("SELECT count(*) FROM service_worker_heartbeats")
+        ).scalar_one()
     assert remaining_jobs == 0
     assert remaining_events == 0
+    assert remaining_heartbeats == 0
 
 
 def test_cx_processing_postgres_event_smoke_helpers_cover_event_edges(tmp_path) -> None:
@@ -1240,9 +1256,51 @@ def test_cx_processing_postgres_event_smoke_helpers_cover_event_edges(tmp_path) 
             "step_summary": pipeline_run["step_summary"],
         },
     }
+    busy_event = {
+        "event_id": cx_processing_event_smoke.processing_worker_event_id(
+            pipeline_run_id="pipeline-001",
+            event_type=cx_processing_event_smoke.PROCESSING_WORKER_EVENT_BUSY,
+        ),
+        "event_type": cx_processing_event_smoke.PROCESSING_WORKER_EVENT_BUSY,
+        "severity": "INFO",
+        "subject_type": "worker",
+        "subject_id": cx_processing_event_smoke.CX_PROCESSING_WORKER_ID,
+        "details": {
+            "worker_id": cx_processing_event_smoke.CX_PROCESSING_WORKER_ID,
+            "worker_type": cx_processing_event_smoke.CX_PROCESSING_WORKER_TYPE,
+            "worker_status": "BUSY",
+            "pipeline_run_id": "pipeline-001",
+            "document_id": "doc-001",
+            "heartbeat_emit_ok": True,
+            "active_job_id": "job-001",
+            "job_id": "job-001",
+            "job_status": "RUNNING",
+        },
+    }
+    idle_event = {
+        "event_id": cx_processing_event_smoke.processing_worker_event_id(
+            pipeline_run_id="pipeline-001",
+            event_type=cx_processing_event_smoke.PROCESSING_WORKER_EVENT_IDLE,
+        ),
+        "event_type": cx_processing_event_smoke.PROCESSING_WORKER_EVENT_IDLE,
+        "severity": "INFO",
+        "subject_type": "worker",
+        "subject_id": cx_processing_event_smoke.CX_PROCESSING_WORKER_ID,
+        "details": {
+            "worker_id": cx_processing_event_smoke.CX_PROCESSING_WORKER_ID,
+            "worker_type": cx_processing_event_smoke.CX_PROCESSING_WORKER_TYPE,
+            "worker_status": "IDLE",
+            "pipeline_run_id": "pipeline-001",
+            "document_id": "doc-001",
+            "heartbeat_emit_ok": True,
+            "job_id": "job-001",
+            "job_status": "SUCCEEDED",
+            "step_summary": pipeline_run["step_summary"],
+        },
+    }
 
     checks = cx_processing_event_smoke._processing_event_checks(
-        stored_events=[started_event, succeeded_event],
+        stored_events=[started_event, succeeded_event, busy_event, idle_event],
         pipeline_run=pipeline_run,
         document_id="doc-001",
     )
@@ -1259,6 +1317,7 @@ def test_cx_processing_postgres_event_smoke_helpers_cover_event_edges(tmp_path) 
     assert cx_processing_event_smoke._event_details(None) == {}
     assert cx_processing_event_smoke._event_details({"details": []}) == {}
     assert cx_processing_event_smoke._subject_matches(None, document_id="doc-001") is False
+    assert cx_processing_event_smoke._worker_subject_matches(None) is False
     assert cx_processing_event_smoke._json_loads(None, default={"fallback": True}) == {
         "fallback": True
     }
@@ -1294,6 +1353,8 @@ def test_cx_processing_postgres_event_smoke_helpers_cover_event_edges(tmp_path) 
         trace_id="missing",
         request_id="missing",
     )
+    _create_sqlite_service_worker_heartbeats_table(engine)
+    cx_processing_event_smoke._delete_smoke_worker_heartbeat(engine)
 
 
 def test_cx_processing_postgres_event_smoke_main_prints_summary_and_full_evidence(
@@ -1467,6 +1528,7 @@ def test_ag_cross_service_observability_smoke_execute_with_sqlite_fixture(
     engine = ag_observability_smoke.build_engine(database_url)
     _create_sqlite_service_jobs_table(engine)
     _create_sqlite_service_operational_events_table(engine)
+    _create_sqlite_service_worker_heartbeats_table(engine)
 
     evidence = ag_observability_smoke._execute_cross_service_observability_smoke(
         database_url=database_url,
@@ -1490,17 +1552,23 @@ def test_ag_cross_service_observability_smoke_execute_with_sqlite_fixture(
         "job_visible": True,
         "started_event_visible": True,
         "succeeded_event_visible": True,
+        "worker_busy_event_visible": True,
+        "worker_idle_event_visible": True,
         "event_trace_filter": True,
         "redaction_safe": True,
     }
-    assert len(evidence["event_ids"]) == 2
+    assert len(evidence["event_ids"]) == 4
     with engine.begin() as connection:
         remaining_jobs = connection.execute(text("SELECT count(*) FROM service_jobs")).scalar_one()
         remaining_events = connection.execute(
             text("SELECT count(*) FROM service_operational_events")
         ).scalar_one()
+        remaining_heartbeats = connection.execute(
+            text("SELECT count(*) FROM service_worker_heartbeats")
+        ).scalar_one()
     assert remaining_jobs == 0
     assert remaining_events == 0
+    assert remaining_heartbeats == 0
 
 
 def test_ag_cross_service_observability_smoke_projection_helpers_cover_edges() -> None:
@@ -1524,6 +1592,16 @@ def test_ag_cross_service_observability_smoke_projection_helpers_cover_edges() -
                 {
                     "event_id": "event-succeeded",
                     "event_type": ag_observability_smoke.PROCESSING_EVENT_SUCCEEDED,
+                    "trace_id": "trace-001",
+                },
+                {
+                    "event_id": "event-worker-busy",
+                    "event_type": ag_observability_smoke.PROCESSING_WORKER_EVENT_BUSY,
+                    "trace_id": "trace-001",
+                },
+                {
+                    "event_id": "event-worker-idle",
+                    "event_type": ag_observability_smoke.PROCESSING_WORKER_EVENT_IDLE,
                     "trace_id": "trace-001",
                 },
             ]
@@ -1552,6 +1630,8 @@ def test_ag_cross_service_observability_smoke_projection_helpers_cover_edges() -
     assert ag_observability_smoke._projected_event_ids(projection) == [
         "event-started",
         "event-succeeded",
+        "event-worker-busy",
+        "event-worker-idle",
     ]
     assert ag_observability_smoke._projected_jobs({"jobs": []}) == []
     assert ag_observability_smoke._projected_events({"events": []}) == []
@@ -1653,6 +1733,31 @@ def _create_sqlite_service_operational_events_table(engine: object) -> None:
                     message TEXT NOT NULL,
                     details TEXT NOT NULL DEFAULT '{}',
                     created_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+
+
+def _create_sqlite_service_worker_heartbeats_table(engine: object) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE service_worker_heartbeats (
+                    service_id TEXT NOT NULL,
+                    worker_id TEXT NOT NULL,
+                    heartbeat_schema_version TEXT NOT NULL DEFAULT 'worker_heartbeat.v1',
+                    worker_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    active_job_id TEXT,
+                    trace_id TEXT,
+                    started_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL,
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (service_id, worker_id)
                 )
                 """
             )

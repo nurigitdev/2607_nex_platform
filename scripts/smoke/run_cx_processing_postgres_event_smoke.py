@@ -26,10 +26,16 @@ sys.path.insert(0, str(SMOKE_PATH))
 
 from nex_cx.ingestion import ContentIngestionStore, register_ingestion_routes  # noqa: E402
 from nex_cx.processing import (  # noqa: E402
+    CX_PROCESSING_WORKER_ID,
+    CX_PROCESSING_WORKER_TYPE,
     PROCESSING_EVENT_FAILED,
     PROCESSING_EVENT_STARTED,
     PROCESSING_EVENT_SUCCEEDED,
+    PROCESSING_WORKER_EVENT_BUSY,
+    PROCESSING_WORKER_EVENT_ERROR,
+    PROCESSING_WORKER_EVENT_IDLE,
     processing_event_id,
+    processing_worker_event_id,
     register_processing_routes,
 )
 from nex_runtime import (  # noqa: E402
@@ -64,6 +70,9 @@ PROCESSING_EVENT_TYPES = (
     PROCESSING_EVENT_STARTED,
     PROCESSING_EVENT_SUCCEEDED,
     PROCESSING_EVENT_FAILED,
+    PROCESSING_WORKER_EVENT_BUSY,
+    PROCESSING_WORKER_EVENT_IDLE,
+    PROCESSING_WORKER_EVENT_ERROR,
 )
 
 
@@ -179,6 +188,7 @@ def _execute_processing_event_route_smoke(
                 trace_id=trace_id,
                 request_id=request_id,
             )
+            _delete_smoke_worker_heartbeat(engine)
             _delete_smoke_processing_jobs(
                 engine,
                 trace_id=trace_id,
@@ -215,7 +225,10 @@ def _read_stored_processing_events(
                   AND event_type IN (
                     'cx.processing.started',
                     'cx.processing.succeeded',
-                    'cx.processing.failed'
+                    'cx.processing.failed',
+                    'cx.worker.lifecycle.busy',
+                    'cx.worker.lifecycle.idle',
+                    'cx.worker.lifecycle.error'
                   )
                 ORDER BY created_at ASC, event_type ASC
                 """
@@ -239,6 +252,9 @@ def _processing_event_checks(
     started = events_by_type.get(PROCESSING_EVENT_STARTED)
     succeeded = events_by_type.get(PROCESSING_EVENT_SUCCEEDED)
     failed = events_by_type.get(PROCESSING_EVENT_FAILED)
+    busy = events_by_type.get(PROCESSING_WORKER_EVENT_BUSY)
+    idle = events_by_type.get(PROCESSING_WORKER_EVENT_IDLE)
+    worker_error = events_by_type.get(PROCESSING_WORKER_EVENT_ERROR)
     pipeline_run_id = str(pipeline_run["pipeline_run_id"])
     job = dict(pipeline_run["job"])
     expected_started_id = processing_event_id(
@@ -249,16 +265,33 @@ def _processing_event_checks(
         pipeline_run_id=pipeline_run_id,
         event_type=PROCESSING_EVENT_SUCCEEDED,
     )
+    expected_busy_id = processing_worker_event_id(
+        pipeline_run_id=pipeline_run_id,
+        event_type=PROCESSING_WORKER_EVENT_BUSY,
+    )
+    expected_idle_id = processing_worker_event_id(
+        pipeline_run_id=pipeline_run_id,
+        event_type=PROCESSING_WORKER_EVENT_IDLE,
+    )
     return {
         "started_event_persisted": started is not None,
         "succeeded_event_persisted": succeeded is not None,
         "failed_event_absent": failed is None,
+        "worker_busy_event_persisted": busy is not None,
+        "worker_idle_event_persisted": idle is not None,
+        "worker_error_event_absent": worker_error is None,
         "started_event_id": _event_value(started, "event_id") == expected_started_id,
         "succeeded_event_id": _event_value(succeeded, "event_id") == expected_succeeded_id,
+        "worker_busy_event_id": _event_value(busy, "event_id") == expected_busy_id,
+        "worker_idle_event_id": _event_value(idle, "event_id") == expected_idle_id,
         "started_severity": _event_value(started, "severity") == "INFO",
         "succeeded_severity": _event_value(succeeded, "severity") == "INFO",
+        "worker_busy_severity": _event_value(busy, "severity") == "INFO",
+        "worker_idle_severity": _event_value(idle, "severity") == "INFO",
         "started_subject": _subject_matches(started, document_id=document_id),
         "succeeded_subject": _subject_matches(succeeded, document_id=document_id),
+        "worker_busy_subject": _worker_subject_matches(busy),
+        "worker_idle_subject": _worker_subject_matches(idle),
         "started_details": _event_details(started) == {
             "pipeline_run_id": pipeline_run_id,
             "job_id": job["job_id"],
@@ -266,6 +299,28 @@ def _processing_event_checks(
         },
         "succeeded_details": _event_details(succeeded) == {
             "pipeline_run_id": pipeline_run_id,
+            "job_id": job["job_id"],
+            "job_status": "SUCCEEDED",
+            "step_summary": pipeline_run["step_summary"],
+        },
+        "worker_busy_details": _event_details(busy) == {
+            "worker_id": CX_PROCESSING_WORKER_ID,
+            "worker_type": CX_PROCESSING_WORKER_TYPE,
+            "worker_status": "BUSY",
+            "pipeline_run_id": pipeline_run_id,
+            "document_id": document_id,
+            "heartbeat_emit_ok": True,
+            "active_job_id": job["job_id"],
+            "job_id": job["job_id"],
+            "job_status": "RUNNING",
+        },
+        "worker_idle_details": _event_details(idle) == {
+            "worker_id": CX_PROCESSING_WORKER_ID,
+            "worker_type": CX_PROCESSING_WORKER_TYPE,
+            "worker_status": "IDLE",
+            "pipeline_run_id": pipeline_run_id,
+            "document_id": document_id,
+            "heartbeat_emit_ok": True,
             "job_id": job["job_id"],
             "job_status": "SUCCEEDED",
             "step_summary": pipeline_run["step_summary"],
@@ -306,7 +361,10 @@ def _delete_smoke_processing_events(
                   AND event_type IN (
                     'cx.processing.started',
                     'cx.processing.succeeded',
-                    'cx.processing.failed'
+                    'cx.processing.failed',
+                    'cx.worker.lifecycle.busy',
+                    'cx.worker.lifecycle.idle',
+                    'cx.worker.lifecycle.error'
                   )
                 """
             ),
@@ -314,6 +372,23 @@ def _delete_smoke_processing_events(
                 "service_id": SERVICE_ID,
                 "trace_id": trace_id,
                 "request_id": request_id,
+            },
+        )
+
+
+def _delete_smoke_worker_heartbeat(engine: object) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                DELETE FROM service_worker_heartbeats
+                WHERE service_id = :service_id
+                  AND worker_id = :worker_id
+                """
+            ),
+            {
+                "service_id": SERVICE_ID,
+                "worker_id": CX_PROCESSING_WORKER_ID,
             },
         )
 
@@ -336,6 +411,14 @@ def _subject_matches(event: dict[str, object] | None, *, document_id: str) -> bo
         event is not None
         and event.get("subject_type") == "cx.document"
         and event.get("subject_id") == document_id
+    )
+
+
+def _worker_subject_matches(event: dict[str, object] | None) -> bool:
+    return (
+        event is not None
+        and event.get("subject_type") == "worker"
+        and event.get("subject_id") == CX_PROCESSING_WORKER_ID
     )
 
 

@@ -36,6 +36,8 @@ from nex_cx.ingestion import ContentIngestionStore, register_ingestion_routes  #
 from nex_cx.processing import (  # noqa: E402
     PROCESSING_EVENT_STARTED,
     PROCESSING_EVENT_SUCCEEDED,
+    PROCESSING_WORKER_EVENT_BUSY,
+    PROCESSING_WORKER_EVENT_IDLE,
     register_processing_routes,
 )
 from nex_runtime import (  # noqa: E402
@@ -49,6 +51,7 @@ from nex_runtime import (  # noqa: E402
 )
 from run_cx_processing_postgres_event_smoke import (  # noqa: E402
     _delete_smoke_processing_events,
+    _delete_smoke_worker_heartbeat,
 )
 from run_cx_processing_postgres_jobqueue_smoke import (  # noqa: E402
     SERVICE_ID,
@@ -190,6 +193,7 @@ def _execute_cross_service_observability_smoke(
                 trace_id=trace_id,
                 request_id=request_id,
             )
+            _delete_smoke_worker_heartbeat(engine)
             _delete_smoke_processing_jobs(
                 engine,
                 trace_id=trace_id,
@@ -255,6 +259,8 @@ def _cross_service_observability_checks(
         ),
         "started_event_visible": PROCESSING_EVENT_STARTED in event_types,
         "succeeded_event_visible": PROCESSING_EVENT_SUCCEEDED in event_types,
+        "worker_busy_event_visible": PROCESSING_WORKER_EVENT_BUSY in event_types,
+        "worker_idle_event_visible": PROCESSING_WORKER_EVENT_IDLE in event_types,
         "event_trace_filter": all(
             event.get("trace_id") == trace_id
             for event in _projected_events(ag_projection)

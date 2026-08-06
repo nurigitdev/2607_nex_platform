@@ -1,6 +1,6 @@
 # Contract Package
 
-Status: Contract catalog through Slice 0114.
+Status: Contract catalog through Slice 0117.
 
 This directory is the canonical home for shared JSON Schemas, OpenAPI
 descriptions, contract examples, and negative fixtures.
@@ -63,4 +63,4 @@ reject them. The validation command fails if a negative fixture becomes valid.
 - AE orchestration: AE retrieval interaction.
 - Audit/operations: AG readiness projection and AG operations projections for
   events, jobs, dashboard, issue candidates, traces, rollups, source readiness,
-  and worker runtime heartbeats.
+  worker runtime heartbeats, and CX worker lifecycle event taxonomy.

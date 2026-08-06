@@ -14,6 +14,9 @@ from nex_runtime import (
     CX_PROCESSING_EVENT_FAILED,
     CX_PROCESSING_EVENT_STARTED,
     CX_PROCESSING_EVENT_SUCCEEDED,
+    CX_WORKER_LIFECYCLE_EVENT_BUSY,
+    CX_WORKER_LIFECYCLE_EVENT_ERROR,
+    CX_WORKER_LIFECYCLE_EVENT_IDLE,
     ERROR,
     IDLE,
     InMemoryJobQueue,
@@ -68,6 +71,9 @@ PIPELINE_STEPS = (
 PROCESSING_EVENT_STARTED = CX_PROCESSING_EVENT_STARTED
 PROCESSING_EVENT_SUCCEEDED = CX_PROCESSING_EVENT_SUCCEEDED
 PROCESSING_EVENT_FAILED = CX_PROCESSING_EVENT_FAILED
+PROCESSING_WORKER_EVENT_BUSY = CX_WORKER_LIFECYCLE_EVENT_BUSY
+PROCESSING_WORKER_EVENT_IDLE = CX_WORKER_LIFECYCLE_EVENT_IDLE
+PROCESSING_WORKER_EVENT_ERROR = CX_WORKER_LIFECYCLE_EVENT_ERROR
 CX_PROCESSING_WORKER_ID = "cx-processing-inline-worker"
 CX_PROCESSING_WORKER_TYPE = "cx.document_processing.worker"
 
@@ -207,7 +213,7 @@ def run_document_processing_pipeline(
         job=job,
         created_at=started_at,
     )
-    _safe_emit_processing_worker_heartbeat(
+    busy_heartbeat = _safe_emit_processing_worker_heartbeat(
         worker_heartbeat_emitter,
         status=BUSY,
         document_id=document_id,
@@ -215,6 +221,20 @@ def run_document_processing_pipeline(
         trace_id=trace_id,
         job=job,
         observed_at=started_at,
+    )
+    _safe_emit_processing_worker_lifecycle_event(
+        event_emitter,
+        event_type=PROCESSING_WORKER_EVENT_BUSY,
+        severity="INFO",
+        message="CX processing worker claimed a job.",
+        status=BUSY,
+        document_id=document_id,
+        pipeline_run_id=pipeline_run_id,
+        request_id=request_id,
+        trace_id=trace_id,
+        job=job,
+        heartbeat_result=busy_heartbeat,
+        created_at=started_at,
     )
     steps: list[dict[str, Any]] = []
 
@@ -320,7 +340,7 @@ def run_document_processing_pipeline(
             failed_step=failed_step,
             created_at=saved_failed_run["completed_at"],
         )
-        _safe_emit_processing_worker_heartbeat(
+        error_heartbeat = _safe_emit_processing_worker_heartbeat(
             worker_heartbeat_emitter,
             status=ERROR,
             document_id=document_id,
@@ -330,6 +350,22 @@ def run_document_processing_pipeline(
             step_summary=saved_failed_run["step_summary"],
             failed_step=failed_step,
             observed_at=saved_failed_run["completed_at"],
+        )
+        _safe_emit_processing_worker_lifecycle_event(
+            event_emitter,
+            event_type=PROCESSING_WORKER_EVENT_ERROR,
+            severity="ERROR",
+            message="CX processing worker reported an error.",
+            status=ERROR,
+            document_id=document_id,
+            pipeline_run_id=pipeline_run_id,
+            request_id=request_id,
+            trace_id=trace_id,
+            job=saved_failed_run.get("job"),
+            step_summary=saved_failed_run["step_summary"],
+            failed_step=failed_step,
+            heartbeat_result=error_heartbeat,
+            created_at=saved_failed_run["completed_at"],
         )
         raise _pipeline_error_from_exception(
             exc,
@@ -362,7 +398,7 @@ def run_document_processing_pipeline(
         step_summary=saved_record["step_summary"],
         created_at=saved_record["completed_at"],
     )
-    _safe_emit_processing_worker_heartbeat(
+    idle_heartbeat = _safe_emit_processing_worker_heartbeat(
         worker_heartbeat_emitter,
         status=IDLE,
         document_id=document_id,
@@ -371,6 +407,21 @@ def run_document_processing_pipeline(
         job=saved_record.get("job"),
         step_summary=saved_record["step_summary"],
         observed_at=saved_record["completed_at"],
+    )
+    _safe_emit_processing_worker_lifecycle_event(
+        event_emitter,
+        event_type=PROCESSING_WORKER_EVENT_IDLE,
+        severity="INFO",
+        message="CX processing worker returned idle.",
+        status=IDLE,
+        document_id=document_id,
+        pipeline_run_id=pipeline_run_id,
+        request_id=request_id,
+        trace_id=trace_id,
+        job=saved_record.get("job"),
+        step_summary=saved_record["step_summary"],
+        heartbeat_result=idle_heartbeat,
+        created_at=saved_record["completed_at"],
     )
     return saved_record
 
@@ -408,6 +459,14 @@ def processing_event_id(
     return str(uuid5(NAMESPACE_URL, f"cx-processing-event:{pipeline_run_id}:{event_type}"))
 
 
+def processing_worker_event_id(
+    *,
+    pipeline_run_id: str,
+    event_type: str,
+) -> str:
+    return str(uuid5(NAMESPACE_URL, f"cx-processing-worker-event:{pipeline_run_id}:{event_type}"))
+
+
 def _safe_emit_processing_event(
     event_emitter: OperationalEventEmitter | None,
     *,
@@ -443,6 +502,60 @@ def _safe_emit_processing_event(
         details=details,
         created_at=created_at,
         event_id=processing_event_id(
+            pipeline_run_id=pipeline_run_id,
+            event_type=event_type,
+        ),
+    )
+
+
+def _safe_emit_processing_worker_lifecycle_event(
+    event_emitter: OperationalEventEmitter | None,
+    *,
+    event_type: str,
+    severity: str,
+    message: str,
+    status: str,
+    document_id: str,
+    pipeline_run_id: str,
+    request_id: str,
+    trace_id: str,
+    job: dict[str, Any] | None,
+    heartbeat_result: WorkerHeartbeatEmitResult | None,
+    step_summary: dict[str, Any] | None = None,
+    failed_step: str | None = None,
+    created_at: str | None = None,
+) -> OperationalEventEmitResult | None:
+    if event_emitter is None:
+        return None
+    details: dict[str, Any] = {
+        "worker_id": CX_PROCESSING_WORKER_ID,
+        "worker_type": CX_PROCESSING_WORKER_TYPE,
+        "worker_status": status,
+        "pipeline_run_id": pipeline_run_id,
+        "document_id": document_id,
+        "heartbeat_emit_ok": heartbeat_result.ok if heartbeat_result is not None else None,
+    }
+    if heartbeat_result is not None and not heartbeat_result.ok:
+        details["heartbeat_error_code"] = heartbeat_result.error_code
+    if job is not None:
+        if status in (BUSY, ERROR):
+            details["active_job_id"] = str(job["job_id"])
+        details["job_id"] = str(job["job_id"])
+        details["job_status"] = str(job["status"])
+    if step_summary is not None:
+        details["step_summary"] = dict(step_summary)
+    if failed_step is not None:
+        details["failed_step"] = failed_step
+    return event_emitter.safe_emit(
+        event_type=event_type,
+        severity=severity,
+        message=message,
+        trace_id=trace_id,
+        request_id=request_id,
+        subject_ref=build_subject_ref("worker", CX_PROCESSING_WORKER_ID),
+        details=details,
+        created_at=created_at,
+        event_id=processing_worker_event_id(
             pipeline_run_id=pipeline_run_id,
             event_type=event_type,
         ),

@@ -13,6 +13,9 @@ from nex_runtime import (
     CX_PROCESSING_EVENT_FAILED,
     CX_PROCESSING_EVENT_STARTED,
     CX_PROCESSING_EVENT_SUCCEEDED,
+    CX_WORKER_LIFECYCLE_EVENT_BUSY,
+    CX_WORKER_LIFECYCLE_EVENT_ERROR,
+    CX_WORKER_LIFECYCLE_EVENT_IDLE,
     DEFAULT_OPERATIONAL_EVENT_TAXONOMY,
     DatabasePoolSettings,
     InMemoryOperationalEventStore,
@@ -228,7 +231,7 @@ def test_operational_event_store_is_idempotent_by_event_id_and_summarizes() -> N
     assert "NOTICE" not in summary["by_severity"]
 
 
-def test_operational_event_taxonomy_lists_filters_and_summarizes_cx_processing_specs() -> None:
+def test_operational_event_taxonomy_lists_filters_and_summarizes_cx_specs() -> None:
     taxonomy = list_operational_event_taxonomy()
     cx_taxonomy = list_operational_event_taxonomy(service_id="nex-cx")
     failed = list_operational_event_taxonomy(event_type=CX_PROCESSING_EVENT_FAILED)
@@ -239,6 +242,9 @@ def test_operational_event_taxonomy_lists_filters_and_summarizes_cx_processing_s
         CX_PROCESSING_EVENT_FAILED,
         CX_PROCESSING_EVENT_STARTED,
         CX_PROCESSING_EVENT_SUCCEEDED,
+        CX_WORKER_LIFECYCLE_EVENT_BUSY,
+        CX_WORKER_LIFECYCLE_EVENT_ERROR,
+        CX_WORKER_LIFECYCLE_EVENT_IDLE,
     ]
     assert failed == [by_type[CX_PROCESSING_EVENT_FAILED]]
     assert by_type[CX_PROCESSING_EVENT_STARTED]["default_severity"] == "INFO"
@@ -248,11 +254,26 @@ def test_operational_event_taxonomy_lists_filters_and_summarizes_cx_processing_s
         "job_status",
         "step_summary",
     ]
+    assert by_type[CX_WORKER_LIFECYCLE_EVENT_ERROR]["subject_type"] == "worker"
+    assert by_type[CX_WORKER_LIFECYCLE_EVENT_ERROR]["detail_keys"] == [
+        "worker_id",
+        "worker_type",
+        "worker_status",
+        "active_job_id",
+        "pipeline_run_id",
+        "document_id",
+        "job_id",
+        "job_status",
+        "step_summary",
+        "failed_step",
+        "heartbeat_emit_ok",
+        "heartbeat_error_code",
+    ]
     assert summary["total"] == len(DEFAULT_OPERATIONAL_EVENT_TAXONOMY)
-    assert summary["by_service"] == {"nex-cx": 3}
-    assert summary["by_severity"]["INFO"] == 2
-    assert summary["by_severity"]["ERROR"] == 1
-    assert summary["by_subject_type"] == {"cx.document": 3}
+    assert summary["by_service"] == {"nex-cx": 6}
+    assert summary["by_severity"]["INFO"] == 4
+    assert summary["by_severity"]["ERROR"] == 2
+    assert summary["by_subject_type"] == {"cx.document": 3, "worker": 3}
 
 
 def test_operational_event_taxonomy_rejects_invalid_or_sensitive_shapes() -> None:
