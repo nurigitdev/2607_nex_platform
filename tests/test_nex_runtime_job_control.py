@@ -15,6 +15,7 @@ from nex_runtime import (
     InMemoryJobQueue,
     JobRetryPolicy,
     build_common_job,
+    build_job_error,
     build_service_app,
     build_service_job_control_response,
     build_subject_ref,
@@ -85,6 +86,7 @@ def test_project_service_job_control_job_omits_payload_and_returns_copies() -> N
     assert response["controls"] == {
         "can_cancel": True,
         "can_retry": False,
+        "can_replay": False,
         "terminal": False,
         "dead_lettered": False,
         "allowed_actions": ["read", "cancel"],
@@ -223,7 +225,154 @@ def test_service_job_control_retries_exhausted_running_jobs_to_dead_letter() -> 
     assert payload["job"]["retryable"] is False
     assert payload["job"]["error"]["dead_lettered"] is True
     assert payload["controls"]["dead_lettered"] is True
-    assert payload["controls"]["allowed_actions"] == ["read"]
+    assert payload["controls"]["can_replay"] is True
+    assert payload["controls"]["allowed_actions"] == ["read", "replay"]
+
+
+def test_service_job_control_replays_dead_lettered_job_as_new_queued_job() -> None:
+    queue = InMemoryJobQueue()
+    queue.enqueue(
+        sample_job(
+            max_attempts=1,
+            payload={"source_file_id": "source-001"},
+        )
+    )
+    queue.start_job("job-001", updated_at=NOW)
+    source = queue.retry_job(
+        "job-001",
+        error=build_job_error(
+            error_code="cx.processing_step_failed",
+            detail="Private parser detail must stay off replay response.",
+            retryable=False,
+            dead_lettered=True,
+        ),
+        failed_at=LATER,
+    )
+    client = build_client(queue)
+
+    response = client.post(
+        "/internal/v1/jobs/job-001/replay",
+        json={
+            "replay_job_id": "job-001-replay-001",
+            "idempotency_key": "idem-001-replay-001",
+            "requested_by": "operator-001",
+            "reason": "fixed parser config",
+            "observed_at": "2026-08-05T00:00:02Z",
+        },
+        headers=auth_headers(),
+    )
+    duplicate = client.post(
+        "/internal/v1/jobs/job-001/replay",
+        json={
+            "replay_job_id": "job-001-replay-duplicate",
+            "idempotency_key": "idem-001-replay-001",
+            "requested_by": "operator-001",
+            "reason": "fixed parser config",
+            "observed_at": "2026-08-05T00:00:02Z",
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["action"] == "replay"
+    assert payload["job"]["job_id"] == "job-001-replay-001"
+    assert payload["job"]["status"] == QUEUED
+    assert payload["job"]["attempt_count"] == 0
+    assert payload["job"]["retryable"] is True
+    assert payload["controls"]["allowed_actions"] == ["read", "cancel"]
+    assert payload["replay"]["source_job_id"] == source["job_id"]
+    assert payload["replay"]["replay_job_id"] == "job-001-replay-001"
+    assert payload["replay"]["source_job"] == {
+        "service_id": "nex-cx",
+        "job_id": "job-001",
+        "job_type": "cx.document_processing",
+        "status": FAILED,
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "subject_ref": {"type": "cx.document", "id": "doc-001"},
+        "attempt_count": 1,
+        "max_attempts": 1,
+        "retryable": False,
+        "source_error_code": "cx.processing_step_failed",
+        "dead_lettered": True,
+    }
+    assert payload["replay"]["lineage"]["reason"] == "fixed parser config"
+    assert "payload" not in str(payload)
+    assert "Private parser detail" not in str(payload)
+    assert queue.get_job("job-001")["status"] == FAILED
+    assert queue.get_job("job-001-replay-001")["payload"] == {
+        "source_file_id": "source-001"
+    }
+    assert duplicate.status_code == 200
+    assert duplicate.json()["job"]["job_id"] == "job-001-replay-001"
+
+
+def test_service_job_control_replay_requires_dead_letter_and_valid_payload() -> None:
+    queue = InMemoryJobQueue()
+    queue.enqueue(sample_job(job_id="queued", idempotency_key="queued"))
+    queue.enqueue(sample_job(job_id="failed", idempotency_key="failed"))
+    failed = queue.fail_job(
+        queue.start_job("failed", updated_at=NOW)["job_id"],
+        updated_at=LATER,
+    )
+    queue.jobs["failed"] = {
+        **failed,
+        "retryable": False,
+        "error": build_job_error(
+            error_code="cx.failed",
+            detail="failed without dead-letter",
+            retryable=False,
+            dead_lettered=False,
+        ),
+    }
+    client = build_client(queue)
+    valid_payload = {
+        "replay_job_id": "job-replay-001",
+        "idempotency_key": "idem-replay-001",
+        "requested_by": "operator-001",
+        "reason": "retry",
+    }
+
+    missing_auth = client.post("/internal/v1/jobs/queued/replay", json=valid_payload)
+    missing_job = client.post(
+        "/internal/v1/jobs/missing/replay",
+        json=valid_payload,
+        headers=auth_headers(),
+    )
+    queued = client.post(
+        "/internal/v1/jobs/queued/replay",
+        json=valid_payload,
+        headers=auth_headers(),
+    )
+    not_dead_letter = client.post(
+        "/internal/v1/jobs/failed/replay",
+        json=valid_payload,
+        headers=auth_headers(),
+    )
+    bad_payload = client.post(
+        "/internal/v1/jobs/queued/replay",
+        json={"replay_job_id": ""},
+        headers=auth_headers(),
+    )
+    bad_timestamp = client.post(
+        "/internal/v1/jobs/queued/replay",
+        json={**valid_payload, "observed_at": ""},
+        headers=auth_headers(),
+    )
+
+    assert missing_auth.status_code == 401
+    assert missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert missing_job.status_code == 404
+    assert missing_job.json()["error_code"] == "job.not_found"
+    assert queued.status_code == 409
+    assert queued.json()["error_code"] == "job_replay.status_invalid"
+    assert not_dead_letter.status_code == 409
+    assert not_dead_letter.json()["error_code"] == "job_replay.dead_letter_required"
+    assert bad_payload.status_code == 422
+    assert bad_payload.json()["error_code"] == "job_control.replay_payload_invalid"
+    assert bad_timestamp.status_code == 422
+    assert bad_timestamp.json()["error_code"] == "job_control.observed_at_invalid"
 
 
 def test_service_job_control_rejects_retry_for_non_running_and_bad_payload() -> None:
@@ -284,6 +433,7 @@ def test_service_job_control_projects_completed_status_without_actions() -> None
     assert response["controls"] == {
         "can_cancel": False,
         "can_retry": False,
+        "can_replay": False,
         "terminal": True,
         "dead_lettered": False,
         "allowed_actions": ["read"],
@@ -299,4 +449,5 @@ def test_service_job_control_projects_running_status_with_retry_action() -> None
 
     assert response["controls"]["can_cancel"] is True
     assert response["controls"]["can_retry"] is True
+    assert response["controls"]["can_replay"] is False
     assert response["controls"]["allowed_actions"] == ["read", "cancel", "retry"]

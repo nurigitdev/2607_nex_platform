@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0130 job control OpenAPI and smoke evidence.
+Status: Slice 0131 service-local dead-letter replay API.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -86,6 +86,7 @@ Every service entrypoint exposes an authenticated internal job control surface:
 GET /internal/v1/jobs/{job_id}
 POST /internal/v1/jobs/{job_id}/cancel
 POST /internal/v1/jobs/{job_id}/retry
+POST /internal/v1/jobs/{job_id}/replay
 ```
 
 These routes operate only on the service-local `SERVICE_PERSISTENCE.job_queue`
@@ -96,8 +97,10 @@ Dead-letter operator replay is planned as a new queued job, not a mutation of
 the failed source job. The shared `plan_dead_letter_replay()` helper requires a
 FAILED job with `error.dead_lettered=true`, a non-empty operator id, and a
 bounded operator reason. It copies service-private payload for service-local
-execution but stores only safe source metadata in `replay_lineage`; AG endpoint
-wiring and audit emission remain explicit operator workflow steps.
+execution but stores only safe source metadata in `replay_lineage`. The
+service-local replay endpoint returns a payload-redacted replay job projection
+and a safe source-job summary; AG endpoint wiring and audit emission remain
+explicit operator workflow steps.
 
 AG job control dispatches are audited as AG-owned operational events. Successful
 dispatches emit `ag.job_control.succeeded`; failed dispatches emit

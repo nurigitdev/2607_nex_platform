@@ -12,10 +12,12 @@ from nex_runtime.jobs import (
     FAILED,
     RUNNING,
     TERMINAL_JOB_STATUSES,
+    JobReplayDecision,
     JobRetryPolicy,
     JobQueue,
     JobQueueError,
     build_job_error,
+    plan_dead_letter_replay,
     validate_common_job,
 )
 from nex_runtime.problem import problem_response
@@ -116,6 +118,46 @@ def register_service_job_control_routes(
             job=retried,
         )
 
+    @app.post("/internal/v1/jobs/{job_id}/replay", response_model=None)
+    def replay_service_job(
+        job_id: str,
+        request: Request,
+        payload: dict[str, Any] | None = Body(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any] | JSONResponse:
+        auth_problem = _authorize_request(
+            request,
+            authorization,
+            expected_audience=audience,
+        )
+        if auth_problem is not None:
+            return auth_problem
+        try:
+            source_job = job_queue.get_job(job_id)
+            if source_job is None:
+                raise JobQueueError(
+                    error_code="job.not_found",
+                    detail=f"job was not found: {job_id}",
+                    status_code=404,
+                )
+            decision = plan_dead_letter_replay(
+                source_job,
+                replay_job_id=_required_payload_string(payload, "replay_job_id"),
+                idempotency_key=_required_payload_string(payload, "idempotency_key"),
+                requested_by=_required_payload_string(payload, "requested_by"),
+                reason=_required_payload_string(payload, "reason"),
+                replayed_at=_optional_timestamp(payload),
+            )
+            replay_job = job_queue.enqueue(decision.replay_job)
+        except JobQueueError as exc:
+            return _job_control_problem_response(request, exc)
+        return build_service_job_replay_response(
+            service_id=service_id,
+            source_job=source_job,
+            replay_job=replay_job,
+            decision=decision,
+        )
+
 
 def build_service_job_control_response(
     *,
@@ -130,6 +172,55 @@ def build_service_job_control_response(
         "action": action,
         "job": projected_job,
         "controls": build_service_job_controls(projected_job),
+    }
+
+
+def build_service_job_replay_response(
+    *,
+    service_id: str,
+    source_job: dict[str, Any],
+    replay_job: dict[str, Any],
+    decision: JobReplayDecision,
+) -> dict[str, Any]:
+    response = build_service_job_control_response(
+        service_id=service_id,
+        action="replay",
+        job=replay_job,
+    )
+    response["replay"] = {
+        "action": decision.action,
+        "source_job": _project_replay_source_job(service_id=service_id, job=source_job),
+        "source_job_id": decision.source_job_id,
+        "replay_job_id": replay_job["job_id"],
+        "lineage": deepcopy(decision.lineage),
+    }
+    return response
+
+
+def _project_replay_source_job(
+    *,
+    service_id: str,
+    job: dict[str, Any],
+) -> dict[str, Any]:
+    projected = project_service_job_control_job(service_id=service_id, job=job)
+    error = projected.get("error")
+    return {
+        "service_id": service_id,
+        "job_id": projected["job_id"],
+        "job_type": projected["job_type"],
+        "status": projected["status"],
+        "trace_id": projected["trace_id"],
+        "request_id": projected["request_id"],
+        "subject_ref": deepcopy(projected["subject_ref"]),
+        "attempt_count": projected["attempt_count"],
+        "max_attempts": projected["max_attempts"],
+        "retryable": projected["retryable"],
+        "source_error_code": (
+            str(error.get("error_code"))
+            if isinstance(error, dict) and error.get("error_code")
+            else None
+        ),
+        "dead_lettered": bool(isinstance(error, dict) and error.get("dead_lettered")),
     }
 
 
@@ -165,21 +256,34 @@ def build_service_job_controls(job: dict[str, Any]) -> dict[str, Any]:
     dead_lettered = bool(isinstance(error, dict) and error.get("dead_lettered"))
     can_cancel = status in ACTIVE_JOB_STATUSES
     can_retry = status == RUNNING
+    can_replay = status == FAILED and dead_lettered
     return {
         "can_cancel": can_cancel,
         "can_retry": can_retry,
+        "can_replay": can_replay,
         "terminal": status in TERMINAL_JOB_STATUSES,
         "dead_lettered": status == FAILED and dead_lettered,
-        "allowed_actions": _allowed_actions(can_cancel=can_cancel, can_retry=can_retry),
+        "allowed_actions": _allowed_actions(
+            can_cancel=can_cancel,
+            can_retry=can_retry,
+            can_replay=can_replay,
+        ),
     }
 
 
-def _allowed_actions(*, can_cancel: bool, can_retry: bool) -> list[str]:
+def _allowed_actions(
+    *,
+    can_cancel: bool,
+    can_retry: bool,
+    can_replay: bool,
+) -> list[str]:
     actions = ["read"]
     if can_cancel:
         actions.append("cancel")
     if can_retry:
         actions.append("retry")
+    if can_replay:
+        actions.append("replay")
     return actions
 
 
@@ -203,6 +307,23 @@ def _optional_timestamp(payload: dict[str, Any] | None) -> str | None:
             status_code=422,
         )
     return observed_at
+
+
+def _required_payload_string(payload: dict[str, Any] | None, key: str) -> str:
+    if payload is None or key not in payload:
+        raise JobQueueError(
+            error_code="job_control.replay_payload_invalid",
+            detail=f"{key} must be a non-empty string.",
+            status_code=422,
+        )
+    value = payload[key]
+    if not isinstance(value, str) or not value:
+        raise JobQueueError(
+            error_code="job_control.replay_payload_invalid",
+            detail=f"{key} must be a non-empty string.",
+            status_code=422,
+        )
+    return value
 
 
 def _authorize_request(

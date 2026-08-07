@@ -69,6 +69,7 @@ from .job_control import (
     SERVICE_JOB_CONTROL_SCHEMA_VERSION,
     build_service_job_control_response,
     build_service_job_controls,
+    build_service_job_replay_response,
     project_service_job_control_job,
     register_service_job_control_routes,
 )
@@ -260,6 +261,7 @@ __all__ = [
     "build_service_app",
     "build_service_job_control_response",
     "build_service_job_controls",
+    "build_service_job_replay_response",
     "build_session_factory",
     "build_subject_ref",
     "build_unit_of_work",
