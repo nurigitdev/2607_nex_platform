@@ -8,6 +8,7 @@ from urllib.error import HTTPError, URLError
 import pytest
 from sqlalchemy import text
 
+import run_ag_job_control_smoke as ag_job_control_smoke
 import run_ag_operations_dashboard_smoke as ag_operations_dashboard_smoke
 import run_ag_cross_service_observability_smoke as ag_observability_smoke
 import check_backend_service_endpoints as endpoint_smoke
@@ -180,6 +181,69 @@ def test_ag_operations_dashboard_smoke_main_prints_summary(
 ) -> None:
     assert ag_operations_dashboard_smoke.main(["--summary"]) == 0
     assert "ag_operations_dashboard_smoke=pass" in capsys.readouterr().out
+
+
+def test_ag_job_control_smoke_passes_mock_pack() -> None:
+    evidence = ag_job_control_smoke.run_ag_job_control_smoke()
+
+    assert evidence["status"] == "PASS"
+    assert evidence["actions"] == ["cancel", "retry"]
+    assert evidence["projection_versions"] == {
+        "cancel": "ag_job_control_dispatch.v1",
+        "retry": "ag_job_control_dispatch.v1",
+        "service_response": "service_job_control.v1",
+    }
+    assert evidence["job_statuses"] == {"cancel": "CANCELLED", "retry": "QUEUED"}
+    assert evidence["audit_event_count"] == 2
+    assert all(evidence["checks"].values())
+    assert "source_file_id" not in json.dumps(evidence, ensure_ascii=False)
+    assert ag_job_control_smoke.summary_line(evidence) == (
+        "ag_job_control_smoke=pass actions=2 audit_events=2 "
+        "cancel_status=CANCELLED retry_status=QUEUED"
+    )
+
+
+def test_ag_job_control_smoke_reports_failed_summary() -> None:
+    assert ag_job_control_smoke.summary_line({"status": "FAIL"}) == "ag_job_control_smoke=fail"
+
+
+def test_ag_job_control_smoke_local_client_maps_service_errors() -> None:
+    queue = ag_job_control_smoke.InMemoryJobQueue()
+    queue.enqueue(
+        ag_job_control_smoke._sample_job(
+            job_id="queued",
+            idempotency_key="queued-idem",
+        )
+    )
+    service_client = ag_job_control_smoke._build_cx_service_client(queue)
+    control_client = ag_job_control_smoke.LocalAgJobControlClient({"nex-cx": service_client})
+
+    with pytest.raises(ag_job_control_smoke.AgJobControlError) as invalid_retry:
+        control_client.retry_job(
+            "nex-cx",
+            "queued",
+            request_id=ag_job_control_smoke.REQUEST_ID,
+            trace_id=ag_job_control_smoke.TRACE_ID,
+        )
+    with pytest.raises(ag_job_control_smoke.AgJobControlError) as missing_service:
+        control_client.get_job(
+            "nex-mo",
+            "queued",
+            request_id=ag_job_control_smoke.REQUEST_ID,
+            trace_id=ag_job_control_smoke.TRACE_ID,
+        )
+
+    assert invalid_retry.value.status_code == 409
+    assert invalid_retry.value.error_code == "job.retry_status_invalid"
+    assert missing_service.value.status_code == 404
+    assert missing_service.value.error_code == "ag.job_control_service_not_configured"
+
+
+def test_ag_job_control_smoke_main_prints_summary(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert ag_job_control_smoke.main(["--summary"]) == 0
+    assert "ag_job_control_smoke=pass" in capsys.readouterr().out
 
 
 def test_db_smoke_reports_missing_url(

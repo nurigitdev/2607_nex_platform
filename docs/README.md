@@ -233,6 +233,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0127`](slices/0127_ag_job_operation_control_endpoints.md) | `S13-007` AG job operation control endpoints. |
 | [`Slice 0128`](slices/0128_job_control_audit_operational_events.md) | `S13-008` Job control audit operational events. |
 | [`Slice 0129`](slices/0129_dead_letter_operator_replay_policy_foundation.md) | `S13-009` Dead-letter operator replay policy foundation. |
+| [`Slice 0130`](slices/0130_job_control_openapi_and_smoke_evidence.md) | `S13-010` Job control OpenAPI and smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

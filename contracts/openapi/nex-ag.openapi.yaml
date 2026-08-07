@@ -480,6 +480,90 @@ paths:
           description: Job source or job was not found.
         "503":
           description: Job source is unavailable.
+  /admin/v1/operations/jobs/{service_id}/{job_id}/cancel:
+    post:
+      operationId: cancelAgOperationalJob
+      tags:
+        - Operations
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/ServiceId"
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgJobControlRequest"
+      responses:
+        "200":
+          description: AG dispatched a cancel request to the target service-local job control API and recorded audit summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgJobControlDispatch"
+        "400":
+          description: Invalid target service.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Target service job control endpoint or job was not found.
+        "409":
+          description: Target service rejected the cancel transition.
+        "422":
+          description: Job control payload is invalid.
+        "503":
+          description: Target service job control endpoint is unavailable.
+  /admin/v1/operations/jobs/{service_id}/{job_id}/retry:
+    post:
+      operationId: retryAgOperationalJob
+      tags:
+        - Operations
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/ServiceId"
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgJobControlRequest"
+      responses:
+        "200":
+          description: AG dispatched a retry request to the target service-local job control API and recorded audit summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgJobControlDispatch"
+        "400":
+          description: Invalid target service.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Target service job control endpoint or job was not found.
+        "409":
+          description: Target service rejected the retry request.
+        "422":
+          description: Job control payload is invalid.
+        "503":
+          description: Target service job control endpoint is unavailable.
   /admin/v1/operations/traces/{trace_id}:
     get:
       operationId: getAgCrossServiceTraceTimelineProjection
@@ -596,7 +680,233 @@ components:
             - ag_worker_runtime_projection.v1
             - ag_worker_detail_projection.v1
             - ag_cross_service_trace_timeline_projection.v1
+            - ag_job_control_dispatch.v1
         checked_at:
           type: string
           format: date-time
       additionalProperties: true
+    AgJobControlRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        observed_at:
+          type: string
+          format: date-time
+        error_code:
+          type: string
+          minLength: 1
+        detail:
+          type: string
+          minLength: 1
+    AgJobControlDispatch:
+      type: object
+      additionalProperties: true
+      required:
+        - projection_schema_version
+        - dispatch_status
+        - checked_at
+        - service_id
+        - job_id
+        - action
+        - service_response
+        - audit_event
+        - summary
+      properties:
+        projection_schema_version:
+          type: string
+          const: ag_job_control_dispatch.v1
+        dispatch_status:
+          type: string
+          const: SUCCEEDED
+        checked_at:
+          type: string
+          format: date-time
+        request_trace_id:
+          $ref: "#/components/schemas/TraceId"
+        service_id:
+          $ref: "#/components/schemas/ServiceId"
+        job_id:
+          type: string
+          minLength: 1
+        action:
+          type: string
+          enum:
+            - cancel
+            - retry
+        service_response:
+          $ref: "#/components/schemas/ServiceJobControlResponse"
+        audit_event:
+          $ref: "#/components/schemas/AuditEventSummary"
+        summary:
+          type: object
+          additionalProperties: true
+          required:
+            - service_id
+            - job_id
+            - action
+            - job_status
+            - allowed_actions
+          properties:
+            service_id:
+              $ref: "#/components/schemas/ServiceId"
+            job_id:
+              type: string
+            action:
+              type: string
+            job_status:
+              $ref: "#/components/schemas/JobStatus"
+            allowed_actions:
+              type: array
+              items:
+                type: string
+    ServiceJobControlResponse:
+      type: object
+      additionalProperties: true
+      required:
+        - job_control_schema_version
+        - service_id
+        - action
+        - job
+        - controls
+      properties:
+        job_control_schema_version:
+          type: string
+          const: service_job_control.v1
+        service_id:
+          $ref: "#/components/schemas/ServiceId"
+        action:
+          type: string
+          enum:
+            - read
+            - cancel
+            - retry
+        job:
+          $ref: "#/components/schemas/ServiceJobControlJob"
+        controls:
+          $ref: "#/components/schemas/ServiceJobControls"
+    ServiceJobControlJob:
+      type: object
+      additionalProperties: true
+      required:
+        - service_id
+        - job_schema_version
+        - job_id
+        - job_type
+        - status
+        - trace_id
+        - request_id
+        - subject_ref
+        - attempt_count
+        - max_attempts
+        - retryable
+        - links
+        - created_at
+        - updated_at
+      properties:
+        service_id:
+          $ref: "#/components/schemas/ServiceId"
+        job_schema_version:
+          type: string
+          const: common_job.v1
+        job_id:
+          type: string
+          minLength: 1
+        job_type:
+          type: string
+          minLength: 1
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        trace_id:
+          $ref: "#/components/schemas/TraceId"
+        request_id:
+          type: string
+          minLength: 1
+        subject_ref:
+          type: object
+          additionalProperties: false
+          required:
+            - type
+            - id
+          properties:
+            type:
+              type: string
+              minLength: 1
+            id:
+              type: string
+              minLength: 1
+        attempt_count:
+          type: integer
+          minimum: 0
+        max_attempts:
+          type: integer
+          minimum: 1
+        retryable:
+          type: boolean
+        links:
+          type: object
+          additionalProperties:
+            type: string
+        error:
+          type:
+            - object
+            - "null"
+          additionalProperties: true
+        available_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ServiceJobControls:
+      type: object
+      additionalProperties: false
+      required:
+        - can_cancel
+        - can_retry
+        - terminal
+        - dead_lettered
+        - allowed_actions
+      properties:
+        can_cancel:
+          type: boolean
+        can_retry:
+          type: boolean
+        terminal:
+          type: boolean
+        dead_lettered:
+          type: boolean
+        allowed_actions:
+          type: array
+          items:
+            type: string
+            enum:
+              - read
+              - cancel
+              - retry
+    AuditEventSummary:
+      type: object
+      additionalProperties: true
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+        event_id:
+          type: string
+        event_type:
+          type: string
+        error_code:
+          type: string
+    JobStatus:
+      type: string
+      enum:
+        - QUEUED
+        - RUNNING
+        - SUCCEEDED
+        - FAILED
+        - CANCELLED

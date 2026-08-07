@@ -9,6 +9,7 @@ tags:
   - name: Compatibility
   - name: Recovery
   - name: Prompts
+  - name: InternalJobControl
 paths:
   /health:
     get:
@@ -46,6 +47,126 @@ paths:
           description: Service claim is valid for this service.
         "401":
           description: Service claim is missing or invalid.
+  /internal/v1/jobs/{job_id}:
+    get:
+      operationId: getCxServiceJobControlJob
+      tags:
+        - InternalJobControl
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Payload-redacted service-local job control projection.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                required:
+                  - job_control_schema_version
+                  - service_id
+                  - action
+                  - job
+                  - controls
+                properties:
+                  job_control_schema_version:
+                    type: string
+                    const: service_job_control.v1
+                  service_id:
+                    type: string
+                    const: nex-cx
+                  action:
+                    type: string
+                    const: read
+                  job:
+                    type: object
+                    additionalProperties: true
+                  controls:
+                    type: object
+                    additionalProperties: true
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Job was not found.
+  /internal/v1/jobs/{job_id}/cancel:
+    post:
+      operationId: cancelCxServiceJob
+      tags:
+        - InternalJobControl
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                observed_at:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          description: Active CX job was cancelled through service-local job control.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Job was not found.
+        "409":
+          description: Job cannot transition to cancelled.
+        "422":
+          description: Job control payload is invalid.
+  /internal/v1/jobs/{job_id}/retry:
+    post:
+      operationId: retryCxServiceJob
+      tags:
+        - InternalJobControl
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                error_code:
+                  type: string
+                  minLength: 1
+                detail:
+                  type: string
+                  minLength: 1
+                observed_at:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          description: Running CX job was requeued or dead-lettered through service-local retry policy.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Job was not found.
+        "409":
+          description: Job cannot be retried from its current status.
+        "422":
+          description: Job control payload is invalid.
   /api/v1/documents/uploads:
     post:
       operationId: registerCxDocumentUpload

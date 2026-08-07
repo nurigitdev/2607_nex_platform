@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0129 dead-letter operator replay policy foundation.
+Status: Slice 0130 job control OpenAPI and smoke evidence.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -103,6 +103,11 @@ AG job control dispatches are audited as AG-owned operational events. Successful
 dispatches emit `ag.job_control.succeeded`; failed dispatches emit
 `ag.job_control.failed`. Audit emission is safe: event-store errors are returned
 as audit summaries but do not block the underlying control response.
+
+The AG operator-facing cancel/retry routes and the CX service-local target
+routes are documented in OpenAPI. The default quality gate runs
+`run_ag_job_control_smoke.py`, which exercises AG dispatch, service-local queue
+mutation, audit events, and payload redaction in-process.
 
 `nex-cx` processing routes still support the MVP inline run path, but they now
 also expose an enqueue-first path for background worker execution. Inline runs
