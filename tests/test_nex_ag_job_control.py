@@ -108,7 +108,7 @@ def test_http_ag_job_control_client_gets_job_with_service_claim(monkeypatch) -> 
     ]
 
 
-def test_http_ag_job_control_client_posts_cancel_and_retry_payloads(monkeypatch) -> None:
+def test_http_ag_job_control_client_posts_cancel_retry_and_replay_payloads(monkeypatch) -> None:
     calls: list[dict[str, Any]] = []
 
     def fake_request(method, url, **kwargs):
@@ -137,6 +137,17 @@ def test_http_ag_job_control_client_posts_cancel_and_retry_payloads(monkeypatch)
         detail="Operator requested retry.",
         observed_at="2026-08-05T00:00:00Z",
     )
+    client.replay_job(
+        "nex-cx",
+        "job-001",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        replay_job_id="job-001-replay-001",
+        idempotency_key="idem-001-replay-001",
+        requested_by="operator-001",
+        reason="fixed parser config",
+        observed_at="2026-08-05T00:00:01Z",
+    )
 
     assert calls[0]["method"] == "POST"
     assert calls[0]["url"] == "http://cx.local/internal/v1/jobs/job-001/cancel"
@@ -148,6 +159,15 @@ def test_http_ag_job_control_client_posts_cancel_and_retry_payloads(monkeypatch)
         "error_code": "operator.retry",
         "detail": "Operator requested retry.",
         "observed_at": "2026-08-05T00:00:00Z",
+    }
+    assert calls[2]["method"] == "POST"
+    assert calls[2]["url"] == "http://cx.local/internal/v1/jobs/job-001/replay"
+    assert calls[2]["json"] == {
+        "replay_job_id": "job-001-replay-001",
+        "idempotency_key": "idem-001-replay-001",
+        "requested_by": "operator-001",
+        "reason": "fixed parser config",
+        "observed_at": "2026-08-05T00:00:01Z",
     }
 
 

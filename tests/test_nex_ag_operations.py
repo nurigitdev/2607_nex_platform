@@ -305,6 +305,55 @@ class RecordingJobControlClient:
             status="QUEUED",
         )
 
+    def replay_job(
+        self,
+        service_id,
+        job_id,
+        *,
+        request_id,
+        trace_id,
+        replay_job_id,
+        idempotency_key,
+        requested_by,
+        reason,
+        observed_at=None,
+    ):
+        self.calls.append(
+            {
+                "action": "replay",
+                "service_id": service_id,
+                "job_id": job_id,
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "replay_job_id": replay_job_id,
+                "idempotency_key": idempotency_key,
+                "requested_by": requested_by,
+                "reason": reason,
+                "observed_at": observed_at,
+            }
+        )
+        if self.error is not None:
+            raise self.error
+        return {
+            **service_job_control_response(
+                service_id=service_id,
+                job_id=replay_job_id,
+                action="replay",
+                status="QUEUED",
+            ),
+            "replay": {
+                "source_job_id": job_id,
+                "replay_job_id": replay_job_id,
+                "lineage": {
+                    "lineage_schema_version": "job_replay_lineage.v1",
+                    "source_job_id": job_id,
+                    "requested_by": requested_by,
+                    "reason": reason,
+                    "replayed_at": observed_at,
+                },
+            },
+        }
+
 
 def service_job_control_response(
     *,
@@ -326,6 +375,7 @@ def service_job_control_response(
         "controls": {
             "can_cancel": False,
             "can_retry": False,
+            "can_replay": False,
             "terminal": status in {"SUCCEEDED", "FAILED", "CANCELLED"},
             "dead_lettered": False,
             "allowed_actions": ["read"],
@@ -3083,7 +3133,7 @@ def test_job_control_dispatch_projection_wraps_service_response() -> None:
     }
 
 
-def test_job_control_routes_dispatch_cancel_and_retry_to_service_client() -> None:
+def test_job_control_routes_dispatch_cancel_retry_and_replay_to_service_client() -> None:
     control_client = RecordingJobControlClient()
     audit_store = InMemoryOperationalEventStore()
     app = build_service_app(SERVICE_SPECS["nex-ag"])
@@ -3114,20 +3164,45 @@ def test_job_control_routes_dispatch_cancel_and_retry_to_service_client() -> Non
         },
         headers=headers,
     )
+    replay = client.post(
+        "/admin/v1/operations/jobs/nex-cx/job-cx-001/replay",
+        json={
+            "replay_job_id": "job-cx-001-replay-001",
+            "idempotency_key": "idem-cx-001-replay-001",
+            "requested_by": "operator-001",
+            "reason": "fixed parser config",
+            "observed_at": "2026-08-05T00:00:10Z",
+        },
+        headers=headers,
+    )
 
     assert cancel.status_code == 200
     assert retry.status_code == 200
+    assert replay.status_code == 200
     assert cancel.json()["projection_schema_version"] == AG_JOB_CONTROL_DISPATCH_SCHEMA_VERSION
     assert cancel.json()["audit_event"]["event_type"] == AG_JOB_CONTROL_EVENT_SUCCEEDED
     assert retry.json()["service_response"]["action"] == "retry"
+    assert replay.json()["action"] == "replay"
+    assert replay.json()["summary"] == {
+        "service_id": "nex-cx",
+        "job_id": "job-cx-001",
+        "action": "replay",
+        "job_status": "QUEUED",
+        "allowed_actions": ["read"],
+    }
+    assert replay.json()["service_response"]["replay"]["replay_job_id"] == (
+        "job-cx-001-replay-001"
+    )
     assert retry.json()["audit_event"]["ok"] is True
     audit_events = audit_store.list_events(service_id="nex-ag", limit=10)
     assert [event["event_type"] for event in audit_events] == [
         AG_JOB_CONTROL_EVENT_SUCCEEDED,
         AG_JOB_CONTROL_EVENT_SUCCEEDED,
+        AG_JOB_CONTROL_EVENT_SUCCEEDED,
     ]
-    assert audit_events[0]["details"]["action"] == "retry"
-    assert audit_events[1]["details"]["action"] == "cancel"
+    assert audit_events[0]["details"]["action"] == "replay"
+    assert audit_events[1]["details"]["action"] == "retry"
+    assert audit_events[2]["details"]["action"] == "cancel"
     assert control_client.calls == [
         {
             "action": "cancel",
@@ -3147,6 +3222,18 @@ def test_job_control_routes_dispatch_cancel_and_retry_to_service_client() -> Non
             "detail": "Operator requested retry.",
             "observed_at": "2026-08-05T00:00:09Z",
         },
+        {
+            "action": "replay",
+            "service_id": "nex-cx",
+            "job_id": "job-cx-001",
+            "request_id": REQUEST_ID,
+            "trace_id": TRACE_ID,
+            "replay_job_id": "job-cx-001-replay-001",
+            "idempotency_key": "idem-cx-001-replay-001",
+            "requested_by": "operator-001",
+            "reason": "fixed parser config",
+            "observed_at": "2026-08-05T00:00:10Z",
+        },
     ]
 
 
@@ -3158,6 +3245,7 @@ def test_job_control_routes_require_auth_and_validate_service_and_payload() -> N
 
     missing_auth = client.post("/admin/v1/operations/jobs/nex-cx/job-cx-001/cancel")
     retry_missing_auth = client.post("/admin/v1/operations/jobs/nex-cx/job-cx-001/retry")
+    replay_missing_auth = client.post("/admin/v1/operations/jobs/nex-cx/job-cx-001/replay")
     cancel_bad_service = client.post(
         "/admin/v1/operations/jobs/nex-unknown/job-cx-001/cancel",
         headers=auth_headers(),
@@ -3171,17 +3259,31 @@ def test_job_control_routes_require_auth_and_validate_service_and_payload() -> N
         json={"error_code": ""},
         headers=auth_headers(),
     )
+    replay_bad_payload = client.post(
+        "/admin/v1/operations/jobs/nex-cx/job-cx-001/replay",
+        json={
+            "replay_job_id": "job-cx-001-replay-001",
+            "idempotency_key": "idem-cx-001-replay-001",
+            "requested_by": "operator-001",
+        },
+        headers=auth_headers(),
+    )
 
     assert missing_auth.status_code == 401
     assert missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
     assert retry_missing_auth.status_code == 401
     assert retry_missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert replay_missing_auth.status_code == 401
+    assert replay_missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
     assert cancel_bad_service.status_code == 400
     assert cancel_bad_service.json()["error_code"] == "ag.job_service_invalid"
     assert bad_service.status_code == 400
     assert bad_service.json()["error_code"] == "ag.job_service_invalid"
     assert bad_payload.status_code == 422
     assert bad_payload.json()["error_code"] == "ag.job_control_payload_invalid"
+    assert replay_bad_payload.status_code == 422
+    assert replay_bad_payload.json()["error_code"] == "ag.job_control_payload_invalid"
+    assert replay_bad_payload.json()["detail"] == "reason must be a non-empty string."
     assert control_client.calls == []
 
 

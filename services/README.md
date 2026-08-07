@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0131 service-local dead-letter replay API.
+Status: Slice 0132 AG dead-letter replay dispatch endpoint.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -111,6 +111,17 @@ The AG operator-facing cancel/retry routes and the CX service-local target
 routes are documented in OpenAPI. The default quality gate runs
 `run_ag_job_control_smoke.py`, which exercises AG dispatch, service-local queue
 mutation, audit events, and payload redaction in-process.
+
+AG also exposes an operator-facing replay dispatch path:
+
+```text
+POST /admin/v1/operations/jobs/{service_id}/{job_id}/replay
+```
+
+It forwards explicit replay metadata to the service-local replay endpoint and
+audits successful dispatch as `ag.job_control.succeeded` with
+`details.action=replay`. Replay OpenAPI and smoke evidence remain the next
+contract-freeze step.
 
 `nex-cx` processing routes still support the MVP inline run path, but they now
 also expose an enqueue-first path for background worker execution. Inline runs

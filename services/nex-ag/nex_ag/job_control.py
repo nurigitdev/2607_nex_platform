@@ -50,6 +50,21 @@ class AgJobControlClient(Protocol):
     ) -> dict[str, Any]:
         ...
 
+    def replay_job(
+        self,
+        service_id: str,
+        job_id: str,
+        *,
+        request_id: str,
+        trace_id: str,
+        replay_job_id: str,
+        idempotency_key: str,
+        requested_by: str,
+        reason: str,
+        observed_at: str | None = None,
+    ) -> dict[str, Any]:
+        ...
+
 
 @dataclass(frozen=True)
 class AgJobControlError(Exception):
@@ -123,6 +138,36 @@ class HttpAgJobControlClient:
                 {
                     "error_code": error_code,
                     "detail": detail,
+                    "observed_at": observed_at,
+                }
+            ),
+        )
+
+    def replay_job(
+        self,
+        service_id: str,
+        job_id: str,
+        *,
+        request_id: str,
+        trace_id: str,
+        replay_job_id: str,
+        idempotency_key: str,
+        requested_by: str,
+        reason: str,
+        observed_at: str | None = None,
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            service_id,
+            f"/internal/v1/jobs/{_quote_path_value(job_id)}/replay",
+            request_id=request_id,
+            trace_id=trace_id,
+            json=_compact_payload(
+                {
+                    "replay_job_id": replay_job_id,
+                    "idempotency_key": idempotency_key,
+                    "requested_by": requested_by,
+                    "reason": reason,
                     "observed_at": observed_at,
                 }
             ),

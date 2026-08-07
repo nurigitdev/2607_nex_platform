@@ -1175,6 +1175,82 @@ def register_job_operation_routes(
             request_trace_id=trace_id,
         )
 
+    @app.post("/admin/v1/operations/jobs/{service_id}/{job_id}/replay", response_model=None)
+    def replay_operational_job(
+        service_id: str,
+        job_id: str,
+        request: Request,
+        payload: dict[str, Any] | None = None,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        filter_problem = _validate_job_operation_filters(
+            request,
+            service_id=service_id,
+            status=None,
+        )
+        if filter_problem is not None:
+            return filter_problem
+
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            service_response = control_client.replay_job(
+                service_id,
+                job_id,
+                request_id=request_id,
+                trace_id=trace_id,
+                replay_job_id=_job_control_required_payload_string(
+                    payload,
+                    "replay_job_id",
+                ),
+                idempotency_key=_job_control_required_payload_string(
+                    payload,
+                    "idempotency_key",
+                ),
+                requested_by=_job_control_required_payload_string(
+                    payload,
+                    "requested_by",
+                ),
+                reason=_job_control_required_payload_string(payload, "reason"),
+                observed_at=_job_control_payload_string(payload, "observed_at"),
+            )
+        except AgJobControlError as exc:
+            audit_result = emit_job_control_audit_event(
+                audit_emitter,
+                service_id=service_id,
+                job_id=job_id,
+                action="replay",
+                request_id=request_id,
+                trace_id=trace_id,
+                error=exc,
+            )
+            return _job_control_dispatch_problem_response(
+                request,
+                exc,
+                audit_result=audit_result,
+            )
+        audit_result = emit_job_control_audit_event(
+            audit_emitter,
+            service_id=service_id,
+            job_id=job_id,
+            action="replay",
+            request_id=request_id,
+            trace_id=trace_id,
+            service_response=service_response,
+        )
+        return build_job_control_dispatch_projection(
+            service_id=service_id,
+            job_id=job_id,
+            action="replay",
+            service_response=service_response,
+            audit_result=audit_result,
+            request_trace_id=trace_id,
+        )
+
 
 def register_unified_operation_routes(
     app: FastAPI,
@@ -2781,6 +2857,18 @@ def _job_control_payload_string(payload: dict[str, Any] | None, key: str) -> str
             status_code=422,
             error_code="ag.job_control_payload_invalid",
             detail=f"{key} must be a non-empty string when supplied.",
+            retryable=False,
+        )
+    return value
+
+
+def _job_control_required_payload_string(payload: dict[str, Any] | None, key: str) -> str:
+    value = _job_control_payload_string(payload, key)
+    if value is None:
+        raise AgJobControlError(
+            status_code=422,
+            error_code="ag.job_control_payload_invalid",
+            detail=f"{key} must be a non-empty string.",
             retryable=False,
         )
     return value
