@@ -26,9 +26,12 @@ ACTIVE_JOB_STATUSES = (QUEUED, RUNNING)
 RETRY_ACTION_REQUEUE = "REQUEUE"
 RETRY_ACTION_DEAD_LETTER = "DEAD_LETTER"
 JOB_RETRY_ACTIONS = (RETRY_ACTION_REQUEUE, RETRY_ACTION_DEAD_LETTER)
+REPLAY_ACTION_CREATE_NEW_JOB = "CREATE_NEW_JOB"
+JOB_REPLAY_ACTIONS = (REPLAY_ACTION_CREATE_NEW_JOB,)
 DEFAULT_RETRY_INITIAL_DELAY_SECONDS = 30
 DEFAULT_RETRY_MAX_DELAY_SECONDS = 900
 DEFAULT_RETRY_BACKOFF_MULTIPLIER = 2.0
+DEFAULT_REPLAY_REASON_MAX_LENGTH = 240
 
 VALID_JOB_TRANSITIONS: dict[str, tuple[str, ...]] = {
     QUEUED: (RUNNING, CANCELLED),
@@ -145,6 +148,58 @@ class JobRetryDecision:
         }
 
 
+@dataclass(frozen=True)
+class JobReplayPolicy:
+    require_dead_lettered: bool = True
+    require_operator_reason: bool = True
+    max_reason_length: int = DEFAULT_REPLAY_REASON_MAX_LENGTH
+    copy_payload: bool = True
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.require_dead_lettered, bool):
+            raise JobQueueError(
+                error_code="job_replay_policy.require_dead_lettered_invalid",
+                detail="require_dead_lettered must be a boolean",
+                status_code=422,
+            )
+        if not isinstance(self.require_operator_reason, bool):
+            raise JobQueueError(
+                error_code="job_replay_policy.require_operator_reason_invalid",
+                detail="require_operator_reason must be a boolean",
+                status_code=422,
+            )
+        if not isinstance(self.max_reason_length, int) or self.max_reason_length < 1:
+            raise JobQueueError(
+                error_code="job_replay_policy.max_reason_length_invalid",
+                detail="max_reason_length must be a positive integer",
+                status_code=422,
+            )
+        if not isinstance(self.copy_payload, bool):
+            raise JobQueueError(
+                error_code="job_replay_policy.copy_payload_invalid",
+                detail="copy_payload must be a boolean",
+                status_code=422,
+            )
+
+
+@dataclass(frozen=True)
+class JobReplayDecision:
+    action: str
+    replayed_at: str
+    source_job_id: str
+    replay_job: dict[str, Any]
+    lineage: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "action": self.action,
+            "replayed_at": self.replayed_at,
+            "source_job_id": self.source_job_id,
+            "replay_job": deepcopy(self.replay_job),
+            "lineage": deepcopy(self.lineage),
+        }
+
+
 def build_common_job(
     *,
     job_id: str,
@@ -177,6 +232,67 @@ def build_common_job(
         "updated_at": now,
     }
     return validate_common_job(job)
+
+
+def plan_dead_letter_replay(
+    job: dict[str, Any],
+    *,
+    replay_job_id: str,
+    idempotency_key: str,
+    requested_by: str,
+    reason: str,
+    replayed_at: str | None = None,
+    policy: JobReplayPolicy | None = None,
+) -> JobReplayDecision:
+    normalized = validate_common_job(deepcopy(job))
+    replay_policy = policy or JobReplayPolicy()
+    if normalized["status"] != FAILED:
+        raise JobQueueError(
+            error_code="job_replay.status_invalid",
+            detail="only FAILED jobs can be replayed",
+            status_code=409,
+        )
+    source_error = normalized.get("error")
+    dead_lettered = bool(isinstance(source_error, dict) and source_error.get("dead_lettered"))
+    if replay_policy.require_dead_lettered and not dead_lettered:
+        raise JobQueueError(
+            error_code="job_replay.dead_letter_required",
+            detail="only dead-lettered jobs can be replayed",
+            status_code=409,
+        )
+    operator = _required_string(requested_by, "requested_by")
+    normalized_reason = _normalize_replay_reason(reason, policy=replay_policy)
+    observed_replayed_at = replayed_at or _utc_now()
+    replay_job = build_common_job(
+        job_id=_required_string(replay_job_id, "replay_job_id"),
+        job_type=str(normalized["job_type"]),
+        trace_id=str(normalized["trace_id"]),
+        request_id=str(normalized["request_id"]),
+        subject_ref=deepcopy(normalized["subject_ref"]),
+        idempotency_key=_required_string(idempotency_key, "idempotency_key"),
+        created_at=observed_replayed_at,
+        max_attempts=int(normalized["max_attempts"]),
+        retryable=True,
+        links=deepcopy(normalized["links"]),
+        status=QUEUED,
+    )
+    lineage = _build_replay_lineage(
+        source_job=normalized,
+        source_error=source_error,
+        requested_by=operator,
+        reason=normalized_reason,
+        replayed_at=observed_replayed_at,
+    )
+    replay_job["replay_lineage"] = deepcopy(lineage)
+    if replay_policy.copy_payload and "payload" in normalized:
+        replay_job["payload"] = deepcopy(normalized["payload"])
+    return JobReplayDecision(
+        action=REPLAY_ACTION_CREATE_NEW_JOB,
+        replayed_at=observed_replayed_at,
+        source_job_id=str(normalized["job_id"]),
+        replay_job=validate_common_job(replay_job),
+        lineage=lineage,
+    )
 
 
 def build_job_error(
@@ -1003,6 +1119,51 @@ def _required_string(value: object, field_name: str) -> str:
     return value
 
 
+def _normalize_replay_reason(reason: object, *, policy: JobReplayPolicy) -> str:
+    if not isinstance(reason, str):
+        raise JobQueueError(
+            error_code="job_replay.reason_invalid",
+            detail="reason must be a string",
+            status_code=422,
+        )
+    normalized = reason.strip()
+    if policy.require_operator_reason and not normalized:
+        raise JobQueueError(
+            error_code="job_replay.reason_required",
+            detail="reason must be a non-empty string",
+            status_code=422,
+        )
+    if len(normalized) > policy.max_reason_length:
+        raise JobQueueError(
+            error_code="job_replay.reason_too_long",
+            detail=f"reason must be at most {policy.max_reason_length} characters",
+            status_code=422,
+        )
+    return normalized
+
+
+def _build_replay_lineage(
+    *,
+    source_job: dict[str, Any],
+    source_error: object,
+    requested_by: str,
+    reason: str,
+    replayed_at: str,
+) -> dict[str, Any]:
+    error_code = source_error.get("error_code") if isinstance(source_error, dict) else None
+    return {
+        "lineage_schema_version": "job_replay_lineage.v1",
+        "source_job_id": source_job["job_id"],
+        "source_status": source_job["status"],
+        "source_attempt_count": source_job["attempt_count"],
+        "source_max_attempts": source_job["max_attempts"],
+        "source_error_code": str(error_code) if error_code else None,
+        "requested_by": requested_by,
+        "reason": reason,
+        "replayed_at": replayed_at,
+    }
+
+
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
@@ -1059,6 +1220,7 @@ _JOB_SELECT_COLUMNS = """
     max_attempts,
     retryable,
     links,
+    payload,
     error,
     available_at,
     created_at,
@@ -1112,6 +1274,7 @@ def _job_from_row(row: Any) -> dict[str, Any]:
             "max_attempts": int(row["max_attempts"]),
             "retryable": bool(row["retryable"]),
             "links": _json_loads(row["links"], default={}),
+            "payload": _json_loads(row["payload"], default={}),
             "error": _json_loads(row["error"], default=None),
             "available_at": _timestamp_to_wire(row["available_at"]),
             "created_at": _timestamp_to_wire(row["created_at"]),

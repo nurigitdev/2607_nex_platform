@@ -232,6 +232,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0126`](slices/0126_ag_service_local_job_control_client_foundation.md) | `S13-006` AG service-local job control client foundation. |
 | [`Slice 0127`](slices/0127_ag_job_operation_control_endpoints.md) | `S13-007` AG job operation control endpoints. |
 | [`Slice 0128`](slices/0128_job_control_audit_operational_events.md) | `S13-008` Job control audit operational events. |
+| [`Slice 0129`](slices/0129_dead_letter_operator_replay_policy_foundation.md) | `S13-009` Dead-letter operator replay policy foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -14,12 +14,14 @@ from nex_runtime import (
     CANCELLED,
     DatabasePoolSettings,
     FAILED,
+    REPLAY_ACTION_CREATE_NEW_JOB,
     RETRY_ACTION_DEAD_LETTER,
     RETRY_ACTION_REQUEUE,
     QUEUED,
     RUNNING,
     SUCCEEDED,
     InMemoryJobQueue,
+    JobReplayPolicy,
     JobRetryPolicy,
     JobQueueError,
     SqlAlchemyJobQueue,
@@ -28,6 +30,7 @@ from nex_runtime import (
     build_job_error,
     build_session_factory,
     build_subject_ref,
+    plan_dead_letter_replay,
     plan_job_retry,
     summarize_jobs,
     transition_common_job,
@@ -215,6 +218,223 @@ def test_job_retry_policy_plans_requeue_and_dead_letter_decisions() -> None:
     assert invalid_policy.value.error_code == "job_retry_policy.max_delay_invalid"
 
 
+def test_plan_dead_letter_replay_creates_new_queued_job_with_lineage_and_payload_copy() -> None:
+    source = sample_job(
+        status=FAILED,
+        retryable=False,
+        attempt_count=2,
+        max_attempts=2,
+        payload={"source_file_id": "source-001", "nested": {"page_count": 3}},
+        error=build_job_error(
+            error_code="cx.processing_step_failed",
+            detail="Private parser details are not copied into replay lineage.",
+            retryable=False,
+            dead_lettered=True,
+        ),
+    )
+
+    decision = plan_dead_letter_replay(
+        source,
+        replay_job_id="job-001-replay-001",
+        idempotency_key="idem-001-replay-001",
+        requested_by="operator-001",
+        reason="  fixed parser config  ",
+        replayed_at=LATER,
+    )
+    decision_payload = decision.to_dict()
+
+    assert decision.action == REPLAY_ACTION_CREATE_NEW_JOB
+    assert decision.source_job_id == "job-001"
+    assert decision.replayed_at == LATER
+    assert decision.replay_job["job_id"] == "job-001-replay-001"
+    assert decision.replay_job["status"] == QUEUED
+    assert decision.replay_job["attempt_count"] == 0
+    assert decision.replay_job["max_attempts"] == 2
+    assert decision.replay_job["retryable"] is True
+    assert decision.replay_job["payload"] == source["payload"]
+    assert decision.replay_job["payload"] is not source["payload"]
+    assert decision.lineage == {
+        "lineage_schema_version": "job_replay_lineage.v1",
+        "source_job_id": "job-001",
+        "source_status": FAILED,
+        "source_attempt_count": 2,
+        "source_max_attempts": 2,
+        "source_error_code": "cx.processing_step_failed",
+        "requested_by": "operator-001",
+        "reason": "fixed parser config",
+        "replayed_at": LATER,
+    }
+    assert decision_payload["replay_job"] == decision.replay_job
+    assert "Private parser details" not in str(decision.lineage)
+
+
+def test_dead_letter_replay_decision_can_be_enqueued_without_mutating_source_job() -> None:
+    queue = InMemoryJobQueue()
+    queue.enqueue(
+        sample_job(
+            max_attempts=1,
+            payload={"source_file_id": "source-001"},
+        )
+    )
+    queue.start_job("job-001", updated_at=NOW)
+    source = queue.retry_job("job-001", failed_at=LATER)
+
+    decision = plan_dead_letter_replay(
+        source,
+        replay_job_id="job-001-replay-001",
+        idempotency_key="idem-001-replay-001",
+        requested_by="operator-001",
+        reason="operator approved replay",
+        replayed_at="2026-08-05T00:00:02Z",
+    )
+    replay = queue.enqueue(decision.replay_job)
+    duplicate = queue.enqueue(
+        sample_job(
+            job_id="other-replay-id",
+            idempotency_key="idem-001-replay-001",
+        )
+    )
+    claimed = queue.claim_next_job("worker-001", updated_at="2026-08-05T00:00:03Z")
+
+    assert queue.get_job("job-001")["status"] == FAILED
+    assert queue.get_job("job-001")["error"]["dead_lettered"] is True
+    assert replay["job_id"] == "job-001-replay-001"
+    assert duplicate["job_id"] == "job-001-replay-001"
+    assert claimed["job_id"] == "job-001-replay-001"
+
+
+def test_plan_dead_letter_replay_supports_policy_overrides() -> None:
+    source = sample_job(
+        status=FAILED,
+        retryable=False,
+        payload={"private": "payload"},
+        error=build_job_error(
+            error_code="cx.operator_failed",
+            detail="failed without dead-letter flag",
+            retryable=False,
+            dead_lettered=False,
+        ),
+    )
+
+    decision = plan_dead_letter_replay(
+        source,
+        replay_job_id="job-001-replay-001",
+        idempotency_key="idem-001-replay-001",
+        requested_by="operator-001",
+        reason=" ",
+        replayed_at=LATER,
+        policy=JobReplayPolicy(
+            require_dead_lettered=False,
+            require_operator_reason=False,
+            copy_payload=False,
+        ),
+    )
+
+    assert decision.replay_job["status"] == QUEUED
+    assert decision.lineage["reason"] == ""
+    assert "payload" not in decision.replay_job
+
+
+def test_plan_dead_letter_replay_rejects_invalid_sources_and_operator_input() -> None:
+    dead_lettered = sample_job(
+        status=FAILED,
+        retryable=False,
+        error=build_job_error(
+            error_code="cx.processing_step_failed",
+            detail="failed",
+            retryable=False,
+            dead_lettered=True,
+        ),
+    )
+    failed_without_dead_letter = sample_job(
+        status=FAILED,
+        retryable=False,
+        error=build_job_error(
+            error_code="cx.processing_step_failed",
+            detail="failed",
+            retryable=False,
+            dead_lettered=False,
+        ),
+    )
+
+    with pytest.raises(JobQueueError) as invalid_status:
+        plan_dead_letter_replay(
+            sample_job(status=RUNNING),
+            replay_job_id="replay",
+            idempotency_key="idem-replay",
+            requested_by="operator-001",
+            reason="retry",
+        )
+    with pytest.raises(JobQueueError) as dead_letter_required:
+        plan_dead_letter_replay(
+            failed_without_dead_letter,
+            replay_job_id="replay",
+            idempotency_key="idem-replay",
+            requested_by="operator-001",
+            reason="retry",
+        )
+    with pytest.raises(JobQueueError) as missing_reason:
+        plan_dead_letter_replay(
+            dead_lettered,
+            replay_job_id="replay",
+            idempotency_key="idem-replay",
+            requested_by="operator-001",
+            reason=" ",
+        )
+    with pytest.raises(JobQueueError) as long_reason:
+        plan_dead_letter_replay(
+            dead_lettered,
+            replay_job_id="replay",
+            idempotency_key="idem-replay",
+            requested_by="operator-001",
+            reason="x" * 4,
+            policy=JobReplayPolicy(max_reason_length=3),
+        )
+    with pytest.raises(JobQueueError) as invalid_reason:
+        plan_dead_letter_replay(
+            dead_lettered,
+            replay_job_id="replay",
+            idempotency_key="idem-replay",
+            requested_by="operator-001",
+            reason=7,
+        )
+    with pytest.raises(JobQueueError) as blank_requested_by:
+        plan_dead_letter_replay(
+            dead_lettered,
+            replay_job_id="replay",
+            idempotency_key="idem-replay",
+            requested_by="",
+            reason="retry",
+        )
+
+    assert invalid_status.value.error_code == "job_replay.status_invalid"
+    assert dead_letter_required.value.error_code == "job_replay.dead_letter_required"
+    assert missing_reason.value.error_code == "job_replay.reason_required"
+    assert long_reason.value.error_code == "job_replay.reason_too_long"
+    assert invalid_reason.value.error_code == "job_replay.reason_invalid"
+    assert blank_requested_by.value.error_code == "job.field_invalid"
+
+
+@pytest.mark.parametrize(
+    ("policy_kwargs", "error_code"),
+    [
+        ({"require_dead_lettered": "yes"}, "job_replay_policy.require_dead_lettered_invalid"),
+        ({"require_operator_reason": "no"}, "job_replay_policy.require_operator_reason_invalid"),
+        ({"max_reason_length": 0}, "job_replay_policy.max_reason_length_invalid"),
+        ({"copy_payload": "yes"}, "job_replay_policy.copy_payload_invalid"),
+    ],
+)
+def test_job_replay_policy_rejects_invalid_values(
+    policy_kwargs: dict[str, Any],
+    error_code: str,
+) -> None:
+    with pytest.raises(JobQueueError) as exc_info:
+        JobReplayPolicy(**policy_kwargs)
+
+    assert exc_info.value.error_code == error_code
+    assert exc_info.value.status_code == 422
+
+
 def test_in_memory_job_queue_enqueues_idempotently_and_returns_copies() -> None:
     queue = InMemoryJobQueue()
     job = sample_job()
@@ -371,13 +591,14 @@ def test_in_memory_job_queue_claim_returns_none_and_rejects_blank_worker() -> No
 
 def test_sqlalchemy_job_queue_enqueues_idempotently_and_returns_copies() -> None:
     queue = sqlite_job_queue()
-    first = queue.enqueue(sample_job())
+    first = queue.enqueue(sample_job(payload={"source_file_id": "source-001"}))
     first["status"] = FAILED
 
     duplicate = queue.enqueue(sample_job(job_id="job-duplicate", idempotency_key="idem-001"))
 
     assert duplicate["job_id"] == "job-001"
     assert duplicate["status"] == QUEUED
+    assert duplicate["payload"] == {"source_file_id": "source-001"}
     assert queue.get_job("job-001")["status"] == QUEUED
 
 
@@ -494,7 +715,7 @@ def test_sqlalchemy_job_queue_claims_next_available_job_and_skips_exhausted_atte
 
 def test_sqlalchemy_job_queue_retries_with_available_at_and_dead_letters() -> None:
     queue = sqlite_job_queue()
-    queue.enqueue(sample_job(max_attempts=2))
+    queue.enqueue(sample_job(max_attempts=2, payload={"source_file_id": "source-001"}))
     running = queue.claim_next_job("worker-001", updated_at=LATER)
 
     assert running is not None
@@ -531,6 +752,15 @@ def test_sqlalchemy_job_queue_retries_with_available_at_and_dead_letters() -> No
     assert dead_lettered["status"] == FAILED
     assert dead_lettered["retryable"] is False
     assert dead_lettered["error"]["dead_lettered"] is True
+    replay_decision = plan_dead_letter_replay(
+        dead_lettered,
+        replay_job_id="job-001-replay-001",
+        idempotency_key="idem-001-replay-001",
+        requested_by="operator-001",
+        reason="operator approved replay",
+        replayed_at="2026-08-05T00:00:09Z",
+    )
+    assert replay_decision.replay_job["payload"] == {"source_file_id": "source-001"}
     assert queue.get_job("missing") is None
     with pytest.raises(JobQueueError) as missing:
         queue.retry_job("missing")
