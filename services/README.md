@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0148 service log retention purge capability foundation.
+Status: Slice 0149 service log retention control API and AG dispatch guardrail.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -81,8 +81,12 @@ AG exposes the active structured service log query and retention policy at
 `GET /admin/v1/operations/logs/policy` and a read-only retention candidate
 projection at `GET /admin/v1/operations/logs/retention/dry-run`; retention
 execution evidence uses `service_log_retention_execution.v1`. Service log
-stores support guarded retention purge capability, but HTTP control endpoints
-and scheduled enforcement workers are future implementation steps.
+stores support guarded retention purge capability through
+`POST /internal/v1/service-logs/retention/purge`. AG can dispatch that control
+path through `POST /admin/v1/operations/logs/retention/{service_id}/purge` and
+returns `ag_service_log_retention_dispatch.v1`. Execute-mode dispatch requires
+`delete_enabled=true`; otherwise AG blocks before calling the target service.
+Scheduled enforcement workers are future implementation steps.
 
 Service workers should also report `worker_heartbeat.v1` payloads through the
 shared worker heartbeat runtime. It defines the status vocabulary, emitter,

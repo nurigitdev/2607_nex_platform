@@ -252,6 +252,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0146`](slices/0146_service_log_retention_dry_run_projection.md) | `S15-006` Service log retention dry-run projection. |
 | [`Slice 0147`](slices/0147_service_log_retention_execution_audit_contract.md) | `S15-007` Service log retention execution and audit contract. |
 | [`Slice 0148`](slices/0148_service_log_retention_purge_capability_foundation.md) | `S15-008` Service log retention purge capability foundation. |
+| [`Slice 0149`](slices/0149_service_log_retention_control_api_and_ag_dispatch_guardrail.md) | `S15-009` Service log retention control API and AG dispatch guardrail. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -1602,7 +1602,7 @@
               "const": "service-local"
             },
             "purge_execution": {
-              "const": "not_implemented"
+              "const": "service_local_control_api"
             },
             "future_archive_target": {
               "const": "object_storage_or_cold_table"
@@ -1650,7 +1650,7 @@
           "const": false
         },
         "purge_execution": {
-          "const": "not_implemented"
+          "const": "service_local_control_api"
         },
         "storage_owner": {
           "const": "service-local"

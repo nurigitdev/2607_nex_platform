@@ -50,7 +50,7 @@
       "minimum_retention_days": 7,
       "maximum_retention_days": 365,
       "storage_owner": "service-local",
-      "purge_execution": "not_implemented",
+      "purge_execution": "service_local_control_api",
       "future_archive_target": "object_storage_or_cold_table"
     },
     "redaction": {
@@ -73,7 +73,7 @@
   "retention_cutoff": "2026-07-06T00:00:00Z",
   "dry_run": {
     "delete_enabled": false,
-    "purge_execution": "not_implemented",
+    "purge_execution": "service_local_control_api",
     "storage_owner": "service-local"
   },
   "retention_candidates": [

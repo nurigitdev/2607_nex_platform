@@ -32,6 +32,7 @@ from nex_runtime import (
     OperationalEventEmitter,
     OperationalEventTypeSpec,
     MAX_SERVICE_LOG_LIMIT,
+    DEFAULT_SERVICE_LOG_RETENTION_MAX_DELETE_COUNT,
     REDACTED_LOG_VALUE,
     SERVICE_SPECS,
     SERVICE_LOG_SEVERITIES,
@@ -72,6 +73,11 @@ from nex_ag.job_control import (
     AgJobControlError,
     build_default_ag_job_control_client,
 )
+from nex_ag.service_log_retention import (
+    AgServiceLogRetentionClient,
+    AgServiceLogRetentionError,
+    build_default_ag_service_log_retention_client,
+)
 
 DEFAULT_OPERATIONAL_EVENT_STORE = InMemoryOperationalEventStore()
 DEFAULT_JOB_QUEUE_STORES = {
@@ -100,6 +106,11 @@ AG_SERVICE_LOG_QUERY_POLICY_PROJECTION_SCHEMA_VERSION = (
 AG_SERVICE_LOG_RETENTION_DRY_RUN_PROJECTION_SCHEMA_VERSION = (
     "ag_service_log_retention_dry_run_projection.v1"
 )
+AG_SERVICE_LOG_RETENTION_DISPATCH_SCHEMA_VERSION = (
+    "ag_service_log_retention_dispatch.v1"
+)
+AG_SERVICE_LOG_RETENTION_EVENT_SUCCEEDED = "ag.service_log_retention.succeeded"
+AG_SERVICE_LOG_RETENTION_EVENT_FAILED = "ag.service_log_retention.failed"
 SERVICE_LOG_QUERY_POLICY_SCHEMA_VERSION = "service_log_query_policy.v1"
 SERVICE_LOG_QUERY_POLICY_ID = "service-log-query-retention-v1"
 SERVICE_LOG_QUERY_SUPPORTED_FILTERS = (
@@ -1050,7 +1061,17 @@ def register_service_log_routes(
     *,
     service_log_stores: Mapping[str, ServiceLogStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
+    retention_control_client: AgServiceLogRetentionClient | None = None,
+    audit_event_store: OperationalEventStore | None = None,
 ) -> None:
+    control_client = (
+        retention_control_client or build_default_ag_service_log_retention_client()
+    )
+    audit_emitter = OperationalEventEmitter(
+        service_id="nex-ag",
+        store=audit_event_store or DEFAULT_OPERATIONAL_EVENT_STORE,
+    )
+
     @app.get("/admin/v1/operations/logs", response_model=None)
     def list_service_logs(
         request: Request,
@@ -1153,6 +1174,81 @@ def register_service_log_routes(
             retention_days=retention_days,
             limit=limit,
             request_trace_id=trace_id_from_headers(request),
+        )
+
+    @app.post("/admin/v1/operations/logs/retention/{service_id}/purge", response_model=None)
+    def dispatch_service_log_retention_purge(
+        service_id: str,
+        request: Request,
+        payload: dict[str, Any] | None = None,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        filter_problem = _validate_service_log_filters(
+            request,
+            service_id=service_id,
+            severity=None,
+            logger_name=None,
+            subject_type=None,
+            subject_id=None,
+        )
+        if filter_problem is not None:
+            return filter_problem
+
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            purge_request = _service_log_retention_dispatch_request(payload)
+            if not purge_request["dry_run"] and not purge_request["delete_enabled"]:
+                raise AgServiceLogRetentionError(
+                    status_code=409,
+                    error_code="ag.service_log_retention_delete_not_enabled",
+                    detail=(
+                        "delete_enabled must be true before AG dispatches an "
+                        "execute-mode service log retention purge."
+                    ),
+                    retryable=False,
+                )
+            service_response = control_client.purge_logs(
+                service_id,
+                request_id=request_id,
+                trace_id=trace_id,
+                retention_cutoff=purge_request["retention_cutoff"],
+                retention_days=purge_request["retention_days"],
+                checked_at=purge_request["checked_at"],
+                dry_run=purge_request["dry_run"],
+                delete_enabled=purge_request["delete_enabled"],
+                max_delete_count=purge_request["max_delete_count"],
+                requested_by=purge_request["requested_by"],
+                idempotency_key=purge_request["idempotency_key"],
+            )
+        except AgServiceLogRetentionError as exc:
+            audit_result = emit_service_log_retention_dispatch_audit_event(
+                audit_emitter,
+                service_id=service_id,
+                request_id=request_id,
+                trace_id=trace_id,
+                error=exc,
+            )
+            return _service_log_retention_dispatch_problem_response(
+                request,
+                exc,
+                audit_result=audit_result,
+            )
+        audit_result = emit_service_log_retention_dispatch_audit_event(
+            audit_emitter,
+            service_id=service_id,
+            request_id=request_id,
+            trace_id=trace_id,
+            service_response=service_response,
+        )
+        return build_service_log_retention_dispatch_projection(
+            service_id=service_id,
+            service_response=service_response,
+            audit_result=audit_result,
+            request_trace_id=trace_id,
         )
 
     @app.get("/admin/v1/operations/logs/{log_id}", response_model=None)
@@ -2315,7 +2411,7 @@ def service_log_query_policy(
             "minimum_retention_days": MIN_SERVICE_LOG_RETENTION_DAYS,
             "maximum_retention_days": MAX_SERVICE_LOG_RETENTION_DAYS,
             "storage_owner": "service-local",
-            "purge_execution": "not_implemented",
+            "purge_execution": "service_local_control_api",
             "future_archive_target": "object_storage_or_cold_table",
         },
         "redaction": {
@@ -3334,6 +3430,89 @@ def build_job_control_dispatch_projection(
     return projection
 
 
+def build_service_log_retention_dispatch_projection(
+    *,
+    service_id: str,
+    service_response: dict[str, Any],
+    audit_result: OperationalEventEmitResult | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    projection = {
+        "projection_schema_version": AG_SERVICE_LOG_RETENTION_DISPATCH_SCHEMA_VERSION,
+        "dispatch_status": "SUCCEEDED",
+        "checked_at": _utc_now(),
+        "service_id": service_id,
+        "service_response": deepcopy(service_response),
+        "audit_event": (
+            audit_result.to_summary()
+            if audit_result is not None
+            else {
+                "ok": False,
+                "error_code": "ag.service_log_retention_audit_not_requested",
+            }
+        ),
+        "summary": {
+            "service_id": service_id,
+            "mode": service_response.get("mode"),
+            "execution_status": service_response.get("execution_status"),
+            "candidate_count": service_response.get("candidate_count"),
+            "deleted_count": service_response.get("deleted_count"),
+            "delete_enabled": service_response.get("delete_enabled"),
+            "max_delete_count": service_response.get("max_delete_count"),
+        },
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
+def emit_service_log_retention_dispatch_audit_event(
+    emitter: OperationalEventEmitter,
+    *,
+    service_id: str,
+    request_id: str,
+    trace_id: str,
+    service_response: dict[str, Any] | None = None,
+    error: AgServiceLogRetentionError | None = None,
+) -> OperationalEventEmitResult:
+    if error is not None:
+        return emitter.safe_emit(
+            event_type=AG_SERVICE_LOG_RETENTION_EVENT_FAILED,
+            severity="ERROR",
+            message=f"AG failed to dispatch service log retention purge for {service_id}.",
+            trace_id=trace_id,
+            request_id=request_id,
+            subject_ref={"type": "service_log_retention", "id": service_id},
+            details={
+                "target_service_id": service_id,
+                "dispatch_status": "FAILED",
+                "error_code": error.error_code,
+                "status_code": error.status_code,
+                "retryable": error.retryable,
+            },
+        )
+    return emitter.safe_emit(
+        event_type=AG_SERVICE_LOG_RETENTION_EVENT_SUCCEEDED,
+        severity="INFO",
+        message=f"AG dispatched service log retention purge for {service_id}.",
+        trace_id=trace_id,
+        request_id=request_id,
+        subject_ref={"type": "service_log_retention", "id": service_id},
+        details={
+            "target_service_id": service_id,
+            "dispatch_status": "SUCCEEDED",
+            "mode": (service_response or {}).get("mode"),
+            "execution_status": (service_response or {}).get("execution_status"),
+            "candidate_count": (service_response or {}).get("candidate_count"),
+            "deleted_count": (service_response or {}).get("deleted_count"),
+            "delete_enabled": (service_response or {}).get("delete_enabled"),
+            "retention_execution_schema_version": (service_response or {}).get(
+                "retention_execution_schema_version"
+            ),
+        },
+    )
+
+
 def emit_job_control_audit_event(
     emitter: OperationalEventEmitter,
     *,
@@ -3665,6 +3844,179 @@ def _job_control_dispatch_problem_response(
                 audit_result.to_summary()
                 if audit_result is not None
                 else {"ok": False, "error_code": "ag.job_control_audit_not_requested"}
+            )
+        },
+    )
+
+
+def _service_log_retention_dispatch_request(
+    payload: dict[str, Any] | None,
+) -> dict[str, Any]:
+    source = payload or {}
+    if not isinstance(source, dict):
+        raise AgServiceLogRetentionError(
+            status_code=422,
+            error_code="ag.service_log_retention_payload_invalid",
+            detail="retention purge payload must be an object.",
+            retryable=False,
+        )
+    dry_run = _service_log_retention_payload_bool(
+        source,
+        "dry_run",
+        default=True,
+    )
+    delete_enabled = _service_log_retention_payload_bool(
+        source,
+        "delete_enabled",
+        default=False,
+    )
+    if dry_run and delete_enabled:
+        raise AgServiceLogRetentionError(
+            status_code=422,
+            error_code="ag.service_log_retention_payload_invalid",
+            detail="delete_enabled cannot be true for dry-run retention purge.",
+            retryable=False,
+        )
+    return {
+        "retention_cutoff": _service_log_retention_required_payload_string(
+            source,
+            "retention_cutoff",
+        ),
+        "retention_days": _service_log_retention_payload_int(
+            source,
+            "retention_days",
+            default=DEFAULT_SERVICE_LOG_RETENTION_DAYS,
+        ),
+        "checked_at": _service_log_retention_payload_string(
+            source,
+            "checked_at",
+        ),
+        "dry_run": dry_run,
+        "delete_enabled": delete_enabled,
+        "max_delete_count": _service_log_retention_payload_int(
+            source,
+            "max_delete_count",
+            default=DEFAULT_SERVICE_LOG_RETENTION_MAX_DELETE_COUNT,
+        ),
+        "requested_by": _service_log_retention_payload_object(
+            source,
+            "requested_by",
+        ),
+        "idempotency_key": _service_log_retention_payload_string(
+            source,
+            "idempotency_key",
+        ),
+    }
+
+
+def _service_log_retention_required_payload_string(
+    payload: dict[str, Any],
+    key: str,
+) -> str:
+    value = _service_log_retention_payload_string(payload, key)
+    if value is None:
+        raise AgServiceLogRetentionError(
+            status_code=422,
+            error_code="ag.service_log_retention_payload_invalid",
+            detail=f"{key} must be a non-empty string.",
+            retryable=False,
+        )
+    return value
+
+
+def _service_log_retention_payload_string(
+    payload: dict[str, Any],
+    key: str,
+) -> str | None:
+    if key not in payload or payload[key] is None:
+        return None
+    value = payload[key]
+    if not isinstance(value, str) or not value:
+        raise AgServiceLogRetentionError(
+            status_code=422,
+            error_code="ag.service_log_retention_payload_invalid",
+            detail=f"{key} must be a non-empty string when supplied.",
+            retryable=False,
+        )
+    return value
+
+
+def _service_log_retention_payload_bool(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    default: bool,
+) -> bool:
+    value = payload.get(key, default)
+    if not isinstance(value, bool):
+        raise AgServiceLogRetentionError(
+            status_code=422,
+            error_code="ag.service_log_retention_payload_invalid",
+            detail=f"{key} must be a boolean.",
+            retryable=False,
+        )
+    return value
+
+
+def _service_log_retention_payload_int(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    default: int,
+) -> int:
+    value = payload.get(key, default)
+    if not isinstance(value, int):
+        raise AgServiceLogRetentionError(
+            status_code=422,
+            error_code="ag.service_log_retention_payload_invalid",
+            detail=f"{key} must be an integer.",
+            retryable=False,
+        )
+    return value
+
+
+def _service_log_retention_payload_object(
+    payload: dict[str, Any],
+    key: str,
+) -> dict[str, Any] | None:
+    if key not in payload or payload[key] is None:
+        return None
+    value = payload[key]
+    if not isinstance(value, dict):
+        raise AgServiceLogRetentionError(
+            status_code=422,
+            error_code="ag.service_log_retention_payload_invalid",
+            detail=f"{key} must be an object.",
+            retryable=False,
+        )
+    return deepcopy(value)
+
+
+def _service_log_retention_dispatch_problem_response(
+    request: Request,
+    exc: AgServiceLogRetentionError,
+    *,
+    audit_result: OperationalEventEmitResult | None = None,
+) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="Service log retention dispatch failed",
+        detail=exc.detail,
+        retryable=exc.retryable,
+        type_uri=(
+            "https://nex-platform.local/problems/"
+            "service-log-retention-dispatch-failed"
+        ),
+        details={
+            "audit_event": (
+                audit_result.to_summary()
+                if audit_result is not None
+                else {
+                    "ok": False,
+                    "error_code": "ag.service_log_retention_audit_not_requested",
+                }
             )
         },
     )

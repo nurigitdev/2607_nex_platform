@@ -8,6 +8,7 @@ from typing import Any
 
 import jsonschema
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -22,18 +23,22 @@ from nex_runtime import (
     REDACTED_LOG_VALUE,
     SERVICE_LOG_RETENTION_EXECUTION_SCHEMA_VERSION,
     SERVICE_LOG_RETENTION_POLICY_ID,
+    SERVICE_SPECS,
     ServiceLogEmitter,
     ServiceLogEmitResult,
     ServiceLogError,
     SqlAlchemyServiceLogStore,
     build_engine,
     build_session_factory,
+    build_service_app,
     build_service_log_entry,
     build_service_log_retention_execution,
+    issue_mock_service_token,
     normalize_service_log_limit,
     normalize_service_log_retention_days,
     normalize_service_log_retention_delete_limit,
     redact_service_log_attributes,
+    register_service_log_retention_routes,
     service_log_emitter_from_app,
     service_log_store_from_app,
     summarize_service_logs,
@@ -45,6 +50,11 @@ from nex_runtime import (
 NOW = "2026-08-05T00:00:02Z"
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
+
+
+def auth_headers(*, audience: str = "nex-cx") -> dict[str, str]:
+    issued = issue_mock_service_token(service_id="nex-ag", audience=audience)
+    return {"Authorization": f"Bearer {issued.access_token}"}
 
 
 def sample_log(**overrides: Any) -> dict[str, Any]:
@@ -867,6 +877,183 @@ def test_in_memory_service_log_store_rejects_bad_retention_purge_inputs() -> Non
     assert bad_cutoff.value.error_code == (
         "service_log_retention.retention_cutoff_invalid"
     )
+
+
+def test_service_log_retention_route_requires_claim_and_runs_dry_run() -> None:
+    store = InMemoryServiceLogStore()
+    store.append(
+        sample_log(log_id="log-old", observed_at="2026-06-01T00:00:00Z")
+    )
+    store.append(
+        sample_log(log_id="log-fresh", observed_at="2026-08-04T00:00:00Z")
+    )
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    register_service_log_retention_routes(app, service_id="nex-cx", store=store)
+    client = TestClient(app)
+
+    missing_auth = client.post(
+        "/internal/v1/service-logs/retention/purge",
+        json={"retention_cutoff": "2026-07-06T00:00:00Z"},
+    )
+    wrong_audience = client.post(
+        "/internal/v1/service-logs/retention/purge",
+        json={"retention_cutoff": "2026-07-06T00:00:00Z"},
+        headers=auth_headers(audience="nex-mo"),
+    )
+    response = client.post(
+        "/internal/v1/service-logs/retention/purge",
+        json={
+            "retention_cutoff": "2026-07-06T00:00:00Z",
+            "checked_at": "2026-08-05T00:00:00Z",
+            "retention_days": 30,
+            "max_delete_count": 10,
+            "idempotency_key": "dry-run-001",
+        },
+        headers={
+            **auth_headers(),
+            "X-Request-ID": REQUEST_ID,
+            "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+        },
+    )
+
+    assert missing_auth.status_code == 401
+    assert missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert wrong_audience.status_code == 401
+    assert wrong_audience.json()["error_code"] == "TOKEN_AUDIENCE_INVALID"
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["retention_execution_schema_version"] == (
+        SERVICE_LOG_RETENTION_EXECUTION_SCHEMA_VERSION
+    )
+    assert payload["mode"] == "DRY_RUN"
+    assert payload["execution_status"] == "SUCCEEDED"
+    assert payload["candidate_count"] == 1
+    assert payload["deleted_count"] == 0
+    assert payload["request_id"] == REQUEST_ID
+    assert payload["trace_id"] == TRACE_ID
+    assert store.get_log("log-old") is not None
+
+
+def test_service_log_retention_route_blocks_or_executes_with_explicit_enable() -> None:
+    store = InMemoryServiceLogStore()
+    for log_id, observed_at in (
+        ("log-old-001", "2026-06-01T00:00:00Z"),
+        ("log-old-002", "2026-06-02T00:00:00Z"),
+    ):
+        store.append(sample_log(log_id=log_id, observed_at=observed_at))
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    register_service_log_retention_routes(app, service_id="nex-cx", store=store)
+    client = TestClient(app)
+    base_payload = {
+        "retention_cutoff": "2026-07-06T00:00:00Z",
+        "checked_at": "2026-08-05T00:00:00Z",
+        "dry_run": False,
+        "max_delete_count": 1,
+        "requested_by": {
+            "actor_type": "service",
+            "actor_id": "nex-ag",
+            "service_id": "nex-ag",
+        },
+    }
+
+    blocked = client.post(
+        "/internal/v1/service-logs/retention/purge",
+        json=base_payload,
+        headers=auth_headers(),
+    )
+    executed = client.post(
+        "/internal/v1/service-logs/retention/purge",
+        json={**base_payload, "delete_enabled": True},
+        headers=auth_headers(),
+    )
+    invalid = client.post(
+        "/internal/v1/service-logs/retention/purge",
+        json={
+            "retention_cutoff": "2026-07-06T00:00:00Z",
+            "dry_run": True,
+            "delete_enabled": True,
+        },
+        headers=auth_headers(),
+    )
+
+    assert blocked.status_code == 200
+    assert blocked.json()["execution_status"] == "BLOCKED"
+    assert blocked.json()["blocked_reason"] == "delete_not_enabled"
+    assert executed.status_code == 200
+    assert executed.json()["mode"] == "EXECUTE"
+    assert executed.json()["execution_status"] == "SUCCEEDED"
+    assert executed.json()["deleted_count"] == 1
+    assert store.get_log("log-old-001") is None
+    assert store.get_log("log-old-002") is not None
+    assert invalid.status_code == 422
+    assert invalid.json()["error_code"] == "service_log_retention.delete_enabled_invalid"
+
+
+def test_service_log_retention_route_reports_store_unavailable() -> None:
+    class BrokenRetentionStore:
+        def append(self, entry):
+            raise AssertionError("not used")
+
+        def get_log(self, log_id):
+            raise AssertionError("not used")
+
+        def list_logs(self, **kwargs):
+            raise AssertionError("not used")
+
+        def purge_retention_candidates(self, **kwargs):
+            raise ServiceLogError(
+                error_code="service_log.store_unavailable",
+                detail="service log store is unavailable",
+                status_code=503,
+            )
+
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    register_service_log_retention_routes(
+        app,
+        service_id="nex-cx",
+        store=BrokenRetentionStore(),  # type: ignore[arg-type]
+    )
+
+    response = TestClient(app).post(
+        "/internal/v1/service-logs/retention/purge",
+        json={"retention_cutoff": "2026-07-06T00:00:00Z"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == "service_log.store_unavailable"
+    assert response.json()["retryable"] is True
+
+
+def test_service_log_retention_route_payload_helpers_reject_edges() -> None:
+    assert runtime_logs._retention_payload_object(None) == {}
+
+    with pytest.raises(ServiceLogError) as bad_shape:
+        runtime_logs._retention_payload_object(["not", "object"])
+    with pytest.raises(ServiceLogError) as missing_required:
+        runtime_logs._retention_payload_required_string({}, "retention_cutoff")
+    with pytest.raises(ServiceLogError) as bad_string:
+        runtime_logs._retention_payload_optional_string({"checked_at": ""}, "checked_at")
+    with pytest.raises(ServiceLogError) as bad_bool:
+        runtime_logs._retention_payload_bool({"dry_run": "yes"}, "dry_run", default=True)
+    with pytest.raises(ServiceLogError) as bad_int:
+        runtime_logs._retention_payload_int(
+            {"retention_days": "30"},
+            "retention_days",
+            default=30,
+        )
+    with pytest.raises(ServiceLogError) as bad_object:
+        runtime_logs._retention_payload_optional_object(
+            {"requested_by": "nex-ag"},
+            "requested_by",
+        )
+
+    assert bad_shape.value.error_code == "service_log_retention.payload_invalid"
+    assert missing_required.value.detail == "retention_cutoff must be a non-empty string."
+    assert bad_string.value.detail == "checked_at must be a non-empty string."
+    assert bad_bool.value.detail == "dry_run must be a boolean."
+    assert bad_int.value.detail == "retention_days must be an integer."
+    assert bad_object.value.detail == "requested_by must be an object."
 
 
 def test_sqlalchemy_service_log_store_persists_filters_and_reads_back_json() -> None:

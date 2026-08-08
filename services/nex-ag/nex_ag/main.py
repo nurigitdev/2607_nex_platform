@@ -3,6 +3,7 @@ from nex_runtime import (
     attach_service_persistence_runtime,
     build_service_app,
     register_service_job_control_routes,
+    register_service_log_retention_routes,
 )
 from nex_ag.generation_audit import register_generation_audit_routes
 from nex_ag.operations import (
@@ -26,6 +27,11 @@ register_service_job_control_routes(
     service_id=SERVICE_SPEC.service_id,
     job_queue=SERVICE_PERSISTENCE.job_queue,
 )
+register_service_log_retention_routes(
+    app,
+    service_id=SERVICE_SPEC.service_id,
+    store=SERVICE_PERSISTENCE.service_log_store,
+)
 OPERATIONS_SOURCE_RUNTIME = attach_ag_operations_source_runtime(app)
 OPERATIONS_SOURCE_REGISTRY = OPERATIONS_SOURCE_RUNTIME.registry
 register_readiness_routes(app)
@@ -47,10 +53,15 @@ if OPERATIONS_SOURCE_REGISTRY is None:
     register_service_log_routes(
         app,
         service_log_stores={"nex-ag": SERVICE_PERSISTENCE.service_log_store},
+        audit_event_store=SERVICE_PERSISTENCE.operational_event_store,
     )
 else:
     register_operational_event_routes(app, registry=OPERATIONS_SOURCE_REGISTRY)
-    register_service_log_routes(app, registry=OPERATIONS_SOURCE_REGISTRY)
+    register_service_log_routes(
+        app,
+        registry=OPERATIONS_SOURCE_REGISTRY,
+        audit_event_store=SERVICE_PERSISTENCE.operational_event_store,
+    )
 register_job_operation_routes(
     app,
     event_store=SERVICE_PERSISTENCE.operational_event_store,

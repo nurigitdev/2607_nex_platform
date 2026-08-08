@@ -444,7 +444,7 @@ def _ag_operations_dashboard_smoke_checks(
             log_policy["policy"]["query"]["max_limit"] == 500
             and log_policy["policy"]["retention"]["default_retention_days"] == 30
             and log_policy["policy"]["retention"]["purge_execution"]
-            == "not_implemented"
+            == "service_local_control_api"
         ),
         "service_log_retention_dry_run_visible": (
             log_retention_dry_run["dry_run"]["delete_enabled"] is False

@@ -44,7 +44,7 @@
       "minimum_retention_days": 7,
       "maximum_retention_days": 365,
       "storage_owner": "service-local",
-      "purge_execution": "not_implemented",
+      "purge_execution": "service_local_control_api",
       "future_archive_target": "object_storage_or_cold_table"
     },
     "redaction": {

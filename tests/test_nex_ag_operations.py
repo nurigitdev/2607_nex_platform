@@ -8,7 +8,11 @@ import pytest
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 
+import nex_ag.operations as ag_operations
 from nex_ag.operations import (
+    AG_SERVICE_LOG_RETENTION_DISPATCH_SCHEMA_VERSION,
+    AG_SERVICE_LOG_RETENTION_EVENT_FAILED,
+    AG_SERVICE_LOG_RETENTION_EVENT_SUCCEEDED,
     AG_JOB_CONTROL_DISPATCH_SCHEMA_VERSION,
     AG_OPERATIONS_SOURCE_MODE_ENV,
     AG_OPERATIONS_SOURCE_PROFILE_ENV,
@@ -43,6 +47,7 @@ from nex_ag.operations import (
     build_operational_event_projection,
     build_operations_issue_candidates,
     build_service_log_detail_projection,
+    build_service_log_retention_dispatch_projection,
     build_service_log_query_policy_projection,
     build_service_log_projection,
     build_service_log_retention_dry_run_projection,
@@ -78,6 +83,7 @@ from nex_ag.operations import (
     service_log_query_policy,
 )
 from nex_ag.job_control import AgJobControlError
+from nex_ag.service_log_retention import AgServiceLogRetentionError
 from nex_runtime import (
     AG_JOB_CONTROL_EVENT_FAILED,
     AG_JOB_CONTROL_EVENT_SUCCEEDED,
@@ -473,6 +479,56 @@ class RecordingJobControlClient:
         }
 
 
+class RecordingServiceLogRetentionClient:
+    def __init__(self, *, error: AgServiceLogRetentionError | None = None) -> None:
+        self.error = error
+        self.calls: list[dict[str, object]] = []
+
+    def purge_logs(
+        self,
+        service_id,
+        *,
+        request_id,
+        trace_id,
+        retention_cutoff,
+        retention_days=None,
+        checked_at=None,
+        dry_run=True,
+        delete_enabled=False,
+        max_delete_count=None,
+        requested_by=None,
+        idempotency_key=None,
+    ):
+        self.calls.append(
+            {
+                "service_id": service_id,
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "retention_cutoff": retention_cutoff,
+                "retention_days": retention_days,
+                "checked_at": checked_at,
+                "dry_run": dry_run,
+                "delete_enabled": delete_enabled,
+                "max_delete_count": max_delete_count,
+                "requested_by": requested_by,
+                "idempotency_key": idempotency_key,
+            }
+        )
+        if self.error is not None:
+            raise self.error
+        return service_log_retention_execution_response(
+            service_id=service_id,
+            mode="DRY_RUN" if dry_run else "EXECUTE",
+            execution_status="SUCCEEDED",
+            retention_cutoff=retention_cutoff,
+            checked_at=checked_at or "2026-08-05T00:00:00Z",
+            candidate_count=2,
+            deleted_count=1 if delete_enabled else 0,
+            delete_enabled=delete_enabled,
+            max_delete_count=max_delete_count or 100,
+        )
+
+
 def service_job_control_response(
     *,
     service_id: str,
@@ -497,6 +553,51 @@ def service_job_control_response(
             "terminal": status in {"SUCCEEDED", "FAILED", "CANCELLED"},
             "dead_lettered": False,
             "allowed_actions": ["read"],
+        },
+    }
+
+
+def service_log_retention_execution_response(
+    *,
+    service_id: str,
+    mode: str,
+    execution_status: str,
+    retention_cutoff: str,
+    checked_at: str,
+    candidate_count: int,
+    deleted_count: int,
+    delete_enabled: bool,
+    max_delete_count: int,
+) -> dict[str, object]:
+    return {
+        "retention_execution_schema_version": "service_log_retention_execution.v1",
+        "execution_id": "retention-execution-001",
+        "policy_id": "service-log-query-retention-v1",
+        "service_id": service_id,
+        "mode": mode,
+        "execution_status": execution_status,
+        "delete_enabled": delete_enabled,
+        "retention_days": 30,
+        "retention_cutoff": retention_cutoff,
+        "checked_at": checked_at,
+        "scan_limit": 50,
+        "max_delete_count": max_delete_count,
+        "candidate_count": candidate_count,
+        "deleted_count": deleted_count,
+        "requested_by": {
+            "actor_type": "service",
+            "actor_id": "nex-ag",
+            "service_id": "nex-ag",
+        },
+        "idempotency_key": "purge-001",
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "blocked_reason": None,
+        "error": None,
+        "audit": {
+            "audit_event_type": "service_log.retention.execution",
+            "audit_event_id": "retention-audit-001",
+            "emitted": False,
         },
     }
 
@@ -3539,7 +3640,7 @@ def test_service_log_query_policy_projection_reports_query_and_retention_contrac
         "minimum_retention_days": 7,
         "maximum_retention_days": 365,
         "storage_owner": "service-local",
-        "purge_execution": "not_implemented",
+        "purge_execution": "service_local_control_api",
         "future_archive_target": "object_storage_or_cold_table",
     }
     assert policy["redaction"]["redacted_value"] == "<redacted>"
@@ -3584,7 +3685,7 @@ def test_service_log_retention_dry_run_projection_reports_safe_candidates() -> N
     assert projection["retention_cutoff"] == "2026-07-06T00:00:00Z"
     assert projection["dry_run"] == {
         "delete_enabled": False,
-        "purge_execution": "not_implemented",
+        "purge_execution": "service_local_control_api",
         "storage_owner": "service-local",
     }
     assert projection["filters"] == {
@@ -3654,6 +3755,243 @@ def test_service_log_retention_dry_run_projection_reports_degraded_sources() -> 
     assert unavailable_projection["source_statuses"]["nex-mo"]["candidate_count"] == 0
     assert_ag_operations_projection_contract(projection)
     assert_ag_operations_projection_contract(unavailable_projection)
+
+
+def test_service_log_retention_dispatch_projection_wraps_service_response() -> None:
+    projection = build_service_log_retention_dispatch_projection(
+        service_id="nex-cx",
+        service_response=service_log_retention_execution_response(
+            service_id="nex-cx",
+            mode="EXECUTE",
+            execution_status="SUCCEEDED",
+            retention_cutoff="2026-07-06T00:00:00Z",
+            checked_at="2026-08-05T00:00:00Z",
+            candidate_count=2,
+            deleted_count=1,
+            delete_enabled=True,
+            max_delete_count=1,
+        ),
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == (
+        AG_SERVICE_LOG_RETENTION_DISPATCH_SCHEMA_VERSION
+    )
+    assert projection["dispatch_status"] == "SUCCEEDED"
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["audit_event"] == {
+        "ok": False,
+        "error_code": "ag.service_log_retention_audit_not_requested",
+    }
+    assert projection["summary"] == {
+        "service_id": "nex-cx",
+        "mode": "EXECUTE",
+        "execution_status": "SUCCEEDED",
+        "candidate_count": 2,
+        "deleted_count": 1,
+        "delete_enabled": True,
+        "max_delete_count": 1,
+    }
+
+
+def test_service_log_retention_route_dispatches_to_service_client() -> None:
+    control_client = RecordingServiceLogRetentionClient()
+    audit_store = InMemoryOperationalEventStore()
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_service_log_routes(
+        app,
+        retention_control_client=control_client,
+        audit_event_store=audit_store,
+    )
+    client = TestClient(app)
+    headers = {
+        **auth_headers(),
+        "X-Request-ID": REQUEST_ID,
+        "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+    }
+
+    response = client.post(
+        "/admin/v1/operations/logs/retention/nex-cx/purge",
+        json={
+            "retention_cutoff": "2026-07-06T00:00:00Z",
+            "checked_at": "2026-08-05T00:00:00Z",
+            "retention_days": 30,
+            "dry_run": False,
+            "delete_enabled": True,
+            "max_delete_count": 1,
+            "requested_by": {
+                "actor_type": "service",
+                "actor_id": "nex-ag",
+                "service_id": "nex-ag",
+            },
+            "idempotency_key": "purge-001",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["projection_schema_version"] == (
+        AG_SERVICE_LOG_RETENTION_DISPATCH_SCHEMA_VERSION
+    )
+    assert payload["summary"] == {
+        "service_id": "nex-cx",
+        "mode": "EXECUTE",
+        "execution_status": "SUCCEEDED",
+        "candidate_count": 2,
+        "deleted_count": 1,
+        "delete_enabled": True,
+        "max_delete_count": 1,
+    }
+    assert payload["audit_event"]["event_type"] == (
+        AG_SERVICE_LOG_RETENTION_EVENT_SUCCEEDED
+    )
+    assert control_client.calls == [
+        {
+            "service_id": "nex-cx",
+            "request_id": REQUEST_ID,
+            "trace_id": TRACE_ID,
+            "retention_cutoff": "2026-07-06T00:00:00Z",
+            "retention_days": 30,
+            "checked_at": "2026-08-05T00:00:00Z",
+            "dry_run": False,
+            "delete_enabled": True,
+            "max_delete_count": 1,
+            "requested_by": {
+                "actor_type": "service",
+                "actor_id": "nex-ag",
+                "service_id": "nex-ag",
+            },
+            "idempotency_key": "purge-001",
+        }
+    ]
+    audit_events = audit_store.list_events(service_id="nex-ag", limit=10)
+    assert audit_events[0]["event_type"] == AG_SERVICE_LOG_RETENTION_EVENT_SUCCEEDED
+    assert audit_events[0]["details"]["deleted_count"] == 1
+
+
+def test_service_log_retention_route_blocks_unsafe_execute_before_dispatch() -> None:
+    control_client = RecordingServiceLogRetentionClient()
+    audit_store = InMemoryOperationalEventStore()
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_service_log_routes(
+        app,
+        retention_control_client=control_client,
+        audit_event_store=audit_store,
+    )
+    client = TestClient(app)
+
+    missing_auth = client.post(
+        "/admin/v1/operations/logs/retention/nex-cx/purge",
+        json={"retention_cutoff": "2026-07-06T00:00:00Z"},
+    )
+    bad_service = client.post(
+        "/admin/v1/operations/logs/retention/nex-unknown/purge",
+        json={"retention_cutoff": "2026-07-06T00:00:00Z"},
+        headers=auth_headers(),
+    )
+    blocked = client.post(
+        "/admin/v1/operations/logs/retention/nex-cx/purge",
+        json={
+            "retention_cutoff": "2026-07-06T00:00:00Z",
+            "dry_run": False,
+        },
+        headers=auth_headers(),
+    )
+    invalid_payload = client.post(
+        "/admin/v1/operations/logs/retention/nex-cx/purge",
+        json={
+            "retention_cutoff": "2026-07-06T00:00:00Z",
+            "dry_run": True,
+            "delete_enabled": True,
+        },
+        headers=auth_headers(),
+    )
+
+    assert missing_auth.status_code == 401
+    assert missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert bad_service.status_code == 400
+    assert bad_service.json()["error_code"] == "ag.service_log_service_invalid"
+    assert blocked.status_code == 409
+    assert blocked.json()["error_code"] == "ag.service_log_retention_delete_not_enabled"
+    assert invalid_payload.status_code == 422
+    assert invalid_payload.json()["error_code"] == (
+        "ag.service_log_retention_payload_invalid"
+    )
+    assert control_client.calls == []
+    audit_events = audit_store.list_events(service_id="nex-ag", limit=10)
+    assert audit_events[0]["event_type"] == AG_SERVICE_LOG_RETENTION_EVENT_FAILED
+    assert audit_events[0]["details"]["error_code"] == (
+        "ag.service_log_retention_payload_invalid"
+    )
+    assert audit_events[1]["details"]["error_code"] == (
+        "ag.service_log_retention_delete_not_enabled"
+    )
+
+
+def test_service_log_retention_route_maps_service_client_errors() -> None:
+    audit_store = InMemoryOperationalEventStore()
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_service_log_routes(
+        app,
+        retention_control_client=RecordingServiceLogRetentionClient(
+            error=AgServiceLogRetentionError(
+                status_code=503,
+                error_code="service_log.store_unavailable",
+                detail="service log store is unavailable",
+                retryable=True,
+            )
+        ),
+        audit_event_store=audit_store,
+    )
+
+    response = TestClient(app).post(
+        "/admin/v1/operations/logs/retention/nex-cx/purge",
+        json={"retention_cutoff": "2026-07-06T00:00:00Z"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == "service_log.store_unavailable"
+    assert response.json()["type"].endswith("/service-log-retention-dispatch-failed")
+    assert response.json()["details"]["audit_event"]["event_type"] == (
+        AG_SERVICE_LOG_RETENTION_EVENT_FAILED
+    )
+    audit_events = audit_store.list_events(service_id="nex-ag", limit=10)
+    assert audit_events[0]["event_type"] == AG_SERVICE_LOG_RETENTION_EVENT_FAILED
+    assert audit_events[0]["details"]["retryable"] is True
+
+
+def test_service_log_retention_dispatch_request_rejects_payload_edges() -> None:
+    with pytest.raises(AgServiceLogRetentionError) as bad_shape:
+        ag_operations._service_log_retention_dispatch_request(["not", "object"])  # type: ignore[arg-type]
+    with pytest.raises(AgServiceLogRetentionError) as missing_cutoff:
+        ag_operations._service_log_retention_dispatch_request({})
+    with pytest.raises(AgServiceLogRetentionError) as blank_cutoff:
+        ag_operations._service_log_retention_dispatch_request(
+            {"retention_cutoff": ""}
+        )
+    with pytest.raises(AgServiceLogRetentionError) as bad_bool:
+        ag_operations._service_log_retention_dispatch_request(
+            {"retention_cutoff": "2026-07-06T00:00:00Z", "dry_run": "yes"}
+        )
+    with pytest.raises(AgServiceLogRetentionError) as bad_int:
+        ag_operations._service_log_retention_dispatch_request(
+            {"retention_cutoff": "2026-07-06T00:00:00Z", "retention_days": "30"}
+        )
+    with pytest.raises(AgServiceLogRetentionError) as bad_object:
+        ag_operations._service_log_retention_dispatch_request(
+            {"retention_cutoff": "2026-07-06T00:00:00Z", "requested_by": "nex-ag"}
+        )
+
+    assert bad_shape.value.error_code == "ag.service_log_retention_payload_invalid"
+    assert missing_cutoff.value.detail == "retention_cutoff must be a non-empty string."
+    assert blank_cutoff.value.detail == (
+        "retention_cutoff must be a non-empty string when supplied."
+    )
+    assert bad_bool.value.detail == "dry_run must be a boolean."
+    assert bad_int.value.detail == "retention_days must be an integer."
+    assert bad_object.value.detail == "requested_by must be an object."
 
 
 def test_build_service_log_projection_uses_registry_and_can_omit_request_trace_id() -> None:
@@ -3788,7 +4126,9 @@ def test_service_logs_route_requires_auth_returns_filtered_projection() -> None:
     assert policy_payload["projection_schema_version"] == (
         "ag_service_log_query_policy_projection.v1"
     )
-    assert policy_payload["policy"]["retention"]["purge_execution"] == "not_implemented"
+    assert policy_payload["policy"]["retention"]["purge_execution"] == (
+        "service_local_control_api"
+    )
     assert retention_response.status_code == 200
     retention_payload = retention_response.json()
     assert retention_payload["request_trace_id"] == TRACE_ID

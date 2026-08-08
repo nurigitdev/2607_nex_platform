@@ -7,9 +7,14 @@ from datetime import UTC, datetime
 from typing import Any, Callable, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
+from fastapi import Body, FastAPI, Header, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
+
+from .auth import DEFAULT_SERVICE_SCOPE, validate_authorization_header
+from .problem import problem_response, request_id_from_headers, trace_id_from_headers
 
 
 SERVICE_LOG_SCHEMA_VERSION = "service_log_entry.v1"
@@ -1133,6 +1138,84 @@ def service_log_emitter_from_app(
     )
 
 
+def register_service_log_retention_routes(
+    app: FastAPI,
+    *,
+    service_id: str,
+    store: ServiceLogStore | None = None,
+    expected_audience: str | None = None,
+) -> None:
+    audience = expected_audience or service_id
+
+    @app.post("/internal/v1/service-logs/retention/purge", response_model=None)
+    def purge_retention_candidates(
+        request: Request,
+        payload: dict[str, Any] | None = Body(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any] | JSONResponse:
+        auth_problem = _authorize_service_log_retention_request(
+            request,
+            authorization,
+            expected_audience=audience,
+        )
+        if auth_problem is not None:
+            return auth_problem
+        try:
+            payload_object = _retention_payload_object(payload)
+            dry_run = _retention_payload_bool(
+                payload_object,
+                "dry_run",
+                default=True,
+            )
+            delete_enabled = _retention_payload_bool(
+                payload_object,
+                "delete_enabled",
+                default=False,
+            )
+            if dry_run and delete_enabled:
+                raise ServiceLogError(
+                    error_code="service_log_retention.delete_enabled_invalid",
+                    detail="delete_enabled cannot be true for dry-run retention purge.",
+                    status_code=422,
+                )
+            target_store = store or service_log_store_from_app(request.app)
+            return target_store.purge_retention_candidates(
+                service_id=service_id,
+                retention_cutoff=_retention_payload_required_string(
+                    payload_object,
+                    "retention_cutoff",
+                ),
+                retention_days=_retention_payload_int(
+                    payload_object,
+                    "retention_days",
+                    default=DEFAULT_SERVICE_LOG_RETENTION_DAYS,
+                ),
+                checked_at=_retention_payload_optional_string(
+                    payload_object,
+                    "checked_at",
+                ),
+                dry_run=dry_run,
+                delete_enabled=delete_enabled,
+                max_delete_count=_retention_payload_int(
+                    payload_object,
+                    "max_delete_count",
+                    default=DEFAULT_SERVICE_LOG_RETENTION_MAX_DELETE_COUNT,
+                ),
+                requested_by=_retention_payload_optional_object(
+                    payload_object,
+                    "requested_by",
+                ),
+                idempotency_key=_retention_payload_optional_string(
+                    payload_object,
+                    "idempotency_key",
+                ),
+                trace_id=trace_id_from_headers(request),
+                request_id=request_id_from_headers(request),
+            )
+        except ServiceLogError as exc:
+            return _service_log_retention_problem_response(request, exc)
+
+
 def _redact_nested_log_attribute(
     value: Any,
     *,
@@ -1306,6 +1389,136 @@ def _retention_candidate_entries(
 def _timestamp_to_datetime(value: object) -> datetime:
     normalized = _normalize_iso_timestamp(value, field_name="timestamp")
     return datetime.fromisoformat(normalized.replace("Z", "+00:00")).astimezone(UTC)
+
+
+def _authorize_service_log_retention_request(
+    request: Request,
+    authorization: str | None,
+    *,
+    expected_audience: str,
+) -> JSONResponse | None:
+    result = validate_authorization_header(
+        authorization,
+        expected_audience=expected_audience,
+        required_scopes=[DEFAULT_SERVICE_SCOPE],
+    )
+    if result.ok:
+        return None
+    return problem_response(
+        request,
+        status_code=401,
+        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
+        title="Authentication failed",
+        detail=result.detail or f"{expected_audience} requires a valid service claim.",
+        type_uri="https://nex-platform.local/problems/authentication-failed",
+    )
+
+
+def _retention_payload_object(payload: object) -> dict[str, Any]:
+    if payload is None:
+        return {}
+    if not isinstance(payload, dict):
+        raise ServiceLogError(
+            error_code="service_log_retention.payload_invalid",
+            detail="retention purge payload must be an object",
+            status_code=422,
+        )
+    return payload
+
+
+def _retention_payload_required_string(payload: dict[str, Any], key: str) -> str:
+    if key not in payload:
+        raise ServiceLogError(
+            error_code="service_log_retention.payload_invalid",
+            detail=f"{key} must be a non-empty string.",
+            status_code=422,
+        )
+    return _retention_payload_string(payload[key], key)
+
+
+def _retention_payload_optional_string(
+    payload: dict[str, Any],
+    key: str,
+) -> str | None:
+    if key not in payload or payload[key] is None:
+        return None
+    return _retention_payload_string(payload[key], key)
+
+
+def _retention_payload_string(value: object, key: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ServiceLogError(
+            error_code="service_log_retention.payload_invalid",
+            detail=f"{key} must be a non-empty string.",
+            status_code=422,
+        )
+    return value
+
+
+def _retention_payload_bool(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    default: bool,
+) -> bool:
+    value = payload.get(key, default)
+    if not isinstance(value, bool):
+        raise ServiceLogError(
+            error_code="service_log_retention.payload_invalid",
+            detail=f"{key} must be a boolean.",
+            status_code=422,
+        )
+    return value
+
+
+def _retention_payload_int(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    default: int,
+) -> int:
+    value = payload.get(key, default)
+    if not isinstance(value, int):
+        raise ServiceLogError(
+            error_code="service_log_retention.payload_invalid",
+            detail=f"{key} must be an integer.",
+            status_code=422,
+        )
+    return value
+
+
+def _retention_payload_optional_object(
+    payload: dict[str, Any],
+    key: str,
+) -> dict[str, Any] | None:
+    if key not in payload or payload[key] is None:
+        return None
+    value = payload[key]
+    if not isinstance(value, dict):
+        raise ServiceLogError(
+            error_code="service_log_retention.payload_invalid",
+            detail=f"{key} must be an object.",
+            status_code=422,
+        )
+    return deepcopy(value)
+
+
+def _service_log_retention_problem_response(
+    request: Request,
+    exc: ServiceLogError,
+) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="Service log retention request failed",
+        detail=exc.detail,
+        retryable=exc.status_code >= 500,
+        type_uri=(
+            "https://nex-platform.local/problems/"
+            "service-log-retention-request-failed"
+        ),
+    )
 
 
 def _non_negative_int(value: object, field_name: str) -> int:

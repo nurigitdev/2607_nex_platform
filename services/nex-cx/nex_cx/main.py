@@ -3,6 +3,7 @@ from nex_runtime import (
     attach_service_persistence_runtime,
     build_service_app,
     register_service_job_control_routes,
+    register_service_log_retention_routes,
 )
 from nex_runtime.compatibility import register_generation_compatibility_routes
 from nex_runtime.prompts import register_prompt_registry_routes
@@ -26,6 +27,11 @@ register_service_job_control_routes(
     app,
     service_id=SERVICE_SPEC.service_id,
     job_queue=SERVICE_PERSISTENCE.job_queue,
+)
+register_service_log_retention_routes(
+    app,
+    service_id=SERVICE_SPEC.service_id,
+    store=SERVICE_PERSISTENCE.service_log_store,
 )
 register_generation_routes(app, retrieval_store=DEFAULT_INGESTION_STORE)
 register_generation_compatibility_routes(app, expected_audience="nex-cx")
