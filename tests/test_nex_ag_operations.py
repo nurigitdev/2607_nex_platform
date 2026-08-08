@@ -45,6 +45,7 @@ from nex_ag.operations import (
     build_service_log_detail_projection,
     build_service_log_query_policy_projection,
     build_service_log_projection,
+    build_service_log_retention_dry_run_projection,
     build_unified_operations_projection,
     normalize_operation_event_search_query,
     normalize_operation_log_search_query,
@@ -204,6 +205,56 @@ def build_log_stores() -> dict[str, InMemoryServiceLogStore]:
     cx_store.append(combined.get_log("log-001"))
     mo_store.append(combined.get_log("log-002"))
     return {"nex-cx": cx_store, "nex-mo": mo_store}
+
+
+def build_retention_log_stores() -> dict[str, InMemoryServiceLogStore]:
+    cx_store = InMemoryServiceLogStore()
+    cx_store.append(
+        build_service_log_entry(
+            log_id="log-retention-001",
+            service_id="nex-cx",
+            severity="ERROR",
+            logger_name="nex_cx.worker",
+            message="Expired log candidate.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            job_id="job-retention-001",
+            subject_ref={"type": "cx.document", "id": "doc-retention-001"},
+            attributes={"authorization": "Bearer old-private"},
+            observed_at="2026-06-01T00:00:00Z",
+        )
+    )
+    cx_store.append(
+        build_service_log_entry(
+            log_id="log-retention-002",
+            service_id="nex-cx",
+            severity="WARNING",
+            logger_name="nex_cx.worker",
+            message="Second expired log candidate.",
+            trace_id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            request_id=REQUEST_ID,
+            job_id="job-retention-002",
+            subject_ref={"type": "cx.document", "id": "doc-retention-002"},
+            attributes={"attempt_count": 3},
+            observed_at="2026-06-15T00:00:00Z",
+        )
+    )
+    cx_store.append(
+        build_service_log_entry(
+            log_id="log-retention-fresh",
+            service_id="nex-cx",
+            severity="INFO",
+            logger_name="nex_cx.worker",
+            message="Fresh log outside retention deletion window.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            job_id="job-retention-fresh",
+            subject_ref={"type": "cx.document", "id": "doc-retention-fresh"},
+            attributes={"worker_id": "cx-worker-001"},
+            observed_at="2026-08-04T00:00:00Z",
+        )
+    )
+    return {"nex-cx": cx_store}
 
 
 def sample_job(**overrides):
@@ -3514,6 +3565,97 @@ def test_service_log_query_policy_helpers_clamp_retention() -> None:
     assert service_log_query_policy()["retention"]["default_retention_days"] == 30
 
 
+def test_service_log_retention_dry_run_projection_reports_safe_candidates() -> None:
+    projection = build_service_log_retention_dry_run_projection(
+        service_log_stores=build_retention_log_stores(),
+        service_id="nex-cx",
+        retention_days=30,
+        limit=1,
+        checked_at="2026-08-05T00:00:00Z",
+        request_trace_id=TRACE_ID,
+    )
+    candidate = projection["retention_candidates"][0]
+
+    assert projection["projection_schema_version"] == (
+        "ag_service_log_retention_dry_run_projection.v1"
+    )
+    assert projection["projection_status"] == "READY"
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["retention_cutoff"] == "2026-07-06T00:00:00Z"
+    assert projection["dry_run"] == {
+        "delete_enabled": False,
+        "purge_execution": "not_implemented",
+        "storage_owner": "service-local",
+    }
+    assert projection["filters"] == {
+        "service_id": "nex-cx",
+        "retention_days": 30,
+        "limit": 1,
+        "scan_limit": 500,
+    }
+    assert projection["source_statuses"]["nex-cx"] == {
+        "status": "READY",
+        "log_count": 3,
+        "candidate_count": 2,
+    }
+    assert candidate["log_id"] == "log-retention-001"
+    assert candidate["age_days"] == 65
+    assert candidate["redacted_attribute_keys"] == ["authorization"]
+    assert "message" not in candidate
+    assert "attributes" not in candidate
+    assert "Bearer old-private" not in str(projection)
+    assert projection["summary"]["total_candidate_count"] == 2
+    assert projection["summary"]["returned_candidate_count"] == 1
+    assert projection["summary"]["by_severity"]["ERROR"] == 1
+    assert projection["summary"]["by_severity"]["WARNING"] == 1
+    assert projection["pagination"] == {
+        "limit": 1,
+        "cursor": None,
+        "returned": 1,
+        "total_after_filters": 2,
+        "next_cursor": "1",
+    }
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_service_log_retention_dry_run_projection_reports_degraded_sources() -> None:
+    registry = build_operations_source_registry(
+        service_log_stores=build_retention_log_stores()
+    )
+    projection = build_service_log_retention_dry_run_projection(
+        registry=registry,
+        retention_days=999,
+        limit=0,
+        checked_at="2026-08-05T00:00:00Z",
+    )
+    unavailable_projection = build_service_log_retention_dry_run_projection(
+        service_log_stores={"nex-mo": BrokenServiceLogStore()},
+        service_id="nex-mo",
+        checked_at="2026-08-05T00:00:00Z",
+    )
+
+    assert "request_trace_id" not in projection
+    assert projection["projection_status"] == "DEGRADED"
+    assert projection["filters"]["retention_days"] == 365
+    assert projection["filters"]["limit"] == 1
+    assert (
+        projection["source_registry"]["sources"]["nex-cx"]["capabilities"]["logs"]
+        is True
+    )
+    assert projection["source_statuses"]["nex-cx"]["candidate_count"] == 0
+    assert projection["source_statuses"]["nex-ag"]["status"] == "NOT_CONFIGURED"
+    assert projection["summary"]["source_statuses"] == {
+        "NOT_CONFIGURED": 4,
+        "READY": 1,
+    }
+    assert projection["retention_candidates"] == []
+    assert unavailable_projection["projection_status"] == "DEGRADED"
+    assert unavailable_projection["source_statuses"]["nex-mo"]["status"] == "UNAVAILABLE"
+    assert unavailable_projection["source_statuses"]["nex-mo"]["candidate_count"] == 0
+    assert_ag_operations_projection_contract(projection)
+    assert_ag_operations_projection_contract(unavailable_projection)
+
+
 def test_build_service_log_projection_uses_registry_and_can_omit_request_trace_id() -> None:
     registry = build_operations_source_registry(service_log_stores=build_log_stores())
 
@@ -3603,6 +3745,9 @@ def test_service_logs_route_requires_auth_returns_filtered_projection() -> None:
 
     missing_auth = client.get("/admin/v1/operations/logs")
     missing_policy_auth = client.get("/admin/v1/operations/logs/policy")
+    missing_retention_auth = client.get(
+        "/admin/v1/operations/logs/retention/dry-run"
+    )
     response = client.get(
         "/admin/v1/operations/logs",
         params={"service_id": "nex-cx", "q": "worker", "limit": 1},
@@ -3618,9 +3763,18 @@ def test_service_logs_route_requires_auth_returns_filtered_projection() -> None:
             "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
         },
     )
+    retention_response = client.get(
+        "/admin/v1/operations/logs/retention/dry-run",
+        params={"service_id": "nex-cx", "retention_days": 365, "limit": 1},
+        headers={
+            **auth_headers(),
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        },
+    )
 
     assert missing_auth.status_code == 401
     assert missing_policy_auth.status_code == 401
+    assert missing_retention_auth.status_code == 401
     assert response.status_code == 200
     payload = response.json()
     assert payload["request_trace_id"] == TRACE_ID
@@ -3635,6 +3789,15 @@ def test_service_logs_route_requires_auth_returns_filtered_projection() -> None:
         "ag_service_log_query_policy_projection.v1"
     )
     assert policy_payload["policy"]["retention"]["purge_execution"] == "not_implemented"
+    assert retention_response.status_code == 200
+    retention_payload = retention_response.json()
+    assert retention_payload["request_trace_id"] == TRACE_ID
+    assert retention_payload["projection_schema_version"] == (
+        "ag_service_log_retention_dry_run_projection.v1"
+    )
+    assert retention_payload["dry_run"]["delete_enabled"] is False
+    assert retention_payload["filters"]["service_id"] == "nex-cx"
+    assert retention_payload["summary"]["total_candidate_count"] == 0
 
 
 def test_service_log_detail_route_returns_detail_404_and_source_errors() -> None:
@@ -3675,6 +3838,11 @@ def test_service_logs_route_rejects_bad_filters() -> None:
         params={"service_id": "nex-unknown"},
         headers=auth_headers(),
     )
+    bad_retention_service = client.get(
+        "/admin/v1/operations/logs/retention/dry-run",
+        params={"service_id": "nex-unknown"},
+        headers=auth_headers(),
+    )
     bad_severity = client.get(
         "/admin/v1/operations/logs",
         params={"severity": "NOTICE"},
@@ -3707,6 +3875,11 @@ def test_service_logs_route_rejects_bad_filters() -> None:
 
     assert bad_service.status_code == 400
     assert bad_service.json()["error_code"] == "ag.service_log_service_invalid"
+    assert bad_retention_service.status_code == 400
+    assert (
+        bad_retention_service.json()["error_code"]
+        == "ag.service_log_service_invalid"
+    )
     assert bad_severity.status_code == 400
     assert bad_severity.json()["error_code"] == "ag.service_log_severity_invalid"
     assert bad_logger.status_code == 400

@@ -246,6 +246,11 @@
       "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
     },
     {
+      "name": "ag_service_log_retention_dry_run_mock",
+      "path": "examples/operations/ag_service_log_retention_dry_run.mock_success.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
       "name": "ag_worker_runtime_projection_mock",
       "path": "examples/operations/ag_worker_runtime_projection.mock_success.json",
       "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"

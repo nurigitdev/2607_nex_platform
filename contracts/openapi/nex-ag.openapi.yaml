@@ -492,6 +492,35 @@ paths:
                 $ref: "#/components/schemas/AgOperationsProjection"
         "401":
           description: Service claim is missing or invalid.
+  /admin/v1/operations/logs/retention/dry-run:
+    get:
+      operationId: getAgServiceLogRetentionDryRunProjection
+      tags:
+        - Operations
+      parameters:
+        - name: service_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ServiceId"
+        - name: retention_days
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only structured service log retention dry-run projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "400":
+          description: Invalid structured service log retention filter.
+        "401":
+          description: Service claim is missing or invalid.
   /admin/v1/operations/logs/{log_id}:
     get:
       operationId: getAgServiceLogDetailProjection
@@ -831,6 +860,7 @@ components:
             - ag_service_log_projection.v1
             - ag_service_log_detail_projection.v1
             - ag_service_log_query_policy_projection.v1
+            - ag_service_log_retention_dry_run_projection.v1
             - ag_job_operations_projection.v1
             - ag_job_operation_detail_projection.v1
             - ag_unified_operations_projection.v1

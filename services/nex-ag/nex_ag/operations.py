@@ -5,7 +5,7 @@ import os
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
 from fastapi import FastAPI, Header, Query, Request
@@ -96,6 +96,9 @@ AG_OPERATION_SORT_ORDERS = ("desc", "asc")
 AG_JOB_CONTROL_DISPATCH_SCHEMA_VERSION = "ag_job_control_dispatch.v1"
 AG_SERVICE_LOG_QUERY_POLICY_PROJECTION_SCHEMA_VERSION = (
     "ag_service_log_query_policy_projection.v1"
+)
+AG_SERVICE_LOG_RETENTION_DRY_RUN_PROJECTION_SCHEMA_VERSION = (
+    "ag_service_log_retention_dry_run_projection.v1"
 )
 SERVICE_LOG_QUERY_POLICY_SCHEMA_VERSION = "service_log_query_policy.v1"
 SERVICE_LOG_QUERY_POLICY_ID = "service-log-query-retention-v1"
@@ -1122,6 +1125,36 @@ def register_service_log_routes(
             request_trace_id=trace_id_from_headers(request),
         )
 
+    @app.get("/admin/v1/operations/logs/retention/dry-run", response_model=None)
+    def get_service_log_retention_dry_run(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        retention_days: int = Query(default=DEFAULT_SERVICE_LOG_RETENTION_DAYS, ge=1),
+        limit: int = Query(default=DEFAULT_SERVICE_LOG_LIMIT, ge=1),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        filter_problem = _validate_service_log_filters(
+            request,
+            service_id=service_id,
+            severity=None,
+            logger_name=None,
+            subject_type=None,
+            subject_id=None,
+        )
+        if filter_problem is not None:
+            return filter_problem
+        return build_service_log_retention_dry_run_projection(
+            service_log_stores=service_log_stores,
+            registry=registry,
+            service_id=service_id,
+            retention_days=retention_days,
+            limit=limit,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
     @app.get("/admin/v1/operations/logs/{log_id}", response_model=None)
     def get_service_log_detail(
         log_id: str,
@@ -2124,6 +2157,134 @@ def build_service_log_query_policy_projection(
             "supported_filter_count": len(policy["query"]["supported_filters"]),
         },
     }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
+def build_service_log_retention_dry_run_projection(
+    *,
+    service_log_stores: Mapping[str, ServiceLogStore] | None = None,
+    registry: OperationsSourceRegistry | None = None,
+    service_id: str | None = None,
+    retention_days: int = DEFAULT_SERVICE_LOG_RETENTION_DAYS,
+    limit: int = DEFAULT_SERVICE_LOG_LIMIT,
+    checked_at: str | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    normalized_retention_days = normalize_service_log_retention_days(retention_days)
+    normalized_limit = normalize_service_log_limit(limit)
+    normalized_checked_at = normalize_operation_timestamp(
+        checked_at,
+        field_name="checked_at",
+    )
+    observed_at = normalized_checked_at or _utc_now()
+    checked_dt = _parse_operation_timestamp(observed_at, field_name="checked_at")
+    cutoff_dt = checked_dt - timedelta(days=normalized_retention_days)
+    retention_cutoff = cutoff_dt.isoformat().replace("+00:00", "Z")
+    stores = _service_log_stores_for_projection(
+        service_log_stores=service_log_stores,
+        registry=registry,
+    )
+    selected_service_ids = (
+        [service_id] if service_id is not None else sorted(SERVICE_SPECS)
+    )
+    source_statuses: dict[str, dict[str, Any]] = {}
+    candidates: list[dict[str, Any]] = []
+
+    for selected_service_id in selected_service_ids:
+        store = stores.get(selected_service_id)
+        if store is None:
+            source_statuses[selected_service_id] = {
+                "status": "NOT_CONFIGURED",
+                "log_count": 0,
+                "candidate_count": 0,
+            }
+            continue
+        try:
+            logs = store.list_logs(
+                service_id=selected_service_id,
+                limit=normalize_service_log_limit(500),
+            )
+        except ServiceLogError as exc:
+            source_statuses[selected_service_id] = {
+                "status": "UNAVAILABLE",
+                "log_count": 0,
+                "candidate_count": 0,
+                "error_code": exc.error_code,
+                "detail": exc.detail,
+            }
+            continue
+        service_candidates = [
+            _service_log_retention_candidate(
+                entry,
+                checked_dt=checked_dt,
+                retention_cutoff=retention_cutoff,
+            )
+            for entry in logs
+            if _operation_record_timestamp(entry, timestamp_field="observed_at")
+            < cutoff_dt
+        ]
+        source_statuses[selected_service_id] = {
+            "status": "READY",
+            "log_count": len(logs),
+            "candidate_count": len(service_candidates),
+        }
+        candidates.extend(service_candidates)
+
+    options = OperationQueryOptions(
+        limit=normalized_limit,
+        sort="asc",
+        cursor=None,
+    )
+    page = _apply_operation_query_options(
+        candidates,
+        options,
+        timestamp_field="observed_at",
+        tie_breaker_fields=("service_id", "logger_name", "log_id"),
+    )
+    projection_status = (
+        "DEGRADED"
+        if any(
+            source["status"] in {"NOT_CONFIGURED", "UNAVAILABLE"}
+            for source in source_statuses.values()
+        )
+        else "READY"
+    )
+    policy = service_log_query_policy(retention_days=normalized_retention_days)
+    projection = {
+        "projection_schema_version": (
+            AG_SERVICE_LOG_RETENTION_DRY_RUN_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": projection_status,
+        "checked_at": observed_at,
+        "filters": {
+            "service_id": service_id,
+            "retention_days": normalized_retention_days,
+            "limit": normalized_limit,
+            "scan_limit": MAX_SERVICE_LOG_LIMIT,
+        },
+        "policy": policy,
+        "retention_cutoff": retention_cutoff,
+        "dry_run": {
+            "delete_enabled": False,
+            "purge_execution": policy["retention"]["purge_execution"],
+            "storage_owner": policy["retention"]["storage_owner"],
+        },
+        "retention_candidates": page["items"],
+        "summary": _summarize_service_log_retention_dry_run(
+            candidates,
+            source_statuses=source_statuses,
+            selected_service_count=len(selected_service_ids),
+            returned_candidate_count=len(page["items"]),
+            retention_days=normalized_retention_days,
+            retention_cutoff=retention_cutoff,
+        ),
+        "source_statuses": source_statuses,
+        "pagination": page["pagination"],
+    }
+    if registry is not None:
+        projection["source_registry"] = registry.to_summary()
     if request_trace_id is not None:
         projection["request_trace_id"] = request_trace_id
     return projection
@@ -3974,6 +4135,61 @@ def _service_log_matches_query(entry: dict[str, Any], query: str) -> bool:
         for part in searchable_parts
         if part is not None
     )
+
+
+def _service_log_retention_candidate(
+    entry: dict[str, Any],
+    *,
+    checked_dt: datetime,
+    retention_cutoff: str,
+) -> dict[str, Any]:
+    observed_dt = _operation_record_timestamp(entry, timestamp_field="observed_at")
+    age_days = max(0, (checked_dt - observed_dt).days)
+    return {
+        "service_id": entry["service_id"],
+        "log_id": entry["log_id"],
+        "severity": entry["severity"],
+        "logger_name": entry["logger_name"],
+        "trace_id": entry.get("trace_id"),
+        "request_id": entry.get("request_id"),
+        "job_id": entry.get("job_id"),
+        "subject_ref": deepcopy(entry.get("subject_ref")),
+        "observed_at": entry["observed_at"],
+        "age_days": age_days,
+        "retention_cutoff": retention_cutoff,
+        "redacted_attribute_keys": deepcopy(entry["redacted_attribute_keys"]),
+    }
+
+
+def _summarize_service_log_retention_dry_run(
+    candidates: list[dict[str, Any]],
+    *,
+    source_statuses: Mapping[str, dict[str, Any]],
+    selected_service_count: int,
+    returned_candidate_count: int,
+    retention_days: int,
+    retention_cutoff: str,
+) -> dict[str, Any]:
+    candidate_summary = summarize_service_logs(candidates)
+    source_status_counts: dict[str, int] = {}
+    scanned_log_count = 0
+    for source_status in source_statuses.values():
+        status = str(source_status["status"])
+        source_status_counts[status] = source_status_counts.get(status, 0) + 1
+        scanned_log_count += int(source_status.get("log_count", 0))
+    return {
+        "retention_days": retention_days,
+        "retention_cutoff": retention_cutoff,
+        "scan_limit": MAX_SERVICE_LOG_LIMIT,
+        "selected_service_count": selected_service_count,
+        "source_statuses": source_status_counts,
+        "scanned_log_count": scanned_log_count,
+        "total_candidate_count": candidate_summary["total"],
+        "returned_candidate_count": returned_candidate_count,
+        "by_service": candidate_summary["by_service"],
+        "by_severity": candidate_summary["by_severity"],
+        "redacted_attribute_count": candidate_summary["redacted_attribute_count"],
+    }
 
 
 def _trace_job_timeline_items(

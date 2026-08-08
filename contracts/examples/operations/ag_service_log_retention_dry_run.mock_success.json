@@ -1,0 +1,137 @@
+{
+  "projection_schema_version": "ag_service_log_retention_dry_run_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-05T00:00:00Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "filters": {
+    "service_id": "nex-cx",
+    "retention_days": 30,
+    "limit": 50,
+    "scan_limit": 500
+  },
+  "policy": {
+    "policy_schema_version": "service_log_query_policy.v1",
+    "policy_id": "service-log-query-retention-v1",
+    "status": "ACTIVE",
+    "owner_service": "nex-ag",
+    "applies_to": [
+      "nex-ae-api",
+      "nex-ag",
+      "nex-cx",
+      "nex-mo",
+      "nex-oa"
+    ],
+    "query": {
+      "default_limit": 50,
+      "max_limit": 500,
+      "max_q_length": 128,
+      "default_sort": "desc",
+      "timestamp_field": "observed_at",
+      "supported_filters": [
+        "service_id",
+        "severity",
+        "logger_name",
+        "trace_id",
+        "request_id",
+        "job_id",
+        "subject_type",
+        "subject_id",
+        "q",
+        "since",
+        "until",
+        "sort",
+        "cursor",
+        "limit"
+      ],
+      "cursor_mode": "offset-string"
+    },
+    "retention": {
+      "default_retention_days": 30,
+      "minimum_retention_days": 7,
+      "maximum_retention_days": 365,
+      "storage_owner": "service-local",
+      "purge_execution": "not_implemented",
+      "future_archive_target": "object_storage_or_cold_table"
+    },
+    "redaction": {
+      "attribute_policy": "redact_or_omit_before_persistence",
+      "redacted_value": "<redacted>",
+      "sensitive_key_parts": [
+        "api_key",
+        "authorization",
+        "credential",
+        "password",
+        "passwd",
+        "raw_prompt",
+        "raw_user_message",
+        "secret",
+        "source_text",
+        "token"
+      ]
+    }
+  },
+  "retention_cutoff": "2026-07-06T00:00:00Z",
+  "dry_run": {
+    "delete_enabled": false,
+    "purge_execution": "not_implemented",
+    "storage_owner": "service-local"
+  },
+  "retention_candidates": [
+    {
+      "service_id": "nex-cx",
+      "log_id": "log-retention-001",
+      "severity": "ERROR",
+      "logger_name": "nex_cx.worker",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "request_id": "req-retention-001",
+      "job_id": "job-retention-001",
+      "subject_ref": {
+        "type": "cx.document",
+        "id": "doc-retention-001"
+      },
+      "observed_at": "2026-06-01T00:00:00Z",
+      "age_days": 65,
+      "retention_cutoff": "2026-07-06T00:00:00Z",
+      "redacted_attribute_keys": [
+        "authorization"
+      ]
+    }
+  ],
+  "summary": {
+    "retention_days": 30,
+    "retention_cutoff": "2026-07-06T00:00:00Z",
+    "scan_limit": 500,
+    "selected_service_count": 1,
+    "source_statuses": {
+      "READY": 1
+    },
+    "scanned_log_count": 2,
+    "total_candidate_count": 1,
+    "returned_candidate_count": 1,
+    "by_service": {
+      "nex-cx": 1
+    },
+    "by_severity": {
+      "DEBUG": 0,
+      "INFO": 0,
+      "WARNING": 0,
+      "ERROR": 1,
+      "CRITICAL": 0
+    },
+    "redacted_attribute_count": 1
+  },
+  "source_statuses": {
+    "nex-cx": {
+      "status": "READY",
+      "log_count": 2,
+      "candidate_count": 1
+    }
+  },
+  "pagination": {
+    "limit": 50,
+    "cursor": null,
+    "returned": 1,
+    "total_after_filters": 1,
+    "next_cursor": null
+  }
+}

@@ -19,6 +19,7 @@
         "ag_service_log_projection.v1",
         "ag_service_log_detail_projection.v1",
         "ag_service_log_query_policy_projection.v1",
+        "ag_service_log_retention_dry_run_projection.v1",
         "ag_job_operations_projection.v1",
         "ag_job_operation_detail_projection.v1",
         "ag_unified_operations_projection.v1",
@@ -86,6 +87,19 @@
     },
     "policy": {
       "$ref": "#/$defs/service_log_query_policy"
+    },
+    "retention_cutoff": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "dry_run": {
+      "$ref": "#/$defs/service_log_retention_dry_run"
+    },
+    "retention_candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/service_log_retention_candidate"
+      }
     },
     "event_types": {
       "type": "array",
@@ -356,6 +370,28 @@
           "projection_status",
           "policy",
           "summary"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_service_log_retention_dry_run_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "filters",
+          "policy",
+          "retention_cutoff",
+          "dry_run",
+          "retention_candidates",
+          "summary",
+          "source_statuses",
+          "pagination"
         ]
       }
     },
@@ -653,6 +689,10 @@
           "minimum": 0
         },
         "log_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidate_count": {
           "type": "integer",
           "minimum": 0
         },
@@ -1594,6 +1634,121 @@
               "uniqueItems": true
             }
           }
+        }
+      }
+    },
+    "service_log_retention_dry_run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "delete_enabled",
+        "purge_execution",
+        "storage_owner"
+      ],
+      "properties": {
+        "delete_enabled": {
+          "const": false
+        },
+        "purge_execution": {
+          "const": "not_implemented"
+        },
+        "storage_owner": {
+          "const": "service-local"
+        }
+      }
+    },
+    "service_log_retention_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service_id",
+        "log_id",
+        "severity",
+        "logger_name",
+        "trace_id",
+        "request_id",
+        "job_id",
+        "subject_ref",
+        "observed_at",
+        "age_days",
+        "retention_cutoff",
+        "redacted_attribute_keys"
+      ],
+      "properties": {
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        },
+        "log_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ]
+        },
+        "logger_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/trace_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "job_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "subject_ref": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/subject_ref"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "age_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "retention_cutoff": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "redacted_attribute_keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
         }
       }
     },

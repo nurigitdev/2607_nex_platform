@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0141 service log PostgreSQL smoke evidence.
+Status: Slice 0146 service log retention dry-run projection.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -78,8 +78,10 @@ alongside jobs and operational events when log stores are configured.
 Operations rollups include structured service log totals, severity counts,
 logger counts, and redaction counts for configured log stores.
 AG exposes the active structured service log query and retention policy at
-`GET /admin/v1/operations/logs/policy`; retention enforcement workers are a
-future implementation step, not part of the current write path.
+`GET /admin/v1/operations/logs/policy` and a read-only retention candidate
+projection at `GET /admin/v1/operations/logs/retention/dry-run`; retention
+enforcement workers are a future implementation step, not part of the current
+write path.
 
 Service workers should also report `worker_heartbeat.v1` payloads through the
 shared worker heartbeat runtime. It defines the status vocabulary, emitter,
