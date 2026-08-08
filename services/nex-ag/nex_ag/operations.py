@@ -18,6 +18,7 @@ from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
     DEFAULT_OPERATIONAL_EVENT_TAXONOMY,
     DEFAULT_SERVICE_LOG_LIMIT,
+    DEFAULT_SERVICE_LOG_RETENTION_HISTORY_LIMIT,
     InMemoryJobQueue,
     InMemoryOperationalEventStore,
     InMemoryServiceLogStore,
@@ -36,6 +37,8 @@ from nex_runtime import (
     REDACTED_LOG_VALUE,
     SERVICE_SPECS,
     SERVICE_LOG_SEVERITIES,
+    SERVICE_LOG_RETENTION_EXECUTION_MODES,
+    SERVICE_LOG_RETENTION_EXECUTION_STATUSES,
     SENSITIVE_LOG_ATTRIBUTE_KEY_PARTS,
     SqlAlchemyJobQueue,
     SqlAlchemyOperationalEventStore,
@@ -53,6 +56,7 @@ from nex_runtime import (
     normalize_job_limit,
     normalize_operational_event_limit,
     normalize_service_log_limit,
+    normalize_service_log_retention_history_limit,
     problem_response,
     redact_database_url,
     required_database_url,
@@ -62,6 +66,7 @@ from nex_runtime import (
     summarize_operational_event_taxonomy,
     summarize_jobs,
     summarize_operational_events,
+    summarize_service_log_retention_history,
     summarize_service_logs,
     summarize_worker_heartbeats,
     trace_id_from_headers,
@@ -108,6 +113,9 @@ AG_SERVICE_LOG_RETENTION_DRY_RUN_PROJECTION_SCHEMA_VERSION = (
 )
 AG_SERVICE_LOG_RETENTION_DISPATCH_SCHEMA_VERSION = (
     "ag_service_log_retention_dispatch.v1"
+)
+AG_SERVICE_LOG_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION = (
+    "ag_service_log_retention_history_projection.v1"
 )
 AG_SERVICE_LOG_RETENTION_EVENT_SUCCEEDED = "ag.service_log_retention.succeeded"
 AG_SERVICE_LOG_RETENTION_EVENT_FAILED = "ag.service_log_retention.failed"
@@ -1175,6 +1183,71 @@ def register_service_log_routes(
             limit=limit,
             request_trace_id=trace_id_from_headers(request),
         )
+
+    @app.get("/admin/v1/operations/logs/retention/history", response_model=None)
+    def list_service_log_retention_history(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        mode: str | None = None,
+        execution_status: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        idempotency_key: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        sort: str | None = None,
+        cursor: str | None = None,
+        limit: int = Query(default=DEFAULT_SERVICE_LOG_RETENTION_HISTORY_LIMIT, ge=1),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        filter_problem = _validate_service_log_filters(
+            request,
+            service_id=service_id,
+            severity=None,
+            logger_name=None,
+            subject_type=None,
+            subject_id=None,
+        )
+        if filter_problem is not None:
+            return filter_problem
+        query_options = _build_query_options_or_problem(
+            request,
+            limit=limit,
+            since=since,
+            until=until,
+            sort=sort,
+            cursor=cursor,
+        )
+        if isinstance(query_options, JSONResponse):
+            return query_options
+        try:
+            return build_service_log_retention_history_projection(
+                service_log_stores=service_log_stores,
+                registry=registry,
+                service_id=service_id,
+                mode=mode,
+                execution_status=execution_status,
+                trace_id=trace_id,
+                request_id=request_id,
+                idempotency_key=idempotency_key,
+                query_options=query_options,
+                request_trace_id=trace_id_from_headers(request),
+            )
+        except ServiceLogError as exc:
+            return problem_response(
+                request,
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                title="Service log retention history query failed",
+                detail=exc.detail,
+                type_uri=(
+                    "https://nex-platform.local/problems/"
+                    "service-log-retention-history-query-failed"
+                ),
+            )
 
     @app.post("/admin/v1/operations/logs/retention/{service_id}/purge", response_model=None)
     def dispatch_service_log_retention_purge(
@@ -2375,6 +2448,119 @@ def build_service_log_retention_dry_run_projection(
             returned_candidate_count=len(page["items"]),
             retention_days=normalized_retention_days,
             retention_cutoff=retention_cutoff,
+        ),
+        "source_statuses": source_statuses,
+        "pagination": page["pagination"],
+    }
+    if registry is not None:
+        projection["source_registry"] = registry.to_summary()
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
+def build_service_log_retention_history_projection(
+    *,
+    service_log_stores: Mapping[str, ServiceLogStore] | None = None,
+    registry: OperationsSourceRegistry | None = None,
+    service_id: str | None = None,
+    mode: str | None = None,
+    execution_status: str | None = None,
+    trace_id: str | None = None,
+    request_id: str | None = None,
+    idempotency_key: str | None = None,
+    limit: int = DEFAULT_SERVICE_LOG_RETENTION_HISTORY_LIMIT,
+    query_options: OperationQueryOptions | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    normalized_mode = _normalize_service_log_retention_history_mode(mode)
+    normalized_status = _normalize_service_log_retention_history_status(
+        execution_status
+    )
+    options = query_options or build_operation_query_options(
+        limit=normalize_service_log_retention_history_limit(limit),
+    )
+    stores = _service_log_stores_for_projection(
+        service_log_stores=service_log_stores,
+        registry=registry,
+    )
+    selected_service_ids = (
+        [service_id] if service_id is not None else sorted(SERVICE_SPECS)
+    )
+    source_statuses: dict[str, dict[str, Any]] = {}
+    history_entries: list[dict[str, Any]] = []
+
+    for selected_service_id in selected_service_ids:
+        store = stores.get(selected_service_id)
+        if store is None:
+            source_statuses[selected_service_id] = {
+                "status": "NOT_CONFIGURED",
+                "history_count": 0,
+            }
+            continue
+        try:
+            service_history = store.list_retention_history(
+                service_id=selected_service_id,
+                mode=normalized_mode,
+                execution_status=normalized_status,
+                trace_id=trace_id,
+                request_id=request_id,
+                idempotency_key=idempotency_key,
+                limit=normalize_service_log_retention_history_limit(500),
+            )
+        except ServiceLogError as exc:
+            source_statuses[selected_service_id] = {
+                "status": "UNAVAILABLE",
+                "history_count": 0,
+                "error_code": exc.error_code,
+                "detail": exc.detail,
+            }
+            continue
+        service_history = _filter_records_by_operation_time(
+            service_history,
+            options,
+            timestamp_field="recorded_at",
+        )
+        source_statuses[selected_service_id] = {
+            "status": "READY",
+            "history_count": len(service_history),
+        }
+        history_entries.extend(deepcopy(entry) for entry in service_history)
+
+    page = _apply_operation_query_options(
+        history_entries,
+        options,
+        timestamp_field="recorded_at",
+        tie_breaker_fields=("service_id", "execution_id"),
+    )
+    projection_status = (
+        "DEGRADED"
+        if any(
+            source["status"] in {"NOT_CONFIGURED", "UNAVAILABLE"}
+            for source in source_statuses.values()
+        )
+        else "READY"
+    )
+    projection = {
+        "projection_schema_version": (
+            AG_SERVICE_LOG_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": projection_status,
+        "checked_at": _utc_now(),
+        "filters": {
+            "service_id": service_id,
+            "mode": normalized_mode,
+            "execution_status": normalized_status,
+            "trace_id": trace_id,
+            "request_id": request_id,
+            "idempotency_key": idempotency_key,
+            **options.to_filter_dict(),
+        },
+        "retention_history": page["items"],
+        "summary": _summarize_service_log_retention_history_projection(
+            page["items"],
+            source_statuses=source_statuses,
+            selected_service_count=len(selected_service_ids),
         ),
         "source_statuses": source_statuses,
         "pagination": page["pagination"],
@@ -4542,6 +4728,61 @@ def _summarize_service_log_retention_dry_run(
         "by_severity": candidate_summary["by_severity"],
         "redacted_attribute_count": candidate_summary["redacted_attribute_count"],
     }
+
+
+def _summarize_service_log_retention_history_projection(
+    entries: list[dict[str, Any]],
+    *,
+    source_statuses: Mapping[str, dict[str, Any]],
+    selected_service_count: int,
+) -> dict[str, Any]:
+    history_summary = summarize_service_log_retention_history(entries)
+    source_status_counts: dict[str, int] = {}
+    scanned_history_count = 0
+    for source_status in source_statuses.values():
+        status = str(source_status["status"])
+        source_status_counts[status] = source_status_counts.get(status, 0) + 1
+        scanned_history_count += int(source_status.get("history_count", 0))
+    return {
+        **history_summary,
+        "selected_service_count": selected_service_count,
+        "source_statuses": source_status_counts,
+        "scanned_history_count": scanned_history_count,
+        "returned_history_count": len(entries),
+    }
+
+
+def _normalize_service_log_retention_history_mode(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().upper()
+    if normalized not in SERVICE_LOG_RETENTION_EXECUTION_MODES:
+        raise ServiceLogError(
+            error_code="ag.service_log_retention_history_mode_invalid",
+            detail=(
+                f"Unsupported service log retention history mode: {value}; "
+                f"expected one of {', '.join(SERVICE_LOG_RETENTION_EXECUTION_MODES)}."
+            ),
+            status_code=422,
+        )
+    return normalized
+
+
+def _normalize_service_log_retention_history_status(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().upper()
+    if normalized not in SERVICE_LOG_RETENTION_EXECUTION_STATUSES:
+        raise ServiceLogError(
+            error_code="ag.service_log_retention_history_status_invalid",
+            detail=(
+                "Unsupported service log retention history execution_status: "
+                f"{value}; expected one of "
+                f"{', '.join(SERVICE_LOG_RETENTION_EXECUTION_STATUSES)}."
+            ),
+            status_code=422,
+        )
+    return normalized
 
 
 def _trace_job_timeline_items(

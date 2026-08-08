@@ -10,6 +10,7 @@ from jsonschema import Draft202012Validator
 
 import nex_ag.operations as ag_operations
 from nex_ag.operations import (
+    AG_SERVICE_LOG_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION,
     AG_SERVICE_LOG_RETENTION_DISPATCH_SCHEMA_VERSION,
     AG_SERVICE_LOG_RETENTION_EVENT_FAILED,
     AG_SERVICE_LOG_RETENTION_EVENT_SUCCEEDED,
@@ -48,6 +49,7 @@ from nex_ag.operations import (
     build_operations_issue_candidates,
     build_service_log_detail_projection,
     build_service_log_retention_dispatch_projection,
+    build_service_log_retention_history_projection,
     build_service_log_query_policy_projection,
     build_service_log_projection,
     build_service_log_retention_dry_run_projection,
@@ -261,6 +263,44 @@ def build_retention_log_stores() -> dict[str, InMemoryServiceLogStore]:
         )
     )
     return {"nex-cx": cx_store}
+
+
+def build_retention_history_stores() -> dict[str, InMemoryServiceLogStore]:
+    stores = build_retention_log_stores()
+    cx_store = stores["nex-cx"]
+    cx_store.record_retention_history(
+        service_log_retention_execution_response(
+            service_id="nex-cx",
+            mode="EXECUTE",
+            execution_status="SUCCEEDED",
+            retention_cutoff="2026-07-06T00:00:00Z",
+            checked_at="2026-08-05T00:00:00Z",
+            candidate_count=2,
+            deleted_count=1,
+            delete_enabled=True,
+            max_delete_count=1,
+            execution_id="retention-execution-001",
+            idempotency_key="purge-001",
+        ),
+        recorded_at="2026-08-05T00:00:02Z",
+    )
+    cx_store.record_retention_history(
+        service_log_retention_execution_response(
+            service_id="nex-cx",
+            mode="DRY_RUN",
+            execution_status="BLOCKED",
+            retention_cutoff="2026-07-06T00:00:00Z",
+            checked_at="2026-08-05T00:00:01Z",
+            candidate_count=2,
+            deleted_count=0,
+            delete_enabled=False,
+            max_delete_count=1,
+            execution_id="retention-execution-002",
+            idempotency_key="purge-002",
+        ),
+        recorded_at="2026-08-05T00:00:03Z",
+    )
+    return stores
 
 
 def sample_job(**overrides):
@@ -568,10 +608,12 @@ def service_log_retention_execution_response(
     deleted_count: int,
     delete_enabled: bool,
     max_delete_count: int,
+    execution_id: str = "retention-execution-001",
+    idempotency_key: str = "purge-001",
 ) -> dict[str, object]:
     return {
         "retention_execution_schema_version": "service_log_retention_execution.v1",
-        "execution_id": "retention-execution-001",
+        "execution_id": execution_id,
         "policy_id": "service-log-query-retention-v1",
         "service_id": service_id,
         "mode": mode,
@@ -589,7 +631,7 @@ def service_log_retention_execution_response(
             "actor_id": "nex-ag",
             "service_id": "nex-ag",
         },
-        "idempotency_key": "purge-001",
+        "idempotency_key": idempotency_key,
         "trace_id": TRACE_ID,
         "request_id": REQUEST_ID,
         "blocked_reason": None,
@@ -632,6 +674,23 @@ class BrokenServiceLogStore:
         raise ServiceLogError(
             error_code="service_log.store_unavailable",
             detail="service log store is unavailable",
+            status_code=503,
+        )
+
+    def record_retention_history(self, execution, *, recorded_at=None):
+        raise AssertionError("not used")
+
+    def get_retention_history(self, execution_id):
+        raise ServiceLogError(
+            error_code="service_log_retention_history.store_unavailable",
+            detail="service log retention history store is unavailable",
+            status_code=503,
+        )
+
+    def list_retention_history(self, **kwargs):
+        raise ServiceLogError(
+            error_code="service_log_retention_history.store_unavailable",
+            detail="service log retention history store is unavailable",
             status_code=503,
         )
 
@@ -3757,6 +3816,105 @@ def test_service_log_retention_dry_run_projection_reports_degraded_sources() -> 
     assert_ag_operations_projection_contract(unavailable_projection)
 
 
+def test_service_log_retention_history_projection_filters_and_paginates() -> None:
+    registry = build_operations_source_registry(
+        service_log_stores=build_retention_history_stores()
+    )
+
+    projection = build_service_log_retention_history_projection(
+        registry=registry,
+        service_id="nex-cx",
+        mode="execute",
+        execution_status="succeeded",
+        limit=1,
+        request_trace_id=TRACE_ID,
+    )
+
+    history_entry = projection["retention_history"][0]
+    assert projection["projection_schema_version"] == (
+        AG_SERVICE_LOG_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["projection_status"] == "READY"
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["filters"] == {
+        "service_id": "nex-cx",
+        "mode": "EXECUTE",
+        "execution_status": "SUCCEEDED",
+        "trace_id": None,
+        "request_id": None,
+        "idempotency_key": None,
+        "limit": 1,
+        "since": None,
+        "until": None,
+        "sort": "desc",
+        "cursor": None,
+    }
+    assert history_entry["execution_id"] == "retention-execution-001"
+    assert history_entry["recorded_at"] == "2026-08-05T00:00:02Z"
+    assert history_entry["deleted_count"] == 1
+    assert history_entry["execution"]["audit"]["audit_event_id"] == (
+        "retention-audit-001"
+    )
+    assert projection["source_statuses"]["nex-cx"] == {
+        "status": "READY",
+        "history_count": 1,
+    }
+    assert projection["source_registry"]["sources"]["nex-cx"]["capabilities"][
+        "logs"
+    ] is True
+    assert projection["summary"]["total"] == 1
+    assert projection["summary"]["by_mode"]["EXECUTE"] == 1
+    assert projection["summary"]["by_status"]["SUCCEEDED"] == 1
+    assert projection["summary"]["by_service"] == {"nex-cx": 1}
+    assert projection["summary"]["candidate_count"] == 2
+    assert projection["summary"]["deleted_count"] == 1
+    assert projection["summary"]["source_statuses"] == {"READY": 1}
+    assert projection["summary"]["scanned_history_count"] == 1
+    assert projection["summary"]["returned_history_count"] == 1
+    assert projection["pagination"] == {
+        "limit": 1,
+        "cursor": None,
+        "returned": 1,
+        "total_after_filters": 1,
+        "next_cursor": None,
+    }
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_service_log_retention_history_projection_reports_degraded_sources() -> None:
+    projection = build_service_log_retention_history_projection(
+        service_log_stores=build_retention_history_stores(),
+        request_trace_id=TRACE_ID,
+    )
+    unavailable_projection = build_service_log_retention_history_projection(
+        service_log_stores={"nex-mo": BrokenServiceLogStore()},
+        service_id="nex-mo",
+    )
+
+    assert projection["projection_status"] == "DEGRADED"
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["source_statuses"]["nex-cx"] == {
+        "status": "READY",
+        "history_count": 2,
+    }
+    assert projection["source_statuses"]["nex-ag"]["status"] == "NOT_CONFIGURED"
+    assert projection["summary"]["source_statuses"] == {
+        "NOT_CONFIGURED": 4,
+        "READY": 1,
+    }
+    assert projection["summary"]["scanned_history_count"] == 2
+    assert unavailable_projection["projection_status"] == "DEGRADED"
+    assert unavailable_projection["source_statuses"]["nex-mo"] == {
+        "status": "UNAVAILABLE",
+        "history_count": 0,
+        "error_code": "service_log_retention_history.store_unavailable",
+        "detail": "service log retention history store is unavailable",
+    }
+    assert unavailable_projection["summary"]["source_statuses"] == {"UNAVAILABLE": 1}
+    assert_ag_operations_projection_contract(projection)
+    assert_ag_operations_projection_contract(unavailable_projection)
+
+
 def test_service_log_retention_dispatch_projection_wraps_service_response() -> None:
     projection = build_service_log_retention_dispatch_projection(
         service_id="nex-cx",
@@ -3927,6 +4085,63 @@ def test_service_log_retention_route_blocks_unsafe_execute_before_dispatch() -> 
     assert audit_events[1]["details"]["error_code"] == (
         "ag.service_log_retention_delete_not_enabled"
     )
+
+
+def test_service_log_retention_history_route_filters_and_rejects_edges() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_service_log_routes(
+        app,
+        service_log_stores=build_retention_history_stores(),
+    )
+    client = TestClient(app)
+
+    missing_auth = client.get(
+        "/admin/v1/operations/logs/retention/history",
+        params={"service_id": "nex-cx"},
+    )
+    invalid_mode = client.get(
+        "/admin/v1/operations/logs/retention/history",
+        params={"service_id": "nex-cx", "mode": "preview"},
+        headers=auth_headers(),
+    )
+    invalid_status = client.get(
+        "/admin/v1/operations/logs/retention/history",
+        params={"service_id": "nex-cx", "execution_status": "done"},
+        headers=auth_headers(),
+    )
+    response = client.get(
+        "/admin/v1/operations/logs/retention/history",
+        params={
+            "service_id": "nex-cx",
+            "mode": "execute",
+            "execution_status": "succeeded",
+            "trace_id": TRACE_ID,
+            "request_id": REQUEST_ID,
+            "idempotency_key": "purge-001",
+            "limit": 1,
+        },
+        headers=auth_headers(),
+    )
+
+    assert missing_auth.status_code == 401
+    assert invalid_mode.status_code == 422
+    assert invalid_mode.json()["error_code"] == (
+        "ag.service_log_retention_history_mode_invalid"
+    )
+    assert invalid_status.status_code == 422
+    assert invalid_status.json()["error_code"] == (
+        "ag.service_log_retention_history_status_invalid"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["projection_schema_version"] == (
+        AG_SERVICE_LOG_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION
+    )
+    assert payload["filters"]["mode"] == "EXECUTE"
+    assert payload["filters"]["execution_status"] == "SUCCEEDED"
+    assert payload["retention_history"][0]["execution_id"] == "retention-execution-001"
+    assert payload["summary"]["deleted_count"] == 1
+    assert_ag_operations_projection_contract(payload)
 
 
 def test_service_log_retention_route_maps_service_client_errors() -> None:

@@ -20,6 +20,7 @@
         "ag_service_log_detail_projection.v1",
         "ag_service_log_query_policy_projection.v1",
         "ag_service_log_retention_dry_run_projection.v1",
+        "ag_service_log_retention_history_projection.v1",
         "ag_job_operations_projection.v1",
         "ag_job_operation_detail_projection.v1",
         "ag_unified_operations_projection.v1",
@@ -100,6 +101,13 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/service_log_retention_candidate"
+      }
+    },
+    "retention_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
       }
     },
     "event_types": {
@@ -390,6 +398,25 @@
           "retention_cutoff",
           "dry_run",
           "retention_candidates",
+          "summary",
+          "source_statuses",
+          "pagination"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_service_log_retention_history_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "filters",
+          "retention_history",
           "summary",
           "source_statuses",
           "pagination"
@@ -694,6 +721,10 @@
           "minimum": 0
         },
         "candidate_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "history_count": {
           "type": "integer",
           "minimum": 0
         },
