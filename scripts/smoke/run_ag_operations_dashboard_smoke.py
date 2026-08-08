@@ -26,16 +26,19 @@ from nex_ag.operations import (  # noqa: E402
     register_operation_source_readiness_routes,
     register_operational_event_taxonomy_routes,
     register_operational_event_routes,
+    register_service_log_routes,
     register_unified_operation_routes,
 )
 from nex_runtime import (  # noqa: E402
     InMemoryJobQueue,
     InMemoryOperationalEventStore,
+    InMemoryServiceLogStore,
     InMemoryWorkerHeartbeatStore,
     SERVICE_SPECS,
     build_common_job,
     build_operational_event,
     build_service_app,
+    build_service_log_entry,
     build_subject_ref,
     build_worker_heartbeat,
     issue_mock_service_token,
@@ -51,6 +54,7 @@ def run_ag_operations_dashboard_smoke() -> dict[str, Any]:
     registry = build_operations_source_registry(
         job_queues=_build_job_queues(),
         event_stores=_build_event_stores(),
+        service_log_stores=_build_log_stores(),
         worker_heartbeat_stores=_build_worker_heartbeat_stores(),
     )
     runtime = AgOperationsSourceRuntime(
@@ -64,6 +68,7 @@ def run_ag_operations_dashboard_smoke() -> dict[str, Any]:
     register_unified_operation_routes(app, registry=registry, runtime=runtime)
     register_operational_event_taxonomy_routes(app)
     register_operational_event_routes(app, registry=registry)
+    register_service_log_routes(app, registry=registry)
     register_job_operation_routes(app, registry=registry)
 
     client = TestClient(app)
@@ -209,6 +214,49 @@ def _build_worker_heartbeat_stores() -> dict[str, InMemoryWorkerHeartbeatStore]:
     return {"nex-cx": cx_store}
 
 
+def _build_log_stores() -> dict[str, InMemoryServiceLogStore]:
+    cx_store = InMemoryServiceLogStore()
+    cx_store.append(
+        build_service_log_entry(
+            log_id="smoke-log-cx-001",
+            service_id="nex-cx",
+            severity="INFO",
+            logger_name="nex_runtime.worker_runner",
+            message="Smoke worker completed a job.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            job_id="smoke-job-cx-001",
+            subject_ref={"type": "cx.document", "id": "doc-smoke-001"},
+            attributes={
+                "worker_id": "smoke-worker-cx-001",
+                "worker_type": "cx.document_processing.worker",
+                "attempt_count": 1,
+            },
+            observed_at="2026-08-05T00:00:06Z",
+        )
+    )
+    mo_store = InMemoryServiceLogStore()
+    mo_store.append(
+        build_service_log_entry(
+            log_id="smoke-log-mo-001",
+            service_id="nex-mo",
+            severity="ERROR",
+            logger_name="nex_mo.remote_provider",
+            message="Smoke provider request failed.",
+            trace_id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            request_id=REQUEST_ID,
+            job_id="smoke-job-mo-001",
+            subject_ref={"type": "mo.provider", "id": "embedding"},
+            attributes={"authorization": "Bearer private", "provider": "vllm"},
+            observed_at="2026-08-05T00:00:02Z",
+        )
+    )
+    return {
+        "nex-cx": cx_store,
+        "nex-mo": mo_store,
+    }
+
+
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
@@ -256,6 +304,15 @@ def _read_operations_projections(client: TestClient) -> dict[str, dict[str, Any]
         "event_detail": _get_json(
             client,
             "/admin/v1/operations/events/smoke-event-mo-001",
+        ),
+        "logs": _get_json(
+            client,
+            "/admin/v1/operations/logs",
+            params={"service_id": "nex-cx", "q": "worker"},
+        ),
+        "log_detail": _get_json(
+            client,
+            "/admin/v1/operations/logs/smoke-log-mo-001",
         ),
         "jobs": _get_json(
             client,
@@ -328,6 +385,8 @@ def _ag_operations_dashboard_smoke_checks(
     dashboard = projections["dashboard"]
     issue_candidates = projections["issue_candidates"]
     event_detail = projections["event_detail"]
+    logs = projections["logs"]
+    log_detail = projections["log_detail"]
     job_detail = projections["job_detail"]
     workers = projections["workers"]
     worker_detail = projections["worker_detail"]
@@ -338,6 +397,8 @@ def _ag_operations_dashboard_smoke_checks(
         "event_taxonomy": "ag_operational_event_taxonomy_projection.v1",
         "events": "ag_operational_event_projection.v1",
         "event_detail": "ag_operational_event_detail_projection.v1",
+        "logs": "ag_service_log_projection.v1",
+        "log_detail": "ag_service_log_detail_projection.v1",
         "jobs": "ag_job_operations_projection.v1",
         "job_detail": "ag_job_operation_detail_projection.v1",
         "workers": "ag_worker_runtime_projection.v1",
@@ -360,6 +421,11 @@ def _ag_operations_dashboard_smoke_checks(
         "event_detail_redacted": "private" not in json.dumps(
             event_detail,
             ensure_ascii=False,
+        ),
+        "service_logs_visible_and_redacted": (
+            logs["logs"][0]["log_id"] == "smoke-log-cx-001"
+            and log_detail["log"]["log_id"] == "smoke-log-mo-001"
+            and "private" not in json.dumps(log_detail, ensure_ascii=False)
         ),
         "job_detail_timeline_ready": (
             job_detail["lifecycle_timeline"]["timeline_status"] == "READY"
@@ -406,6 +472,7 @@ def _projection_counts(projections: dict[str, dict[str, Any]]) -> dict[str, int]
     return {
         "sources": len(projections["sources"]["sources"]),
         "events": len(projections["events"]["events"]),
+        "logs": len(projections["logs"]["logs"]),
         "jobs": len(projections["jobs"]["jobs"]),
         "workers": len(projections["workers"]["workers"]),
         "worker_detail_events": len(
@@ -429,6 +496,7 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"endpoints={evidence['endpoint_count']} "
             f"jobs={counts['jobs']} workers={counts['workers']} "
             f"events={counts['events']} "
+            f"logs={counts['logs']} "
             f"issues={counts['issue_candidates']}"
         )
     return "ag_operations_dashboard_smoke=fail"

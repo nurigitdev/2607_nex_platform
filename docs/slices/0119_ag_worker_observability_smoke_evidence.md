@@ -35,7 +35,7 @@ Targeted regression:
 Expected summary:
 
 ```text
-ag_operations_dashboard_smoke=pass endpoints=13 jobs=2 workers=1 events=1 issues=2
+ag_operations_dashboard_smoke=pass endpoints=15 jobs=2 workers=1 events=1 logs=1 issues=3
 ```
 
 Full quality gate:

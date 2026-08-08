@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0139 AG structured service log projection.
+Status: Slice 0140 structured service log OpenAPI and smoke evidence.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005

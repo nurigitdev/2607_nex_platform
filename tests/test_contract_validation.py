@@ -188,14 +188,23 @@ def test_iter_openapi_files_handles_missing_directory(tmp_path: Path) -> None:
     assert validate_contracts.iter_openapi_files(tmp_path) == []
 
 
-def test_nex_ag_openapi_includes_worker_detail_contract() -> None:
+def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:
     openapi_path = (
         Path(__file__).parents[1] / "contracts" / "openapi" / "nex-ag.openapi.yaml"
     )
     spec = yaml.safe_load(openapi_path.read_text(encoding="utf-8"))
 
     worker_detail = spec["paths"]["/admin/v1/operations/workers/{service_id}/{worker_id}"]["get"]
+    service_logs = spec["paths"]["/admin/v1/operations/logs"]["get"]
+    service_log_detail = spec["paths"]["/admin/v1/operations/logs/{log_id}"]["get"]
     parameter_names = {parameter["name"] for parameter in worker_detail["parameters"]}
+    parameters = spec["components"]["parameters"]
+    service_log_query_names = {
+        parameters[parameter["$ref"].rsplit("/", 1)[-1]]["name"]
+        if "$ref" in parameter
+        else parameter["name"]
+        for parameter in service_logs["parameters"]
+    }
     projection_versions = spec["components"]["schemas"]["AgOperationsProjection"][
         "properties"
     ]["projection_schema_version"]["enum"]
@@ -209,6 +218,26 @@ def test_nex_ag_openapi_includes_worker_detail_contract() -> None:
     }
     assert "ag_worker_runtime_projection.v1" in projection_versions
     assert "ag_worker_detail_projection.v1" in projection_versions
+    assert service_logs["operationId"] == "getAgServiceLogProjection"
+    assert service_log_detail["operationId"] == "getAgServiceLogDetailProjection"
+    assert {
+        "service_id",
+        "severity",
+        "logger_name",
+        "trace_id",
+        "request_id",
+        "job_id",
+        "subject_type",
+        "subject_id",
+        "q",
+        "since",
+        "until",
+        "sort",
+        "cursor",
+        "limit",
+    } == service_log_query_names
+    assert "ag_service_log_projection.v1" in projection_versions
+    assert "ag_service_log_detail_projection.v1" in projection_versions
 
 
 def test_load_structured_file_rejects_unsupported_suffix(tmp_path: Path) -> None:

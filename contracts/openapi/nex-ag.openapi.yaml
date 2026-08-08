@@ -410,6 +410,99 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: Operational event was not found.
+  /admin/v1/operations/logs:
+    get:
+      operationId: getAgServiceLogProjection
+      tags:
+        - Operations
+      parameters:
+        - $ref: "#/components/parameters/serviceId"
+        - name: severity
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ServiceLogSeverity"
+        - name: logger_name
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 160
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TraceId"
+        - name: request_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: job_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: subject_type
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+        - name: subject_id
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 128
+        - $ref: "#/components/parameters/since"
+        - $ref: "#/components/parameters/until"
+        - $ref: "#/components/parameters/sort"
+        - $ref: "#/components/parameters/cursor"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only structured service log projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "400":
+          description: Invalid structured service log query or filter.
+        "401":
+          description: Service claim is missing or invalid.
+  /admin/v1/operations/logs/{log_id}:
+    get:
+      operationId: getAgServiceLogDetailProjection
+      tags:
+        - Operations
+      parameters:
+        - name: log_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Read-only structured service log detail projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Structured service log was not found.
+        "503":
+          description: Structured service log source is unavailable.
   /admin/v1/operations/jobs:
     get:
       operationId: getAgJobOperationsProjection
@@ -700,6 +793,14 @@ components:
         - WARNING
         - ERROR
         - CRITICAL
+    ServiceLogSeverity:
+      type: string
+      enum:
+        - DEBUG
+        - INFO
+        - WARNING
+        - ERROR
+        - CRITICAL
     AgOperationsProjection:
       type: object
       required:
@@ -713,6 +814,8 @@ components:
             - ag_operational_event_projection.v1
             - ag_operational_event_detail_projection.v1
             - ag_operational_event_taxonomy_projection.v1
+            - ag_service_log_projection.v1
+            - ag_service_log_detail_projection.v1
             - ag_job_operations_projection.v1
             - ag_job_operation_detail_projection.v1
             - ag_unified_operations_projection.v1
