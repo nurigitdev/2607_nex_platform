@@ -425,7 +425,8 @@
           "rollups",
           "summary",
           "job_source_statuses",
-          "event_source_statuses"
+          "event_source_statuses",
+          "log_source_statuses"
         ]
       }
     },
@@ -654,6 +655,7 @@
         "service_id",
         "jobs",
         "events",
+        "logs",
         "source_status"
       ],
       "properties": {
@@ -666,12 +668,16 @@
         "events": {
           "$ref": "#/$defs/event_rollup_metrics"
         },
+        "logs": {
+          "$ref": "#/$defs/log_rollup_metrics"
+        },
         "source_status": {
           "type": "object",
           "additionalProperties": false,
           "required": [
             "jobs",
-            "events"
+            "events",
+            "logs"
           ],
           "properties": {
             "jobs": {
@@ -683,6 +689,14 @@
               ]
             },
             "events": {
+              "type": "string",
+              "enum": [
+                "READY",
+                "NOT_CONFIGURED",
+                "UNAVAILABLE"
+              ]
+            },
+            "logs": {
               "type": "string",
               "enum": [
                 "READY",
@@ -811,6 +825,66 @@
             "type": "integer",
             "minimum": 0
           }
+        }
+      }
+    },
+    "log_rollup_metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "by_severity",
+        "by_logger_name",
+        "redacted_attribute_count"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_severity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ],
+          "properties": {
+            "DEBUG": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "INFO": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "WARNING": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "ERROR": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "CRITICAL": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "by_logger_name": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "redacted_attribute_count": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },

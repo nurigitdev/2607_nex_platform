@@ -71,9 +71,24 @@
           "cx.processing.succeeded": 1
         }
       },
+      "logs": {
+        "total": 1,
+        "by_severity": {
+          "DEBUG": 0,
+          "INFO": 1,
+          "WARNING": 0,
+          "ERROR": 0,
+          "CRITICAL": 0
+        },
+        "by_logger_name": {
+          "nex_runtime.worker_runner": 1
+        },
+        "redacted_attribute_count": 0
+      },
       "source_status": {
         "jobs": "READY",
-        "events": "READY"
+        "events": "READY",
+        "logs": "READY"
       }
     }
   ],
@@ -107,11 +122,28 @@
         "nex-cx": 1
       }
     },
+    "logs": {
+      "total": 1,
+      "by_severity": {
+        "DEBUG": 0,
+        "INFO": 1,
+        "WARNING": 0,
+        "ERROR": 0,
+        "CRITICAL": 0
+      },
+      "by_service": {
+        "nex-cx": 1
+      },
+      "redacted_attribute_count": 0
+    },
     "source_statuses": {
       "jobs": {
         "READY": 1
       },
       "events": {
+        "READY": 1
+      },
+      "logs": {
         "READY": 1
       }
     }

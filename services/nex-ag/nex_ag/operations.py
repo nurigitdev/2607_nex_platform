@@ -1615,6 +1615,7 @@ def register_unified_operation_routes(
         return build_operations_rollup_metrics_projection(
             job_queues=job_queues,
             event_store=event_store,
+            service_log_stores=service_log_stores,
             registry=registry,
             service_id=service_id,
             query_options=query_options,
@@ -2628,6 +2629,7 @@ def build_operations_dashboard_snapshot_projection(
     rollup_projection = build_operations_rollup_metrics_projection(
         job_queues=job_queues,
         event_store=event_store,
+        service_log_stores=service_log_stores,
         registry=registry,
         service_id=service_id,
         query_options=options,
@@ -2715,6 +2717,7 @@ def build_operations_rollup_metrics_projection(
     *,
     job_queues: Mapping[str, JobQueue] | None = None,
     event_store: OperationalEventStore | None = None,
+    service_log_stores: Mapping[str, ServiceLogStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     service_id: str | None = None,
     limit: int = 500,
@@ -2732,6 +2735,10 @@ def build_operations_rollup_metrics_projection(
         if registry is not None
         else event_store or DEFAULT_OPERATIONAL_EVENT_STORE
     )
+    selected_log_stores = _service_log_stores_for_projection(
+        service_log_stores=service_log_stores,
+        registry=registry,
+    )
     configured_event_service_ids = (
         set(registry.event_stores())
         if registry is not None
@@ -2744,6 +2751,7 @@ def build_operations_rollup_metrics_projection(
     rollups: list[dict[str, Any]] = []
     job_source_statuses: dict[str, dict[str, Any]] = {}
     event_source_statuses: dict[str, dict[str, Any]] = {}
+    log_source_statuses: dict[str, dict[str, Any]] = {}
     for selected_service_id in selected_service_ids:
         jobs, job_source_status = _operations_rollup_jobs_for_service(
             queue_stores,
@@ -2756,16 +2764,24 @@ def build_operations_rollup_metrics_projection(
             options=options,
             configured_service_ids=configured_event_service_ids,
         )
+        logs, log_source_status = _operations_rollup_logs_for_service(
+            selected_log_stores,
+            service_id=selected_service_id,
+            options=options,
+        )
         job_source_statuses[selected_service_id] = job_source_status
         event_source_statuses[selected_service_id] = event_source_status
+        log_source_statuses[selected_service_id] = log_source_status
         rollups.append(
             {
                 "service_id": selected_service_id,
                 "jobs": jobs,
                 "events": events,
+                "logs": logs,
                 "source_status": {
                     "jobs": job_source_status["status"],
                     "events": event_source_status["status"],
+                    "logs": log_source_status["status"],
                 },
             }
         )
@@ -2775,6 +2791,10 @@ def build_operations_rollup_metrics_projection(
         if any(
             source["status"] != "READY"
             for source in [*job_source_statuses.values(), *event_source_statuses.values()]
+        )
+        or any(
+            source["status"] == "UNAVAILABLE"
+            for source in log_source_statuses.values()
         )
         else "READY"
     )
@@ -2791,6 +2811,7 @@ def build_operations_rollup_metrics_projection(
         "summary": summarize_operations_rollup_metrics(rollups),
         "job_source_statuses": job_source_statuses,
         "event_source_statuses": event_source_statuses,
+        "log_source_statuses": log_source_statuses,
     }
     if registry is not None:
         projection["source_registry"] = registry.to_summary()
@@ -3213,33 +3234,45 @@ def summarize_operations_rollup_metrics(
 ) -> dict[str, Any]:
     job_statuses = {status: 0 for status in JOB_STATUSES}
     event_severities = {severity: 0 for severity in OPERATIONAL_EVENT_SEVERITIES}
+    log_severities = {severity: 0 for severity in SERVICE_LOG_SEVERITIES}
     jobs_by_service: dict[str, int] = {}
     events_by_service: dict[str, int] = {}
+    logs_by_service: dict[str, int] = {}
     source_statuses = {
         "jobs": {},
         "events": {},
+        "logs": {},
     }
     total_jobs = 0
     active_jobs = 0
     terminal_jobs = 0
     total_events = 0
+    total_logs = 0
+    redacted_attribute_count = 0
     for rollup in rollups:
         service_id = str(rollup["service_id"])
         jobs = rollup["jobs"]
         events = rollup["events"]
+        logs = rollup["logs"]
         total_jobs += int(jobs["total"])
         active_jobs += int(jobs["active"])
         terminal_jobs += int(jobs["terminal"])
         total_events += int(events["total"])
+        total_logs += int(logs["total"])
+        redacted_attribute_count += int(logs["redacted_attribute_count"])
         jobs_by_service[service_id] = int(jobs["total"])
         events_by_service[service_id] = int(events["total"])
+        logs_by_service[service_id] = int(logs["total"])
         for status, count in jobs["statuses"].items():
             if status in job_statuses:
                 job_statuses[status] += int(count)
         for severity, count in events["by_severity"].items():
             if severity in event_severities:
                 event_severities[severity] += int(count)
-        for source_kind in ("jobs", "events"):
+        for severity, count in logs["by_severity"].items():
+            if severity in log_severities:
+                log_severities[severity] += int(count)
+        for source_kind in ("jobs", "events", "logs"):
             source_status = str(rollup["source_status"][source_kind])
             source_counts = source_statuses[source_kind]
             source_counts[source_status] = source_counts.get(source_status, 0) + 1
@@ -3256,6 +3289,12 @@ def summarize_operations_rollup_metrics(
             "total": total_events,
             "by_severity": event_severities,
             "by_service": events_by_service,
+        },
+        "logs": {
+            "total": total_logs,
+            "by_severity": log_severities,
+            "by_service": logs_by_service,
+            "redacted_attribute_count": redacted_attribute_count,
         },
         "source_statuses": source_statuses,
     }
@@ -4568,6 +4607,41 @@ def _operations_rollup_events_for_service(
     }
 
 
+def _operations_rollup_logs_for_service(
+    log_stores: Mapping[str, ServiceLogStore],
+    *,
+    service_id: str,
+    options: OperationQueryOptions,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    store = log_stores.get(service_id)
+    if store is None:
+        return _empty_log_rollup(), {
+            "status": "NOT_CONFIGURED",
+            "log_count": 0,
+        }
+    try:
+        logs = store.list_logs(
+            service_id=service_id,
+            limit=normalize_service_log_limit(500),
+        )
+    except ServiceLogError as exc:
+        return _empty_log_rollup(), {
+            "status": "UNAVAILABLE",
+            "log_count": 0,
+            "error_code": exc.error_code,
+            "detail": exc.detail,
+        }
+    logs = _filter_records_by_operation_time(
+        logs,
+        options,
+        timestamp_field="observed_at",
+    )
+    return _rollup_logs(logs), {
+        "status": "READY",
+        "log_count": len(logs),
+    }
+
+
 def _trace_event_timeline_items(
     event_store: OperationalEventStore,
     *,
@@ -4658,12 +4732,30 @@ def _rollup_events(events: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _rollup_logs(logs: list[dict[str, Any]]) -> dict[str, Any]:
+    summary = summarize_service_logs(logs)
+    by_logger_name: dict[str, int] = {}
+    for entry in logs:
+        logger_name = str(entry.get("logger_name", "unknown"))
+        by_logger_name[logger_name] = by_logger_name.get(logger_name, 0) + 1
+    return {
+        "total": summary["total"],
+        "by_severity": summary["by_severity"],
+        "by_logger_name": by_logger_name,
+        "redacted_attribute_count": summary["redacted_attribute_count"],
+    }
+
+
 def _empty_job_rollup() -> dict[str, Any]:
     return _rollup_jobs([])
 
 
 def _empty_event_rollup() -> dict[str, Any]:
     return _rollup_events([])
+
+
+def _empty_log_rollup() -> dict[str, Any]:
+    return _rollup_logs([])
 
 
 def _build_job_lifecycle_timeline(

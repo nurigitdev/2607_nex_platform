@@ -75,6 +75,8 @@ AG issue candidate projection also treats `ERROR` and `CRITICAL` structured
 service logs as candidate signals when a service log store is configured.
 Cross-service trace timelines include correlated structured service log entries
 alongside jobs and operational events when log stores are configured.
+Operations rollups include structured service log totals, severity counts,
+logger counts, and redaction counts for configured log stores.
 
 Service workers should also report `worker_heartbeat.v1` payloads through the
 shared worker heartbeat runtime. It defines the status vocabulary, emitter,

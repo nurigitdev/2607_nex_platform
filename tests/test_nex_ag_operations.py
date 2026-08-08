@@ -1566,6 +1566,7 @@ def test_build_unified_operations_projection_combines_jobs_events_and_registry_s
     registry = build_operations_source_registry(
         job_queues=build_job_queues(),
         event_stores=build_event_stores(),
+        service_log_stores=build_log_stores(),
     )
 
     projection = build_unified_operations_projection(
@@ -1630,6 +1631,7 @@ def test_unified_operations_projection_applies_time_window_sort_and_cursor() -> 
     registry = build_operations_source_registry(
         job_queues=build_job_queues(),
         event_stores=build_event_stores(),
+        service_log_stores=build_log_stores(),
     )
     options = build_operation_query_options(
         limit=1,
@@ -1688,6 +1690,7 @@ def test_build_operations_rollup_metrics_projection_summarizes_sources() -> None
     registry = build_operations_source_registry(
         job_queues=build_job_queues(),
         event_stores=build_event_stores(),
+        service_log_stores=build_log_stores(),
     )
 
     projection = build_operations_rollup_metrics_projection(
@@ -1733,17 +1736,43 @@ def test_build_operations_rollup_metrics_projection_summarizes_sources() -> None
                 },
                 "by_event_type": {"cx.processing.succeeded": 1},
             },
+            "logs": {
+                "total": 1,
+                "by_severity": {
+                    "DEBUG": 0,
+                    "INFO": 1,
+                    "WARNING": 0,
+                    "ERROR": 0,
+                    "CRITICAL": 0,
+                },
+                "by_logger_name": {"nex_runtime.worker_runner": 1},
+                "redacted_attribute_count": 0,
+            },
             "source_status": {
                 "jobs": "READY",
                 "events": "READY",
+                "logs": "READY",
             },
         }
     ]
     assert projection["summary"]["jobs"]["total"] == 2
     assert projection["summary"]["events"]["total"] == 1
+    assert projection["summary"]["logs"] == {
+        "total": 1,
+        "by_severity": {
+            "DEBUG": 0,
+            "INFO": 1,
+            "WARNING": 0,
+            "ERROR": 0,
+            "CRITICAL": 0,
+        },
+        "by_service": {"nex-cx": 1},
+        "redacted_attribute_count": 0,
+    }
     assert projection["summary"]["source_statuses"] == {
         "jobs": {"READY": 1},
         "events": {"READY": 1},
+        "logs": {"READY": 1},
     }
     assert projection["job_source_statuses"]["nex-cx"] == {
         "status": "READY",
@@ -1752,6 +1781,10 @@ def test_build_operations_rollup_metrics_projection_summarizes_sources() -> None
     assert projection["event_source_statuses"]["nex-cx"] == {
         "status": "READY",
         "event_count": 1,
+    }
+    assert projection["log_source_statuses"]["nex-cx"] == {
+        "status": "READY",
+        "log_count": 1,
     }
     assert_ag_operations_projection_contract(projection)
 
@@ -1773,8 +1806,10 @@ def test_operations_rollup_metrics_projection_applies_time_window() -> None:
     assert projection["rollups"][0]["jobs"]["total"] == 1
     assert projection["rollups"][0]["jobs"]["statuses"][FAILED] == 1
     assert projection["rollups"][0]["events"]["total"] == 0
+    assert projection["rollups"][0]["logs"]["total"] == 0
     assert projection["summary"]["jobs"]["by_service"] == {"nex-cx": 1}
     assert projection["summary"]["events"]["by_service"] == {"nex-cx": 0}
+    assert projection["summary"]["logs"]["by_service"] == {"nex-cx": 0}
 
 
 def test_operations_rollup_metrics_projection_reports_degraded_sources() -> None:
@@ -1789,6 +1824,7 @@ def test_operations_rollup_metrics_projection_reports_degraded_sources() -> None
     unavailable = build_operations_rollup_metrics_projection(
         job_queues={"nex-cx": BrokenJobQueue()},
         event_store=BrokenOperationalEventStore(),
+        service_log_stores={"nex-cx": BrokenServiceLogStore()},
         service_id="nex-cx",
     )
 
@@ -1807,11 +1843,14 @@ def test_operations_rollup_metrics_projection_reports_degraded_sources() -> None
     assert unavailable["projection_status"] == "DEGRADED"
     assert unavailable["rollups"][0]["jobs"]["total"] == 0
     assert unavailable["rollups"][0]["events"]["total"] == 0
+    assert unavailable["rollups"][0]["logs"]["total"] == 0
     assert unavailable["job_source_statuses"]["nex-cx"]["status"] == "UNAVAILABLE"
     assert unavailable["event_source_statuses"]["nex-cx"]["status"] == "UNAVAILABLE"
+    assert unavailable["log_source_statuses"]["nex-cx"]["status"] == "UNAVAILABLE"
     assert unavailable["summary"]["source_statuses"] == {
         "jobs": {"UNAVAILABLE": 1},
         "events": {"UNAVAILABLE": 1},
+        "logs": {"UNAVAILABLE": 1},
     }
     assert_ag_operations_projection_contract(unavailable)
 
@@ -1843,9 +1882,22 @@ def test_summarize_operations_rollup_metrics_counts_empty() -> None:
             },
             "by_service": {},
         },
+        "logs": {
+            "total": 0,
+            "by_severity": {
+                "DEBUG": 0,
+                "INFO": 0,
+                "WARNING": 0,
+                "ERROR": 0,
+                "CRITICAL": 0,
+            },
+            "by_service": {},
+            "redacted_attribute_count": 0,
+        },
         "source_statuses": {
             "jobs": {},
             "events": {},
+            "logs": {},
         },
     }
 
@@ -1877,6 +1929,11 @@ def test_operations_rollup_metrics_route_requires_auth_returns_projection() -> N
     assert payload["projection_status"] == "READY"
     assert payload["rollups"][0]["service_id"] == "nex-cx"
     assert payload["summary"]["jobs"]["total"] == 2
+    assert payload["summary"]["logs"]["by_service"] == {"nex-cx": 0}
+    assert payload["log_source_statuses"]["nex-cx"] == {
+        "status": "NOT_CONFIGURED",
+        "log_count": 0,
+    }
 
 
 def test_operations_rollup_metrics_route_rejects_bad_filters() -> None:

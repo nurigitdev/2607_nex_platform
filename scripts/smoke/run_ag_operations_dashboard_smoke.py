@@ -450,6 +450,9 @@ def _ag_operations_dashboard_smoke_checks(
         "rollup_counts": (
             projections["rollups"]["rollups"][0]["jobs"]["total"] == 2
             and projections["rollups"]["rollups"][0]["events"]["total"] == 2
+            and projections["rollups"]["rollups"][0]["logs"]["total"] == 1
+            and projections["rollups"]["log_source_statuses"]["nex-cx"]["status"]
+            == "READY"
         ),
         "dashboard_failure_and_active_jobs": (
             dashboard["recent_failures"]["jobs"][0]["job_id"] == "smoke-job-cx-002"
