@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/service_log_retention_execution.v1.schema.json",
+  "title": "NeX Service Log Retention Execution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "retention_execution_schema_version",
+    "execution_id",
+    "policy_id",
+    "service_id",
+    "mode",
+    "execution_status",
+    "delete_enabled",
+    "retention_days",
+    "retention_cutoff",
+    "checked_at",
+    "scan_limit",
+    "max_delete_count",
+    "candidate_count",
+    "deleted_count",
+    "requested_by",
+    "idempotency_key",
+    "trace_id",
+    "request_id",
+    "blocked_reason",
+    "error",
+    "audit"
+  ],
+  "properties": {
+    "retention_execution_schema_version": {
+      "const": "service_log_retention_execution.v1"
+    },
+    "execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy_id": {
+      "const": "service-log-query-retention-v1"
+    },
+    "service_id": {
+      "$ref": "#/$defs/service_id"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "DRY_RUN",
+        "EXECUTE"
+      ]
+    },
+    "execution_status": {
+      "type": "string",
+      "enum": [
+        "PLANNED",
+        "SUCCEEDED",
+        "BLOCKED",
+        "FAILED"
+      ]
+    },
+    "delete_enabled": {
+      "type": "boolean"
+    },
+    "retention_days": {
+      "type": "integer",
+      "minimum": 7,
+      "maximum": 365
+    },
+    "retention_cutoff": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "scan_limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 500
+    },
+    "max_delete_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 500
+    },
+    "candidate_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "deleted_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "requested_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor_type",
+        "actor_id",
+        "service_id"
+      ],
+      "properties": {
+        "actor_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actor_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        }
+      }
+    },
+    "idempotency_key": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "trace_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "request_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "blocked_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "error": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "error_code",
+            "detail"
+          ],
+          "properties": {
+            "error_code": {
+              "type": "string",
+              "minLength": 1
+            },
+            "detail": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "audit_event_type",
+        "audit_event_id",
+        "emitted"
+      ],
+      "properties": {
+        "audit_event_type": {
+          "const": "service_log.retention.execution"
+        },
+        "audit_event_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "emitted": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "service_id": {
+      "type": "string",
+      "enum": [
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo"
+      ]
+    }
+  }
+}

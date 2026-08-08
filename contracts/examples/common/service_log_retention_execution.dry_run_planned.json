@@ -1,0 +1,31 @@
+{
+  "retention_execution_schema_version": "service_log_retention_execution.v1",
+  "execution_id": "ed8d6dff-40fd-57c0-b9dc-85e8fc71b19f",
+  "policy_id": "service-log-query-retention-v1",
+  "service_id": "nex-cx",
+  "mode": "DRY_RUN",
+  "execution_status": "PLANNED",
+  "delete_enabled": false,
+  "retention_days": 30,
+  "retention_cutoff": "2026-07-06T00:00:00Z",
+  "checked_at": "2026-08-05T00:00:00Z",
+  "scan_limit": 500,
+  "max_delete_count": 100,
+  "candidate_count": 2,
+  "deleted_count": 0,
+  "requested_by": {
+    "actor_type": "service",
+    "actor_id": "nex-ag",
+    "service_id": "nex-ag"
+  },
+  "idempotency_key": "retention-dry-run-nex-cx-20260805",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "blocked_reason": null,
+  "error": null,
+  "audit": {
+    "audit_event_type": "service_log.retention.execution",
+    "audit_event_id": "f0f769d9-232d-59e3-a95d-f6dc066245cd",
+    "emitted": false
+  }
+}

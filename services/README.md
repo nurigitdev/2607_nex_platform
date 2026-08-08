@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0146 service log retention dry-run projection.
+Status: Slice 0147 service log retention execution/audit contract.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -80,6 +80,7 @@ logger counts, and redaction counts for configured log stores.
 AG exposes the active structured service log query and retention policy at
 `GET /admin/v1/operations/logs/policy` and a read-only retention candidate
 projection at `GET /admin/v1/operations/logs/retention/dry-run`; retention
+execution evidence uses `service_log_retention_execution.v1`. Retention
 enforcement workers are a future implementation step, not part of the current
 write path.
 

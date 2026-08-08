@@ -20,6 +20,8 @@ from nex_runtime import (
     DatabasePoolSettings,
     InMemoryServiceLogStore,
     REDACTED_LOG_VALUE,
+    SERVICE_LOG_RETENTION_EXECUTION_SCHEMA_VERSION,
+    SERVICE_LOG_RETENTION_POLICY_ID,
     ServiceLogEmitter,
     ServiceLogEmitResult,
     ServiceLogError,
@@ -27,12 +29,16 @@ from nex_runtime import (
     build_engine,
     build_session_factory,
     build_service_log_entry,
+    build_service_log_retention_execution,
     normalize_service_log_limit,
+    normalize_service_log_retention_days,
+    normalize_service_log_retention_delete_limit,
     redact_service_log_attributes,
     service_log_emitter_from_app,
     service_log_store_from_app,
     summarize_service_logs,
     validate_service_log_entry,
+    validate_service_log_retention_execution,
 )
 
 
@@ -108,6 +114,233 @@ def test_build_service_log_entry_matches_contract_schema() -> None:
     assert log["severity"] == "INFO"
     assert log["log_id"]
     assert log["attributes"]["job_type"] == "cx.document_processing"
+
+
+def test_build_service_log_retention_execution_matches_contract_schema() -> None:
+    schema = json.loads(
+        (
+            Path(__file__).parents[1]
+            / "contracts/schemas/common/service_log_retention_execution.v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    execution = build_service_log_retention_execution(
+        service_id="nex-cx",
+        mode="dry_run",
+        execution_status="planned",
+        retention_days=1,
+        retention_cutoff="2026-07-06T00:00:00+00:00",
+        checked_at="2026-08-05T00:00:00Z",
+        scan_limit=999,
+        max_delete_count=999,
+        candidate_count=2,
+        idempotency_key="retention-dry-run-nex-cx-20260805",
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+    )
+
+    jsonschema.validate(instance=execution, schema=schema)
+    assert execution["retention_execution_schema_version"] == (
+        SERVICE_LOG_RETENTION_EXECUTION_SCHEMA_VERSION
+    )
+    assert execution["policy_id"] == SERVICE_LOG_RETENTION_POLICY_ID
+    assert execution["mode"] == "DRY_RUN"
+    assert execution["execution_status"] == "PLANNED"
+    assert execution["retention_days"] == 7
+    assert execution["scan_limit"] == 500
+    assert execution["max_delete_count"] == 500
+    assert execution["deleted_count"] == 0
+    assert execution["requested_by"] == {
+        "actor_type": "service",
+        "actor_id": "nex-ag",
+        "service_id": "nex-ag",
+    }
+    assert execution["audit"]["audit_event_type"] == "service_log.retention.execution"
+    assert execution["audit"]["emitted"] is False
+    assert validate_service_log_retention_execution(execution) is execution
+
+
+def test_service_log_retention_execution_supports_execute_and_blocked_shapes() -> None:
+    succeeded = build_service_log_retention_execution(
+        service_id="nex-cx",
+        mode="EXECUTE",
+        execution_status="SUCCEEDED",
+        retention_days=30,
+        retention_cutoff="2026-07-06T00:00:00Z",
+        checked_at="2026-08-05T00:00:00Z",
+        candidate_count=3,
+        deleted_count=2,
+        delete_enabled=True,
+        requested_by={
+            "actor_type": "service",
+            "actor_id": "nex-ag",
+            "service_id": "nex-ag",
+        },
+    )
+    blocked = build_service_log_retention_execution(
+        service_id="nex-cx",
+        mode="EXECUTE",
+        execution_status="BLOCKED",
+        retention_days=30,
+        retention_cutoff="2026-07-06T00:00:00Z",
+        checked_at="2026-08-05T00:00:00Z",
+        candidate_count=3,
+        blocked_reason="delete_not_enabled",
+    )
+    failed = build_service_log_retention_execution(
+        service_id="nex-cx",
+        mode="EXECUTE",
+        execution_status="FAILED",
+        retention_days=30,
+        retention_cutoff="2026-07-06T00:00:00Z",
+        checked_at="2026-08-05T00:00:00Z",
+        candidate_count=3,
+        error={"error_code": "retention.failed", "detail": "retention failed"},
+    )
+
+    assert succeeded["delete_enabled"] is True
+    assert succeeded["deleted_count"] == 2
+    assert blocked["execution_status"] == "BLOCKED"
+    assert blocked["blocked_reason"] == "delete_not_enabled"
+    assert failed["error"]["error_code"] == "retention.failed"
+
+
+def test_service_log_retention_execution_rejects_unsafe_or_invalid_shapes() -> None:
+    base = {
+        "service_id": "nex-cx",
+        "retention_cutoff": "2026-07-06T00:00:00Z",
+        "checked_at": "2026-08-05T00:00:00Z",
+    }
+
+    assert normalize_service_log_retention_days(1) == 7
+    assert normalize_service_log_retention_days(30) == 30
+    assert normalize_service_log_retention_days(9999) == 365
+    assert normalize_service_log_retention_delete_limit(0) == 1
+    assert normalize_service_log_retention_delete_limit(100) == 100
+    assert normalize_service_log_retention_delete_limit(9999) == 500
+    with pytest.raises(ServiceLogError) as bad_dry_run:
+        build_service_log_retention_execution(**base, delete_enabled=True)
+    with pytest.raises(ServiceLogError) as bad_execute:
+        build_service_log_retention_execution(
+            **base,
+            mode="EXECUTE",
+            execution_status="SUCCEEDED",
+        )
+    with pytest.raises(ServiceLogError) as bad_deleted_count:
+        build_service_log_retention_execution(
+            **base,
+            candidate_count=1,
+            deleted_count=2,
+            delete_enabled=False,
+        )
+    with pytest.raises(ServiceLogError) as bad_timestamp:
+        build_service_log_retention_execution(
+            service_id="nex-cx",
+            retention_cutoff="not-a-time",
+            checked_at="2026-08-05T00:00:00Z",
+        )
+    with pytest.raises(ServiceLogError) as bad_requested_by:
+        build_service_log_retention_execution(
+            **base,
+            requested_by={"actor_type": "service", "actor_id": "ag", "service_id": "bad"},
+        )
+    with pytest.raises(ServiceLogError) as bad_error:
+        build_service_log_retention_execution(
+            **base,
+            error={"error_code": "retention.failed"},
+        )
+    invalid = build_service_log_retention_execution(**base)
+    invalid["audit"]["emitted"] = "no"
+    with pytest.raises(ServiceLogError) as bad_audit:
+        validate_service_log_retention_execution(invalid)
+    with pytest.raises(ServiceLogError) as bad_object:
+        validate_service_log_retention_execution(["not", "object"])  # type: ignore[arg-type]
+    naive_timestamp = build_service_log_retention_execution(
+        service_id="nex-cx",
+        retention_cutoff="2026-07-06T00:00:00",
+        checked_at="2026-08-05T00:00:00",
+    )
+
+    assert bad_dry_run.value.error_code == (
+        "service_log_retention.dry_run_delete_enabled_invalid"
+    )
+    assert bad_execute.value.error_code == "service_log_retention.execute_not_enabled"
+    assert bad_deleted_count.value.error_code == (
+        "service_log_retention.deleted_count_invalid"
+    )
+    assert bad_timestamp.value.error_code == (
+        "service_log_retention.retention_cutoff_invalid"
+    )
+    assert bad_requested_by.value.error_code == (
+        "service_log_retention.requested_by_service_invalid"
+    )
+    assert bad_error.value.error_code == "service_log.field_invalid"
+    assert bad_audit.value.error_code == "service_log_retention.audit_emitted_invalid"
+    assert bad_object.value.error_code == "service_log_retention.invalid"
+    assert naive_timestamp["retention_cutoff"] == "2026-07-06T00:00:00Z"
+    assert naive_timestamp["checked_at"] == "2026-08-05T00:00:00Z"
+
+
+def test_validate_service_log_retention_execution_rejects_contract_edges() -> None:
+    valid = build_service_log_retention_execution(
+        service_id="nex-cx",
+        retention_cutoff="2026-07-06T00:00:00Z",
+        checked_at="2026-08-05T00:00:00Z",
+    )
+
+    def assert_invalid(
+        field_name: str,
+        value: object,
+        error_code: str,
+    ) -> None:
+        payload = json.loads(json.dumps(valid))
+        if "." in field_name:
+            first, second = field_name.split(".", 1)
+            payload[first][second] = value
+        else:
+            payload[field_name] = value
+        with pytest.raises(ServiceLogError) as exc_info:
+            validate_service_log_retention_execution(payload)
+        assert exc_info.value.error_code == error_code
+
+    missing = json.loads(json.dumps(valid))
+    missing.pop("service_id")
+    with pytest.raises(ServiceLogError) as missing_exc:
+        validate_service_log_retention_execution(missing)
+
+    assert missing_exc.value.error_code == "service_log_retention.invalid"
+    assert_invalid(
+        "retention_execution_schema_version",
+        "other",
+        "service_log_retention.schema_version_invalid",
+    )
+    assert_invalid("policy_id", "other", "service_log_retention.policy_id_invalid")
+    assert_invalid("service_id", "bad", "service_log_retention.service_id_invalid")
+    assert_invalid("mode", "DELETE", "service_log_retention.mode_invalid")
+    assert_invalid("execution_status", "DONE", "service_log_retention.status_invalid")
+    assert_invalid(
+        "delete_enabled",
+        "yes",
+        "service_log_retention.delete_enabled_invalid",
+    )
+    assert_invalid(
+        "candidate_count",
+        -1,
+        "service_log_retention.candidate_count_invalid",
+    )
+    assert_invalid("trace_id", "bad", "service_log_retention.trace_id_invalid")
+    assert_invalid(
+        "requested_by",
+        ["bad"],
+        "service_log_retention.requested_by_invalid",
+    )
+    assert_invalid("error", "bad", "service_log_retention.error_invalid")
+    assert_invalid("audit", "bad", "service_log_retention.audit_invalid")
+    assert_invalid(
+        "audit.audit_event_type",
+        "other",
+        "service_log_retention.audit_event_type_invalid",
+    )
 
 
 def test_build_service_log_entry_redacts_sensitive_attribute_keys() -> None:

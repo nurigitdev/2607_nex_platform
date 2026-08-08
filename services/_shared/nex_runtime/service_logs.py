@@ -20,6 +20,20 @@ MAX_SERVICE_LOG_LIMIT = 500
 MAX_SERVICE_LOG_MESSAGE_LENGTH = 512
 MAX_SERVICE_LOGGER_NAME_LENGTH = 160
 REDACTED_LOG_VALUE = "<redacted>"
+SERVICE_LOG_RETENTION_EXECUTION_SCHEMA_VERSION = "service_log_retention_execution.v1"
+SERVICE_LOG_RETENTION_EXECUTION_MODES = ("DRY_RUN", "EXECUTE")
+SERVICE_LOG_RETENTION_EXECUTION_STATUSES = (
+    "PLANNED",
+    "SUCCEEDED",
+    "BLOCKED",
+    "FAILED",
+)
+SERVICE_LOG_RETENTION_POLICY_ID = "service-log-query-retention-v1"
+DEFAULT_SERVICE_LOG_RETENTION_DAYS = 30
+MIN_SERVICE_LOG_RETENTION_DAYS = 7
+MAX_SERVICE_LOG_RETENTION_DAYS = 365
+DEFAULT_SERVICE_LOG_RETENTION_MAX_DELETE_COUNT = 100
+MAX_SERVICE_LOG_RETENTION_MAX_DELETE_COUNT = 500
 
 SENSITIVE_LOG_ATTRIBUTE_KEY_PARTS = (
     "api_key",
@@ -410,6 +424,214 @@ def normalize_service_log_limit(limit: int) -> int:
     return limit
 
 
+def normalize_service_log_retention_days(value: int) -> int:
+    if value < MIN_SERVICE_LOG_RETENTION_DAYS:
+        return MIN_SERVICE_LOG_RETENTION_DAYS
+    if value > MAX_SERVICE_LOG_RETENTION_DAYS:
+        return MAX_SERVICE_LOG_RETENTION_DAYS
+    return value
+
+
+def normalize_service_log_retention_delete_limit(value: int) -> int:
+    if value < 1:
+        return 1
+    if value > MAX_SERVICE_LOG_RETENTION_MAX_DELETE_COUNT:
+        return MAX_SERVICE_LOG_RETENTION_MAX_DELETE_COUNT
+    return value
+
+
+def build_service_log_retention_execution(
+    *,
+    service_id: str,
+    retention_cutoff: str,
+    mode: str = "DRY_RUN",
+    execution_status: str = "PLANNED",
+    retention_days: int = DEFAULT_SERVICE_LOG_RETENTION_DAYS,
+    checked_at: str | None = None,
+    scan_limit: int = MAX_SERVICE_LOG_LIMIT,
+    max_delete_count: int = DEFAULT_SERVICE_LOG_RETENTION_MAX_DELETE_COUNT,
+    candidate_count: int = 0,
+    deleted_count: int = 0,
+    delete_enabled: bool = False,
+    requested_by: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
+    trace_id: str | None = None,
+    request_id: str | None = None,
+    blocked_reason: str | None = None,
+    error: dict[str, Any] | None = None,
+    execution_id: str | None = None,
+) -> dict[str, Any]:
+    observed_checked_at = _normalize_iso_timestamp(
+        checked_at or _utc_now(),
+        field_name="checked_at",
+    )
+    normalized_execution_id = execution_id or _service_log_retention_execution_id(
+        service_id=service_id,
+        mode=mode,
+        execution_status=execution_status,
+        retention_cutoff=retention_cutoff,
+        checked_at=observed_checked_at,
+        idempotency_key=idempotency_key,
+    )
+    normalized = {
+        "retention_execution_schema_version": (
+            SERVICE_LOG_RETENTION_EXECUTION_SCHEMA_VERSION
+        ),
+        "execution_id": normalized_execution_id,
+        "policy_id": SERVICE_LOG_RETENTION_POLICY_ID,
+        "service_id": service_id,
+        "mode": mode.upper(),
+        "execution_status": execution_status.upper(),
+        "delete_enabled": bool(delete_enabled),
+        "retention_days": normalize_service_log_retention_days(retention_days),
+        "retention_cutoff": _normalize_iso_timestamp(
+            retention_cutoff,
+            field_name="retention_cutoff",
+        ),
+        "checked_at": observed_checked_at,
+        "scan_limit": normalize_service_log_limit(scan_limit),
+        "max_delete_count": normalize_service_log_retention_delete_limit(
+            max_delete_count
+        ),
+        "candidate_count": _non_negative_int(candidate_count, "candidate_count"),
+        "deleted_count": _non_negative_int(deleted_count, "deleted_count"),
+        "requested_by": _normalize_retention_requested_by(requested_by),
+        "idempotency_key": idempotency_key,
+        "trace_id": trace_id,
+        "request_id": request_id,
+        "blocked_reason": blocked_reason,
+        "error": deepcopy(error) if error is not None else None,
+        "audit": {
+            "audit_event_type": "service_log.retention.execution",
+            "audit_event_id": _service_log_retention_audit_id(normalized_execution_id),
+            "emitted": False,
+        },
+    }
+    return validate_service_log_retention_execution(normalized)
+
+
+def validate_service_log_retention_execution(
+    execution: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(execution, dict):
+        raise ServiceLogError(
+            error_code="service_log_retention.invalid",
+            detail="service log retention execution must be an object",
+        )
+    for field_name in (
+        "retention_execution_schema_version",
+        "execution_id",
+        "policy_id",
+        "service_id",
+        "mode",
+        "execution_status",
+        "delete_enabled",
+        "retention_days",
+        "retention_cutoff",
+        "checked_at",
+        "scan_limit",
+        "max_delete_count",
+        "candidate_count",
+        "deleted_count",
+        "requested_by",
+        "idempotency_key",
+        "trace_id",
+        "request_id",
+        "blocked_reason",
+        "error",
+        "audit",
+    ):
+        if field_name not in execution:
+            raise ServiceLogError(
+                error_code="service_log_retention.invalid",
+                detail=f"missing service log retention execution field: {field_name}",
+            )
+    if (
+        execution["retention_execution_schema_version"]
+        != SERVICE_LOG_RETENTION_EXECUTION_SCHEMA_VERSION
+    ):
+        raise ServiceLogError(
+            error_code="service_log_retention.schema_version_invalid",
+            detail=(
+                "retention_execution_schema_version must be "
+                "service_log_retention_execution.v1"
+            ),
+        )
+    for field_name in ("execution_id", "policy_id", "service_id"):
+        _required_string(execution[field_name], field_name)
+    if execution["policy_id"] != SERVICE_LOG_RETENTION_POLICY_ID:
+        raise ServiceLogError(
+            error_code="service_log_retention.policy_id_invalid",
+            detail=f"policy_id must be {SERVICE_LOG_RETENTION_POLICY_ID}",
+        )
+    if execution["service_id"] not in SERVICE_IDS:
+        raise ServiceLogError(
+            error_code="service_log_retention.service_id_invalid",
+            detail=f"unsupported service id: {execution['service_id']}",
+        )
+    if execution["mode"] not in SERVICE_LOG_RETENTION_EXECUTION_MODES:
+        raise ServiceLogError(
+            error_code="service_log_retention.mode_invalid",
+            detail="mode must be DRY_RUN or EXECUTE",
+        )
+    if execution["execution_status"] not in SERVICE_LOG_RETENTION_EXECUTION_STATUSES:
+        raise ServiceLogError(
+            error_code="service_log_retention.status_invalid",
+            detail="execution_status is not supported",
+        )
+    if not isinstance(execution["delete_enabled"], bool):
+        raise ServiceLogError(
+            error_code="service_log_retention.delete_enabled_invalid",
+            detail="delete_enabled must be a boolean",
+        )
+    if execution["mode"] == "DRY_RUN" and execution["delete_enabled"]:
+        raise ServiceLogError(
+            error_code="service_log_retention.dry_run_delete_enabled_invalid",
+            detail="dry-run retention execution cannot enable deletes",
+        )
+    if (
+        execution["mode"] == "EXECUTE"
+        and execution["execution_status"] == "SUCCEEDED"
+        and not execution["delete_enabled"]
+    ):
+        raise ServiceLogError(
+            error_code="service_log_retention.execute_not_enabled",
+            detail="successful execute retention requires delete_enabled=true",
+        )
+    for field_name in (
+        "retention_days",
+        "scan_limit",
+        "max_delete_count",
+        "candidate_count",
+        "deleted_count",
+    ):
+        if not isinstance(execution[field_name], int) or execution[field_name] < 0:
+            raise ServiceLogError(
+                error_code=f"service_log_retention.{field_name}_invalid",
+                detail=f"{field_name} must be a non-negative integer",
+            )
+    if execution["deleted_count"] > execution["candidate_count"]:
+        raise ServiceLogError(
+            error_code="service_log_retention.deleted_count_invalid",
+            detail="deleted_count cannot exceed candidate_count",
+        )
+    _normalize_iso_timestamp(execution["retention_cutoff"], field_name="retention_cutoff")
+    _normalize_iso_timestamp(execution["checked_at"], field_name="checked_at")
+    if execution["trace_id"] is not None and not _is_trace_id(execution["trace_id"]):
+        raise ServiceLogError(
+            error_code="service_log_retention.trace_id_invalid",
+            detail="trace_id must be 32 lowercase hex characters",
+        )
+    for field_name in ("idempotency_key", "request_id", "blocked_reason"):
+        value = execution[field_name]
+        if value is not None:
+            _required_string(value, field_name)
+    _normalize_retention_requested_by(execution["requested_by"])
+    _validate_retention_error(execution["error"])
+    _validate_retention_audit(execution["audit"])
+    return execution
+
+
 @dataclass
 class InMemoryServiceLogStore:
     entries: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -732,6 +954,134 @@ def _service_log_id(
             ),
         )
     )
+
+
+def _service_log_retention_execution_id(
+    *,
+    service_id: str,
+    mode: str,
+    execution_status: str,
+    retention_cutoff: str,
+    checked_at: str,
+    idempotency_key: str | None,
+) -> str:
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            "|".join(
+                [
+                    SERVICE_LOG_RETENTION_EXECUTION_SCHEMA_VERSION,
+                    service_id,
+                    mode.upper(),
+                    execution_status.upper(),
+                    retention_cutoff,
+                    checked_at,
+                    idempotency_key or "",
+                ]
+            ),
+        )
+    )
+
+
+def _service_log_retention_audit_id(execution_id: str) -> str:
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            "|".join(
+                [
+                    "service_log.retention.audit.v1",
+                    execution_id,
+                ]
+            ),
+        )
+    )
+
+
+def _normalize_iso_timestamp(value: object, *, field_name: str) -> str:
+    text = _required_string(value, field_name)
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ServiceLogError(
+            error_code=f"service_log_retention.{field_name}_invalid",
+            detail=f"{field_name} must be an ISO-8601 timestamp",
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _non_negative_int(value: object, field_name: str) -> int:
+    if not isinstance(value, int) or value < 0:
+        raise ServiceLogError(
+            error_code=f"service_log_retention.{field_name}_invalid",
+            detail=f"{field_name} must be a non-negative integer",
+        )
+    return value
+
+
+def _normalize_retention_requested_by(value: dict[str, Any] | None) -> dict[str, str]:
+    requested_by = value or {
+        "actor_type": "service",
+        "actor_id": "nex-ag",
+        "service_id": "nex-ag",
+    }
+    if not isinstance(requested_by, dict):
+        raise ServiceLogError(
+            error_code="service_log_retention.requested_by_invalid",
+            detail="requested_by must be an object",
+        )
+    normalized = {
+        "actor_type": _required_string(
+            requested_by.get("actor_type"),
+            "requested_by.actor_type",
+        ),
+        "actor_id": _required_string(
+            requested_by.get("actor_id"),
+            "requested_by.actor_id",
+        ),
+        "service_id": _required_string(
+            requested_by.get("service_id"),
+            "requested_by.service_id",
+        ),
+    }
+    if normalized["service_id"] not in SERVICE_IDS:
+        raise ServiceLogError(
+            error_code="service_log_retention.requested_by_service_invalid",
+            detail=f"unsupported requested_by service id: {normalized['service_id']}",
+        )
+    return normalized
+
+
+def _validate_retention_error(error: object) -> None:
+    if error is None:
+        return
+    if not isinstance(error, dict):
+        raise ServiceLogError(
+            error_code="service_log_retention.error_invalid",
+            detail="error must be null or an object",
+        )
+    _required_string(error.get("error_code"), "error.error_code")
+    _required_string(error.get("detail"), "error.detail")
+
+
+def _validate_retention_audit(audit: object) -> None:
+    if not isinstance(audit, dict):
+        raise ServiceLogError(
+            error_code="service_log_retention.audit_invalid",
+            detail="audit must be an object",
+        )
+    if audit.get("audit_event_type") != "service_log.retention.execution":
+        raise ServiceLogError(
+            error_code="service_log_retention.audit_event_type_invalid",
+            detail="audit_event_type must be service_log.retention.execution",
+        )
+    _required_string(audit.get("audit_event_id"), "audit.audit_event_id")
+    if not isinstance(audit.get("emitted"), bool):
+        raise ServiceLogError(
+            error_code="service_log_retention.audit_emitted_invalid",
+            detail="audit.emitted must be a boolean",
+        )
 
 
 def _is_trace_id(value: Any) -> bool:

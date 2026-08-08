@@ -31,6 +31,11 @@
       "schema": "schemas/common/service_log_entry.v1.schema.json"
     },
     {
+      "name": "service_log_retention_execution_dry_run_planned",
+      "path": "examples/common/service_log_retention_execution.dry_run_planned.json",
+      "schema": "schemas/common/service_log_retention_execution.v1.schema.json"
+    },
+    {
       "name": "service_claims_ae_to_cx",
       "path": "examples/auth/service_claims.ae_to_cx.json",
       "schema": "schemas/common/service_claims.v1.schema.json"
