@@ -1,0 +1,55 @@
+{
+  "retention_history_schema_version": "service_log_retention_history_entry.v1",
+  "execution_id": "366885c7-c262-53fd-9af1-997e8384e913",
+  "service_id": "nex-cx",
+  "mode": "EXECUTE",
+  "execution_status": "SUCCEEDED",
+  "delete_enabled": true,
+  "retention_days": 30,
+  "retention_cutoff": "2026-07-06T00:00:00Z",
+  "checked_at": "2026-08-05T00:00:00Z",
+  "recorded_at": "2026-08-05T00:00:03Z",
+  "candidate_count": 2,
+  "deleted_count": 2,
+  "requested_by": {
+    "actor_type": "service",
+    "actor_id": "nex-ag",
+    "service_id": "nex-ag"
+  },
+  "idempotency_key": "retention-execute-nex-cx-20260805",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "blocked_reason": null,
+  "error": null,
+  "execution": {
+    "retention_execution_schema_version": "service_log_retention_execution.v1",
+    "execution_id": "366885c7-c262-53fd-9af1-997e8384e913",
+    "policy_id": "service-log-query-retention-v1",
+    "service_id": "nex-cx",
+    "mode": "EXECUTE",
+    "execution_status": "SUCCEEDED",
+    "delete_enabled": true,
+    "retention_days": 30,
+    "retention_cutoff": "2026-07-06T00:00:00Z",
+    "checked_at": "2026-08-05T00:00:00Z",
+    "scan_limit": 500,
+    "max_delete_count": 100,
+    "candidate_count": 2,
+    "deleted_count": 2,
+    "requested_by": {
+      "actor_type": "service",
+      "actor_id": "nex-ag",
+      "service_id": "nex-ag"
+    },
+    "idempotency_key": "retention-execute-nex-cx-20260805",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "blocked_reason": null,
+    "error": null,
+    "audit": {
+      "audit_event_type": "service_log.retention.execution",
+      "audit_event_id": "859daec4-d5b5-5d6c-beb2-f66da0bb23c3",
+      "emitted": false
+    }
+  }
+}

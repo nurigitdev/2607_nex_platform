@@ -15,13 +15,16 @@ from sqlalchemy.exc import SQLAlchemyError
 import nex_runtime.service_logs as runtime_logs
 from nex_runtime import (
     DEFAULT_SERVICE_LOG_LIMIT,
+    DEFAULT_SERVICE_LOG_RETENTION_HISTORY_LIMIT,
     MAX_SERVICE_LOG_LIMIT,
+    MAX_SERVICE_LOG_RETENTION_HISTORY_LIMIT,
     SERVICE_LOG_SCHEMA_VERSION,
     SERVICE_LOG_SEVERITIES,
     DatabasePoolSettings,
     InMemoryServiceLogStore,
     REDACTED_LOG_VALUE,
     SERVICE_LOG_RETENTION_EXECUTION_SCHEMA_VERSION,
+    SERVICE_LOG_RETENTION_HISTORY_ENTRY_SCHEMA_VERSION,
     SERVICE_LOG_RETENTION_POLICY_ID,
     SERVICE_SPECS,
     ServiceLogEmitter,
@@ -33,10 +36,12 @@ from nex_runtime import (
     build_service_app,
     build_service_log_entry,
     build_service_log_retention_execution,
+    build_service_log_retention_history_entry,
     issue_mock_service_token,
     normalize_service_log_limit,
     normalize_service_log_retention_days,
     normalize_service_log_retention_delete_limit,
+    normalize_service_log_retention_history_limit,
     redact_service_log_attributes,
     register_service_log_retention_routes,
     service_log_emitter_from_app,
@@ -44,6 +49,7 @@ from nex_runtime import (
     summarize_service_logs,
     validate_service_log_entry,
     validate_service_log_retention_execution,
+    validate_service_log_retention_history_entry,
 )
 
 
@@ -168,6 +174,89 @@ def test_build_service_log_retention_execution_matches_contract_schema() -> None
     assert execution["audit"]["audit_event_type"] == "service_log.retention.execution"
     assert execution["audit"]["emitted"] is False
     assert validate_service_log_retention_execution(execution) is execution
+
+
+def test_build_service_log_retention_history_entry_matches_contract_schema() -> None:
+    schema = json.loads(
+        (
+            Path(__file__).parents[1]
+            / "contracts/schemas/common/service_log_retention_history_entry.v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    execution = build_service_log_retention_execution(
+        service_id="nex-cx",
+        mode="EXECUTE",
+        execution_status="SUCCEEDED",
+        retention_days=30,
+        retention_cutoff="2026-07-06T00:00:00Z",
+        checked_at="2026-08-05T00:00:00Z",
+        candidate_count=3,
+        deleted_count=2,
+        delete_enabled=True,
+        idempotency_key="retention-execute-nex-cx-20260805",
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+    )
+
+    history = build_service_log_retention_history_entry(
+        execution,
+        recorded_at="2026-08-05T00:00:03+00:00",
+    )
+
+    jsonschema.validate(instance=history, schema=schema)
+    assert history["retention_history_schema_version"] == (
+        SERVICE_LOG_RETENTION_HISTORY_ENTRY_SCHEMA_VERSION
+    )
+    assert history["execution_id"] == execution["execution_id"]
+    assert history["service_id"] == "nex-cx"
+    assert history["mode"] == "EXECUTE"
+    assert history["execution_status"] == "SUCCEEDED"
+    assert history["recorded_at"] == "2026-08-05T00:00:03Z"
+    assert history["execution"] == execution
+    assert validate_service_log_retention_history_entry(history) is history
+
+
+def test_service_log_retention_history_entry_rejects_mismatch_and_invalid_shape() -> None:
+    execution = build_service_log_retention_execution(
+        service_id="nex-cx",
+        retention_cutoff="2026-07-06T00:00:00Z",
+        checked_at="2026-08-05T00:00:00Z",
+    )
+    history = build_service_log_retention_history_entry(execution)
+    bad_service = json.loads(json.dumps(history))
+    bad_service["service_id"] = "nex-ag"
+    bad_schema = json.loads(json.dumps(history))
+    bad_schema["retention_history_schema_version"] = "other"
+    missing = json.loads(json.dumps(history))
+    missing.pop("execution_id")
+
+    assert normalize_service_log_retention_history_limit(0) == 1
+    assert normalize_service_log_retention_history_limit(
+        DEFAULT_SERVICE_LOG_RETENTION_HISTORY_LIMIT
+    ) == DEFAULT_SERVICE_LOG_RETENTION_HISTORY_LIMIT
+    assert normalize_service_log_retention_history_limit(9999) == (
+        MAX_SERVICE_LOG_RETENTION_HISTORY_LIMIT
+    )
+    with pytest.raises(ServiceLogError) as mismatch_exc:
+        validate_service_log_retention_history_entry(bad_service)
+    with pytest.raises(ServiceLogError) as schema_exc:
+        validate_service_log_retention_history_entry(bad_schema)
+    with pytest.raises(ServiceLogError) as missing_exc:
+        validate_service_log_retention_history_entry(missing)
+    with pytest.raises(ServiceLogError) as object_exc:
+        validate_service_log_retention_history_entry(["bad"])  # type: ignore[arg-type]
+    with pytest.raises(ServiceLogError) as bad_timestamp:
+        build_service_log_retention_history_entry(execution, recorded_at="not-a-time")
+
+    assert mismatch_exc.value.error_code == (
+        "service_log_retention_history.execution_mismatch"
+    )
+    assert schema_exc.value.error_code == (
+        "service_log_retention_history.schema_version_invalid"
+    )
+    assert missing_exc.value.error_code == "service_log_retention_history.invalid"
+    assert object_exc.value.error_code == "service_log_retention_history.invalid"
+    assert bad_timestamp.value.error_code == "service_log_retention.recorded_at_invalid"
 
 
 def test_service_log_retention_execution_supports_execute_and_blocked_shapes() -> None:

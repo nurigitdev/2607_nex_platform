@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/service_log_retention_history_entry.v1.schema.json",
+  "title": "NeX Service Log Retention History Entry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "retention_history_schema_version",
+    "execution_id",
+    "service_id",
+    "mode",
+    "execution_status",
+    "delete_enabled",
+    "retention_days",
+    "retention_cutoff",
+    "checked_at",
+    "recorded_at",
+    "candidate_count",
+    "deleted_count",
+    "requested_by",
+    "idempotency_key",
+    "trace_id",
+    "request_id",
+    "blocked_reason",
+    "error",
+    "execution"
+  ],
+  "properties": {
+    "retention_history_schema_version": {
+      "const": "service_log_retention_history_entry.v1"
+    },
+    "execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "service_id": {
+      "$ref": "#/$defs/service_id"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "DRY_RUN",
+        "EXECUTE"
+      ]
+    },
+    "execution_status": {
+      "type": "string",
+      "enum": [
+        "PLANNED",
+        "SUCCEEDED",
+        "BLOCKED",
+        "FAILED"
+      ]
+    },
+    "delete_enabled": {
+      "type": "boolean"
+    },
+    "retention_days": {
+      "type": "integer",
+      "minimum": 7,
+      "maximum": 365
+    },
+    "retention_cutoff": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "candidate_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "deleted_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "requested_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor_type",
+        "actor_id",
+        "service_id"
+      ],
+      "properties": {
+        "actor_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actor_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        }
+      }
+    },
+    "idempotency_key": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "trace_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "request_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "blocked_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "error": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "error_code",
+            "detail"
+          ],
+          "properties": {
+            "error_code": {
+              "type": "string",
+              "minLength": 1
+            },
+            "detail": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "retention_execution_schema_version",
+        "execution_id",
+        "service_id"
+      ],
+      "properties": {
+        "retention_execution_schema_version": {
+          "const": "service_log_retention_execution.v1"
+        },
+        "execution_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "service_id": {
+      "type": "string",
+      "enum": [
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo"
+      ]
+    }
+  }
+}

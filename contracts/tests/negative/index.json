@@ -31,6 +31,11 @@
       "schema": "schemas/common/service_log_entry.v1.schema.json"
     },
     {
+      "name": "service_log_retention_history_entry_bad_service",
+      "path": "tests/negative/common/service_log_retention_history_entry.bad_service.json",
+      "schema": "schemas/common/service_log_retention_history_entry.v1.schema.json"
+    },
+    {
       "name": "service_claims_user_token_use",
       "path": "tests/negative/auth/service_claims.user_token_use.json",
       "schema": "schemas/common/service_claims.v1.schema.json"

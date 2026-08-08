@@ -26,6 +26,9 @@ MAX_SERVICE_LOG_MESSAGE_LENGTH = 512
 MAX_SERVICE_LOGGER_NAME_LENGTH = 160
 REDACTED_LOG_VALUE = "<redacted>"
 SERVICE_LOG_RETENTION_EXECUTION_SCHEMA_VERSION = "service_log_retention_execution.v1"
+SERVICE_LOG_RETENTION_HISTORY_ENTRY_SCHEMA_VERSION = (
+    "service_log_retention_history_entry.v1"
+)
 SERVICE_LOG_RETENTION_EXECUTION_MODES = ("DRY_RUN", "EXECUTE")
 SERVICE_LOG_RETENTION_EXECUTION_STATUSES = (
     "PLANNED",
@@ -39,6 +42,8 @@ MIN_SERVICE_LOG_RETENTION_DAYS = 7
 MAX_SERVICE_LOG_RETENTION_DAYS = 365
 DEFAULT_SERVICE_LOG_RETENTION_MAX_DELETE_COUNT = 100
 MAX_SERVICE_LOG_RETENTION_MAX_DELETE_COUNT = 500
+DEFAULT_SERVICE_LOG_RETENTION_HISTORY_LIMIT = 50
+MAX_SERVICE_LOG_RETENTION_HISTORY_LIMIT = 500
 
 SENSITIVE_LOG_ATTRIBUTE_KEY_PARTS = (
     "api_key",
@@ -462,6 +467,14 @@ def normalize_service_log_retention_delete_limit(value: int) -> int:
     return value
 
 
+def normalize_service_log_retention_history_limit(value: int) -> int:
+    if value < 1:
+        return 1
+    if value > MAX_SERVICE_LOG_RETENTION_HISTORY_LIMIT:
+        return MAX_SERVICE_LOG_RETENTION_HISTORY_LIMIT
+    return value
+
+
 def build_service_log_retention_execution(
     *,
     service_id: str,
@@ -530,6 +543,114 @@ def build_service_log_retention_execution(
         },
     }
     return validate_service_log_retention_execution(normalized)
+
+
+def build_service_log_retention_history_entry(
+    execution: dict[str, Any],
+    *,
+    recorded_at: str | None = None,
+) -> dict[str, Any]:
+    normalized_execution = deepcopy(validate_service_log_retention_execution(execution))
+    entry = {
+        "retention_history_schema_version": (
+            SERVICE_LOG_RETENTION_HISTORY_ENTRY_SCHEMA_VERSION
+        ),
+        "execution_id": normalized_execution["execution_id"],
+        "service_id": normalized_execution["service_id"],
+        "mode": normalized_execution["mode"],
+        "execution_status": normalized_execution["execution_status"],
+        "delete_enabled": normalized_execution["delete_enabled"],
+        "retention_days": normalized_execution["retention_days"],
+        "retention_cutoff": normalized_execution["retention_cutoff"],
+        "checked_at": normalized_execution["checked_at"],
+        "recorded_at": _normalize_iso_timestamp(
+            recorded_at or _utc_now(),
+            field_name="recorded_at",
+        ),
+        "candidate_count": normalized_execution["candidate_count"],
+        "deleted_count": normalized_execution["deleted_count"],
+        "requested_by": deepcopy(normalized_execution["requested_by"]),
+        "idempotency_key": normalized_execution["idempotency_key"],
+        "trace_id": normalized_execution["trace_id"],
+        "request_id": normalized_execution["request_id"],
+        "blocked_reason": normalized_execution["blocked_reason"],
+        "error": deepcopy(normalized_execution["error"]),
+        "execution": normalized_execution,
+    }
+    return validate_service_log_retention_history_entry(entry)
+
+
+def validate_service_log_retention_history_entry(
+    entry: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(entry, dict):
+        raise ServiceLogError(
+            error_code="service_log_retention_history.invalid",
+            detail="service log retention history entry must be an object",
+        )
+    for field_name in (
+        "retention_history_schema_version",
+        "execution_id",
+        "service_id",
+        "mode",
+        "execution_status",
+        "delete_enabled",
+        "retention_days",
+        "retention_cutoff",
+        "checked_at",
+        "recorded_at",
+        "candidate_count",
+        "deleted_count",
+        "requested_by",
+        "idempotency_key",
+        "trace_id",
+        "request_id",
+        "blocked_reason",
+        "error",
+        "execution",
+    ):
+        if field_name not in entry:
+            raise ServiceLogError(
+                error_code="service_log_retention_history.invalid",
+                detail=f"missing service log retention history field: {field_name}",
+            )
+    if (
+        entry["retention_history_schema_version"]
+        != SERVICE_LOG_RETENTION_HISTORY_ENTRY_SCHEMA_VERSION
+    ):
+        raise ServiceLogError(
+            error_code="service_log_retention_history.schema_version_invalid",
+            detail=(
+                "retention_history_schema_version must be "
+                "service_log_retention_history_entry.v1"
+            ),
+        )
+    execution = validate_service_log_retention_execution(entry["execution"])
+    for field_name in (
+        "execution_id",
+        "service_id",
+        "mode",
+        "execution_status",
+        "delete_enabled",
+        "retention_days",
+        "retention_cutoff",
+        "checked_at",
+        "candidate_count",
+        "deleted_count",
+        "requested_by",
+        "idempotency_key",
+        "trace_id",
+        "request_id",
+        "blocked_reason",
+        "error",
+    ):
+        if entry[field_name] != execution[field_name]:
+            raise ServiceLogError(
+                error_code="service_log_retention_history.execution_mismatch",
+                detail=f"{field_name} must match the embedded retention execution",
+            )
+    _normalize_iso_timestamp(entry["recorded_at"], field_name="recorded_at")
+    return entry
 
 
 def validate_service_log_retention_execution(
