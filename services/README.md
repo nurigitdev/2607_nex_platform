@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0133 replay OpenAPI and smoke evidence.
+Status: Slice 0134 dead-letter replay issue/dashboard surfacing.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -123,6 +123,11 @@ It forwards explicit replay metadata to the service-local replay endpoint and
 audits successful dispatch as `ag.job_control.succeeded` with
 `details.action=replay`. The replay response remains payload-redacted while
 exposing safe source summary and lineage metadata for operator debugging.
+
+AG operations dashboard snapshots expose `replay_candidates` for failed jobs
+with `error.dead_lettered=true`. Issue candidates also include
+`dead_letter_replay_available.v1` as a `WARNING` actionability signal with the
+AG replay control path and required payload fields.
 
 `nex-cx` processing routes still support the MVP inline run path, but they now
 also expose an enqueue-first path for background worker execution. Inline runs

@@ -35,6 +35,14 @@
       "signal_type": "job_status"
     },
     {
+      "rule_id": "dead_letter_replay_available.v1",
+      "severity": "WARNING",
+      "title": "Dead-letter replay available",
+      "description": "One or more failed dead-letter jobs can be replayed.",
+      "enabled": true,
+      "signal_type": "job_control"
+    },
+    {
       "rule_id": "error_events_present.v1",
       "severity": "ERROR",
       "title": "Error events observed",
@@ -89,6 +97,32 @@
       }
     },
     {
+      "candidate_id": "nex-cx:FAILED_DEAD_LETTER:dead_letter_replay_available.v1",
+      "rule_id": "dead_letter_replay_available.v1",
+      "service_id": "nex-cx",
+      "severity": "WARNING",
+      "title": "Dead-letter replay available",
+      "detail": "1 dead-letter job(s) can be replayed for nex-cx.",
+      "signal": {
+        "status": "FAILED_DEAD_LETTER",
+        "count": 1,
+        "threshold": 1,
+        "job_ids": [
+          "job-cx-002"
+        ],
+        "recommended_action": "replay",
+        "control_paths": [
+          "/admin/v1/operations/jobs/nex-cx/job-cx-002/replay"
+        ],
+        "required_payload_fields": [
+          "replay_job_id",
+          "idempotency_key",
+          "requested_by",
+          "reason"
+        ]
+      }
+    },
+    {
       "candidate_id": "nex-cx:signal:active_jobs_review.v1",
       "rule_id": "active_jobs_review.v1",
       "service_id": "nex-cx",
@@ -102,19 +136,20 @@
     }
   ],
   "summary": {
-    "total": 2,
+    "total": 3,
     "by_severity": {
       "DEBUG": 0,
       "INFO": 1,
-      "WARNING": 0,
+      "WARNING": 1,
       "ERROR": 1,
       "CRITICAL": 0
     },
     "by_service": {
-      "nex-cx": 2
+      "nex-cx": 3
     },
     "by_rule": {
       "failed_jobs_present.v1": 1,
+      "dead_letter_replay_available.v1": 1,
       "active_jobs_review.v1": 1
     }
   },

@@ -107,6 +107,14 @@ OPERATIONS_ISSUE_CANDIDATE_RULES = (
         "signal_type": "job_status",
     },
     {
+        "rule_id": "dead_letter_replay_available.v1",
+        "severity": "WARNING",
+        "title": "Dead-letter replay available",
+        "description": "One or more failed dead-letter jobs can be replayed.",
+        "enabled": True,
+        "signal_type": "job_control",
+    },
+    {
         "rule_id": "error_events_present.v1",
         "severity": "ERROR",
         "title": "Error events observed",
@@ -2235,6 +2243,7 @@ def build_operations_dashboard_snapshot_projection(
             limit=normalized_recent_limit,
         ),
     }
+    replay_candidates = _dashboard_replay_candidates(recent_failures["jobs"])
     active_jobs = _dashboard_job_candidates(
         queue_stores,
         service_id=service_id,
@@ -2262,6 +2271,7 @@ def build_operations_dashboard_snapshot_projection(
         "rollups": rollup_projection["rollups"],
         "rollup_summary": rollup_projection["summary"],
         "recent_failures": recent_failures,
+        "replay_candidates": replay_candidates,
         "active_jobs": active_jobs,
         "degraded_sources": degraded_sources,
         "job_source_statuses": rollup_projection["job_source_statuses"],
@@ -2700,6 +2710,11 @@ def build_operations_issue_candidates(
     )
     candidates.extend(
         _issue_candidates_from_rollups(dashboard_snapshot["rollups"])
+    )
+    candidates.extend(
+        _issue_candidates_from_replay_candidates(
+            dashboard_snapshot.get("replay_candidates", [])
+        )
     )
     candidates.extend(
         _issue_candidates_from_active_jobs(dashboard_snapshot["active_jobs"])
@@ -3362,6 +3377,40 @@ def _dashboard_failure_event_candidates(
     )["items"]
 
 
+def _dashboard_replay_candidates(
+    failed_jobs: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        _dashboard_replay_candidate(job)
+        for job in failed_jobs
+        if _job_dead_lettered(job)
+    ]
+
+
+def _dashboard_replay_candidate(job: dict[str, Any]) -> dict[str, Any]:
+    service_id = str(job["service_id"])
+    job_id = str(job["job_id"])
+    return {
+        "service_id": service_id,
+        "job_id": job_id,
+        "job_type": job["job_type"],
+        "status": job["status"],
+        "trace_id": job["trace_id"],
+        "request_id": job["request_id"],
+        "updated_at": job["updated_at"],
+        "source_error_code": _job_error_code(job),
+        "recommended_action": "replay",
+        "allowed_actions": ["read", "replay"],
+        "control_path": f"/admin/v1/operations/jobs/{service_id}/{job_id}/replay",
+        "required_payload_fields": [
+            "replay_job_id",
+            "idempotency_key",
+            "requested_by",
+            "reason",
+        ],
+    }
+
+
 def _dashboard_degraded_sources(
     *,
     operation_sources: list[dict[str, Any]],
@@ -3485,6 +3534,58 @@ def _issue_candidates_from_rollups(
     return candidates
 
 
+def _issue_candidates_from_replay_candidates(
+    replay_candidates: object,
+) -> list[dict[str, Any]]:
+    if not isinstance(replay_candidates, list):
+        return []
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for candidate in replay_candidates:
+        if not isinstance(candidate, Mapping):
+            continue
+        service_id = str(candidate.get("service_id", ""))
+        if service_id not in SERVICE_SPECS:
+            continue
+        grouped.setdefault(service_id, []).append(dict(candidate))
+
+    issue_candidates: list[dict[str, Any]] = []
+    for service_id, candidates in sorted(grouped.items()):
+        job_ids = sorted(str(candidate["job_id"]) for candidate in candidates)
+        issue_candidates.append(
+            _operations_issue_candidate(
+                rule_id="dead_letter_replay_available.v1",
+                service_id=service_id,
+                severity="WARNING",
+                title="Dead-letter replay available",
+                detail=(
+                    f"{len(candidates)} dead-letter job(s) can be replayed "
+                    f"for {service_id}."
+                ),
+                signal={
+                    "status": "FAILED_DEAD_LETTER",
+                    "count": len(candidates),
+                    "threshold": 1,
+                    "job_ids": job_ids,
+                    "recommended_action": "replay",
+                    "control_paths": [
+                        str(candidate["control_path"])
+                        for candidate in sorted(
+                            candidates,
+                            key=lambda item: str(item["job_id"]),
+                        )
+                    ],
+                    "required_payload_fields": [
+                        "replay_job_id",
+                        "idempotency_key",
+                        "requested_by",
+                        "reason",
+                    ],
+                },
+            )
+        )
+    return issue_candidates
+
+
 def _issue_candidates_from_active_jobs(
     active_jobs: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -3504,6 +3605,19 @@ def _issue_candidates_from_active_jobs(
         for service_id, count in sorted(active_counts.items())
         if count > 0
     ]
+
+
+def _job_dead_lettered(job: Mapping[str, Any]) -> bool:
+    error = job.get("error")
+    return isinstance(error, Mapping) and error.get("dead_lettered") is True
+
+
+def _job_error_code(job: Mapping[str, Any]) -> str | None:
+    error = job.get("error")
+    if not isinstance(error, Mapping):
+        return None
+    error_code = error.get("error_code")
+    return str(error_code) if error_code else None
 
 
 def _issue_candidates_from_worker_source_statuses(

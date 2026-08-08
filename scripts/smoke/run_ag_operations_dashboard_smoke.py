@@ -102,14 +102,20 @@ def _build_job_queues() -> dict[str, InMemoryJobQueue]:
             job_id="smoke-job-cx-002",
             idempotency_key="smoke-idem-cx-002",
             created_at="2026-08-05T00:00:01Z",
+            max_attempts=1,
         )
     )
-    cx_queue.fail_job(
-        cx_queue.start_job(
-            "smoke-job-cx-002",
-            updated_at="2026-08-05T00:00:04Z",
-        )["job_id"],
-        updated_at="2026-08-05T00:00:05Z",
+    cx_queue.start_job(
+        "smoke-job-cx-002",
+        updated_at="2026-08-05T00:00:04Z",
+    )
+    cx_queue.retry_job(
+        "smoke-job-cx-002",
+        error={
+            "error_code": "cx.processing.failed",
+            "detail": "Smoke processing failed.",
+        },
+        failed_at="2026-08-05T00:00:05Z",
     )
     ae_queue = InMemoryJobQueue()
     ae_queue.enqueue(
@@ -380,12 +386,19 @@ def _ag_operations_dashboard_smoke_checks(
         ),
         "dashboard_failure_and_active_jobs": (
             dashboard["recent_failures"]["jobs"][0]["job_id"] == "smoke-job-cx-002"
+            and dashboard["replay_candidates"][0]["job_id"] == "smoke-job-cx-002"
+            and dashboard["replay_candidates"][0]["control_path"]
+            == "/admin/v1/operations/jobs/nex-cx/smoke-job-cx-002/replay"
             and dashboard["active_jobs"][0]["job_id"] == "smoke-job-cx-001"
         ),
         "issue_candidates_include_failed_and_active": {
             candidate["rule_id"]
             for candidate in issue_candidates["issue_candidates"]
-        } == {"failed_jobs_present.v1", "active_jobs_review.v1"},
+        } == {
+            "failed_jobs_present.v1",
+            "dead_letter_replay_available.v1",
+            "active_jobs_review.v1",
+        },
     }
 
 
@@ -401,6 +414,9 @@ def _projection_counts(projections: dict[str, dict[str, Any]]) -> dict[str, int]
         "trace_timeline": len(projections["trace_timeline"]["timeline"]),
         "rollups": len(projections["rollups"]["rollups"]),
         "dashboard_degraded_sources": len(projections["dashboard"]["degraded_sources"]),
+        "dashboard_replay_candidates": len(
+            projections["dashboard"]["replay_candidates"]
+        ),
         "issue_candidates": len(projections["issue_candidates"]["issue_candidates"]),
     }
 

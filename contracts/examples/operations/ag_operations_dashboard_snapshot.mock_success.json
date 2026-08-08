@@ -129,8 +129,15 @@
         },
         "idempotency_key": "idem-cx-002",
         "attempt_count": 1,
-        "max_attempts": 2,
-        "retryable": true,
+        "max_attempts": 1,
+        "retryable": false,
+        "error": {
+          "error_code": "cx.processing.failed",
+          "detail": "Processing failed.",
+          "dead_lettered": true,
+          "failed_at": "2026-08-05T00:00:05Z",
+          "retryable": false
+        },
         "links": {},
         "created_at": "2026-08-05T00:00:01Z",
         "updated_at": "2026-08-05T00:00:05Z",
@@ -139,6 +146,30 @@
     ],
     "events": []
   },
+  "replay_candidates": [
+    {
+      "service_id": "nex-cx",
+      "job_id": "job-cx-002",
+      "job_type": "cx.document_processing",
+      "status": "FAILED",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+      "updated_at": "2026-08-05T00:00:05Z",
+      "source_error_code": "cx.processing.failed",
+      "recommended_action": "replay",
+      "allowed_actions": [
+        "read",
+        "replay"
+      ],
+      "control_path": "/admin/v1/operations/jobs/nex-cx/job-cx-002/replay",
+      "required_payload_fields": [
+        "replay_job_id",
+        "idempotency_key",
+        "requested_by",
+        "reason"
+      ]
+    }
+  ],
   "active_jobs": [
     {
       "job_schema_version": "common_job.v1",

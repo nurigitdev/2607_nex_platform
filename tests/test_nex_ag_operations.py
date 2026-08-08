@@ -39,6 +39,7 @@ from nex_ag.operations import (
     build_operational_event_detail_projection,
     build_operational_event_taxonomy_projection,
     build_operational_event_projection,
+    build_operations_issue_candidates,
     build_unified_operations_projection,
     normalize_operation_event_search_query,
     normalize_operation_cursor,
@@ -60,6 +61,8 @@ from nex_ag.operations import (
     summarize_operations_rollup_metrics,
     summarize_trace_timeline_items,
     _filter_records_by_operation_time,
+    _dashboard_replay_candidates,
+    _job_error_code,
     _operation_record_timestamp,
 )
 from nex_ag.job_control import AgJobControlError
@@ -179,11 +182,17 @@ def build_job_queues() -> dict[str, InMemoryJobQueue]:
             job_id="job-cx-002",
             idempotency_key="idem-cx-002",
             created_at="2026-08-05T00:00:01Z",
+            max_attempts=1,
         )
     )
-    cx_queue.fail_job(
-        cx_queue.start_job("job-cx-002", updated_at="2026-08-05T00:00:04Z")["job_id"],
-        updated_at="2026-08-05T00:00:05Z",
+    cx_queue.start_job("job-cx-002", updated_at="2026-08-05T00:00:04Z")
+    cx_queue.retry_job(
+        "job-cx-002",
+        error={
+            "error_code": "cx.processing.failed",
+            "detail": "Processing failed.",
+        },
+        failed_at="2026-08-05T00:00:05Z",
     )
 
     ae_queue = InMemoryJobQueue()
@@ -1796,6 +1805,27 @@ def test_build_operations_dashboard_snapshot_projection_combines_sections() -> N
     assert [job["job_id"] for job in projection["recent_failures"]["jobs"]] == [
         "job-cx-002"
     ]
+    assert projection["replay_candidates"] == [
+        {
+            "service_id": "nex-cx",
+            "job_id": "job-cx-002",
+            "job_type": "cx.document_processing",
+            "status": "FAILED",
+            "trace_id": TRACE_ID,
+            "request_id": REQUEST_ID,
+            "updated_at": "2026-08-05T00:00:05Z",
+            "source_error_code": "cx.processing.failed",
+            "recommended_action": "replay",
+            "allowed_actions": ["read", "replay"],
+            "control_path": "/admin/v1/operations/jobs/nex-cx/job-cx-002/replay",
+            "required_payload_fields": [
+                "replay_job_id",
+                "idempotency_key",
+                "requested_by",
+                "reason",
+            ],
+        }
+    ]
     assert projection["recent_failures"]["events"] == []
     assert [job["job_id"] for job in projection["active_jobs"]] == ["job-cx-001"]
     assert projection["degraded_sources"] == []
@@ -1850,6 +1880,7 @@ def test_operations_dashboard_snapshot_handles_unavailable_candidate_sources() -
         "jobs": [],
         "events": [],
     }
+    assert projection["replay_candidates"] == []
     assert projection["active_jobs"] == []
     assert {
         (source["source_type"], source["service_id"], source["status"])
@@ -1860,6 +1891,31 @@ def test_operations_dashboard_snapshot_handles_unavailable_candidate_sources() -
     }
     assert projection["degraded_sources"][0]["error_code"] == "job.store_unavailable"
     assert_ag_operations_projection_contract(projection)
+
+
+def test_dashboard_replay_candidates_only_include_dead_letter_jobs() -> None:
+    ordinary_failure = sample_job(
+        job_id="ordinary-failed",
+        status=FAILED,
+        idempotency_key="ordinary-failed-idem",
+    )
+    ordinary_failure["service_id"] = "nex-cx"
+    ordinary_failure["error"] = {"error_code": "cx.failed", "dead_lettered": False}
+    replayable_failure = sample_job(
+        job_id="dead-lettered",
+        status=FAILED,
+        idempotency_key="dead-lettered-idem",
+    )
+    replayable_failure["service_id"] = "nex-cx"
+    replayable_failure["error"] = {"dead_lettered": True}
+
+    candidates = _dashboard_replay_candidates([ordinary_failure, replayable_failure])
+
+    assert [candidate["job_id"] for candidate in candidates] == ["dead-lettered"]
+    assert candidates[0]["source_error_code"] is None
+    assert candidates[0]["allowed_actions"] == ["read", "replay"]
+    assert _job_error_code({"error": "not-an-object"}) is None
+    assert _job_error_code({"error": {}}) is None
 
 
 def test_normalize_dashboard_recent_limit_clamps_bounds() -> None:
@@ -1896,6 +1952,9 @@ def test_operations_dashboard_snapshot_route_requires_auth_returns_projection() 
     assert payload["projection_status"] == "READY"
     assert payload["rollup_summary"]["jobs"]["total"] == 2
     assert payload["recent_failures"]["jobs"][0]["job_id"] == "job-cx-002"
+    assert payload["replay_candidates"][0]["control_path"] == (
+        "/admin/v1/operations/jobs/nex-cx/job-cx-002/replay"
+    )
 
 
 def test_operations_dashboard_snapshot_route_rejects_bad_filters() -> None:
@@ -1945,6 +2004,7 @@ def test_build_operations_issue_candidate_projection_flags_service_scope() -> No
         "operations_source_unavailable.v1",
         "operations_source_not_configured.v1",
         "failed_jobs_present.v1",
+        "dead_letter_replay_available.v1",
         "error_events_present.v1",
         "critical_events_present.v1",
         "active_jobs_review.v1",
@@ -1956,20 +2016,37 @@ def test_build_operations_issue_candidate_projection_flags_service_scope() -> No
         for candidate in projection["issue_candidates"]
     ] == [
         ("failed_jobs_present.v1", "nex-cx", "ERROR"),
+        ("dead_letter_replay_available.v1", "nex-cx", "WARNING"),
         ("active_jobs_review.v1", "nex-cx", "INFO"),
     ]
+    replay_candidate = projection["issue_candidates"][1]
+    assert replay_candidate["signal"] == {
+        "status": "FAILED_DEAD_LETTER",
+        "count": 1,
+        "threshold": 1,
+        "job_ids": ["job-cx-002"],
+        "recommended_action": "replay",
+        "control_paths": ["/admin/v1/operations/jobs/nex-cx/job-cx-002/replay"],
+        "required_payload_fields": [
+            "replay_job_id",
+            "idempotency_key",
+            "requested_by",
+            "reason",
+        ],
+    }
     assert projection["summary"] == {
-        "total": 2,
+        "total": 3,
         "by_severity": {
             "DEBUG": 0,
             "INFO": 1,
-            "WARNING": 0,
+            "WARNING": 1,
             "ERROR": 1,
             "CRITICAL": 0,
         },
-        "by_service": {"nex-cx": 2},
+        "by_service": {"nex-cx": 3},
         "by_rule": {
             "failed_jobs_present.v1": 1,
+            "dead_letter_replay_available.v1": 1,
             "active_jobs_review.v1": 1,
         },
     }
@@ -1998,6 +2075,7 @@ def test_operations_issue_candidate_projection_flags_degraded_and_error_event_so
         "WARNING",
     ) in candidates
     assert ("failed_jobs_present.v1", "nex-cx", "ERROR") in candidates
+    assert ("dead_letter_replay_available.v1", "nex-cx", "WARNING") in candidates
     assert ("error_events_present.v1", "nex-mo", "ERROR") in candidates
     assert ("active_jobs_review.v1", "nex-cx", "INFO") in candidates
     assert projection["summary"]["by_severity"]["WARNING"] >= 1
@@ -2036,12 +2114,14 @@ def test_operations_issue_candidate_projection_flags_worker_reconciliation() -> 
         for candidate in projection["issue_candidates"]
     ] == [
         ("failed_jobs_present.v1", "ERROR"),
+        ("dead_letter_replay_available.v1", "WARNING"),
         ("active_jobs_review.v1", "INFO"),
         ("stale_worker_heartbeat.v1", "WARNING"),
         ("active_job_without_fresh_worker.v1", "WARNING"),
     ]
     assert projection["summary"]["by_rule"] == {
         "failed_jobs_present.v1": 1,
+        "dead_letter_replay_available.v1": 1,
         "active_jobs_review.v1": 1,
         "stale_worker_heartbeat.v1": 1,
         "active_job_without_fresh_worker.v1": 1,
@@ -2059,6 +2139,37 @@ def test_operations_issue_candidate_projection_flags_worker_reconciliation() -> 
     assert stale_candidate["signal"]["worker_ids"] == ["cx-worker-001"]
     assert missing_worker_candidate["signal"]["job_ids"] == ["job-cx-001"]
     assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_issue_candidates_ignore_malformed_replay_candidate_inputs() -> None:
+    base_dashboard = {
+        "degraded_sources": [],
+        "rollups": [],
+        "active_jobs": [],
+    }
+
+    assert build_operations_issue_candidates(
+        {**base_dashboard, "replay_candidates": "not-a-list"}
+    ) == []
+
+    candidates = build_operations_issue_candidates(
+        {
+            **base_dashboard,
+            "replay_candidates": [
+                "not-a-mapping",
+                {"service_id": "nex-unknown", "job_id": "job-ignored"},
+                {
+                    "service_id": "nex-cx",
+                    "job_id": "job-cx-002",
+                    "control_path": "/admin/v1/operations/jobs/nex-cx/job-cx-002/replay",
+                },
+            ],
+        }
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0]["rule_id"] == "dead_letter_replay_available.v1"
+    assert candidates[0]["signal"]["job_ids"] == ["job-cx-002"]
 
 
 def test_operations_issue_candidate_projection_suppresses_worker_gap_when_worker_is_fresh() -> None:

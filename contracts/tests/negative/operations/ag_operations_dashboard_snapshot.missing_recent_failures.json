@@ -10,6 +10,7 @@
   "source_readiness_summary": {},
   "rollups": [],
   "rollup_summary": {},
+  "replay_candidates": [],
   "active_jobs": [],
   "degraded_sources": [],
   "job_source_statuses": {},

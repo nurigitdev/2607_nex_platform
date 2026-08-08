@@ -1,6 +1,6 @@
 # Contract Package
 
-Status: Contract catalog through Slice 0133.
+Status: Contract catalog through Slice 0134.
 
 This directory is the canonical home for shared JSON Schemas, OpenAPI
 descriptions, contract examples, and negative fixtures.
@@ -64,7 +64,10 @@ reject them. The validation command fails if a negative fixture becomes valid.
 - Audit/operations: AG readiness projection and AG operations projections for
   events, jobs, dashboard, issue candidates, traces, rollups, source readiness,
   worker runtime heartbeats, worker detail/job correlation, and CX worker
-  lifecycle event taxonomy. The AG OpenAPI spec includes worker runtime, worker
-  detail, and job control dispatch operations routes for cancel, retry, and
-  dead-letter replay; the CX OpenAPI spec includes the service-local internal
-  job control target routes for read, cancel, retry, and replay.
+  lifecycle event taxonomy. Dashboard snapshots include replay candidates for
+  failed dead-letter jobs, and issue candidates include the
+  `dead_letter_replay_available.v1` rule. The AG OpenAPI spec includes worker
+  runtime, worker detail, and job control dispatch operations routes for
+  cancel, retry, and dead-letter replay; the CX OpenAPI spec includes the
+  service-local internal job control target routes for read, cancel, retry, and
+  replay.
