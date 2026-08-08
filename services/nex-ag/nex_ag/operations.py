@@ -17,8 +17,10 @@ from nex_runtime import (
     DEFAULT_WORKER_STALE_AFTER_SECONDS,
     DEFAULT_SERVICE_SCOPE,
     DEFAULT_OPERATIONAL_EVENT_TAXONOMY,
+    DEFAULT_SERVICE_LOG_LIMIT,
     InMemoryJobQueue,
     InMemoryOperationalEventStore,
+    InMemoryServiceLogStore,
     InMemoryWorkerHeartbeatStore,
     JOB_STATUSES,
     JobQueue,
@@ -30,9 +32,13 @@ from nex_runtime import (
     OperationalEventEmitter,
     OperationalEventTypeSpec,
     SERVICE_SPECS,
+    SERVICE_LOG_SEVERITIES,
     SqlAlchemyJobQueue,
     SqlAlchemyOperationalEventStore,
+    SqlAlchemyServiceLogStore,
     SqlAlchemyWorkerHeartbeatStore,
+    ServiceLogError,
+    ServiceLogStore,
     WORKER_HEARTBEAT_STATUSES,
     WorkerHeartbeatError,
     WorkerHeartbeatStore,
@@ -42,6 +48,7 @@ from nex_runtime import (
     list_operational_event_taxonomy,
     normalize_job_limit,
     normalize_operational_event_limit,
+    normalize_service_log_limit,
     problem_response,
     redact_database_url,
     required_database_url,
@@ -51,6 +58,7 @@ from nex_runtime import (
     summarize_operational_event_taxonomy,
     summarize_jobs,
     summarize_operational_events,
+    summarize_service_logs,
     summarize_worker_heartbeats,
     trace_id_from_headers,
     validate_authorization_header,
@@ -65,6 +73,10 @@ from nex_ag.job_control import (
 DEFAULT_OPERATIONAL_EVENT_STORE = InMemoryOperationalEventStore()
 DEFAULT_JOB_QUEUE_STORES = {
     service_id: InMemoryJobQueue()
+    for service_id in sorted(SERVICE_SPECS)
+}
+DEFAULT_SERVICE_LOG_STORES = {
+    service_id: InMemoryServiceLogStore()
     for service_id in sorted(SERVICE_SPECS)
 }
 DEFAULT_WORKER_HEARTBEAT_STORES = {
@@ -297,6 +309,46 @@ class ReadOnlyOperationalEventStore:
         )
 
 
+class ReadOnlyServiceLogStore:
+    def __init__(self, delegate: ServiceLogStore) -> None:
+        self.delegate = delegate
+
+    def append(self, entry: dict[str, Any]) -> dict[str, Any]:
+        raise ServiceLogError(
+            error_code="ag.operations_source.read_only",
+            detail="AG operations source registry is read-only.",
+            status_code=405,
+        )
+
+    def get_log(self, log_id: str) -> dict[str, Any] | None:
+        return self.delegate.get_log(log_id)
+
+    def list_logs(
+        self,
+        *,
+        service_id: str | None = None,
+        severity: str | None = None,
+        logger_name: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        job_id: str | None = None,
+        subject_type: str | None = None,
+        subject_id: str | None = None,
+        limit: int = DEFAULT_SERVICE_LOG_LIMIT,
+    ) -> list[dict[str, Any]]:
+        return self.delegate.list_logs(
+            service_id=service_id,
+            severity=severity,
+            logger_name=logger_name,
+            trace_id=trace_id,
+            request_id=request_id,
+            job_id=job_id,
+            subject_type=subject_type,
+            subject_id=subject_id,
+            limit=limit,
+        )
+
+
 class ReadOnlyWorkerHeartbeatStore:
     def __init__(self, delegate: WorkerHeartbeatStore) -> None:
         self.delegate = delegate
@@ -330,6 +382,7 @@ class OperationsSource:
     service_id: str
     job_queue: JobQueue | None = None
     operational_event_store: OperationalEventStore | None = None
+    service_log_store: ServiceLogStore | None = None
     worker_heartbeat_store: WorkerHeartbeatStore | None = None
     source_kind: str = "memory"
     database_env: str | None = None
@@ -361,6 +414,11 @@ class OperationsSource:
                 if self.operational_event_store is not None
                 else None
             ),
+            "service_log_store": (
+                self.service_log_store.__class__.__name__
+                if self.service_log_store is not None
+                else None
+            ),
             "worker_heartbeat_store": (
                 self.worker_heartbeat_store.__class__.__name__
                 if self.worker_heartbeat_store is not None
@@ -369,6 +427,7 @@ class OperationsSource:
             "capabilities": {
                 "jobs": self.job_queue is not None,
                 "events": self.operational_event_store is not None,
+                "logs": self.service_log_store is not None,
                 "workers": self.worker_heartbeat_store is not None,
             },
         }
@@ -428,6 +487,13 @@ class OperationsSourceRegistry:
             service_id: source.operational_event_store
             for service_id, source in self.sources.items()
             if source.operational_event_store is not None
+        }
+
+    def service_log_stores(self) -> dict[str, ServiceLogStore]:
+        return {
+            service_id: source.service_log_store
+            for service_id, source in self.sources.items()
+            if source.service_log_store is not None
         }
 
     def worker_heartbeat_stores(self) -> dict[str, WorkerHeartbeatStore]:
@@ -503,17 +569,83 @@ class RegistryOperationalEventStore:
         return events[:normalized_limit]
 
 
+class RegistryServiceLogStore:
+    def __init__(self, registry: OperationsSourceRegistry) -> None:
+        self.registry = registry
+
+    def append(self, entry: dict[str, Any]) -> dict[str, Any]:
+        raise ServiceLogError(
+            error_code="ag.operations_registry.read_only",
+            detail="AG operations registry service log store is read-only.",
+            status_code=405,
+        )
+
+    def get_log(self, log_id: str) -> dict[str, Any] | None:
+        for store in self.registry.service_log_stores().values():
+            entry = store.get_log(log_id)
+            if entry is not None:
+                return entry
+        return None
+
+    def list_logs(
+        self,
+        *,
+        service_id: str | None = None,
+        severity: str | None = None,
+        logger_name: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        job_id: str | None = None,
+        subject_type: str | None = None,
+        subject_id: str | None = None,
+        limit: int = DEFAULT_SERVICE_LOG_LIMIT,
+    ) -> list[dict[str, Any]]:
+        normalized_limit = normalize_service_log_limit(limit)
+        stores = self.registry.service_log_stores()
+        selected_service_ids = [service_id] if service_id is not None else sorted(SERVICE_SPECS)
+        logs: list[dict[str, Any]] = []
+        for selected_service_id in selected_service_ids:
+            store = stores.get(selected_service_id)
+            if store is None:
+                continue
+            logs.extend(
+                store.list_logs(
+                    service_id=selected_service_id,
+                    severity=severity,
+                    logger_name=logger_name,
+                    trace_id=trace_id,
+                    request_id=request_id,
+                    job_id=job_id,
+                    subject_type=subject_type,
+                    subject_id=subject_id,
+                    limit=normalized_limit,
+                )
+            )
+        logs.sort(
+            key=lambda entry: (
+                str(entry.get("observed_at", "")),
+                str(entry.get("log_id", "")),
+            ),
+            reverse=True,
+        )
+        return logs[:normalized_limit]
+
+
 def build_operations_source_registry(
     *,
     job_queues: Mapping[str, JobQueue] | None = None,
     event_stores: Mapping[str, OperationalEventStore] | None = None,
+    service_log_stores: Mapping[str, ServiceLogStore] | None = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     source_kind: str = "memory",
 ) -> OperationsSourceRegistry:
     queue_map = job_queues or {}
     event_store_map = event_stores or {}
+    log_store_map = service_log_stores or {}
     worker_store_map = worker_heartbeat_stores or {}
-    source_ids = sorted(set(queue_map) | set(event_store_map) | set(worker_store_map))
+    source_ids = sorted(
+        set(queue_map) | set(event_store_map) | set(log_store_map) | set(worker_store_map)
+    )
     registry = OperationsSourceRegistry()
     for service_id in source_ids:
         registry.register(
@@ -521,6 +653,7 @@ def build_operations_source_registry(
                 service_id=service_id,
                 job_queue=queue_map.get(service_id),
                 operational_event_store=event_store_map.get(service_id),
+                service_log_store=log_store_map.get(service_id),
                 worker_heartbeat_store=worker_store_map.get(service_id),
                 source_kind=source_kind,
             )
@@ -765,6 +898,9 @@ def _build_postgres_operations_source(
         operational_event_store=ReadOnlyOperationalEventStore(
             SqlAlchemyOperationalEventStore(api_session_factory)
         ),
+        service_log_store=ReadOnlyServiceLogStore(
+            SqlAlchemyServiceLogStore(api_session_factory)
+        ),
         worker_heartbeat_store=ReadOnlyWorkerHeartbeatStore(
             SqlAlchemyWorkerHeartbeatStore(worker_session_factory)
         ),
@@ -859,6 +995,113 @@ def register_operational_event_routes(
             )
         return build_operational_event_detail_projection(
             event,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
+
+def register_service_log_routes(
+    app: FastAPI,
+    *,
+    service_log_stores: Mapping[str, ServiceLogStore] | None = None,
+    registry: OperationsSourceRegistry | None = None,
+) -> None:
+    @app.get("/admin/v1/operations/logs", response_model=None)
+    def list_service_logs(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        severity: str | None = None,
+        logger_name: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        job_id: str | None = None,
+        subject_type: str | None = None,
+        subject_id: str | None = None,
+        q: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        sort: str | None = None,
+        cursor: str | None = None,
+        limit: int = Query(default=50, ge=1),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        filter_problem = _validate_service_log_filters(
+            request,
+            service_id=service_id,
+            severity=severity,
+            logger_name=logger_name,
+            subject_type=subject_type,
+            subject_id=subject_id,
+        )
+        if filter_problem is not None:
+            return filter_problem
+        query_options = _build_query_options_or_problem(
+            request,
+            limit=limit,
+            since=since,
+            until=until,
+            sort=sort,
+            cursor=cursor,
+        )
+        if isinstance(query_options, JSONResponse):
+            return query_options
+        normalized_query = _normalize_log_search_query_or_problem(request, q)
+        if isinstance(normalized_query, JSONResponse):
+            return normalized_query
+
+        return build_service_log_projection(
+            service_log_stores=service_log_stores,
+            registry=registry,
+            service_id=service_id,
+            severity=severity,
+            logger_name=logger_name,
+            trace_id=trace_id,
+            request_id=request_id,
+            job_id=job_id,
+            subject_type=subject_type,
+            subject_id=subject_id,
+            q=normalized_query,
+            query_options=query_options,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
+    @app.get("/admin/v1/operations/logs/{log_id}", response_model=None)
+    def get_service_log_detail(
+        log_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        stores = _service_log_stores_for_projection(
+            service_log_stores=service_log_stores,
+            registry=registry,
+        )
+        try:
+            entry = _get_service_log_from_stores(stores, log_id)
+        except ServiceLogError as exc:
+            return problem_response(
+                request,
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                title="Service log source unavailable",
+                detail=exc.detail,
+                type_uri="https://nex-platform.local/problems/service-log-source-unavailable",
+            )
+        if entry is None:
+            return problem_response(
+                request,
+                status_code=404,
+                error_code="ag.service_log_not_found",
+                title="Service log not found",
+                detail=f"Service log was not found: {log_id}",
+                type_uri="https://nex-platform.local/problems/service-log-not-found",
+            )
+        return build_service_log_detail_projection(
+            entry,
             request_trace_id=trace_id_from_headers(request),
         )
 
@@ -1673,6 +1916,152 @@ def build_operational_event_detail_projection(
             "trace_id": event.get("trace_id"),
             "subject_ref": deepcopy(event.get("subject_ref")),
             "created_at": event["created_at"],
+        },
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
+def build_service_log_projection(
+    *,
+    service_log_stores: Mapping[str, ServiceLogStore] | None = None,
+    registry: OperationsSourceRegistry | None = None,
+    service_id: str | None = None,
+    severity: str | None = None,
+    logger_name: str | None = None,
+    trace_id: str | None = None,
+    request_id: str | None = None,
+    job_id: str | None = None,
+    subject_type: str | None = None,
+    subject_id: str | None = None,
+    q: str | None = None,
+    limit: int = 50,
+    query_options: OperationQueryOptions | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    options = query_options or build_operation_query_options(limit=limit)
+    stores = _service_log_stores_for_projection(
+        service_log_stores=service_log_stores,
+        registry=registry,
+    )
+    selected_service_ids = (
+        [service_id] if service_id is not None else sorted(SERVICE_SPECS)
+    )
+    normalized_severity = severity.upper() if severity is not None else None
+    normalized_logger_name = logger_name.strip() if logger_name is not None else None
+    normalized_subject_type = subject_type.strip() if subject_type is not None else None
+    normalized_subject_id = subject_id.strip() if subject_id is not None else None
+    projected_logs: list[dict[str, Any]] = []
+    source_statuses: dict[str, dict[str, Any]] = {}
+
+    for selected_service_id in selected_service_ids:
+        store = stores.get(selected_service_id)
+        if store is None:
+            source_statuses[selected_service_id] = {
+                "status": "NOT_CONFIGURED",
+                "log_count": 0,
+            }
+            continue
+        try:
+            logs = store.list_logs(
+                service_id=selected_service_id,
+                severity=normalized_severity,
+                logger_name=normalized_logger_name,
+                trace_id=trace_id,
+                request_id=request_id,
+                job_id=job_id,
+                subject_type=normalized_subject_type,
+                subject_id=normalized_subject_id,
+                limit=normalize_service_log_limit(500),
+            )
+        except ServiceLogError as exc:
+            source_statuses[selected_service_id] = {
+                "status": "UNAVAILABLE",
+                "log_count": 0,
+                "error_code": exc.error_code,
+                "detail": exc.detail,
+            }
+            continue
+        if q is not None:
+            logs = [
+                entry
+                for entry in logs
+                if _service_log_matches_query(entry, q)
+            ]
+        logs = _filter_records_by_operation_time(
+            logs,
+            options,
+            timestamp_field="observed_at",
+        )
+        source_statuses[selected_service_id] = {
+            "status": "READY",
+            "log_count": len(logs),
+        }
+        projected_logs.extend(deepcopy(entry) for entry in logs)
+
+    page = _apply_operation_query_options(
+        projected_logs,
+        options,
+        timestamp_field="observed_at",
+        tie_breaker_fields=("service_id", "logger_name", "log_id"),
+    )
+    projection_status = (
+        "DEGRADED"
+        if any(
+            source["status"] in {"NOT_CONFIGURED", "UNAVAILABLE"}
+            for source in source_statuses.values()
+        )
+        else "READY"
+    )
+    projection = {
+        "projection_schema_version": "ag_service_log_projection.v1",
+        "projection_status": projection_status,
+        "checked_at": _utc_now(),
+        "filters": {
+            "service_id": service_id,
+            "severity": normalized_severity,
+            "logger_name": normalized_logger_name,
+            "trace_id": trace_id,
+            "request_id": request_id,
+            "job_id": job_id,
+            "subject_type": normalized_subject_type,
+            "subject_id": normalized_subject_id,
+            "q": q,
+            **options.to_filter_dict(),
+        },
+        "logs": page["items"],
+        "summary": summarize_service_logs(page["items"]),
+        "source_statuses": source_statuses,
+        "pagination": page["pagination"],
+    }
+    if registry is not None:
+        projection["source_registry"] = registry.to_summary()
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
+def build_service_log_detail_projection(
+    entry: dict[str, Any],
+    *,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    projection = {
+        "projection_schema_version": "ag_service_log_detail_projection.v1",
+        "checked_at": _utc_now(),
+        "log": deepcopy(entry),
+        "summary": {
+            "log_id": entry["log_id"],
+            "service_id": entry["service_id"],
+            "severity": entry["severity"],
+            "logger_name": entry["logger_name"],
+            "trace_id": entry.get("trace_id"),
+            "request_id": entry.get("request_id"),
+            "job_id": entry.get("job_id"),
+            "subject_ref": deepcopy(entry.get("subject_ref")),
+            "observed_at": entry["observed_at"],
+            "redacted_attribute_keys": deepcopy(entry["redacted_attribute_keys"]),
         },
     }
     if request_trace_id is not None:
@@ -2976,6 +3365,50 @@ def _validate_worker_runtime_filters(
     return None
 
 
+def _validate_service_log_filters(
+    request: Request,
+    *,
+    service_id: str | None,
+    severity: str | None,
+    logger_name: str | None,
+    subject_type: str | None,
+    subject_id: str | None,
+) -> JSONResponse | None:
+    if service_id is not None and service_id not in SERVICE_SPECS:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.service_log_service_invalid",
+            title="Invalid service log service filter",
+            detail=f"Unsupported service log service: {service_id}",
+            type_uri="https://nex-platform.local/problems/service-log-service-invalid",
+        )
+    if severity is not None and severity.upper() not in SERVICE_LOG_SEVERITIES:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.service_log_severity_invalid",
+            title="Invalid service log severity",
+            detail=f"Unsupported service log severity: {severity}",
+            type_uri="https://nex-platform.local/problems/service-log-severity-invalid",
+        )
+    for field_name, value in (
+        ("logger_name", logger_name),
+        ("subject_type", subject_type),
+        ("subject_id", subject_id),
+    ):
+        if value is not None and not value.strip():
+            return problem_response(
+                request,
+                status_code=400,
+                error_code=f"ag.service_log_{field_name}_invalid",
+                title="Invalid service log filter",
+                detail=f"{field_name} must be a non-empty string when provided.",
+                type_uri="https://nex-platform.local/problems/service-log-filter-invalid",
+            )
+    return None
+
+
 def _build_query_options_or_problem(
     request: Request,
     *,
@@ -3021,6 +3454,23 @@ def _normalize_event_search_query_or_problem(
         )
 
 
+def _normalize_log_search_query_or_problem(
+    request: Request,
+    value: str | None,
+) -> str | None | JSONResponse:
+    try:
+        return normalize_operation_log_search_query(value)
+    except OperationsQueryError as exc:
+        return problem_response(
+            request,
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            title="Invalid service log search query",
+            detail=exc.detail,
+            type_uri="https://nex-platform.local/problems/service-log-query-invalid",
+        )
+
+
 def normalize_operation_event_search_query(value: str | None) -> str | None:
     if value is None or not value.strip():
         return None
@@ -3030,6 +3480,21 @@ def normalize_operation_event_search_query(value: str | None) -> str | None:
             error_code="ag.operation_event_query_invalid",
             detail=(
                 "operational event search query must be "
+                f"{MAX_OPERATION_EVENT_QUERY_LENGTH} characters or fewer."
+            ),
+        )
+    return normalized
+
+
+def normalize_operation_log_search_query(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip()
+    if len(normalized) > MAX_OPERATION_EVENT_QUERY_LENGTH:
+        raise OperationsQueryError(
+            error_code="ag.service_log_query_invalid",
+            detail=(
+                "service log search query must be "
                 f"{MAX_OPERATION_EVENT_QUERY_LENGTH} characters or fewer."
             ),
         )
@@ -3066,11 +3531,13 @@ def _operation_source_status(
             "capabilities": {
                 "jobs": True,
                 "events": True,
+                "logs": True,
                 "workers": True,
             },
             "read_only": False,
             "job_queue": "InMemoryJobQueue",
             "operational_event_store": "InMemoryOperationalEventStore",
+            "service_log_store": "InMemoryServiceLogStore",
             "worker_heartbeat_store": "InMemoryWorkerHeartbeatStore",
             "database_env": None,
             "redacted_database_url": None,
@@ -3084,11 +3551,13 @@ def _operation_source_status(
             "capabilities": {
                 "jobs": False,
                 "events": False,
+                "logs": False,
                 "workers": False,
             },
             "read_only": None,
             "job_queue": None,
             "operational_event_store": None,
+            "service_log_store": None,
             "worker_heartbeat_store": None,
             "database_env": None,
             "redacted_database_url": None,
@@ -3103,6 +3572,7 @@ def _operation_source_status(
         "read_only": _operation_source_is_read_only(source),
         "job_queue": source_summary["job_queue"],
         "operational_event_store": source_summary["operational_event_store"],
+        "service_log_store": source_summary["service_log_store"],
         "worker_heartbeat_store": source_summary["worker_heartbeat_store"],
         "database_env": source_summary.get("database_env"),
         "redacted_database_url": source_summary.get("redacted_database_url"),
@@ -3118,11 +3588,15 @@ def _operation_source_is_read_only(source: OperationsSource) -> bool:
         source.operational_event_store is None
         or isinstance(source.operational_event_store, ReadOnlyOperationalEventStore)
     )
+    log_read_only = (
+        source.service_log_store is None
+        or isinstance(source.service_log_store, ReadOnlyServiceLogStore)
+    )
     worker_read_only = (
         source.worker_heartbeat_store is None
         or isinstance(source.worker_heartbeat_store, ReadOnlyWorkerHeartbeatStore)
     )
-    return job_read_only and event_read_only and worker_read_only
+    return job_read_only and event_read_only and log_read_only and worker_read_only
 
 
 def _operations_source_read_only_job_error() -> JobQueueError:
@@ -3237,6 +3711,57 @@ def _operational_event_matches_query(event: dict[str, Any], query: str) -> bool:
         searchable_parts.append(
             json.dumps(details, ensure_ascii=False, sort_keys=True)
         )
+    return any(
+        lowered_query in str(part).lower()
+        for part in searchable_parts
+        if part is not None
+    )
+
+
+def _service_log_stores_for_projection(
+    *,
+    service_log_stores: Mapping[str, ServiceLogStore] | None,
+    registry: OperationsSourceRegistry | None,
+) -> Mapping[str, ServiceLogStore]:
+    if registry is not None:
+        return registry.service_log_stores()
+    return service_log_stores or DEFAULT_SERVICE_LOG_STORES
+
+
+def _get_service_log_from_stores(
+    stores: Mapping[str, ServiceLogStore],
+    log_id: str,
+) -> dict[str, Any] | None:
+    for store in stores.values():
+        entry = store.get_log(log_id)
+        if entry is not None:
+            return entry
+    return None
+
+
+def _service_log_matches_query(entry: dict[str, Any], query: str) -> bool:
+    lowered_query = query.lower()
+    searchable_parts = [
+        entry.get("log_id"),
+        entry.get("service_id"),
+        entry.get("severity"),
+        entry.get("logger_name"),
+        entry.get("message"),
+        entry.get("trace_id"),
+        entry.get("request_id"),
+        entry.get("job_id"),
+    ]
+    subject_ref = entry.get("subject_ref")
+    if isinstance(subject_ref, Mapping):
+        searchable_parts.extend(subject_ref.values())
+    attributes = entry.get("attributes")
+    if isinstance(attributes, Mapping):
+        searchable_parts.append(
+            json.dumps(attributes, ensure_ascii=False, sort_keys=True)
+        )
+    redacted_keys = entry.get("redacted_attribute_keys")
+    if isinstance(redacted_keys, list):
+        searchable_parts.extend(redacted_keys)
     return any(
         lowered_query in str(part).lower()
         for part in searchable_parts

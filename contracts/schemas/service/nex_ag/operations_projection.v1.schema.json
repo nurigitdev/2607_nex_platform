@@ -16,6 +16,8 @@
         "ag_operational_event_projection.v1",
         "ag_operational_event_detail_projection.v1",
         "ag_operational_event_taxonomy_projection.v1",
+        "ag_service_log_projection.v1",
+        "ag_service_log_detail_projection.v1",
         "ag_job_operations_projection.v1",
         "ag_job_operation_detail_projection.v1",
         "ag_unified_operations_projection.v1",
@@ -71,6 +73,15 @@
     },
     "event": {
       "$ref": "#/$defs/operational_event"
+    },
+    "logs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/service_log"
+      }
+    },
+    "log": {
+      "$ref": "#/$defs/service_log"
     },
     "event_types": {
       "type": "array",
@@ -284,6 +295,40 @@
       "then": {
         "required": [
           "event",
+          "summary"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_service_log_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "filters",
+          "logs",
+          "summary",
+          "source_statuses",
+          "pagination"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_service_log_detail_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "log",
           "summary"
         ]
       }
@@ -574,6 +619,10 @@
           "minimum": 0
         },
         "event_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "log_count": {
           "type": "integer",
           "minimum": 0
         },
@@ -1008,6 +1057,7 @@
         "read_only",
         "job_queue",
         "operational_event_store",
+        "service_log_store",
         "worker_heartbeat_store",
         "database_env",
         "redacted_database_url"
@@ -1037,6 +1087,7 @@
           "required": [
             "jobs",
             "events",
+            "logs",
             "workers"
           ],
           "properties": {
@@ -1044,6 +1095,9 @@
               "type": "boolean"
             },
             "events": {
+              "type": "boolean"
+            },
+            "logs": {
               "type": "boolean"
             },
             "workers": {
@@ -1064,6 +1118,12 @@
           ]
         },
         "operational_event_store": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "service_log_store": {
           "type": [
             "string",
             "null"
@@ -1166,6 +1226,105 @@
         "stale_after_seconds": {
           "type": "integer",
           "minimum": 1
+        }
+      }
+    },
+    "service_log": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service_log_schema_version",
+        "log_id",
+        "service_id",
+        "severity",
+        "logger_name",
+        "message",
+        "trace_id",
+        "request_id",
+        "job_id",
+        "subject_ref",
+        "attributes",
+        "redacted_attribute_keys",
+        "observed_at"
+      ],
+      "properties": {
+        "service_log_schema_version": {
+          "const": "service_log_entry.v1"
+        },
+        "log_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ]
+        },
+        "logger_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/trace_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subject_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/subject_ref"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attributes": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "redacted_attribute_keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
         }
       }
     },

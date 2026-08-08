@@ -242,6 +242,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0136`](slices/0136_structured_service_log_contract_foundation.md) | `S14-006` Structured service log contract foundation. |
 | [`Slice 0137`](slices/0137_service_log_persistence_foundation.md) | `S14-007` Service-local structured log persistence foundation. |
 | [`Slice 0138`](slices/0138_service_log_emitter_runtime_integration.md) | `S14-008` Service log emitter and worker runtime integration. |
+| [`Slice 0139`](slices/0139_ag_structured_service_log_projection.md) | `S14-009` AG structured service log projection and search API. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -17,9 +17,11 @@ from nex_ag.operations import (
     OperationsSourceConfigError,
     OperationsSource,
     OperationsSourceRegistry,
+    RegistryServiceLogStore,
     RegistryOperationalEventStore,
     ReadOnlyJobQueue,
     ReadOnlyOperationalEventStore,
+    ReadOnlyServiceLogStore,
     ReadOnlyWorkerHeartbeatStore,
     ag_operations_source_database_env,
     attach_ag_operations_source_runtime,
@@ -40,8 +42,11 @@ from nex_ag.operations import (
     build_operational_event_taxonomy_projection,
     build_operational_event_projection,
     build_operations_issue_candidates,
+    build_service_log_detail_projection,
+    build_service_log_projection,
     build_unified_operations_projection,
     normalize_operation_event_search_query,
+    normalize_operation_log_search_query,
     normalize_operation_cursor,
     normalize_operation_sort,
     normalize_operation_timestamp,
@@ -53,6 +58,7 @@ from nex_ag.operations import (
     register_operation_source_readiness_routes,
     register_operational_event_taxonomy_routes,
     register_operational_event_routes,
+    register_service_log_routes,
     register_unified_operation_routes,
     select_ag_operations_source_service_ids,
     summarize_operation_source_readiness,
@@ -63,7 +69,9 @@ from nex_ag.operations import (
     _filter_records_by_operation_time,
     _dashboard_replay_candidates,
     _job_error_code,
+    _operational_event_matches_query,
     _operation_record_timestamp,
+    _service_log_matches_query,
 )
 from nex_ag.job_control import AgJobControlError
 from nex_runtime import (
@@ -74,16 +82,19 @@ from nex_runtime import (
     FAILED,
     InMemoryOperationalEventStore,
     InMemoryJobQueue,
+    InMemoryServiceLogStore,
     InMemoryWorkerHeartbeatStore,
     JobQueueError,
     OperationalEventError,
     RUNNING,
     SERVICE_SPECS,
     SUCCEEDED,
+    ServiceLogError,
     WorkerHeartbeatError,
     build_common_job,
     build_operational_event,
     build_service_app,
+    build_service_log_entry,
     build_subject_ref,
     build_worker_heartbeat,
     issue_mock_service_token,
@@ -146,6 +157,50 @@ def build_store() -> InMemoryOperationalEventStore:
         )
     )
     return store
+
+
+def build_log_store() -> InMemoryServiceLogStore:
+    store = InMemoryServiceLogStore()
+    store.append(
+        build_service_log_entry(
+            log_id="log-001",
+            service_id="nex-cx",
+            severity="INFO",
+            logger_name="nex_runtime.worker_runner",
+            message="Worker completed a job.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            job_id="job-cx-001",
+            subject_ref={"type": "cx.document", "id": "doc-001"},
+            attributes={"worker_id": "cx-worker-001", "attempt_count": 1},
+            observed_at="2026-08-05T00:00:00Z",
+        )
+    )
+    store.append(
+        build_service_log_entry(
+            log_id="log-002",
+            service_id="nex-mo",
+            severity="ERROR",
+            logger_name="nex_mo.remote_provider",
+            message="Provider request failed.",
+            trace_id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            request_id=REQUEST_ID,
+            job_id="job-mo-001",
+            subject_ref={"type": "mo.provider", "id": "generation"},
+            attributes={"authorization": "Bearer private", "provider": "vllm"},
+            observed_at="2026-08-05T00:00:01Z",
+        )
+    )
+    return store
+
+
+def build_log_stores() -> dict[str, InMemoryServiceLogStore]:
+    combined = build_log_store()
+    cx_store = InMemoryServiceLogStore()
+    mo_store = InMemoryServiceLogStore()
+    cx_store.append(combined.get_log("log-001"))
+    mo_store.append(combined.get_log("log-002"))
+    return {"nex-cx": cx_store, "nex-mo": mo_store}
 
 
 def sample_job(**overrides):
@@ -403,6 +458,25 @@ class BrokenOperationalEventStore:
         raise OperationalEventError(
             error_code="operational_event.store_unavailable",
             detail="operational event store is unavailable",
+            status_code=503,
+        )
+
+
+class BrokenServiceLogStore:
+    def append(self, entry):
+        raise AssertionError("not used")
+
+    def get_log(self, log_id):
+        raise ServiceLogError(
+            error_code="service_log.store_unavailable",
+            detail="service log store is unavailable",
+            status_code=503,
+        )
+
+    def list_logs(self, **kwargs):
+        raise ServiceLogError(
+            error_code="service_log.store_unavailable",
+            detail="service log store is unavailable",
             status_code=503,
         )
 
@@ -682,6 +756,20 @@ def test_read_only_operational_event_store_allows_reads_and_rejects_append() -> 
         store.append(event)
 
 
+def test_read_only_service_log_store_allows_reads_and_rejects_append() -> None:
+    delegate = build_log_stores()["nex-cx"]
+    store = ReadOnlyServiceLogStore(delegate)
+
+    entry = store.get_log("log-001")
+    assert entry is not None
+    assert entry["log_id"] == "log-001"
+    assert [stored["log_id"] for stored in store.list_logs(service_id="nex-cx")] == [
+        "log-001"
+    ]
+    with pytest.raises(ServiceLogError, match="read-only"):
+        store.append(entry)
+
+
 def test_read_only_worker_heartbeat_store_allows_reads_and_rejects_writes() -> None:
     delegate = build_worker_heartbeat_stores()["nex-cx"]
     store = ReadOnlyWorkerHeartbeatStore(delegate)
@@ -766,6 +854,7 @@ def test_ag_operations_source_runtime_builds_postgres_read_only_registry() -> No
     )
     assert isinstance(source.job_queue, ReadOnlyJobQueue)
     assert isinstance(source.operational_event_store, ReadOnlyOperationalEventStore)
+    assert isinstance(source.service_log_store, ReadOnlyServiceLogStore)
     assert isinstance(source.worker_heartbeat_store, ReadOnlyWorkerHeartbeatStore)
     with pytest.raises(JobQueueError, match="read-only"):
         source.job_queue.enqueue(
@@ -774,6 +863,8 @@ def test_ag_operations_source_runtime_builds_postgres_read_only_registry() -> No
                 idempotency_key="idem-runtime-read-only",
             )
         )
+    with pytest.raises(ServiceLogError, match="read-only"):
+        source.service_log_store.append(build_log_store().get_log("log-001"))
 
 
 def test_operation_source_readiness_projection_reports_default_memory_runtime() -> None:
@@ -799,11 +890,13 @@ def test_operation_source_readiness_projection_reports_default_memory_runtime() 
             "capabilities": {
                 "jobs": True,
                 "events": True,
+                "logs": True,
                 "workers": True,
             },
             "read_only": False,
             "job_queue": "InMemoryJobQueue",
             "operational_event_store": "InMemoryOperationalEventStore",
+            "service_log_store": "InMemoryServiceLogStore",
             "worker_heartbeat_store": "InMemoryWorkerHeartbeatStore",
             "database_env": None,
             "redacted_database_url": None,
@@ -930,6 +1023,7 @@ def test_operations_source_registry_registers_sources_and_reports_capabilities()
     registry = build_operations_source_registry(
         job_queues=job_queues,
         event_stores=event_stores,
+        service_log_stores=build_log_stores(),
         worker_heartbeat_stores=build_worker_heartbeat_stores(),
         source_kind="memory-test",
     )
@@ -937,14 +1031,17 @@ def test_operations_source_registry_registers_sources_and_reports_capabilities()
     assert registry.service_ids() == ["nex-ae-api", "nex-cx", "nex-mo"]
     assert registry.get("nex-cx").job_queue is job_queues["nex-cx"]
     assert registry.get("nex-cx").operational_event_store is event_stores["nex-cx"]
+    assert registry.get("nex-cx").service_log_store is not None
     assert registry.get("nex-cx").worker_heartbeat_store is not None
     assert sorted(registry.job_queues()) == ["nex-ae-api", "nex-cx"]
     assert sorted(registry.event_stores()) == ["nex-cx", "nex-mo"]
+    assert sorted(registry.service_log_stores()) == ["nex-cx", "nex-mo"]
     assert sorted(registry.worker_heartbeat_stores()) == ["nex-cx", "nex-mo"]
     assert registry.to_summary()["registry_schema_version"] == "ag_operations_source_registry.v1"
     assert registry.to_summary()["sources"]["nex-mo"]["capabilities"] == {
         "jobs": False,
         "events": True,
+        "logs": True,
         "workers": True,
     }
 
@@ -1014,13 +1111,41 @@ def test_registry_operational_event_store_aggregates_and_filters_events() -> Non
         raise AssertionError("expected read-only registry append failure")
 
 
+def test_registry_service_log_store_aggregates_and_filters_logs() -> None:
+    registry = build_operations_source_registry(service_log_stores=build_log_stores())
+    registry_store = RegistryServiceLogStore(registry)
+
+    logs = registry_store.list_logs(limit=10)
+    cx_logs = registry_store.list_logs(service_id="nex-cx", limit=10)
+    missing = registry_store.list_logs(service_id="nex-ag", limit=10)
+    mo_log = registry_store.get_log("log-002")
+    absent_log = registry_store.get_log("log-missing")
+
+    assert [entry["log_id"] for entry in logs] == ["log-002", "log-001"]
+    assert [entry["log_id"] for entry in cx_logs] == ["log-001"]
+    assert missing == []
+    assert mo_log is not None
+    assert mo_log["attributes"]["provider"] == "vllm"
+    assert absent_log is None
+    assert "Bearer private" not in str(logs)
+
+    try:
+        registry_store.append(build_log_store().get_log("log-001"))
+    except Exception as exc:
+        assert getattr(exc, "error_code") == "ag.operations_registry.read_only"
+    else:
+        raise AssertionError("expected read-only registry append failure")
+
+
 def test_operations_routes_accept_source_registry() -> None:
     registry = build_operations_source_registry(
         job_queues=build_job_queues(),
         event_stores=build_event_stores(),
+        service_log_stores=build_log_stores(),
     )
     app = build_service_app(SERVICE_SPECS["nex-ag"])
     register_operational_event_routes(app, registry=registry)
+    register_service_log_routes(app, registry=registry)
     register_job_operation_routes(app, registry=registry)
     client = TestClient(app)
 
@@ -1034,10 +1159,17 @@ def test_operations_routes_accept_source_registry() -> None:
         params={"service_id": "nex-ae-api"},
         headers=auth_headers(),
     )
+    logs_response = client.get(
+        "/admin/v1/operations/logs",
+        params={"service_id": "nex-cx", "q": "worker"},
+        headers=auth_headers(),
+    )
 
     assert events_response.status_code == 200
     assert events_response.json()["events"][0]["event_id"] == "event-mo-001"
     assert jobs_response.status_code == 200
+    assert logs_response.status_code == 200
+    assert logs_response.json()["logs"][0]["log_id"] == "log-001"
     assert jobs_response.json()["jobs"][0]["job_id"] == "job-ae-001"
 
 
@@ -2601,6 +2733,7 @@ def test_ag_operations_contract_schema_accepts_runtime_projection_family() -> No
     registry = build_operations_source_registry(
         job_queues=job_queues,
         event_stores=event_stores,
+        service_log_stores=build_log_stores(),
     )
     runtime = build_ag_operations_source_runtime(environ={})
     job = job_queues["nex-cx"].get_job("job-cx-001")
@@ -2622,6 +2755,15 @@ def test_ag_operations_contract_schema_accepts_runtime_projection_family() -> No
         ),
         build_operational_event_detail_projection(
             event,
+            request_trace_id=TRACE_ID,
+        ),
+        build_service_log_projection(
+            service_log_stores=build_log_stores(),
+            service_id="nex-cx",
+            request_trace_id=TRACE_ID,
+        ),
+        build_service_log_detail_projection(
+            build_log_store().get_log("log-001"),
             request_trace_id=TRACE_ID,
         ),
         build_operational_event_taxonomy_projection(
@@ -2734,6 +2876,38 @@ def test_build_operational_event_projection_applies_text_query() -> None:
     assert [event["event_id"] for event in by_detail["events"]] == ["event-001"]
     assert no_match["events"] == []
     assert no_match["summary"]["total"] == 0
+
+
+def test_operation_text_search_helpers_handle_minimal_records() -> None:
+    minimal_event = {
+        "event_id": "event-minimal",
+        "service_id": "nex-cx",
+        "event_type": "cx.minimal",
+        "severity": "INFO",
+        "message": "Minimal event.",
+        "trace_id": None,
+        "request_id": None,
+        "subject_ref": None,
+        "details": [],
+    }
+    minimal_log = {
+        "log_id": "log-minimal",
+        "service_id": "nex-cx",
+        "severity": "INFO",
+        "logger_name": "nex_cx.minimal",
+        "message": "Minimal log.",
+        "trace_id": None,
+        "request_id": None,
+        "job_id": None,
+        "subject_ref": None,
+        "attributes": [],
+        "redacted_attribute_keys": None,
+    }
+
+    assert _operational_event_matches_query(minimal_event, "minimal") is True
+    assert _operational_event_matches_query(minimal_event, "missing") is False
+    assert _service_log_matches_query(minimal_log, "minimal") is True
+    assert _service_log_matches_query(minimal_log, "missing") is False
 
 
 def test_normalize_operation_event_search_query_strips_and_rejects_long_values() -> None:
@@ -2944,6 +3118,243 @@ def test_operational_events_route_rejects_bad_severity() -> None:
     )
     assert bad_query.status_code == 400
     assert bad_query.json()["error_code"] == "ag.operation_event_query_invalid"
+
+
+def test_build_service_log_projection_filters_searches_and_summarizes() -> None:
+    projection = build_service_log_projection(
+        service_log_stores=build_log_stores(),
+        service_id="nex-mo",
+        severity="error",
+        q="vllm",
+        limit=9999,
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == "ag_service_log_projection.v1"
+    assert projection["projection_status"] == "READY"
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["filters"] == {
+        "service_id": "nex-mo",
+        "severity": "ERROR",
+        "logger_name": None,
+        "trace_id": None,
+        "request_id": None,
+        "job_id": None,
+        "subject_type": None,
+        "subject_id": None,
+        "q": "vllm",
+        "limit": 500,
+        "since": None,
+        "until": None,
+        "sort": "desc",
+        "cursor": None,
+    }
+    assert [entry["log_id"] for entry in projection["logs"]] == ["log-002"]
+    assert projection["summary"]["by_severity"]["ERROR"] == 1
+    assert projection["source_statuses"]["nex-mo"] == {
+        "status": "READY",
+        "log_count": 1,
+    }
+    assert projection["pagination"]["returned"] == 1
+    assert "Bearer private" not in str(projection)
+
+    by_redacted_key = build_service_log_projection(
+        service_log_stores=build_log_stores(),
+        service_id="nex-mo",
+        q="authorization",
+    )
+    assert [entry["log_id"] for entry in by_redacted_key["logs"]] == ["log-002"]
+
+
+def test_build_service_log_projection_uses_registry_and_can_omit_request_trace_id() -> None:
+    registry = build_operations_source_registry(service_log_stores=build_log_stores())
+
+    projection = build_service_log_projection(
+        registry=registry,
+        service_id="nex-cx",
+        logger_name="nex_runtime.worker_runner",
+        subject_type="cx.document",
+        subject_id="doc-001",
+    )
+
+    assert "request_trace_id" not in projection
+    assert projection["projection_status"] == "READY"
+    assert projection["source_registry"]["sources"]["nex-cx"]["capabilities"]["logs"] is True
+    assert [entry["log_id"] for entry in projection["logs"]] == ["log-001"]
+
+
+def test_build_service_log_projection_applies_query_options_and_reports_sources() -> None:
+    projection = build_service_log_projection(
+        service_log_stores={
+            "nex-cx": build_log_stores()["nex-cx"],
+            "nex-mo": BrokenServiceLogStore(),
+        },
+        query_options=build_operation_query_options(
+            limit=1,
+            since="2026-08-05T00:00:00Z",
+            sort="asc",
+        ),
+        q="doc-001",
+    )
+    missing_projection = build_service_log_projection(
+        service_log_stores={"nex-cx": build_log_stores()["nex-cx"]},
+        service_id="nex-ag",
+    )
+
+    assert projection["projection_status"] == "DEGRADED"
+    assert [entry["log_id"] for entry in projection["logs"]] == ["log-001"]
+    assert projection["source_statuses"]["nex-mo"]["status"] == "UNAVAILABLE"
+    assert projection["source_statuses"]["nex-oa"]["status"] == "NOT_CONFIGURED"
+    assert projection["pagination"]["next_cursor"] is None
+    assert missing_projection["projection_status"] == "DEGRADED"
+    assert missing_projection["logs"] == []
+    assert missing_projection["source_statuses"]["nex-ag"]["status"] == "NOT_CONFIGURED"
+
+
+def test_normalize_operation_log_search_query_strips_and_rejects_long_values() -> None:
+    assert normalize_operation_log_search_query("  Worker  ") == "Worker"
+    assert normalize_operation_log_search_query("   ") is None
+
+    with pytest.raises(OperationsQueryError) as exc_info:
+        normalize_operation_log_search_query("x" * 129)
+
+    assert exc_info.value.error_code == "ag.service_log_query_invalid"
+
+
+def test_build_service_log_detail_projection_returns_safe_log_summary() -> None:
+    entry = build_log_store().get_log("log-002")
+    assert entry is not None
+
+    projection = build_service_log_detail_projection(
+        entry,
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == "ag_service_log_detail_projection.v1"
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["log"]["log_id"] == "log-002"
+    assert projection["summary"] == {
+        "log_id": "log-002",
+        "service_id": "nex-mo",
+        "severity": "ERROR",
+        "logger_name": "nex_mo.remote_provider",
+        "trace_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "request_id": REQUEST_ID,
+        "job_id": "job-mo-001",
+        "subject_ref": {"type": "mo.provider", "id": "generation"},
+        "observed_at": "2026-08-05T00:00:01Z",
+        "redacted_attribute_keys": ["authorization"],
+    }
+    assert "Bearer private" not in str(projection)
+
+
+def test_service_logs_route_requires_auth_returns_filtered_projection() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_service_log_routes(app, service_log_stores=build_log_stores())
+    client = TestClient(app)
+
+    missing_auth = client.get("/admin/v1/operations/logs")
+    response = client.get(
+        "/admin/v1/operations/logs",
+        params={"service_id": "nex-cx", "q": "worker", "limit": 1},
+        headers={
+            **auth_headers(),
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        },
+    )
+
+    assert missing_auth.status_code == 401
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["request_trace_id"] == TRACE_ID
+    assert payload["filters"]["service_id"] == "nex-cx"
+    assert payload["filters"]["q"] == "worker"
+    assert payload["logs"][0]["log_id"] == "log-001"
+    assert payload["summary"]["total"] == 1
+
+
+def test_service_log_detail_route_returns_detail_404_and_source_errors() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_service_log_routes(
+        app,
+        service_log_stores={
+            "nex-cx": build_log_stores()["nex-cx"],
+            "nex-mo": BrokenServiceLogStore(),
+        },
+    )
+    client = TestClient(app)
+
+    missing_auth = client.get("/admin/v1/operations/logs/log-001")
+    response = client.get(
+        "/admin/v1/operations/logs/log-001",
+        headers=auth_headers(),
+    )
+    unavailable = client.get(
+        "/admin/v1/operations/logs/log-missing",
+        headers=auth_headers(),
+    )
+
+    assert missing_auth.status_code == 401
+    assert response.status_code == 200
+    assert response.json()["log"]["log_id"] == "log-001"
+    assert unavailable.status_code == 503
+    assert unavailable.json()["error_code"] == "service_log.store_unavailable"
+
+
+def test_service_logs_route_rejects_bad_filters() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_service_log_routes(app, service_log_stores=build_log_stores())
+    client = TestClient(app)
+
+    bad_service = client.get(
+        "/admin/v1/operations/logs",
+        params={"service_id": "nex-unknown"},
+        headers=auth_headers(),
+    )
+    bad_severity = client.get(
+        "/admin/v1/operations/logs",
+        params={"severity": "NOTICE"},
+        headers=auth_headers(),
+    )
+    bad_logger = client.get(
+        "/admin/v1/operations/logs",
+        params={"logger_name": " "},
+        headers=auth_headers(),
+    )
+    bad_subject = client.get(
+        "/admin/v1/operations/logs",
+        params={"subject_type": " "},
+        headers=auth_headers(),
+    )
+    bad_cursor = client.get(
+        "/admin/v1/operations/logs",
+        params={"cursor": "before"},
+        headers=auth_headers(),
+    )
+    bad_query = client.get(
+        "/admin/v1/operations/logs",
+        params={"q": "x" * 129},
+        headers=auth_headers(),
+    )
+    not_found = client.get(
+        "/admin/v1/operations/logs/log-missing",
+        headers=auth_headers(),
+    )
+
+    assert bad_service.status_code == 400
+    assert bad_service.json()["error_code"] == "ag.service_log_service_invalid"
+    assert bad_severity.status_code == 400
+    assert bad_severity.json()["error_code"] == "ag.service_log_severity_invalid"
+    assert bad_logger.status_code == 400
+    assert bad_logger.json()["error_code"] == "ag.service_log_logger_name_invalid"
+    assert bad_subject.status_code == 400
+    assert bad_subject.json()["error_code"] == "ag.service_log_subject_type_invalid"
+    assert bad_cursor.status_code == 400
+    assert bad_cursor.json()["error_code"] == "ag.operation_cursor_invalid"
+    assert bad_query.status_code == 400
+    assert bad_query.json()["error_code"] == "ag.service_log_query_invalid"
+    assert not_found.status_code == 404
+    assert not_found.json()["error_code"] == "ag.service_log_not_found"
 
 
 def test_normalize_job_limit_clamps_bounds() -> None:

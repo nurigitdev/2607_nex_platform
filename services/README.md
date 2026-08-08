@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0138 service log emitter/runtime integration.
+Status: Slice 0139 AG structured service log projection.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -67,6 +67,10 @@ Structured service logs use `service_log_entry.v1` through the shared
 store abstraction, app-state fallback, and SQLAlchemy-backed
 `service_log_entries` adapter. Services should emit explicit redaction-safe
 diagnostic log entries; this is not a blanket capture of all Python log lines.
+AG can read service-local structured logs through
+`GET /admin/v1/operations/logs` and `GET /admin/v1/operations/logs/{log_id}`
+using the operations source registry. The registry wraps service log stores as
+read-only sources, so AG search/debug projections do not mutate service data.
 
 Service workers should also report `worker_heartbeat.v1` payloads through the
 shared worker heartbeat runtime. It defines the status vocabulary, emitter,

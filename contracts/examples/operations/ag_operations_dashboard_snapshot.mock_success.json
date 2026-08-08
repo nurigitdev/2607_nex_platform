@@ -18,11 +18,13 @@
       "capabilities": {
         "jobs": true,
         "events": true,
+        "logs": true,
         "workers": true
       },
       "read_only": false,
       "job_queue": "InMemoryJobQueue",
       "operational_event_store": "InMemoryOperationalEventStore",
+      "service_log_store": "InMemoryServiceLogStore",
       "worker_heartbeat_store": "InMemoryWorkerHeartbeatStore",
       "database_env": null,
       "redacted_database_url": null
