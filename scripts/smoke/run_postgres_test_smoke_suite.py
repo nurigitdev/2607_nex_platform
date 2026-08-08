@@ -50,6 +50,12 @@ from run_postgres_jobqueue_smoke import (  # noqa: E402
     SMOKE_SERVICE_ENV as JOBQUEUE_SERVICE_ENV,
     run_postgres_jobqueue_smoke,
 )
+from run_postgres_job_replay_smoke import (  # noqa: E402
+    SMOKE_ENV as JOB_REPLAY_SMOKE_ENV,
+    SMOKE_PROFILE_ENV as JOB_REPLAY_PROFILE_ENV,
+    SMOKE_SERVICE_ENV as JOB_REPLAY_SERVICE_ENV,
+    run_postgres_job_replay_smoke,
+)
 from run_postgres_operational_event_smoke import (  # noqa: E402
     SMOKE_ENV as EVENT_SMOKE_ENV,
     SMOKE_PROFILE_ENV as EVENT_PROFILE_ENV,
@@ -76,6 +82,7 @@ SUITE_STAGE_ORDER = (
     "readiness",
     "migrations",
     "jobqueue",
+    "job_replay",
     "operational_events",
     "operations_pack",
     "cx_processing_jobqueue",
@@ -140,6 +147,9 @@ def run_postgres_test_smoke_suite(
         JOBQUEUE_SMOKE_ENV: "1",
         JOBQUEUE_SERVICE_ENV: primary_service_id,
         JOBQUEUE_PROFILE_ENV: profile,
+        JOB_REPLAY_SMOKE_ENV: "1",
+        JOB_REPLAY_SERVICE_ENV: primary_service_id,
+        JOB_REPLAY_PROFILE_ENV: profile,
         EVENT_SMOKE_ENV: "1",
         EVENT_SERVICE_ENV: primary_service_id,
         EVENT_PROFILE_ENV: profile,
@@ -155,6 +165,9 @@ def run_postgres_test_smoke_suite(
     }
     stages["jobqueue"] = _stage_from_child_smoke(
         run_postgres_jobqueue_smoke(environ=smoke_env)
+    )
+    stages["job_replay"] = _stage_from_child_smoke(
+        run_postgres_job_replay_smoke(environ=smoke_env)
     )
     stages["operational_events"] = _stage_from_child_smoke(
         run_postgres_operational_event_smoke(environ=smoke_env)

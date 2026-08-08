@@ -159,10 +159,11 @@ NEX_POSTGRES_TEST_SMOKE_SUITE_SERVICES=nex-ae-api,nex-ag,nex-cx,nex-mo,nex-oa
 NEX_POSTGRES_TEST_SMOKE_SUITE_PRIMARY_SERVICE=nex-cx
 ```
 
-The suite runs readiness, migrations, common JobQueue/Event smokes, the
-cross-service operations pack, CX processing PostgreSQL smokes, and AG
-cross-service observability smoke. It is skipped by default in the quality gate
-and refuses non-test profiles because it writes temporary smoke rows.
+The suite runs readiness, migrations, common JobQueue/Event smokes, dead-letter
+replay smoke, the cross-service operations pack, CX processing PostgreSQL
+smokes, and AG cross-service observability smoke. It is skipped by default in
+the quality gate and refuses non-test profiles because it writes temporary
+smoke rows.
 
 Slice 0005 adds a mock-only OA service token path:
 

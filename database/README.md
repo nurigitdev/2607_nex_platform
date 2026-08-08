@@ -206,9 +206,9 @@ in short unit-of-work blocks around each durable state change.
 ## Service Job Queue Foundation
 
 Each service database owns the same `service_jobs` table shape. It stores the
-`common_job.v1` identity and lifecycle fields plus JSONB payload/error slots,
-availability and lock fields, and indexes needed for status scans, trace lookup,
-and subject lookup.
+`common_job.v1` identity and lifecycle fields plus JSONB payload/error/replay
+lineage slots, availability and lock fields, and indexes needed for status
+scans, trace lookup, and subject lookup.
 
 Runtime code uses `nex_runtime.jobs` for the shared in-memory queue port,
 contract-aligned common job builder, status validation, transition rules,
@@ -231,6 +231,17 @@ NEX_DB_JOBQUEUE_SMOKE_PROFILE=test
 The smoke is intentionally limited to the test profile. It applies service
 migrations, enqueues a short smoke job, validates idempotency, claims it,
 completes it, and removes the smoke row.
+
+Dead-letter replay persistence has a separate guarded smoke:
+
+```text
+NEX_DB_JOB_REPLAY_SMOKE=1
+NEX_DB_JOB_REPLAY_SMOKE_SERVICE=nex-cx
+NEX_DB_JOB_REPLAY_SMOKE_PROFILE=test
+```
+
+It verifies source dead-letter state, replay enqueue, copied payload, replay
+lineage, idempotency, and readback through the same `service_jobs` table.
 
 AG exposes a read-only job operations projection at
 `GET /admin/v1/operations/jobs`. It aggregates injected per-service `JobQueue`

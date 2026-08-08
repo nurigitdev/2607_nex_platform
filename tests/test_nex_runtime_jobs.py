@@ -82,6 +82,7 @@ def sqlite_job_queue() -> SqlAlchemyJobQueue:
                     links TEXT NOT NULL DEFAULT '{}',
                     payload TEXT NOT NULL DEFAULT '{}',
                     error TEXT,
+                    replay_lineage TEXT,
                     available_at TEXT NOT NULL,
                     locked_at TEXT,
                     locked_by TEXT,
@@ -761,6 +762,12 @@ def test_sqlalchemy_job_queue_retries_with_available_at_and_dead_letters() -> No
         replayed_at="2026-08-05T00:00:09Z",
     )
     assert replay_decision.replay_job["payload"] == {"source_file_id": "source-001"}
+    replayed = queue.enqueue(replay_decision.replay_job)
+    read_back_replay = queue.get_job(replayed["job_id"])
+    assert read_back_replay is not None
+    assert read_back_replay["payload"] == {"source_file_id": "source-001"}
+    assert read_back_replay["replay_lineage"]["source_job_id"] == dead_lettered["job_id"]
+    assert read_back_replay["replay_lineage"]["requested_by"] == "operator-001"
     assert queue.get_job("missing") is None
     with pytest.raises(JobQueueError) as missing:
         queue.retry_job("missing")
@@ -786,6 +793,9 @@ def test_sqlalchemy_job_queue_json_and_timestamp_helpers_cover_backend_edges() -
             "CAST(:links AS JSONB)",
             "CAST(:payload AS JSONB)",
             "CAST(:error AS JSONB)",
+        )
+        assert runtime_jobs._json_sql_expression(postgres_session, "replay_lineage") == (
+            "CAST(:replay_lineage AS JSONB)"
         )
     finally:
         postgres_session.close()

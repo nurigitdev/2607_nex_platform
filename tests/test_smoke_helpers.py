@@ -15,6 +15,7 @@ import check_backend_service_endpoints as endpoint_smoke
 import check_db_readiness as db_smoke
 import run_cx_processing_postgres_event_smoke as cx_processing_event_smoke
 import run_cx_processing_postgres_jobqueue_smoke as cx_processing_smoke
+import run_postgres_job_replay_smoke as job_replay_smoke
 import run_postgres_jobqueue_smoke as jobqueue_smoke
 import run_postgres_operational_event_smoke as event_smoke
 import run_postgres_operations_smoke_pack as operations_smoke
@@ -528,6 +529,199 @@ def test_postgres_jobqueue_smoke_main_prints_summary_and_full_evidence(
     assert "postgres_jobqueue_smoke=skipped" in capsys.readouterr().out
 
     assert jobqueue_smoke.main([]) == 0
+    assert '"status": "SKIPPED"' in capsys.readouterr().out
+
+
+def test_postgres_job_replay_smoke_skips_by_default() -> None:
+    evidence = job_replay_smoke.run_postgres_job_replay_smoke(environ={})
+
+    assert evidence["status"] == "SKIPPED"
+    assert job_replay_smoke.summary_line(evidence) == (
+        "postgres_job_replay_smoke=skipped reason=NEX_DB_JOB_REPLAY_SMOKE"
+    )
+
+
+def test_postgres_job_replay_smoke_rejects_non_test_profile() -> None:
+    evidence = job_replay_smoke.run_postgres_job_replay_smoke(
+        environ={
+            "NEX_DB_JOB_REPLAY_SMOKE": "1",
+            "NEX_DB_JOB_REPLAY_SMOKE_PROFILE": "dev",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "profile_not_allowed"
+
+
+def test_postgres_job_replay_smoke_reports_pass_without_leaking_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration_calls: list[tuple[str, str]] = []
+
+    class FakeReplayQueue:
+        def __init__(self, session_factory: object) -> None:
+            self.session_factory = session_factory
+            self.jobs: dict[str, dict[str, object]] = {}
+            self.idempotency: dict[tuple[str, str], str] = {}
+
+        def enqueue(self, job: dict[str, object]) -> dict[str, object]:
+            key = (str(job["job_type"]), str(job["idempotency_key"]))
+            existing_id = self.idempotency.get(key)
+            if existing_id is not None:
+                return dict(self.jobs[existing_id])
+            stored = dict(job)
+            self.jobs[str(stored["job_id"])] = stored
+            self.idempotency[key] = str(stored["job_id"])
+            return dict(stored)
+
+        def claim_next_job(
+            self,
+            worker_id: str,
+            *,
+            job_type: str,
+            updated_at: str,
+        ) -> dict[str, object]:
+            assert worker_id == "postgres-replay-smoke-worker"
+            source = next(job for job in self.jobs.values() if job["job_type"] == job_type)
+            source.update({"status": "RUNNING", "attempt_count": 1, "updated_at": updated_at})
+            return dict(source)
+
+        def retry_job(
+            self,
+            job_id: str,
+            *,
+            error: dict[str, object],
+            failed_at: str,
+        ) -> dict[str, object]:
+            source = self.jobs[job_id]
+            source.update(
+                {
+                    "status": "FAILED",
+                    "retryable": False,
+                    "updated_at": failed_at,
+                    "available_at": failed_at,
+                    "error": {
+                        **error,
+                        "failed_at": failed_at,
+                        "dead_lettered": True,
+                        "retryable": False,
+                    },
+                }
+            )
+            return dict(source)
+
+        def get_job(self, job_id: str) -> dict[str, object] | None:
+            job = self.jobs.get(job_id)
+            return dict(job) if job is not None else None
+
+    monkeypatch.setattr(
+        job_replay_smoke,
+        "service_database_env",
+        lambda service_id, profile: f"{service_id}:{profile}:env",
+    )
+    monkeypatch.setattr(
+        job_replay_smoke,
+        "service_database_url",
+        lambda service_id, profile, environ: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        job_replay_smoke,
+        "run_service_migrations",
+        lambda service_id, database_url, profile: migration_calls.append((service_id, profile)),
+    )
+    monkeypatch.setattr(job_replay_smoke, "database_pool_settings", lambda *args, **kwargs: object())
+    monkeypatch.setattr(job_replay_smoke, "build_engine", lambda *args, **kwargs: FakeSqlEngine())
+    monkeypatch.setattr(job_replay_smoke, "build_session_factory", lambda engine: object())
+    monkeypatch.setattr(job_replay_smoke, "SqlAlchemyJobQueue", FakeReplayQueue)
+
+    evidence = job_replay_smoke.run_postgres_job_replay_smoke(
+        environ={
+            "NEX_DB_JOB_REPLAY_SMOKE": "1",
+            "NEX_DB_JOB_REPLAY_SMOKE_SERVICE": "nex-cx",
+        }
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["checks"] == {
+        "source_enqueued": True,
+        "source_claimed": True,
+        "source_dead_lettered": True,
+        "replay_enqueued": True,
+        "payload_copied": True,
+        "lineage_persisted": True,
+        "idempotency": True,
+        "readback": True,
+    }
+    assert evidence["redacted_database_url"] == "postgresql://user:***@localhost/db"
+    assert "secret" not in str(evidence)
+    assert migration_calls == [("nex-cx", "test")]
+    assert job_replay_smoke.summary_line(evidence) == (
+        "postgres_job_replay_smoke=pass service=nex-cx db_env=nex-cx:test:env"
+    )
+
+
+def test_postgres_job_replay_smoke_reports_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        job_replay_smoke,
+        "service_database_env",
+        lambda *args, **kwargs: "NEX_CX_TEST_DATABASE_URL",
+    )
+
+    def raise_migration_error(*args: object, **kwargs: object) -> None:
+        raise job_replay_smoke.MigrationError("missing database URL env")
+
+    monkeypatch.setattr(job_replay_smoke, "service_database_url", raise_migration_error)
+    config_failure = job_replay_smoke.run_postgres_job_replay_smoke(
+        environ={"NEX_DB_JOB_REPLAY_SMOKE": "1"}
+    )
+
+    assert config_failure["status"] == "FAIL"
+    assert config_failure["failure_code"] == "configuration_invalid"
+
+    monkeypatch.setattr(
+        job_replay_smoke,
+        "service_database_url",
+        lambda *args, **kwargs: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(job_replay_smoke, "run_service_migrations", lambda *args, **kwargs: None)
+    monkeypatch.setattr(job_replay_smoke, "database_pool_settings", lambda *args, **kwargs: object())
+
+    def raise_runtime_error(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(job_replay_smoke, "build_engine", raise_runtime_error)
+    execution_failure = job_replay_smoke.run_postgres_job_replay_smoke(
+        environ={"NEX_DB_JOB_REPLAY_SMOKE": "1"}
+    )
+
+    assert execution_failure["status"] == "FAIL"
+    assert execution_failure["failure_code"] == "execution_failed"
+    assert job_replay_smoke.summary_line(execution_failure) == (
+        "postgres_job_replay_smoke=fail service=nex-cx reason=execution_failed"
+    )
+
+
+def test_postgres_job_replay_smoke_main_prints_summary_and_full_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(job_replay_smoke, "load_env_file", lambda path: None)
+    monkeypatch.setattr(
+        job_replay_smoke,
+        "run_postgres_job_replay_smoke",
+        lambda: {
+            "smoke_schema_version": "postgres_job_replay_smoke.v1",
+            "status": "SKIPPED",
+            "skip_reason": "NEX_DB_JOB_REPLAY_SMOKE is not enabled.",
+        },
+    )
+
+    assert job_replay_smoke.main(["--summary"]) == 0
+    assert "postgres_job_replay_smoke=skipped" in capsys.readouterr().out
+
+    assert job_replay_smoke.main([]) == 0
     assert '"status": "SKIPPED"' in capsys.readouterr().out
 
 
@@ -1049,6 +1243,11 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
     )
     monkeypatch.setattr(
         postgres_suite_smoke,
+        "run_postgres_job_replay_smoke",
+        child_pass("postgres_job_replay_smoke"),
+    )
+    monkeypatch.setattr(
+        postgres_suite_smoke,
         "run_postgres_operational_event_smoke",
         child_pass("postgres_operational_event_smoke"),
     )
@@ -1092,6 +1291,7 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
     assert migration_calls == [("nex-cx", "test"), ("nex-ag", "test")]
     assert child_calls == [
         ("postgres_jobqueue_smoke", "test"),
+        ("postgres_job_replay_smoke", "test"),
         ("postgres_operational_event_smoke", "test"),
         ("postgres_operations_smoke_pack", "test"),
         ("cx_processing_postgres_jobqueue_smoke", "test"),
@@ -1099,7 +1299,7 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("ag_cross_service_observability_smoke", "test"),
     ]
     assert postgres_suite_smoke.summary_line(evidence) == (
-        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=8"
+        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=9"
     )
 
 
@@ -2050,6 +2250,7 @@ def _create_sqlite_service_jobs_table(engine: object) -> None:
                     links TEXT NOT NULL DEFAULT '{}',
                     payload TEXT NOT NULL DEFAULT '{}',
                     error TEXT,
+                    replay_lineage TEXT,
                     available_at TEXT NOT NULL,
                     locked_at TEXT,
                     locked_by TEXT,

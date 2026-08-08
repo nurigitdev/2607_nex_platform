@@ -969,6 +969,7 @@ class SqlAlchemyJobQueue:
 
     def _insert_job(self, session: Session, job: dict[str, Any]) -> None:
         json_links, json_payload, json_error = _json_sql_expressions(session)
+        json_replay_lineage = _json_sql_expression(session, "replay_lineage")
         session.execute(
             text(
                 f"""
@@ -988,6 +989,7 @@ class SqlAlchemyJobQueue:
                     links,
                     payload,
                     error,
+                    replay_lineage,
                     available_at,
                     locked_at,
                     locked_by,
@@ -1012,6 +1014,7 @@ class SqlAlchemyJobQueue:
                     {json_links},
                     {json_payload},
                     {json_error},
+                    {json_replay_lineage},
                     :available_at,
                     :locked_at,
                     :locked_by,
@@ -1222,6 +1225,7 @@ _JOB_SELECT_COLUMNS = """
     links,
     payload,
     error,
+    replay_lineage,
     available_at,
     created_at,
     updated_at
@@ -1246,6 +1250,11 @@ def _job_insert_params(job: dict[str, Any]) -> dict[str, Any]:
         "links": _json_dumps(job["links"]),
         "payload": _json_dumps(job.get("payload", {})),
         "error": _json_dumps(job["error"]) if job.get("error") is not None else None,
+        "replay_lineage": (
+            _json_dumps(job["replay_lineage"])
+            if job.get("replay_lineage") is not None
+            else None
+        ),
         "available_at": job.get("available_at", job["created_at"]),
         "locked_at": job.get("locked_at"),
         "locked_by": job.get("locked_by"),
@@ -1257,40 +1266,46 @@ def _job_insert_params(job: dict[str, Any]) -> dict[str, Any]:
 
 
 def _job_from_row(row: Any) -> dict[str, Any]:
-    return validate_common_job(
-        {
-            "job_schema_version": row["job_schema_version"],
-            "job_id": row["job_id"],
-            "job_type": row["job_type"],
-            "status": row["status"],
-            "trace_id": row["trace_id"],
-            "request_id": row["request_id"],
-            "subject_ref": {
-                "type": row["subject_type"],
-                "id": row["subject_id"],
-            },
-            "idempotency_key": row["idempotency_key"],
-            "attempt_count": int(row["attempt_count"]),
-            "max_attempts": int(row["max_attempts"]),
-            "retryable": bool(row["retryable"]),
-            "links": _json_loads(row["links"], default={}),
-            "payload": _json_loads(row["payload"], default={}),
-            "error": _json_loads(row["error"], default=None),
-            "available_at": _timestamp_to_wire(row["available_at"]),
-            "created_at": _timestamp_to_wire(row["created_at"]),
-            "updated_at": _timestamp_to_wire(row["updated_at"]),
-        }
-    )
+    job = {
+        "job_schema_version": row["job_schema_version"],
+        "job_id": row["job_id"],
+        "job_type": row["job_type"],
+        "status": row["status"],
+        "trace_id": row["trace_id"],
+        "request_id": row["request_id"],
+        "subject_ref": {
+            "type": row["subject_type"],
+            "id": row["subject_id"],
+        },
+        "idempotency_key": row["idempotency_key"],
+        "attempt_count": int(row["attempt_count"]),
+        "max_attempts": int(row["max_attempts"]),
+        "retryable": bool(row["retryable"]),
+        "links": _json_loads(row["links"], default={}),
+        "payload": _json_loads(row["payload"], default={}),
+        "error": _json_loads(row["error"], default=None),
+        "available_at": _timestamp_to_wire(row["available_at"]),
+        "created_at": _timestamp_to_wire(row["created_at"]),
+        "updated_at": _timestamp_to_wire(row["updated_at"]),
+    }
+    replay_lineage = _json_loads(row["replay_lineage"], default=None)
+    if replay_lineage is not None:
+        job["replay_lineage"] = replay_lineage
+    return validate_common_job(job)
 
 
 def _json_sql_expressions(session: Session) -> tuple[str, str, str]:
+    return (
+        _json_sql_expression(session, "links"),
+        _json_sql_expression(session, "payload"),
+        _json_sql_expression(session, "error"),
+    )
+
+
+def _json_sql_expression(session: Session, param_name: str) -> str:
     if _dialect_name(session) == "postgresql":
-        return (
-            "CAST(:links AS JSONB)",
-            "CAST(:payload AS JSONB)",
-            "CAST(:error AS JSONB)",
-        )
-    return (":links", ":payload", ":error")
+        return f"CAST(:{param_name} AS JSONB)"
+    return f":{param_name}"
 
 
 def _json_dumps(value: Any) -> str:
