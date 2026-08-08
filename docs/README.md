@@ -255,6 +255,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0149`](slices/0149_service_log_retention_control_api_and_ag_dispatch_guardrail.md) | `S15-009` Service log retention control API and AG dispatch guardrail. |
 | [`Slice 0150`](slices/0150_service_log_retention_openapi_and_smoke_evidence.md) | `S15-010` Service log retention OpenAPI and smoke evidence. |
 | [`Slice 0151`](slices/0151_service_log_retention_postgresql_smoke_evidence.md) | `S16-001` Service log retention PostgreSQL smoke evidence. |
+| [`Slice 0152`](slices/0152_service_log_retention_http_postgresql_smoke_evidence.md) | `S16-002` Service log retention HTTP PostgreSQL smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
