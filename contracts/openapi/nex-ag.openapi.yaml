@@ -521,6 +521,40 @@ paths:
           description: Invalid structured service log retention filter.
         "401":
           description: Service claim is missing or invalid.
+  /admin/v1/operations/logs/retention/{service_id}/purge:
+    post:
+      operationId: purgeAgServiceLogRetention
+      tags:
+        - Operations
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/ServiceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgServiceLogRetentionPurgeRequest"
+      responses:
+        "200":
+          description: AG dispatched a guarded service log retention purge request and recorded audit summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgServiceLogRetentionDispatch"
+        "400":
+          description: Invalid target service.
+        "401":
+          description: Service claim is missing or invalid.
+        "409":
+          description: Execute-mode dispatch was blocked before service call.
+        "422":
+          description: Retention purge payload is invalid.
+        "503":
+          description: Target service log retention endpoint is unavailable.
   /admin/v1/operations/logs/{log_id}:
     get:
       operationId: getAgServiceLogDetailProjection
@@ -871,10 +905,169 @@ components:
             - ag_worker_detail_projection.v1
             - ag_cross_service_trace_timeline_projection.v1
             - ag_job_control_dispatch.v1
+            - ag_service_log_retention_dispatch.v1
         checked_at:
           type: string
           format: date-time
       additionalProperties: true
+    AgServiceLogRetentionPurgeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - retention_cutoff
+      properties:
+        retention_cutoff:
+          type: string
+          format: date-time
+        retention_days:
+          type: integer
+          minimum: 1
+        checked_at:
+          type: string
+          format: date-time
+        dry_run:
+          type: boolean
+          default: true
+        delete_enabled:
+          type: boolean
+          default: false
+        max_delete_count:
+          type: integer
+          minimum: 1
+        requested_by:
+          type: object
+          additionalProperties: true
+        idempotency_key:
+          type: string
+          minLength: 1
+    AgServiceLogRetentionDispatch:
+      type: object
+      additionalProperties: true
+      required:
+        - projection_schema_version
+        - dispatch_status
+        - checked_at
+        - service_id
+        - service_response
+        - audit_event
+        - summary
+      properties:
+        projection_schema_version:
+          type: string
+          const: ag_service_log_retention_dispatch.v1
+        dispatch_status:
+          type: string
+          const: SUCCEEDED
+        checked_at:
+          type: string
+          format: date-time
+        request_trace_id:
+          $ref: "#/components/schemas/TraceId"
+        service_id:
+          $ref: "#/components/schemas/ServiceId"
+        service_response:
+          $ref: "#/components/schemas/ServiceLogRetentionExecution"
+        audit_event:
+          $ref: "#/components/schemas/AuditEventSummary"
+        summary:
+          type: object
+          additionalProperties: true
+          required:
+            - service_id
+            - mode
+            - execution_status
+            - candidate_count
+            - deleted_count
+            - delete_enabled
+            - max_delete_count
+          properties:
+            service_id:
+              $ref: "#/components/schemas/ServiceId"
+            mode:
+              type: string
+              enum:
+                - DRY_RUN
+                - EXECUTE
+            execution_status:
+              type: string
+              enum:
+                - PLANNED
+                - SUCCEEDED
+                - BLOCKED
+                - FAILED
+            candidate_count:
+              type: integer
+              minimum: 0
+            deleted_count:
+              type: integer
+              minimum: 0
+            delete_enabled:
+              type: boolean
+            max_delete_count:
+              type: integer
+              minimum: 1
+    ServiceLogRetentionExecution:
+      type: object
+      additionalProperties: true
+      required:
+        - retention_execution_schema_version
+        - execution_id
+        - policy_id
+        - service_id
+        - mode
+        - execution_status
+        - delete_enabled
+        - retention_days
+        - retention_cutoff
+        - checked_at
+        - max_delete_count
+        - candidate_count
+        - deleted_count
+      properties:
+        retention_execution_schema_version:
+          type: string
+          const: service_log_retention_execution.v1
+        execution_id:
+          type: string
+          minLength: 1
+        policy_id:
+          type: string
+          const: service-log-query-retention-v1
+        service_id:
+          $ref: "#/components/schemas/ServiceId"
+        mode:
+          type: string
+          enum:
+            - DRY_RUN
+            - EXECUTE
+        execution_status:
+          type: string
+          enum:
+            - PLANNED
+            - SUCCEEDED
+            - BLOCKED
+            - FAILED
+        delete_enabled:
+          type: boolean
+        retention_days:
+          type: integer
+          minimum: 7
+          maximum: 365
+        retention_cutoff:
+          type: string
+          format: date-time
+        checked_at:
+          type: string
+          format: date-time
+        max_delete_count:
+          type: integer
+          minimum: 1
+        candidate_count:
+          type: integer
+          minimum: 0
+        deleted_count:
+          type: integer
+          minimum: 0
     AgJobControlRequest:
       type: object
       additionalProperties: false

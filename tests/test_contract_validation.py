@@ -200,6 +200,9 @@ def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:
     service_log_retention = spec["paths"][
         "/admin/v1/operations/logs/retention/dry-run"
     ]["get"]
+    service_log_retention_purge = spec["paths"][
+        "/admin/v1/operations/logs/retention/{service_id}/purge"
+    ]["post"]
     service_log_detail = spec["paths"]["/admin/v1/operations/logs/{log_id}"]["get"]
     parameter_names = {parameter["name"] for parameter in worker_detail["parameters"]}
     parameters = spec["components"]["parameters"]
@@ -231,6 +234,10 @@ def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:
         service_log_retention["operationId"]
         == "getAgServiceLogRetentionDryRunProjection"
     )
+    assert (
+        service_log_retention_purge["operationId"]
+        == "purgeAgServiceLogRetention"
+    )
     assert service_log_detail["operationId"] == "getAgServiceLogDetailProjection"
     assert {
         "service_id",
@@ -252,6 +259,28 @@ def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:
     assert "ag_service_log_detail_projection.v1" in projection_versions
     assert "ag_service_log_query_policy_projection.v1" in projection_versions
     assert "ag_service_log_retention_dry_run_projection.v1" in projection_versions
+    assert "ag_service_log_retention_dispatch.v1" in projection_versions
+
+
+def test_nex_cx_openapi_includes_service_log_retention_control() -> None:
+    openapi_path = (
+        Path(__file__).parents[1] / "contracts" / "openapi" / "nex-cx.openapi.yaml"
+    )
+    spec = yaml.safe_load(openapi_path.read_text(encoding="utf-8"))
+
+    retention_purge = spec["paths"][
+        "/internal/v1/service-logs/retention/purge"
+    ]["post"]
+
+    assert retention_purge["operationId"] == "purgeCxServiceLogRetention"
+    assert retention_purge["requestBody"]["content"]["application/json"]["schema"][
+        "required"
+    ] == ["retention_cutoff"]
+    assert retention_purge["responses"]["200"]["content"]["application/json"]["schema"][
+        "properties"
+    ]["retention_execution_schema_version"]["const"] == (
+        "service_log_retention_execution.v1"
+    )
 
 
 def test_load_structured_file_rejects_unsupported_suffix(tmp_path: Path) -> None:

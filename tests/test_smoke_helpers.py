@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import io
 import json
+import runpy
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 from urllib.error import HTTPError, URLError
 
@@ -11,6 +14,7 @@ from sqlalchemy import text
 import run_ag_job_control_smoke as ag_job_control_smoke
 import run_ag_operations_dashboard_smoke as ag_operations_dashboard_smoke
 import run_ag_cross_service_observability_smoke as ag_observability_smoke
+import run_ag_service_log_retention_smoke as ag_log_retention_smoke
 import check_backend_service_endpoints as endpoint_smoke
 import check_db_readiness as db_smoke
 import run_cx_processing_postgres_event_smoke as cx_processing_event_smoke
@@ -268,6 +272,119 @@ def test_ag_job_control_smoke_main_prints_summary(
 ) -> None:
     assert ag_job_control_smoke.main(["--summary"]) == 0
     assert "ag_job_control_smoke=pass" in capsys.readouterr().out
+
+
+def test_ag_service_log_retention_smoke_passes_mock_pack() -> None:
+    evidence = ag_log_retention_smoke.run_ag_service_log_retention_smoke()
+
+    assert evidence["status"] == "PASS"
+    assert evidence["actions"] == ["dry_run", "blocked", "execute"]
+    assert evidence["projection_versions"] == {
+        "dry_run": "ag_service_log_retention_dispatch.v1",
+        "execute": "ag_service_log_retention_dispatch.v1",
+        "service_response": "service_log_retention_execution.v1",
+    }
+    assert evidence["http_statuses"] == {
+        "dry_run": 200,
+        "blocked": 409,
+        "execute": 200,
+    }
+    assert evidence["counts"] == {
+        "candidate_count": 2,
+        "deleted_count": 1,
+        "audit_events": 3,
+        "service_calls": 2,
+    }
+    assert all(evidence["checks"].values())
+    assert "Bearer private" not in json.dumps(evidence, ensure_ascii=False)
+    assert ag_log_retention_smoke.summary_line(evidence) == (
+        "ag_service_log_retention_smoke=pass actions=3 audit_events=3 "
+        "dry_run_status=200 blocked_status=409 execute_deleted=1"
+    )
+
+
+def test_ag_service_log_retention_smoke_reports_failed_summary() -> None:
+    assert ag_log_retention_smoke.summary_line({"status": "FAIL"}) == (
+        "ag_service_log_retention_smoke=fail"
+    )
+
+
+def test_ag_service_log_retention_smoke_local_client_maps_service_errors() -> None:
+    service_client = ag_log_retention_smoke._build_cx_service_client(
+        ag_log_retention_smoke._build_cx_log_store()
+    )
+    control_client = ag_log_retention_smoke.LocalAgServiceLogRetentionClient(
+        {"nex-cx": service_client}
+    )
+
+    with pytest.raises(ag_log_retention_smoke.AgServiceLogRetentionError) as bad_payload:
+        control_client.purge_logs(
+            "nex-cx",
+            request_id=ag_log_retention_smoke.REQUEST_ID,
+            trace_id=ag_log_retention_smoke.TRACE_ID,
+            retention_cutoff="2026-07-06T00:00:00Z",
+            dry_run=True,
+            delete_enabled=True,
+        )
+    with pytest.raises(ag_log_retention_smoke.AgServiceLogRetentionError) as missing:
+        control_client.purge_logs(
+            "nex-mo",
+            request_id=ag_log_retention_smoke.REQUEST_ID,
+            trace_id=ag_log_retention_smoke.TRACE_ID,
+            retention_cutoff="2026-07-06T00:00:00Z",
+        )
+
+    assert bad_payload.value.status_code == 422
+    assert bad_payload.value.error_code == "service_log_retention.delete_enabled_invalid"
+    assert missing.value.status_code == 404
+    assert missing.value.error_code == (
+        "ag.service_log_retention_service_not_configured"
+    )
+
+
+def test_ag_service_log_retention_smoke_main_prints_summary(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert ag_log_retention_smoke.main(["--summary"]) == 0
+    assert "ag_service_log_retention_smoke=pass" in capsys.readouterr().out
+
+
+def test_ag_service_log_retention_smoke_main_prints_json(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert ag_log_retention_smoke.main([]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["smoke_schema_version"] == "ag_service_log_retention_smoke.v1"
+    assert payload["status"] == "PASS"
+
+
+def test_ag_service_log_retention_smoke_main_returns_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ag_log_retention_smoke,
+        "run_ag_service_log_retention_smoke",
+        lambda: {"status": "FAIL", "counts": {}},
+    )
+
+    assert ag_log_retention_smoke.main(["--summary"]) == 1
+
+
+def test_ag_service_log_retention_smoke_module_entrypoint(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["run_ag_service_log_retention_smoke.py"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        runpy.run_path(
+            str(Path(ag_log_retention_smoke.__file__).resolve()),
+            run_name="__main__",
+        )
+
+    assert exc_info.value.code == 0
+    assert "ag_service_log_retention_smoke.v1" in capsys.readouterr().out
 
 
 def test_db_smoke_reports_missing_url(

@@ -10,6 +10,7 @@ tags:
   - name: Recovery
   - name: Prompts
   - name: InternalJobControl
+  - name: InternalServiceLogs
 paths:
   /health:
     get:
@@ -47,6 +48,90 @@ paths:
           description: Service claim is valid for this service.
         "401":
           description: Service claim is missing or invalid.
+  /internal/v1/service-logs/retention/purge:
+    post:
+      operationId: purgeCxServiceLogRetention
+      tags:
+        - InternalServiceLogs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - retention_cutoff
+              properties:
+                retention_cutoff:
+                  type: string
+                  format: date-time
+                retention_days:
+                  type: integer
+                  minimum: 1
+                checked_at:
+                  type: string
+                  format: date-time
+                dry_run:
+                  type: boolean
+                  default: true
+                delete_enabled:
+                  type: boolean
+                  default: false
+                max_delete_count:
+                  type: integer
+                  minimum: 1
+                requested_by:
+                  type: object
+                  additionalProperties: true
+                idempotency_key:
+                  type: string
+                  minLength: 1
+      responses:
+        "200":
+          description: Guarded service log retention execution evidence.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                required:
+                  - retention_execution_schema_version
+                  - service_id
+                  - mode
+                  - execution_status
+                  - candidate_count
+                  - deleted_count
+                properties:
+                  retention_execution_schema_version:
+                    type: string
+                    const: service_log_retention_execution.v1
+                  service_id:
+                    type: string
+                    const: nex-cx
+                  mode:
+                    type: string
+                    enum:
+                      - DRY_RUN
+                      - EXECUTE
+                  execution_status:
+                    type: string
+                    enum:
+                      - SUCCEEDED
+                      - BLOCKED
+                      - FAILED
+                  candidate_count:
+                    type: integer
+                    minimum: 0
+                  deleted_count:
+                    type: integer
+                    minimum: 0
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Retention purge payload is invalid.
+        "503":
+          description: Service log store is unavailable.
   /internal/v1/jobs/{job_id}:
     get:
       operationId: getCxServiceJobControlJob

@@ -28,7 +28,8 @@
         "ag_operations_issue_candidate_projection.v1",
         "ag_worker_runtime_projection.v1",
         "ag_worker_detail_projection.v1",
-        "ag_cross_service_trace_timeline_projection.v1"
+        "ag_cross_service_trace_timeline_projection.v1",
+        "ag_service_log_retention_dispatch.v1"
       ]
     },
     "projection_status": {
