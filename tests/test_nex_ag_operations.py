@@ -2771,6 +2771,49 @@ def test_build_cross_service_trace_timeline_projection_sorts_and_summarizes() ->
         "status": "READY",
         "event_count": 1,
     }
+    assert projection["log_source_statuses"]["nex-cx"] == {
+        "status": "NOT_CONFIGURED",
+        "log_count": 0,
+    }
+
+
+def test_cross_service_trace_timeline_projection_includes_service_logs() -> None:
+    registry = build_operations_source_registry(
+        job_queues=build_job_queues(),
+        event_stores=build_event_stores(),
+        service_log_stores=build_log_stores(),
+    )
+
+    projection = build_cross_service_trace_timeline_projection(
+        trace_id=TRACE_ID,
+        registry=registry,
+        service_id="nex-cx",
+        query_options=build_operation_query_options(limit=4, sort="asc"),
+    )
+
+    assert projection["projection_status"] == "READY"
+    assert [
+        (item["timeline_item_type"], item["item_id"])
+        for item in projection["timeline"]
+    ] == [
+        ("event", "event:event-cx-001"),
+        ("log", "log:nex-cx:log-001"),
+        ("job", "job:nex-cx:job-cx-001"),
+        ("job", "job:nex-cx:job-cx-002"),
+    ]
+    log_item = projection["timeline"][1]
+    assert log_item["operation_timestamp"] == "2026-08-05T00:00:00Z"
+    assert log_item["log"]["log_id"] == "log-001"
+    assert projection["summary"] == {
+        "total": 4,
+        "by_item_type": {"event": 1, "log": 1, "job": 2},
+        "by_service": {"nex-cx": 4},
+    }
+    assert projection["log_source_statuses"]["nex-cx"] == {
+        "status": "READY",
+        "log_count": 1,
+    }
+    assert_ag_operations_projection_contract(projection)
 
 
 def test_cross_service_trace_timeline_projection_filters_service_and_window() -> None:
@@ -2794,6 +2837,10 @@ def test_cross_service_trace_timeline_projection_filters_service_and_window() ->
     ]
     assert projection["summary"]["by_item_type"] == {"job": 2}
     assert projection["pagination"]["next_cursor"] is None
+    assert projection["log_source_statuses"]["nex-cx"] == {
+        "status": "READY",
+        "log_count": 0,
+    }
 
 
 def test_cross_service_trace_timeline_projection_reports_unavailable_sources() -> None:
@@ -2801,6 +2848,7 @@ def test_cross_service_trace_timeline_projection_reports_unavailable_sources() -
         trace_id=TRACE_ID,
         job_queues={"nex-cx": BrokenJobQueue()},
         event_store=BrokenOperationalEventStore(),
+        service_log_stores={"nex-cx": BrokenServiceLogStore()},
         service_id="nex-cx",
     )
 
@@ -2818,6 +2866,13 @@ def test_cross_service_trace_timeline_projection_reports_unavailable_sources() -
         "error_code": "operational_event.store_unavailable",
         "detail": "operational event store is unavailable",
     }
+    assert projection["log_source_statuses"]["nex-cx"] == {
+        "status": "UNAVAILABLE",
+        "log_count": 0,
+        "error_code": "service_log.store_unavailable",
+        "detail": "service log store is unavailable",
+    }
+    assert_ag_operations_projection_contract(projection)
 
 
 def test_summarize_trace_timeline_items_counts_empty_and_unknown_services() -> None:
@@ -2870,6 +2925,10 @@ def test_cross_service_trace_timeline_route_requires_auth_and_returns_projection
         "event",
         "job",
     ]
+    assert payload["log_source_statuses"]["nex-cx"] == {
+        "status": "NOT_CONFIGURED",
+        "log_count": 0,
+    }
 
 
 def test_cross_service_trace_timeline_route_rejects_bad_filters() -> None:

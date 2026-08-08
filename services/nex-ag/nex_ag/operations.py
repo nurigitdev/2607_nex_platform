@@ -1859,6 +1859,7 @@ def register_unified_operation_routes(
             trace_id=trace_id,
             job_queues=job_queues,
             event_store=event_store,
+            service_log_stores=service_log_stores,
             registry=registry,
             service_id=service_id,
             query_options=query_options,
@@ -2803,6 +2804,7 @@ def build_cross_service_trace_timeline_projection(
     trace_id: str,
     job_queues: Mapping[str, JobQueue] | None = None,
     event_store: OperationalEventStore | None = None,
+    service_log_stores: Mapping[str, ServiceLogStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     service_id: str | None = None,
     limit: int = 50,
@@ -2820,6 +2822,10 @@ def build_cross_service_trace_timeline_projection(
         if registry is not None
         else event_store or DEFAULT_OPERATIONAL_EVENT_STORE
     )
+    selected_log_stores = _service_log_stores_for_projection(
+        service_log_stores=service_log_stores,
+        registry=registry,
+    )
     selected_service_ids = (
         [service_id] if service_id is not None else sorted(SERVICE_SPECS)
     )
@@ -2833,8 +2839,13 @@ def build_cross_service_trace_timeline_projection(
         trace_id=trace_id,
         service_id=service_id,
     )
+    log_items, log_source_statuses = _trace_log_timeline_items(
+        selected_log_stores,
+        selected_service_ids=selected_service_ids,
+        trace_id=trace_id,
+    )
     page = _apply_operation_query_options(
-        [*job_items, *event_items],
+        [*job_items, *event_items, *log_items],
         options,
         timestamp_field="operation_timestamp",
         tie_breaker_fields=("item_id",),
@@ -2845,6 +2856,10 @@ def build_cross_service_trace_timeline_projection(
         or any(
             source["status"] in {"NOT_CONFIGURED", "UNAVAILABLE"}
             for source in job_source_statuses.values()
+        )
+        or any(
+            source["status"] == "UNAVAILABLE"
+            for source in log_source_statuses.values()
         )
         else "READY"
     )
@@ -2861,6 +2876,7 @@ def build_cross_service_trace_timeline_projection(
         "summary": summarize_trace_timeline_items(page["items"]),
         "job_source_statuses": job_source_statuses,
         "event_source_status": event_source_status,
+        "log_source_statuses": log_source_statuses,
         "pagination": page["pagination"],
     }
     if request_trace_id is not None:
@@ -3852,6 +3868,44 @@ def _trace_job_timeline_items(
     return timeline_items, source_statuses
 
 
+def _trace_log_timeline_items(
+    log_stores: Mapping[str, ServiceLogStore],
+    *,
+    selected_service_ids: list[str],
+    trace_id: str,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    timeline_items: list[dict[str, Any]] = []
+    source_statuses: dict[str, dict[str, Any]] = {}
+    for selected_service_id in selected_service_ids:
+        store = log_stores.get(selected_service_id)
+        if store is None:
+            source_statuses[selected_service_id] = {
+                "status": "NOT_CONFIGURED",
+                "log_count": 0,
+            }
+            continue
+        try:
+            logs = store.list_logs(
+                service_id=selected_service_id,
+                trace_id=trace_id,
+                limit=normalize_service_log_limit(500),
+            )
+        except ServiceLogError as exc:
+            source_statuses[selected_service_id] = {
+                "status": "UNAVAILABLE",
+                "log_count": 0,
+                "error_code": exc.error_code,
+                "detail": exc.detail,
+            }
+            continue
+        source_statuses[selected_service_id] = {
+            "status": "READY",
+            "log_count": len(logs),
+        }
+        timeline_items.extend(_log_trace_timeline_item(log) for log in logs)
+    return timeline_items, source_statuses
+
+
 def _dashboard_source_runtime(
     *,
     runtime: AgOperationsSourceRuntime | None,
@@ -4562,6 +4616,17 @@ def _event_trace_timeline_item(event: dict[str, Any]) -> dict[str, Any]:
         "trace_id": event.get("trace_id"),
         "operation_timestamp": event["created_at"],
         "event": deepcopy(event),
+    }
+
+
+def _log_trace_timeline_item(entry: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "timeline_item_type": "log",
+        "item_id": f"log:{entry['service_id']}:{entry['log_id']}",
+        "service_id": entry["service_id"],
+        "trace_id": entry.get("trace_id"),
+        "operation_timestamp": entry["observed_at"],
+        "log": deepcopy(entry),
     }
 
 

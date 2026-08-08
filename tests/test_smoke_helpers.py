@@ -162,7 +162,7 @@ def test_ag_operations_dashboard_smoke_passes_mock_pack() -> None:
         "jobs": 2,
         "workers": 1,
         "worker_detail_events": 1,
-        "trace_timeline": 4,
+        "trace_timeline": 5,
         "rollups": 1,
         "dashboard_degraded_sources": 0,
         "dashboard_replay_candidates": 1,

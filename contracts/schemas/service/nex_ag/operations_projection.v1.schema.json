@@ -531,6 +531,7 @@
           "summary",
           "job_source_statuses",
           "event_source_status",
+          "log_source_statuses",
           "pagination"
         ]
       }
@@ -1617,7 +1618,8 @@
           "type": "string",
           "enum": [
             "job",
-            "event"
+            "event",
+            "log"
           ]
         },
         "item_id": {
@@ -1646,6 +1648,9 @@
         },
         "event": {
           "$ref": "#/$defs/operational_event"
+        },
+        "log": {
+          "$ref": "#/$defs/service_log"
         }
       },
       "oneOf": [
@@ -1657,6 +1662,11 @@
         {
           "required": [
             "event"
+          ]
+        },
+        {
+          "required": [
+            "log"
           ]
         }
       ]

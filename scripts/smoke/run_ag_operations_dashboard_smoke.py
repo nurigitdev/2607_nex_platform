@@ -442,10 +442,11 @@ def _ag_operations_dashboard_smoke_checks(
             and worker_detail["summary"]["source_statuses"]
             == {"workers": "READY", "jobs": "READY", "events": "READY"}
         ),
-        "trace_timeline_mixes_jobs_events": {
+        "trace_timeline_mixes_jobs_events_logs": {
             item["timeline_item_type"]
             for item in trace_timeline["timeline"]
-        } == {"job", "event"},
+        } == {"job", "event", "log"}
+        and trace_timeline["log_source_statuses"]["nex-cx"]["status"] == "READY",
         "rollup_counts": (
             projections["rollups"]["rollups"][0]["jobs"]["total"] == 2
             and projections["rollups"]["rollups"][0]["events"]["total"] == 2

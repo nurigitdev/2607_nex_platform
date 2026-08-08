@@ -41,15 +41,44 @@
         "updated_at": "2026-08-05T00:00:03Z",
         "service_id": "nex-cx"
       }
+    },
+    {
+      "timeline_item_type": "log",
+      "item_id": "log:nex-cx:log-001",
+      "service_id": "nex-cx",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "operation_timestamp": "2026-08-05T00:00:04Z",
+      "log": {
+        "service_log_schema_version": "service_log_entry.v1",
+        "log_id": "log-001",
+        "service_id": "nex-cx",
+        "severity": "INFO",
+        "logger_name": "nex_runtime.worker_runner",
+        "message": "Worker completed a job.",
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+        "job_id": "job-cx-001",
+        "subject_ref": {
+          "type": "cx.document",
+          "id": "doc-001"
+        },
+        "attributes": {
+          "worker_id": "cx-worker-001",
+          "attempt_count": 1
+        },
+        "redacted_attribute_keys": [],
+        "observed_at": "2026-08-05T00:00:04Z"
+      }
     }
   ],
   "summary": {
-    "total": 1,
+    "total": 2,
     "by_item_type": {
-      "job": 1
+      "job": 1,
+      "log": 1
     },
     "by_service": {
-      "nex-cx": 1
+      "nex-cx": 2
     }
   },
   "job_source_statuses": {
@@ -62,11 +91,17 @@
     "status": "READY",
     "event_count": 0
   },
+  "log_source_statuses": {
+    "nex-cx": {
+      "status": "READY",
+      "log_count": 1
+    }
+  },
   "pagination": {
     "limit": 50,
     "cursor": null,
-    "returned": 1,
-    "total_after_filters": 1,
+    "returned": 2,
+    "total_after_filters": 2,
     "next_cursor": null
   }
 }
