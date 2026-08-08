@@ -564,6 +564,48 @@ paths:
           description: Job control payload is invalid.
         "503":
           description: Target service job control endpoint is unavailable.
+  /admin/v1/operations/jobs/{service_id}/{job_id}/replay:
+    post:
+      operationId: replayAgOperationalJob
+      tags:
+        - Operations
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/ServiceId"
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgJobReplayRequest"
+      responses:
+        "200":
+          description: AG dispatched a dead-letter replay request to the target service-local job control API and recorded audit summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgJobControlDispatch"
+        "400":
+          description: Invalid target service.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Target service job control endpoint or source job was not found.
+        "409":
+          description: Target service rejected replay because the source job is not replayable.
+        "422":
+          description: Replay payload is invalid.
+        "503":
+          description: Target service job control endpoint is unavailable.
   /admin/v1/operations/traces/{trace_id}:
     get:
       operationId: getAgCrossServiceTraceTimelineProjection
@@ -698,6 +740,31 @@ components:
         detail:
           type: string
           minLength: 1
+    AgJobReplayRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - replay_job_id
+        - idempotency_key
+        - requested_by
+        - reason
+      properties:
+        replay_job_id:
+          type: string
+          minLength: 1
+        idempotency_key:
+          type: string
+          minLength: 1
+        requested_by:
+          type: string
+          minLength: 1
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+        observed_at:
+          type: string
+          format: date-time
     AgJobControlDispatch:
       type: object
       additionalProperties: true
@@ -733,6 +800,7 @@ components:
           enum:
             - cancel
             - retry
+            - replay
         service_response:
           $ref: "#/components/schemas/ServiceJobControlResponse"
         audit_event:
@@ -780,10 +848,121 @@ components:
             - read
             - cancel
             - retry
+            - replay
         job:
           $ref: "#/components/schemas/ServiceJobControlJob"
         controls:
           $ref: "#/components/schemas/ServiceJobControls"
+        replay:
+          $ref: "#/components/schemas/ServiceJobReplaySummary"
+    ServiceJobReplaySummary:
+      type: object
+      additionalProperties: false
+      required:
+        - action
+        - source_job
+        - source_job_id
+        - replay_job_id
+        - lineage
+      properties:
+        action:
+          type: string
+          const: CREATE_NEW_JOB
+        source_job:
+          type: object
+          additionalProperties: true
+          required:
+            - service_id
+            - job_id
+            - job_type
+            - status
+            - trace_id
+            - request_id
+            - subject_ref
+            - attempt_count
+            - max_attempts
+            - retryable
+            - dead_lettered
+          properties:
+            service_id:
+              $ref: "#/components/schemas/ServiceId"
+            job_id:
+              type: string
+              minLength: 1
+            job_type:
+              type: string
+              minLength: 1
+            status:
+              $ref: "#/components/schemas/JobStatus"
+            trace_id:
+              $ref: "#/components/schemas/TraceId"
+            request_id:
+              type: string
+              minLength: 1
+            subject_ref:
+              type: object
+              additionalProperties: true
+            attempt_count:
+              type: integer
+              minimum: 0
+            max_attempts:
+              type: integer
+              minimum: 1
+            retryable:
+              type: boolean
+            source_error_code:
+              type:
+                - string
+                - "null"
+            dead_lettered:
+              type: boolean
+        source_job_id:
+          type: string
+          minLength: 1
+        replay_job_id:
+          type: string
+          minLength: 1
+        lineage:
+          type: object
+          additionalProperties: false
+          required:
+            - lineage_schema_version
+            - source_job_id
+            - source_status
+            - source_attempt_count
+            - source_max_attempts
+            - requested_by
+            - reason
+            - replayed_at
+          properties:
+            lineage_schema_version:
+              type: string
+              const: job_replay_lineage.v1
+            source_job_id:
+              type: string
+              minLength: 1
+            source_status:
+              $ref: "#/components/schemas/JobStatus"
+            source_attempt_count:
+              type: integer
+              minimum: 0
+            source_max_attempts:
+              type: integer
+              minimum: 1
+            source_error_code:
+              type:
+                - string
+                - "null"
+            requested_by:
+              type: string
+              minLength: 1
+            reason:
+              type: string
+              minLength: 1
+              maxLength: 500
+            replayed_at:
+              type: string
+              format: date-time
     ServiceJobControlJob:
       type: object
       additionalProperties: true
@@ -868,6 +1047,7 @@ components:
       required:
         - can_cancel
         - can_retry
+        - can_replay
         - terminal
         - dead_lettered
         - allowed_actions
@@ -875,6 +1055,8 @@ components:
         can_cancel:
           type: boolean
         can_retry:
+          type: boolean
+        can_replay:
           type: boolean
         terminal:
           type: boolean
@@ -888,6 +1070,7 @@ components:
               - read
               - cancel
               - retry
+              - replay
     AuditEventSummary:
       type: object
       additionalProperties: true

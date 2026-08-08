@@ -167,6 +167,58 @@ paths:
           description: Job cannot be retried from its current status.
         "422":
           description: Job control payload is invalid.
+  /internal/v1/jobs/{job_id}/replay:
+    post:
+      operationId: replayCxServiceJob
+      tags:
+        - InternalJobControl
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - replay_job_id
+                - idempotency_key
+                - requested_by
+                - reason
+              properties:
+                replay_job_id:
+                  type: string
+                  minLength: 1
+                idempotency_key:
+                  type: string
+                  minLength: 1
+                requested_by:
+                  type: string
+                  minLength: 1
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                observed_at:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          description: Dead-letter CX job was replayed as a new queued service-local job.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Source job was not found.
+        "409":
+          description: Source job is not replayable or replay idempotency conflicts.
+        "422":
+          description: Replay payload is invalid.
   /api/v1/documents/uploads:
     post:
       operationId: registerCxDocumentUpload

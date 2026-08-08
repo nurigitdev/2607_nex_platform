@@ -187,19 +187,25 @@ def test_ag_job_control_smoke_passes_mock_pack() -> None:
     evidence = ag_job_control_smoke.run_ag_job_control_smoke()
 
     assert evidence["status"] == "PASS"
-    assert evidence["actions"] == ["cancel", "retry"]
+    assert evidence["actions"] == ["cancel", "retry", "replay"]
     assert evidence["projection_versions"] == {
         "cancel": "ag_job_control_dispatch.v1",
         "retry": "ag_job_control_dispatch.v1",
+        "replay": "ag_job_control_dispatch.v1",
         "service_response": "service_job_control.v1",
     }
-    assert evidence["job_statuses"] == {"cancel": "CANCELLED", "retry": "QUEUED"}
-    assert evidence["audit_event_count"] == 2
+    assert evidence["job_statuses"] == {
+        "cancel": "CANCELLED",
+        "retry": "QUEUED",
+        "replay_source": "FAILED",
+        "replay": "QUEUED",
+    }
+    assert evidence["audit_event_count"] == 3
     assert all(evidence["checks"].values())
     assert "source_file_id" not in json.dumps(evidence, ensure_ascii=False)
     assert ag_job_control_smoke.summary_line(evidence) == (
-        "ag_job_control_smoke=pass actions=2 audit_events=2 "
-        "cancel_status=CANCELLED retry_status=QUEUED"
+        "ag_job_control_smoke=pass actions=3 audit_events=3 "
+        "cancel_status=CANCELLED retry_status=QUEUED replay_status=QUEUED"
     )
 
 
@@ -225,6 +231,17 @@ def test_ag_job_control_smoke_local_client_maps_service_errors() -> None:
             request_id=ag_job_control_smoke.REQUEST_ID,
             trace_id=ag_job_control_smoke.TRACE_ID,
         )
+    with pytest.raises(ag_job_control_smoke.AgJobControlError) as invalid_replay:
+        control_client.replay_job(
+            "nex-cx",
+            "queued",
+            request_id=ag_job_control_smoke.REQUEST_ID,
+            trace_id=ag_job_control_smoke.TRACE_ID,
+            replay_job_id="queued-replay",
+            idempotency_key="queued-replay-idem",
+            requested_by="operator-smoke",
+            reason="not dead-lettered",
+        )
     with pytest.raises(ag_job_control_smoke.AgJobControlError) as missing_service:
         control_client.get_job(
             "nex-mo",
@@ -235,6 +252,8 @@ def test_ag_job_control_smoke_local_client_maps_service_errors() -> None:
 
     assert invalid_retry.value.status_code == 409
     assert invalid_retry.value.error_code == "job.retry_status_invalid"
+    assert invalid_replay.value.status_code == 409
+    assert invalid_replay.value.error_code == "job_replay.status_invalid"
     assert missing_service.value.status_code == 404
     assert missing_service.value.error_code == "ag.job_control_service_not_configured"
 

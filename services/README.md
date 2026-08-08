@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0132 AG dead-letter replay dispatch endpoint.
+Status: Slice 0133 replay OpenAPI and smoke evidence.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -99,7 +99,7 @@ FAILED job with `error.dead_lettered=true`, a non-empty operator id, and a
 bounded operator reason. It copies service-private payload for service-local
 execution but stores only safe source metadata in `replay_lineage`. The
 service-local replay endpoint returns a payload-redacted replay job projection
-and a safe source-job summary; AG endpoint wiring and audit emission remain
+and a safe source-job summary. AG replay endpoint wiring and audit emission are
 explicit operator workflow steps.
 
 AG job control dispatches are audited as AG-owned operational events. Successful
@@ -107,10 +107,11 @@ dispatches emit `ag.job_control.succeeded`; failed dispatches emit
 `ag.job_control.failed`. Audit emission is safe: event-store errors are returned
 as audit summaries but do not block the underlying control response.
 
-The AG operator-facing cancel/retry routes and the CX service-local target
-routes are documented in OpenAPI. The default quality gate runs
+The AG operator-facing cancel/retry/replay routes and the CX service-local
+target routes are documented in OpenAPI. The default quality gate runs
 `run_ag_job_control_smoke.py`, which exercises AG dispatch, service-local queue
-mutation, audit events, and payload redaction in-process.
+mutation, dead-letter replay creation, audit events, and payload redaction
+in-process.
 
 AG also exposes an operator-facing replay dispatch path:
 
@@ -120,8 +121,8 @@ POST /admin/v1/operations/jobs/{service_id}/{job_id}/replay
 
 It forwards explicit replay metadata to the service-local replay endpoint and
 audits successful dispatch as `ag.job_control.succeeded` with
-`details.action=replay`. Replay OpenAPI and smoke evidence remain the next
-contract-freeze step.
+`details.action=replay`. The replay response remains payload-redacted while
+exposing safe source summary and lineage metadata for operator debugging.
 
 `nex-cx` processing routes still support the MVP inline run path, but they now
 also expose an enqueue-first path for background worker execution. Inline runs

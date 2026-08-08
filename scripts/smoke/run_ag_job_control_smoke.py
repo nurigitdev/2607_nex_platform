@@ -104,6 +104,36 @@ class LocalAgJobControlClient:
             ),
         )
 
+    def replay_job(
+        self,
+        service_id: str,
+        job_id: str,
+        *,
+        request_id: str,
+        trace_id: str,
+        replay_job_id: str,
+        idempotency_key: str,
+        requested_by: str,
+        reason: str,
+        observed_at: str | None = None,
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            service_id,
+            f"/internal/v1/jobs/{job_id}/replay",
+            request_id=request_id,
+            trace_id=trace_id,
+            payload=_compact_payload(
+                {
+                    "replay_job_id": replay_job_id,
+                    "idempotency_key": idempotency_key,
+                    "requested_by": requested_by,
+                    "reason": reason,
+                    "observed_at": observed_at,
+                }
+            ),
+        )
+
     def _request(
         self,
         method: str,
@@ -165,12 +195,26 @@ def run_ag_job_control_smoke() -> dict[str, Any]:
             "observed_at": "2026-08-05T00:00:11Z",
         },
     )
+    replay = _post_json(
+        ag_client,
+        "/admin/v1/operations/jobs/nex-cx/smoke-job-replay/replay",
+        {
+            "replay_job_id": "smoke-job-replay-001",
+            "idempotency_key": "smoke-idem-replay-001",
+            "requested_by": "operator-smoke",
+            "reason": "operator smoke replay",
+            "observed_at": "2026-08-05T00:00:14Z",
+        },
+    )
     audit_events = audit_store.list_events(service_id="nex-ag", limit=10)
     checks = _checks(
         cancel=cancel,
         retry=retry,
+        replay=replay,
         cancel_job=cx_queue.get_job("smoke-job-cancel"),
         retry_job=cx_queue.get_job("smoke-job-retry"),
+        replay_source_job=cx_queue.get_job("smoke-job-replay"),
+        replay_job=cx_queue.get_job("smoke-job-replay-001"),
         audit_events=audit_events,
     )
     status = "PASS" if all(checks.values()) else "FAIL"
@@ -178,17 +222,20 @@ def run_ag_job_control_smoke() -> dict[str, Any]:
         "smoke_schema_version": SCHEMA_VERSION,
         "status": status,
         "trace_id": TRACE_ID,
-        "actions": ["cancel", "retry"],
+        "actions": ["cancel", "retry", "replay"],
         "projection_versions": {
             "cancel": cancel.get("projection_schema_version"),
             "retry": retry.get("projection_schema_version"),
-            "service_response": retry.get("service_response", {}).get(
+            "replay": replay.get("projection_schema_version"),
+            "service_response": replay.get("service_response", {}).get(
                 "job_control_schema_version"
             ),
         },
         "job_statuses": {
             "cancel": (cx_queue.get_job("smoke-job-cancel") or {}).get("status"),
             "retry": (cx_queue.get_job("smoke-job-retry") or {}).get("status"),
+            "replay_source": (cx_queue.get_job("smoke-job-replay") or {}).get("status"),
+            "replay": (cx_queue.get_job("smoke-job-replay-001") or {}).get("status"),
         },
         "audit_event_count": len(audit_events),
         "checks": checks,
@@ -210,7 +257,23 @@ def _build_cx_queue() -> InMemoryJobQueue:
             max_attempts=2,
         )
     )
+    replay_source_job = _sample_job(
+        job_id="smoke-job-replay",
+        idempotency_key="smoke-idem-replay-source",
+        max_attempts=1,
+    )
+    replay_source_job["payload"] = {"source_file_id": "source-smoke-001"}
+    queue.enqueue(replay_source_job)
     queue.start_job("smoke-job-retry", updated_at="2026-08-05T00:00:09Z")
+    queue.start_job("smoke-job-replay", updated_at="2026-08-05T00:00:12Z")
+    queue.retry_job(
+        "smoke-job-replay",
+        error={
+            "error_code": "cx.parser.failed",
+            "detail": "Private parser details stay service-local.",
+        },
+        failed_at="2026-08-05T00:00:13Z",
+    )
     return queue
 
 
@@ -284,8 +347,11 @@ def _checks(
     *,
     cancel: dict[str, Any],
     retry: dict[str, Any],
+    replay: dict[str, Any],
     cancel_job: dict[str, Any] | None,
     retry_job: dict[str, Any] | None,
+    replay_source_job: dict[str, Any] | None,
+    replay_job: dict[str, Any] | None,
     audit_events: list[dict[str, Any]],
 ) -> dict[str, bool]:
     return {
@@ -301,24 +367,41 @@ def _checks(
             and retry["summary"]["action"] == "retry"
             and retry["summary"]["job_status"] == "QUEUED"
         ),
+        "replay_dispatch_projection": (
+            replay["projection_schema_version"] == "ag_job_control_dispatch.v1"
+            and replay["service_response"]["job_control_schema_version"]
+            == SERVICE_JOB_CONTROL_SCHEMA_VERSION
+            and replay["summary"]["action"] == "replay"
+            and replay["summary"]["job_status"] == "QUEUED"
+            and replay["service_response"]["replay"]["source_job"]["dead_lettered"] is True
+            and replay["service_response"]["replay"]["replay_job_id"]
+            == "smoke-job-replay-001"
+        ),
         "service_queue_mutated": (
             cancel_job is not None
             and cancel_job["status"] == "CANCELLED"
             and retry_job is not None
             and retry_job["status"] == "QUEUED"
             and retry_job["available_at"] == "2026-08-05T00:00:16Z"
+            and replay_source_job is not None
+            and replay_source_job["status"] == "FAILED"
+            and replay_source_job["error"]["dead_lettered"] is True
+            and replay_job is not None
+            and replay_job["status"] == "QUEUED"
+            and replay_job["replay_lineage"]["source_job_id"] == "smoke-job-replay"
         ),
         "audit_events_recorded": (
-            len(audit_events) == 2
+            len(audit_events) == 3
             and {event["event_type"] for event in audit_events}
             == {AG_JOB_CONTROL_EVENT_SUCCEEDED}
             and {event["details"]["action"] for event in audit_events}
-            == {"cancel", "retry"}
+            == {"cancel", "retry", "replay"}
         ),
         "operator_projection_redacted": "payload" not in json.dumps(
-            {"cancel": cancel, "retry": retry},
+            {"cancel": cancel, "retry": retry, "replay": replay},
             ensure_ascii=False,
-        ),
+        )
+        and "source-smoke-001" not in json.dumps(replay, ensure_ascii=False),
     }
 
 
@@ -329,7 +412,8 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"actions={len(evidence['actions'])} "
             f"audit_events={evidence['audit_event_count']} "
             f"cancel_status={evidence['job_statuses']['cancel']} "
-            f"retry_status={evidence['job_statuses']['retry']}"
+            f"retry_status={evidence['job_statuses']['retry']} "
+            f"replay_status={evidence['job_statuses']['replay']}"
         )
     return "ag_job_control_smoke=fail"
 
