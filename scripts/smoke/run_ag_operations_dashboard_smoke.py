@@ -314,6 +314,10 @@ def _read_operations_projections(client: TestClient) -> dict[str, dict[str, Any]
             client,
             "/admin/v1/operations/logs/smoke-log-mo-001",
         ),
+        "log_policy": _get_json(
+            client,
+            "/admin/v1/operations/logs/policy",
+        ),
         "jobs": _get_json(
             client,
             "/admin/v1/operations/jobs",
@@ -387,6 +391,7 @@ def _ag_operations_dashboard_smoke_checks(
     event_detail = projections["event_detail"]
     logs = projections["logs"]
     log_detail = projections["log_detail"]
+    log_policy = projections["log_policy"]
     job_detail = projections["job_detail"]
     workers = projections["workers"]
     worker_detail = projections["worker_detail"]
@@ -399,6 +404,7 @@ def _ag_operations_dashboard_smoke_checks(
         "event_detail": "ag_operational_event_detail_projection.v1",
         "logs": "ag_service_log_projection.v1",
         "log_detail": "ag_service_log_detail_projection.v1",
+        "log_policy": "ag_service_log_query_policy_projection.v1",
         "jobs": "ag_job_operations_projection.v1",
         "job_detail": "ag_job_operation_detail_projection.v1",
         "workers": "ag_worker_runtime_projection.v1",
@@ -426,6 +432,12 @@ def _ag_operations_dashboard_smoke_checks(
             logs["logs"][0]["log_id"] == "smoke-log-cx-001"
             and log_detail["log"]["log_id"] == "smoke-log-mo-001"
             and "private" not in json.dumps(log_detail, ensure_ascii=False)
+        ),
+        "service_log_policy_visible": (
+            log_policy["policy"]["query"]["max_limit"] == 500
+            and log_policy["policy"]["retention"]["default_retention_days"] == 30
+            and log_policy["policy"]["retention"]["purge_execution"]
+            == "not_implemented"
         ),
         "job_detail_timeline_ready": (
             job_detail["lifecycle_timeline"]["timeline_status"] == "READY"

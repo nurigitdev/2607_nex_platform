@@ -478,6 +478,20 @@ paths:
           description: Invalid structured service log query or filter.
         "401":
           description: Service claim is missing or invalid.
+  /admin/v1/operations/logs/policy:
+    get:
+      operationId: getAgServiceLogQueryPolicyProjection
+      tags:
+        - Operations
+      responses:
+        "200":
+          description: Read-only structured service log query and retention policy projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "401":
+          description: Service claim is missing or invalid.
   /admin/v1/operations/logs/{log_id}:
     get:
       operationId: getAgServiceLogDetailProjection
@@ -816,6 +830,7 @@ components:
             - ag_operational_event_taxonomy_projection.v1
             - ag_service_log_projection.v1
             - ag_service_log_detail_projection.v1
+            - ag_service_log_query_policy_projection.v1
             - ag_job_operations_projection.v1
             - ag_job_operation_detail_projection.v1
             - ag_unified_operations_projection.v1

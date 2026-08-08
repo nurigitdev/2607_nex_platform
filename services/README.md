@@ -77,6 +77,9 @@ Cross-service trace timelines include correlated structured service log entries
 alongside jobs and operational events when log stores are configured.
 Operations rollups include structured service log totals, severity counts,
 logger counts, and redaction counts for configured log stores.
+AG exposes the active structured service log query and retention policy at
+`GET /admin/v1/operations/logs/policy`; retention enforcement workers are a
+future implementation step, not part of the current write path.
 
 Service workers should also report `worker_heartbeat.v1` payloads through the
 shared worker heartbeat runtime. It defines the status vocabulary, emitter,

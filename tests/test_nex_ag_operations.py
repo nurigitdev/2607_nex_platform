@@ -43,10 +43,12 @@ from nex_ag.operations import (
     build_operational_event_projection,
     build_operations_issue_candidates,
     build_service_log_detail_projection,
+    build_service_log_query_policy_projection,
     build_service_log_projection,
     build_unified_operations_projection,
     normalize_operation_event_search_query,
     normalize_operation_log_search_query,
+    normalize_service_log_retention_days,
     normalize_operation_cursor,
     normalize_operation_sort,
     normalize_operation_timestamp,
@@ -72,6 +74,7 @@ from nex_ag.operations import (
     _operational_event_matches_query,
     _operation_record_timestamp,
     _service_log_matches_query,
+    service_log_query_policy,
 )
 from nex_ag.job_control import AgJobControlError
 from nex_runtime import (
@@ -3449,6 +3452,68 @@ def test_build_service_log_projection_filters_searches_and_summarizes() -> None:
     assert [entry["log_id"] for entry in by_redacted_key["logs"]] == ["log-002"]
 
 
+def test_service_log_query_policy_projection_reports_query_and_retention_contract() -> None:
+    projection = build_service_log_query_policy_projection(
+        retention_days=999,
+        request_trace_id=TRACE_ID,
+    )
+    policy = projection["policy"]
+
+    assert projection["projection_schema_version"] == (
+        "ag_service_log_query_policy_projection.v1"
+    )
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["projection_status"] == "READY"
+    assert policy["policy_schema_version"] == "service_log_query_policy.v1"
+    assert policy["policy_id"] == "service-log-query-retention-v1"
+    assert policy["applies_to"] == [
+        "nex-ae-api",
+        "nex-ag",
+        "nex-cx",
+        "nex-mo",
+        "nex-oa",
+    ]
+    assert policy["query"]["default_limit"] == 50
+    assert policy["query"]["max_limit"] == 500
+    assert policy["query"]["max_q_length"] == 128
+    assert set(policy["query"]["supported_filters"]) >= {
+        "service_id",
+        "severity",
+        "trace_id",
+        "q",
+        "limit",
+    }
+    assert policy["retention"] == {
+        "default_retention_days": 365,
+        "minimum_retention_days": 7,
+        "maximum_retention_days": 365,
+        "storage_owner": "service-local",
+        "purge_execution": "not_implemented",
+        "future_archive_target": "object_storage_or_cold_table",
+    }
+    assert policy["redaction"]["redacted_value"] == "<redacted>"
+    assert "authorization" in policy["redaction"]["sensitive_key_parts"]
+    assert projection["summary"] == {
+        "policy_id": "service-log-query-retention-v1",
+        "status": "ACTIVE",
+        "default_limit": 50,
+        "max_limit": 500,
+        "default_retention_days": 365,
+        "supported_filter_count": 14,
+    }
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_service_log_query_policy_helpers_clamp_retention() -> None:
+    projection = build_service_log_query_policy_projection()
+
+    assert "request_trace_id" not in projection
+    assert normalize_service_log_retention_days(1) == 7
+    assert normalize_service_log_retention_days(30) == 30
+    assert normalize_service_log_retention_days(9999) == 365
+    assert service_log_query_policy()["retention"]["default_retention_days"] == 30
+
+
 def test_build_service_log_projection_uses_registry_and_can_omit_request_trace_id() -> None:
     registry = build_operations_source_registry(service_log_stores=build_log_stores())
 
@@ -3537,6 +3602,7 @@ def test_service_logs_route_requires_auth_returns_filtered_projection() -> None:
     client = TestClient(app)
 
     missing_auth = client.get("/admin/v1/operations/logs")
+    missing_policy_auth = client.get("/admin/v1/operations/logs/policy")
     response = client.get(
         "/admin/v1/operations/logs",
         params={"service_id": "nex-cx", "q": "worker", "limit": 1},
@@ -3545,8 +3611,16 @@ def test_service_logs_route_requires_auth_returns_filtered_projection() -> None:
             "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
         },
     )
+    policy_response = client.get(
+        "/admin/v1/operations/logs/policy",
+        headers={
+            **auth_headers(),
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        },
+    )
 
     assert missing_auth.status_code == 401
+    assert missing_policy_auth.status_code == 401
     assert response.status_code == 200
     payload = response.json()
     assert payload["request_trace_id"] == TRACE_ID
@@ -3554,6 +3628,13 @@ def test_service_logs_route_requires_auth_returns_filtered_projection() -> None:
     assert payload["filters"]["q"] == "worker"
     assert payload["logs"][0]["log_id"] == "log-001"
     assert payload["summary"]["total"] == 1
+    assert policy_response.status_code == 200
+    policy_payload = policy_response.json()
+    assert policy_payload["request_trace_id"] == TRACE_ID
+    assert policy_payload["projection_schema_version"] == (
+        "ag_service_log_query_policy_projection.v1"
+    )
+    assert policy_payload["policy"]["retention"]["purge_execution"] == "not_implemented"
 
 
 def test_service_log_detail_route_returns_detail_404_and_source_errors() -> None:

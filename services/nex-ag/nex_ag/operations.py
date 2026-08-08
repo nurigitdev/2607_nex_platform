@@ -31,8 +31,11 @@ from nex_runtime import (
     OperationalEventEmitResult,
     OperationalEventEmitter,
     OperationalEventTypeSpec,
+    MAX_SERVICE_LOG_LIMIT,
+    REDACTED_LOG_VALUE,
     SERVICE_SPECS,
     SERVICE_LOG_SEVERITIES,
+    SENSITIVE_LOG_ATTRIBUTE_KEY_PARTS,
     SqlAlchemyJobQueue,
     SqlAlchemyOperationalEventStore,
     SqlAlchemyServiceLogStore,
@@ -91,6 +94,30 @@ AG_OPERATIONS_SOURCE_MODES = ("memory", "postgres")
 AG_OPERATIONS_SOURCE_PROFILES = ("dev", "test")
 AG_OPERATION_SORT_ORDERS = ("desc", "asc")
 AG_JOB_CONTROL_DISPATCH_SCHEMA_VERSION = "ag_job_control_dispatch.v1"
+AG_SERVICE_LOG_QUERY_POLICY_PROJECTION_SCHEMA_VERSION = (
+    "ag_service_log_query_policy_projection.v1"
+)
+SERVICE_LOG_QUERY_POLICY_SCHEMA_VERSION = "service_log_query_policy.v1"
+SERVICE_LOG_QUERY_POLICY_ID = "service-log-query-retention-v1"
+SERVICE_LOG_QUERY_SUPPORTED_FILTERS = (
+    "service_id",
+    "severity",
+    "logger_name",
+    "trace_id",
+    "request_id",
+    "job_id",
+    "subject_type",
+    "subject_id",
+    "q",
+    "since",
+    "until",
+    "sort",
+    "cursor",
+    "limit",
+)
+DEFAULT_SERVICE_LOG_RETENTION_DAYS = 30
+MIN_SERVICE_LOG_RETENTION_DAYS = 7
+MAX_SERVICE_LOG_RETENTION_DAYS = 365
 MAX_OPERATION_EVENT_QUERY_LENGTH = 128
 MAX_DASHBOARD_RECENT_LIMIT = 20
 OPERATIONS_ISSUE_CANDIDATE_RULES = (
@@ -1083,6 +1110,18 @@ def register_service_log_routes(
             request_trace_id=trace_id_from_headers(request),
         )
 
+    @app.get("/admin/v1/operations/logs/policy", response_model=None)
+    def get_service_log_query_policy(
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        return build_service_log_query_policy_projection(
+            request_trace_id=trace_id_from_headers(request),
+        )
+
     @app.get("/admin/v1/operations/logs/{log_id}", response_model=None)
     def get_service_log_detail(
         log_id: str,
@@ -2061,6 +2100,77 @@ def build_service_log_projection(
     if request_trace_id is not None:
         projection["request_trace_id"] = request_trace_id
     return projection
+
+
+def build_service_log_query_policy_projection(
+    *,
+    retention_days: int = DEFAULT_SERVICE_LOG_RETENTION_DAYS,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    policy = service_log_query_policy(retention_days=retention_days)
+    projection = {
+        "projection_schema_version": AG_SERVICE_LOG_QUERY_POLICY_PROJECTION_SCHEMA_VERSION,
+        "projection_status": "READY",
+        "checked_at": _utc_now(),
+        "policy": policy,
+        "summary": {
+            "policy_id": policy["policy_id"],
+            "status": policy["status"],
+            "default_limit": policy["query"]["default_limit"],
+            "max_limit": policy["query"]["max_limit"],
+            "default_retention_days": policy["retention"][
+                "default_retention_days"
+            ],
+            "supported_filter_count": len(policy["query"]["supported_filters"]),
+        },
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
+def service_log_query_policy(
+    *,
+    retention_days: int = DEFAULT_SERVICE_LOG_RETENTION_DAYS,
+) -> dict[str, Any]:
+    normalized_retention_days = normalize_service_log_retention_days(retention_days)
+    return {
+        "policy_schema_version": SERVICE_LOG_QUERY_POLICY_SCHEMA_VERSION,
+        "policy_id": SERVICE_LOG_QUERY_POLICY_ID,
+        "status": "ACTIVE",
+        "owner_service": "nex-ag",
+        "applies_to": sorted(SERVICE_SPECS),
+        "query": {
+            "default_limit": DEFAULT_SERVICE_LOG_LIMIT,
+            "max_limit": MAX_SERVICE_LOG_LIMIT,
+            "max_q_length": MAX_OPERATION_EVENT_QUERY_LENGTH,
+            "default_sort": "desc",
+            "timestamp_field": "observed_at",
+            "supported_filters": list(SERVICE_LOG_QUERY_SUPPORTED_FILTERS),
+            "cursor_mode": "offset-string",
+        },
+        "retention": {
+            "default_retention_days": normalized_retention_days,
+            "minimum_retention_days": MIN_SERVICE_LOG_RETENTION_DAYS,
+            "maximum_retention_days": MAX_SERVICE_LOG_RETENTION_DAYS,
+            "storage_owner": "service-local",
+            "purge_execution": "not_implemented",
+            "future_archive_target": "object_storage_or_cold_table",
+        },
+        "redaction": {
+            "attribute_policy": "redact_or_omit_before_persistence",
+            "redacted_value": REDACTED_LOG_VALUE,
+            "sensitive_key_parts": list(SENSITIVE_LOG_ATTRIBUTE_KEY_PARTS),
+        },
+    }
+
+
+def normalize_service_log_retention_days(value: int) -> int:
+    if value < MIN_SERVICE_LOG_RETENTION_DAYS:
+        return MIN_SERVICE_LOG_RETENTION_DAYS
+    if value > MAX_SERVICE_LOG_RETENTION_DAYS:
+        return MAX_SERVICE_LOG_RETENTION_DAYS
+    return value
 
 
 def build_service_log_detail_projection(

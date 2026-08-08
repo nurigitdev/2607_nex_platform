@@ -18,6 +18,7 @@
         "ag_operational_event_taxonomy_projection.v1",
         "ag_service_log_projection.v1",
         "ag_service_log_detail_projection.v1",
+        "ag_service_log_query_policy_projection.v1",
         "ag_job_operations_projection.v1",
         "ag_job_operation_detail_projection.v1",
         "ag_unified_operations_projection.v1",
@@ -82,6 +83,9 @@
     },
     "log": {
       "$ref": "#/$defs/service_log"
+    },
+    "policy": {
+      "$ref": "#/$defs/service_log_query_policy"
     },
     "event_types": {
       "type": "array",
@@ -335,6 +339,22 @@
       "then": {
         "required": [
           "log",
+          "summary"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_service_log_query_policy_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "policy",
           "summary"
         ]
       }
@@ -1416,6 +1436,164 @@
         "observed_at": {
           "type": "string",
           "format": "date-time"
+        }
+      }
+    },
+    "service_log_query_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_schema_version",
+        "policy_id",
+        "status",
+        "owner_service",
+        "applies_to",
+        "query",
+        "retention",
+        "redaction"
+      ],
+      "properties": {
+        "policy_schema_version": {
+          "const": "service_log_query_policy.v1"
+        },
+        "policy_id": {
+          "const": "service-log-query-retention-v1"
+        },
+        "status": {
+          "const": "ACTIVE"
+        },
+        "owner_service": {
+          "const": "nex-ag"
+        },
+        "applies_to": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/service_id"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "query": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "default_limit",
+            "max_limit",
+            "max_q_length",
+            "default_sort",
+            "timestamp_field",
+            "supported_filters",
+            "cursor_mode"
+          ],
+          "properties": {
+            "default_limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "max_limit": {
+              "const": 500
+            },
+            "max_q_length": {
+              "const": 128
+            },
+            "default_sort": {
+              "enum": [
+                "desc",
+                "asc"
+              ]
+            },
+            "timestamp_field": {
+              "const": "observed_at"
+            },
+            "supported_filters": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "service_id",
+                  "severity",
+                  "logger_name",
+                  "trace_id",
+                  "request_id",
+                  "job_id",
+                  "subject_type",
+                  "subject_id",
+                  "q",
+                  "since",
+                  "until",
+                  "sort",
+                  "cursor",
+                  "limit"
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "cursor_mode": {
+              "const": "offset-string"
+            }
+          }
+        },
+        "retention": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "default_retention_days",
+            "minimum_retention_days",
+            "maximum_retention_days",
+            "storage_owner",
+            "purge_execution",
+            "future_archive_target"
+          ],
+          "properties": {
+            "default_retention_days": {
+              "type": "integer",
+              "minimum": 7,
+              "maximum": 365
+            },
+            "minimum_retention_days": {
+              "const": 7
+            },
+            "maximum_retention_days": {
+              "const": 365
+            },
+            "storage_owner": {
+              "const": "service-local"
+            },
+            "purge_execution": {
+              "const": "not_implemented"
+            },
+            "future_archive_target": {
+              "const": "object_storage_or_cold_table"
+            }
+          }
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "attribute_policy",
+            "redacted_value",
+            "sensitive_key_parts"
+          ],
+          "properties": {
+            "attribute_policy": {
+              "const": "redact_or_omit_before_persistence"
+            },
+            "redacted_value": {
+              "const": "<redacted>"
+            },
+            "sensitive_key_parts": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          }
         }
       }
     },

@@ -1,0 +1,75 @@
+{
+  "projection_schema_version": "ag_service_log_query_policy_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-05T00:00:00Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "policy": {
+    "policy_schema_version": "service_log_query_policy.v1",
+    "policy_id": "service-log-query-retention-v1",
+    "status": "ACTIVE",
+    "owner_service": "nex-ag",
+    "applies_to": [
+      "nex-ae-api",
+      "nex-ag",
+      "nex-cx",
+      "nex-mo",
+      "nex-oa"
+    ],
+    "query": {
+      "default_limit": 50,
+      "max_limit": 500,
+      "max_q_length": 128,
+      "default_sort": "desc",
+      "timestamp_field": "observed_at",
+      "supported_filters": [
+        "service_id",
+        "severity",
+        "logger_name",
+        "trace_id",
+        "request_id",
+        "job_id",
+        "subject_type",
+        "subject_id",
+        "q",
+        "since",
+        "until",
+        "sort",
+        "cursor",
+        "limit"
+      ],
+      "cursor_mode": "offset-string"
+    },
+    "retention": {
+      "default_retention_days": 30,
+      "minimum_retention_days": 7,
+      "maximum_retention_days": 365,
+      "storage_owner": "service-local",
+      "purge_execution": "not_implemented",
+      "future_archive_target": "object_storage_or_cold_table"
+    },
+    "redaction": {
+      "attribute_policy": "redact_or_omit_before_persistence",
+      "redacted_value": "<redacted>",
+      "sensitive_key_parts": [
+        "api_key",
+        "authorization",
+        "credential",
+        "password",
+        "passwd",
+        "raw_prompt",
+        "raw_user_message",
+        "secret",
+        "source_text",
+        "token"
+      ]
+    }
+  },
+  "summary": {
+    "policy_id": "service-log-query-retention-v1",
+    "status": "ACTIVE",
+    "default_limit": 50,
+    "max_limit": 500,
+    "default_retention_days": 30,
+    "supported_filter_count": 14
+  }
+}

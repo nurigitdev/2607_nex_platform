@@ -248,6 +248,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0142`](slices/0142_service_log_issue_candidate_rules.md) | `S15-002` Service log issue candidate rules. |
 | [`Slice 0143`](slices/0143_trace_timeline_service_log_correlation.md) | `S15-003` Trace timeline service log correlation. |
 | [`Slice 0144`](slices/0144_service_log_rollup_metrics_projection.md) | `S15-004` Service log rollup metrics projection. |
+| [`Slice 0145`](slices/0145_service_log_query_retention_policy_contract.md) | `S15-005` Service log query and retention policy contract. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

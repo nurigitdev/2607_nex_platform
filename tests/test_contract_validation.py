@@ -196,6 +196,7 @@ def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:
 
     worker_detail = spec["paths"]["/admin/v1/operations/workers/{service_id}/{worker_id}"]["get"]
     service_logs = spec["paths"]["/admin/v1/operations/logs"]["get"]
+    service_log_policy = spec["paths"]["/admin/v1/operations/logs/policy"]["get"]
     service_log_detail = spec["paths"]["/admin/v1/operations/logs/{log_id}"]["get"]
     parameter_names = {parameter["name"] for parameter in worker_detail["parameters"]}
     parameters = spec["components"]["parameters"]
@@ -219,6 +220,10 @@ def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:
     assert "ag_worker_runtime_projection.v1" in projection_versions
     assert "ag_worker_detail_projection.v1" in projection_versions
     assert service_logs["operationId"] == "getAgServiceLogProjection"
+    assert (
+        service_log_policy["operationId"]
+        == "getAgServiceLogQueryPolicyProjection"
+    )
     assert service_log_detail["operationId"] == "getAgServiceLogDetailProjection"
     assert {
         "service_id",
@@ -238,6 +243,7 @@ def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:
     } == service_log_query_names
     assert "ag_service_log_projection.v1" in projection_versions
     assert "ag_service_log_detail_projection.v1" in projection_versions
+    assert "ag_service_log_query_policy_projection.v1" in projection_versions
 
 
 def test_load_structured_file_rejects_unsupported_suffix(tmp_path: Path) -> None:
