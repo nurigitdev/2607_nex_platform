@@ -20,6 +20,8 @@ from nex_runtime import (
     DatabasePoolSettings,
     InMemoryServiceLogStore,
     REDACTED_LOG_VALUE,
+    ServiceLogEmitter,
+    ServiceLogEmitResult,
     ServiceLogError,
     SqlAlchemyServiceLogStore,
     build_engine,
@@ -27,6 +29,7 @@ from nex_runtime import (
     build_service_log_entry,
     normalize_service_log_limit,
     redact_service_log_attributes,
+    service_log_emitter_from_app,
     service_log_store_from_app,
     summarize_service_logs,
     validate_service_log_entry,
@@ -221,6 +224,279 @@ def test_service_log_helpers_cover_edges_and_summaries() -> None:
     assert summary["by_service"]["nex-cx"] == 1
     assert summary["by_service"]["unknown"] == 1
     assert summary["redacted_attribute_count"] == 2
+
+
+def test_service_log_emit_result_summarizes_success_and_failure_with_copies() -> None:
+    source_log = sample_log(log_id="summary-log-001")
+    success = ServiceLogEmitResult.emitted(source_log)
+    failure = ServiceLogEmitResult.failed(
+        error_code="service_log.store_unavailable",
+        detail="service log store is unavailable",
+        status_code=503,
+    )
+
+    assert success.to_summary() == {
+        "ok": True,
+        "log_id": "summary-log-001",
+        "service_id": "nex-cx",
+        "severity": "INFO",
+        "logger_name": "nex_cx.processing",
+    }
+    assert failure.to_summary() == {
+        "ok": False,
+        "error_code": "service_log.store_unavailable",
+        "detail": "service log store is unavailable",
+        "status_code": 503,
+    }
+
+    source_log["severity"] = "CRITICAL"
+    assert success.entry is not None
+    assert success.entry["severity"] == "INFO"
+
+
+def test_service_log_emitter_emits_service_scoped_redacted_logs() -> None:
+    store = InMemoryServiceLogStore()
+    emitter = ServiceLogEmitter(
+        service_id="nex-cx",
+        logger_name="nex_cx.processing.worker",
+        store=store,
+        default_attributes={"component": "worker", "provider": {"mode": "mock"}},
+    )
+
+    entry = emitter.emit(
+        severity="info",
+        message="Document processing worker claimed a job.",
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        job_id="job-001",
+        subject_ref={"type": "cx.document", "id": "doc-001"},
+        attributes={"attempt_count": 1, "provider": {"api_key": "private", "mode": "live"}},
+        observed_at=NOW,
+        log_id="emitted-log-001",
+    )
+
+    assert entry["service_id"] == "nex-cx"
+    assert entry["severity"] == "INFO"
+    assert entry["attributes"]["component"] == "worker"
+    assert entry["attributes"]["provider"]["mode"] == "live"
+    assert entry["attributes"]["provider"]["api_key"] == REDACTED_LOG_VALUE
+    assert entry["redacted_attribute_keys"] == ["provider.api_key"]
+    assert store.get_log("emitted-log-001") == entry
+
+
+def test_service_log_emitter_safe_emit_returns_success_result() -> None:
+    store = InMemoryServiceLogStore()
+    emitter = ServiceLogEmitter(
+        service_id="nex-cx",
+        logger_name="nex_cx.processing.worker",
+        store=store,
+    )
+
+    result = emitter.safe_emit(
+        severity="warning",
+        message="Document processing worker retried a job.",
+        attributes={"source_text": "private document text", "retry_count": 1},
+        observed_at=NOW,
+        log_id="safe-log-001",
+    )
+
+    assert result.ok is True
+    assert result.error_code is None
+    assert result.entry is not None
+    assert "source_text" not in result.entry["attributes"]
+    assert "private document text" not in str(result)
+    assert store.get_log("safe-log-001") == result.entry
+
+
+def test_service_log_emitter_safe_emit_reports_validation_failure_without_storing() -> None:
+    store = InMemoryServiceLogStore()
+    emitter = ServiceLogEmitter(
+        service_id="nex-cx",
+        logger_name="nex_cx.processing.worker",
+        store=store,
+    )
+
+    result = emitter.safe_emit(
+        severity="notice",
+        message="Document processing worker claimed a job.",
+        observed_at=NOW,
+        log_id="invalid-log-001",
+    )
+
+    assert result.ok is False
+    assert result.error_code == "service_log.severity_invalid"
+    assert result.status_code == 422
+    assert store.get_log("invalid-log-001") is None
+
+
+def test_service_log_emitter_safe_emit_reports_store_failures() -> None:
+    class BrokenStore:
+        def append(self, entry: dict[str, Any]) -> dict[str, Any]:
+            raise ServiceLogError(
+                error_code="service_log.store_unavailable",
+                detail="service log store is unavailable",
+                status_code=503,
+            )
+
+        def get_log(self, log_id: str) -> dict[str, Any] | None:
+            return None
+
+        def list_logs(self, **kwargs: Any) -> list[dict[str, Any]]:
+            return []
+
+    emitter = ServiceLogEmitter(
+        service_id="nex-cx",
+        logger_name="nex_cx.processing.worker",
+        store=BrokenStore(),
+    )
+
+    result = emitter.safe_emit(
+        severity="info",
+        message="Document processing worker claimed a job.",
+        observed_at=NOW,
+        log_id="broken-log-001",
+    )
+
+    assert result.to_summary() == {
+        "ok": False,
+        "error_code": "service_log.store_unavailable",
+        "detail": "service log store is unavailable",
+        "status_code": 503,
+    }
+
+
+def test_service_log_emitter_safe_emit_hides_unexpected_exception_detail() -> None:
+    class ExplodingStore:
+        def append(self, entry: dict[str, Any]) -> dict[str, Any]:
+            raise RuntimeError("connection failed with secret-token")
+
+        def get_log(self, log_id: str) -> dict[str, Any] | None:
+            return None
+
+        def list_logs(self, **kwargs: Any) -> list[dict[str, Any]]:
+            return []
+
+    emitter = ServiceLogEmitter(
+        service_id="nex-cx",
+        logger_name="nex_cx.processing.worker",
+        store=ExplodingStore(),
+    )
+
+    result = emitter.safe_emit(
+        severity="info",
+        message="Document processing worker claimed a job.",
+        observed_at=NOW,
+        log_id="exploding-log-001",
+    )
+
+    assert result.ok is False
+    assert result.error_code == "service_log.emit_failed"
+    assert result.detail == "service log emission failed"
+    assert "secret-token" not in str(result.to_summary())
+
+
+def test_service_log_emitter_rejects_invalid_default_and_call_attributes() -> None:
+    with pytest.raises(ServiceLogError) as default_exc:
+        ServiceLogEmitter(
+            service_id="nex-cx",
+            logger_name="nex_cx.processing.worker",
+            store=InMemoryServiceLogStore(),
+            default_attributes=["bad"],  # type: ignore[arg-type]
+        )
+
+    emitter = ServiceLogEmitter(
+        service_id="nex-cx",
+        logger_name="nex_cx.processing.worker",
+        store=InMemoryServiceLogStore(),
+    )
+    result = emitter.safe_emit(
+        severity="info",
+        message="Document processing worker claimed a job.",
+        attributes=["bad"],  # type: ignore[arg-type]
+        observed_at=NOW,
+        log_id="bad-attributes-log-001",
+    )
+
+    assert default_exc.value.error_code == "service_log.attributes_invalid"
+    assert result.ok is False
+    assert result.error_code == "service_log.attributes_invalid"
+
+
+def test_service_log_emitter_from_app_uses_persistence_store_and_explicit_override() -> None:
+    persistence_store = InMemoryServiceLogStore()
+    explicit_store = InMemoryServiceLogStore()
+    app = SimpleNamespace(
+        state=SimpleNamespace(nex_persistence=SimpleNamespace(service_log_store=persistence_store))
+    )
+
+    persisted_emitter = service_log_emitter_from_app(
+        app,
+        service_id="nex-cx",
+        logger_name="nex_cx.processing.worker",
+    )
+    override_emitter = service_log_emitter_from_app(
+        app,
+        service_id="nex-cx",
+        logger_name="nex_cx.processing.worker",
+        store=explicit_store,
+    )
+
+    persisted_emitter.emit(
+        severity="info",
+        message="Document processing worker claimed a job.",
+        observed_at=NOW,
+        log_id="persisted-log-001",
+    )
+    override_emitter.emit(
+        severity="info",
+        message="Document processing worker claimed a job.",
+        observed_at=NOW,
+        log_id="override-log-001",
+    )
+
+    assert persistence_store.get_log("persisted-log-001") is not None
+    assert persistence_store.get_log("override-log-001") is None
+    assert explicit_store.get_log("override-log-001") is not None
+
+
+def test_service_log_emitter_from_app_keeps_memory_fallback_on_state() -> None:
+    app = SimpleNamespace(state=SimpleNamespace())
+    first = service_log_emitter_from_app(
+        app,
+        service_id="nex-cx",
+        logger_name="nex_cx.processing.worker",
+    )
+    second = service_log_emitter_from_app(
+        app,
+        service_id="nex-cx",
+        logger_name="nex_cx.processing.worker",
+    )
+
+    first.emit(
+        severity="info",
+        message="Document processing worker claimed a job.",
+        observed_at=NOW,
+        log_id="fallback-log-001",
+    )
+
+    assert second.store.get_log("fallback-log-001") is not None
+
+
+def test_service_log_emitter_from_app_without_state_uses_private_memory_store() -> None:
+    emitter = service_log_emitter_from_app(
+        SimpleNamespace(),
+        service_id="nex-cx",
+        logger_name="nex_cx.processing.worker",
+    )
+
+    entry = emitter.emit(
+        severity="info",
+        message="Document processing worker claimed a job.",
+        observed_at=NOW,
+        log_id="stateless-log-001",
+    )
+
+    assert emitter.store.get_log("stateless-log-001") == entry
 
 
 def test_in_memory_service_log_store_filters_sorts_limits_and_returns_copies() -> None:

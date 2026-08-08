@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any, Callable, Protocol
 
 from .jobs import FAILED, JobQueue, JobQueueError, SUCCEEDED, build_job_error
+from .service_logs import ServiceLogEmitter, ServiceLogEmitResult
 from .worker_heartbeats import (
     BUSY,
     ERROR,
@@ -52,11 +53,13 @@ class WorkerJobExecution:
     error_code: str | None = None
     error_detail: str | None = None
     heartbeat_results: tuple[dict[str, Any], ...] = ()
+    log_results: tuple[dict[str, Any], ...] = ()
 
     def to_summary(self) -> dict[str, Any]:
         summary: dict[str, Any] = {
             "status": self.status,
             "heartbeat_results": list(self.heartbeat_results),
+            "log_results": list(self.log_results),
         }
         if self.job is not None:
             summary["job_id"] = self.job["job_id"]
@@ -125,10 +128,12 @@ def run_worker_once(
     queue: JobQueue,
     heartbeat_emitter: WorkerHeartbeatEmitter,
     handler: WorkerJobHandler,
+    service_log_emitter: ServiceLogEmitter | None = None,
     handler_finalizes_job: bool = False,
     clock: WorkerClock | None = None,
 ) -> WorkerJobExecution:
     observed_clock = clock or _utc_now
+    log_results: list[dict[str, Any]] = []
     heartbeat_results = [
         _heartbeat_summary(
             heartbeat_emitter.safe_emit(
@@ -138,6 +143,17 @@ def run_worker_once(
             )
         )
     ]
+    _append_log_result(
+        log_results,
+        _safe_emit_worker_log(
+            config=config,
+            service_log_emitter=service_log_emitter,
+            severity="INFO",
+            message="Worker polling started.",
+            attributes={"polling": True},
+            observed_clock=observed_clock,
+        ),
+    )
     try:
         job = queue.claim_next_job(
             config.worker_id,
@@ -157,11 +173,23 @@ def run_worker_once(
                 )
             )
         )
+        _append_log_result(
+            log_results,
+            _safe_emit_worker_log(
+                config=config,
+                service_log_emitter=service_log_emitter,
+                severity="ERROR",
+                message="Worker job claim failed.",
+                attributes={"error_code": exc.error_code},
+                observed_clock=observed_clock,
+            ),
+        )
         return WorkerJobExecution(
             status=FAILED,
             error_code=exc.error_code,
             error_detail=exc.detail,
             heartbeat_results=tuple(heartbeat_results),
+            log_results=tuple(log_results),
         )
 
     if job is None:
@@ -174,9 +202,21 @@ def run_worker_once(
                 )
             )
         )
+        _append_log_result(
+            log_results,
+            _safe_emit_worker_log(
+                config=config,
+                service_log_emitter=service_log_emitter,
+                severity="INFO",
+                message="Worker did not claim a job.",
+                attributes={"claimed": False},
+                observed_clock=observed_clock,
+            ),
+        )
         return WorkerJobExecution(
             status=IDLE,
             heartbeat_results=tuple(heartbeat_results),
+            log_results=tuple(log_results),
         )
 
     heartbeat_results.append(
@@ -189,6 +229,18 @@ def run_worker_once(
                 observed_at=observed_clock(),
             )
         )
+    )
+    _append_log_result(
+        log_results,
+        _safe_emit_worker_log(
+            config=config,
+            service_log_emitter=service_log_emitter,
+            severity="INFO",
+            message="Worker claimed a job.",
+            job=job,
+            attributes={"claimed": True},
+            observed_clock=observed_clock,
+        ),
     )
 
     try:
@@ -220,6 +272,18 @@ def run_worker_once(
                 )
             )
         )
+        _append_log_result(
+            log_results,
+            _safe_emit_worker_log(
+                config=config,
+                service_log_emitter=service_log_emitter,
+                severity="ERROR",
+                message="Worker handler failed.",
+                job=failed_job or job,
+                attributes={"error_code": error_code},
+                observed_clock=observed_clock,
+            ),
+        )
         return WorkerJobExecution(
             status=FAILED,
             job=job,
@@ -227,6 +291,7 @@ def run_worker_once(
             error_code=error_code,
             error_detail=error_detail,
             heartbeat_results=tuple(heartbeat_results),
+            log_results=tuple(log_results),
         )
 
     completed_job = (
@@ -245,12 +310,25 @@ def run_worker_once(
             )
         )
     )
+    _append_log_result(
+        log_results,
+        _safe_emit_worker_log(
+            config=config,
+            service_log_emitter=service_log_emitter,
+            severity="INFO",
+            message="Worker completed a job.",
+            job=completed_job,
+            attributes={"handler_finalizes_job": handler_finalizes_job},
+            observed_clock=observed_clock,
+        ),
+    )
     return WorkerJobExecution(
         status=str(completed_job["status"]),
         job=job,
         completed_job=completed_job,
         handler_result=handler_result,
         heartbeat_results=tuple(heartbeat_results),
+        log_results=tuple(log_results),
     )
 
 
@@ -260,6 +338,7 @@ def run_worker_batch(
     queue: JobQueue,
     heartbeat_emitter: WorkerHeartbeatEmitter,
     handler: WorkerJobHandler,
+    service_log_emitter: ServiceLogEmitter | None = None,
     handler_finalizes_job: bool = False,
     stop_on_failure: bool = True,
     clock: WorkerClock | None = None,
@@ -271,6 +350,7 @@ def run_worker_batch(
             queue=queue,
             heartbeat_emitter=heartbeat_emitter,
             handler=handler,
+            service_log_emitter=service_log_emitter,
             handler_finalizes_job=handler_finalizes_job,
             clock=clock,
         )
@@ -312,6 +392,57 @@ def _job_metadata(job: dict[str, Any]) -> dict[str, Any]:
 
 def _heartbeat_summary(result: WorkerHeartbeatEmitResult) -> dict[str, Any]:
     return result.to_summary()
+
+
+def _service_log_summary(result: ServiceLogEmitResult) -> dict[str, Any]:
+    return result.to_summary()
+
+
+def _safe_emit_worker_log(
+    *,
+    config: WorkerRunnerConfig,
+    service_log_emitter: ServiceLogEmitter | None,
+    severity: str,
+    message: str,
+    observed_clock: WorkerClock,
+    job: dict[str, Any] | None = None,
+    attributes: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    if service_log_emitter is None:
+        return None
+    return _service_log_summary(
+        service_log_emitter.safe_emit(
+            severity=severity,
+            message=message,
+            trace_id=_job_string(job, "trace_id"),
+            request_id=_job_string(job, "request_id"),
+            job_id=_job_string(job, "job_id"),
+            subject_ref=deepcopy(job.get("subject_ref")) if job is not None else None,
+            attributes={
+                "service_id": config.service_id,
+                "worker_id": config.worker_id,
+                "worker_type": config.worker_type,
+                "job_type": config.job_type,
+                **(_job_metadata(job) if job is not None else {}),
+                **(deepcopy(attributes) if attributes is not None else {}),
+            },
+            observed_at=observed_clock(),
+        )
+    )
+
+
+def _append_log_result(
+    log_results: list[dict[str, Any]],
+    result: dict[str, Any] | None,
+) -> None:
+    if result is not None:
+        log_results.append(result)
+
+
+def _job_string(job: dict[str, Any] | None, field_name: str) -> str | None:
+    if job is None or job.get(field_name) is None:
+        return None
+    return str(job[field_name])
 
 
 def _required_string(value: object, field_name: str) -> str:

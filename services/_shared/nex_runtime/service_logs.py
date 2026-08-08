@@ -68,6 +68,149 @@ class ServiceLogStore(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class ServiceLogEmitResult:
+    ok: bool
+    entry: dict[str, Any] | None = None
+    error_code: str | None = None
+    detail: str | None = None
+    status_code: int | None = None
+
+    @classmethod
+    def emitted(cls, entry: dict[str, Any]) -> ServiceLogEmitResult:
+        return cls(ok=True, entry=deepcopy(entry))
+
+    @classmethod
+    def failed(
+        cls,
+        *,
+        error_code: str,
+        detail: str,
+        status_code: int,
+    ) -> ServiceLogEmitResult:
+        return cls(
+            ok=False,
+            error_code=error_code,
+            detail=detail,
+            status_code=status_code,
+        )
+
+    def to_summary(self) -> dict[str, Any]:
+        if self.ok and self.entry is not None:
+            return {
+                "ok": True,
+                "log_id": self.entry["log_id"],
+                "service_id": self.entry["service_id"],
+                "severity": self.entry["severity"],
+                "logger_name": self.entry["logger_name"],
+            }
+        return {
+            "ok": False,
+            "error_code": self.error_code,
+            "detail": self.detail,
+            "status_code": self.status_code,
+        }
+
+
+class ServiceLogEmitter:
+    def __init__(
+        self,
+        *,
+        service_id: str,
+        logger_name: str,
+        store: ServiceLogStore,
+        default_attributes: dict[str, Any] | None = None,
+    ) -> None:
+        self.service_id = _required_string(service_id, "service_id")
+        self.logger_name = _required_string(logger_name, "logger_name")
+        self.store = store
+        if default_attributes is not None and not isinstance(default_attributes, dict):
+            raise ServiceLogError(
+                error_code="service_log.attributes_invalid",
+                detail="default_attributes must be an object",
+            )
+        self.default_attributes = deepcopy(default_attributes) if default_attributes else {}
+
+    def emit(
+        self,
+        *,
+        severity: str,
+        message: str,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        job_id: str | None = None,
+        subject_ref: dict[str, str] | None = None,
+        attributes: dict[str, Any] | None = None,
+        observed_at: str | None = None,
+        log_id: str | None = None,
+    ) -> dict[str, Any]:
+        entry = build_service_log_entry(
+            service_id=self.service_id,
+            severity=severity,
+            logger_name=self.logger_name,
+            message=message,
+            trace_id=trace_id,
+            request_id=request_id,
+            job_id=job_id,
+            subject_ref=subject_ref,
+            attributes=self._merged_attributes(attributes),
+            observed_at=observed_at,
+            log_id=log_id,
+        )
+        return self.store.append(entry)
+
+    def safe_emit(
+        self,
+        *,
+        severity: str,
+        message: str,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        job_id: str | None = None,
+        subject_ref: dict[str, str] | None = None,
+        attributes: dict[str, Any] | None = None,
+        observed_at: str | None = None,
+        log_id: str | None = None,
+    ) -> ServiceLogEmitResult:
+        try:
+            return ServiceLogEmitResult.emitted(
+                self.emit(
+                    severity=severity,
+                    message=message,
+                    trace_id=trace_id,
+                    request_id=request_id,
+                    job_id=job_id,
+                    subject_ref=subject_ref,
+                    attributes=attributes,
+                    observed_at=observed_at,
+                    log_id=log_id,
+                )
+            )
+        except ServiceLogError as exc:
+            return ServiceLogEmitResult.failed(
+                error_code=exc.error_code,
+                detail=exc.detail,
+                status_code=exc.status_code,
+            )
+        except Exception:
+            return ServiceLogEmitResult.failed(
+                error_code="service_log.emit_failed",
+                detail="service log emission failed",
+                status_code=503,
+            )
+
+    def _merged_attributes(self, attributes: dict[str, Any] | None) -> dict[str, Any]:
+        if attributes is not None and not isinstance(attributes, dict):
+            raise ServiceLogError(
+                error_code="service_log.attributes_invalid",
+                detail="attributes must be an object",
+            )
+        merged = deepcopy(self.default_attributes)
+        if attributes:
+            merged.update(deepcopy(attributes))
+        return merged
+
+
 def build_service_log_entry(
     *,
     service_id: str,
@@ -504,6 +647,22 @@ def service_log_store_from_app(app: Any) -> ServiceLogStore:
         fallback_store = InMemoryServiceLogStore()
         setattr(state, "_nex_service_log_store", fallback_store)
     return fallback_store
+
+
+def service_log_emitter_from_app(
+    app: Any,
+    *,
+    service_id: str,
+    logger_name: str,
+    store: ServiceLogStore | None = None,
+    default_attributes: dict[str, Any] | None = None,
+) -> ServiceLogEmitter:
+    return ServiceLogEmitter(
+        service_id=service_id,
+        logger_name=logger_name,
+        store=store if store is not None else service_log_store_from_app(app),
+        default_attributes=default_attributes,
+    )
 
 
 def _redact_nested_log_attribute(

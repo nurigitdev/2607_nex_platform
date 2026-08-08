@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0137 service log persistence foundation.
+Status: Slice 0138 service log emitter/runtime integration.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -63,10 +63,10 @@ local regression, and offers `safe_emit()` for observability writes that must no
 fail the primary request or job.
 
 Structured service logs use `service_log_entry.v1` through the shared
-`nex_runtime.service_logs` builder, validator, store abstraction, app-state
-fallback, and SQLAlchemy-backed `service_log_entries` adapter. Services should
-emit explicit redaction-safe diagnostic log entries; this is not a blanket
-capture of all Python log lines.
+`nex_runtime.service_logs` builder, validator, emitter, safe emission result,
+store abstraction, app-state fallback, and SQLAlchemy-backed
+`service_log_entries` adapter. Services should emit explicit redaction-safe
+diagnostic log entries; this is not a blanket capture of all Python log lines.
 
 Service workers should also report `worker_heartbeat.v1` payloads through the
 shared worker heartbeat runtime. It defines the status vocabulary, emitter,
@@ -77,7 +77,8 @@ path so AG can project worker liveness across services.
 The shared `nex_runtime.worker_runner` module provides a small bounded worker
 execution helper around service-owned JobQueue adapters. It claims jobs by
 `job_type`, emits STARTING/BUSY/IDLE/ERROR heartbeats through the injected
-worker heartbeat emitter, calls a service-owned job handler, and completes or
+worker heartbeat emitter, optionally writes structured service logs through an
+injected `ServiceLogEmitter`, calls a service-owned job handler, and completes or
 fails the job without adding service-private domain logic to `_shared`.
 
 JobQueue adapters support a common retry decision path. Handler failures can

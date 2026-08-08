@@ -13,7 +13,9 @@ from nex_runtime import (
     RUNNING,
     SUCCEEDED,
     InMemoryJobQueue,
+    InMemoryServiceLogStore,
     InMemoryWorkerHeartbeatStore,
+    ServiceLogEmitter,
     WorkerHeartbeatEmitter,
     WorkerRunnerConfig,
     WorkerRunnerError,
@@ -105,6 +107,19 @@ def heartbeat_emitter() -> tuple[WorkerHeartbeatEmitter, InMemoryWorkerHeartbeat
     )
 
 
+def service_log_emitter() -> tuple[ServiceLogEmitter, InMemoryServiceLogStore]:
+    store = InMemoryServiceLogStore()
+    return (
+        ServiceLogEmitter(
+            service_id="nex-cx",
+            logger_name="nex_runtime.worker_runner",
+            store=store,
+            default_attributes={"runtime_component": "worker_runner"},
+        ),
+        store,
+    )
+
+
 def test_worker_runner_config_rejects_invalid_shape() -> None:
     with pytest.raises(WorkerRunnerError) as blank:
         WorkerRunnerConfig(
@@ -139,6 +154,8 @@ def test_run_worker_once_reports_idle_when_no_job_is_available() -> None:
     assert heartbeat is not None
     assert heartbeat["status"] == IDLE
     assert heartbeat["metadata"]["claimed"] is False
+    assert execution.log_results == ()
+    assert execution.to_summary()["log_results"] == []
 
 
 def test_run_worker_once_claims_handles_and_completes_job() -> None:
@@ -170,6 +187,43 @@ def test_run_worker_once_claims_handles_and_completes_job() -> None:
     assert heartbeat["active_job_id"] is None
     assert heartbeat["metadata"]["job_status"] == SUCCEEDED
     assert execution.to_summary()["completed_status"] == SUCCEEDED
+
+
+def test_run_worker_once_writes_structured_logs_when_emitter_is_configured() -> None:
+    queue = InMemoryJobQueue()
+    queue.enqueue(sample_job())
+    emitter, _ = heartbeat_emitter()
+    log_emitter, log_store = service_log_emitter()
+
+    execution = run_worker_once(
+        config=config(),
+        queue=queue,
+        heartbeat_emitter=emitter,
+        service_log_emitter=log_emitter,
+        handler=lambda job: {"document_id": job["subject_ref"]["id"]},
+        clock=StaticClock(),
+    )
+
+    logs = log_store.list_logs(limit=10)
+    messages = [entry["message"] for entry in logs]
+    assert execution.status == SUCCEEDED
+    assert len(execution.log_results) == 3
+    assert all(result["ok"] is True for result in execution.log_results)
+    assert messages == [
+        "Worker completed a job.",
+        "Worker claimed a job.",
+        "Worker polling started.",
+    ]
+    completed = logs[0]
+    assert completed["trace_id"] == TRACE_ID
+    assert completed["request_id"] == REQUEST_ID
+    assert completed["job_id"] == "job-001"
+    assert completed["subject_ref"] == {"type": "cx.document", "id": "doc-001"}
+    assert completed["attributes"]["worker_id"] == "cx-worker-001"
+    assert completed["attributes"]["runtime_component"] == "worker_runner"
+    assert completed["attributes"]["job_status"] == SUCCEEDED
+    assert completed["attributes"]["handler_finalizes_job"] is False
+    assert execution.to_summary()["log_results"][0]["logger_name"] == "nex_runtime.worker_runner"
 
 
 def test_run_worker_once_requeues_job_when_handler_raises() -> None:
@@ -206,6 +260,29 @@ def test_run_worker_once_requeues_job_when_handler_raises() -> None:
     assert heartbeat["status"] == ERROR
     assert heartbeat["active_job_id"] == "job-001"
     assert heartbeat["metadata"]["error_code"] == "cx.processing_step_failed"
+
+
+def test_run_worker_once_logs_handler_failure_without_exception_detail() -> None:
+    queue = InMemoryJobQueue()
+    queue.enqueue(sample_job())
+    emitter, _ = heartbeat_emitter()
+    log_emitter, log_store = service_log_emitter()
+
+    execution = run_worker_once(
+        config=config(),
+        queue=queue,
+        heartbeat_emitter=emitter,
+        service_log_emitter=log_emitter,
+        handler=lambda job: (_ for _ in ()).throw(RuntimeError("boom with secret-token")),
+        clock=StaticClock(),
+    )
+
+    error_logs = log_store.list_logs(severity=ERROR)
+    assert execution.status == FAILED
+    assert len(error_logs) == 1
+    assert error_logs[0]["message"] == "Worker handler failed."
+    assert error_logs[0]["attributes"]["error_code"] == "worker_runner.handler_failed"
+    assert "secret-token" not in str(error_logs[0])
 
 
 def test_run_worker_once_dead_letters_exhausted_handler_failure() -> None:
@@ -247,6 +324,26 @@ def test_run_worker_once_reports_queue_claim_failure_without_raising() -> None:
     assert heartbeat is not None
     assert heartbeat["status"] == ERROR
     assert heartbeat["metadata"]["error_code"] == "job.store_unavailable"
+
+
+def test_run_worker_once_logs_queue_claim_failure_when_emitter_is_configured() -> None:
+    emitter, _ = heartbeat_emitter()
+    log_emitter, log_store = service_log_emitter()
+
+    execution = run_worker_once(
+        config=config(),
+        queue=BrokenClaimQueue(),
+        heartbeat_emitter=emitter,
+        service_log_emitter=log_emitter,
+        handler=lambda job: {"processed": job["job_id"]},
+        clock=StaticClock(),
+    )
+
+    error_logs = log_store.list_logs(severity=ERROR)
+    assert execution.status == FAILED
+    assert len(execution.log_results) == 2
+    assert error_logs[0]["message"] == "Worker job claim failed."
+    assert error_logs[0]["attributes"]["error_code"] == "job.store_unavailable"
 
 
 def test_run_worker_once_returns_current_job_when_retry_is_not_possible() -> None:
@@ -292,6 +389,28 @@ def test_run_worker_batch_processes_until_idle_and_summarizes() -> None:
         SUCCEEDED,
         IDLE,
     ]
+
+
+def test_run_worker_batch_passes_service_log_emitter_to_each_execution() -> None:
+    queue = InMemoryJobQueue()
+    queue.enqueue(sample_job(job_id="job-001", idempotency_key="idem-001"))
+    queue.enqueue(sample_job(job_id="job-002", idempotency_key="idem-002"))
+    emitter, _ = heartbeat_emitter()
+    log_emitter, log_store = service_log_emitter()
+
+    result = run_worker_batch(
+        config=config(max_jobs=2),
+        queue=queue,
+        heartbeat_emitter=emitter,
+        service_log_emitter=log_emitter,
+        handler=lambda job: {"processed": job["job_id"]},
+        clock=StaticClock(),
+    )
+
+    assert result.succeeded_count == 2
+    assert [len(execution.log_results) for execution in result.executions] == [3, 3]
+    assert len(log_store.list_logs(job_id="job-001")) == 2
+    assert len(log_store.list_logs(job_id="job-002")) == 2
 
 
 def test_run_worker_batch_stops_on_failure_by_default_or_continues_when_requested() -> None:
