@@ -28,6 +28,12 @@ from run_ag_cross_service_observability_smoke import (  # noqa: E402
     SMOKE_PROFILE_ENV as AG_OBSERVABILITY_PROFILE_ENV,
     run_ag_cross_service_observability_smoke,
 )
+from run_ag_service_log_retention_postgres_smoke import (  # noqa: E402
+    SMOKE_ENV as AG_SERVICE_LOG_RETENTION_POSTGRES_SMOKE_ENV,
+    SMOKE_PROFILE_ENV as AG_SERVICE_LOG_RETENTION_POSTGRES_PROFILE_ENV,
+    SMOKE_SERVICE_ENV as AG_SERVICE_LOG_RETENTION_POSTGRES_SERVICE_ENV,
+    run_ag_service_log_retention_postgres_smoke,
+)
 from run_cx_processing_postgres_event_smoke import (  # noqa: E402
     SMOKE_ENV as CX_PROCESSING_EVENT_SMOKE_ENV,
     SMOKE_PROFILE_ENV as CX_PROCESSING_EVENT_PROFILE_ENV,
@@ -105,6 +111,7 @@ SUITE_STAGE_ORDER = (
     "service_logs",
     "service_log_retention",
     "service_log_retention_http",
+    "ag_service_log_retention_postgres",
     "operations_pack",
     "cx_processing_jobqueue",
     "cx_processing_events",
@@ -183,6 +190,9 @@ def run_postgres_test_smoke_suite(
         SERVICE_LOG_RETENTION_HTTP_SMOKE_ENV: "1",
         SERVICE_LOG_RETENTION_HTTP_SERVICE_ENV: primary_service_id,
         SERVICE_LOG_RETENTION_HTTP_PROFILE_ENV: profile,
+        AG_SERVICE_LOG_RETENTION_POSTGRES_SMOKE_ENV: "1",
+        AG_SERVICE_LOG_RETENTION_POSTGRES_SERVICE_ENV: primary_service_id,
+        AG_SERVICE_LOG_RETENTION_POSTGRES_PROFILE_ENV: profile,
         OPERATIONS_PACK_SMOKE_ENV: "1",
         OPERATIONS_PACK_PROFILE_ENV: profile,
         OPERATIONS_PACK_SERVICES_ENV: ",".join(service_ids),
@@ -210,6 +220,9 @@ def run_postgres_test_smoke_suite(
     )
     stages["service_log_retention_http"] = _stage_from_child_smoke(
         run_postgres_service_log_retention_http_smoke(environ=smoke_env)
+    )
+    stages["ag_service_log_retention_postgres"] = _stage_from_child_smoke(
+        run_ag_service_log_retention_postgres_smoke(environ=smoke_env)
     )
     stages["operations_pack"] = _stage_from_child_smoke(
         run_postgres_operations_smoke_pack(environ=smoke_env)
