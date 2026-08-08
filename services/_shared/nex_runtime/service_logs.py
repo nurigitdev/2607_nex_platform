@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Callable, Protocol
 from uuid import NAMESPACE_URL, uuid5
+
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
 
 SERVICE_LOG_SCHEMA_VERSION = "service_log_entry.v1"
 SERVICE_LOG_SEVERITIES = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 SERVICE_IDS = ("nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo")
+DEFAULT_SERVICE_LOG_LIMIT = 50
+MAX_SERVICE_LOG_LIMIT = 500
 MAX_SERVICE_LOG_MESSAGE_LENGTH = 512
 MAX_SERVICE_LOGGER_NAME_LENGTH = 160
 REDACTED_LOG_VALUE = "<redacted>"
@@ -36,6 +43,29 @@ class ServiceLogError(Exception):
 
     def __str__(self) -> str:
         return self.detail
+
+
+class ServiceLogStore(Protocol):
+    def append(self, entry: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+    def get_log(self, log_id: str) -> dict[str, Any] | None:
+        ...
+
+    def list_logs(
+        self,
+        *,
+        service_id: str | None = None,
+        severity: str | None = None,
+        logger_name: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        job_id: str | None = None,
+        subject_type: str | None = None,
+        subject_id: str | None = None,
+        limit: int = DEFAULT_SERVICE_LOG_LIMIT,
+    ) -> list[dict[str, Any]]:
+        ...
 
 
 def build_service_log_entry(
@@ -229,6 +259,253 @@ def summarize_service_logs(logs: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def normalize_service_log_limit(limit: int) -> int:
+    if limit < 1:
+        return 1
+    if limit > MAX_SERVICE_LOG_LIMIT:
+        return MAX_SERVICE_LOG_LIMIT
+    return limit
+
+
+@dataclass
+class InMemoryServiceLogStore:
+    entries: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def append(self, entry: dict[str, Any]) -> dict[str, Any]:
+        normalized = deepcopy(validate_service_log_entry(entry))
+        log_id = str(normalized["log_id"])
+        if log_id not in self.entries:
+            self.entries[log_id] = normalized
+        return deepcopy(self.entries[log_id])
+
+    def get_log(self, log_id: str) -> dict[str, Any] | None:
+        _required_string(log_id, "log_id")
+        entry = self.entries.get(log_id)
+        return deepcopy(entry) if entry is not None else None
+
+    def list_logs(
+        self,
+        *,
+        service_id: str | None = None,
+        severity: str | None = None,
+        logger_name: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        job_id: str | None = None,
+        subject_type: str | None = None,
+        subject_id: str | None = None,
+        limit: int = DEFAULT_SERVICE_LOG_LIMIT,
+    ) -> list[dict[str, Any]]:
+        normalized_limit = normalize_service_log_limit(limit)
+        normalized_severity = severity.upper() if severity is not None else None
+        logs = [
+            deepcopy(entry)
+            for entry in self.entries.values()
+            if (service_id is None or entry["service_id"] == service_id)
+            and (normalized_severity is None or entry["severity"] == normalized_severity)
+            and (logger_name is None or entry["logger_name"] == logger_name)
+            and (trace_id is None or entry.get("trace_id") == trace_id)
+            and (request_id is None or entry.get("request_id") == request_id)
+            and (job_id is None or entry.get("job_id") == job_id)
+            and (
+                subject_type is None
+                or (
+                    entry.get("subject_ref") is not None
+                    and entry["subject_ref"].get("type") == subject_type
+                )
+            )
+            and (
+                subject_id is None
+                or (
+                    entry.get("subject_ref") is not None
+                    and entry["subject_ref"].get("id") == subject_id
+                )
+            )
+        ]
+        logs.sort(key=lambda entry: (entry["observed_at"], entry["log_id"]), reverse=True)
+        return logs[:normalized_limit]
+
+    def summary(self) -> dict[str, Any]:
+        return summarize_service_logs(self.list_logs(limit=MAX_SERVICE_LOG_LIMIT))
+
+
+class SqlAlchemyServiceLogStore:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def append(self, entry: dict[str, Any]) -> dict[str, Any]:
+        entry_to_store = deepcopy(validate_service_log_entry(entry))
+        try:
+            return self._run_in_transaction(
+                lambda session: self._append_log(session, entry_to_store)
+            )
+        except IntegrityError as exc:
+            existing = self.get_log(str(entry_to_store["log_id"]))
+            if existing is not None:
+                return existing
+            raise _service_log_store_unavailable() from exc
+        except SQLAlchemyError as exc:
+            raise _service_log_store_unavailable() from exc
+
+    def get_log(self, log_id: str) -> dict[str, Any] | None:
+        _required_string(log_id, "log_id")
+        try:
+            with self._session_factory() as session:
+                return self._select_log(session, log_id)
+        except SQLAlchemyError as exc:
+            raise _service_log_store_unavailable() from exc
+
+    def list_logs(
+        self,
+        *,
+        service_id: str | None = None,
+        severity: str | None = None,
+        logger_name: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        job_id: str | None = None,
+        subject_type: str | None = None,
+        subject_id: str | None = None,
+        limit: int = DEFAULT_SERVICE_LOG_LIMIT,
+    ) -> list[dict[str, Any]]:
+        normalized_limit = normalize_service_log_limit(limit)
+        normalized_severity = severity.upper() if severity is not None else None
+        where_clauses: list[str] = []
+        params: dict[str, Any] = {"limit": normalized_limit}
+        filters = {
+            "service_id": service_id,
+            "severity": normalized_severity,
+            "logger_name": logger_name,
+            "trace_id": trace_id,
+            "request_id": request_id,
+            "job_id": job_id,
+            "subject_type": subject_type,
+            "subject_id": subject_id,
+        }
+        for field_name, value in filters.items():
+            if value is not None:
+                where_clauses.append(f"{field_name} = :{field_name}")
+                params[field_name] = value
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(
+                    text(
+                        f"""
+                        SELECT {_LOG_SELECT_COLUMNS}
+                        FROM service_log_entries
+                        {where_sql}
+                        ORDER BY observed_at DESC, log_id DESC
+                        LIMIT :limit
+                        """
+                    ),
+                    params,
+                ).mappings()
+                return [_log_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _service_log_store_unavailable() from exc
+
+    def summary(self) -> dict[str, Any]:
+        return summarize_service_logs(self.list_logs(limit=MAX_SERVICE_LOG_LIMIT))
+
+    def _run_in_transaction(self, operation: Callable[[Session], Any]) -> Any:
+        session = self._session_factory()
+        try:
+            try:
+                result = operation(session)
+                session.commit()
+                return result
+            except Exception:
+                session.rollback()
+                raise
+        finally:
+            session.close()
+
+    def _append_log(self, session: Session, entry: dict[str, Any]) -> dict[str, Any]:
+        existing = self._select_log(session, str(entry["log_id"]))
+        if existing is not None:
+            return existing
+        self._insert_log(session, entry)
+        stored = self._select_log(session, str(entry["log_id"]))
+        assert stored is not None
+        return stored
+
+    def _select_log(
+        self,
+        session: Session,
+        log_id: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_LOG_SELECT_COLUMNS}
+                FROM service_log_entries
+                WHERE log_id = :log_id
+                """
+            ),
+            {"log_id": log_id},
+        ).mappings().first()
+        return _log_from_row(row) if row is not None else None
+
+    def _insert_log(self, session: Session, entry: dict[str, Any]) -> None:
+        attributes_expression = _json_sql_expression(session, "attributes")
+        redacted_keys_expression = _json_sql_expression(session, "redacted_attribute_keys")
+        session.execute(
+            text(
+                f"""
+                INSERT INTO service_log_entries (
+                    log_id,
+                    service_log_schema_version,
+                    service_id,
+                    severity,
+                    logger_name,
+                    message,
+                    trace_id,
+                    request_id,
+                    job_id,
+                    subject_type,
+                    subject_id,
+                    attributes,
+                    redacted_attribute_keys,
+                    observed_at
+                )
+                VALUES (
+                    :log_id,
+                    :service_log_schema_version,
+                    :service_id,
+                    :severity,
+                    :logger_name,
+                    :message,
+                    :trace_id,
+                    :request_id,
+                    :job_id,
+                    :subject_type,
+                    :subject_id,
+                    {attributes_expression},
+                    {redacted_keys_expression},
+                    :observed_at
+                )
+                """
+            ),
+            _log_insert_params(entry),
+        )
+
+
+def service_log_store_from_app(app: Any) -> ServiceLogStore:
+    state = getattr(app, "state", None)
+    persistence = getattr(state, "nex_persistence", None) if state is not None else None
+    store = getattr(persistence, "service_log_store", None)
+    if store is not None:
+        return store
+    if state is None:
+        return InMemoryServiceLogStore()
+    fallback_store = getattr(state, "_nex_service_log_store", None)
+    if fallback_store is None:
+        fallback_store = InMemoryServiceLogStore()
+        setattr(state, "_nex_service_log_store", fallback_store)
+    return fallback_store
+
+
 def _redact_nested_log_attribute(
     value: Any,
     *,
@@ -322,3 +599,115 @@ def _is_sensitive_log_attribute_key(key: str) -> bool:
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+_LOG_SELECT_COLUMNS = """
+    log_id,
+    service_log_schema_version,
+    service_id,
+    severity,
+    logger_name,
+    message,
+    trace_id,
+    request_id,
+    job_id,
+    subject_type,
+    subject_id,
+    attributes,
+    redacted_attribute_keys,
+    observed_at
+"""
+
+
+def _log_insert_params(entry: dict[str, Any]) -> dict[str, Any]:
+    subject_ref = entry.get("subject_ref")
+    subject_type = subject_ref["type"] if subject_ref is not None else None
+    subject_id = subject_ref["id"] if subject_ref is not None else None
+    return {
+        "log_id": entry["log_id"],
+        "service_log_schema_version": entry["service_log_schema_version"],
+        "service_id": entry["service_id"],
+        "severity": entry["severity"],
+        "logger_name": entry["logger_name"],
+        "message": entry["message"],
+        "trace_id": entry["trace_id"],
+        "request_id": entry["request_id"],
+        "job_id": entry["job_id"],
+        "subject_type": subject_type,
+        "subject_id": subject_id,
+        "attributes": _json_dumps(entry["attributes"]),
+        "redacted_attribute_keys": _json_dumps(entry["redacted_attribute_keys"]),
+        "observed_at": entry["observed_at"],
+    }
+
+
+def _log_from_row(row: Any) -> dict[str, Any]:
+    subject_ref = None
+    if row["subject_type"] is not None or row["subject_id"] is not None:
+        subject_ref = {
+            "type": row["subject_type"],
+            "id": row["subject_id"],
+        }
+    return validate_service_log_entry(
+        {
+            "service_log_schema_version": row["service_log_schema_version"],
+            "log_id": row["log_id"],
+            "service_id": row["service_id"],
+            "severity": row["severity"],
+            "logger_name": row["logger_name"],
+            "message": row["message"],
+            "trace_id": row["trace_id"],
+            "request_id": row["request_id"],
+            "job_id": row["job_id"],
+            "subject_ref": subject_ref,
+            "attributes": _json_loads(row["attributes"], default={}),
+            "redacted_attribute_keys": _json_loads(
+                row["redacted_attribute_keys"],
+                default=[],
+            ),
+            "observed_at": _timestamp_to_wire(row["observed_at"]),
+        }
+    )
+
+
+def _json_sql_expression(session: Session, param_name: str) -> str:
+    if _dialect_name(session) == "postgresql":
+        return f"CAST(:{param_name} AS JSONB)"
+    return f":{param_name}"
+
+
+def _json_dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _json_loads(value: Any, *, default: Any) -> Any:
+    if value is None:
+        return deepcopy(default)
+    if isinstance(value, (dict, list)):
+        return deepcopy(value)
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if isinstance(value, str):
+        return json.loads(value)
+    return deepcopy(default)
+
+
+def _timestamp_to_wire(value: Any) -> str:
+    if isinstance(value, datetime):
+        observed = value
+        if observed.tzinfo is None:
+            observed = observed.replace(tzinfo=UTC)
+        return observed.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return str(value)
+
+
+def _dialect_name(session: Session) -> str:
+    return session.get_bind().dialect.name
+
+
+def _service_log_store_unavailable() -> ServiceLogError:
+    return ServiceLogError(
+        error_code="service_log.store_unavailable",
+        detail="service log store is unavailable",
+        status_code=503,
+    )

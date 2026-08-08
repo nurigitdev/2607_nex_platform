@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0134 dead-letter replay issue/dashboard surfacing.
+Status: Slice 0137 service log persistence foundation.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -63,9 +63,10 @@ local regression, and offers `safe_emit()` for observability writes that must no
 fail the primary request or job.
 
 Structured service logs use `service_log_entry.v1` through the shared
-`nex_runtime.service_logs` builder and validator. Slice 0136 keeps this
-contract/runtime-only: service-local log persistence and AG log search can be
-added later without changing the redaction-safe payload shape.
+`nex_runtime.service_logs` builder, validator, store abstraction, app-state
+fallback, and SQLAlchemy-backed `service_log_entries` adapter. Services should
+emit explicit redaction-safe diagnostic log entries; this is not a blanket
+capture of all Python log lines.
 
 Service workers should also report `worker_heartbeat.v1` payloads through the
 shared worker heartbeat runtime. It defines the status vocabulary, emitter,

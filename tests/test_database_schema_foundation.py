@@ -132,6 +132,42 @@ def test_service_worker_heartbeat_foundation_exists_for_every_service_database()
         assert "0112_service_worker_heartbeat_foundation" in compact
 
 
+def test_service_log_entries_foundation_exists_for_every_service_database() -> None:
+    for service_id in SERVICE_IDS:
+        compact = normalized(
+            read_migration_named(service_id, "0137_service_log_entries_foundation.sql")
+        )
+
+        assert "create table if not exists service_log_entries" in compact
+        assert "service_log_schema_version text not null default 'service_log_entry.v1'" in compact
+        assert "check (service_log_schema_version = 'service_log_entry.v1')" in compact
+        assert "severity text not null check (severity in" in compact
+        for severity in ("debug", "info", "warning", "error", "critical"):
+            assert f"'{severity}'" in compact
+        for column in (
+            "service_id text not null",
+            "logger_name text not null check (char_length(logger_name) <= 160)",
+            "message text not null check (char_length(message) <= 512)",
+            "trace_id text",
+            "request_id text",
+            "job_id text",
+            "subject_type text",
+            "subject_id text",
+            "attributes jsonb not null default '{}'::jsonb",
+            "redacted_attribute_keys jsonb not null default '[]'::jsonb",
+            "observed_at timestamptz not null",
+        ):
+            assert column in compact
+        assert "ix_service_log_entries_service_observed" in compact
+        assert "ix_service_log_entries_severity_observed" in compact
+        assert "ix_service_log_entries_logger_observed" in compact
+        assert "ix_service_log_entries_trace" in compact
+        assert "ix_service_log_entries_request" in compact
+        assert "ix_service_log_entries_job" in compact
+        assert "ix_service_log_entries_subject" in compact
+        assert "0137_service_log_entries_foundation" in compact
+
+
 def test_cx_schema_scopes_duplicate_uploads_to_active_owner_documents() -> None:
     compact = normalized(read_migration("nex-cx"))
     storage_policy = normalized(

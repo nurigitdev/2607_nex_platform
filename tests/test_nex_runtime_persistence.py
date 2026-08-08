@@ -8,6 +8,7 @@ import pytest
 from nex_runtime import (
     InMemoryJobQueue,
     InMemoryOperationalEventStore,
+    InMemoryServiceLogStore,
     InMemoryWorkerHeartbeatStore,
     PERSISTENCE_MODE_MEMORY,
     PERSISTENCE_MODE_POSTGRES,
@@ -16,6 +17,7 @@ from nex_runtime import (
     ServicePersistenceRuntime,
     SqlAlchemyJobQueue,
     SqlAlchemyOperationalEventStore,
+    SqlAlchemyServiceLogStore,
     SqlAlchemyWorkerHeartbeatStore,
     attach_service_persistence_runtime,
     build_service_app,
@@ -61,6 +63,7 @@ def test_memory_runtime_is_default_and_does_not_require_database_url() -> None:
     assert runtime.redacted_database_url is None
     assert isinstance(runtime.job_queue, InMemoryJobQueue)
     assert isinstance(runtime.operational_event_store, InMemoryOperationalEventStore)
+    assert isinstance(runtime.service_log_store, InMemoryServiceLogStore)
     assert isinstance(runtime.worker_heartbeat_store, InMemoryWorkerHeartbeatStore)
     assert runtime.to_summary() == {
         "service_id": "nex-cx",
@@ -69,6 +72,7 @@ def test_memory_runtime_is_default_and_does_not_require_database_url() -> None:
         "redacted_database_url": None,
         "job_queue": "InMemoryJobQueue",
         "operational_event_store": "InMemoryOperationalEventStore",
+        "service_log_store": "InMemoryServiceLogStore",
         "worker_heartbeat_store": "InMemoryWorkerHeartbeatStore",
     }
 
@@ -123,6 +127,7 @@ def test_postgres_runtime_builds_sqlalchemy_stores_with_api_and_worker_pools() -
     assert runtime.redacted_database_url == "postgresql://nex_cx_user:***@localhost/nex_cx_dev"
     assert isinstance(runtime.job_queue, SqlAlchemyJobQueue)
     assert isinstance(runtime.operational_event_store, SqlAlchemyOperationalEventStore)
+    assert isinstance(runtime.service_log_store, SqlAlchemyServiceLogStore)
     assert isinstance(runtime.worker_heartbeat_store, SqlAlchemyWorkerHeartbeatStore)
     assert [call["workload"] for call in engine_calls] == ["api", "worker"]
     assert [call["pool_size"] for call in engine_calls] == [7, 2]

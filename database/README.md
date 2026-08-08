@@ -1,6 +1,6 @@
 # NeX-Platform Database Foundations
 
-Status: Slice 0112 service worker heartbeat persistence foundation.
+Status: Slice 0137 service log persistence foundation.
 
 Each service owns its own database and migrations. Cross-service joins and
 foreign keys are intentionally avoided; service APIs and contract records carry
@@ -269,6 +269,20 @@ Route and worker code should write events through `OperationalEventEmitter`.
 behavior. `safe_emit()` returns a compact success/failure result and never
 raises for event logging failures, so observability write-through cannot fail
 the primary request or job.
+
+## Structured Service Log Foundation
+
+Each service database also owns `service_log_entries`. It stores the
+`service_log_entry.v1` diagnostic log shape with service/severity/logger,
+trace/request/job/subject correlation fields, JSONB attributes, redacted
+attribute key evidence, and observation time. Indexes support common AG
+read-only search paths by service, severity, logger, trace, request, job, and
+subject.
+
+Runtime code uses `nex_runtime.service_logs` for log construction, redaction,
+validation, in-memory storage, filtering, summaries, app-state fallback lookup,
+and the persistent `SqlAlchemyServiceLogStore` adapter. The foundation stores
+only explicit structured service logs, not every Python log line.
 
 ## Worker Heartbeat Foundation
 
