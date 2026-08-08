@@ -239,6 +239,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0133`](slices/0133_replay_openapi_and_smoke_evidence.md) | `S14-003` Replay OpenAPI and smoke evidence. |
 | [`Slice 0134`](slices/0134_dead_letter_replay_issue_dashboard_surfacing.md) | `S14-004` Dead-letter replay issue/dashboard surfacing. |
 | [`Slice 0135`](slices/0135_replay_postgresql_smoke_evidence.md) | `S14-005` Replay PostgreSQL smoke evidence. |
+| [`Slice 0136`](slices/0136_structured_service_log_contract_foundation.md) | `S14-006` Structured service log contract foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

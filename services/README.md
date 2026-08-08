@@ -62,6 +62,11 @@ Route and worker code should emit operational events through the shared
 local regression, and offers `safe_emit()` for observability writes that must not
 fail the primary request or job.
 
+Structured service logs use `service_log_entry.v1` through the shared
+`nex_runtime.service_logs` builder and validator. Slice 0136 keeps this
+contract/runtime-only: service-local log persistence and AG log search can be
+added later without changing the redaction-safe payload shape.
+
 Service workers should also report `worker_heartbeat.v1` payloads through the
 shared worker heartbeat runtime. It defines the status vocabulary, emitter,
 safe emission result, stale-threshold helper, summary shape, in-memory store,

@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/service_log_entry.v1.schema.json",
+  "title": "NeX Service Log Entry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "service_log_schema_version",
+    "log_id",
+    "service_id",
+    "severity",
+    "logger_name",
+    "message",
+    "trace_id",
+    "request_id",
+    "job_id",
+    "subject_ref",
+    "attributes",
+    "redacted_attribute_keys",
+    "observed_at"
+  ],
+  "properties": {
+    "service_log_schema_version": {
+      "const": "service_log_entry.v1"
+    },
+    "log_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "service_id": {
+      "type": "string",
+      "enum": [
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "DEBUG",
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "CRITICAL"
+      ]
+    },
+    "logger_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "trace_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "job_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "subject_ref": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "id"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "minLength": 1
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "attributes": {
+      "type": "object",
+      "propertyNames": {
+        "not": {
+          "pattern": "(api_key|authorization|credential|password|passwd|raw_prompt|raw_user_message|secret|source_text|token)"
+        }
+      },
+      "additionalProperties": true
+    },
+    "redacted_attribute_keys": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
