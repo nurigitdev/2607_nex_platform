@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0140 structured service log OpenAPI and smoke evidence.
+Status: Slice 0141 service log PostgreSQL smoke evidence.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -171,10 +171,18 @@ NEX_POSTGRES_TEST_SMOKE_SUITE_PRIMARY_SERVICE=nex-cx
 ```
 
 The suite runs readiness, migrations, common JobQueue/Event smokes, dead-letter
-replay smoke, the cross-service operations pack, CX processing PostgreSQL
-smokes, and AG cross-service observability smoke. It is skipped by default in
-the quality gate and refuses non-test profiles because it writes temporary
-smoke rows.
+replay smoke, ServiceLogStore smoke, the cross-service operations pack, CX
+processing PostgreSQL smokes, and AG cross-service observability smoke. It is
+skipped by default in the quality gate and refuses non-test profiles because it
+writes temporary smoke rows.
+
+The ServiceLogStore PostgreSQL smoke can also be run directly for one service:
+
+```text
+NEX_DB_SERVICE_LOG_SMOKE=1
+NEX_DB_SERVICE_LOG_SMOKE_SERVICE=nex-cx
+NEX_DB_SERVICE_LOG_SMOKE_PROFILE=test
+```
 
 Slice 0005 adds a mock-only OA service token path:
 

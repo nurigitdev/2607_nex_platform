@@ -25,11 +25,13 @@ The suite runs stages in this order:
 1. database readiness for selected service test DBs
 2. service migrations for selected service test DBs
 3. primary-service JobQueue PostgreSQL smoke
-4. primary-service OperationalEventStore PostgreSQL smoke
-5. cross-service DB operations smoke pack
-6. CX processing PostgreSQL JobQueue smoke
-7. CX processing PostgreSQL operational event smoke
-8. AG cross-service observability smoke
+4. primary-service dead-letter replay PostgreSQL smoke
+5. primary-service OperationalEventStore PostgreSQL smoke
+6. primary-service ServiceLogStore PostgreSQL smoke
+7. cross-service DB operations smoke pack
+8. CX processing PostgreSQL JobQueue smoke
+9. CX processing PostgreSQL operational event smoke
+10. AG cross-service observability smoke
 
 `nex-cx` is the only supported primary service for this suite because the
 downstream CX processing and AG observability smokes are CX-centered.

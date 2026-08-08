@@ -19,6 +19,7 @@ import run_postgres_job_replay_smoke as job_replay_smoke
 import run_postgres_jobqueue_smoke as jobqueue_smoke
 import run_postgres_operational_event_smoke as event_smoke
 import run_postgres_operations_smoke_pack as operations_smoke
+import run_postgres_service_log_smoke as service_log_smoke
 import run_postgres_test_smoke_suite as postgres_suite_smoke
 
 
@@ -890,6 +891,234 @@ def test_postgres_operational_event_smoke_main_prints_summary_and_full_evidence(
     assert '"status": "SKIPPED"' in capsys.readouterr().out
 
 
+def test_postgres_service_log_smoke_skips_by_default() -> None:
+    evidence = service_log_smoke.run_postgres_service_log_smoke(environ={})
+
+    assert evidence["status"] == "SKIPPED"
+    assert service_log_smoke.summary_line(evidence) == (
+        "postgres_service_log_smoke=skipped reason=NEX_DB_SERVICE_LOG_SMOKE"
+    )
+
+
+def test_postgres_service_log_smoke_rejects_non_test_profile() -> None:
+    evidence = service_log_smoke.run_postgres_service_log_smoke(
+        environ={
+            "NEX_DB_SERVICE_LOG_SMOKE": "1",
+            "NEX_DB_SERVICE_LOG_SMOKE_PROFILE": "dev",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "profile_not_allowed"
+
+
+def test_postgres_service_log_smoke_reports_pass_without_leaking_database_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration_calls: list[tuple[str, str]] = []
+
+    class FakeServiceLogStore:
+        def __init__(self, session_factory: object) -> None:
+            self.session_factory = session_factory
+            self.log: dict[str, object] | None = None
+
+        def append(self, entry: dict[str, object]) -> dict[str, object]:
+            if self.log is None:
+                self.log = dict(entry)
+            return dict(self.log)
+
+        def get_log(self, log_id: str) -> dict[str, object] | None:
+            assert self.log is not None
+            assert self.log["log_id"] == log_id
+            return dict(self.log)
+
+        def list_logs(self, **filters: object) -> list[dict[str, object]]:
+            assert filters["severity"] == "error"
+            assert filters["logger_name"] == service_log_smoke.LOGGER_NAME
+            assert self.log is not None
+            return [dict(self.log)]
+
+        def summary(self) -> dict[str, object]:
+            assert self.log is not None
+            return {
+                "by_service": {self.log["service_id"]: 1},
+                "by_severity": {"ERROR": 1},
+            }
+
+    monkeypatch.setattr(
+        service_log_smoke,
+        "service_database_env",
+        lambda service_id, profile: f"{service_id}:{profile}:env",
+    )
+    monkeypatch.setattr(
+        service_log_smoke,
+        "service_database_url",
+        lambda service_id, profile, environ: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        service_log_smoke,
+        "run_service_migrations",
+        lambda service_id, database_url, profile: migration_calls.append(
+            (service_id, profile)
+        ),
+    )
+    monkeypatch.setattr(
+        service_log_smoke,
+        "database_pool_settings",
+        lambda *args, **kwargs: object(),
+    )
+    monkeypatch.setattr(service_log_smoke, "build_engine", lambda *args, **kwargs: FakeSqlEngine())
+    monkeypatch.setattr(service_log_smoke, "build_session_factory", lambda engine: object())
+    monkeypatch.setattr(service_log_smoke, "SqlAlchemyServiceLogStore", FakeServiceLogStore)
+
+    evidence = service_log_smoke.run_postgres_service_log_smoke(
+        environ={
+            "NEX_DB_SERVICE_LOG_SMOKE": "1",
+            "NEX_DB_SERVICE_LOG_SMOKE_SERVICE": "nex-cx",
+        }
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["checks"] == {
+        "append": True,
+        "idempotency": True,
+        "readback": True,
+        "jsonb_redaction": True,
+        "redaction": True,
+        "list_filter": True,
+        "summary": True,
+    }
+    assert evidence["redacted_database_url"] == "postgresql://user:***@localhost/db"
+    assert "secret" not in str(evidence)
+    assert "Bearer private" not in str(evidence)
+    assert migration_calls == [("nex-cx", "test")]
+    assert service_log_smoke.summary_line(evidence) == (
+        "postgres_service_log_smoke=pass service=nex-cx db_env=nex-cx:test:env"
+    )
+
+
+def test_postgres_service_log_smoke_reports_check_configuration_and_execution_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MissingReadbackServiceLogStore:
+        def __init__(self, session_factory: object) -> None:
+            self.session_factory = session_factory
+
+        def append(self, entry: dict[str, object]) -> dict[str, object]:
+            return dict(entry)
+
+        def get_log(self, log_id: str) -> None:
+            return None
+
+        def list_logs(self, **filters: object) -> list[dict[str, object]]:
+            return []
+
+        def summary(self) -> dict[str, object]:
+            return {"by_service": {}, "by_severity": {}}
+
+    monkeypatch.setattr(
+        service_log_smoke,
+        "service_database_env",
+        lambda *args, **kwargs: "NEX_CX_TEST_DATABASE_URL",
+    )
+    monkeypatch.setattr(
+        service_log_smoke,
+        "service_database_url",
+        lambda *args, **kwargs: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(service_log_smoke, "run_service_migrations", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        service_log_smoke,
+        "database_pool_settings",
+        lambda *args, **kwargs: object(),
+    )
+    monkeypatch.setattr(service_log_smoke, "build_engine", lambda *args, **kwargs: FakeSqlEngine())
+    monkeypatch.setattr(service_log_smoke, "build_session_factory", lambda engine: object())
+    monkeypatch.setattr(
+        service_log_smoke,
+        "SqlAlchemyServiceLogStore",
+        MissingReadbackServiceLogStore,
+    )
+
+    checks_failure = service_log_smoke.run_postgres_service_log_smoke(
+        environ={"NEX_DB_SERVICE_LOG_SMOKE": "1"}
+    )
+
+    assert checks_failure["status"] == "FAIL"
+    assert checks_failure["failure_code"] == "checks_failed"
+    assert checks_failure["database_env"] == "NEX_CX_TEST_DATABASE_URL"
+
+    def raise_migration_error(*args: object, **kwargs: object) -> None:
+        raise service_log_smoke.MigrationError("missing database URL env")
+
+    monkeypatch.setattr(service_log_smoke, "service_database_url", raise_migration_error)
+    config_failure = service_log_smoke.run_postgres_service_log_smoke(
+        environ={"NEX_DB_SERVICE_LOG_SMOKE": "1"}
+    )
+
+    assert config_failure["status"] == "FAIL"
+    assert config_failure["failure_code"] == "configuration_invalid"
+
+    monkeypatch.setattr(
+        service_log_smoke,
+        "service_database_url",
+        lambda *args, **kwargs: "postgresql://user:secret@localhost/db",
+    )
+
+    def raise_runtime_error(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(service_log_smoke, "build_engine", raise_runtime_error)
+    execution_failure = service_log_smoke.run_postgres_service_log_smoke(
+        environ={"NEX_DB_SERVICE_LOG_SMOKE": "1"}
+    )
+
+    assert execution_failure["status"] == "FAIL"
+    assert execution_failure["failure_code"] == "execution_failed"
+    assert service_log_smoke.summary_line(execution_failure) == (
+        "postgres_service_log_smoke=fail service=nex-cx reason=execution_failed"
+    )
+
+
+def test_postgres_service_log_smoke_helpers_cover_redaction_edges() -> None:
+    assert service_log_smoke._jsonb_redaction_check(None) is False
+    assert service_log_smoke._jsonb_redaction_check({"attributes": []}) is False
+    assert (
+        service_log_smoke._jsonb_redaction_check(
+            {"attributes": {"nested": []}, "redacted_attribute_keys": []}
+        )
+        is False
+    )
+    assert (
+        service_log_smoke._redaction_safe(
+            {"attributes": {"nested": {"api_key": "secret-token-value"}}}
+        )
+        is False
+    )
+
+
+def test_postgres_service_log_smoke_main_prints_summary_and_full_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(service_log_smoke, "load_env_file", lambda path: None)
+    monkeypatch.setattr(
+        service_log_smoke,
+        "run_postgres_service_log_smoke",
+        lambda: {
+            "smoke_schema_version": "postgres_service_log_smoke.v1",
+            "status": "SKIPPED",
+            "skip_reason": "NEX_DB_SERVICE_LOG_SMOKE is not enabled.",
+        },
+    )
+
+    assert service_log_smoke.main(["--summary"]) == 0
+    assert "postgres_service_log_smoke=skipped" in capsys.readouterr().out
+
+    assert service_log_smoke.main([]) == 0
+    assert '"status": "SKIPPED"' in capsys.readouterr().out
+
+
 def test_postgres_operations_smoke_pack_skips_by_default() -> None:
     evidence = operations_smoke.run_postgres_operations_smoke_pack(environ={})
 
@@ -989,8 +1218,31 @@ def test_postgres_operations_smoke_pack_reports_pass_without_leaking_database_se
             "redacted_database_url": "postgresql://user:***@localhost/db",
         }
 
+    def fake_service_log(environ: dict[str, str]) -> dict[str, object]:
+        calls.append(
+            (
+                "service_log",
+                environ["NEX_DB_SERVICE_LOG_SMOKE_SERVICE"],
+                environ["NEX_DB_SERVICE_LOG_SMOKE_PROFILE"],
+            )
+        )
+        return {
+            "smoke_schema_version": "postgres_service_log_smoke.v1",
+            "status": "PASS",
+            "service_id": environ["NEX_DB_SERVICE_LOG_SMOKE_SERVICE"],
+            "profile": environ["NEX_DB_SERVICE_LOG_SMOKE_PROFILE"],
+            "database_env": f"{environ['NEX_DB_SERVICE_LOG_SMOKE_SERVICE']}:test:env",
+            "checks": {"append": True},
+            "redacted_database_url": "postgresql://user:***@localhost/db",
+        }
+
     monkeypatch.setattr(operations_smoke, "run_postgres_jobqueue_smoke", fake_jobqueue)
     monkeypatch.setattr(operations_smoke, "run_postgres_operational_event_smoke", fake_event)
+    monkeypatch.setattr(
+        operations_smoke,
+        "run_postgres_service_log_smoke",
+        fake_service_log,
+    )
 
     evidence = operations_smoke.run_postgres_operations_smoke_pack(
         environ={
@@ -1005,6 +1257,7 @@ def test_postgres_operations_smoke_pack_reports_pass_without_leaking_database_se
         "all_readiness": True,
         "all_jobqueue": True,
         "all_operational_events": True,
+        "all_service_logs": True,
     }
     assert "secret" not in str(evidence)
     assert operations_smoke.summary_line(evidence) == (
@@ -1013,8 +1266,10 @@ def test_postgres_operations_smoke_pack_reports_pass_without_leaking_database_se
     assert calls == [
         ("jobqueue", "nex-cx", "test"),
         ("event", "nex-cx", "test"),
+        ("service_log", "nex-cx", "test"),
         ("jobqueue", "nex-ag", "test"),
         ("event", "nex-ag", "test"),
+        ("service_log", "nex-ag", "test"),
     ]
 
 
@@ -1064,6 +1319,17 @@ def test_postgres_operations_smoke_pack_reports_readiness_and_subsmoke_failures(
             "checks": {},
         },
     )
+    monkeypatch.setattr(
+        operations_smoke,
+        "run_postgres_service_log_smoke",
+        lambda environ: {
+            "smoke_schema_version": "postgres_service_log_smoke.v1",
+            "status": "PASS",
+            "service_id": environ["NEX_DB_SERVICE_LOG_SMOKE_SERVICE"],
+            "profile": "test",
+            "checks": {},
+        },
+    )
 
     evidence = operations_smoke.run_postgres_operations_smoke_pack(
         environ={
@@ -1083,6 +1349,7 @@ def test_postgres_operations_smoke_pack_reports_readiness_and_subsmoke_failures(
         "readiness": "FAIL",
         "jobqueue": "SKIPPED",
         "operational_events": "SKIPPED",
+        "service_logs": "SKIPPED",
     }
     assert operations_smoke.summary_line(evidence) == (
         "postgres_operations_smoke_pack=fail services=2 reason=service_smoke_failed"
@@ -1113,6 +1380,23 @@ def test_postgres_operations_smoke_pack_reports_configuration_failure(
     assert evidence["status"] == "FAIL"
     assert evidence["services"][0]["failure_code"] == "configuration_invalid"
     assert evidence["services"][0]["checks"]["readiness"] == "FAIL"
+
+
+def test_postgres_operations_smoke_pack_helpers_cover_failure_edges() -> None:
+    assert operations_smoke._readiness_summary(
+        {
+            "ok": False,
+            "database_env": "NEX_CX_TEST_DATABASE_URL",
+            "error_code": "DATABASE_CONNECTION_FAILED",
+            "latency_ms": 1,
+        }
+    ) == {
+        "ok": False,
+        "database_env": "NEX_CX_TEST_DATABASE_URL",
+        "error_code": "DATABASE_CONNECTION_FAILED",
+        "latency_ms": 1,
+    }
+    assert operations_smoke._check_status({"checks": []}, "service_logs") is False
 
 
 def test_postgres_operations_smoke_pack_main_prints_summary_and_full_evidence(
@@ -1255,6 +1539,11 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
     )
     monkeypatch.setattr(
         postgres_suite_smoke,
+        "run_postgres_service_log_smoke",
+        child_pass("postgres_service_log_smoke"),
+    )
+    monkeypatch.setattr(
+        postgres_suite_smoke,
         "run_postgres_operations_smoke_pack",
         child_pass("postgres_operations_smoke_pack"),
     )
@@ -1295,13 +1584,14 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("postgres_jobqueue_smoke", "test"),
         ("postgres_job_replay_smoke", "test"),
         ("postgres_operational_event_smoke", "test"),
+        ("postgres_service_log_smoke", "test"),
         ("postgres_operations_smoke_pack", "test"),
         ("cx_processing_postgres_jobqueue_smoke", "test"),
         ("cx_processing_postgres_event_smoke", "test"),
         ("ag_cross_service_observability_smoke", "test"),
     ]
     assert postgres_suite_smoke.summary_line(evidence) == (
-        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=9"
+        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=10"
     )
 
 

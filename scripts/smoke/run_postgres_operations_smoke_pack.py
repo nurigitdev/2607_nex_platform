@@ -38,6 +38,12 @@ from run_postgres_operational_event_smoke import (  # noqa: E402
     SMOKE_SERVICE_ENV as EVENT_SERVICE_ENV,
     run_postgres_operational_event_smoke,
 )
+from run_postgres_service_log_smoke import (  # noqa: E402
+    SMOKE_ENV as SERVICE_LOG_SMOKE_ENV,
+    SMOKE_PROFILE_ENV as SERVICE_LOG_PROFILE_ENV,
+    SMOKE_SERVICE_ENV as SERVICE_LOG_SERVICE_ENV,
+    run_postgres_service_log_smoke,
+)
 
 
 SMOKE_ENV = "NEX_DB_OPERATIONS_SMOKE"
@@ -109,6 +115,9 @@ def run_postgres_operations_smoke_pack(
             "all_operational_events": all(
                 _check_status(service, "operational_events") for service in services
             ),
+            "all_service_logs": all(
+                _check_status(service, "service_logs") for service in services
+            ),
         },
     }
     if failed_services:
@@ -136,6 +145,7 @@ def _run_service_operations_smoke(
                 "readiness": "FAIL",
                 "jobqueue": "SKIPPED",
                 "operational_events": "SKIPPED",
+                "service_logs": "SKIPPED",
             },
         }
 
@@ -152,6 +162,7 @@ def _run_service_operations_smoke(
                 "readiness": "FAIL",
                 "jobqueue": "SKIPPED",
                 "operational_events": "SKIPPED",
+                "service_logs": "SKIPPED",
             },
         }
 
@@ -171,10 +182,19 @@ def _run_service_operations_smoke(
             EVENT_PROFILE_ENV: profile,
         }
     )
+    service_logs = run_postgres_service_log_smoke(
+        environ={
+            **env,
+            SERVICE_LOG_SMOKE_ENV: "1",
+            SERVICE_LOG_SERVICE_ENV: service_id,
+            SERVICE_LOG_PROFILE_ENV: profile,
+        }
+    )
     checks = {
         "readiness": "PASS",
         "jobqueue": str(jobqueue["status"]),
         "operational_events": str(operational_events["status"]),
+        "service_logs": str(service_logs["status"]),
     }
     service_status = "PASS" if all(value == "PASS" for value in checks.values()) else "FAIL"
     service: dict[str, object] = {
@@ -185,6 +205,7 @@ def _run_service_operations_smoke(
         "readiness": _readiness_summary(readiness),
         "jobqueue": _subsmoke_summary(jobqueue),
         "operational_events": _subsmoke_summary(operational_events),
+        "service_logs": _subsmoke_summary(service_logs),
         "checks": checks,
     }
     if service_status != "PASS":

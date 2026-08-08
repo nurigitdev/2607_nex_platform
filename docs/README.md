@@ -244,6 +244,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0138`](slices/0138_service_log_emitter_runtime_integration.md) | `S14-008` Service log emitter and worker runtime integration. |
 | [`Slice 0139`](slices/0139_ag_structured_service_log_projection.md) | `S14-009` AG structured service log projection and search API. |
 | [`Slice 0140`](slices/0140_service_log_openapi_smoke_evidence.md) | `S14-010` Structured service log OpenAPI and smoke evidence. |
+| [`Slice 0141`](slices/0141_service_log_postgresql_smoke_evidence.md) | `S15-001` Service log PostgreSQL smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
