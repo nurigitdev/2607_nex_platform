@@ -232,6 +232,12 @@
         "$ref": "#/$defs/source_status"
       }
     },
+    "log_source_statuses": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/source_status"
+      }
+    },
     "worker_source_statuses": {
       "type": "object",
       "additionalProperties": {
@@ -444,7 +450,8 @@
           "active_jobs",
           "degraded_sources",
           "job_source_statuses",
-          "event_source_statuses"
+          "event_source_statuses",
+          "log_source_statuses"
         ]
       }
     },
@@ -464,7 +471,8 @@
           "issue_candidates",
           "summary",
           "job_source_statuses",
-          "event_source_statuses"
+          "event_source_statuses",
+          "log_source_statuses"
         ]
       }
     },
@@ -810,7 +818,8 @@
       "additionalProperties": false,
       "required": [
         "jobs",
-        "events"
+        "events",
+        "logs"
       ],
       "properties": {
         "jobs": {
@@ -823,6 +832,12 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/operational_event"
+          }
+        },
+        "logs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/service_log"
           }
         }
       }
@@ -842,7 +857,8 @@
           "enum": [
             "readiness",
             "jobs",
-            "events"
+            "events",
+            "logs"
           ]
         },
         "service_id": {

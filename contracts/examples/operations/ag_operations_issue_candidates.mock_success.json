@@ -59,6 +59,22 @@
       "signal_type": "event_severity"
     },
     {
+      "rule_id": "error_service_logs_present.v1",
+      "severity": "ERROR",
+      "title": "Error service logs observed",
+      "description": "One or more ERROR structured service logs were observed.",
+      "enabled": true,
+      "signal_type": "service_log_severity"
+    },
+    {
+      "rule_id": "critical_service_logs_present.v1",
+      "severity": "CRITICAL",
+      "title": "Critical service logs observed",
+      "description": "One or more CRITICAL structured service logs were observed.",
+      "enabled": true,
+      "signal_type": "service_log_severity"
+    },
+    {
       "rule_id": "active_jobs_review.v1",
       "severity": "INFO",
       "title": "Active jobs need review",
@@ -163,6 +179,12 @@
     "nex-cx": {
       "status": "READY",
       "event_count": 1
+    }
+  },
+  "log_source_statuses": {
+    "nex-cx": {
+      "status": "READY",
+      "log_count": 1
     }
   }
 }

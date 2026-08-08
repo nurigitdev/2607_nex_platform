@@ -146,7 +146,8 @@
         "service_id": "nex-cx"
       }
     ],
-    "events": []
+    "events": [],
+    "logs": []
   },
   "replay_candidates": [
     {
@@ -205,6 +206,12 @@
     "nex-cx": {
       "status": "READY",
       "event_count": 1
+    }
+  },
+  "log_source_statuses": {
+    "nex-cx": {
+      "status": "READY",
+      "log_count": 1
     }
   }
 }

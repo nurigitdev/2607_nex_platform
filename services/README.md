@@ -71,6 +71,8 @@ AG can read service-local structured logs through
 `GET /admin/v1/operations/logs` and `GET /admin/v1/operations/logs/{log_id}`
 using the operations source registry. The registry wraps service log stores as
 read-only sources, so AG search/debug projections do not mutate service data.
+AG issue candidate projection also treats `ERROR` and `CRITICAL` structured
+service logs as candidate signals when a service log store is configured.
 
 Service workers should also report `worker_heartbeat.v1` payloads through the
 shared worker heartbeat runtime. It defines the status vocabulary, emitter,

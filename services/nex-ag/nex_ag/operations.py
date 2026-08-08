@@ -143,6 +143,22 @@ OPERATIONS_ISSUE_CANDIDATE_RULES = (
         "signal_type": "event_severity",
     },
     {
+        "rule_id": "error_service_logs_present.v1",
+        "severity": "ERROR",
+        "title": "Error service logs observed",
+        "description": "One or more ERROR structured service logs were observed.",
+        "enabled": True,
+        "signal_type": "service_log_severity",
+    },
+    {
+        "rule_id": "critical_service_logs_present.v1",
+        "severity": "CRITICAL",
+        "title": "Critical service logs observed",
+        "description": "One or more CRITICAL structured service logs were observed.",
+        "enabled": True,
+        "signal_type": "service_log_severity",
+    },
+    {
         "rule_id": "active_jobs_review.v1",
         "severity": "INFO",
         "title": "Active jobs need review",
@@ -1508,6 +1524,7 @@ def register_unified_operation_routes(
     *,
     job_queues: Mapping[str, JobQueue] | None = None,
     event_store: OperationalEventStore | None = None,
+    service_log_stores: Mapping[str, ServiceLogStore] | None = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -1643,6 +1660,7 @@ def register_unified_operation_routes(
         return build_operations_dashboard_snapshot_projection(
             job_queues=job_queues,
             event_store=event_store,
+            service_log_stores=service_log_stores,
             registry=registry,
             runtime=selected_runtime,
             service_id=service_id,
@@ -1691,6 +1709,7 @@ def register_unified_operation_routes(
         return build_operations_issue_candidate_projection(
             job_queues=job_queues,
             event_store=event_store,
+            service_log_stores=service_log_stores,
             worker_heartbeat_stores=worker_heartbeat_stores,
             registry=registry,
             runtime=selected_runtime,
@@ -2232,6 +2251,7 @@ def build_operations_issue_candidate_projection(
     *,
     job_queues: Mapping[str, JobQueue] | None = None,
     event_store: OperationalEventStore | None = None,
+    service_log_stores: Mapping[str, ServiceLogStore] | None = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -2248,6 +2268,7 @@ def build_operations_issue_candidate_projection(
     dashboard = build_operations_dashboard_snapshot_projection(
         job_queues=job_queues,
         event_store=event_store,
+        service_log_stores=service_log_stores,
         registry=registry,
         runtime=runtime,
         service_id=service_id,
@@ -2291,6 +2312,8 @@ def build_operations_issue_candidate_projection(
         "job_source_statuses": dashboard["job_source_statuses"],
         "event_source_statuses": dashboard["event_source_statuses"],
     }
+    if "log_source_statuses" in dashboard:
+        projection["log_source_statuses"] = dashboard["log_source_statuses"]
     if worker_projection is not None:
         projection["filters"]["stale_after_seconds"] = worker_projection["filters"][
             "stale_after_seconds"
@@ -2582,6 +2605,7 @@ def build_operations_dashboard_snapshot_projection(
     *,
     job_queues: Mapping[str, JobQueue] | None = None,
     event_store: OperationalEventStore | None = None,
+    service_log_stores: Mapping[str, ServiceLogStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
     service_id: str | None = None,
@@ -2617,6 +2641,16 @@ def build_operations_dashboard_snapshot_projection(
         if registry is not None
         else event_store or DEFAULT_OPERATIONAL_EVENT_STORE
     )
+    selected_log_stores = _service_log_stores_for_projection(
+        service_log_stores=service_log_stores,
+        registry=registry,
+    )
+    failure_logs, log_source_statuses = _dashboard_failure_log_candidates(
+        selected_log_stores,
+        service_id=service_id,
+        options=options,
+        limit=normalized_recent_limit,
+    )
     recent_failures = {
         "jobs": _dashboard_job_candidates(
             queue_stores,
@@ -2631,6 +2665,7 @@ def build_operations_dashboard_snapshot_projection(
             options=options,
             limit=normalized_recent_limit,
         ),
+        "logs": failure_logs,
     }
     replay_candidates = _dashboard_replay_candidates(recent_failures["jobs"])
     active_jobs = _dashboard_job_candidates(
@@ -2644,6 +2679,7 @@ def build_operations_dashboard_snapshot_projection(
         operation_sources=readiness_projection["sources"],
         job_source_statuses=rollup_projection["job_source_statuses"],
         event_source_statuses=rollup_projection["event_source_statuses"],
+        log_source_statuses=log_source_statuses,
     )
     projection = {
         "projection_schema_version": "ag_operations_dashboard_snapshot_projection.v1",
@@ -2665,6 +2701,7 @@ def build_operations_dashboard_snapshot_projection(
         "degraded_sources": degraded_sources,
         "job_source_statuses": rollup_projection["job_source_statuses"],
         "event_source_statuses": rollup_projection["event_source_statuses"],
+        "log_source_statuses": log_source_statuses,
     }
     if registry is not None:
         projection["source_registry"] = registry.to_summary()
@@ -3099,6 +3136,11 @@ def build_operations_issue_candidates(
     )
     candidates.extend(
         _issue_candidates_from_rollups(dashboard_snapshot["rollups"])
+    )
+    candidates.extend(
+        _issue_candidates_from_failure_logs(
+            dashboard_snapshot.get("recent_failures", {}).get("logs", [])
+        )
     )
     candidates.extend(
         _issue_candidates_from_replay_candidates(
@@ -3902,6 +3944,65 @@ def _dashboard_failure_event_candidates(
     )["items"]
 
 
+def _dashboard_failure_log_candidates(
+    log_stores: Mapping[str, ServiceLogStore],
+    *,
+    service_id: str | None,
+    options: OperationQueryOptions,
+    limit: int,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    selected_service_ids = (
+        [service_id] if service_id is not None else sorted(SERVICE_SPECS)
+    )
+    source_statuses: dict[str, dict[str, Any]] = {}
+    logs: list[dict[str, Any]] = []
+    for selected_service_id in selected_service_ids:
+        store = log_stores.get(selected_service_id)
+        if store is None:
+            source_statuses[selected_service_id] = {
+                "status": "NOT_CONFIGURED",
+                "log_count": 0,
+            }
+            continue
+        try:
+            service_logs = store.list_logs(
+                service_id=selected_service_id,
+                limit=normalize_service_log_limit(500),
+            )
+        except ServiceLogError as exc:
+            source_statuses[selected_service_id] = {
+                "status": "UNAVAILABLE",
+                "log_count": 0,
+                "error_code": exc.error_code,
+                "detail": exc.detail,
+            }
+            continue
+        failure_logs = [
+            log
+            for log in service_logs
+            if str(log.get("severity", "")).upper() in {"ERROR", "CRITICAL"}
+        ]
+        source_statuses[selected_service_id] = {
+            "status": "READY",
+            "log_count": len(service_logs),
+        }
+        logs.extend(failure_logs)
+    dashboard_options = OperationQueryOptions(
+        limit=limit,
+        since=options.since,
+        until=options.until,
+        sort="desc",
+        cursor=None,
+    )
+    page = _apply_operation_query_options(
+        logs,
+        dashboard_options,
+        timestamp_field="observed_at",
+        tie_breaker_fields=("service_id", "logger_name", "log_id"),
+    )
+    return page["items"], source_statuses
+
+
 def _dashboard_replay_candidates(
     failed_jobs: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -3941,6 +4042,7 @@ def _dashboard_degraded_sources(
     operation_sources: list[dict[str, Any]],
     job_source_statuses: Mapping[str, dict[str, Any]],
     event_source_statuses: Mapping[str, dict[str, Any]],
+    log_source_statuses: Mapping[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     degraded: list[dict[str, Any]] = []
     for source in operation_sources:
@@ -3957,10 +4059,13 @@ def _dashboard_degraded_sources(
     for source_type, statuses in (
         ("jobs", job_source_statuses),
         ("events", event_source_statuses),
+        ("logs", log_source_statuses or {}),
     ):
         for service_id, source_status in statuses.items():
             status = str(source_status["status"])
             if status == "READY":
+                continue
+            if source_type == "logs" and status == "NOT_CONFIGURED":
                 continue
             degraded_source = {
                 "source_type": source_type,
@@ -4109,6 +4214,65 @@ def _issue_candidates_from_replay_candidates(
             )
         )
     return issue_candidates
+
+
+def _issue_candidates_from_failure_logs(
+    failure_logs: object,
+) -> list[dict[str, Any]]:
+    if not isinstance(failure_logs, list):
+        return []
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for log in failure_logs:
+        if not isinstance(log, Mapping):
+            continue
+        service_id = str(log.get("service_id", ""))
+        severity = str(log.get("severity", "")).upper()
+        log_id = str(log.get("log_id", ""))
+        logger_name = str(log.get("logger_name", ""))
+        if (
+            service_id not in SERVICE_SPECS
+            or severity not in {"ERROR", "CRITICAL"}
+            or not log_id
+            or not logger_name
+        ):
+            continue
+        grouped.setdefault((service_id, severity), []).append(
+            {**dict(log), "log_id": log_id, "logger_name": logger_name}
+        )
+
+    candidates: list[dict[str, Any]] = []
+    for (service_id, severity), logs in sorted(grouped.items()):
+        rule_id = (
+            "critical_service_logs_present.v1"
+            if severity == "CRITICAL"
+            else "error_service_logs_present.v1"
+        )
+        candidates.append(
+            _operations_issue_candidate(
+                rule_id=rule_id,
+                service_id=service_id,
+                severity=severity,
+                title=(
+                    "Critical service logs observed"
+                    if severity == "CRITICAL"
+                    else "Error service logs observed"
+                ),
+                detail=(
+                    f"{len(logs)} {severity} structured service log(s) "
+                    f"observed for {service_id}."
+                ),
+                signal={
+                    "status": f"{severity}_SERVICE_LOGS",
+                    "count": len(logs),
+                    "threshold": 1,
+                    "log_ids": sorted(str(log["log_id"]) for log in logs),
+                    "logger_names": sorted(
+                        {str(log["logger_name"]) for log in logs}
+                    ),
+                },
+            )
+        )
+    return candidates
 
 
 def _issue_candidates_from_active_jobs(

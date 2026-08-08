@@ -1959,15 +1959,21 @@ def test_build_operations_dashboard_snapshot_projection_combines_sections() -> N
         }
     ]
     assert projection["recent_failures"]["events"] == []
+    assert projection["recent_failures"]["logs"] == []
     assert [job["job_id"] for job in projection["active_jobs"]] == ["job-cx-001"]
     assert projection["degraded_sources"] == []
+    assert projection["log_source_statuses"]["nex-cx"] == {
+        "status": "NOT_CONFIGURED",
+        "log_count": 0,
+    }
     assert_ag_operations_projection_contract(projection)
 
 
-def test_operations_dashboard_snapshot_reports_degraded_sources_and_failure_events() -> None:
+def test_operations_dashboard_snapshot_reports_degraded_sources_and_failure_events_and_logs() -> None:
     registry = build_operations_source_registry(
         job_queues=build_job_queues(),
         event_stores=build_event_stores(),
+        service_log_stores=build_log_stores(),
     )
 
     projection = build_operations_dashboard_snapshot_projection(
@@ -1982,6 +1988,9 @@ def test_operations_dashboard_snapshot_reports_degraded_sources_and_failure_even
     assert [job["job_id"] for job in projection["recent_failures"]["jobs"]] == [
         "job-cx-002"
     ]
+    assert [log["log_id"] for log in projection["recent_failures"]["logs"]] == [
+        "log-002"
+    ]
     assert [job["job_id"] for job in projection["active_jobs"]] == ["job-cx-001"]
     assert {
         (source["source_type"], source["service_id"], source["status"])
@@ -1995,6 +2004,18 @@ def test_operations_dashboard_snapshot_reports_degraded_sources_and_failure_even
         "READY": 2,
         "NOT_CONFIGURED": 3,
     }
+    assert projection["log_source_statuses"]["nex-cx"] == {
+        "status": "READY",
+        "log_count": 1,
+    }
+    assert projection["log_source_statuses"]["nex-mo"] == {
+        "status": "READY",
+        "log_count": 1,
+    }
+    assert projection["log_source_statuses"]["nex-oa"] == {
+        "status": "NOT_CONFIGURED",
+        "log_count": 0,
+    }
     assert_ag_operations_projection_contract(projection)
 
 
@@ -2002,6 +2023,7 @@ def test_operations_dashboard_snapshot_handles_unavailable_candidate_sources() -
     projection = build_operations_dashboard_snapshot_projection(
         job_queues={"nex-cx": BrokenJobQueue()},
         event_store=BrokenOperationalEventStore(),
+        service_log_stores={"nex-cx": BrokenServiceLogStore()},
         service_id="nex-cx",
         recent_limit=999,
     )
@@ -2011,6 +2033,7 @@ def test_operations_dashboard_snapshot_handles_unavailable_candidate_sources() -
     assert projection["recent_failures"] == {
         "jobs": [],
         "events": [],
+        "logs": [],
     }
     assert projection["replay_candidates"] == []
     assert projection["active_jobs"] == []
@@ -2020,8 +2043,15 @@ def test_operations_dashboard_snapshot_handles_unavailable_candidate_sources() -
     } == {
         ("jobs", "nex-cx", "UNAVAILABLE"),
         ("events", "nex-cx", "UNAVAILABLE"),
+        ("logs", "nex-cx", "UNAVAILABLE"),
     }
     assert projection["degraded_sources"][0]["error_code"] == "job.store_unavailable"
+    assert projection["log_source_statuses"]["nex-cx"] == {
+        "status": "UNAVAILABLE",
+        "log_count": 0,
+        "error_code": "service_log.store_unavailable",
+        "detail": "service log store is unavailable",
+    }
     assert_ag_operations_projection_contract(projection)
 
 
@@ -2139,6 +2169,8 @@ def test_build_operations_issue_candidate_projection_flags_service_scope() -> No
         "dead_letter_replay_available.v1",
         "error_events_present.v1",
         "critical_events_present.v1",
+        "error_service_logs_present.v1",
+        "critical_service_logs_present.v1",
         "active_jobs_review.v1",
         "stale_worker_heartbeat.v1",
         "active_job_without_fresh_worker.v1",
@@ -2182,6 +2214,109 @@ def test_build_operations_issue_candidate_projection_flags_service_scope() -> No
             "active_jobs_review.v1": 1,
         },
     }
+    assert projection["log_source_statuses"]["nex-cx"] == {
+        "status": "NOT_CONFIGURED",
+        "log_count": 0,
+    }
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_issue_candidate_projection_flags_error_and_critical_service_logs() -> None:
+    log_store = InMemoryServiceLogStore()
+    log_store.append(
+        build_service_log_entry(
+            log_id="log-cx-error-001",
+            service_id="nex-cx",
+            severity="ERROR",
+            logger_name="nex_cx.extractor",
+            message="Document extraction failed.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            job_id="job-cx-error-001",
+            subject_ref={"type": "cx.document", "id": "doc-error-001"},
+            attributes={"password": "private", "stage": "extract"},
+            observed_at="2026-08-05T00:00:02Z",
+        )
+    )
+    log_store.append(
+        build_service_log_entry(
+            log_id="log-cx-critical-001",
+            service_id="nex-cx",
+            severity="CRITICAL",
+            logger_name="nex_cx.chunker",
+            message="Chunk persistence is unavailable.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            job_id="job-cx-critical-001",
+            subject_ref={"type": "cx.document", "id": "doc-critical-001"},
+            attributes={"stage": "chunk"},
+            observed_at="2026-08-05T00:00:03Z",
+        )
+    )
+    log_store.append(
+        build_service_log_entry(
+            log_id="log-cx-info-001",
+            service_id="nex-cx",
+            severity="INFO",
+            logger_name="nex_cx.extractor",
+            message="Document extraction started.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            subject_ref={"type": "cx.document", "id": "doc-info-001"},
+            attributes={"stage": "extract"},
+            observed_at="2026-08-05T00:00:01Z",
+        )
+    )
+    registry = build_operations_source_registry(
+        job_queues={"nex-cx": InMemoryJobQueue()},
+        event_stores={"nex-cx": InMemoryOperationalEventStore()},
+        service_log_stores={"nex-cx": log_store},
+    )
+
+    projection = build_operations_issue_candidate_projection(
+        registry=registry,
+        service_id="nex-cx",
+        recent_limit=5,
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_status"] == "READY"
+    assert projection["log_source_statuses"]["nex-cx"] == {
+        "status": "READY",
+        "log_count": 3,
+    }
+    assert [
+        (candidate["rule_id"], candidate["severity"], candidate["signal"])
+        for candidate in projection["issue_candidates"]
+    ] == [
+        (
+            "critical_service_logs_present.v1",
+            "CRITICAL",
+            {
+                "status": "CRITICAL_SERVICE_LOGS",
+                "count": 1,
+                "threshold": 1,
+                "log_ids": ["log-cx-critical-001"],
+                "logger_names": ["nex_cx.chunker"],
+            },
+        ),
+        (
+            "error_service_logs_present.v1",
+            "ERROR",
+            {
+                "status": "ERROR_SERVICE_LOGS",
+                "count": 1,
+                "threshold": 1,
+                "log_ids": ["log-cx-error-001"],
+                "logger_names": ["nex_cx.extractor"],
+            },
+        ),
+    ]
+    assert projection["summary"]["by_rule"] == {
+        "critical_service_logs_present.v1": 1,
+        "error_service_logs_present.v1": 1,
+    }
+    assert "private" not in json.dumps(projection)
     assert_ag_operations_projection_contract(projection)
 
 
@@ -2273,7 +2408,7 @@ def test_operations_issue_candidate_projection_flags_worker_reconciliation() -> 
     assert_ag_operations_projection_contract(projection)
 
 
-def test_operations_issue_candidates_ignore_malformed_replay_candidate_inputs() -> None:
+def test_operations_issue_candidates_ignore_malformed_candidate_inputs() -> None:
     base_dashboard = {
         "degraded_sources": [],
         "rollups": [],
@@ -2282,6 +2417,13 @@ def test_operations_issue_candidates_ignore_malformed_replay_candidate_inputs() 
 
     assert build_operations_issue_candidates(
         {**base_dashboard, "replay_candidates": "not-a-list"}
+    ) == []
+    assert build_operations_issue_candidates(
+        {
+            **base_dashboard,
+            "recent_failures": {"logs": "not-a-list"},
+            "replay_candidates": [],
+        }
     ) == []
 
     candidates = build_operations_issue_candidates(
@@ -2302,6 +2444,31 @@ def test_operations_issue_candidates_ignore_malformed_replay_candidate_inputs() 
     assert len(candidates) == 1
     assert candidates[0]["rule_id"] == "dead_letter_replay_available.v1"
     assert candidates[0]["signal"]["job_ids"] == ["job-cx-002"]
+
+    log_candidates = build_operations_issue_candidates(
+        {
+            **base_dashboard,
+            "recent_failures": {
+                "logs": [
+                    "not-a-mapping",
+                    {"service_id": "nex-unknown", "severity": "ERROR"},
+                    {"service_id": "nex-cx", "severity": "ERROR"},
+                    {"service_id": "nex-cx", "severity": "INFO"},
+                    {
+                        "service_id": "nex-cx",
+                        "severity": "ERROR",
+                        "log_id": "log-cx-error-001",
+                        "logger_name": "nex_cx.extractor",
+                    },
+                ]
+            },
+            "replay_candidates": [],
+        }
+    )
+
+    assert len(log_candidates) == 1
+    assert log_candidates[0]["rule_id"] == "error_service_logs_present.v1"
+    assert log_candidates[0]["signal"]["log_ids"] == ["log-cx-error-001"]
 
 
 def test_operations_issue_candidate_projection_suppresses_worker_gap_when_worker_is_fresh() -> None:
