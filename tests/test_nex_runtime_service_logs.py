@@ -112,6 +112,33 @@ def sqlite_log_store() -> SqlAlchemyServiceLogStore:
                 """
             )
         )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE service_log_retention_history (
+                    execution_id TEXT PRIMARY KEY,
+                    retention_history_schema_version TEXT NOT NULL DEFAULT 'service_log_retention_history_entry.v1',
+                    service_id TEXT NOT NULL,
+                    mode TEXT NOT NULL,
+                    execution_status TEXT NOT NULL,
+                    delete_enabled INTEGER NOT NULL DEFAULT 0,
+                    retention_days INTEGER NOT NULL,
+                    retention_cutoff TEXT NOT NULL,
+                    checked_at TEXT NOT NULL,
+                    recorded_at TEXT NOT NULL,
+                    candidate_count INTEGER NOT NULL,
+                    deleted_count INTEGER NOT NULL,
+                    requested_by TEXT NOT NULL DEFAULT '{}',
+                    idempotency_key TEXT,
+                    trace_id TEXT,
+                    request_id TEXT,
+                    blocked_reason TEXT,
+                    error TEXT,
+                    execution TEXT NOT NULL
+                )
+                """
+            )
+        )
     return SqlAlchemyServiceLogStore(build_session_factory(engine))
 
 
@@ -946,6 +973,19 @@ def test_in_memory_service_log_store_purges_retention_candidates_with_guardrails
     assert store.get_log("log-old-002") is not None
     assert store.get_log("log-fresh") is not None
     assert store.get_log("log-mo-old") is not None
+    history = store.list_retention_history(service_id="nex-cx", limit=10)
+    assert [entry["execution_status"] for entry in history] == [
+        "SUCCEEDED",
+        "BLOCKED",
+        "SUCCEEDED",
+    ]
+    assert store.get_retention_history(executed["execution_id"]) is not None
+    assert store.list_retention_history(mode="execute", execution_status="succeeded")[
+        0
+    ]["idempotency_key"] == "execute-once"
+    assert store.list_retention_history(trace_id=TRACE_ID)[0]["request_id"] == REQUEST_ID
+    duplicate = store.record_retention_history(executed, recorded_at="2099-01-01T00:00:00Z")
+    assert duplicate["recorded_at"] != "2099-01-01T00:00:00Z"
 
 
 def test_in_memory_service_log_store_rejects_bad_retention_purge_inputs() -> None:
@@ -1021,6 +1061,72 @@ def test_service_log_retention_route_requires_claim_and_runs_dry_run() -> None:
     assert payload["request_id"] == REQUEST_ID
     assert payload["trace_id"] == TRACE_ID
     assert store.get_log("log-old") is not None
+    history = store.list_retention_history(service_id="nex-cx")
+    assert len(history) == 1
+    assert history[0]["execution_id"] == payload["execution_id"]
+
+
+def test_service_log_retention_history_routes_list_and_get_records() -> None:
+    store = InMemoryServiceLogStore()
+    store.append(sample_log(log_id="history-log-old", observed_at="2026-06-01T00:00:00Z"))
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    register_service_log_retention_routes(app, service_id="nex-cx", store=store)
+    client = TestClient(app)
+    purge = client.post(
+        "/internal/v1/service-logs/retention/purge",
+        json={
+            "retention_cutoff": "2026-07-06T00:00:00Z",
+            "checked_at": "2026-08-05T00:00:00Z",
+            "idempotency_key": "history-dry-run-001",
+        },
+        headers={
+            **auth_headers(),
+            "X-Request-ID": REQUEST_ID,
+            "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+        },
+    )
+    execution_id = purge.json()["execution_id"]
+
+    listed = client.get(
+        "/internal/v1/service-logs/retention/history",
+        params={
+            "mode": "dry_run",
+            "execution_status": "succeeded",
+            "trace_id": TRACE_ID,
+            "idempotency_key": "history-dry-run-001",
+        },
+        headers=auth_headers(),
+    )
+    detail = client.get(
+        f"/internal/v1/service-logs/retention/history/{execution_id}",
+        headers=auth_headers(),
+    )
+    missing = client.get(
+        "/internal/v1/service-logs/retention/history/missing",
+        headers=auth_headers(),
+    )
+    bad_mode = client.get(
+        "/internal/v1/service-logs/retention/history",
+        params={"mode": "delete"},
+        headers=auth_headers(),
+    )
+    missing_auth = client.get("/internal/v1/service-logs/retention/history")
+
+    assert listed.status_code == 200
+    payload = listed.json()
+    assert payload["retention_history_list_schema_version"] == (
+        "service_log_retention_history_list.v1"
+    )
+    assert payload["summary"]["total"] == 1
+    assert payload["summary"]["by_mode"]["DRY_RUN"] == 1
+    assert payload["items"][0]["execution_id"] == execution_id
+    assert payload["filters"]["mode"] == "DRY_RUN"
+    assert detail.status_code == 200
+    assert detail.json()["execution_id"] == execution_id
+    assert missing.status_code == 404
+    assert bad_mode.status_code == 422
+    assert bad_mode.json()["error_code"] == "service_log_retention_history.mode_invalid"
+    assert missing_auth.status_code == 401
 
 
 def test_service_log_retention_route_blocks_or_executes_with_explicit_enable() -> None:
@@ -1263,6 +1369,19 @@ def test_sqlalchemy_service_log_store_purges_retention_candidates_with_guardrail
     assert store.get_log("sql-log-old-002") is not None
     assert store.get_log("sql-log-fresh") is not None
     assert store.get_log("sql-log-mo-old") is not None
+    history = store.list_retention_history(service_id="nex-cx", limit=10)
+    assert [entry["execution_status"] for entry in history] == [
+        "SUCCEEDED",
+        "BLOCKED",
+        "SUCCEEDED",
+    ]
+    assert store.get_retention_history(executed["execution_id"]) is not None
+    assert store.list_retention_history(mode="execute", execution_status="succeeded")[
+        0
+    ]["execution_id"] == executed["execution_id"]
+    assert store.record_retention_history(executed)["execution_id"] == (
+        executed["execution_id"]
+    )
 
 
 def test_service_log_store_helpers_cover_backend_edges() -> None:
@@ -1342,10 +1461,24 @@ def test_sqlalchemy_service_log_store_reports_store_unavailable() -> None:
             service_id="nex-cx",
             retention_cutoff="2026-07-06T00:00:00Z",
         )
+    with pytest.raises(ServiceLogError) as get_history_exc:
+        store.get_retention_history("execution-001")
+    with pytest.raises(ServiceLogError) as list_history_exc:
+        store.list_retention_history()
+    with pytest.raises(ServiceLogError) as record_history_exc:
+        store.record_retention_history(
+            build_service_log_retention_execution(
+                service_id="nex-cx",
+                retention_cutoff="2026-07-06T00:00:00Z",
+            )
+        )
 
     assert exc_info.value.error_code == "service_log.store_unavailable"
     assert list_exc.value.error_code == "service_log.store_unavailable"
     assert purge_exc.value.error_code == "service_log.store_unavailable"
+    assert get_history_exc.value.error_code == "service_log.store_unavailable"
+    assert list_history_exc.value.error_code == "service_log.store_unavailable"
+    assert record_history_exc.value.error_code == "service_log.store_unavailable"
 
 
 def test_sqlalchemy_service_log_store_rolls_back_failed_transaction() -> None:

@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import Any, Callable, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
-from fastapi import Body, FastAPI, Header, Request
+from fastapi import Body, FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -28,6 +28,9 @@ REDACTED_LOG_VALUE = "<redacted>"
 SERVICE_LOG_RETENTION_EXECUTION_SCHEMA_VERSION = "service_log_retention_execution.v1"
 SERVICE_LOG_RETENTION_HISTORY_ENTRY_SCHEMA_VERSION = (
     "service_log_retention_history_entry.v1"
+)
+SERVICE_LOG_RETENTION_HISTORY_LIST_SCHEMA_VERSION = (
+    "service_log_retention_history_list.v1"
 )
 SERVICE_LOG_RETENTION_EXECUTION_MODES = ("DRY_RUN", "EXECUTE")
 SERVICE_LOG_RETENTION_EXECUTION_STATUSES = (
@@ -106,6 +109,30 @@ class ServiceLogStore(Protocol):
         trace_id: str | None = None,
         request_id: str | None = None,
     ) -> dict[str, Any]:
+        ...
+
+    def record_retention_history(
+        self,
+        execution: dict[str, Any],
+        *,
+        recorded_at: str | None = None,
+    ) -> dict[str, Any]:
+        ...
+
+    def get_retention_history(self, execution_id: str) -> dict[str, Any] | None:
+        ...
+
+    def list_retention_history(
+        self,
+        *,
+        service_id: str | None = None,
+        mode: str | None = None,
+        execution_status: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        idempotency_key: str | None = None,
+        limit: int = DEFAULT_SERVICE_LOG_RETENTION_HISTORY_LIMIT,
+    ) -> list[dict[str, Any]]:
         ...
 
 
@@ -653,6 +680,67 @@ def validate_service_log_retention_history_entry(
     return entry
 
 
+def summarize_service_log_retention_history(
+    entries: list[dict[str, Any]],
+) -> dict[str, Any]:
+    by_mode = {mode: 0 for mode in SERVICE_LOG_RETENTION_EXECUTION_MODES}
+    by_status = {
+        status: 0 for status in SERVICE_LOG_RETENTION_EXECUTION_STATUSES
+    }
+    service_counts: dict[str, int] = {}
+    candidate_count = 0
+    deleted_count = 0
+    last_recorded_at: str | None = None
+    for entry in entries:
+        mode = str(entry.get("mode", ""))
+        status = str(entry.get("execution_status", ""))
+        if mode in by_mode:
+            by_mode[mode] += 1
+        if status in by_status:
+            by_status[status] += 1
+        service_id = str(entry.get("service_id", "unknown"))
+        service_counts[service_id] = service_counts.get(service_id, 0) + 1
+        candidate_count += int(entry.get("candidate_count", 0))
+        deleted_count += int(entry.get("deleted_count", 0))
+        recorded_at = entry.get("recorded_at")
+        if isinstance(recorded_at, str) and (
+            last_recorded_at is None or recorded_at > last_recorded_at
+        ):
+            last_recorded_at = recorded_at
+    return {
+        "total": len(entries),
+        "by_mode": by_mode,
+        "by_status": by_status,
+        "by_service": service_counts,
+        "candidate_count": candidate_count,
+        "deleted_count": deleted_count,
+        "last_recorded_at": last_recorded_at,
+    }
+
+
+def build_service_log_retention_history_list(
+    *,
+    service_id: str,
+    entries: list[dict[str, Any]],
+    filters: dict[str, Any] | None = None,
+    limit: int = DEFAULT_SERVICE_LOG_RETENTION_HISTORY_LIMIT,
+) -> dict[str, Any]:
+    normalized_entries = [
+        deepcopy(validate_service_log_retention_history_entry(entry))
+        for entry in entries
+    ]
+    return {
+        "retention_history_list_schema_version": (
+            SERVICE_LOG_RETENTION_HISTORY_LIST_SCHEMA_VERSION
+        ),
+        "service_id": service_id,
+        "filters": deepcopy(filters) if filters else {},
+        "limit": normalize_service_log_retention_history_limit(limit),
+        "items": normalized_entries,
+        "summary": summarize_service_log_retention_history(normalized_entries),
+    }
+
+
 def validate_service_log_retention_execution(
     execution: dict[str, Any],
 ) -> dict[str, Any]:
@@ -778,6 +866,7 @@ def validate_service_log_retention_execution(
 @dataclass
 class InMemoryServiceLogStore:
     entries: dict[str, dict[str, Any]] = field(default_factory=dict)
+    retention_history: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def append(self, entry: dict[str, Any]) -> dict[str, Any]:
         normalized = deepcopy(validate_service_log_entry(entry))
@@ -864,7 +953,7 @@ class InMemoryServiceLogStore:
         )
         selected = candidates[: normalized["max_delete_count"]]
         if dry_run:
-            return build_service_log_retention_execution(
+            execution = build_service_log_retention_execution(
                 service_id=normalized["service_id"],
                 mode="DRY_RUN",
                 execution_status="SUCCEEDED",
@@ -880,8 +969,10 @@ class InMemoryServiceLogStore:
                 trace_id=trace_id,
                 request_id=request_id,
             )
+            self.record_retention_history(execution)
+            return execution
         if not delete_enabled:
-            return build_service_log_retention_execution(
+            execution = build_service_log_retention_execution(
                 service_id=normalized["service_id"],
                 mode="EXECUTE",
                 execution_status="BLOCKED",
@@ -898,9 +989,11 @@ class InMemoryServiceLogStore:
                 request_id=request_id,
                 blocked_reason="delete_not_enabled",
             )
+            self.record_retention_history(execution)
+            return execution
         for entry in selected:
             self.entries.pop(str(entry["log_id"]), None)
-        return build_service_log_retention_execution(
+        execution = build_service_log_retention_execution(
             service_id=normalized["service_id"],
             mode="EXECUTE",
             execution_status="SUCCEEDED",
@@ -916,6 +1009,66 @@ class InMemoryServiceLogStore:
             trace_id=trace_id,
             request_id=request_id,
         )
+        self.record_retention_history(execution)
+        return execution
+
+    def record_retention_history(
+        self,
+        execution: dict[str, Any],
+        *,
+        recorded_at: str | None = None,
+    ) -> dict[str, Any]:
+        entry = build_service_log_retention_history_entry(
+            execution,
+            recorded_at=recorded_at,
+        )
+        execution_id = str(entry["execution_id"])
+        if execution_id not in self.retention_history:
+            self.retention_history[execution_id] = deepcopy(entry)
+        return deepcopy(self.retention_history[execution_id])
+
+    def get_retention_history(self, execution_id: str) -> dict[str, Any] | None:
+        _required_string(execution_id, "execution_id")
+        entry = self.retention_history.get(execution_id)
+        return deepcopy(entry) if entry is not None else None
+
+    def list_retention_history(
+        self,
+        *,
+        service_id: str | None = None,
+        mode: str | None = None,
+        execution_status: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        idempotency_key: str | None = None,
+        limit: int = DEFAULT_SERVICE_LOG_RETENTION_HISTORY_LIMIT,
+    ) -> list[dict[str, Any]]:
+        normalized_mode = mode.upper() if mode is not None else None
+        normalized_status = (
+            execution_status.upper() if execution_status is not None else None
+        )
+        normalized_limit = normalize_service_log_retention_history_limit(limit)
+        history = [
+            deepcopy(entry)
+            for entry in self.retention_history.values()
+            if (service_id is None or entry["service_id"] == service_id)
+            and (normalized_mode is None or entry["mode"] == normalized_mode)
+            and (
+                normalized_status is None
+                or entry["execution_status"] == normalized_status
+            )
+            and (trace_id is None or entry.get("trace_id") == trace_id)
+            and (request_id is None or entry.get("request_id") == request_id)
+            and (
+                idempotency_key is None
+                or entry.get("idempotency_key") == idempotency_key
+            )
+        ]
+        history.sort(
+            key=lambda entry: (entry["recorded_at"], entry["execution_id"]),
+            reverse=True,
+        )
+        return history[:normalized_limit]
 
 
 class SqlAlchemyServiceLogStore:
@@ -1038,6 +1191,83 @@ class SqlAlchemyServiceLogStore:
         except SQLAlchemyError as exc:
             raise _service_log_store_unavailable() from exc
 
+    def record_retention_history(
+        self,
+        execution: dict[str, Any],
+        *,
+        recorded_at: str | None = None,
+    ) -> dict[str, Any]:
+        entry = build_service_log_retention_history_entry(
+            execution,
+            recorded_at=recorded_at,
+        )
+        try:
+            return self._run_in_transaction(
+                lambda session: self._insert_retention_history(session, entry)
+            )
+        except IntegrityError as exc:
+            existing = self.get_retention_history(str(entry["execution_id"]))
+            if existing is not None:
+                return existing
+            raise _service_log_store_unavailable() from exc
+        except SQLAlchemyError as exc:
+            raise _service_log_store_unavailable() from exc
+
+    def get_retention_history(self, execution_id: str) -> dict[str, Any] | None:
+        _required_string(execution_id, "execution_id")
+        try:
+            with self._session_factory() as session:
+                return self._select_retention_history(session, execution_id)
+        except SQLAlchemyError as exc:
+            raise _service_log_store_unavailable() from exc
+
+    def list_retention_history(
+        self,
+        *,
+        service_id: str | None = None,
+        mode: str | None = None,
+        execution_status: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        idempotency_key: str | None = None,
+        limit: int = DEFAULT_SERVICE_LOG_RETENTION_HISTORY_LIMIT,
+    ) -> list[dict[str, Any]]:
+        normalized_limit = normalize_service_log_retention_history_limit(limit)
+        filters = {
+            "service_id": service_id,
+            "mode": mode.upper() if mode is not None else None,
+            "execution_status": (
+                execution_status.upper() if execution_status is not None else None
+            ),
+            "trace_id": trace_id,
+            "request_id": request_id,
+            "idempotency_key": idempotency_key,
+        }
+        where_clauses: list[str] = []
+        params: dict[str, Any] = {"limit": normalized_limit}
+        for field_name, value in filters.items():
+            if value is not None:
+                where_clauses.append(f"{field_name} = :{field_name}")
+                params[field_name] = value
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(
+                    text(
+                        f"""
+                        SELECT {_RETENTION_HISTORY_SELECT_COLUMNS}
+                        FROM service_log_retention_history
+                        {where_sql}
+                        ORDER BY recorded_at DESC, execution_id DESC
+                        LIMIT :limit
+                        """
+                    ),
+                    params,
+                ).mappings()
+                return [_retention_history_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _service_log_store_unavailable() from exc
+
     def _run_in_transaction(self, operation: Callable[[Session], Any]) -> Any:
         session = self._session_factory()
         try:
@@ -1153,7 +1383,7 @@ class SqlAlchemyServiceLogStore:
             ).scalar_one()
         )
         if dry_run:
-            return build_service_log_retention_execution(
+            execution = build_service_log_retention_execution(
                 service_id=service_id,
                 mode="DRY_RUN",
                 execution_status="SUCCEEDED",
@@ -1169,8 +1399,13 @@ class SqlAlchemyServiceLogStore:
                 trace_id=trace_id,
                 request_id=request_id,
             )
+            self._insert_retention_history(
+                session,
+                build_service_log_retention_history_entry(execution),
+            )
+            return execution
         if not delete_enabled:
-            return build_service_log_retention_execution(
+            execution = build_service_log_retention_execution(
                 service_id=service_id,
                 mode="EXECUTE",
                 execution_status="BLOCKED",
@@ -1187,6 +1422,11 @@ class SqlAlchemyServiceLogStore:
                 request_id=request_id,
                 blocked_reason="delete_not_enabled",
             )
+            self._insert_retention_history(
+                session,
+                build_service_log_retention_history_entry(execution),
+            )
+            return execution
         rows = session.execute(
             text(
                 """
@@ -1210,7 +1450,7 @@ class SqlAlchemyServiceLogStore:
                 text("DELETE FROM service_log_entries WHERE log_id = :log_id"),
                 {"log_id": log_id},
             )
-        return build_service_log_retention_execution(
+        execution = build_service_log_retention_execution(
             service_id=service_id,
             mode="EXECUTE",
             execution_status="SUCCEEDED",
@@ -1226,6 +1466,92 @@ class SqlAlchemyServiceLogStore:
             trace_id=trace_id,
             request_id=request_id,
         )
+        self._insert_retention_history(
+            session,
+            build_service_log_retention_history_entry(execution),
+        )
+        return execution
+
+    def _insert_retention_history(
+        self,
+        session: Session,
+        entry: dict[str, Any],
+    ) -> dict[str, Any]:
+        existing = self._select_retention_history(session, str(entry["execution_id"]))
+        if existing is not None:
+            return existing
+        requested_by_expression = _json_sql_expression(session, "requested_by")
+        error_expression = _json_sql_expression(session, "error")
+        execution_expression = _json_sql_expression(session, "execution")
+        session.execute(
+            text(
+                f"""
+                INSERT INTO service_log_retention_history (
+                    execution_id,
+                    retention_history_schema_version,
+                    service_id,
+                    mode,
+                    execution_status,
+                    delete_enabled,
+                    retention_days,
+                    retention_cutoff,
+                    checked_at,
+                    recorded_at,
+                    candidate_count,
+                    deleted_count,
+                    requested_by,
+                    idempotency_key,
+                    trace_id,
+                    request_id,
+                    blocked_reason,
+                    error,
+                    execution
+                )
+                VALUES (
+                    :execution_id,
+                    :retention_history_schema_version,
+                    :service_id,
+                    :mode,
+                    :execution_status,
+                    :delete_enabled,
+                    :retention_days,
+                    :retention_cutoff,
+                    :checked_at,
+                    :recorded_at,
+                    :candidate_count,
+                    :deleted_count,
+                    {requested_by_expression},
+                    :idempotency_key,
+                    :trace_id,
+                    :request_id,
+                    :blocked_reason,
+                    {error_expression},
+                    {execution_expression}
+                )
+                """
+            ),
+            _retention_history_insert_params(entry),
+        )
+        stored = self._select_retention_history(session, str(entry["execution_id"]))
+        assert stored is not None
+        return stored
+
+    def _select_retention_history(
+        self,
+        session: Session,
+        execution_id: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_RETENTION_HISTORY_SELECT_COLUMNS}
+                FROM service_log_retention_history
+                WHERE execution_id = :execution_id
+                """
+            ),
+            {"execution_id": execution_id},
+        ).mappings().first()
+        return _retention_history_from_row(row) if row is not None else None
 
 
 def service_log_store_from_app(app: Any) -> ServiceLogStore:
@@ -1335,6 +1661,88 @@ def register_service_log_retention_routes(
             )
         except ServiceLogError as exc:
             return _service_log_retention_problem_response(request, exc)
+
+    @app.get("/internal/v1/service-logs/retention/history", response_model=None)
+    def list_retention_history(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        mode: str | None = None,
+        execution_status: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        idempotency_key: str | None = None,
+        limit: int = Query(
+            default=DEFAULT_SERVICE_LOG_RETENTION_HISTORY_LIMIT,
+            ge=1,
+        ),
+    ) -> dict[str, Any] | JSONResponse:
+        auth_problem = _authorize_service_log_retention_request(
+            request,
+            authorization,
+            expected_audience=audience,
+        )
+        if auth_problem is not None:
+            return auth_problem
+        try:
+            target_store = store or service_log_store_from_app(request.app)
+            normalized_mode = _retention_history_optional_mode(mode)
+            normalized_status = _retention_history_optional_status(execution_status)
+            normalized_limit = normalize_service_log_retention_history_limit(limit)
+            entries = target_store.list_retention_history(
+                service_id=service_id,
+                mode=normalized_mode,
+                execution_status=normalized_status,
+                trace_id=trace_id,
+                request_id=request_id,
+                idempotency_key=idempotency_key,
+                limit=normalized_limit,
+            )
+            return build_service_log_retention_history_list(
+                service_id=service_id,
+                entries=entries,
+                filters={
+                    "mode": normalized_mode,
+                    "execution_status": normalized_status,
+                    "trace_id": trace_id,
+                    "request_id": request_id,
+                    "idempotency_key": idempotency_key,
+                },
+                limit=normalized_limit,
+            )
+        except ServiceLogError as exc:
+            return _service_log_retention_problem_response(request, exc)
+
+    @app.get("/internal/v1/service-logs/retention/history/{execution_id}", response_model=None)
+    def get_retention_history(
+        execution_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any] | JSONResponse:
+        auth_problem = _authorize_service_log_retention_request(
+            request,
+            authorization,
+            expected_audience=audience,
+        )
+        if auth_problem is not None:
+            return auth_problem
+        try:
+            target_store = store or service_log_store_from_app(request.app)
+            entry = target_store.get_retention_history(execution_id)
+        except ServiceLogError as exc:
+            return _service_log_retention_problem_response(request, exc)
+        if entry is None or entry["service_id"] != service_id:
+            return problem_response(
+                request,
+                status_code=404,
+                error_code="service_log_retention_history.not_found",
+                title="Service log retention history not found",
+                detail=f"Service log retention history was not found: {execution_id}",
+                type_uri=(
+                    "https://nex-platform.local/problems/"
+                    "service-log-retention-history-not-found"
+                ),
+            )
+        return entry
 
 
 def _redact_nested_log_attribute(
@@ -1624,6 +2032,32 @@ def _retention_payload_optional_object(
     return deepcopy(value)
 
 
+def _retention_history_optional_mode(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.upper()
+    if normalized not in SERVICE_LOG_RETENTION_EXECUTION_MODES:
+        raise ServiceLogError(
+            error_code="service_log_retention_history.mode_invalid",
+            detail="mode must be DRY_RUN or EXECUTE.",
+            status_code=422,
+        )
+    return normalized
+
+
+def _retention_history_optional_status(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.upper()
+    if normalized not in SERVICE_LOG_RETENTION_EXECUTION_STATUSES:
+        raise ServiceLogError(
+            error_code="service_log_retention_history.status_invalid",
+            detail="execution_status is not supported.",
+            status_code=422,
+        )
+    return normalized
+
+
 def _service_log_retention_problem_response(
     request: Request,
     exc: ServiceLogError,
@@ -1806,6 +2240,83 @@ def _log_from_row(row: Any) -> dict[str, Any]:
                 default=[],
             ),
             "observed_at": _timestamp_to_wire(row["observed_at"]),
+        }
+    )
+
+
+_RETENTION_HISTORY_SELECT_COLUMNS = """
+    execution_id,
+    retention_history_schema_version,
+    service_id,
+    mode,
+    execution_status,
+    delete_enabled,
+    retention_days,
+    retention_cutoff,
+    checked_at,
+    recorded_at,
+    candidate_count,
+    deleted_count,
+    requested_by,
+    idempotency_key,
+    trace_id,
+    request_id,
+    blocked_reason,
+    error,
+    execution
+"""
+
+
+def _retention_history_insert_params(entry: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "execution_id": entry["execution_id"],
+        "retention_history_schema_version": entry[
+            "retention_history_schema_version"
+        ],
+        "service_id": entry["service_id"],
+        "mode": entry["mode"],
+        "execution_status": entry["execution_status"],
+        "delete_enabled": entry["delete_enabled"],
+        "retention_days": entry["retention_days"],
+        "retention_cutoff": entry["retention_cutoff"],
+        "checked_at": entry["checked_at"],
+        "recorded_at": entry["recorded_at"],
+        "candidate_count": entry["candidate_count"],
+        "deleted_count": entry["deleted_count"],
+        "requested_by": _json_dumps(entry["requested_by"]),
+        "idempotency_key": entry["idempotency_key"],
+        "trace_id": entry["trace_id"],
+        "request_id": entry["request_id"],
+        "blocked_reason": entry["blocked_reason"],
+        "error": _json_dumps(entry["error"]),
+        "execution": _json_dumps(entry["execution"]),
+    }
+
+
+def _retention_history_from_row(row: Any) -> dict[str, Any]:
+    return validate_service_log_retention_history_entry(
+        {
+            "retention_history_schema_version": row[
+                "retention_history_schema_version"
+            ],
+            "execution_id": row["execution_id"],
+            "service_id": row["service_id"],
+            "mode": row["mode"],
+            "execution_status": row["execution_status"],
+            "delete_enabled": bool(row["delete_enabled"]),
+            "retention_days": row["retention_days"],
+            "retention_cutoff": _timestamp_to_wire(row["retention_cutoff"]),
+            "checked_at": _timestamp_to_wire(row["checked_at"]),
+            "recorded_at": _timestamp_to_wire(row["recorded_at"]),
+            "candidate_count": row["candidate_count"],
+            "deleted_count": row["deleted_count"],
+            "requested_by": _json_loads(row["requested_by"], default={}),
+            "idempotency_key": row["idempotency_key"],
+            "trace_id": row["trace_id"],
+            "request_id": row["request_id"],
+            "blocked_reason": row["blocked_reason"],
+            "error": _json_loads(row["error"], default=None),
+            "execution": _json_loads(row["execution"], default={}),
         }
     )
 
