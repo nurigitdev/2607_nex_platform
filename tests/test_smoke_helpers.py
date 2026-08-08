@@ -24,6 +24,7 @@ import run_postgres_jobqueue_smoke as jobqueue_smoke
 import run_postgres_operational_event_smoke as event_smoke
 import run_postgres_operations_smoke_pack as operations_smoke
 import run_postgres_service_log_smoke as service_log_smoke
+import run_postgres_service_log_retention_smoke as service_log_retention_smoke
 import run_postgres_test_smoke_suite as postgres_suite_smoke
 
 
@@ -81,6 +82,84 @@ class FakeSqlConnection:
 class FakeSqlEngine:
     def begin(self) -> FakeSqlConnection:
         return FakeSqlConnection()
+
+
+class FakeRetentionServiceLogStore:
+    def __init__(self, session_factory: object) -> None:
+        self.session_factory = session_factory
+        self.entries: dict[str, dict[str, object]] = {}
+
+    def append(self, entry: dict[str, object]) -> dict[str, object]:
+        self.entries[str(entry["log_id"])] = dict(entry)
+        return dict(entry)
+
+    def get_log(self, log_id: str) -> dict[str, object] | None:
+        entry = self.entries.get(log_id)
+        return dict(entry) if entry is not None else None
+
+    def purge_retention_candidates(
+        self,
+        *,
+        service_id: str,
+        retention_cutoff: str,
+        retention_days: int = 30,
+        checked_at: str | None = None,
+        dry_run: bool = True,
+        delete_enabled: bool = False,
+        max_delete_count: int = 100,
+        requested_by: dict[str, object] | None = None,
+        idempotency_key: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+    ) -> dict[str, object]:
+        candidates = [
+            entry
+            for entry in self.entries.values()
+            if entry["service_id"] == service_id
+            and str(entry["observed_at"]) < retention_cutoff
+        ]
+        candidates.sort(
+            key=lambda entry: (str(entry["observed_at"]), str(entry["log_id"]))
+        )
+        if dry_run:
+            mode = "DRY_RUN"
+            status = "SUCCEEDED"
+            deleted = 0
+            blocked_reason = None
+        elif not delete_enabled:
+            mode = "EXECUTE"
+            status = "BLOCKED"
+            deleted = 0
+            blocked_reason = "delete_not_enabled"
+        else:
+            mode = "EXECUTE"
+            status = "SUCCEEDED"
+            selected = candidates[:max_delete_count]
+            for entry in selected:
+                self.entries.pop(str(entry["log_id"]), None)
+            deleted = len(selected)
+            blocked_reason = None
+        return {
+            "retention_execution_schema_version": (
+                "service_log_retention_execution.v1"
+            ),
+            "execution_id": f"fake-{idempotency_key}",
+            "service_id": service_id,
+            "mode": mode,
+            "execution_status": status,
+            "retention_days": retention_days,
+            "retention_cutoff": retention_cutoff,
+            "checked_at": checked_at,
+            "max_delete_count": max_delete_count,
+            "candidate_count": len(candidates),
+            "deleted_count": deleted,
+            "delete_enabled": delete_enabled,
+            "requested_by": requested_by,
+            "idempotency_key": idempotency_key,
+            "trace_id": trace_id,
+            "request_id": request_id,
+            "blocked_reason": blocked_reason,
+        }
 
 
 @pytest.mark.parametrize(
@@ -1236,6 +1315,267 @@ def test_postgres_service_log_smoke_main_prints_summary_and_full_evidence(
     assert '"status": "SKIPPED"' in capsys.readouterr().out
 
 
+def test_postgres_service_log_retention_smoke_skips_by_default() -> None:
+    evidence = service_log_retention_smoke.run_postgres_service_log_retention_smoke(
+        environ={}
+    )
+
+    assert evidence["status"] == "SKIPPED"
+    assert service_log_retention_smoke.summary_line(evidence) == (
+        "postgres_service_log_retention_smoke=skipped "
+        "reason=NEX_DB_SERVICE_LOG_RETENTION_SMOKE"
+    )
+
+
+def test_postgres_service_log_retention_smoke_rejects_non_test_profile() -> None:
+    evidence = service_log_retention_smoke.run_postgres_service_log_retention_smoke(
+        environ={
+            "NEX_DB_SERVICE_LOG_RETENTION_SMOKE": "1",
+            "NEX_DB_SERVICE_LOG_RETENTION_SMOKE_PROFILE": "dev",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "profile_not_allowed"
+
+
+def test_postgres_service_log_retention_smoke_reports_pass_without_leaking_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration_calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "service_database_env",
+        lambda service_id, profile: f"{service_id}:{profile}:env",
+    )
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "service_database_url",
+        lambda service_id, profile, environ: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "run_service_migrations",
+        lambda service_id, database_url, profile: migration_calls.append(
+            (service_id, profile)
+        ),
+    )
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "database_pool_settings",
+        lambda *args, **kwargs: object(),
+    )
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "build_engine",
+        lambda *args, **kwargs: FakeSqlEngine(),
+    )
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "build_session_factory",
+        lambda engine: object(),
+    )
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "SqlAlchemyServiceLogStore",
+        FakeRetentionServiceLogStore,
+    )
+
+    evidence = service_log_retention_smoke.run_postgres_service_log_retention_smoke(
+        environ={
+            "NEX_DB_SERVICE_LOG_RETENTION_SMOKE": "1",
+            "NEX_DB_SERVICE_LOG_RETENTION_SMOKE_SERVICE": "nex-cx",
+        }
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["checks"] == {
+        "dry_run_succeeded_without_delete": True,
+        "execute_without_delete_enabled_blocked": True,
+        "execute_deleted_one_candidate": True,
+        "store_state_guarded": True,
+        "retention_window_fixed": True,
+    }
+    assert evidence["counts"] == {
+        "dry_run_candidate_count": 2,
+        "blocked_candidate_count": 2,
+        "execute_candidate_count": 2,
+        "execute_deleted_count": 1,
+        "remaining_old_count": 1,
+        "remaining_fresh_count": 1,
+    }
+    assert evidence["redacted_database_url"] == "postgresql://user:***@localhost/db"
+    assert "secret" not in str(evidence)
+    assert "Bearer private" not in str(evidence)
+    assert migration_calls == [("nex-cx", "test")]
+    assert service_log_retention_smoke.summary_line(evidence) == (
+        "postgres_service_log_retention_smoke=pass "
+        "service=nex-cx db_env=nex-cx:test:env deleted=1"
+    )
+
+
+def test_postgres_service_log_retention_smoke_reports_check_configuration_and_execution_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class BrokenRetentionServiceLogStore(FakeRetentionServiceLogStore):
+        def purge_retention_candidates(self, **kwargs: object) -> dict[str, object]:
+            result = super().purge_retention_candidates(**kwargs)
+            result["candidate_count"] = 0
+            return result
+
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "service_database_env",
+        lambda *args, **kwargs: "NEX_CX_TEST_DATABASE_URL",
+    )
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "service_database_url",
+        lambda *args, **kwargs: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "run_service_migrations",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "database_pool_settings",
+        lambda *args, **kwargs: object(),
+    )
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "build_engine",
+        lambda *args, **kwargs: FakeSqlEngine(),
+    )
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "build_session_factory",
+        lambda engine: object(),
+    )
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "SqlAlchemyServiceLogStore",
+        BrokenRetentionServiceLogStore,
+    )
+
+    checks_failure = (
+        service_log_retention_smoke.run_postgres_service_log_retention_smoke(
+            environ={"NEX_DB_SERVICE_LOG_RETENTION_SMOKE": "1"}
+        )
+    )
+
+    assert checks_failure["status"] == "FAIL"
+    assert checks_failure["failure_code"] == "checks_failed"
+    assert checks_failure["database_env"] == "NEX_CX_TEST_DATABASE_URL"
+
+    def raise_migration_error(*args: object, **kwargs: object) -> None:
+        raise service_log_retention_smoke.MigrationError("missing database URL env")
+
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "service_database_url",
+        raise_migration_error,
+    )
+    config_failure = (
+        service_log_retention_smoke.run_postgres_service_log_retention_smoke(
+            environ={"NEX_DB_SERVICE_LOG_RETENTION_SMOKE": "1"}
+        )
+    )
+
+    assert config_failure["status"] == "FAIL"
+    assert config_failure["failure_code"] == "configuration_invalid"
+
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "service_database_url",
+        lambda *args, **kwargs: "postgresql://user:secret@localhost/db",
+    )
+
+    def raise_runtime_error(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(service_log_retention_smoke, "build_engine", raise_runtime_error)
+    execution_failure = (
+        service_log_retention_smoke.run_postgres_service_log_retention_smoke(
+            environ={"NEX_DB_SERVICE_LOG_RETENTION_SMOKE": "1"}
+        )
+    )
+
+    assert execution_failure["status"] == "FAIL"
+    assert execution_failure["failure_code"] == "execution_failed"
+    assert service_log_retention_smoke.summary_line(execution_failure) == (
+        "postgres_service_log_retention_smoke=fail "
+        "service=nex-cx reason=execution_failed"
+    )
+
+
+def test_postgres_service_log_retention_smoke_helpers_cover_edges() -> None:
+    assert (
+        service_log_retention_smoke._redaction_safe(
+            {"redacted_database_url": "postgresql://user:secret@localhost/db"}
+        )
+        is False
+    )
+    assert service_log_retention_smoke._checks(
+        dry_run={
+            "retention_execution_schema_version": (
+                "service_log_retention_execution.v1"
+            ),
+            "mode": "DRY_RUN",
+            "execution_status": "SUCCEEDED",
+            "candidate_count": 1,
+            "deleted_count": 0,
+            "delete_enabled": False,
+            "retention_cutoff": service_log_retention_smoke.RETENTION_CUTOFF,
+        },
+        blocked={
+            "mode": "EXECUTE",
+            "execution_status": "BLOCKED",
+            "candidate_count": 2,
+            "deleted_count": 0,
+            "blocked_reason": "delete_not_enabled",
+        },
+        execute={
+            "mode": "EXECUTE",
+            "execution_status": "SUCCEEDED",
+            "candidate_count": 2,
+            "deleted_count": 1,
+            "delete_enabled": True,
+            "max_delete_count": service_log_retention_smoke.MAX_DELETE_COUNT,
+            "checked_at": service_log_retention_smoke.CHECKED_AT,
+        },
+        state={
+            "old_001_remaining": False,
+            "old_002_remaining": True,
+            "fresh_remaining": True,
+        },
+    )["dry_run_succeeded_without_delete"] is False
+
+
+def test_postgres_service_log_retention_smoke_main_prints_summary_and_full_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(service_log_retention_smoke, "load_env_file", lambda path: None)
+    monkeypatch.setattr(
+        service_log_retention_smoke,
+        "run_postgres_service_log_retention_smoke",
+        lambda: {
+            "smoke_schema_version": "postgres_service_log_retention_smoke.v1",
+            "status": "SKIPPED",
+            "skip_reason": "NEX_DB_SERVICE_LOG_RETENTION_SMOKE is not enabled.",
+        },
+    )
+
+    assert service_log_retention_smoke.main(["--summary"]) == 0
+    assert "postgres_service_log_retention_smoke=skipped" in capsys.readouterr().out
+
+    assert service_log_retention_smoke.main([]) == 0
+    assert '"status": "SKIPPED"' in capsys.readouterr().out
+
+
 def test_postgres_operations_smoke_pack_skips_by_default() -> None:
     evidence = operations_smoke.run_postgres_operations_smoke_pack(environ={})
 
@@ -1661,6 +2001,11 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
     )
     monkeypatch.setattr(
         postgres_suite_smoke,
+        "run_postgres_service_log_retention_smoke",
+        child_pass("postgres_service_log_retention_smoke"),
+    )
+    monkeypatch.setattr(
+        postgres_suite_smoke,
         "run_postgres_operations_smoke_pack",
         child_pass("postgres_operations_smoke_pack"),
     )
@@ -1702,13 +2047,14 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("postgres_job_replay_smoke", "test"),
         ("postgres_operational_event_smoke", "test"),
         ("postgres_service_log_smoke", "test"),
+        ("postgres_service_log_retention_smoke", "test"),
         ("postgres_operations_smoke_pack", "test"),
         ("cx_processing_postgres_jobqueue_smoke", "test"),
         ("cx_processing_postgres_event_smoke", "test"),
         ("ag_cross_service_observability_smoke", "test"),
     ]
     assert postgres_suite_smoke.summary_line(evidence) == (
-        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=10"
+        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=11"
     )
 
 

@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0150 service log retention OpenAPI and smoke evidence.
+Status: Slice 0151 service log retention PostgreSQL smoke evidence.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -88,8 +88,10 @@ returns `ag_service_log_retention_dispatch.v1`. Execute-mode dispatch requires
 `delete_enabled=true`; otherwise AG blocks before calling the target service.
 The default quality gate runs `run_ag_service_log_retention_smoke.py`, which
 exercises dry-run dispatch, unsafe execute blocking, guarded execute deletion,
-and AG audit events in-process. Scheduled enforcement workers are future
-implementation steps.
+and AG audit events in-process. The optional PostgreSQL test-profile smoke
+`run_postgres_service_log_retention_smoke.py` verifies the same retention
+guardrails against a service-local SQLAlchemy store and deletes only temporary
+smoke rows. Scheduled enforcement workers are future implementation steps.
 
 Service workers should also report `worker_heartbeat.v1` payloads through the
 shared worker heartbeat runtime. It defines the status vocabulary, emitter,
@@ -190,10 +192,10 @@ NEX_POSTGRES_TEST_SMOKE_SUITE_PRIMARY_SERVICE=nex-cx
 ```
 
 The suite runs readiness, migrations, common JobQueue/Event smokes, dead-letter
-replay smoke, ServiceLogStore smoke, the cross-service operations pack, CX
-processing PostgreSQL smokes, and AG cross-service observability smoke. It is
-skipped by default in the quality gate and refuses non-test profiles because it
-writes temporary smoke rows.
+replay smoke, ServiceLogStore smoke, ServiceLog retention smoke, the
+cross-service operations pack, CX processing PostgreSQL smokes, and AG
+cross-service observability smoke. It is skipped by default in the quality gate
+and refuses non-test profiles because it writes temporary smoke rows.
 
 The ServiceLogStore PostgreSQL smoke can also be run directly for one service:
 
@@ -201,6 +203,15 @@ The ServiceLogStore PostgreSQL smoke can also be run directly for one service:
 NEX_DB_SERVICE_LOG_SMOKE=1
 NEX_DB_SERVICE_LOG_SMOKE_SERVICE=nex-cx
 NEX_DB_SERVICE_LOG_SMOKE_PROFILE=test
+```
+
+The ServiceLog retention PostgreSQL smoke can also be run directly for one
+service:
+
+```text
+NEX_DB_SERVICE_LOG_RETENTION_SMOKE=1
+NEX_DB_SERVICE_LOG_RETENTION_SMOKE_SERVICE=nex-cx
+NEX_DB_SERVICE_LOG_RETENTION_SMOKE_PROFILE=test
 ```
 
 Slice 0005 adds a mock-only OA service token path:

@@ -68,6 +68,12 @@ from run_postgres_service_log_smoke import (  # noqa: E402
     SMOKE_SERVICE_ENV as SERVICE_LOG_SERVICE_ENV,
     run_postgres_service_log_smoke,
 )
+from run_postgres_service_log_retention_smoke import (  # noqa: E402
+    SMOKE_ENV as SERVICE_LOG_RETENTION_SMOKE_ENV,
+    SMOKE_PROFILE_ENV as SERVICE_LOG_RETENTION_PROFILE_ENV,
+    SMOKE_SERVICE_ENV as SERVICE_LOG_RETENTION_SERVICE_ENV,
+    run_postgres_service_log_retention_smoke,
+)
 from run_postgres_operations_smoke_pack import (  # noqa: E402
     SMOKE_ENV as OPERATIONS_PACK_SMOKE_ENV,
     SMOKE_PROFILE_ENV as OPERATIONS_PACK_PROFILE_ENV,
@@ -91,6 +97,7 @@ SUITE_STAGE_ORDER = (
     "job_replay",
     "operational_events",
     "service_logs",
+    "service_log_retention",
     "operations_pack",
     "cx_processing_jobqueue",
     "cx_processing_events",
@@ -163,6 +170,9 @@ def run_postgres_test_smoke_suite(
         SERVICE_LOG_SMOKE_ENV: "1",
         SERVICE_LOG_SERVICE_ENV: primary_service_id,
         SERVICE_LOG_PROFILE_ENV: profile,
+        SERVICE_LOG_RETENTION_SMOKE_ENV: "1",
+        SERVICE_LOG_RETENTION_SERVICE_ENV: primary_service_id,
+        SERVICE_LOG_RETENTION_PROFILE_ENV: profile,
         OPERATIONS_PACK_SMOKE_ENV: "1",
         OPERATIONS_PACK_PROFILE_ENV: profile,
         OPERATIONS_PACK_SERVICES_ENV: ",".join(service_ids),
@@ -184,6 +194,9 @@ def run_postgres_test_smoke_suite(
     )
     stages["service_logs"] = _stage_from_child_smoke(
         run_postgres_service_log_smoke(environ=smoke_env)
+    )
+    stages["service_log_retention"] = _stage_from_child_smoke(
+        run_postgres_service_log_retention_smoke(environ=smoke_env)
     )
     stages["operations_pack"] = _stage_from_child_smoke(
         run_postgres_operations_smoke_pack(environ=smoke_env)
