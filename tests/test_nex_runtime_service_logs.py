@@ -791,6 +791,84 @@ def test_in_memory_service_log_store_filters_sorts_limits_and_returns_copies() -
     assert store.summary()["total"] == 3
 
 
+def test_in_memory_service_log_store_purges_retention_candidates_with_guardrails() -> None:
+    store = InMemoryServiceLogStore()
+    for log_id, observed_at in (
+        ("log-old-001", "2026-06-01T00:00:00Z"),
+        ("log-old-002", "2026-06-02T00:00:00Z"),
+        ("log-fresh", "2026-08-04T00:00:00Z"),
+        ("log-mo-old", "2026-06-01T00:00:00Z"),
+    ):
+        store.append(
+            sample_log(
+                log_id=log_id,
+                service_id="nex-mo" if log_id == "log-mo-old" else "nex-cx",
+                observed_at=observed_at,
+            )
+        )
+
+    dry_run = store.purge_retention_candidates(
+        service_id="nex-cx",
+        retention_cutoff="2026-07-06T00:00:00Z",
+        checked_at="2026-08-05T00:00:00Z",
+        dry_run=True,
+        max_delete_count=1,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+    )
+    blocked = store.purge_retention_candidates(
+        service_id="nex-cx",
+        retention_cutoff="2026-07-06T00:00:00Z",
+        checked_at="2026-08-05T00:00:00Z",
+        dry_run=False,
+    )
+    executed = store.purge_retention_candidates(
+        service_id="nex-cx",
+        retention_cutoff="2026-07-06T00:00:00Z",
+        checked_at="2026-08-05T00:00:00Z",
+        dry_run=False,
+        delete_enabled=True,
+        max_delete_count=1,
+        idempotency_key="execute-once",
+    )
+
+    assert dry_run["mode"] == "DRY_RUN"
+    assert dry_run["execution_status"] == "SUCCEEDED"
+    assert dry_run["candidate_count"] == 2
+    assert dry_run["deleted_count"] == 0
+    assert dry_run["trace_id"] == TRACE_ID
+    assert blocked["execution_status"] == "BLOCKED"
+    assert blocked["blocked_reason"] == "delete_not_enabled"
+    assert executed["execution_status"] == "SUCCEEDED"
+    assert executed["delete_enabled"] is True
+    assert executed["candidate_count"] == 2
+    assert executed["deleted_count"] == 1
+    assert store.get_log("log-old-001") is None
+    assert store.get_log("log-old-002") is not None
+    assert store.get_log("log-fresh") is not None
+    assert store.get_log("log-mo-old") is not None
+
+
+def test_in_memory_service_log_store_rejects_bad_retention_purge_inputs() -> None:
+    store = InMemoryServiceLogStore()
+
+    with pytest.raises(ServiceLogError) as bad_service:
+        store.purge_retention_candidates(
+            service_id="bad",
+            retention_cutoff="2026-07-06T00:00:00Z",
+        )
+    with pytest.raises(ServiceLogError) as bad_cutoff:
+        store.purge_retention_candidates(
+            service_id="nex-cx",
+            retention_cutoff="not-a-time",
+        )
+
+    assert bad_service.value.error_code == "service_log_retention.service_id_invalid"
+    assert bad_cutoff.value.error_code == (
+        "service_log_retention.retention_cutoff_invalid"
+    )
+
+
 def test_sqlalchemy_service_log_store_persists_filters_and_reads_back_json() -> None:
     store = sqlite_log_store()
     first = store.append(
@@ -860,6 +938,57 @@ def test_sqlalchemy_service_log_store_persists_filters_and_reads_back_json() -> 
     assert store.summary()["by_service"]["nex-cx"] == 3
 
 
+def test_sqlalchemy_service_log_store_purges_retention_candidates_with_guardrails() -> None:
+    store = sqlite_log_store()
+    for log_id, observed_at in (
+        ("sql-log-old-001", "2026-06-01T00:00:00Z"),
+        ("sql-log-old-002", "2026-06-02T00:00:00Z"),
+        ("sql-log-fresh", "2026-08-04T00:00:00Z"),
+        ("sql-log-mo-old", "2026-06-01T00:00:00Z"),
+    ):
+        store.append(
+            sample_log(
+                log_id=log_id,
+                service_id="nex-mo" if log_id == "sql-log-mo-old" else "nex-cx",
+                observed_at=observed_at,
+            )
+        )
+
+    dry_run = store.purge_retention_candidates(
+        service_id="nex-cx",
+        retention_cutoff="2026-07-06T00:00:00Z",
+        checked_at="2026-08-05T00:00:00Z",
+        dry_run=True,
+        max_delete_count=1,
+    )
+    blocked = store.purge_retention_candidates(
+        service_id="nex-cx",
+        retention_cutoff="2026-07-06T00:00:00Z",
+        checked_at="2026-08-05T00:00:00Z",
+        dry_run=False,
+    )
+    executed = store.purge_retention_candidates(
+        service_id="nex-cx",
+        retention_cutoff="2026-07-06T00:00:00Z",
+        checked_at="2026-08-05T00:00:00Z",
+        dry_run=False,
+        delete_enabled=True,
+        max_delete_count=1,
+    )
+
+    assert dry_run["candidate_count"] == 2
+    assert dry_run["deleted_count"] == 0
+    assert blocked["execution_status"] == "BLOCKED"
+    assert blocked["blocked_reason"] == "delete_not_enabled"
+    assert executed["execution_status"] == "SUCCEEDED"
+    assert executed["candidate_count"] == 2
+    assert executed["deleted_count"] == 1
+    assert store.get_log("sql-log-old-001") is None
+    assert store.get_log("sql-log-old-002") is not None
+    assert store.get_log("sql-log-fresh") is not None
+    assert store.get_log("sql-log-mo-old") is not None
+
+
 def test_service_log_store_helpers_cover_backend_edges() -> None:
     assert normalize_service_log_limit(0) == 1
     assert normalize_service_log_limit(DEFAULT_SERVICE_LOG_LIMIT) == DEFAULT_SERVICE_LOG_LIMIT
@@ -919,6 +1048,12 @@ def test_sqlalchemy_service_log_store_reports_store_unavailable() -> None:
         def execute(self, *args: object, **kwargs: object) -> object:
             raise SQLAlchemyError("boom")
 
+        def rollback(self) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
     store = SqlAlchemyServiceLogStore(lambda: FailingSession())  # type: ignore[arg-type]
 
     with pytest.raises(ServiceLogError) as exc_info:
@@ -926,9 +1061,15 @@ def test_sqlalchemy_service_log_store_reports_store_unavailable() -> None:
 
     with pytest.raises(ServiceLogError) as list_exc:
         store.list_logs()
+    with pytest.raises(ServiceLogError) as purge_exc:
+        store.purge_retention_candidates(
+            service_id="nex-cx",
+            retention_cutoff="2026-07-06T00:00:00Z",
+        )
 
     assert exc_info.value.error_code == "service_log.store_unavailable"
     assert list_exc.value.error_code == "service_log.store_unavailable"
+    assert purge_exc.value.error_code == "service_log.store_unavailable"
 
 
 def test_sqlalchemy_service_log_store_rolls_back_failed_transaction() -> None:

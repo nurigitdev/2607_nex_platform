@@ -81,6 +81,23 @@ class ServiceLogStore(Protocol):
     ) -> list[dict[str, Any]]:
         ...
 
+    def purge_retention_candidates(
+        self,
+        *,
+        service_id: str,
+        retention_cutoff: str,
+        retention_days: int = DEFAULT_SERVICE_LOG_RETENTION_DAYS,
+        checked_at: str | None = None,
+        dry_run: bool = True,
+        delete_enabled: bool = False,
+        max_delete_count: int = DEFAULT_SERVICE_LOG_RETENTION_MAX_DELETE_COUNT,
+        requested_by: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        ...
+
 
 @dataclass(frozen=True)
 class ServiceLogEmitResult:
@@ -693,6 +710,87 @@ class InMemoryServiceLogStore:
     def summary(self) -> dict[str, Any]:
         return summarize_service_logs(self.list_logs(limit=MAX_SERVICE_LOG_LIMIT))
 
+    def purge_retention_candidates(
+        self,
+        *,
+        service_id: str,
+        retention_cutoff: str,
+        retention_days: int = DEFAULT_SERVICE_LOG_RETENTION_DAYS,
+        checked_at: str | None = None,
+        dry_run: bool = True,
+        delete_enabled: bool = False,
+        max_delete_count: int = DEFAULT_SERVICE_LOG_RETENTION_MAX_DELETE_COUNT,
+        requested_by: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        normalized = _normalize_retention_purge_inputs(
+            service_id=service_id,
+            retention_cutoff=retention_cutoff,
+            checked_at=checked_at,
+            max_delete_count=max_delete_count,
+        )
+        candidates = _retention_candidate_entries(
+            self.entries.values(),
+            service_id=normalized["service_id"],
+            retention_cutoff=normalized["retention_cutoff"],
+        )
+        selected = candidates[: normalized["max_delete_count"]]
+        if dry_run:
+            return build_service_log_retention_execution(
+                service_id=normalized["service_id"],
+                mode="DRY_RUN",
+                execution_status="SUCCEEDED",
+                retention_days=retention_days,
+                retention_cutoff=normalized["retention_cutoff"],
+                checked_at=normalized["checked_at"],
+                max_delete_count=normalized["max_delete_count"],
+                candidate_count=len(candidates),
+                deleted_count=0,
+                delete_enabled=False,
+                requested_by=requested_by,
+                idempotency_key=idempotency_key,
+                trace_id=trace_id,
+                request_id=request_id,
+            )
+        if not delete_enabled:
+            return build_service_log_retention_execution(
+                service_id=normalized["service_id"],
+                mode="EXECUTE",
+                execution_status="BLOCKED",
+                retention_days=retention_days,
+                retention_cutoff=normalized["retention_cutoff"],
+                checked_at=normalized["checked_at"],
+                max_delete_count=normalized["max_delete_count"],
+                candidate_count=len(candidates),
+                deleted_count=0,
+                delete_enabled=False,
+                requested_by=requested_by,
+                idempotency_key=idempotency_key,
+                trace_id=trace_id,
+                request_id=request_id,
+                blocked_reason="delete_not_enabled",
+            )
+        for entry in selected:
+            self.entries.pop(str(entry["log_id"]), None)
+        return build_service_log_retention_execution(
+            service_id=normalized["service_id"],
+            mode="EXECUTE",
+            execution_status="SUCCEEDED",
+            retention_days=retention_days,
+            retention_cutoff=normalized["retention_cutoff"],
+            checked_at=normalized["checked_at"],
+            max_delete_count=normalized["max_delete_count"],
+            candidate_count=len(candidates),
+            deleted_count=len(selected),
+            delete_enabled=True,
+            requested_by=requested_by,
+            idempotency_key=idempotency_key,
+            trace_id=trace_id,
+            request_id=request_id,
+        )
+
 
 class SqlAlchemyServiceLogStore:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
@@ -772,6 +870,47 @@ class SqlAlchemyServiceLogStore:
 
     def summary(self) -> dict[str, Any]:
         return summarize_service_logs(self.list_logs(limit=MAX_SERVICE_LOG_LIMIT))
+
+    def purge_retention_candidates(
+        self,
+        *,
+        service_id: str,
+        retention_cutoff: str,
+        retention_days: int = DEFAULT_SERVICE_LOG_RETENTION_DAYS,
+        checked_at: str | None = None,
+        dry_run: bool = True,
+        delete_enabled: bool = False,
+        max_delete_count: int = DEFAULT_SERVICE_LOG_RETENTION_MAX_DELETE_COUNT,
+        requested_by: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        normalized = _normalize_retention_purge_inputs(
+            service_id=service_id,
+            retention_cutoff=retention_cutoff,
+            checked_at=checked_at,
+            max_delete_count=max_delete_count,
+        )
+        try:
+            return self._run_in_transaction(
+                lambda session: self._purge_retention_candidates(
+                    session,
+                    service_id=normalized["service_id"],
+                    retention_cutoff=normalized["retention_cutoff"],
+                    checked_at=normalized["checked_at"],
+                    retention_days=retention_days,
+                    dry_run=dry_run,
+                    delete_enabled=delete_enabled,
+                    max_delete_count=normalized["max_delete_count"],
+                    requested_by=requested_by,
+                    idempotency_key=idempotency_key,
+                    trace_id=trace_id,
+                    request_id=request_id,
+                )
+            )
+        except SQLAlchemyError as exc:
+            raise _service_log_store_unavailable() from exc
 
     def _run_in_transaction(self, operation: Callable[[Session], Any]) -> Any:
         session = self._session_factory()
@@ -853,6 +992,113 @@ class SqlAlchemyServiceLogStore:
                 """
             ),
             _log_insert_params(entry),
+        )
+
+    def _purge_retention_candidates(
+        self,
+        session: Session,
+        *,
+        service_id: str,
+        retention_cutoff: str,
+        checked_at: str,
+        retention_days: int,
+        dry_run: bool,
+        delete_enabled: bool,
+        max_delete_count: int,
+        requested_by: dict[str, Any] | None,
+        idempotency_key: str | None,
+        trace_id: str | None,
+        request_id: str | None,
+    ) -> dict[str, Any]:
+        candidate_count = int(
+            session.execute(
+                text(
+                    """
+                    SELECT COUNT(*) AS candidate_count
+                    FROM service_log_entries
+                    WHERE service_id = :service_id
+                      AND observed_at < :retention_cutoff
+                    """
+                ),
+                {
+                    "service_id": service_id,
+                    "retention_cutoff": retention_cutoff,
+                },
+            ).scalar_one()
+        )
+        if dry_run:
+            return build_service_log_retention_execution(
+                service_id=service_id,
+                mode="DRY_RUN",
+                execution_status="SUCCEEDED",
+                retention_days=retention_days,
+                retention_cutoff=retention_cutoff,
+                checked_at=checked_at,
+                max_delete_count=max_delete_count,
+                candidate_count=candidate_count,
+                deleted_count=0,
+                delete_enabled=False,
+                requested_by=requested_by,
+                idempotency_key=idempotency_key,
+                trace_id=trace_id,
+                request_id=request_id,
+            )
+        if not delete_enabled:
+            return build_service_log_retention_execution(
+                service_id=service_id,
+                mode="EXECUTE",
+                execution_status="BLOCKED",
+                retention_days=retention_days,
+                retention_cutoff=retention_cutoff,
+                checked_at=checked_at,
+                max_delete_count=max_delete_count,
+                candidate_count=candidate_count,
+                deleted_count=0,
+                delete_enabled=False,
+                requested_by=requested_by,
+                idempotency_key=idempotency_key,
+                trace_id=trace_id,
+                request_id=request_id,
+                blocked_reason="delete_not_enabled",
+            )
+        rows = session.execute(
+            text(
+                """
+                SELECT log_id
+                FROM service_log_entries
+                WHERE service_id = :service_id
+                  AND observed_at < :retention_cutoff
+                ORDER BY observed_at ASC, log_id ASC
+                LIMIT :limit
+                """
+            ),
+            {
+                "service_id": service_id,
+                "retention_cutoff": retention_cutoff,
+                "limit": max_delete_count,
+            },
+        ).mappings()
+        log_ids = [str(row["log_id"]) for row in rows]
+        for log_id in log_ids:
+            session.execute(
+                text("DELETE FROM service_log_entries WHERE log_id = :log_id"),
+                {"log_id": log_id},
+            )
+        return build_service_log_retention_execution(
+            service_id=service_id,
+            mode="EXECUTE",
+            execution_status="SUCCEEDED",
+            retention_days=retention_days,
+            retention_cutoff=retention_cutoff,
+            checked_at=checked_at,
+            max_delete_count=max_delete_count,
+            candidate_count=candidate_count,
+            deleted_count=len(log_ids),
+            delete_enabled=True,
+            requested_by=requested_by,
+            idempotency_key=idempotency_key,
+            trace_id=trace_id,
+            request_id=request_id,
         )
 
 
@@ -1009,6 +1255,57 @@ def _normalize_iso_timestamp(value: object, *, field_name: str) -> str:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _normalize_retention_purge_inputs(
+    *,
+    service_id: str,
+    retention_cutoff: str,
+    checked_at: str | None,
+    max_delete_count: int,
+) -> dict[str, Any]:
+    normalized_service_id = _required_string(service_id, "service_id")
+    if normalized_service_id not in SERVICE_IDS:
+        raise ServiceLogError(
+            error_code="service_log_retention.service_id_invalid",
+            detail=f"unsupported service id: {normalized_service_id}",
+        )
+    return {
+        "service_id": normalized_service_id,
+        "retention_cutoff": _normalize_iso_timestamp(
+            retention_cutoff,
+            field_name="retention_cutoff",
+        ),
+        "checked_at": _normalize_iso_timestamp(
+            checked_at or _utc_now(),
+            field_name="checked_at",
+        ),
+        "max_delete_count": normalize_service_log_retention_delete_limit(
+            max_delete_count
+        ),
+    }
+
+
+def _retention_candidate_entries(
+    entries: Any,
+    *,
+    service_id: str,
+    retention_cutoff: str,
+) -> list[dict[str, Any]]:
+    cutoff_dt = _timestamp_to_datetime(retention_cutoff)
+    candidates = [
+        deepcopy(entry)
+        for entry in entries
+        if entry["service_id"] == service_id
+        and _timestamp_to_datetime(entry["observed_at"]) < cutoff_dt
+    ]
+    candidates.sort(key=lambda entry: (entry["observed_at"], entry["log_id"]))
+    return candidates
+
+
+def _timestamp_to_datetime(value: object) -> datetime:
+    normalized = _normalize_iso_timestamp(value, field_name="timestamp")
+    return datetime.fromisoformat(normalized.replace("Z", "+00:00")).astimezone(UTC)
 
 
 def _non_negative_int(value: object, field_name: str) -> int:

@@ -1,6 +1,6 @@
 # NeX-Platform Services
 
-Status: Slice 0147 service log retention execution/audit contract.
+Status: Slice 0148 service log retention purge capability foundation.
 
 Each backend service owns its package, database, and public service boundary.
 The `_shared` runtime contains service shell behavior and the Slice 0005
@@ -80,9 +80,9 @@ logger counts, and redaction counts for configured log stores.
 AG exposes the active structured service log query and retention policy at
 `GET /admin/v1/operations/logs/policy` and a read-only retention candidate
 projection at `GET /admin/v1/operations/logs/retention/dry-run`; retention
-execution evidence uses `service_log_retention_execution.v1`. Retention
-enforcement workers are a future implementation step, not part of the current
-write path.
+execution evidence uses `service_log_retention_execution.v1`. Service log
+stores support guarded retention purge capability, but HTTP control endpoints
+and scheduled enforcement workers are future implementation steps.
 
 Service workers should also report `worker_heartbeat.v1` payloads through the
 shared worker heartbeat runtime. It defines the status vocabulary, emitter,
