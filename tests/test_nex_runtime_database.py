@@ -14,6 +14,8 @@ from nex_runtime import (
     check_database_readiness,
     check_sqlalchemy_engine,
     database_pool_settings,
+    database_url_drivername,
+    psycopg_database_url,
     redact_database_url,
     required_database_url,
     service_database_settings,
@@ -279,6 +281,17 @@ def test_build_engine_normalizes_bare_postgresql_url_to_psycopg_driver() -> None
         sqlalchemy_database_url("postgresql://user:secret@localhost/nex_cx_dev")
         == "postgresql+psycopg://user:secret@localhost/nex_cx_dev"
     )
+    assert (
+        psycopg_database_url("postgresql+psycopg://user:secret@localhost/nex_cx_dev")
+        == "postgresql://user:secret@localhost/nex_cx_dev"
+    )
+    assert (
+        psycopg_database_url("postgresql://user:secret@localhost/nex_cx_dev")
+        == "postgresql://user:secret@localhost/nex_cx_dev"
+    )
+    assert database_url_drivername("postgresql+psycopg://user:secret@localhost/db") == (
+        "postgresql+psycopg"
+    )
 
     engine = build_engine("postgresql://user:secret@localhost/nex_cx_dev")
 
@@ -371,3 +384,25 @@ def test_check_database_readiness_reports_database_identity() -> None:
     assert check["latency_ms"] >= 0
     assert "secret" not in str(check)
     assert calls == [("postgresql://user:secret@localhost/db", 3)]
+
+
+def test_check_database_readiness_normalizes_sqlalchemy_psycopg_url() -> None:
+    calls: list[tuple[str, int]] = []
+
+    def fake_connect(database_url: str, connect_timeout: int) -> FakeConnection:
+        calls.append((database_url, connect_timeout))
+        return FakeConnection()
+
+    check = check_database_readiness(
+        "NEX_TEST_DATABASE_URL",
+        environ={
+            "NEX_TEST_DATABASE_URL": "postgresql+psycopg://user:secret@localhost/db",
+        },
+        connect=fake_connect,
+    )
+
+    assert check["ok"] is True
+    assert check["configured_url_drivername"] == "postgresql+psycopg"
+    assert check["connection_url_drivername"] == "postgresql"
+    assert check["url_normalized_for_psycopg"] is True
+    assert calls == [("postgresql://user:secret@localhost/db", 2)]

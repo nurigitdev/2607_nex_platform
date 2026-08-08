@@ -19,8 +19,10 @@ sys.path.insert(0, str(SHARED_PATH))
 from nex_runtime import (  # noqa: E402
     DatabaseConfigError,
     load_env_file,
+    psycopg_database_url,
     redact_database_url,
     required_database_url,
+    sqlalchemy_database_url,
 )
 
 
@@ -143,7 +145,7 @@ def run_service_migrations(
     applied_versions: set[str]
     applied: list[str] = []
     skipped: list[str] = []
-    with connect(database_url, autocommit=True) as connection:
+    with connect(psycopg_database_url(database_url), autocommit=True) as connection:
         ensure_schema_migrations_table(connection)
         applied_versions = read_applied_versions(connection)
         for migration in migrations:
@@ -244,7 +246,7 @@ def build_alembic_config(settings: ServiceMigrationSettings) -> Config:
         raise MigrationError("alembic config requires a database URL")
     config = Config()
     config.set_main_option("script_location", str(settings.alembic_script_location))
-    config.set_main_option("sqlalchemy.url", settings.database_url)
+    config.set_main_option("sqlalchemy.url", sqlalchemy_database_url(settings.database_url))
     config.set_main_option("nex.service_id", settings.service_id)
     config.set_main_option("nex.database_profile", settings.profile)
     config.set_main_option("nex.database_env", settings.database_env)

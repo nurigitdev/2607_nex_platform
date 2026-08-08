@@ -461,12 +461,22 @@ def _first_failed_stage(stages: dict[str, object]) -> str | None:
 
 
 def _readiness_summary(readiness: dict[str, Any]) -> dict[str, object]:
+    url_metadata = {
+        key: readiness[key]
+        for key in (
+            "configured_url_drivername",
+            "connection_url_drivername",
+            "url_normalized_for_psycopg",
+        )
+        if key in readiness
+    }
     if not readiness.get("ok"):
         return {
             "ok": False,
             "database_env": readiness.get("database_env"),
             "error_code": readiness.get("error_code"),
             "latency_ms": readiness.get("latency_ms"),
+            **url_metadata,
         }
     return {
         "ok": True,
@@ -474,6 +484,7 @@ def _readiness_summary(readiness: dict[str, Any]) -> dict[str, object]:
         "database_name": readiness.get("database_name"),
         "database_user": readiness.get("database_user"),
         "latency_ms": readiness.get("latency_ms"),
+        **url_metadata,
     }
 
 

@@ -181,6 +181,13 @@ def redact_database_url(database_url: str) -> str:
     return url.render_as_string(hide_password=True)
 
 
+def database_url_drivername(database_url: str) -> str:
+    try:
+        return make_url(database_url).drivername
+    except SQLAlchemyError:
+        return "unknown"
+
+
 def build_engine(
     database_url: str,
     *,
@@ -206,6 +213,12 @@ def build_engine(
 def sqlalchemy_database_url(database_url: str) -> str:
     if database_url.startswith("postgresql://"):
         return f"postgresql+psycopg://{database_url.removeprefix('postgresql://')}"
+    return database_url
+
+
+def psycopg_database_url(database_url: str) -> str:
+    if database_url.startswith("postgresql+psycopg://"):
+        return f"postgresql://{database_url.removeprefix('postgresql+psycopg://')}"
     return database_url
 
 
@@ -271,8 +284,13 @@ def check_database_readiness(
             latency_ms=0,
         )
 
+    connection_database_url = psycopg_database_url(database_url)
+    url_metadata = _readiness_url_metadata(database_url, connection_database_url)
     try:
-        with connect_factory(database_url, connect_timeout=connect_timeout) as connection:
+        with connect_factory(
+            connection_database_url,
+            connect_timeout=connect_timeout,
+        ) as connection:
             with connection.cursor() as cursor:
                 cursor.execute("select current_database(), current_user")
                 database_name, user_name = cursor.fetchone()
@@ -281,6 +299,7 @@ def check_database_readiness(
             database_env=database_env,
             error_code="DATABASE_CONNECTION_FAILED",
             started=started,
+            details=url_metadata,
         )
 
     return {
@@ -290,6 +309,7 @@ def check_database_readiness(
         "database_name": database_name,
         "database_user": user_name,
         "latency_ms": _elapsed_ms(started),
+        **url_metadata,
     }
 
 
@@ -304,13 +324,28 @@ def _readiness_problem(
     error_code: str,
     started: float,
     latency_ms: int | None = None,
+    details: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    problem = {
         "name": "database",
         "ok": False,
         "database_env": database_env,
         "error_code": error_code,
         "latency_ms": _elapsed_ms(started) if latency_ms is None else latency_ms,
+    }
+    if details:
+        problem.update(details)
+    return problem
+
+
+def _readiness_url_metadata(
+    configured_database_url: str,
+    connection_database_url: str,
+) -> dict[str, object]:
+    return {
+        "configured_url_drivername": database_url_drivername(configured_database_url),
+        "connection_url_drivername": database_url_drivername(connection_database_url),
+        "url_normalized_for_psycopg": configured_database_url != connection_database_url,
     }
 
 

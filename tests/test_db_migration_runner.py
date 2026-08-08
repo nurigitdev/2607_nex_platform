@@ -125,6 +125,31 @@ def test_run_service_migrations_applies_only_pending_migrations(tmp_path: Path) 
     assert migration_text("0024_second").strip() in connection.executed[-1]
 
 
+def test_run_service_migrations_normalizes_sqlalchemy_psycopg_url(tmp_path: Path) -> None:
+    write_migration(tmp_path, "nex-cx", "0023_first.sql", migration_text("0023_first"))
+    connection = FakeConnection()
+    connect_calls: list[dict[str, Any]] = []
+
+    def connect(database_url: str, autocommit: bool) -> FakeConnection:
+        connect_calls.append({"database_url": database_url, "autocommit": autocommit})
+        return connection
+
+    result = run_service_migrations(
+        "nex-cx",
+        database_url="postgresql+psycopg://user:secret@localhost/nex_cx_test",
+        database_root=tmp_path,
+        connect=connect,
+    )
+
+    assert result.applied == ("0023_first",)
+    assert connect_calls == [
+        {
+            "database_url": "postgresql://user:secret@localhost/nex_cx_test",
+            "autocommit": True,
+        }
+    ]
+
+
 def test_run_service_migrations_dry_run_does_not_connect(tmp_path: Path) -> None:
     write_migration(tmp_path, "nex-oa", "0023_first.sql", migration_text("0023_first"))
 
@@ -217,7 +242,9 @@ def test_build_alembic_config_uses_service_settings(tmp_path: Path) -> None:
     config = build_alembic_config(settings)
 
     assert config.get_main_option("script_location") == str(tmp_path / "nex-oa" / "alembic")
-    assert config.get_main_option("sqlalchemy.url") == settings.database_url
+    assert config.get_main_option("sqlalchemy.url") == (
+        "postgresql+psycopg://nex_oa_user:secret@localhost/nex_oa_dev"
+    )
     assert config.get_main_option("nex.service_id") == "nex-oa"
     assert config.get_main_option("nex.database_profile") == "dev"
     assert config.get_main_option("nex.database_env") == "NEX_OA_DATABASE_URL"

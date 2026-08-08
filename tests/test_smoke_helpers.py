@@ -2718,6 +2718,43 @@ def test_postgres_test_smoke_suite_stops_on_readiness_or_migration_failure(
     assert migration_failure["stages"]["migrations"]["failure_code"] == "migrations_failed"
 
 
+def test_postgres_test_smoke_suite_readiness_summary_keeps_url_driver_evidence() -> None:
+    summary = postgres_suite_smoke._readiness_summary(
+        {
+            "name": "database",
+            "ok": True,
+            "database_env": "NEX_CX_TEST_DATABASE_URL",
+            "database_name": "nex_cx_test",
+            "database_user": "nex_cx_user",
+            "latency_ms": 1,
+            "configured_url_drivername": "postgresql+psycopg",
+            "connection_url_drivername": "postgresql",
+            "url_normalized_for_psycopg": True,
+        }
+    )
+
+    assert summary["ok"] is True
+    assert summary["configured_url_drivername"] == "postgresql+psycopg"
+    assert summary["connection_url_drivername"] == "postgresql"
+    assert summary["url_normalized_for_psycopg"] is True
+
+    failure = postgres_suite_smoke._readiness_summary(
+        {
+            "name": "database",
+            "ok": False,
+            "database_env": "NEX_CX_TEST_DATABASE_URL",
+            "error_code": "DATABASE_CONNECTION_FAILED",
+            "latency_ms": 1,
+            "configured_url_drivername": "postgresql+psycopg",
+            "connection_url_drivername": "postgresql",
+            "url_normalized_for_psycopg": True,
+        }
+    )
+
+    assert failure["ok"] is False
+    assert failure["url_normalized_for_psycopg"] is True
+
+
 def test_postgres_test_smoke_suite_reports_child_failure_and_main_summary(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
