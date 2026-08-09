@@ -262,6 +262,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0157`](slices/0157_service_local_retention_history_store_and_query_api.md) | `S16-007` Service-local retention history store and query API. |
 | [`Slice 0158`](slices/0158_ag_retention_history_projection.md) | `S16-008` AG retention history projection. |
 | [`Slice 0159`](slices/0159_ag_retention_history_postgresql_smoke_evidence.md) | `S16-009` AG retention history PostgreSQL smoke evidence. |
+| [`Slice 0160`](slices/0160_ag_operations_debug_smoke_closure.md) | `S16-010` AG operations debug smoke closure. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -39,6 +39,7 @@ from nex_runtime import (  # noqa: E402
     build_operational_event,
     build_service_app,
     build_service_log_entry,
+    build_service_log_retention_execution,
     build_subject_ref,
     build_worker_heartbeat,
     issue_mock_service_token,
@@ -235,6 +236,29 @@ def _build_log_stores() -> dict[str, InMemoryServiceLogStore]:
             observed_at="2026-08-05T00:00:06Z",
         )
     )
+    cx_store.record_retention_history(
+        build_service_log_retention_execution(
+            service_id="nex-cx",
+            mode="EXECUTE",
+            execution_status="SUCCEEDED",
+            retention_cutoff="2026-07-06T00:00:00Z",
+            checked_at="2026-08-05T00:00:07Z",
+            candidate_count=2,
+            deleted_count=1,
+            delete_enabled=True,
+            max_delete_count=1,
+            requested_by={
+                "actor_type": "service",
+                "actor_id": "nex-ag",
+                "service_id": "nex-ag",
+            },
+            idempotency_key="smoke-retention-execute",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            execution_id="smoke-retention-execution-cx-001",
+        ),
+        recorded_at="2026-08-05T00:00:08Z",
+    )
     mo_store = InMemoryServiceLogStore()
     mo_store.append(
         build_service_log_entry(
@@ -323,6 +347,16 @@ def _read_operations_projections(client: TestClient) -> dict[str, dict[str, Any]
             "/admin/v1/operations/logs/retention/dry-run",
             params={"service_id": "nex-cx", "retention_days": 30},
         ),
+        "log_retention_history": _get_json(
+            client,
+            "/admin/v1/operations/logs/retention/history",
+            params={
+                "service_id": "nex-cx",
+                "mode": "execute",
+                "execution_status": "succeeded",
+                "request_id": REQUEST_ID,
+            },
+        ),
         "jobs": _get_json(
             client,
             "/admin/v1/operations/jobs",
@@ -398,6 +432,7 @@ def _ag_operations_dashboard_smoke_checks(
     log_detail = projections["log_detail"]
     log_policy = projections["log_policy"]
     log_retention_dry_run = projections["log_retention_dry_run"]
+    log_retention_history = projections["log_retention_history"]
     job_detail = projections["job_detail"]
     workers = projections["workers"]
     worker_detail = projections["worker_detail"]
@@ -412,6 +447,7 @@ def _ag_operations_dashboard_smoke_checks(
         "log_detail": "ag_service_log_detail_projection.v1",
         "log_policy": "ag_service_log_query_policy_projection.v1",
         "log_retention_dry_run": "ag_service_log_retention_dry_run_projection.v1",
+        "log_retention_history": "ag_service_log_retention_history_projection.v1",
         "jobs": "ag_job_operations_projection.v1",
         "job_detail": "ag_job_operation_detail_projection.v1",
         "workers": "ag_worker_runtime_projection.v1",
@@ -452,6 +488,15 @@ def _ag_operations_dashboard_smoke_checks(
             == 30
             and log_retention_dry_run["source_statuses"]["nex-cx"]["status"]
             == "READY"
+        ),
+        "service_log_retention_history_visible": (
+            log_retention_history["projection_status"] == "READY"
+            and log_retention_history["filters"]["mode"] == "EXECUTE"
+            and log_retention_history["filters"]["execution_status"] == "SUCCEEDED"
+            and log_retention_history["retention_history"][0]["execution_id"]
+            == "smoke-retention-execution-cx-001"
+            and log_retention_history["summary"]["total"] == 1
+            and log_retention_history["summary"]["deleted_count"] == 1
         ),
         "job_detail_timeline_ready": (
             job_detail["lifecycle_timeline"]["timeline_status"] == "READY"
@@ -503,6 +548,9 @@ def _projection_counts(projections: dict[str, dict[str, Any]]) -> dict[str, int]
         "sources": len(projections["sources"]["sources"]),
         "events": len(projections["events"]["events"]),
         "logs": len(projections["logs"]["logs"]),
+        "retention_history": len(
+            projections["log_retention_history"]["retention_history"]
+        ),
         "jobs": len(projections["jobs"]["jobs"]),
         "workers": len(projections["workers"]["workers"]),
         "worker_detail_events": len(
@@ -527,6 +575,7 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"jobs={counts['jobs']} workers={counts['workers']} "
             f"events={counts['events']} "
             f"logs={counts['logs']} "
+            f"history={counts['retention_history']} "
             f"issues={counts['issue_candidates']}"
         )
     return "ag_operations_dashboard_smoke=fail"
