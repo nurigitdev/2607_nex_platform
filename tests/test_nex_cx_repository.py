@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -13,6 +14,8 @@ from nex_cx.ingestion import (
     ContentIngestionStore,
     CxStorageConfig,
     build_upload_registration,
+    run_text_extraction_job,
+    sha256_text,
 )
 from nex_cx.repository import (
     CxContentRepositoryError,
@@ -21,7 +24,9 @@ from nex_cx.repository import (
     InMemoryCxContentRepository,
     SqlAlchemyCxContentRepository,
     build_content_object_record,
+    build_extraction_artifact_record,
     build_source_file_record,
+    markdown_storage_uri_from_path,
 )
 import nex_cx.repository as cx_repository
 
@@ -143,6 +148,28 @@ def sqlite_content_repository(
                 """
             )
         )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_extraction_artifacts (
+                    extraction_artifact_id TEXT PRIMARY KEY,
+                    content_object_id TEXT NOT NULL REFERENCES cx_content_objects(content_object_id),
+                    source_file_id TEXT NOT NULL REFERENCES cx_source_files(source_file_id),
+                    artifact_kind TEXT NOT NULL DEFAULT 'markdown',
+                    status TEXT NOT NULL DEFAULT 'SUCCEEDED',
+                    extractor_name TEXT NOT NULL,
+                    extractor_version TEXT NOT NULL,
+                    markdown_sha256 TEXT NOT NULL,
+                    markdown_storage_uri TEXT NOT NULL,
+                    markdown_char_count INTEGER NOT NULL,
+                    created_trace_id TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE (content_object_id, extractor_name, extractor_version, markdown_sha256)
+                )
+                """
+            )
+        )
     return (
         SqlAlchemyCxContentRepository(
             build_session_factory(engine),
@@ -150,6 +177,39 @@ def sqlite_content_repository(
         ),
         engine,
     )
+
+
+def extraction_result(
+    tmp_path: Path,
+    document: dict[str, object],
+    *,
+    markdown_text: str = "# source.md\n\nSECRET_EXTRACTED_MARKDOWN\n",
+) -> dict[str, object]:
+    markdown_path = tmp_path / "cx" / "extracted-markdown" / "aa" / (
+        f"{document['document_id']}.md"
+    )
+    return {
+        "extraction_schema_version": "cx_text_extraction.v1",
+        "document_id": document["document_id"],
+        "job_id": document["extraction"]["job_id"],
+        "status": "SUCCEEDED",
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "source_sha256": document["source_sha256"],
+        "extracted_markdown_sha256": sha256_text(markdown_text),
+        "extracted_markdown_path": str(markdown_path),
+        "markdown_char_count": len(markdown_text),
+        "markdown_preview": markdown_text[:120],
+        "extractor": {
+            "provider": "local_mock",
+            "mode": "plain_text_to_markdown",
+            "version": "slice-0072",
+            "source_format": "plain_text",
+        },
+        "warnings": [],
+        "created_at": document["created_at"],
+        "updated_at": document["updated_at"],
+    }
 
 
 def test_build_source_file_record_maps_storage_metadata_without_raw_text(
@@ -187,6 +247,32 @@ def test_build_content_object_record_keeps_owner_scope_and_source_ref(
     assert record["source_file_id"] == source_file["source_file_id"]
     assert record["lifecycle_status"] == "ACTIVE"
     assert record["retrieval_policy"]["chunk_policy"] == "chunk_1000_100"
+
+
+def test_build_extraction_artifact_record_maps_metadata_without_markdown_text(
+    tmp_path: Path,
+) -> None:
+    upload = upload_registration(tmp_path)
+    result = extraction_result(tmp_path, upload)
+
+    record = build_extraction_artifact_record(
+        result,
+        content_object_id=str(upload["document_id"]),
+        source_file_id="11111111-1111-4111-8111-111111111111",
+    )
+
+    assert record["artifact_kind"] == "markdown"
+    assert record["status"] == "SUCCEEDED"
+    assert record["extractor_name"] == "local_mock"
+    assert record["extractor_version"] == "slice-0072"
+    assert record["markdown_sha256"] == result["extracted_markdown_sha256"]
+    assert record["markdown_storage_uri"].startswith(
+        "local://cx/extracted-markdown/"
+    )
+    assert "SECRET_EXTRACTED_MARKDOWN" not in str(record)
+    assert markdown_storage_uri_from_path("one.md") == (
+        "local://cx/extracted-markdown/one.md"
+    )
 
 
 def test_in_memory_repository_dedupes_source_files_by_sha256(tmp_path: Path) -> None:
@@ -227,6 +313,46 @@ def test_in_memory_repository_finds_active_content_object_by_owner_and_hash(
         source_sha256=upload["source_sha256"],
     ) is None
     assert repository.get_source_file_by_sha256("0" * 64) is None
+
+
+def test_in_memory_repository_saves_extraction_artifacts_idempotently(
+    tmp_path: Path,
+) -> None:
+    repository = InMemoryCxContentRepository()
+    upload = upload_registration(tmp_path)
+    source_file = repository.save_source_file(build_source_file_record(upload))
+    content = repository.save_content_object(
+        build_content_object_record(
+            upload,
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    artifact = build_extraction_artifact_record(
+        extraction_result(tmp_path, upload),
+        content_object_id=content["content_object_id"],
+        source_file_id=source_file["source_file_id"],
+    )
+    duplicate = {
+        **artifact,
+        "extraction_artifact_id": "55555555-5555-4555-8555-555555555555",
+    }
+
+    assert repository.save_extraction_artifact(artifact) == artifact
+    assert repository.save_extraction_artifact(duplicate) == artifact
+    assert repository.get_extraction_artifact(artifact["extraction_artifact_id"]) == artifact
+    assert repository.find_extraction_artifact(
+        content_object_id=content["content_object_id"],
+        extractor_name=artifact["extractor_name"],
+        extractor_version=artifact["extractor_version"],
+        markdown_sha256=artifact["markdown_sha256"],
+    ) == artifact
+    assert repository.get_extraction_artifact("missing") is None
+    assert repository.find_extraction_artifact(
+        content_object_id=content["content_object_id"],
+        extractor_name="other",
+        extractor_version=artifact["extractor_version"],
+        markdown_sha256=artifact["markdown_sha256"],
+    ) is None
 
 
 def test_in_memory_repository_ignores_inactive_content_for_active_lookup(
@@ -319,6 +445,7 @@ def test_sqlalchemy_repository_saves_content_object_and_owner_acl(
     saved = repository.save_content_object(content)
 
     assert saved == content
+    assert repository.save_content_object(content) == content
     assert repository.get_content_object(saved["content_object_id"]) == content
     assert repository.find_active_content_object(
         tenant_id="tenant-a",
@@ -399,6 +526,48 @@ def test_sqlalchemy_repository_keeps_existing_owner_acl_idempotent(
     assert acl_count == 1
 
 
+def test_sqlalchemy_repository_saves_and_finds_extraction_artifact(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    upload = upload_registration(tmp_path)
+    source_file = repository.save_source_file(build_source_file_record(upload))
+    content = repository.save_content_object(
+        build_content_object_record(
+            upload,
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    artifact = build_extraction_artifact_record(
+        extraction_result(tmp_path, upload),
+        content_object_id=content["content_object_id"],
+        source_file_id=source_file["source_file_id"],
+    )
+    duplicate = {
+        **artifact,
+        "extraction_artifact_id": "55555555-5555-4555-8555-555555555555",
+    }
+
+    saved = repository.save_extraction_artifact(artifact)
+
+    assert saved == artifact
+    assert repository.save_extraction_artifact(duplicate) == artifact
+    assert repository.get_extraction_artifact(saved["extraction_artifact_id"]) == artifact
+    assert repository.find_extraction_artifact(
+        content_object_id=content["content_object_id"],
+        extractor_name=artifact["extractor_name"],
+        extractor_version=artifact["extractor_version"],
+        markdown_sha256=artifact["markdown_sha256"],
+    ) == artifact
+    assert _sqlite_table_count(engine, "cx_extraction_artifacts") == 1
+    assert "SECRET_EXTRACTED_MARKDOWN" not in _sqlite_table_dump(
+        engine,
+        ["cx_extraction_artifacts"],
+    )
+
+
 def test_sqlalchemy_repository_marks_source_checksum_verified(
     tmp_path: Path,
 ) -> None:
@@ -461,6 +630,36 @@ def test_sqlalchemy_repository_wraps_database_errors(tmp_path: Path) -> None:
             owner_user_id="user-a",
             source_sha256="0" * 64,
         ),
+        lambda repository: repository.mark_source_file_checksum_verified(
+            "33333333-3333-4333-8333-333333333333",
+            verified_at="2026-08-09T00:00:00Z",
+        ),
+        lambda repository: repository.save_extraction_artifact(
+            {
+                "extraction_artifact_id": "55555555-5555-4555-8555-555555555555",
+                "content_object_id": "44444444-4444-4444-8444-444444444444",
+                "source_file_id": "33333333-3333-4333-8333-333333333333",
+                "artifact_kind": "markdown",
+                "status": "SUCCEEDED",
+                "extractor_name": "local_mock",
+                "extractor_version": "slice-0072",
+                "markdown_sha256": "0" * 64,
+                "markdown_storage_uri": "local://cx/extracted-markdown/aa/doc.md",
+                "markdown_char_count": 10,
+                "created_trace_id": TRACE_ID,
+                "created_at": "2026-08-09T00:00:00Z",
+                "updated_at": "2026-08-09T00:00:00Z",
+            }
+        ),
+        lambda repository: repository.get_extraction_artifact(
+            "55555555-5555-4555-8555-555555555555"
+        ),
+        lambda repository: repository.find_extraction_artifact(
+            content_object_id="44444444-4444-4444-8444-444444444444",
+            extractor_name="local_mock",
+            extractor_version="slice-0072",
+            markdown_sha256="0" * 64,
+        ),
     ],
 )
 def test_sqlalchemy_repository_wraps_missing_table_errors(
@@ -491,6 +690,14 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
         ) -> dict[str, Any]:
             raise IntegrityError("insert content", {}, Exception("race"))
 
+    class RaceyExtractionRepository(SqlAlchemyCxContentRepository):
+        def _save_extraction_artifact(
+            self,
+            session: Any,
+            record: dict[str, Any],
+        ) -> dict[str, Any]:
+            raise IntegrityError("insert extraction", {}, Exception("race"))
+
     repository, engine = sqlite_content_repository(tmp_path)
     upload = upload_registration(tmp_path)
     source_file_record = build_source_file_record(upload)
@@ -503,15 +710,60 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
             source_file_id=source_file["source_file_id"],
         )
     )
+    artifact = repository.save_extraction_artifact(
+        build_extraction_artifact_record(
+            extraction_result(tmp_path, upload),
+            content_object_id=content["content_object_id"],
+            source_file_id=source_file["source_file_id"],
+        )
+    )
 
     racey_source = RaceySourceRepository(
         build_session_factory(engine),
         local_source_root=tmp_path / "cx" / "source-files",
     )
     racey_content = RaceyContentRepository(build_session_factory(engine))
+    racey_extraction = RaceyExtractionRepository(build_session_factory(engine))
 
     assert racey_source.save_source_file(source_file_record) == source_file
     assert racey_content.save_content_object(content) == content
+    assert racey_extraction.save_extraction_artifact(artifact) == artifact
+
+
+def test_sqlalchemy_repository_extraction_integrity_without_existing_row_wraps(
+    tmp_path: Path,
+) -> None:
+    class RaceyExtractionRepository(SqlAlchemyCxContentRepository):
+        def _save_extraction_artifact(
+            self,
+            session: Any,
+            record: dict[str, Any],
+        ) -> dict[str, Any]:
+            raise IntegrityError("insert extraction", {}, Exception("race"))
+
+    _, engine = sqlite_content_repository(tmp_path)
+    repository = RaceyExtractionRepository(build_session_factory(engine))
+
+    with pytest.raises(CxContentRepositoryError) as exc_info:
+        repository.save_extraction_artifact(
+            {
+                "extraction_artifact_id": "55555555-5555-4555-8555-555555555555",
+                "content_object_id": "44444444-4444-4444-8444-444444444444",
+                "source_file_id": "33333333-3333-4333-8333-333333333333",
+                "artifact_kind": "markdown",
+                "status": "SUCCEEDED",
+                "extractor_name": "local_mock",
+                "extractor_version": "slice-0072",
+                "markdown_sha256": "0" * 64,
+                "markdown_storage_uri": "local://cx/extracted-markdown/aa/doc.md",
+                "markdown_char_count": 10,
+                "created_trace_id": TRACE_ID,
+                "created_at": "2026-08-09T00:00:00Z",
+                "updated_at": "2026-08-09T00:00:00Z",
+            }
+        )
+
+    assert exc_info.value.error_code == "cx_content.repository_unavailable"
 
 
 def test_repository_json_and_timestamp_helpers_cover_database_type_variants() -> None:
@@ -527,6 +779,12 @@ def test_repository_json_and_timestamp_helpers_cover_database_type_variants() ->
     assert cx_repository._timestamp_to_wire(
         datetime.fromisoformat("2026-08-09T00:00:00")
     ) == "2026-08-09T00:00:00Z"
+    postgres_session = SimpleNamespace(
+        get_bind=lambda: SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    )
+    assert cx_repository._json_sql_expression(postgres_session, "payload") == (
+        "CAST(:payload AS JSONB)"
+    )
 
 
 def test_content_ingestion_store_with_sqlalchemy_repository_dedupes_same_owner(
@@ -639,6 +897,69 @@ def test_content_ingestion_store_with_sqlalchemy_repository_shares_source_across
         engine,
         ["cx_source_files", "cx_content_objects", "cx_content_acl_entries"],
     )
+
+
+def test_content_ingestion_store_with_sqlalchemy_repository_persists_extraction_artifact(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    store = ContentIngestionStore(content_repository=repository)
+    document = upload_registration(
+        tmp_path,
+        content_text="SECRET_SOURCE_FOR_EXTRACTION",
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    store.save_upload_registration(
+        document,
+        source_text="SECRET_SOURCE_FOR_EXTRACTION",
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+
+    result = run_text_extraction_job(
+        document["extraction"]["job_id"],
+        store=store,
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    refs = store.get_content_ref(document["document_id"])
+    assert refs is not None
+    artifact = repository.find_extraction_artifact(
+        content_object_id=refs["content_object_id"],
+        extractor_name=result["extractor"]["provider"],
+        extractor_version=result["extractor"]["version"],
+        markdown_sha256=result["extracted_markdown_sha256"],
+    )
+    assert artifact is not None
+    assert artifact["source_file_id"] == refs["source_file_id"]
+    assert artifact["markdown_char_count"] == result["markdown_char_count"]
+    assert artifact["markdown_storage_uri"].startswith(
+        "local://cx/extracted-markdown/"
+    )
+    assert _sqlite_table_count(engine, "cx_extraction_artifacts") == 1
+    assert "SECRET_SOURCE_FOR_EXTRACTION" not in _sqlite_table_dump(
+        engine,
+        ["cx_extraction_artifacts"],
+    )
+
+
+def test_content_ingestion_store_saves_extraction_result_without_content_refs(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    document = upload_registration(tmp_path)
+    store.documents[document["document_id"]] = document
+    store.jobs[document["extraction"]["job_id"]] = document["ingestion_job"]
+    result = extraction_result(tmp_path, document)
+
+    saved = store.save_extraction_result(result)
+
+    assert saved == result
+    assert store.get_extraction_result(document["document_id"]) == result
+    assert store.content_repository.extraction_artifacts == {}
 
 
 def _sqlite_table_count(engine: object, table_name: str) -> int:

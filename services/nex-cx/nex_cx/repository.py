@@ -50,6 +50,25 @@ class CxContentRepository(Protocol):
     ) -> dict[str, Any] | None:
         ...
 
+    def save_extraction_artifact(self, record: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+    def get_extraction_artifact(
+        self,
+        extraction_artifact_id: str,
+    ) -> dict[str, Any] | None:
+        ...
+
+    def find_extraction_artifact(
+        self,
+        *,
+        content_object_id: str,
+        extractor_name: str,
+        extractor_version: str,
+        markdown_sha256: str,
+    ) -> dict[str, Any] | None:
+        ...
+
 
 @dataclass(frozen=True)
 class CxContentRepositoryError(Exception):
@@ -64,6 +83,10 @@ class InMemoryCxContentRepository:
     source_file_ids_by_sha256: dict[str, str] = field(default_factory=dict)
     content_objects: dict[str, dict[str, Any]] = field(default_factory=dict)
     active_content_object_ids_by_owner_sha: dict[tuple[str, str, str], str] = field(
+        default_factory=dict
+    )
+    extraction_artifacts: dict[str, dict[str, Any]] = field(default_factory=dict)
+    extraction_artifact_ids_by_content_hash: dict[tuple[str, str, str, str], str] = field(
         default_factory=dict
     )
 
@@ -125,6 +148,39 @@ class InMemoryCxContentRepository:
         if content_object_id is None:
             return None
         return self.content_objects[content_object_id]
+
+    def save_extraction_artifact(self, record: dict[str, Any]) -> dict[str, Any]:
+        key = _extraction_artifact_unique_key(record)
+        existing_id = self.extraction_artifact_ids_by_content_hash.get(key)
+        if existing_id is not None:
+            return self.extraction_artifacts[existing_id]
+        stored = dict(record)
+        self.extraction_artifacts[stored["extraction_artifact_id"]] = stored
+        self.extraction_artifact_ids_by_content_hash[key] = stored[
+            "extraction_artifact_id"
+        ]
+        return stored
+
+    def get_extraction_artifact(
+        self,
+        extraction_artifact_id: str,
+    ) -> dict[str, Any] | None:
+        return self.extraction_artifacts.get(extraction_artifact_id)
+
+    def find_extraction_artifact(
+        self,
+        *,
+        content_object_id: str,
+        extractor_name: str,
+        extractor_version: str,
+        markdown_sha256: str,
+    ) -> dict[str, Any] | None:
+        extraction_artifact_id = self.extraction_artifact_ids_by_content_hash.get(
+            (content_object_id, extractor_name, extractor_version, markdown_sha256)
+        )
+        if extraction_artifact_id is None:
+            return None
+        return self.extraction_artifacts[extraction_artifact_id]
 
 
 class SqlAlchemyCxContentRepository:
@@ -229,6 +285,61 @@ class SqlAlchemyCxContentRepository:
         except SQLAlchemyError as exc:
             raise _content_repository_unavailable() from exc
 
+    def save_extraction_artifact(self, record: dict[str, Any]) -> dict[str, Any]:
+        record_to_store = deepcopy(record)
+        try:
+            return self._run_in_transaction(
+                lambda session: self._save_extraction_artifact(
+                    session,
+                    record_to_store,
+                )
+            )
+        except IntegrityError as exc:
+            existing = self.find_extraction_artifact(
+                content_object_id=str(record_to_store["content_object_id"]),
+                extractor_name=str(record_to_store["extractor_name"]),
+                extractor_version=str(record_to_store["extractor_version"]),
+                markdown_sha256=str(record_to_store["markdown_sha256"]),
+            )
+            if existing is not None:
+                return existing
+            raise _content_repository_unavailable() from exc
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def get_extraction_artifact(
+        self,
+        extraction_artifact_id: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_extraction_artifact(
+                    session,
+                    extraction_artifact_id,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def find_extraction_artifact(
+        self,
+        *,
+        content_object_id: str,
+        extractor_name: str,
+        extractor_version: str,
+        markdown_sha256: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_extraction_artifact_by_unique_key(
+                    session,
+                    content_object_id=content_object_id,
+                    extractor_name=extractor_name,
+                    extractor_version=extractor_version,
+                    markdown_sha256=markdown_sha256,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
     def _run_in_transaction(self, operation: Any) -> Any:
         session = self._session_factory()
         try:
@@ -274,6 +385,28 @@ class SqlAlchemyCxContentRepository:
         self._insert_content_object(session, record)
         self._insert_owner_acl_entry(session, record)
         stored = self._select_content_object(session, str(record["content_object_id"]))
+        assert stored is not None
+        return stored
+
+    def _save_extraction_artifact(
+        self,
+        session: Session,
+        record: dict[str, Any],
+    ) -> dict[str, Any]:
+        existing = self._select_extraction_artifact_by_unique_key(
+            session,
+            content_object_id=str(record["content_object_id"]),
+            extractor_name=str(record["extractor_name"]),
+            extractor_version=str(record["extractor_version"]),
+            markdown_sha256=str(record["markdown_sha256"]),
+        )
+        if existing is not None:
+            return existing
+        self._insert_extraction_artifact(session, record)
+        stored = self._select_extraction_artifact(
+            session,
+            str(record["extraction_artifact_id"]),
+        )
         assert stored is not None
         return stored
 
@@ -386,6 +519,52 @@ class SqlAlchemyCxContentRepository:
         ).mappings().first()
         return _content_object_from_row(row) if row is not None else None
 
+    def _select_extraction_artifact(
+        self,
+        session: Session,
+        extraction_artifact_id: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_EXTRACTION_ARTIFACT_SELECT_COLUMNS}
+                FROM cx_extraction_artifacts
+                WHERE extraction_artifact_id = :extraction_artifact_id
+                """
+            ),
+            {"extraction_artifact_id": extraction_artifact_id},
+        ).mappings().first()
+        return _extraction_artifact_from_row(row) if row is not None else None
+
+    def _select_extraction_artifact_by_unique_key(
+        self,
+        session: Session,
+        *,
+        content_object_id: str,
+        extractor_name: str,
+        extractor_version: str,
+        markdown_sha256: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_EXTRACTION_ARTIFACT_SELECT_COLUMNS}
+                FROM cx_extraction_artifacts
+                WHERE content_object_id = :content_object_id
+                  AND extractor_name = :extractor_name
+                  AND extractor_version = :extractor_version
+                  AND markdown_sha256 = :markdown_sha256
+                """
+            ),
+            {
+                "content_object_id": content_object_id,
+                "extractor_name": extractor_name,
+                "extractor_version": extractor_version,
+                "markdown_sha256": markdown_sha256,
+            },
+        ).mappings().first()
+        return _extraction_artifact_from_row(row) if row is not None else None
+
     def _insert_source_file(self, session: Session, record: dict[str, Any]) -> None:
         session.execute(
             text(
@@ -465,6 +644,49 @@ class SqlAlchemyCxContentRepository:
                 """
             ),
             _content_object_insert_params(record),
+        )
+
+    def _insert_extraction_artifact(
+        self,
+        session: Session,
+        record: dict[str, Any],
+    ) -> None:
+        session.execute(
+            text(
+                """
+                INSERT INTO cx_extraction_artifacts (
+                    extraction_artifact_id,
+                    content_object_id,
+                    source_file_id,
+                    artifact_kind,
+                    status,
+                    extractor_name,
+                    extractor_version,
+                    markdown_sha256,
+                    markdown_storage_uri,
+                    markdown_char_count,
+                    created_trace_id,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    :extraction_artifact_id,
+                    :content_object_id,
+                    :source_file_id,
+                    :artifact_kind,
+                    :status,
+                    :extractor_name,
+                    :extractor_version,
+                    :markdown_sha256,
+                    :markdown_storage_uri,
+                    :markdown_char_count,
+                    :created_trace_id,
+                    :created_at,
+                    :updated_at
+                )
+                """
+            ),
+            _extraction_artifact_insert_params(record),
         )
 
     def _insert_owner_acl_entry(self, session: Session, record: dict[str, Any]) -> None:
@@ -595,6 +817,51 @@ def build_content_object_record(
     }
 
 
+def build_extraction_artifact_record(
+    extraction_result: dict[str, Any],
+    *,
+    content_object_id: str,
+    source_file_id: str,
+) -> dict[str, Any]:
+    extractor = extraction_result["extractor"]
+    extractor_name = str(extractor["provider"])
+    extractor_version = str(extractor["version"])
+    markdown_sha256 = str(extraction_result["extracted_markdown_sha256"])
+    extraction_artifact_id = str(
+        uuid5(
+            NAMESPACE_URL,
+            "cx-extraction-artifact:"
+            f"{content_object_id}:{extractor_name}:{extractor_version}:{markdown_sha256}",
+        )
+    )
+    return {
+        "extraction_artifact_id": extraction_artifact_id,
+        "content_object_id": content_object_id,
+        "source_file_id": source_file_id,
+        "artifact_kind": "markdown",
+        "status": extraction_result["status"],
+        "extractor_name": extractor_name,
+        "extractor_version": extractor_version,
+        "markdown_sha256": markdown_sha256,
+        "markdown_storage_uri": markdown_storage_uri_from_path(
+            str(extraction_result["extracted_markdown_path"])
+        ),
+        "markdown_char_count": extraction_result["markdown_char_count"],
+        "created_trace_id": extraction_result["trace_id"],
+        "created_at": extraction_result["created_at"],
+        "updated_at": extraction_result["updated_at"],
+    }
+
+
+def markdown_storage_uri_from_path(extracted_markdown_path: str) -> str:
+    path = Path(extracted_markdown_path)
+    if len(path.parts) >= 2:
+        suffix = "/".join(path.parts[-2:])
+    else:
+        suffix = path.name
+    return f"local://cx/extracted-markdown/{suffix}"
+
+
 _SOURCE_FILE_SELECT_COLUMNS = """
     source_file_id,
     source_sha256,
@@ -623,6 +890,22 @@ _CONTENT_OBJECT_SELECT_COLUMNS = """
     classification,
     lifecycle_status,
     retrieval_policy,
+    created_trace_id,
+    created_at,
+    updated_at
+"""
+
+_EXTRACTION_ARTIFACT_SELECT_COLUMNS = """
+    extraction_artifact_id,
+    content_object_id,
+    source_file_id,
+    artifact_kind,
+    status,
+    extractor_name,
+    extractor_version,
+    markdown_sha256,
+    markdown_storage_uri,
+    markdown_char_count,
     created_trace_id,
     created_at,
     updated_at
@@ -666,6 +949,24 @@ def _content_object_insert_params(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _extraction_artifact_insert_params(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "extraction_artifact_id": record["extraction_artifact_id"],
+        "content_object_id": record["content_object_id"],
+        "source_file_id": record["source_file_id"],
+        "artifact_kind": record["artifact_kind"],
+        "status": record["status"],
+        "extractor_name": record["extractor_name"],
+        "extractor_version": record["extractor_version"],
+        "markdown_sha256": record["markdown_sha256"],
+        "markdown_storage_uri": record["markdown_storage_uri"],
+        "markdown_char_count": record["markdown_char_count"],
+        "created_trace_id": record.get("created_trace_id"),
+        "created_at": record["created_at"],
+        "updated_at": record["updated_at"],
+    }
+
+
 def _content_object_from_row(row: Any) -> dict[str, Any]:
     return {
         "content_object_id": str(row["content_object_id"]),
@@ -684,6 +985,33 @@ def _content_object_from_row(row: Any) -> dict[str, Any]:
         "created_at": _timestamp_to_wire(row["created_at"]),
         "updated_at": _timestamp_to_wire(row["updated_at"]),
     }
+
+
+def _extraction_artifact_from_row(row: Any) -> dict[str, Any]:
+    return {
+        "extraction_artifact_id": str(row["extraction_artifact_id"]),
+        "content_object_id": str(row["content_object_id"]),
+        "source_file_id": str(row["source_file_id"]),
+        "artifact_kind": row["artifact_kind"],
+        "status": row["status"],
+        "extractor_name": row["extractor_name"],
+        "extractor_version": row["extractor_version"],
+        "markdown_sha256": row["markdown_sha256"],
+        "markdown_storage_uri": row["markdown_storage_uri"],
+        "markdown_char_count": int(row["markdown_char_count"]),
+        "created_trace_id": row["created_trace_id"],
+        "created_at": _timestamp_to_wire(row["created_at"]),
+        "updated_at": _timestamp_to_wire(row["updated_at"]),
+    }
+
+
+def _extraction_artifact_unique_key(record: dict[str, Any]) -> tuple[str, str, str, str]:
+    return (
+        str(record["content_object_id"]),
+        str(record["extractor_name"]),
+        str(record["extractor_version"]),
+        str(record["markdown_sha256"]),
+    )
 
 
 def _owner_acl_entry_id(content_object_id: str, owner_user_id: str) -> str:

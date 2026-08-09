@@ -27,6 +27,7 @@ from nex_cx.repository import (
     DEFAULT_OWNER_USER_ID,
     DEFAULT_TENANT_ID,
     InMemoryCxContentRepository,
+    build_extraction_artifact_record,
     build_content_object_record,
     build_source_file_record,
 )
@@ -196,6 +197,15 @@ class ContentIngestionStore:
             "markdown_available": True,
         }
         document["updated_at"] = result["updated_at"]
+        refs = self.document_content_refs.get(result["document_id"])
+        if refs is not None:
+            self.content_repository.save_extraction_artifact(
+                build_extraction_artifact_record(
+                    result,
+                    content_object_id=refs["content_object_id"],
+                    source_file_id=refs["source_file_id"],
+                )
+            )
         self.extraction_results[result["document_id"]] = result
         return result
 

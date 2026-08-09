@@ -57,6 +57,10 @@ Internal persistence boundary:
 - SQLAlchemy-backed upload regression preserves owner-scoped duplicate behavior:
   same owner and same `source_sha256` returns `ALREADY_EXISTS`, while different
   owners get separate content objects that share one source file metadata row.
+- Extraction results now write through to `cx_extraction_artifacts` when the
+  repository supports it. The persisted artifact stores lineage, extractor
+  version, Markdown hash, storage URI, and counts only; Markdown body text stays
+  in the extracted Markdown file path.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`
