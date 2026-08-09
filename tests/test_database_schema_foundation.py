@@ -267,6 +267,46 @@ def test_cx_schema_tracks_retrieval_package_metadata_without_raw_text() -> None:
     assert "raw_evidence" not in compact
 
 
+def test_cx_schema_tracks_processing_run_metadata_without_raw_payloads() -> None:
+    compact = normalized(read_migration("nex-cx"))
+    processing = normalized(
+        read_migration_named("nex-cx", "0182_cx_processing_run_step_persistence.sql")
+    )
+
+    assert "create table if not exists cx_document_processing_runs" in compact
+    assert "create table if not exists cx_document_processing_steps" in compact
+    for column in (
+        "pipeline_schema_version text not null default 'cx_document_processing_pipeline.v1'",
+        "document_id uuid not null references cx_content_objects(content_object_id)",
+        "status text not null check (status in ('queued', 'running', 'succeeded', 'failed', 'cancelled'))",
+        "job_subject_ref jsonb not null default '{}'::jsonb",
+        "job_links jsonb not null default '{}'::jsonb",
+        "step_total integer not null default 0",
+        "step_succeeded integer not null default 0",
+        "step_skipped integer not null default 0",
+        "step_failed integer not null default 0",
+        "output_ref_hash text check",
+        "error_detail_sha256 text check",
+        "primary key (pipeline_run_id, step_order)",
+        "unique (pipeline_run_id, step_id)",
+    ):
+        assert column in processing
+    assert "ck_cx_processing_runs_step_total" in processing
+    assert "ck_cx_processing_runs_terminal_completed" in processing
+    assert "ck_cx_processing_steps_success_output_ref" in processing
+    assert "ck_cx_processing_steps_nonfailed_error_hash" in processing
+    assert "idx_cx_processing_runs_document_updated" in processing
+    assert "idx_cx_processing_runs_status_updated" in processing
+    assert "idx_cx_processing_runs_trace" in processing
+    assert "idx_cx_processing_steps_output_ref" in processing
+    assert "0182_cx_processing_run_step_persistence" in processing
+    assert "source_text" not in processing
+    assert "chunk_text" not in processing
+    assert "summary_text" not in processing
+    assert "embedding_raw_vector" not in processing
+    assert "error_detail text" not in compact
+
+
 def test_prompt_registry_is_service_local_and_versioned() -> None:
     cx = normalized(read_migration("nex-cx"))
     ae = normalized(read_migration("nex-ae-api"))

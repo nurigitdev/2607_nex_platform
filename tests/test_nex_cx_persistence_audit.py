@@ -58,17 +58,19 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
         "surface_count": 10,
         "postgres_adapter_gap_count": 1,
         "schema_deferred_count": 0,
-        "migration_pending_count": 1,
+        "migration_pending_count": 0,
         "deferred_schema_decision_count": 3,
         "private_payload_boundary_count": 6,
-        "next_recommended_slice": "0182_cx_processing_run_step_schema_migration",
+        "next_recommended_slice": "0183_cx_processing_run_repository_adapter",
     }
     assert all(count == 0 for count in audit["observed_store_counts"].values())
-    assert {
-        surface["surface_id"]
-        for surface in audit["surfaces"]
-        if surface["target_table_status"] == "schema_ready_pending_migration"
-    } == {"processing_runs"}
+    processing_surface = {
+        surface["surface_id"]: surface for surface in audit["surfaces"]
+    }["processing_runs"]
+    assert processing_surface["target_table_status"] == "migration_present"
+    assert processing_surface["current_adapter_status"] == (
+        "schema_migration_present_adapter_pending"
+    )
     closed_surfaces = {
         surface["surface_id"]: surface
         for surface in audit["surfaces"]
@@ -105,10 +107,10 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
     )
     assert (
         audit["processing_run_persistence_decision"]["decision_status"]
-        == "schema_ready_pending_migration"
+        == "schema_migration_present_adapter_pending"
     )
     assert audit["processing_run_persistence_decision"]["next_slice"] == (
-        "0182_cx_processing_run_step_schema_migration"
+        "0183_cx_processing_run_repository_adapter"
     )
     assert audit["latest_processing_run_persistence_preview"] is None
 
@@ -208,7 +210,7 @@ def test_cx_persistence_gap_audit_records_deferred_schema_decisions() -> None:
         "cx_document_processing_runs",
         "cx_document_processing_steps",
     ]
-    assert processing["decision_status"] == "schema_ready_pending_migration"
+    assert processing["decision_status"] == "schema_migration_present_adapter_pending"
     assert "step_total" in processing["minimum_persisted_metadata"]
     assert "steps[].error_detail_sha256" in processing["minimum_persisted_metadata"]
     assert lexical_header["decision_status"] == "header_table_deferred"

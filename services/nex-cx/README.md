@@ -89,7 +89,8 @@ Internal persistence boundary:
   bounded previews, policy lineage, permission snapshot hash, scores, final
   score, and source summary; raw query text, raw evidence text, and raw query
   vectors stay outside durable public rows.
-- Processing run database schema is decision-ready and pending migration.
+- Processing run database schema is present and pending repository adapter
+  write-through.
   `build_cx_persistence_gap_audit()` exposes the planned
   `cx_document_processing_runs` / `cx_document_processing_steps` mapping,
   minimum metadata, private payload policy, and latest safe persistence preview.
