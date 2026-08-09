@@ -70,6 +70,10 @@ Internal persistence boundary:
   `cx_lexical_postings` when the repository supports it. Persisted rows store
   tokenizer metadata, terms, document frequency, chunk references, and
   occurrence counts only.
+- Chunk embedding index records now write through to `cx_chunk_embeddings` when
+  the repository supports it. Persisted rows store provider/model lineage,
+  vector dimension, embedding hash, optional storage URI, status, and trace
+  metadata only. Raw vectors remain in the private embedding vector boundary.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`

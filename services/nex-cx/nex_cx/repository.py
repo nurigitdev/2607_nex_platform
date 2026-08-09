@@ -96,6 +96,18 @@ class CxContentRepository(Protocol):
     ) -> dict[str, Any] | None:
         ...
 
+    def save_chunk_embedding_index(self, record: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+    def find_chunk_embedding_index(
+        self,
+        *,
+        chunk_set_id: str,
+        model_profile_id: str,
+        model_revision: str,
+    ) -> dict[str, Any] | None:
+        ...
+
 
 @dataclass(frozen=True)
 class CxContentRepositoryError(Exception):
@@ -121,6 +133,9 @@ class InMemoryCxContentRepository:
         default_factory=dict
     )
     lexical_indexes: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
+    chunk_embedding_indexes: dict[tuple[str, str, str], dict[str, Any]] = field(
+        default_factory=dict
+    )
 
     def save_source_file(self, record: dict[str, Any]) -> dict[str, Any]:
         existing_id = self.source_file_ids_by_sha256.get(record["source_sha256"])
@@ -263,6 +278,26 @@ class InMemoryCxContentRepository:
         tokenizer_used: str,
     ) -> dict[str, Any] | None:
         return self.lexical_indexes.get((chunk_set_id, tokenizer_used))
+
+    def save_chunk_embedding_index(self, record: dict[str, Any]) -> dict[str, Any]:
+        key = _chunk_embedding_index_unique_key(record)
+        existing = self.chunk_embedding_indexes.get(key)
+        if existing is not None:
+            return existing
+        stored = deepcopy(record)
+        self.chunk_embedding_indexes[key] = stored
+        return stored
+
+    def find_chunk_embedding_index(
+        self,
+        *,
+        chunk_set_id: str,
+        model_profile_id: str,
+        model_revision: str,
+    ) -> dict[str, Any] | None:
+        return self.chunk_embedding_indexes.get(
+            (chunk_set_id, model_profile_id, model_revision)
+        )
 
 
 class SqlAlchemyCxContentRepository:
@@ -501,6 +536,45 @@ class SqlAlchemyCxContentRepository:
         except SQLAlchemyError as exc:
             raise _content_repository_unavailable() from exc
 
+    def save_chunk_embedding_index(self, record: dict[str, Any]) -> dict[str, Any]:
+        record_to_store = deepcopy(record)
+        try:
+            return self._run_in_transaction(
+                lambda session: self._save_chunk_embedding_index(
+                    session,
+                    record_to_store,
+                )
+            )
+        except IntegrityError as exc:
+            existing = self.find_chunk_embedding_index(
+                chunk_set_id=str(record_to_store["chunk_set_id"]),
+                model_profile_id=str(record_to_store["model_profile_id"]),
+                model_revision=str(record_to_store["model_revision"]),
+            )
+            if existing is not None:
+                return existing
+            raise _content_repository_unavailable() from exc
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def find_chunk_embedding_index(
+        self,
+        *,
+        chunk_set_id: str,
+        model_profile_id: str,
+        model_revision: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_chunk_embedding_index(
+                    session,
+                    chunk_set_id=chunk_set_id,
+                    model_profile_id=model_profile_id,
+                    model_revision=model_revision,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
     def _run_in_transaction(self, operation: Any) -> Any:
         session = self._session_factory()
         try:
@@ -608,6 +682,30 @@ class SqlAlchemyCxContentRepository:
             session,
             chunk_set_id=str(record["chunk_set_id"]),
             tokenizer_used=str(record["tokenizer_used"]),
+        )
+        if stored is None:
+            return deepcopy(record)
+        return stored
+
+    def _save_chunk_embedding_index(
+        self,
+        session: Session,
+        record: dict[str, Any],
+    ) -> dict[str, Any]:
+        existing = self._select_chunk_embedding_index(
+            session,
+            chunk_set_id=str(record["chunk_set_id"]),
+            model_profile_id=str(record["model_profile_id"]),
+            model_revision=str(record["model_revision"]),
+        )
+        if existing is not None:
+            return existing
+        self._insert_chunk_embeddings(session, record)
+        stored = self._select_chunk_embedding_index(
+            session,
+            chunk_set_id=str(record["chunk_set_id"]),
+            model_profile_id=str(record["model_profile_id"]),
+            model_revision=str(record["model_revision"]),
         )
         if stored is None:
             return deepcopy(record)
@@ -897,6 +995,50 @@ class SqlAlchemyCxContentRepository:
         ).mappings().all()
         return [_lexical_posting_from_row(row) for row in rows]
 
+    def _select_chunk_embedding_index(
+        self,
+        session: Session,
+        *,
+        chunk_set_id: str,
+        model_profile_id: str,
+        model_revision: str,
+    ) -> dict[str, Any] | None:
+        rows = session.execute(
+            text(
+                f"""
+                SELECT {_CHUNK_EMBEDDING_SELECT_COLUMNS}
+                FROM cx_chunk_embeddings AS embedding
+                JOIN cx_chunks AS chunk ON chunk.chunk_id = embedding.chunk_id
+                WHERE chunk.chunk_set_id = :chunk_set_id
+                  AND embedding.model_profile_id = :model_profile_id
+                  AND embedding.model_revision = :model_revision
+                ORDER BY chunk.ordinal ASC
+                """
+            ),
+            {
+                "chunk_set_id": chunk_set_id,
+                "model_profile_id": model_profile_id,
+                "model_revision": model_revision,
+            },
+        ).mappings().all()
+        if not rows:
+            return None
+        embeddings = [_chunk_embedding_from_row(row) for row in rows]
+        first = embeddings[0]
+        return {
+            "embedding_index_schema_version": "cx_embedding_index.persistence.v1",
+            "chunk_set_id": chunk_set_id,
+            "provider_alias": first["provider_alias"],
+            "model_profile_id": first["model_profile_id"],
+            "model_revision": first["model_revision"],
+            "deployment_id": first["deployment_id"],
+            "chunk_count": len(embeddings),
+            "vector_dimension": first["vector_dimension"],
+            "chunk_embeddings": embeddings,
+            "created_trace_id": first["created_trace_id"],
+            "created_at": first["created_at"],
+        }
+
     def _insert_source_file(self, session: Session, record: dict[str, Any]) -> None:
         session.execute(
             text(
@@ -1150,6 +1292,46 @@ class SqlAlchemyCxContentRepository:
                 """
             ),
             posting_params,
+        )
+
+    def _insert_chunk_embeddings(self, session: Session, record: dict[str, Any]) -> None:
+        embeddings = record.get("chunk_embeddings", [])
+        if not embeddings:
+            return
+        session.execute(
+            text(
+                """
+                INSERT INTO cx_chunk_embeddings (
+                    chunk_embedding_id,
+                    chunk_id,
+                    provider_alias,
+                    model_profile_id,
+                    model_revision,
+                    deployment_id,
+                    vector_dimension,
+                    embedding_sha256,
+                    embedding_storage_uri,
+                    status,
+                    created_trace_id,
+                    created_at
+                )
+                VALUES (
+                    :chunk_embedding_id,
+                    :chunk_id,
+                    :provider_alias,
+                    :model_profile_id,
+                    :model_revision,
+                    :deployment_id,
+                    :vector_dimension,
+                    :embedding_sha256,
+                    :embedding_storage_uri,
+                    :status,
+                    :created_trace_id,
+                    :created_at
+                )
+                """
+            ),
+            [_chunk_embedding_insert_params(record, item) for item in embeddings],
         )
 
     def _insert_owner_acl_entry(self, session: Session, record: dict[str, Any]) -> None:
@@ -1421,6 +1603,53 @@ def build_lexical_index_record(
     }
 
 
+def build_chunk_embedding_index_record(
+    embedding_index: dict[str, Any],
+    *,
+    chunk_set_id: str,
+) -> dict[str, Any]:
+    provider_alias = str(embedding_index["provider_alias"])
+    model_profile_id = str(embedding_index.get("model_profile_id", provider_alias))
+    model_revision = str(embedding_index["model_revision"])
+    created_at = embedding_index["created_at"]
+    created_trace_id = embedding_index.get("trace_id")
+    return {
+        "embedding_index_schema_version": "cx_embedding_index.persistence.v1",
+        "chunk_set_id": chunk_set_id,
+        "provider_alias": provider_alias,
+        "model_profile_id": model_profile_id,
+        "model_revision": model_revision,
+        "deployment_id": embedding_index["deployment_id"],
+        "chunk_count": embedding_index["chunk_count"],
+        "vector_dimension": embedding_index["vector_dimension"],
+        "chunk_embeddings": [
+            {
+                "chunk_embedding_id": str(
+                    uuid5(
+                        NAMESPACE_URL,
+                        "cx-chunk-embedding:"
+                        f"{chunk['chunk_id']}:{model_profile_id}:{model_revision}",
+                    )
+                ),
+                "chunk_id": chunk["chunk_id"],
+                "provider_alias": provider_alias,
+                "model_profile_id": model_profile_id,
+                "model_revision": model_revision,
+                "deployment_id": embedding_index["deployment_id"],
+                "vector_dimension": chunk["vector_dimension"],
+                "embedding_sha256": chunk["embedding_sha256"],
+                "embedding_storage_uri": chunk.get("embedding_storage_uri"),
+                "status": chunk.get("status", "READY"),
+                "created_trace_id": created_trace_id,
+                "created_at": created_at,
+            }
+            for chunk in embedding_index["chunk_embeddings"]
+        ],
+        "created_trace_id": created_trace_id,
+        "created_at": created_at,
+    }
+
+
 def markdown_storage_uri_from_path(extracted_markdown_path: str) -> str:
     path = Path(extracted_markdown_path)
     if len(path.parts) >= 2:
@@ -1523,6 +1752,21 @@ _LEXICAL_POSTING_SELECT_COLUMNS = """
     chunk_id,
     occurrence_count,
     created_at
+"""
+
+_CHUNK_EMBEDDING_SELECT_COLUMNS = """
+    embedding.chunk_embedding_id,
+    embedding.chunk_id,
+    embedding.provider_alias,
+    embedding.model_profile_id,
+    embedding.model_revision,
+    embedding.deployment_id,
+    embedding.vector_dimension,
+    embedding.embedding_sha256,
+    embedding.embedding_storage_uri,
+    embedding.status,
+    embedding.created_trace_id,
+    embedding.created_at
 """
 
 
@@ -1644,6 +1888,26 @@ def _lexical_posting_insert_params(
     }
 
 
+def _chunk_embedding_insert_params(
+    record: dict[str, Any],
+    item: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "chunk_embedding_id": item["chunk_embedding_id"],
+        "chunk_id": item["chunk_id"],
+        "provider_alias": item["provider_alias"],
+        "model_profile_id": item["model_profile_id"],
+        "model_revision": item["model_revision"],
+        "deployment_id": item["deployment_id"],
+        "vector_dimension": item["vector_dimension"],
+        "embedding_sha256": item["embedding_sha256"],
+        "embedding_storage_uri": item.get("embedding_storage_uri"),
+        "status": item.get("status", "READY"),
+        "created_trace_id": item.get("created_trace_id", record.get("created_trace_id")),
+        "created_at": item.get("created_at", record["created_at"]),
+    }
+
+
 def _content_object_from_row(row: Any) -> dict[str, Any]:
     return {
         "content_object_id": str(row["content_object_id"]),
@@ -1744,6 +2008,23 @@ def _lexical_posting_from_row(row: Any) -> dict[str, Any]:
     }
 
 
+def _chunk_embedding_from_row(row: Any) -> dict[str, Any]:
+    return {
+        "chunk_embedding_id": str(row["chunk_embedding_id"]),
+        "chunk_id": str(row["chunk_id"]),
+        "provider_alias": row["provider_alias"],
+        "model_profile_id": row["model_profile_id"],
+        "model_revision": row["model_revision"],
+        "deployment_id": row["deployment_id"],
+        "vector_dimension": int(row["vector_dimension"]),
+        "embedding_sha256": row["embedding_sha256"],
+        "embedding_storage_uri": row["embedding_storage_uri"],
+        "status": row["status"],
+        "created_trace_id": row["created_trace_id"],
+        "created_at": _timestamp_to_wire(row["created_at"]),
+    }
+
+
 def _extraction_artifact_unique_key(record: dict[str, Any]) -> tuple[str, str, str, str]:
     return (
         str(record["content_object_id"]),
@@ -1764,6 +2045,14 @@ def _chunk_set_unique_key(record: dict[str, Any]) -> tuple[str, str, str, str]:
 
 def _lexical_index_unique_key(record: dict[str, Any]) -> tuple[str, str]:
     return (str(record["chunk_set_id"]), str(record["tokenizer_used"]))
+
+
+def _chunk_embedding_index_unique_key(record: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(record["chunk_set_id"]),
+        str(record["model_profile_id"]),
+        str(record["model_revision"]),
+    )
 
 
 def _owner_acl_entry_id(content_object_id: str, owner_user_id: str) -> str:

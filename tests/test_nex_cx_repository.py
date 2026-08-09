@@ -24,6 +24,7 @@ from nex_cx.repository import (
     DEFAULT_TENANT_ID,
     InMemoryCxContentRepository,
     SqlAlchemyCxContentRepository,
+    build_chunk_embedding_index_record,
     build_chunk_set_record,
     build_content_object_record,
     build_extraction_artifact_record,
@@ -215,6 +216,27 @@ def sqlite_content_repository(
         connection.execute(
             text(
                 """
+                CREATE TABLE cx_chunk_embeddings (
+                    chunk_embedding_id TEXT PRIMARY KEY,
+                    chunk_id TEXT NOT NULL REFERENCES cx_chunks(chunk_id),
+                    provider_alias TEXT NOT NULL,
+                    model_profile_id TEXT NOT NULL,
+                    model_revision TEXT NOT NULL,
+                    deployment_id TEXT NOT NULL,
+                    vector_dimension INTEGER NOT NULL,
+                    embedding_sha256 TEXT NOT NULL,
+                    embedding_storage_uri TEXT,
+                    status TEXT NOT NULL DEFAULT 'READY',
+                    created_trace_id TEXT,
+                    created_at TEXT NOT NULL,
+                    UNIQUE (chunk_id, model_profile_id, model_revision)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
                 CREATE TABLE cx_lexical_terms (
                     lexical_term_id TEXT PRIMARY KEY,
                     chunk_set_id TEXT NOT NULL REFERENCES cx_chunk_sets(chunk_set_id),
@@ -345,6 +367,33 @@ def lexical_index_payload(chunk_set: dict[str, object]) -> dict[str, object]:
     }
 
 
+def embedding_index_payload(chunk_set: dict[str, object]) -> dict[str, object]:
+    return {
+        "embedding_index_schema_version": "cx_embedding_index.v1",
+        "document_id": chunk_set.get("document_id", chunk_set.get("content_object_id")),
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "provider_alias": "mock-embedding-default",
+        "model_revision": "mock-embedding-v1",
+        "deployment_id": "mock-embedding-local",
+        "chunk_count": chunk_set["chunk_count"],
+        "vector_dimension": 3,
+        "chunk_embeddings": [
+            {
+                "chunk_id": chunk["chunk_id"],
+                "ordinal": chunk["ordinal"],
+                "text_sha256": chunk["text_sha256"],
+                "embedding_sha256": f"{index + 1:064x}",
+                "vector_dimension": 3,
+            }
+            for index, chunk in enumerate(chunk_set["chunks"])
+        ],
+        "usage": {"input_tokens": 1, "output_tokens": 0, "total_tokens": 1},
+        "created_at": chunk_set["created_at"],
+        "updated_at": chunk_set.get("updated_at", chunk_set["created_at"]),
+    }
+
+
 def test_build_source_file_record_maps_storage_metadata_without_raw_text(
     tmp_path: Path,
 ) -> None:
@@ -427,6 +476,29 @@ def test_build_chunk_set_record_maps_metadata_without_private_chunk_text(
     assert record["chunks"][0]["chunk_set_id"] == record["chunk_set_id"]
     assert record["chunks"][0]["content_object_id"] == upload["document_id"]
     assert "SECRET_PRIVATE_CHUNK_SUFFIX" not in str(record)
+
+
+def test_build_chunk_embedding_index_record_maps_hashes_without_vectors(
+    tmp_path: Path,
+) -> None:
+    upload = upload_registration(tmp_path)
+    chunk_set = chunk_set_payload(tmp_path, upload)
+    embedding_index = embedding_index_payload(chunk_set)
+
+    record = build_chunk_embedding_index_record(
+        embedding_index,
+        chunk_set_id="66666666-6666-4666-8666-666666666666",
+    )
+
+    first = record["chunk_embeddings"][0]
+    assert record["model_profile_id"] == "mock-embedding-default"
+    assert first["chunk_id"] == chunk_set["chunks"][0]["chunk_id"]
+    assert first["embedding_sha256"] == embedding_index["chunk_embeddings"][0][
+        "embedding_sha256"
+    ]
+    assert first["vector_dimension"] == 3
+    assert "SECRET_PRIVATE_VECTOR" not in str(record)
+    assert "[0.0, 0.5, 1.0]" not in str(record)
 
 
 def test_build_lexical_index_record_maps_terms_without_chunk_text(
@@ -593,6 +665,40 @@ def test_in_memory_repository_saves_lexical_indexes_idempotently(
     assert repository.find_lexical_index(
         chunk_set_id=record["chunk_set_id"],
         tokenizer_used="other",
+    ) is None
+
+
+def test_in_memory_repository_saves_chunk_embedding_indexes_idempotently(
+    tmp_path: Path,
+) -> None:
+    repository = InMemoryCxContentRepository()
+    upload = upload_registration(tmp_path)
+    chunk_set = chunk_set_payload(tmp_path, upload)
+    record = build_chunk_embedding_index_record(
+        embedding_index_payload(chunk_set),
+        chunk_set_id="66666666-6666-4666-8666-666666666666",
+    )
+    duplicate = {
+        **record,
+        "chunk_embeddings": [
+            {
+                **record["chunk_embeddings"][0],
+                "chunk_embedding_id": "88888888-8888-4888-8888-888888888888",
+            }
+        ],
+    }
+
+    assert repository.save_chunk_embedding_index(record) == record
+    assert repository.save_chunk_embedding_index(duplicate) == record
+    assert repository.find_chunk_embedding_index(
+        chunk_set_id=record["chunk_set_id"],
+        model_profile_id=record["model_profile_id"],
+        model_revision=record["model_revision"],
+    ) == record
+    assert repository.find_chunk_embedding_index(
+        chunk_set_id=record["chunk_set_id"],
+        model_profile_id="other",
+        model_revision=record["model_revision"],
     ) is None
 
 
@@ -923,6 +1029,98 @@ def test_sqlalchemy_repository_saves_and_finds_lexical_index_metadata(
     )
 
 
+def test_sqlalchemy_repository_saves_and_finds_chunk_embedding_metadata(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    upload = upload_registration(tmp_path)
+    source_file = repository.save_source_file(build_source_file_record(upload))
+    content = repository.save_content_object(
+        build_content_object_record(
+            upload,
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    artifact = repository.save_extraction_artifact(
+        build_extraction_artifact_record(
+            extraction_result(tmp_path, upload),
+            content_object_id=content["content_object_id"],
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    chunk_set = repository.save_chunk_set(
+        build_chunk_set_record(
+            chunk_set_payload(tmp_path, upload),
+            content_object_id=content["content_object_id"],
+            extraction_artifact_id=artifact["extraction_artifact_id"],
+        )
+    )
+    record = build_chunk_embedding_index_record(
+        embedding_index_payload(chunk_set),
+        chunk_set_id=chunk_set["chunk_set_id"],
+    )
+    duplicate = {
+        **record,
+        "chunk_embeddings": [
+            {
+                **record["chunk_embeddings"][0],
+                "chunk_embedding_id": "88888888-8888-4888-8888-888888888888",
+            }
+        ],
+    }
+
+    saved = repository.save_chunk_embedding_index(record)
+
+    assert saved == record
+    assert repository.save_chunk_embedding_index(duplicate) == record
+    assert repository.find_chunk_embedding_index(
+        chunk_set_id=record["chunk_set_id"],
+        model_profile_id=record["model_profile_id"],
+        model_revision=record["model_revision"],
+    ) == record
+    assert repository.find_chunk_embedding_index(
+        chunk_set_id=record["chunk_set_id"],
+        model_profile_id="other",
+        model_revision=record["model_revision"],
+    ) is None
+    assert _sqlite_table_count(engine, "cx_chunk_embeddings") == record["chunk_count"]
+    assert "[0.0, 0.5, 1.0]" not in _sqlite_table_dump(
+        engine,
+        ["cx_chunk_embeddings"],
+    )
+
+
+def test_sqlalchemy_repository_keeps_empty_chunk_embedding_index_at_boundary(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    record = {
+        "embedding_index_schema_version": "cx_embedding_index.persistence.v1",
+        "chunk_set_id": "66666666-6666-4666-8666-666666666666",
+        "provider_alias": "mock-embedding-default",
+        "model_profile_id": "mock-embedding-default",
+        "model_revision": "mock-embedding-v1",
+        "deployment_id": "mock-embedding-local",
+        "chunk_count": 0,
+        "vector_dimension": 0,
+        "chunk_embeddings": [],
+        "created_trace_id": TRACE_ID,
+        "created_at": "2026-08-09T00:00:00Z",
+    }
+
+    saved = repository.save_chunk_embedding_index(record)
+
+    assert saved == record
+    assert repository.find_chunk_embedding_index(
+        chunk_set_id=record["chunk_set_id"],
+        model_profile_id=record["model_profile_id"],
+        model_revision=record["model_revision"],
+    ) is None
+    assert _sqlite_table_count(engine, "cx_chunk_embeddings") == 0
+
+
 def test_sqlalchemy_repository_keeps_empty_lexical_index_at_boundary(
     tmp_path: Path,
 ) -> None:
@@ -1169,6 +1367,41 @@ def test_sqlalchemy_repository_wraps_database_errors(tmp_path: Path) -> None:
             chunk_set_id="66666666-6666-4666-8666-666666666666",
             tokenizer_used="korean_mixed_v1",
         ),
+        lambda repository: repository.save_chunk_embedding_index(
+            {
+                "embedding_index_schema_version": "cx_embedding_index.persistence.v1",
+                "chunk_set_id": "66666666-6666-4666-8666-666666666666",
+                "provider_alias": "mock-embedding-default",
+                "model_profile_id": "mock-embedding-default",
+                "model_revision": "mock-embedding-v1",
+                "deployment_id": "mock-embedding-local",
+                "chunk_count": 1,
+                "vector_dimension": 3,
+                "chunk_embeddings": [
+                    {
+                        "chunk_embedding_id": "88888888-8888-4888-8888-888888888888",
+                        "chunk_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                        "provider_alias": "mock-embedding-default",
+                        "model_profile_id": "mock-embedding-default",
+                        "model_revision": "mock-embedding-v1",
+                        "deployment_id": "mock-embedding-local",
+                        "vector_dimension": 3,
+                        "embedding_sha256": "1" * 64,
+                        "embedding_storage_uri": None,
+                        "status": "READY",
+                        "created_trace_id": TRACE_ID,
+                        "created_at": "2026-08-09T00:00:00Z",
+                    }
+                ],
+                "created_trace_id": TRACE_ID,
+                "created_at": "2026-08-09T00:00:00Z",
+            }
+        ),
+        lambda repository: repository.find_chunk_embedding_index(
+            chunk_set_id="66666666-6666-4666-8666-666666666666",
+            model_profile_id="mock-embedding-default",
+            model_revision="mock-embedding-v1",
+        ),
     ],
 )
 def test_sqlalchemy_repository_wraps_missing_table_errors(
@@ -1219,6 +1452,14 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
         ) -> dict[str, Any]:
             raise IntegrityError("insert lexical", {}, Exception("race"))
 
+    class RaceyChunkEmbeddingRepository(SqlAlchemyCxContentRepository):
+        def _save_chunk_embedding_index(
+            self,
+            session: Any,
+            record: dict[str, Any],
+        ) -> dict[str, Any]:
+            raise IntegrityError("insert chunk embedding", {}, Exception("race"))
+
     repository, engine = sqlite_content_repository(tmp_path)
     upload = upload_registration(tmp_path)
     source_file_record = build_source_file_record(upload)
@@ -1254,9 +1495,16 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
     racey_extraction = RaceyExtractionRepository(build_session_factory(engine))
     racey_chunk_set = RaceyChunkSetRepository(build_session_factory(engine))
     racey_lexical = RaceyLexicalRepository(build_session_factory(engine))
+    racey_chunk_embedding = RaceyChunkEmbeddingRepository(build_session_factory(engine))
     lexical = repository.save_lexical_index(
         build_lexical_index_record(
             lexical_index_payload(chunk_set),
+            chunk_set_id=chunk_set["chunk_set_id"],
+        )
+    )
+    chunk_embedding = repository.save_chunk_embedding_index(
+        build_chunk_embedding_index_record(
+            embedding_index_payload(chunk_set),
             chunk_set_id=chunk_set["chunk_set_id"],
         )
     )
@@ -1266,6 +1514,10 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
     assert racey_extraction.save_extraction_artifact(artifact) == artifact
     assert racey_chunk_set.save_chunk_set(chunk_set) == chunk_set
     assert racey_lexical.save_lexical_index(lexical) == lexical
+    assert (
+        racey_chunk_embedding.save_chunk_embedding_index(chunk_embedding)
+        == chunk_embedding
+    )
 
 
 def test_sqlalchemy_repository_extraction_integrity_without_existing_row_wraps(
@@ -1396,6 +1648,40 @@ def test_sqlalchemy_repository_lexical_integrity_without_existing_row_wraps(
                 "chunk_count": 0,
                 "unique_token_count": 0,
                 "terms": [],
+                "created_at": "2026-08-09T00:00:00Z",
+            }
+        )
+
+    assert exc_info.value.error_code == "cx_content.repository_unavailable"
+
+
+def test_sqlalchemy_repository_chunk_embedding_integrity_without_existing_row_wraps(
+    tmp_path: Path,
+) -> None:
+    class RaceyChunkEmbeddingRepository(SqlAlchemyCxContentRepository):
+        def _save_chunk_embedding_index(
+            self,
+            session: Any,
+            record: dict[str, Any],
+        ) -> dict[str, Any]:
+            raise IntegrityError("insert chunk embedding", {}, Exception("race"))
+
+    _, engine = sqlite_content_repository(tmp_path)
+    repository = RaceyChunkEmbeddingRepository(build_session_factory(engine))
+
+    with pytest.raises(CxContentRepositoryError) as exc_info:
+        repository.save_chunk_embedding_index(
+            {
+                "embedding_index_schema_version": "cx_embedding_index.persistence.v1",
+                "chunk_set_id": "66666666-6666-4666-8666-666666666666",
+                "provider_alias": "mock-embedding-default",
+                "model_profile_id": "mock-embedding-default",
+                "model_revision": "mock-embedding-v1",
+                "deployment_id": "mock-embedding-local",
+                "chunk_count": 0,
+                "vector_dimension": 0,
+                "chunk_embeddings": [],
+                "created_trace_id": TRACE_ID,
                 "created_at": "2026-08-09T00:00:00Z",
             }
         )
@@ -1725,6 +2011,89 @@ def test_content_ingestion_store_with_sqlalchemy_repository_persists_lexical_ind
     assert "SECRET_LEXICAL_PRIVATE_TEXT" not in _sqlite_table_dump(
         engine,
         ["cx_lexical_terms", "cx_lexical_postings"],
+    )
+
+
+def test_content_ingestion_store_with_sqlalchemy_repository_persists_chunk_embeddings(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    store = ContentIngestionStore(content_repository=repository)
+    source_text = "SECRET_VECTOR_SOURCE"
+    document = upload_registration(
+        tmp_path,
+        content_text=source_text,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    store.save_upload_registration(
+        document,
+        source_text=source_text,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    result = run_text_extraction_job(
+        document["extraction"]["job_id"],
+        store=store,
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    public_chunk_set = store_chunk_set(
+        document_id=str(document["document_id"]),
+        extraction=result,
+        markdown_text=Path(result["extracted_markdown_path"]).read_text(
+            encoding="utf-8"
+        ),
+        store=store,
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    embedding_index = embedding_index_payload(public_chunk_set)
+
+    saved = store.save_embedding_index(
+        embedding_index,
+        embedding_vectors={
+            public_chunk_set["chunks"][0]["chunk_id"]: [0.0, 0.5, 1.0],
+        },
+    )
+
+    refs = store.get_content_ref(str(document["document_id"]))
+    assert refs is not None
+    artifact = repository.find_extraction_artifact(
+        content_object_id=refs["content_object_id"],
+        extractor_name=result["extractor"]["provider"],
+        extractor_version=result["extractor"]["version"],
+        markdown_sha256=result["extracted_markdown_sha256"],
+    )
+    assert artifact is not None
+    persisted_chunk_set = repository.find_chunk_set(
+        content_object_id=refs["content_object_id"],
+        extraction_artifact_id=artifact["extraction_artifact_id"],
+        chunk_policy_id=public_chunk_set["chunk_policy"],
+        source_markdown_sha256=public_chunk_set["source_markdown_sha256"],
+    )
+    assert persisted_chunk_set is not None
+    persisted = repository.find_chunk_embedding_index(
+        chunk_set_id=persisted_chunk_set["chunk_set_id"],
+        model_profile_id=saved["provider_alias"],
+        model_revision=saved["model_revision"],
+    )
+    assert persisted is not None
+    assert persisted["chunk_count"] == saved["chunk_count"]
+    assert persisted["chunk_embeddings"][0]["embedding_sha256"] == saved[
+        "chunk_embeddings"
+    ][0]["embedding_sha256"]
+    assert store.get_embedding_vector(public_chunk_set["chunks"][0]["chunk_id"]) == [
+        0.0,
+        0.5,
+        1.0,
+    ]
+    assert _sqlite_table_count(engine, "cx_chunk_embeddings") == saved["chunk_count"]
+    assert "[0.0, 0.5, 1.0]" not in _sqlite_table_dump(
+        engine,
+        ["cx_chunk_embeddings"],
     )
 
 

@@ -27,6 +27,7 @@ from nex_cx.repository import (
     DEFAULT_OWNER_USER_ID,
     DEFAULT_TENANT_ID,
     InMemoryCxContentRepository,
+    build_chunk_embedding_index_record,
     build_chunk_set_record,
     build_extraction_artifact_record,
     build_lexical_index_record,
@@ -258,6 +259,7 @@ class ContentIngestionStore:
     ) -> dict[str, Any]:
         self.embedding_indexes[embedding_index["document_id"]] = embedding_index
         self.embedding_vectors.update(embedding_vectors)
+        self._persist_embedding_index_metadata(embedding_index)
         return embedding_index
 
     def get_embedding_index(self, document_id: str) -> dict[str, Any] | None:
@@ -265,6 +267,32 @@ class ContentIngestionStore:
 
     def get_embedding_vector(self, chunk_id: str) -> list[float] | None:
         return self.embedding_vectors.get(chunk_id)
+
+    def _persist_embedding_index_metadata(
+        self,
+        embedding_index: dict[str, Any],
+    ) -> None:
+        required_keys = {
+            "chunk_embeddings",
+            "created_at",
+            "deployment_id",
+            "model_revision",
+            "provider_alias",
+            "vector_dimension",
+        }
+        if not required_keys.issubset(embedding_index):
+            return
+        persisted_chunk_set = self._find_persisted_chunk_set(
+            str(embedding_index["document_id"])
+        )
+        if persisted_chunk_set is None:
+            return
+        self.content_repository.save_chunk_embedding_index(
+            build_chunk_embedding_index_record(
+                embedding_index,
+                chunk_set_id=persisted_chunk_set["chunk_set_id"],
+            )
+        )
 
     def save_lexical_index(self, lexical_index: dict[str, Any]) -> dict[str, Any]:
         self.lexical_indexes[lexical_index["document_id"]] = lexical_index
