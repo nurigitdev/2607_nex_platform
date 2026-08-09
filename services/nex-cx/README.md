@@ -51,6 +51,9 @@ Internal persistence boundary:
   surfaces, target migration tables, and private payload boundaries without
   exposing raw source text, chunk text, summary text, provider endpoints, or
   vectors.
+- `SqlAlchemyCxContentRepository` persists source file metadata, content object
+  metadata, and owner ACL rows behind the existing repository port. It does not
+  persist raw source bytes, extracted text, chunk text, summaries, or vectors.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`

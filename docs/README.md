@@ -265,6 +265,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0159`](slices/0159_ag_retention_history_postgresql_smoke_evidence.md) | `S16-009` AG retention history PostgreSQL smoke evidence. |
 | [`Slice 0160`](slices/0160_ag_operations_debug_smoke_closure.md) | `S16-010` AG operations debug smoke closure. |
 | [`Slice 0161`](slices/0161_cx_persistence_gap_audit_refactoring_checkpoint.md) | `S17-001` CX persistence gap audit and refactoring checkpoint. |
+| [`Slice 0162`](slices/0162_sqlalchemy_cx_content_repository_foundation.md) | `S17-002` SQLAlchemy CX content repository foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
