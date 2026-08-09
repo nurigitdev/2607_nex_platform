@@ -61,6 +61,11 @@ Internal persistence boundary:
   repository supports it. The persisted artifact stores lineage, extractor
   version, Markdown hash, storage URI, and counts only; Markdown body text stays
   in the extracted Markdown file path.
+- Chunk sets now write through to `cx_chunk_sets` and `cx_chunks` when the
+  repository supports it. Persisted chunk rows store lineage, policy, offsets,
+  hashes, counts, and short previews only.
+- Full chunk text remains in `ContentIngestionStore.chunk_texts` for mock-first
+  testing and is not written to the public metadata tables.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`

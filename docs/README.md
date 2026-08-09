@@ -268,6 +268,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0162`](slices/0162_sqlalchemy_cx_content_repository_foundation.md) | `S17-002` SQLAlchemy CX content repository foundation. |
 | [`Slice 0163`](slices/0163_cx_sqlalchemy_upload_duplicate_regression.md) | `S17-003` CX SQLAlchemy upload duplicate regression. |
 | [`Slice 0164`](slices/0164_cx_extraction_artifact_persistence_adapter.md) | `S17-004` CX extraction artifact persistence adapter. |
+| [`Slice 0165`](slices/0165_cx_chunk_set_chunk_persistence_adapter.md) | `S17-005` CX chunk set/chunk persistence adapter. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

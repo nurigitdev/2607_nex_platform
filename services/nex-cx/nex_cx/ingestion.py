@@ -27,6 +27,7 @@ from nex_cx.repository import (
     DEFAULT_OWNER_USER_ID,
     DEFAULT_TENANT_ID,
     InMemoryCxContentRepository,
+    build_chunk_set_record,
     build_extraction_artifact_record,
     build_content_object_record,
     build_source_file_record,
@@ -220,6 +221,7 @@ class ContentIngestionStore:
     ) -> dict[str, Any]:
         self.chunk_sets[chunk_set["document_id"]] = chunk_set
         self.chunk_texts.update(chunk_texts)
+        self._persist_chunk_set_metadata(chunk_set)
         return chunk_set
 
     def get_chunk_set(self, document_id: str) -> dict[str, Any] | None:
@@ -227,6 +229,32 @@ class ContentIngestionStore:
 
     def get_chunk_text(self, chunk_id: str) -> str | None:
         return self.chunk_texts.get(chunk_id)
+
+    def _persist_chunk_set_metadata(self, chunk_set: dict[str, Any]) -> None:
+        document_id = str(chunk_set["document_id"])
+        refs = self.document_content_refs.get(document_id)
+        extraction = self.extraction_results.get(document_id)
+        if refs is None or extraction is None:
+            return
+
+        extractor = extraction.get("extractor")
+        if not isinstance(extractor, dict):
+            return
+        artifact = self.content_repository.find_extraction_artifact(
+            content_object_id=refs["content_object_id"],
+            extractor_name=str(extractor["provider"]),
+            extractor_version=str(extractor["version"]),
+            markdown_sha256=str(chunk_set["source_markdown_sha256"]),
+        )
+        if artifact is None:
+            return
+        self.content_repository.save_chunk_set(
+            build_chunk_set_record(
+                chunk_set,
+                content_object_id=refs["content_object_id"],
+                extraction_artifact_id=artifact["extraction_artifact_id"],
+            )
+        )
 
     def save_embedding_index(
         self,

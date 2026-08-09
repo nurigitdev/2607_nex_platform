@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from nex_runtime import build_engine, build_session_factory
+from nex_cx.chunking import store_chunk_set
 from nex_cx.ingestion import (
     ContentIngestionStore,
     CxStorageConfig,
@@ -23,6 +24,7 @@ from nex_cx.repository import (
     DEFAULT_TENANT_ID,
     InMemoryCxContentRepository,
     SqlAlchemyCxContentRepository,
+    build_chunk_set_record,
     build_content_object_record,
     build_extraction_artifact_record,
     build_source_file_record,
@@ -170,6 +172,45 @@ def sqlite_content_repository(
                 """
             )
         )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_chunk_sets (
+                    chunk_set_id TEXT PRIMARY KEY,
+                    content_object_id TEXT NOT NULL REFERENCES cx_content_objects(content_object_id),
+                    extraction_artifact_id TEXT NOT NULL REFERENCES cx_extraction_artifacts(extraction_artifact_id),
+                    chunk_policy_id TEXT NOT NULL,
+                    chunk_size INTEGER NOT NULL,
+                    chunk_overlap INTEGER NOT NULL,
+                    source_markdown_sha256 TEXT NOT NULL,
+                    chunk_count INTEGER NOT NULL,
+                    created_trace_id TEXT,
+                    created_at TEXT NOT NULL,
+                    UNIQUE (content_object_id, extraction_artifact_id, chunk_policy_id, source_markdown_sha256)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_chunks (
+                    chunk_id TEXT PRIMARY KEY,
+                    chunk_set_id TEXT NOT NULL REFERENCES cx_chunk_sets(chunk_set_id),
+                    content_object_id TEXT NOT NULL REFERENCES cx_content_objects(content_object_id),
+                    ordinal INTEGER NOT NULL,
+                    start_offset INTEGER NOT NULL,
+                    end_offset INTEGER NOT NULL,
+                    char_count INTEGER NOT NULL,
+                    text_sha256 TEXT NOT NULL,
+                    text_preview TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE (chunk_set_id, ordinal),
+                    UNIQUE (chunk_set_id, text_sha256)
+                )
+                """
+            )
+        )
     return (
         SqlAlchemyCxContentRepository(
             build_session_factory(engine),
@@ -210,6 +251,24 @@ def extraction_result(
         "created_at": document["created_at"],
         "updated_at": document["updated_at"],
     }
+
+
+def chunk_set_payload(
+    tmp_path: Path,
+    document: dict[str, object],
+    *,
+    markdown_text: str = "# source.md\n\n" + ("a" * 130) + "SECRET_PRIVATE_CHUNK_SUFFIX",
+) -> dict[str, object]:
+    result = extraction_result(tmp_path, document, markdown_text=markdown_text)
+    return store_chunk_set(
+        document_id=str(document["document_id"]),
+        extraction=result,
+        markdown_text=markdown_text,
+        store=ContentIngestionStore(),
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
 
 
 def test_build_source_file_record_maps_storage_metadata_without_raw_text(
@@ -273,6 +332,27 @@ def test_build_extraction_artifact_record_maps_metadata_without_markdown_text(
     assert markdown_storage_uri_from_path("one.md") == (
         "local://cx/extracted-markdown/one.md"
     )
+
+
+def test_build_chunk_set_record_maps_metadata_without_private_chunk_text(
+    tmp_path: Path,
+) -> None:
+    upload = upload_registration(tmp_path)
+    chunk_set = chunk_set_payload(tmp_path, upload)
+
+    record = build_chunk_set_record(
+        chunk_set,
+        content_object_id=str(upload["document_id"]),
+        extraction_artifact_id="55555555-5555-4555-8555-555555555555",
+    )
+
+    assert record["content_object_id"] == upload["document_id"]
+    assert record["chunk_policy_id"] == chunk_set["chunk_policy"]
+    assert record["source_markdown_sha256"] == chunk_set["source_markdown_sha256"]
+    assert record["chunk_count"] == len(record["chunks"])
+    assert record["chunks"][0]["chunk_set_id"] == record["chunk_set_id"]
+    assert record["chunks"][0]["content_object_id"] == upload["document_id"]
+    assert "SECRET_PRIVATE_CHUNK_SUFFIX" not in str(record)
 
 
 def test_in_memory_repository_dedupes_source_files_by_sha256(tmp_path: Path) -> None:
@@ -352,6 +432,38 @@ def test_in_memory_repository_saves_extraction_artifacts_idempotently(
         extractor_name="other",
         extractor_version=artifact["extractor_version"],
         markdown_sha256=artifact["markdown_sha256"],
+    ) is None
+
+
+def test_in_memory_repository_saves_chunk_sets_idempotently(tmp_path: Path) -> None:
+    repository = InMemoryCxContentRepository()
+    upload = upload_registration(tmp_path)
+    chunk_set = chunk_set_payload(tmp_path, upload)
+    record = build_chunk_set_record(
+        chunk_set,
+        content_object_id=str(upload["document_id"]),
+        extraction_artifact_id="55555555-5555-4555-8555-555555555555",
+    )
+    duplicate = {
+        **record,
+        "chunk_set_id": "66666666-6666-4666-8666-666666666666",
+    }
+
+    assert repository.save_chunk_set(record) == record
+    assert repository.save_chunk_set(duplicate) == record
+    assert repository.get_chunk_set(record["chunk_set_id"]) == record
+    assert repository.find_chunk_set(
+        content_object_id=record["content_object_id"],
+        extraction_artifact_id=record["extraction_artifact_id"],
+        chunk_policy_id=record["chunk_policy_id"],
+        source_markdown_sha256=record["source_markdown_sha256"],
+    ) == record
+    assert repository.get_chunk_set("missing") is None
+    assert repository.find_chunk_set(
+        content_object_id=record["content_object_id"],
+        extraction_artifact_id=record["extraction_artifact_id"],
+        chunk_policy_id="other",
+        source_markdown_sha256=record["source_markdown_sha256"],
     ) is None
 
 
@@ -568,6 +680,92 @@ def test_sqlalchemy_repository_saves_and_finds_extraction_artifact(
     )
 
 
+def test_sqlalchemy_repository_saves_and_finds_chunk_set_metadata(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    upload = upload_registration(tmp_path)
+    source_file = repository.save_source_file(build_source_file_record(upload))
+    content = repository.save_content_object(
+        build_content_object_record(
+            upload,
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    artifact = repository.save_extraction_artifact(
+        build_extraction_artifact_record(
+            extraction_result(tmp_path, upload),
+            content_object_id=content["content_object_id"],
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    chunk_set = chunk_set_payload(tmp_path, upload)
+    record = build_chunk_set_record(
+        chunk_set,
+        content_object_id=content["content_object_id"],
+        extraction_artifact_id=artifact["extraction_artifact_id"],
+    )
+    duplicate = {
+        **record,
+        "chunk_set_id": "66666666-6666-4666-8666-666666666666",
+    }
+
+    saved = repository.save_chunk_set(record)
+
+    assert saved == record
+    assert repository.save_chunk_set(duplicate) == record
+    assert repository.get_chunk_set(saved["chunk_set_id"]) == record
+    assert repository.get_chunk_set("66666666-6666-4666-8666-666666666667") is None
+    assert repository.find_chunk_set(
+        content_object_id=content["content_object_id"],
+        extraction_artifact_id=artifact["extraction_artifact_id"],
+        chunk_policy_id=record["chunk_policy_id"],
+        source_markdown_sha256=record["source_markdown_sha256"],
+    ) == record
+    assert _sqlite_table_count(engine, "cx_chunk_sets") == 1
+    assert _sqlite_table_count(engine, "cx_chunks") == record["chunk_count"]
+    assert "SECRET_PRIVATE_CHUNK_SUFFIX" not in _sqlite_table_dump(
+        engine,
+        ["cx_chunk_sets", "cx_chunks"],
+    )
+
+
+def test_sqlalchemy_repository_saves_empty_chunk_set_without_chunk_rows(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    upload = upload_registration(tmp_path)
+    source_file = repository.save_source_file(build_source_file_record(upload))
+    content = repository.save_content_object(
+        build_content_object_record(
+            upload,
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    artifact = repository.save_extraction_artifact(
+        build_extraction_artifact_record(
+            extraction_result(tmp_path, upload, markdown_text=""),
+            content_object_id=content["content_object_id"],
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    empty_chunk_set = chunk_set_payload(tmp_path, upload, markdown_text="")
+    record = build_chunk_set_record(
+        empty_chunk_set,
+        content_object_id=content["content_object_id"],
+        extraction_artifact_id=artifact["extraction_artifact_id"],
+    )
+
+    saved = repository.save_chunk_set(record)
+
+    assert saved["chunks"] == []
+    assert saved["chunk_count"] == 0
+    assert _sqlite_table_count(engine, "cx_chunk_sets") == 1
+    assert _sqlite_table_count(engine, "cx_chunks") == 0
+
+
 def test_sqlalchemy_repository_marks_source_checksum_verified(
     tmp_path: Path,
 ) -> None:
@@ -660,6 +858,30 @@ def test_sqlalchemy_repository_wraps_database_errors(tmp_path: Path) -> None:
             extractor_version="slice-0072",
             markdown_sha256="0" * 64,
         ),
+        lambda repository: repository.save_chunk_set(
+            {
+                "chunk_set_id": "66666666-6666-4666-8666-666666666666",
+                "content_object_id": "44444444-4444-4444-8444-444444444444",
+                "extraction_artifact_id": "55555555-5555-4555-8555-555555555555",
+                "chunk_policy_id": "chunk_1000_100",
+                "chunk_size": 1000,
+                "chunk_overlap": 100,
+                "source_markdown_sha256": "0" * 64,
+                "chunk_count": 0,
+                "created_trace_id": TRACE_ID,
+                "created_at": "2026-08-09T00:00:00Z",
+                "chunks": [],
+            }
+        ),
+        lambda repository: repository.get_chunk_set(
+            "66666666-6666-4666-8666-666666666666"
+        ),
+        lambda repository: repository.find_chunk_set(
+            content_object_id="44444444-4444-4444-8444-444444444444",
+            extraction_artifact_id="55555555-5555-4555-8555-555555555555",
+            chunk_policy_id="chunk_1000_100",
+            source_markdown_sha256="0" * 64,
+        ),
     ],
 )
 def test_sqlalchemy_repository_wraps_missing_table_errors(
@@ -698,6 +920,10 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
         ) -> dict[str, Any]:
             raise IntegrityError("insert extraction", {}, Exception("race"))
 
+    class RaceyChunkSetRepository(SqlAlchemyCxContentRepository):
+        def _save_chunk_set(self, session: Any, record: dict[str, Any]) -> dict[str, Any]:
+            raise IntegrityError("insert chunk set", {}, Exception("race"))
+
     repository, engine = sqlite_content_repository(tmp_path)
     upload = upload_registration(tmp_path)
     source_file_record = build_source_file_record(upload)
@@ -717,6 +943,13 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
             source_file_id=source_file["source_file_id"],
         )
     )
+    chunk_set = repository.save_chunk_set(
+        build_chunk_set_record(
+            chunk_set_payload(tmp_path, upload),
+            content_object_id=content["content_object_id"],
+            extraction_artifact_id=artifact["extraction_artifact_id"],
+        )
+    )
 
     racey_source = RaceySourceRepository(
         build_session_factory(engine),
@@ -724,10 +957,12 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
     )
     racey_content = RaceyContentRepository(build_session_factory(engine))
     racey_extraction = RaceyExtractionRepository(build_session_factory(engine))
+    racey_chunk_set = RaceyChunkSetRepository(build_session_factory(engine))
 
     assert racey_source.save_source_file(source_file_record) == source_file
     assert racey_content.save_content_object(content) == content
     assert racey_extraction.save_extraction_artifact(artifact) == artifact
+    assert racey_chunk_set.save_chunk_set(chunk_set) == chunk_set
 
 
 def test_sqlalchemy_repository_extraction_integrity_without_existing_row_wraps(
@@ -760,6 +995,72 @@ def test_sqlalchemy_repository_extraction_integrity_without_existing_row_wraps(
                 "created_trace_id": TRACE_ID,
                 "created_at": "2026-08-09T00:00:00Z",
                 "updated_at": "2026-08-09T00:00:00Z",
+            }
+        )
+
+    assert exc_info.value.error_code == "cx_content.repository_unavailable"
+
+
+def test_sqlalchemy_repository_source_and_content_integrity_without_existing_rows_wrap(
+    tmp_path: Path,
+) -> None:
+    class RaceySourceRepository(SqlAlchemyCxContentRepository):
+        def _save_source_file(self, session: Any, record: dict[str, Any]) -> dict[str, Any]:
+            raise IntegrityError("insert source", {}, Exception("race"))
+
+    class RaceyContentRepository(SqlAlchemyCxContentRepository):
+        def _save_content_object(
+            self,
+            session: Any,
+            record: dict[str, Any],
+        ) -> dict[str, Any]:
+            raise IntegrityError("insert content", {}, Exception("race"))
+
+    _, engine = sqlite_content_repository(tmp_path)
+    upload = upload_registration(tmp_path)
+    source_file_record = build_source_file_record(upload)
+    content_record = build_content_object_record(
+        upload,
+        source_file_id=source_file_record["source_file_id"],
+    )
+
+    with pytest.raises(CxContentRepositoryError) as source_exc:
+        RaceySourceRepository(build_session_factory(engine)).save_source_file(
+            source_file_record
+        )
+    with pytest.raises(CxContentRepositoryError) as content_exc:
+        RaceyContentRepository(build_session_factory(engine)).save_content_object(
+            content_record
+        )
+
+    assert source_exc.value.error_code == "cx_content.repository_unavailable"
+    assert content_exc.value.error_code == "cx_content.repository_unavailable"
+
+
+def test_sqlalchemy_repository_chunk_set_integrity_without_existing_row_wraps(
+    tmp_path: Path,
+) -> None:
+    class RaceyChunkSetRepository(SqlAlchemyCxContentRepository):
+        def _save_chunk_set(self, session: Any, record: dict[str, Any]) -> dict[str, Any]:
+            raise IntegrityError("insert chunk set", {}, Exception("race"))
+
+    _, engine = sqlite_content_repository(tmp_path)
+    repository = RaceyChunkSetRepository(build_session_factory(engine))
+
+    with pytest.raises(CxContentRepositoryError) as exc_info:
+        repository.save_chunk_set(
+            {
+                "chunk_set_id": "66666666-6666-4666-8666-666666666666",
+                "content_object_id": "44444444-4444-4444-8444-444444444444",
+                "extraction_artifact_id": "55555555-5555-4555-8555-555555555555",
+                "chunk_policy_id": "chunk_1000_100",
+                "chunk_size": 1000,
+                "chunk_overlap": 100,
+                "source_markdown_sha256": "0" * 64,
+                "chunk_count": 0,
+                "created_trace_id": TRACE_ID,
+                "created_at": "2026-08-09T00:00:00Z",
+                "chunks": [],
             }
         )
 
@@ -946,6 +1247,75 @@ def test_content_ingestion_store_with_sqlalchemy_repository_persists_extraction_
     )
 
 
+def test_content_ingestion_store_with_sqlalchemy_repository_persists_chunk_set_metadata(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    store = ContentIngestionStore(content_repository=repository)
+    source_text = ("a" * 130) + "SECRET_PRIVATE_CHUNK_SUFFIX"
+    document = upload_registration(
+        tmp_path,
+        content_text=source_text,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    store.save_upload_registration(
+        document,
+        source_text=source_text,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    result = run_text_extraction_job(
+        document["extraction"]["job_id"],
+        store=store,
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    public_chunk_set = store_chunk_set(
+        document_id=str(document["document_id"]),
+        extraction=result,
+        markdown_text=Path(result["extracted_markdown_path"]).read_text(
+            encoding="utf-8"
+        ),
+        store=store,
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    refs = store.get_content_ref(str(document["document_id"]))
+    assert refs is not None
+    artifact = repository.find_extraction_artifact(
+        content_object_id=refs["content_object_id"],
+        extractor_name=result["extractor"]["provider"],
+        extractor_version=result["extractor"]["version"],
+        markdown_sha256=result["extracted_markdown_sha256"],
+    )
+    assert artifact is not None
+    persisted = repository.find_chunk_set(
+        content_object_id=refs["content_object_id"],
+        extraction_artifact_id=artifact["extraction_artifact_id"],
+        chunk_policy_id=public_chunk_set["chunk_policy"],
+        source_markdown_sha256=public_chunk_set["source_markdown_sha256"],
+    )
+    assert persisted is not None
+    assert persisted["chunk_count"] == public_chunk_set["chunk_count"]
+    assert persisted["chunks"][0]["text_sha256"] == public_chunk_set["chunks"][0][
+        "text_sha256"
+    ]
+    assert "SECRET_PRIVATE_CHUNK_SUFFIX" in store.get_chunk_text(
+        public_chunk_set["chunks"][0]["chunk_id"]
+    )
+    assert _sqlite_table_count(engine, "cx_chunk_sets") == 1
+    assert _sqlite_table_count(engine, "cx_chunks") == public_chunk_set["chunk_count"]
+    assert "SECRET_PRIVATE_CHUNK_SUFFIX" not in _sqlite_table_dump(
+        engine,
+        ["cx_chunk_sets", "cx_chunks"],
+    )
+
+
 def test_content_ingestion_store_saves_extraction_result_without_content_refs(
     tmp_path: Path,
 ) -> None:
@@ -960,6 +1330,65 @@ def test_content_ingestion_store_saves_extraction_result_without_content_refs(
     assert saved == result
     assert store.get_extraction_result(document["document_id"]) == result
     assert store.content_repository.extraction_artifacts == {}
+
+
+def test_content_ingestion_store_saves_chunk_set_without_content_refs(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    document = upload_registration(tmp_path)
+    result = extraction_result(tmp_path, document)
+    chunk_set = chunk_set_payload(tmp_path, document)
+
+    saved = store.save_chunk_set(
+        chunk_set,
+        chunk_texts={chunk_set["chunks"][0]["chunk_id"]: "private chunk text"},
+    )
+
+    assert saved == chunk_set
+    assert store.get_chunk_set(document["document_id"]) == chunk_set
+    assert store.get_chunk_text(chunk_set["chunks"][0]["chunk_id"]) == "private chunk text"
+    assert result["document_id"] == document["document_id"]
+    assert store.content_repository.chunk_sets == {}
+
+
+def test_content_ingestion_store_skips_chunk_metadata_without_extractor_shape(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    document = upload_registration(tmp_path, content_text="source text")
+    store.save_upload_registration(document, source_text="source text")
+    document_id = str(document["document_id"])
+    store.extraction_results[document_id] = {
+        "document_id": document_id,
+        "extractor": None,
+    }
+    chunk_set = chunk_set_payload(tmp_path, document)
+
+    store.save_chunk_set(
+        chunk_set,
+        chunk_texts={chunk_set["chunks"][0]["chunk_id"]: "private chunk text"},
+    )
+
+    assert store.content_repository.chunk_sets == {}
+
+
+def test_content_ingestion_store_skips_chunk_metadata_without_artifact(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    document = upload_registration(tmp_path, content_text="source text")
+    store.save_upload_registration(document, source_text="source text")
+    document_id = str(document["document_id"])
+    store.extraction_results[document_id] = extraction_result(tmp_path, document)
+    chunk_set = chunk_set_payload(tmp_path, document)
+
+    store.save_chunk_set(
+        chunk_set,
+        chunk_texts={chunk_set["chunks"][0]["chunk_id"]: "private chunk text"},
+    )
+
+    assert store.content_repository.chunk_sets == {}
 
 
 def _sqlite_table_count(engine: object, table_name: str) -> int:

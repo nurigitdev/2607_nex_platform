@@ -69,6 +69,22 @@ class CxContentRepository(Protocol):
     ) -> dict[str, Any] | None:
         ...
 
+    def save_chunk_set(self, record: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+    def get_chunk_set(self, chunk_set_id: str) -> dict[str, Any] | None:
+        ...
+
+    def find_chunk_set(
+        self,
+        *,
+        content_object_id: str,
+        extraction_artifact_id: str,
+        chunk_policy_id: str,
+        source_markdown_sha256: str,
+    ) -> dict[str, Any] | None:
+        ...
+
 
 @dataclass(frozen=True)
 class CxContentRepositoryError(Exception):
@@ -87,6 +103,10 @@ class InMemoryCxContentRepository:
     )
     extraction_artifacts: dict[str, dict[str, Any]] = field(default_factory=dict)
     extraction_artifact_ids_by_content_hash: dict[tuple[str, str, str, str], str] = field(
+        default_factory=dict
+    )
+    chunk_sets: dict[str, dict[str, Any]] = field(default_factory=dict)
+    chunk_set_ids_by_unique_key: dict[tuple[str, str, str, str], str] = field(
         default_factory=dict
     )
 
@@ -181,6 +201,39 @@ class InMemoryCxContentRepository:
         if extraction_artifact_id is None:
             return None
         return self.extraction_artifacts[extraction_artifact_id]
+
+    def save_chunk_set(self, record: dict[str, Any]) -> dict[str, Any]:
+        key = _chunk_set_unique_key(record)
+        existing_id = self.chunk_set_ids_by_unique_key.get(key)
+        if existing_id is not None:
+            return self.chunk_sets[existing_id]
+        stored = deepcopy(record)
+        self.chunk_sets[stored["chunk_set_id"]] = stored
+        self.chunk_set_ids_by_unique_key[key] = stored["chunk_set_id"]
+        return stored
+
+    def get_chunk_set(self, chunk_set_id: str) -> dict[str, Any] | None:
+        return self.chunk_sets.get(chunk_set_id)
+
+    def find_chunk_set(
+        self,
+        *,
+        content_object_id: str,
+        extraction_artifact_id: str,
+        chunk_policy_id: str,
+        source_markdown_sha256: str,
+    ) -> dict[str, Any] | None:
+        chunk_set_id = self.chunk_set_ids_by_unique_key.get(
+            (
+                content_object_id,
+                extraction_artifact_id,
+                chunk_policy_id,
+                source_markdown_sha256,
+            )
+        )
+        if chunk_set_id is None:
+            return None
+        return self.chunk_sets[chunk_set_id]
 
 
 class SqlAlchemyCxContentRepository:
@@ -340,6 +393,52 @@ class SqlAlchemyCxContentRepository:
         except SQLAlchemyError as exc:
             raise _content_repository_unavailable() from exc
 
+    def save_chunk_set(self, record: dict[str, Any]) -> dict[str, Any]:
+        record_to_store = deepcopy(record)
+        try:
+            return self._run_in_transaction(
+                lambda session: self._save_chunk_set(session, record_to_store)
+            )
+        except IntegrityError as exc:
+            existing = self.find_chunk_set(
+                content_object_id=str(record_to_store["content_object_id"]),
+                extraction_artifact_id=str(record_to_store["extraction_artifact_id"]),
+                chunk_policy_id=str(record_to_store["chunk_policy_id"]),
+                source_markdown_sha256=str(record_to_store["source_markdown_sha256"]),
+            )
+            if existing is not None:
+                return existing
+            raise _content_repository_unavailable() from exc
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def get_chunk_set(self, chunk_set_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_chunk_set(session, chunk_set_id)
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def find_chunk_set(
+        self,
+        *,
+        content_object_id: str,
+        extraction_artifact_id: str,
+        chunk_policy_id: str,
+        source_markdown_sha256: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_chunk_set_by_unique_key(
+                    session,
+                    content_object_id=content_object_id,
+                    extraction_artifact_id=extraction_artifact_id,
+                    chunk_policy_id=chunk_policy_id,
+                    source_markdown_sha256=source_markdown_sha256,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
     def _run_in_transaction(self, operation: Any) -> Any:
         session = self._session_factory()
         try:
@@ -407,6 +506,26 @@ class SqlAlchemyCxContentRepository:
             session,
             str(record["extraction_artifact_id"]),
         )
+        assert stored is not None
+        return stored
+
+    def _save_chunk_set(
+        self,
+        session: Session,
+        record: dict[str, Any],
+    ) -> dict[str, Any]:
+        existing = self._select_chunk_set_by_unique_key(
+            session,
+            content_object_id=str(record["content_object_id"]),
+            extraction_artifact_id=str(record["extraction_artifact_id"]),
+            chunk_policy_id=str(record["chunk_policy_id"]),
+            source_markdown_sha256=str(record["source_markdown_sha256"]),
+        )
+        if existing is not None:
+            return existing
+        self._insert_chunk_set(session, record)
+        self._insert_chunks(session, record)
+        stored = self._select_chunk_set(session, str(record["chunk_set_id"]))
         assert stored is not None
         return stored
 
@@ -565,6 +684,73 @@ class SqlAlchemyCxContentRepository:
         ).mappings().first()
         return _extraction_artifact_from_row(row) if row is not None else None
 
+    def _select_chunk_set(
+        self,
+        session: Session,
+        chunk_set_id: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_CHUNK_SET_SELECT_COLUMNS}
+                FROM cx_chunk_sets
+                WHERE chunk_set_id = :chunk_set_id
+                """
+            ),
+            {"chunk_set_id": chunk_set_id},
+        ).mappings().first()
+        if row is None:
+            return None
+        return _chunk_set_from_row(row, self._select_chunks(session, chunk_set_id))
+
+    def _select_chunk_set_by_unique_key(
+        self,
+        session: Session,
+        *,
+        content_object_id: str,
+        extraction_artifact_id: str,
+        chunk_policy_id: str,
+        source_markdown_sha256: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_CHUNK_SET_SELECT_COLUMNS}
+                FROM cx_chunk_sets
+                WHERE content_object_id = :content_object_id
+                  AND extraction_artifact_id = :extraction_artifact_id
+                  AND chunk_policy_id = :chunk_policy_id
+                  AND source_markdown_sha256 = :source_markdown_sha256
+                """
+            ),
+            {
+                "content_object_id": content_object_id,
+                "extraction_artifact_id": extraction_artifact_id,
+                "chunk_policy_id": chunk_policy_id,
+                "source_markdown_sha256": source_markdown_sha256,
+            },
+        ).mappings().first()
+        if row is None:
+            return None
+        return _chunk_set_from_row(
+            row,
+            self._select_chunks(session, str(row["chunk_set_id"])),
+        )
+
+    def _select_chunks(self, session: Session, chunk_set_id: str) -> list[dict[str, Any]]:
+        rows = session.execute(
+            text(
+                f"""
+                SELECT {_CHUNK_SELECT_COLUMNS}
+                FROM cx_chunks
+                WHERE chunk_set_id = :chunk_set_id
+                ORDER BY ordinal ASC
+                """
+            ),
+            {"chunk_set_id": chunk_set_id},
+        ).mappings().all()
+        return [_chunk_from_row(row) for row in rows]
+
     def _insert_source_file(self, session: Session, record: dict[str, Any]) -> None:
         session.execute(
             text(
@@ -687,6 +873,75 @@ class SqlAlchemyCxContentRepository:
                 """
             ),
             _extraction_artifact_insert_params(record),
+        )
+
+    def _insert_chunk_set(self, session: Session, record: dict[str, Any]) -> None:
+        session.execute(
+            text(
+                """
+                INSERT INTO cx_chunk_sets (
+                    chunk_set_id,
+                    content_object_id,
+                    extraction_artifact_id,
+                    chunk_policy_id,
+                    chunk_size,
+                    chunk_overlap,
+                    source_markdown_sha256,
+                    chunk_count,
+                    created_trace_id,
+                    created_at
+                )
+                VALUES (
+                    :chunk_set_id,
+                    :content_object_id,
+                    :extraction_artifact_id,
+                    :chunk_policy_id,
+                    :chunk_size,
+                    :chunk_overlap,
+                    :source_markdown_sha256,
+                    :chunk_count,
+                    :created_trace_id,
+                    :created_at
+                )
+                """
+            ),
+            _chunk_set_insert_params(record),
+        )
+
+    def _insert_chunks(self, session: Session, record: dict[str, Any]) -> None:
+        chunks = record.get("chunks", [])
+        if not chunks:
+            return
+        session.execute(
+            text(
+                """
+                INSERT INTO cx_chunks (
+                    chunk_id,
+                    chunk_set_id,
+                    content_object_id,
+                    ordinal,
+                    start_offset,
+                    end_offset,
+                    char_count,
+                    text_sha256,
+                    text_preview,
+                    created_at
+                )
+                VALUES (
+                    :chunk_id,
+                    :chunk_set_id,
+                    :content_object_id,
+                    :ordinal,
+                    :start_offset,
+                    :end_offset,
+                    :char_count,
+                    :text_sha256,
+                    :text_preview,
+                    :created_at
+                )
+                """
+            ),
+            [_chunk_insert_params(record, chunk) for chunk in chunks],
         )
 
     def _insert_owner_acl_entry(self, session: Session, record: dict[str, Any]) -> None:
@@ -853,6 +1108,52 @@ def build_extraction_artifact_record(
     }
 
 
+def build_chunk_set_record(
+    chunk_set: dict[str, Any],
+    *,
+    content_object_id: str,
+    extraction_artifact_id: str,
+) -> dict[str, Any]:
+    chunk_policy_id = str(chunk_set["chunk_policy"])
+    source_markdown_sha256 = str(chunk_set["source_markdown_sha256"])
+    chunk_set_id = str(
+        uuid5(
+            NAMESPACE_URL,
+            "cx-chunk-set:"
+            f"{content_object_id}:{extraction_artifact_id}:"
+            f"{chunk_policy_id}:{source_markdown_sha256}",
+        )
+    )
+    created_at = chunk_set["created_at"]
+    return {
+        "chunk_set_id": chunk_set_id,
+        "content_object_id": content_object_id,
+        "extraction_artifact_id": extraction_artifact_id,
+        "chunk_policy_id": chunk_policy_id,
+        "chunk_size": chunk_set["chunk_size"],
+        "chunk_overlap": chunk_set["chunk_overlap"],
+        "source_markdown_sha256": source_markdown_sha256,
+        "chunk_count": chunk_set["chunk_count"],
+        "created_trace_id": chunk_set.get("trace_id"),
+        "created_at": created_at,
+        "chunks": [
+            {
+                "chunk_id": str(chunk["chunk_id"]),
+                "chunk_set_id": chunk_set_id,
+                "content_object_id": content_object_id,
+                "ordinal": chunk["ordinal"],
+                "start_offset": chunk["start_offset"],
+                "end_offset": chunk["end_offset"],
+                "char_count": chunk["char_count"],
+                "text_sha256": chunk["text_sha256"],
+                "text_preview": chunk["text_preview"],
+                "created_at": created_at,
+            }
+            for chunk in chunk_set["chunks"]
+        ],
+    }
+
+
 def markdown_storage_uri_from_path(extracted_markdown_path: str) -> str:
     path = Path(extracted_markdown_path)
     if len(path.parts) >= 2:
@@ -911,6 +1212,32 @@ _EXTRACTION_ARTIFACT_SELECT_COLUMNS = """
     updated_at
 """
 
+_CHUNK_SET_SELECT_COLUMNS = """
+    chunk_set_id,
+    content_object_id,
+    extraction_artifact_id,
+    chunk_policy_id,
+    chunk_size,
+    chunk_overlap,
+    source_markdown_sha256,
+    chunk_count,
+    created_trace_id,
+    created_at
+"""
+
+_CHUNK_SELECT_COLUMNS = """
+    chunk_id,
+    chunk_set_id,
+    content_object_id,
+    ordinal,
+    start_offset,
+    end_offset,
+    char_count,
+    text_sha256,
+    text_preview,
+    created_at
+"""
+
 
 def _source_file_insert_params(record: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -967,6 +1294,39 @@ def _extraction_artifact_insert_params(record: dict[str, Any]) -> dict[str, Any]
     }
 
 
+def _chunk_set_insert_params(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "chunk_set_id": record["chunk_set_id"],
+        "content_object_id": record["content_object_id"],
+        "extraction_artifact_id": record["extraction_artifact_id"],
+        "chunk_policy_id": record["chunk_policy_id"],
+        "chunk_size": record["chunk_size"],
+        "chunk_overlap": record["chunk_overlap"],
+        "source_markdown_sha256": record["source_markdown_sha256"],
+        "chunk_count": record["chunk_count"],
+        "created_trace_id": record.get("created_trace_id"),
+        "created_at": record["created_at"],
+    }
+
+
+def _chunk_insert_params(
+    record: dict[str, Any],
+    chunk: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "chunk_id": chunk["chunk_id"],
+        "chunk_set_id": record["chunk_set_id"],
+        "content_object_id": record["content_object_id"],
+        "ordinal": chunk["ordinal"],
+        "start_offset": chunk["start_offset"],
+        "end_offset": chunk["end_offset"],
+        "char_count": chunk["char_count"],
+        "text_sha256": chunk["text_sha256"],
+        "text_preview": chunk["text_preview"],
+        "created_at": chunk.get("created_at", record["created_at"]),
+    }
+
+
 def _content_object_from_row(row: Any) -> dict[str, Any]:
     return {
         "content_object_id": str(row["content_object_id"]),
@@ -1005,12 +1365,55 @@ def _extraction_artifact_from_row(row: Any) -> dict[str, Any]:
     }
 
 
+def _chunk_set_from_row(
+    row: Any,
+    chunks: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "chunk_set_id": str(row["chunk_set_id"]),
+        "content_object_id": str(row["content_object_id"]),
+        "extraction_artifact_id": str(row["extraction_artifact_id"]),
+        "chunk_policy_id": row["chunk_policy_id"],
+        "chunk_size": int(row["chunk_size"]),
+        "chunk_overlap": int(row["chunk_overlap"]),
+        "source_markdown_sha256": row["source_markdown_sha256"],
+        "chunk_count": int(row["chunk_count"]),
+        "created_trace_id": row["created_trace_id"],
+        "created_at": _timestamp_to_wire(row["created_at"]),
+        "chunks": chunks,
+    }
+
+
+def _chunk_from_row(row: Any) -> dict[str, Any]:
+    return {
+        "chunk_id": str(row["chunk_id"]),
+        "chunk_set_id": str(row["chunk_set_id"]),
+        "content_object_id": str(row["content_object_id"]),
+        "ordinal": int(row["ordinal"]),
+        "start_offset": int(row["start_offset"]),
+        "end_offset": int(row["end_offset"]),
+        "char_count": int(row["char_count"]),
+        "text_sha256": row["text_sha256"],
+        "text_preview": row["text_preview"],
+        "created_at": _timestamp_to_wire(row["created_at"]),
+    }
+
+
 def _extraction_artifact_unique_key(record: dict[str, Any]) -> tuple[str, str, str, str]:
     return (
         str(record["content_object_id"]),
         str(record["extractor_name"]),
         str(record["extractor_version"]),
         str(record["markdown_sha256"]),
+    )
+
+
+def _chunk_set_unique_key(record: dict[str, Any]) -> tuple[str, str, str, str]:
+    return (
+        str(record["content_object_id"]),
+        str(record["extraction_artifact_id"]),
+        str(record["chunk_policy_id"]),
+        str(record["source_markdown_sha256"]),
     )
 
 
