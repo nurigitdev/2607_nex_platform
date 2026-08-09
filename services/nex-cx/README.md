@@ -83,11 +83,18 @@ Internal persistence boundary:
   rows store provider/model lineage, vector dimension, embedding hash, optional
   storage URI, status, and trace metadata only. Raw summary vectors remain in
   the private summary embedding vector boundary.
-- Retrieval package and processing run database schemas remain deliberately
-  deferred at Slice 0170. `build_cx_persistence_gap_audit()` now exposes the
-  candidate table names, minimum metadata, private payload policy, and decision
-  trigger for those future tables, plus optional header-table decisions for
-  zero-token lexical and zero-chunk embedding index history.
+- Retrieval package runtime persistence mapping is decided at Slice 0171.
+  `nex_cx.retrieval_persistence` projects retrieval packages into future
+  `cx_retrieval_packages` and `cx_retrieval_evidence_items` rows without
+  writing to PostgreSQL yet. The projection stores query/evidence SHA-256
+  hashes, bounded previews, policy lineage, permission snapshot hash, scores,
+  and source summary; raw query text, raw evidence text, and raw query vectors
+  stay outside durable public rows.
+- Processing run database schema remains deliberately deferred.
+  `build_cx_persistence_gap_audit()` exposes the remaining candidate table
+  names, minimum metadata, private payload policy, and decision trigger, plus
+  optional header-table decisions for zero-token lexical and zero-chunk
+  embedding index history.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`

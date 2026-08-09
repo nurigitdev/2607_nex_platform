@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from nex_cx.ingestion import ContentIngestionStore
+from nex_cx.retrieval_persistence import build_retrieval_runtime_persistence_decision
 
 
 CX_PERSISTENCE_GAP_AUDIT_SCHEMA_VERSION = "cx_persistence_gap_audit.v1"
@@ -155,22 +156,32 @@ CX_DEFERRED_SCHEMA_DECISIONS: tuple[dict[str, Any], ...] = (
     {
         "decision_id": "retrieval_packages",
         "surface_id": "retrieval_packages",
-        "decision_status": "schema_deferred_until_retrieval_runtime_stabilizes",
+        "decision_status": "runtime_mapping_decided_schema_pending_migration",
+        "decision_slice": "0171",
         "candidate_tables": ["cx_retrieval_packages", "cx_retrieval_evidence_items"],
         "minimum_persisted_metadata": [
             "retrieval_package_id",
+            "package_hash",
+            "status",
             "trace_id",
             "request_id",
-            "query_hash",
-            "policy_id",
+            "query_text_sha256",
+            "query_text_preview",
+            "query_embedding_sha256",
+            "query_embedding_dimension",
+            "retrieval_policy_id",
+            "retrieval_policy_hash",
+            "ranker_mix",
+            "rerank_state",
             "permission_snapshot_hash",
-            "candidate_counts",
             "score_summary",
-            "evidence_hashes",
-            "evidence_previews",
+            "source_summary",
+            "evidence_text_sha256",
+            "evidence_text_preview",
         ],
-        "private_payload_policy": "evidence_hash_preview_only",
-        "decision_trigger": "before production retrieval package replay or audit retention",
+        "private_payload_policy": "query_hash_preview_and_evidence_hash_preview_only",
+        "decision_trigger": "before retrieval package PostgreSQL migration",
+        "next_slice": "0172_cx_retrieval_package_schema_migration_draft",
     },
     {
         "decision_id": "processing_runs",
@@ -265,7 +276,7 @@ def build_cx_persistence_gap_audit(
     return {
         "audit_schema_version": CX_PERSISTENCE_GAP_AUDIT_SCHEMA_VERSION,
         "service_id": "nex-cx",
-        "checkpoint_slice": "0170",
+        "checkpoint_slice": "0171",
         "persistence_mode": mode,
         "store_type": type(store).__name__ if store is not None else None,
         "content_repository_type": (
@@ -278,7 +289,7 @@ def build_cx_persistence_gap_audit(
             "schema_deferred_count": schema_deferred_count,
             "deferred_schema_decision_count": len(CX_DEFERRED_SCHEMA_DECISIONS),
             "private_payload_boundary_count": len(CX_PRIVATE_PAYLOAD_BOUNDARIES),
-            "next_recommended_slice": "0171_cx_retrieval_runtime_persistence_decision",
+            "next_recommended_slice": "0172_cx_retrieval_package_schema_migration_draft",
         },
         "observed_store_counts": counts,
         "surfaces": surfaces,
@@ -288,6 +299,9 @@ def build_cx_persistence_gap_audit(
         "deferred_schema_decisions": [
             deepcopy_decision(decision) for decision in CX_DEFERRED_SCHEMA_DECISIONS
         ],
+        "retrieval_runtime_persistence_decision": (
+            build_retrieval_runtime_persistence_decision()
+        ),
         "refactoring_checkpoints": [
             "Keep file IO and provider calls outside database transactions.",
             "Persist metadata, hashes, previews, lineage, and storage URIs only.",

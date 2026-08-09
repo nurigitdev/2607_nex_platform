@@ -274,6 +274,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0168`](slices/0168_cx_document_summary_persistence_adapter.md) | `S17-008` CX document summary metadata persistence adapter. |
 | [`Slice 0169`](slices/0169_cx_summary_embedding_persistence_adapter.md) | `S17-009` CX summary embedding metadata persistence adapter. |
 | [`Slice 0170`](slices/0170_cx_retrieval_processing_schema_checkpoint.md) | `S17-010` CX retrieval/processing persistence schema checkpoint. |
+| [`Slice 0171`](slices/0171_cx_retrieval_runtime_persistence_decision.md) | `S18-001` CX retrieval runtime persistence decision. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

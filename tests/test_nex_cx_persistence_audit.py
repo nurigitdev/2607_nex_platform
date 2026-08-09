@@ -49,7 +49,7 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
 
     assert audit["audit_schema_version"] == CX_PERSISTENCE_GAP_AUDIT_SCHEMA_VERSION
     assert audit["service_id"] == "nex-cx"
-    assert audit["checkpoint_slice"] == "0170"
+    assert audit["checkpoint_slice"] == "0171"
     assert audit["persistence_mode"] == "memory"
     assert audit["checkpoint_status"] == "ACTION_REQUIRED"
     assert audit["store_type"] is None
@@ -60,7 +60,7 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
         "schema_deferred_count": 2,
         "deferred_schema_decision_count": 4,
         "private_payload_boundary_count": 6,
-        "next_recommended_slice": "0171_cx_retrieval_runtime_persistence_decision",
+        "next_recommended_slice": "0172_cx_retrieval_package_schema_migration_draft",
     }
     assert all(count == 0 for count in audit["observed_store_counts"].values())
     assert {
@@ -95,6 +95,10 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
         "processing_runs",
         "retrieval_packages",
     }
+    assert (
+        audit["retrieval_runtime_persistence_decision"]["decision_status"]
+        == "runtime_mapping_decided_schema_pending_migration"
+    )
 
 
 def test_cx_persistence_gap_audit_counts_seeded_store_without_private_leak(
@@ -173,8 +177,21 @@ def test_cx_persistence_gap_audit_records_deferred_schema_decisions() -> None:
         "cx_retrieval_packages",
         "cx_retrieval_evidence_items",
     ]
-    assert "query_hash" in retrieval["minimum_persisted_metadata"]
-    assert retrieval["private_payload_policy"] == "evidence_hash_preview_only"
+    assert (
+        retrieval["decision_status"]
+        == "runtime_mapping_decided_schema_pending_migration"
+    )
+    assert retrieval["decision_slice"] == "0171"
+    assert "query_text_sha256" in retrieval["minimum_persisted_metadata"]
+    assert "evidence_text_preview" in retrieval["minimum_persisted_metadata"]
+    assert (
+        retrieval["private_payload_policy"]
+        == "query_hash_preview_and_evidence_hash_preview_only"
+    )
+    assert (
+        retrieval["next_slice"]
+        == "0172_cx_retrieval_package_schema_migration_draft"
+    )
     assert processing["candidate_tables"] == [
         "cx_document_processing_runs",
         "cx_document_processing_steps",
