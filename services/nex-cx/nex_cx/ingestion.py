@@ -32,6 +32,7 @@ from nex_cx.repository import (
     build_extraction_artifact_record,
     build_lexical_index_record,
     build_document_summary_persistence_record,
+    build_summary_embedding_persistence_record,
     build_content_object_record,
     build_source_file_record,
 )
@@ -425,6 +426,7 @@ class ContentIngestionStore:
     ) -> dict[str, Any]:
         self.summary_embedding_indexes[record["document_id"]] = record
         self.summary_embedding_vectors[record["document_summary_id"]] = embedding_vector
+        self._persist_summary_embedding_metadata(record)
         return record
 
     def get_summary_embedding_index(self, document_id: str) -> dict[str, Any] | None:
@@ -435,6 +437,30 @@ class ContentIngestionStore:
         document_summary_id: str,
     ) -> list[float] | None:
         return self.summary_embedding_vectors.get(document_summary_id)
+
+    def _persist_summary_embedding_metadata(self, record: dict[str, Any]) -> None:
+        required_keys = {
+            "created_at",
+            "deployment_id",
+            "document_summary_id",
+            "embedding_sha256",
+            "model_revision",
+            "provider_alias",
+            "vector_dimension",
+        }
+        if not required_keys.issubset(record):
+            return
+        persisted_summary = self.content_repository.get_document_summary_record(
+            str(record["document_summary_id"])
+        )
+        if persisted_summary is None:
+            return
+        self.content_repository.save_summary_embedding_record(
+            build_summary_embedding_persistence_record(
+                record,
+                document_summary_id=persisted_summary["document_summary_id"],
+            )
+        )
 
     def save_document_processing_run(self, record: dict[str, Any]) -> dict[str, Any]:
         self.document_processing_runs[record["pipeline_run_id"]] = record

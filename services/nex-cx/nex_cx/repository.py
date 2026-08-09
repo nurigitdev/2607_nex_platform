@@ -126,6 +126,24 @@ class CxContentRepository(Protocol):
     ) -> dict[str, Any] | None:
         ...
 
+    def save_summary_embedding_record(self, record: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+    def get_summary_embedding_record(
+        self,
+        summary_embedding_id: str,
+    ) -> dict[str, Any] | None:
+        ...
+
+    def find_summary_embedding_record(
+        self,
+        *,
+        document_summary_id: str,
+        model_profile_id: str,
+        model_revision: str,
+    ) -> dict[str, Any] | None:
+        ...
+
 
 @dataclass(frozen=True)
 class CxContentRepositoryError(Exception):
@@ -156,6 +174,10 @@ class InMemoryCxContentRepository:
     )
     document_summary_records: dict[str, dict[str, Any]] = field(default_factory=dict)
     document_summary_ids_by_unique_key: dict[tuple[str, str, str], str] = field(
+        default_factory=dict
+    )
+    summary_embedding_records: dict[str, dict[str, Any]] = field(default_factory=dict)
+    summary_embedding_ids_by_unique_key: dict[tuple[str, str, str], str] = field(
         default_factory=dict
     )
 
@@ -350,6 +372,36 @@ class InMemoryCxContentRepository:
         if document_summary_id is None:
             return None
         return self.document_summary_records[document_summary_id]
+
+    def save_summary_embedding_record(self, record: dict[str, Any]) -> dict[str, Any]:
+        key = _summary_embedding_unique_key(record)
+        existing_id = self.summary_embedding_ids_by_unique_key.get(key)
+        if existing_id is not None:
+            return self.summary_embedding_records[existing_id]
+        stored = deepcopy(record)
+        self.summary_embedding_records[stored["summary_embedding_id"]] = stored
+        self.summary_embedding_ids_by_unique_key[key] = stored["summary_embedding_id"]
+        return stored
+
+    def get_summary_embedding_record(
+        self,
+        summary_embedding_id: str,
+    ) -> dict[str, Any] | None:
+        return self.summary_embedding_records.get(summary_embedding_id)
+
+    def find_summary_embedding_record(
+        self,
+        *,
+        document_summary_id: str,
+        model_profile_id: str,
+        model_revision: str,
+    ) -> dict[str, Any] | None:
+        summary_embedding_id = self.summary_embedding_ids_by_unique_key.get(
+            (document_summary_id, model_profile_id, model_revision)
+        )
+        if summary_embedding_id is None:
+            return None
+        return self.summary_embedding_records[summary_embedding_id]
 
 
 class SqlAlchemyCxContentRepository:
@@ -679,6 +731,58 @@ class SqlAlchemyCxContentRepository:
         except SQLAlchemyError as exc:
             raise _content_repository_unavailable() from exc
 
+    def save_summary_embedding_record(self, record: dict[str, Any]) -> dict[str, Any]:
+        record_to_store = deepcopy(record)
+        try:
+            return self._run_in_transaction(
+                lambda session: self._save_summary_embedding_record(
+                    session,
+                    record_to_store,
+                )
+            )
+        except IntegrityError as exc:
+            existing = self.find_summary_embedding_record(
+                document_summary_id=str(record_to_store["document_summary_id"]),
+                model_profile_id=str(record_to_store["model_profile_id"]),
+                model_revision=str(record_to_store["model_revision"]),
+            )
+            if existing is not None:
+                return existing
+            raise _content_repository_unavailable() from exc
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def get_summary_embedding_record(
+        self,
+        summary_embedding_id: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_summary_embedding_record(
+                    session,
+                    summary_embedding_id,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def find_summary_embedding_record(
+        self,
+        *,
+        document_summary_id: str,
+        model_profile_id: str,
+        model_revision: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_summary_embedding_record_by_unique_key(
+                    session,
+                    document_summary_id=document_summary_id,
+                    model_profile_id=model_profile_id,
+                    model_revision=model_revision,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
     def _run_in_transaction(self, operation: Any) -> Any:
         session = self._session_factory()
         try:
@@ -832,6 +936,27 @@ class SqlAlchemyCxContentRepository:
         stored = self._select_document_summary_record(
             session,
             str(record["document_summary_id"]),
+        )
+        assert stored is not None
+        return stored
+
+    def _save_summary_embedding_record(
+        self,
+        session: Session,
+        record: dict[str, Any],
+    ) -> dict[str, Any]:
+        existing = self._select_summary_embedding_record_by_unique_key(
+            session,
+            document_summary_id=str(record["document_summary_id"]),
+            model_profile_id=str(record["model_profile_id"]),
+            model_revision=str(record["model_revision"]),
+        )
+        if existing is not None:
+            return existing
+        self._insert_summary_embedding_record(session, record)
+        stored = self._select_summary_embedding_record(
+            session,
+            str(record["summary_embedding_id"]),
         )
         assert stored is not None
         return stored
@@ -1207,6 +1332,49 @@ class SqlAlchemyCxContentRepository:
         ).mappings().first()
         return _document_summary_from_row(row) if row is not None else None
 
+    def _select_summary_embedding_record(
+        self,
+        session: Session,
+        summary_embedding_id: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_SUMMARY_EMBEDDING_SELECT_COLUMNS}
+                FROM cx_document_summary_embeddings
+                WHERE summary_embedding_id = :summary_embedding_id
+                """
+            ),
+            {"summary_embedding_id": summary_embedding_id},
+        ).mappings().first()
+        return _summary_embedding_from_row(row) if row is not None else None
+
+    def _select_summary_embedding_record_by_unique_key(
+        self,
+        session: Session,
+        *,
+        document_summary_id: str,
+        model_profile_id: str,
+        model_revision: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_SUMMARY_EMBEDDING_SELECT_COLUMNS}
+                FROM cx_document_summary_embeddings
+                WHERE document_summary_id = :document_summary_id
+                  AND model_profile_id = :model_profile_id
+                  AND model_revision = :model_revision
+                """
+            ),
+            {
+                "document_summary_id": document_summary_id,
+                "model_profile_id": model_profile_id,
+                "model_revision": model_revision,
+            },
+        ).mappings().first()
+        return _summary_embedding_from_row(row) if row is not None else None
+
     def _insert_source_file(self, session: Session, record: dict[str, Any]) -> None:
         session.execute(
             text(
@@ -1551,6 +1719,47 @@ class SqlAlchemyCxContentRepository:
                 """
             ),
             _document_summary_insert_params(record),
+        )
+
+    def _insert_summary_embedding_record(
+        self,
+        session: Session,
+        record: dict[str, Any],
+    ) -> None:
+        session.execute(
+            text(
+                """
+                INSERT INTO cx_document_summary_embeddings (
+                    summary_embedding_id,
+                    document_summary_id,
+                    provider_alias,
+                    model_profile_id,
+                    model_revision,
+                    deployment_id,
+                    vector_dimension,
+                    embedding_sha256,
+                    embedding_storage_uri,
+                    status,
+                    created_trace_id,
+                    created_at
+                )
+                VALUES (
+                    :summary_embedding_id,
+                    :document_summary_id,
+                    :provider_alias,
+                    :model_profile_id,
+                    :model_revision,
+                    :deployment_id,
+                    :vector_dimension,
+                    :embedding_sha256,
+                    :embedding_storage_uri,
+                    :status,
+                    :created_trace_id,
+                    :created_at
+                )
+                """
+            ),
+            _summary_embedding_insert_params(record),
         )
 
     def _insert_owner_acl_entry(self, session: Session, record: dict[str, Any]) -> None:
@@ -1900,6 +2109,40 @@ def build_document_summary_persistence_record(
     }
 
 
+def build_summary_embedding_persistence_record(
+    record: dict[str, Any],
+    *,
+    document_summary_id: str,
+) -> dict[str, Any]:
+    provider_alias = str(record["provider_alias"])
+    model_profile_id = str(record.get("model_profile_id", provider_alias))
+    model_revision = str(record["model_revision"])
+    summary_embedding_id = str(
+        uuid5(
+            NAMESPACE_URL,
+            "cx-document-summary-embedding:"
+            f"{document_summary_id}:{model_profile_id}:{model_revision}",
+        )
+    )
+    return {
+        "summary_embedding_schema_version": (
+            "cx_document_summary_embedding.persistence.v1"
+        ),
+        "summary_embedding_id": summary_embedding_id,
+        "document_summary_id": document_summary_id,
+        "provider_alias": provider_alias,
+        "model_profile_id": model_profile_id,
+        "model_revision": model_revision,
+        "deployment_id": record["deployment_id"],
+        "vector_dimension": record["vector_dimension"],
+        "embedding_sha256": record["embedding_sha256"],
+        "embedding_storage_uri": record.get("embedding_storage_uri"),
+        "status": record.get("status", "READY"),
+        "created_trace_id": record.get("trace_id", record.get("created_trace_id")),
+        "created_at": record["created_at"],
+    }
+
+
 def markdown_storage_uri_from_path(extracted_markdown_path: str) -> str:
     path = Path(extracted_markdown_path)
     if len(path.parts) >= 2:
@@ -2037,6 +2280,21 @@ _DOCUMENT_SUMMARY_SELECT_COLUMNS = """
     created_trace_id,
     created_at,
     updated_at
+"""
+
+_SUMMARY_EMBEDDING_SELECT_COLUMNS = """
+    summary_embedding_id,
+    document_summary_id,
+    provider_alias,
+    model_profile_id,
+    model_revision,
+    deployment_id,
+    vector_dimension,
+    embedding_sha256,
+    embedding_storage_uri,
+    status,
+    created_trace_id,
+    created_at
 """
 
 
@@ -2200,6 +2458,23 @@ def _document_summary_insert_params(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _summary_embedding_insert_params(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "summary_embedding_id": record["summary_embedding_id"],
+        "document_summary_id": record["document_summary_id"],
+        "provider_alias": record["provider_alias"],
+        "model_profile_id": record["model_profile_id"],
+        "model_revision": record["model_revision"],
+        "deployment_id": record["deployment_id"],
+        "vector_dimension": record["vector_dimension"],
+        "embedding_sha256": record["embedding_sha256"],
+        "embedding_storage_uri": record.get("embedding_storage_uri"),
+        "status": record.get("status", "READY"),
+        "created_trace_id": record.get("created_trace_id"),
+        "created_at": record["created_at"],
+    }
+
+
 def _content_object_from_row(row: Any) -> dict[str, Any]:
     return {
         "content_object_id": str(row["content_object_id"]),
@@ -2342,6 +2617,26 @@ def _document_summary_from_row(row: Any) -> dict[str, Any]:
     }
 
 
+def _summary_embedding_from_row(row: Any) -> dict[str, Any]:
+    return {
+        "summary_embedding_schema_version": (
+            "cx_document_summary_embedding.persistence.v1"
+        ),
+        "summary_embedding_id": str(row["summary_embedding_id"]),
+        "document_summary_id": str(row["document_summary_id"]),
+        "provider_alias": row["provider_alias"],
+        "model_profile_id": row["model_profile_id"],
+        "model_revision": row["model_revision"],
+        "deployment_id": row["deployment_id"],
+        "vector_dimension": int(row["vector_dimension"]),
+        "embedding_sha256": row["embedding_sha256"],
+        "embedding_storage_uri": row["embedding_storage_uri"],
+        "status": row["status"],
+        "created_trace_id": row["created_trace_id"],
+        "created_at": _timestamp_to_wire(row["created_at"]),
+    }
+
+
 def _extraction_artifact_unique_key(record: dict[str, Any]) -> tuple[str, str, str, str]:
     return (
         str(record["content_object_id"]),
@@ -2377,6 +2672,14 @@ def _document_summary_unique_key(record: dict[str, Any]) -> tuple[str, str, str]
         str(record["content_object_id"]),
         str(record["extraction_artifact_id"]),
         str(record["summary_text_sha256"]),
+    )
+
+
+def _summary_embedding_unique_key(record: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(record["document_summary_id"]),
+        str(record["model_profile_id"]),
+        str(record["model_revision"]),
     )
 
 

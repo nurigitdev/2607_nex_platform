@@ -31,6 +31,7 @@ from nex_cx.repository import (
     build_extraction_artifact_record,
     build_lexical_index_record,
     build_source_file_record,
+    build_summary_embedding_persistence_record,
     markdown_storage_uri_from_path,
 )
 from nex_cx.summaries import build_document_summary_record
@@ -266,6 +267,27 @@ def sqlite_content_repository(
         connection.execute(
             text(
                 """
+                CREATE TABLE cx_document_summary_embeddings (
+                    summary_embedding_id TEXT PRIMARY KEY,
+                    document_summary_id TEXT NOT NULL REFERENCES cx_document_summaries(document_summary_id),
+                    provider_alias TEXT NOT NULL,
+                    model_profile_id TEXT NOT NULL,
+                    model_revision TEXT NOT NULL,
+                    deployment_id TEXT NOT NULL,
+                    vector_dimension INTEGER NOT NULL,
+                    embedding_sha256 TEXT NOT NULL,
+                    embedding_storage_uri TEXT,
+                    status TEXT NOT NULL DEFAULT 'READY',
+                    created_trace_id TEXT,
+                    created_at TEXT NOT NULL,
+                    UNIQUE (document_summary_id, model_profile_id, model_revision)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
                 CREATE TABLE cx_lexical_terms (
                     lexical_term_id TEXT PRIMARY KEY,
                     chunk_set_id TEXT NOT NULL REFERENCES cx_chunk_sets(chunk_set_id),
@@ -443,6 +465,25 @@ def document_summary_payload(
     )
 
 
+def summary_embedding_payload(summary: dict[str, object]) -> dict[str, object]:
+    return {
+        "summary_embedding_schema_version": "cx_document_summary_embedding.v1",
+        "document_id": summary["document_id"],
+        "document_summary_id": summary["document_summary_id"],
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "provider_alias": "mock-embedding-default",
+        "model_revision": "mock-embedding-v1",
+        "deployment_id": "mock-embedding-local",
+        "summary_text_sha256": summary["summary_text_sha256"],
+        "embedding_sha256": "3" * 64,
+        "vector_dimension": 3,
+        "usage": {"input_tokens": 1, "output_tokens": 0, "total_tokens": 1},
+        "created_at": summary["created_at"],
+        "updated_at": summary["updated_at"],
+    }
+
+
 def test_build_source_file_record_maps_storage_metadata_without_raw_text(
     tmp_path: Path,
 ) -> None:
@@ -595,6 +636,45 @@ def test_build_document_summary_persistence_record_tolerates_legacy_summarizer_s
 
     assert record["model_profile_id"] is None
     assert record["model_revision"] is None
+
+
+def test_build_summary_embedding_persistence_record_maps_hash_without_vector(
+    tmp_path: Path,
+) -> None:
+    upload = upload_registration(tmp_path)
+    summary = document_summary_payload(tmp_path, upload)
+    embedding = summary_embedding_payload(summary)
+    embedding["embedding_storage_uri"] = "pgvector://cx/summary/embedding/001"
+    embedding["status"] = "STALE"
+
+    record = build_summary_embedding_persistence_record(
+        embedding,
+        document_summary_id=str(summary["document_summary_id"]),
+    )
+
+    assert record["document_summary_id"] == summary["document_summary_id"]
+    assert record["model_profile_id"] == "mock-embedding-default"
+    assert record["embedding_sha256"] == "3" * 64
+    assert record["embedding_storage_uri"] == "pgvector://cx/summary/embedding/001"
+    assert record["status"] == "STALE"
+    assert "[0.0, 0.5, 1.0]" not in str(record)
+
+
+def test_build_summary_embedding_persistence_record_uses_explicit_model_profile(
+    tmp_path: Path,
+) -> None:
+    upload = upload_registration(tmp_path)
+    summary = document_summary_payload(tmp_path, upload)
+    embedding = summary_embedding_payload(summary)
+    embedding["model_profile_id"] = "summary-embedding-profile"
+
+    record = build_summary_embedding_persistence_record(
+        embedding,
+        document_summary_id=str(summary["document_summary_id"]),
+    )
+
+    assert record["model_profile_id"] == "summary-embedding-profile"
+    assert record["status"] == "READY"
 
 
 def test_build_lexical_index_record_maps_terms_without_chunk_text(
@@ -826,6 +906,37 @@ def test_in_memory_repository_saves_document_summaries_idempotently(
         content_object_id=record["content_object_id"],
         extraction_artifact_id=record["extraction_artifact_id"],
         summary_text_sha256="0" * 64,
+    ) is None
+
+
+def test_in_memory_repository_saves_summary_embeddings_idempotently(
+    tmp_path: Path,
+) -> None:
+    repository = InMemoryCxContentRepository()
+    upload = upload_registration(tmp_path)
+    summary = document_summary_payload(tmp_path, upload)
+    record = build_summary_embedding_persistence_record(
+        summary_embedding_payload(summary),
+        document_summary_id=str(summary["document_summary_id"]),
+    )
+    duplicate = {
+        **record,
+        "summary_embedding_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    }
+
+    assert repository.save_summary_embedding_record(record) == record
+    assert repository.save_summary_embedding_record(duplicate) == record
+    assert repository.get_summary_embedding_record(record["summary_embedding_id"]) == record
+    assert repository.find_summary_embedding_record(
+        document_summary_id=record["document_summary_id"],
+        model_profile_id=record["model_profile_id"],
+        model_revision=record["model_revision"],
+    ) == record
+    assert repository.get_summary_embedding_record("missing") is None
+    assert repository.find_summary_embedding_record(
+        document_summary_id=record["document_summary_id"],
+        model_profile_id="other",
+        model_revision=record["model_revision"],
     ) is None
 
 
@@ -1282,6 +1393,74 @@ def test_sqlalchemy_repository_saves_and_finds_document_summary_metadata(
     )
 
 
+def test_sqlalchemy_repository_saves_and_finds_summary_embedding_metadata(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    upload = upload_registration(tmp_path)
+    source_file = repository.save_source_file(build_source_file_record(upload))
+    content = repository.save_content_object(
+        build_content_object_record(
+            upload,
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    extraction = extraction_result(tmp_path, upload)
+    artifact = repository.save_extraction_artifact(
+        build_extraction_artifact_record(
+            extraction,
+            content_object_id=content["content_object_id"],
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    summary = repository.save_document_summary_record(
+        build_document_summary_persistence_record(
+            document_summary_payload(tmp_path, upload, extraction=extraction),
+            content_object_id=content["content_object_id"],
+            extraction_artifact_id=artifact["extraction_artifact_id"],
+        )
+    )
+    record = build_summary_embedding_persistence_record(
+        summary_embedding_payload(
+            {
+                **document_summary_payload(tmp_path, upload, extraction=extraction),
+                "document_summary_id": summary["document_summary_id"],
+            }
+        ),
+        document_summary_id=summary["document_summary_id"],
+    )
+    duplicate = {
+        **record,
+        "summary_embedding_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    }
+
+    saved = repository.save_summary_embedding_record(record)
+
+    assert saved == record
+    assert repository.save_summary_embedding_record(duplicate) == record
+    assert repository.get_summary_embedding_record(saved["summary_embedding_id"]) == record
+    assert repository.get_summary_embedding_record(
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab"
+    ) is None
+    assert repository.find_summary_embedding_record(
+        document_summary_id=summary["document_summary_id"],
+        model_profile_id=record["model_profile_id"],
+        model_revision=record["model_revision"],
+    ) == record
+    assert repository.find_summary_embedding_record(
+        document_summary_id=summary["document_summary_id"],
+        model_profile_id="other",
+        model_revision=record["model_revision"],
+    ) is None
+    assert _sqlite_table_count(engine, "cx_document_summary_embeddings") == 1
+    assert "[0.0, 0.5, 1.0]" not in _sqlite_table_dump(
+        engine,
+        ["cx_document_summary_embeddings"],
+    )
+
+
 def test_sqlalchemy_repository_keeps_empty_chunk_embedding_index_at_boundary(
     tmp_path: Path,
 ) -> None:
@@ -1625,6 +1804,33 @@ def test_sqlalchemy_repository_wraps_database_errors(tmp_path: Path) -> None:
             extraction_artifact_id="55555555-5555-4555-8555-555555555555",
             summary_text_sha256="2" * 64,
         ),
+        lambda repository: repository.save_summary_embedding_record(
+            {
+                "summary_embedding_schema_version": (
+                    "cx_document_summary_embedding.persistence.v1"
+                ),
+                "summary_embedding_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "document_summary_id": "99999999-9999-4999-8999-999999999999",
+                "provider_alias": "mock-embedding-default",
+                "model_profile_id": "mock-embedding-default",
+                "model_revision": "mock-embedding-v1",
+                "deployment_id": "mock-embedding-local",
+                "vector_dimension": 3,
+                "embedding_sha256": "3" * 64,
+                "embedding_storage_uri": None,
+                "status": "READY",
+                "created_trace_id": TRACE_ID,
+                "created_at": "2026-08-09T00:00:00Z",
+            }
+        ),
+        lambda repository: repository.get_summary_embedding_record(
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        ),
+        lambda repository: repository.find_summary_embedding_record(
+            document_summary_id="99999999-9999-4999-8999-999999999999",
+            model_profile_id="mock-embedding-default",
+            model_revision="mock-embedding-v1",
+        ),
     ],
 )
 def test_sqlalchemy_repository_wraps_missing_table_errors(
@@ -1691,6 +1897,14 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
         ) -> dict[str, Any]:
             raise IntegrityError("insert document summary", {}, Exception("race"))
 
+    class RaceySummaryEmbeddingRepository(SqlAlchemyCxContentRepository):
+        def _save_summary_embedding_record(
+            self,
+            session: Any,
+            record: dict[str, Any],
+        ) -> dict[str, Any]:
+            raise IntegrityError("insert summary embedding", {}, Exception("race"))
+
     repository, engine = sqlite_content_repository(tmp_path)
     upload = upload_registration(tmp_path)
     source_file_record = build_source_file_record(upload)
@@ -1728,6 +1942,7 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
     racey_lexical = RaceyLexicalRepository(build_session_factory(engine))
     racey_chunk_embedding = RaceyChunkEmbeddingRepository(build_session_factory(engine))
     racey_document_summary = RaceyDocumentSummaryRepository(build_session_factory(engine))
+    racey_summary_embedding = RaceySummaryEmbeddingRepository(build_session_factory(engine))
     lexical = repository.save_lexical_index(
         build_lexical_index_record(
             lexical_index_payload(chunk_set),
@@ -1747,6 +1962,17 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
             extraction_artifact_id=artifact["extraction_artifact_id"],
         )
     )
+    summary_embedding = repository.save_summary_embedding_record(
+        build_summary_embedding_persistence_record(
+            summary_embedding_payload(
+                {
+                    **document_summary_payload(tmp_path, upload),
+                    "document_summary_id": summary["document_summary_id"],
+                }
+            ),
+            document_summary_id=summary["document_summary_id"],
+        )
+    )
 
     assert racey_source.save_source_file(source_file_record) == source_file
     assert racey_content.save_content_object(content) == content
@@ -1758,6 +1984,10 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
         == chunk_embedding
     )
     assert racey_document_summary.save_document_summary_record(summary) == summary
+    assert (
+        racey_summary_embedding.save_summary_embedding_record(summary_embedding)
+        == summary_embedding
+    )
 
 
 def test_sqlalchemy_repository_extraction_integrity_without_existing_row_wraps(
@@ -1967,6 +2197,44 @@ def test_sqlalchemy_repository_document_summary_integrity_without_existing_row_w
                 "created_trace_id": TRACE_ID,
                 "created_at": "2026-08-09T00:00:00Z",
                 "updated_at": "2026-08-09T00:00:00Z",
+            }
+        )
+
+    assert exc_info.value.error_code == "cx_content.repository_unavailable"
+
+
+def test_sqlalchemy_repository_summary_embedding_integrity_without_existing_row_wraps(
+    tmp_path: Path,
+) -> None:
+    class RaceySummaryEmbeddingRepository(SqlAlchemyCxContentRepository):
+        def _save_summary_embedding_record(
+            self,
+            session: Any,
+            record: dict[str, Any],
+        ) -> dict[str, Any]:
+            raise IntegrityError("insert summary embedding", {}, Exception("race"))
+
+    _, engine = sqlite_content_repository(tmp_path)
+    repository = RaceySummaryEmbeddingRepository(build_session_factory(engine))
+
+    with pytest.raises(CxContentRepositoryError) as exc_info:
+        repository.save_summary_embedding_record(
+            {
+                "summary_embedding_schema_version": (
+                    "cx_document_summary_embedding.persistence.v1"
+                ),
+                "summary_embedding_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "document_summary_id": "99999999-9999-4999-8999-999999999999",
+                "provider_alias": "mock-embedding-default",
+                "model_profile_id": "mock-embedding-default",
+                "model_revision": "mock-embedding-v1",
+                "deployment_id": "mock-embedding-local",
+                "vector_dimension": 3,
+                "embedding_sha256": "3" * 64,
+                "embedding_storage_uri": None,
+                "status": "READY",
+                "created_trace_id": TRACE_ID,
+                "created_at": "2026-08-09T00:00:00Z",
             }
         )
 
@@ -2439,6 +2707,62 @@ def test_content_ingestion_store_with_sqlalchemy_repository_persists_document_su
     assert summary_text not in _sqlite_table_dump(engine, ["cx_document_summaries"])
 
 
+def test_content_ingestion_store_with_sqlalchemy_repository_persists_summary_embedding(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    store = ContentIngestionStore(content_repository=repository)
+    source_text = "SECRET_SUMMARY_EMBEDDING_SOURCE"
+    summary_text = "SECRET_SUMMARY_EMBEDDING_TEXT"
+    vector = [0.0, 0.5, 1.0]
+    document = upload_registration(
+        tmp_path,
+        content_text=source_text,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    store.save_upload_registration(
+        document,
+        source_text=source_text,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    extraction = run_text_extraction_job(
+        document["extraction"]["job_id"],
+        store=store,
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    summary = store.save_document_summary(
+        document_summary_payload(
+            tmp_path,
+            document,
+            extraction=extraction,
+            summary_text=summary_text,
+        ),
+        summary_text=summary_text,
+    )
+    embedding = summary_embedding_payload(summary)
+
+    saved = store.save_summary_embedding_index(embedding, embedding_vector=vector)
+
+    persisted = repository.find_summary_embedding_record(
+        document_summary_id=summary["document_summary_id"],
+        model_profile_id=saved["provider_alias"],
+        model_revision=saved["model_revision"],
+    )
+    assert persisted is not None
+    assert persisted["embedding_sha256"] == saved["embedding_sha256"]
+    assert persisted["vector_dimension"] == len(vector)
+    assert store.get_summary_embedding_vector(summary["document_summary_id"]) == vector
+    assert _sqlite_table_count(engine, "cx_document_summary_embeddings") == 1
+    assert str(vector) not in _sqlite_table_dump(
+        engine,
+        ["cx_document_summary_embeddings"],
+    )
+
+
 def test_content_ingestion_store_saves_extraction_result_without_content_refs(
     tmp_path: Path,
 ) -> None:
@@ -2597,6 +2921,43 @@ def test_content_ingestion_store_skips_summary_metadata_without_required_shape(
 
     assert saved == record
     assert store.content_repository.document_summary_records == {}
+
+
+def test_content_ingestion_store_skips_summary_embedding_without_persisted_summary(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    document = upload_registration(tmp_path, content_text="source text")
+    summary = document_summary_payload(tmp_path, document)
+    embedding = summary_embedding_payload(summary)
+
+    saved = store.save_summary_embedding_index(
+        embedding,
+        embedding_vector=[0.0, 0.5, 1.0],
+    )
+
+    assert saved == embedding
+    assert store.get_summary_embedding_index(summary["document_id"]) == embedding
+    assert store.content_repository.summary_embedding_records == {}
+
+
+def test_content_ingestion_store_skips_summary_embedding_without_required_shape(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    document = upload_registration(tmp_path, content_text="source text")
+    record = {
+        "document_id": document["document_id"],
+        "document_summary_id": "summary-001",
+    }
+
+    saved = store.save_summary_embedding_index(
+        record,
+        embedding_vector=[0.0, 0.5, 1.0],
+    )
+
+    assert saved == record
+    assert store.content_repository.summary_embedding_records == {}
 
 
 def _sqlite_table_count(engine: object, table_name: str) -> int:
