@@ -111,13 +111,13 @@ CX_CONTENT_PERSISTENCE_SURFACES: tuple[dict[str, Any], ...] = (
         "surface_id": "processing_runs",
         "owned_records": ["document_processing_run"],
         "current_boundary": "ContentIngestionStore",
-        "current_adapter_status": "repository_adapter_ready_write_through_pending",
+        "current_adapter_status": "sqlalchemy_repository_ready",
         "target_tables": [
             CX_DOCUMENT_PROCESSING_RUN_TABLE,
             CX_DOCUMENT_PROCESSING_STEP_TABLE,
         ],
         "target_table_status": "migration_present",
-        "postgres_adapter_required": True,
+        "postgres_adapter_required": False,
         "private_payload_policy": (
             "run_header_step_status_output_ref_hash_and_error_hash_only"
         ),
@@ -168,7 +168,7 @@ CX_DEFERRED_SCHEMA_DECISIONS: tuple[dict[str, Any], ...] = (
     {
         "decision_id": "processing_runs",
         "surface_id": "processing_runs",
-        "decision_status": "repository_adapter_ready_write_through_pending",
+        "decision_status": "write_through_ready_postgres_smoke_pending",
         "candidate_tables": [
             CX_DOCUMENT_PROCESSING_RUN_TABLE,
             CX_DOCUMENT_PROCESSING_STEP_TABLE,
@@ -200,7 +200,7 @@ CX_DEFERRED_SCHEMA_DECISIONS: tuple[dict[str, Any], ...] = (
         "private_payload_policy": (
             "run_header_step_status_output_ref_hash_and_error_hash_only"
         ),
-        "decision_trigger": "slice_0184_write_through_integration",
+        "decision_trigger": "slice_0185_postgresql_smoke_evidence",
     },
     {
         "decision_id": "lexical_index_header",
@@ -295,7 +295,7 @@ def build_cx_persistence_gap_audit(
             "migration_pending_count": migration_pending_count,
             "deferred_schema_decision_count": len(CX_DEFERRED_SCHEMA_DECISIONS),
             "private_payload_boundary_count": len(CX_PRIVATE_PAYLOAD_BOUNDARIES),
-            "next_recommended_slice": "0184_cx_processing_run_write_through_integration",
+            "next_recommended_slice": "0185_cx_processing_postgresql_smoke_evidence",
         },
         "observed_store_counts": counts,
         "surfaces": surfaces,

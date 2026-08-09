@@ -32,6 +32,7 @@ from nex_cx.repository import (
     build_extraction_artifact_record,
     build_lexical_index_record,
     build_document_summary_persistence_record,
+    build_processing_run_persistence_record,
     build_retrieval_package_persistence_record,
     build_summary_embedding_persistence_record,
     build_content_object_record,
@@ -527,7 +528,39 @@ class ContentIngestionStore:
         self.latest_processing_run_ids_by_document[record["document_id"]] = record[
             "pipeline_run_id"
         ]
+        self._persist_processing_run_metadata(record)
         return record
+
+    def _persist_processing_run_metadata(self, record: dict[str, Any]) -> None:
+        required_keys = {
+            "document_id",
+            "pipeline_run_id",
+            "pipeline_schema_version",
+            "request_id",
+            "status",
+            "step_summary",
+            "steps",
+            "trace_id",
+            "updated_at",
+        }
+        if not required_keys.issubset(record):
+            return
+        document_id = str(record["document_id"])
+        refs = self.document_content_refs.get(document_id)
+        if refs is None:
+            return
+        persisted_content = self.content_repository.get_content_object(
+            str(refs["content_object_id"])
+        )
+        if persisted_content is None:
+            return
+        persistence_record = build_processing_run_persistence_record(
+            {
+                **record,
+                "document_id": persisted_content["content_object_id"],
+            }
+        )
+        self.content_repository.save_processing_run_record(persistence_record)
 
     def get_document_processing_run(self, pipeline_run_id: str) -> dict[str, Any] | None:
         return self.document_processing_runs.get(pipeline_run_id)

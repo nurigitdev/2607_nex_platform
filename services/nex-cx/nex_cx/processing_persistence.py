@@ -45,7 +45,7 @@ def build_processing_run_persistence_decision() -> dict[str, Any]:
         "decision_schema_version": CX_PROCESSING_RUN_PERSISTENCE_DECISION_SCHEMA_VERSION,
         "decision_slice": "0181",
         "surface_id": "processing_runs",
-        "decision_status": "repository_adapter_ready_write_through_pending",
+        "decision_status": "write_through_ready_postgres_smoke_pending",
         "runtime_record_schema": CX_PROCESSING_RUNTIME_RECORD_SCHEMA,
         "persistence_owner": "nex-cx",
         "repository_boundary": "CxProcessingRunRepository",
@@ -125,7 +125,7 @@ def build_processing_run_persistence_decision() -> dict[str, Any]:
             "run_header_step_status_output_ref_hash_and_error_hash_only"
         ),
         "migration_policy": "postgres_schema_then_repository_write_through",
-        "next_slice": "0184_cx_processing_run_write_through_integration",
+        "next_slice": "0185_cx_processing_postgresql_smoke_evidence",
     }
 
 

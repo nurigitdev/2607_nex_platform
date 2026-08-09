@@ -3574,6 +3574,86 @@ def test_sqlalchemy_repository_saves_failed_processing_run_error_hash(
     )
 
 
+def test_content_ingestion_store_persists_processing_run_metadata(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    store = ContentIngestionStore(content_repository=repository)
+    source_text = "processing body " + ("SOURCE_PRIVATE_" * 30)
+    document = upload_registration(tmp_path, content_text=source_text)
+    store.save_upload_registration(document, source_text=source_text)
+    run = processing_run_payload(
+        document_id=str(document["document_id"]),
+        status="SUCCEEDED",
+        updated_at="2026-08-09T00:00:10Z",
+    )
+
+    saved = store.save_document_processing_run(run)
+
+    persisted = repository.get_processing_run_record(str(run["pipeline_run_id"]))
+    assert saved == run
+    assert persisted is not None
+    assert persisted["pipeline_run_id"] == run["pipeline_run_id"]
+    assert persisted["document_id"] == document["document_id"]
+    assert persisted["status"] == "SUCCEEDED"
+    assert persisted["step_succeeded"] == 1
+    assert persisted["steps"][0]["output_ref_type"] == "cx.document_summary"
+    assert _sqlite_table_count(engine, "cx_document_processing_runs") == 1
+    assert _sqlite_table_count(engine, "cx_document_processing_steps") == 1
+    dump = _sqlite_table_dump(
+        engine,
+        ["cx_document_processing_runs", "cx_document_processing_steps"],
+    )
+    assert source_text not in dump
+    assert "SECRET_OUTPUT_REF_TEXT" not in dump
+
+
+def test_content_ingestion_store_skips_processing_persistence_without_content_ref(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    run = processing_run_payload(
+        document_id="44444444-4444-4444-8444-444444444444",
+        status="SUCCEEDED",
+    )
+
+    saved = store.save_document_processing_run(run)
+
+    assert saved == run
+    assert store.get_document_processing_run(str(run["pipeline_run_id"])) == run
+    assert store.content_repository.processing_run_records == {}
+
+
+def test_content_ingestion_store_skips_processing_persistence_for_sparse_record() -> None:
+    store = ContentIngestionStore()
+    sparse = {
+        "document_id": "44444444-4444-4444-8444-444444444444",
+        "pipeline_run_id": "99999999-9999-4999-8999-999999999999",
+    }
+
+    saved = store.save_document_processing_run(sparse)
+
+    assert saved == sparse
+    assert store.content_repository.processing_run_records == {}
+
+
+def test_content_ingestion_store_skips_processing_persistence_without_persisted_content() -> None:
+    store = ContentIngestionStore()
+    run = processing_run_payload(
+        document_id="44444444-4444-4444-8444-444444444444",
+        status="SUCCEEDED",
+    )
+    store.document_content_refs[str(run["document_id"])] = {
+        "content_object_id": str(run["document_id"]),
+        "source_file_id": "11111111-1111-4111-8111-111111111111",
+    }
+
+    saved = store.save_document_processing_run(run)
+
+    assert saved == run
+    assert store.content_repository.processing_run_records == {}
+
+
 def test_content_ingestion_store_skips_retrieval_metadata_without_persisted_lineage(
     tmp_path: Path,
 ) -> None:

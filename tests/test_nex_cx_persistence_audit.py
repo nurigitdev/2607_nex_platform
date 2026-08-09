@@ -56,21 +56,19 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
     assert audit["content_repository_type"] is None
     assert audit["summary"] == {
         "surface_count": 10,
-        "postgres_adapter_gap_count": 1,
+        "postgres_adapter_gap_count": 0,
         "schema_deferred_count": 0,
         "migration_pending_count": 0,
         "deferred_schema_decision_count": 3,
         "private_payload_boundary_count": 6,
-        "next_recommended_slice": "0184_cx_processing_run_write_through_integration",
+        "next_recommended_slice": "0185_cx_processing_postgresql_smoke_evidence",
     }
     assert all(count == 0 for count in audit["observed_store_counts"].values())
     processing_surface = {
         surface["surface_id"]: surface for surface in audit["surfaces"]
     }["processing_runs"]
     assert processing_surface["target_table_status"] == "migration_present"
-    assert processing_surface["current_adapter_status"] == (
-        "repository_adapter_ready_write_through_pending"
-    )
+    assert processing_surface["current_adapter_status"] == "sqlalchemy_repository_ready"
     closed_surfaces = {
         surface["surface_id"]: surface
         for surface in audit["surfaces"]
@@ -83,6 +81,7 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
         "document_summaries",
         "extraction_artifacts",
         "lexical_index",
+        "processing_runs",
         "retrieval_packages",
         "source_files",
         "summary_embeddings",
@@ -107,10 +106,10 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
     )
     assert (
         audit["processing_run_persistence_decision"]["decision_status"]
-        == "repository_adapter_ready_write_through_pending"
+        == "write_through_ready_postgres_smoke_pending"
     )
     assert audit["processing_run_persistence_decision"]["next_slice"] == (
-        "0184_cx_processing_run_write_through_integration"
+        "0185_cx_processing_postgresql_smoke_evidence"
     )
     assert audit["latest_processing_run_persistence_preview"] is None
 
@@ -212,7 +211,7 @@ def test_cx_persistence_gap_audit_records_deferred_schema_decisions() -> None:
     ]
     assert (
         processing["decision_status"]
-        == "repository_adapter_ready_write_through_pending"
+        == "write_through_ready_postgres_smoke_pending"
     )
     assert "step_total" in processing["minimum_persisted_metadata"]
     assert "steps[].error_detail_sha256" in processing["minimum_persisted_metadata"]
