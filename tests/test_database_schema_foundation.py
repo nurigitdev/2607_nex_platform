@@ -224,6 +224,49 @@ def test_cx_schema_tracks_markdown_summary_and_summary_embedding_lineage() -> No
     assert "vector_dimension integer not null check (vector_dimension > 0)" in compact
 
 
+def test_cx_schema_tracks_retrieval_package_metadata_without_raw_text() -> None:
+    compact = normalized(read_migration("nex-cx"))
+    retrieval = normalized(
+        read_migration_named("nex-cx", "0172_cx_retrieval_package_persistence.sql")
+    )
+
+    assert "create table if not exists cx_retrieval_packages" in compact
+    assert "create table if not exists cx_retrieval_evidence_items" in compact
+    for column in (
+        "retrieval_package_schema_version text not null default 'cx_retrieval_context_package.v1'",
+        "package_hash text not null check",
+        "query_text_sha256 text not null check",
+        "query_text_preview text check",
+        "query_embedding_provided boolean not null default false",
+        "query_embedding_sha256 text check",
+        "query_embedding_dimension integer not null default 0",
+        "retrieval_policy_id text not null",
+        "retrieval_policy_hash text check",
+        "permission_snapshot_hash text not null check",
+        "source_summary jsonb not null default '{}'::jsonb",
+        "score_summary jsonb not null default '{}'::jsonb",
+        "evidence_text_sha256 text not null check",
+        "evidence_text_preview text not null check",
+        "final_score double precision not null default 0",
+        "scores jsonb not null default '{}'::jsonb",
+        "matched_terms jsonb not null default '[]'::jsonb",
+        "permission_result jsonb not null default '{}'::jsonb",
+    ):
+        assert column in retrieval
+    assert "primary key (retrieval_package_id, evidence_id)" in retrieval
+    assert "unique (retrieval_package_id, rank)" in retrieval
+    assert "ck_cx_retrieval_packages_query_embedding_consistent" in retrieval
+    assert "ck_cx_retrieval_packages_evidence_count_status" in retrieval
+    assert "idx_cx_retrieval_packages_status_created" in retrieval
+    assert "idx_cx_retrieval_packages_trace" in retrieval
+    assert "idx_cx_retrieval_evidence_score" in retrieval
+    assert "0172_cx_retrieval_package_persistence" in retrieval
+    assert "query_text text" not in compact
+    assert "evidence_text text" not in compact
+    assert "raw_query" not in compact
+    assert "raw_evidence" not in compact
+
+
 def test_prompt_registry_is_service_local_and_versioned() -> None:
     cx = normalized(read_migration("nex-cx"))
     ae = normalized(read_migration("nex-ae-api"))

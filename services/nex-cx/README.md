@@ -83,13 +83,12 @@ Internal persistence boundary:
   rows store provider/model lineage, vector dimension, embedding hash, optional
   storage URI, status, and trace metadata only. Raw summary vectors remain in
   the private summary embedding vector boundary.
-- Retrieval package runtime persistence mapping is decided at Slice 0171.
-  `nex_cx.retrieval_persistence` projects retrieval packages into future
-  `cx_retrieval_packages` and `cx_retrieval_evidence_items` rows without
-  writing to PostgreSQL yet. The projection stores query/evidence SHA-256
-  hashes, bounded previews, policy lineage, permission snapshot hash, scores,
-  and source summary; raw query text, raw evidence text, and raw query vectors
-  stay outside durable public rows.
+- Retrieval package metadata now writes through to `cx_retrieval_packages` and
+  `cx_retrieval_evidence_items` when evidence lineage points at persisted
+  content/chunk rows. The persisted rows store query/evidence SHA-256 hashes,
+  bounded previews, policy lineage, permission snapshot hash, scores, final
+  score, and source summary; raw query text, raw evidence text, and raw query
+  vectors stay outside durable public rows.
 - Processing run database schema remains deliberately deferred.
   `build_cx_persistence_gap_audit()` exposes the remaining candidate table
   names, minimum metadata, private payload policy, and decision trigger, plus
@@ -183,6 +182,10 @@ Grounded generation validation:
 - Protected live RAG smoke evidence is available through
   `scripts/smoke/run_protected_live_rag_smoke.py`. It is skipped by default and
   only calls live providers when `NEX_PROTECTED_LIVE_RAG_SMOKE=1` is set.
+- CX retrieval PostgreSQL smoke evidence is available through
+  `scripts/smoke/run_cx_retrieval_postgres_smoke.py`. It is skipped by default
+  and only writes to the CX test database when
+  `NEX_CX_RETRIEVAL_POSTGRES_SMOKE=1` is set with the `test` profile.
 - CX processing PostgreSQL operational event evidence is available through
   `scripts/smoke/run_cx_processing_postgres_event_smoke.py`. It is skipped by
   default and only writes to the CX test database when

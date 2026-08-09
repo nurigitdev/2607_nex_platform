@@ -30,6 +30,7 @@ from nex_cx.repository import (
     build_document_summary_persistence_record,
     build_extraction_artifact_record,
     build_lexical_index_record,
+    build_retrieval_package_persistence_record,
     build_source_file_record,
     build_summary_embedding_persistence_record,
     markdown_storage_uri_from_path,
@@ -317,6 +318,68 @@ def sqlite_content_repository(
                 """
             )
         )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_retrieval_packages (
+                    retrieval_package_id TEXT PRIMARY KEY,
+                    retrieval_package_schema_version TEXT NOT NULL DEFAULT 'cx_retrieval_context_package.v1',
+                    package_hash TEXT NOT NULL UNIQUE,
+                    status TEXT NOT NULL,
+                    trace_id TEXT,
+                    request_id TEXT NOT NULL,
+                    query_text_sha256 TEXT NOT NULL,
+                    query_text_preview TEXT,
+                    query_embedding_provided BOOLEAN NOT NULL DEFAULT 0,
+                    query_embedding_sha256 TEXT,
+                    query_embedding_dimension INTEGER NOT NULL DEFAULT 0,
+                    purpose TEXT NOT NULL,
+                    retrieval_policy_id TEXT NOT NULL,
+                    retrieval_policy_version TEXT,
+                    retrieval_policy_hash TEXT,
+                    retrieval_policy_source TEXT NOT NULL,
+                    ranker_mix TEXT NOT NULL,
+                    rerank_state TEXT NOT NULL,
+                    permission_snapshot_hash TEXT NOT NULL,
+                    source_summary TEXT NOT NULL DEFAULT '{}',
+                    score_summary TEXT NOT NULL DEFAULT '{}',
+                    warning_count INTEGER NOT NULL DEFAULT 0,
+                    evidence_count INTEGER NOT NULL DEFAULT 0,
+                    no_answer_reason TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_retrieval_evidence_items (
+                    retrieval_package_id TEXT NOT NULL REFERENCES cx_retrieval_packages(retrieval_package_id),
+                    evidence_id TEXT NOT NULL,
+                    rank INTEGER NOT NULL,
+                    content_object_id TEXT NOT NULL REFERENCES cx_content_objects(content_object_id),
+                    content_version_id TEXT NOT NULL,
+                    chunk_id TEXT NOT NULL REFERENCES cx_chunks(chunk_id),
+                    chunk_policy_id TEXT NOT NULL,
+                    source_anchor TEXT NOT NULL DEFAULT '{}',
+                    citation_label TEXT NOT NULL,
+                    evidence_text_sha256 TEXT NOT NULL,
+                    evidence_text_preview TEXT NOT NULL,
+                    final_score REAL NOT NULL DEFAULT 0,
+                    scores TEXT NOT NULL DEFAULT '{}',
+                    matched_terms TEXT NOT NULL DEFAULT '[]',
+                    permission_result TEXT NOT NULL DEFAULT '{}',
+                    neighbor_context TEXT NOT NULL DEFAULT '[]',
+                    quality_flags TEXT NOT NULL DEFAULT '[]',
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (retrieval_package_id, evidence_id),
+                    UNIQUE (retrieval_package_id, rank)
+                )
+                """
+            )
+        )
     return (
         SqlAlchemyCxContentRepository(
             build_session_factory(engine),
@@ -481,6 +544,89 @@ def summary_embedding_payload(summary: dict[str, object]) -> dict[str, object]:
         "usage": {"input_tokens": 1, "output_tokens": 0, "total_tokens": 1},
         "created_at": summary["created_at"],
         "updated_at": summary["updated_at"],
+    }
+
+
+def retrieval_package_payload(
+    *,
+    document_id: str,
+    chunk: dict[str, object],
+    query_text: str = "SECRET_RETRIEVAL_QUERY",
+    evidence_text: str = "SECRET_RETRIEVAL_EVIDENCE_TEXT",
+) -> dict[str, object]:
+    return {
+        "retrieval_package_schema_version": "cx_retrieval_context_package.v1",
+        "retrieval_package_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "package_hash": "4" * 64,
+        "status": "READY",
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "query_text": query_text,
+        "query_embedding_snapshot": {
+            "provided": True,
+            "embedding_sha256": "5" * 64,
+            "vector_dimension": 3,
+        },
+        "purpose": "grounded_answer",
+        "retrieval_profile": {
+            "quality_policy": {
+                "policy_id": "weighted_rrf_vector_bm25_v1",
+                "policy_version": "2026-08-09",
+                "policy_hash": "6" * 64,
+                "policy_source": "ag_registry_active",
+                "ranker_mix": "weighted_rrf_vector_bm25_v1",
+            }
+        },
+        "permission_snapshot": {
+            "actor_type": "user",
+            "actor_id": "user-a",
+            "scope_applied": {"type": "document_ids", "document_ids": [document_id]},
+        },
+        "evidence_items": [
+            {
+                "evidence_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                "rank": 1,
+                "content_object_id": document_id,
+                "content_version_id": chunk["text_sha256"],
+                "chunk_id": chunk["chunk_id"],
+                "chunk_policy_id": "chunk_1000_100",
+                "source_anchor": {
+                    "type": "character_range",
+                    "start_offset": chunk["start_offset"],
+                    "end_offset": chunk["end_offset"],
+                },
+                "citation_label": "[1]",
+                "text": evidence_text,
+                "neighbor_context": [],
+                "scores": {
+                    "bm25_score": 1.0,
+                    "vector_score": 0.8,
+                    "final_score": 0.9,
+                },
+                "matched_terms": ["retrieval"],
+                "permission_result": {
+                    "visible": True,
+                    "reason": "local_mock_service_scope",
+                },
+                "quality_flags": [],
+            }
+        ],
+        "source_summary": {
+            "source_count": 1,
+            "document_count": 1,
+            "chunk_count": 1,
+            "source_types": ["cx.document"],
+        },
+        "score_summary": {
+            "best_score": 0.9,
+            "score_spread": 0.0,
+            "ranker_mix": "weighted_rrf_vector_bm25_v1",
+            "rerank_state": "NOT_APPLIED",
+        },
+        "warnings": [],
+        "no_answer_reason": None,
+        "created_at": "2026-08-09T00:00:00Z",
+        "updated_at": "2026-08-09T00:00:00Z",
     }
 
 
@@ -675,6 +821,41 @@ def test_build_summary_embedding_persistence_record_uses_explicit_model_profile(
 
     assert record["model_profile_id"] == "summary-embedding-profile"
     assert record["status"] == "READY"
+
+
+def test_build_retrieval_package_persistence_record_maps_hashes_without_raw_text(
+    tmp_path: Path,
+) -> None:
+    upload = upload_registration(tmp_path)
+    chunk_set = chunk_set_payload(tmp_path, upload)
+    query_text = "SECRET_RETRIEVAL_QUERY_" + ("x" * 400)
+    evidence_text = "SECRET_RETRIEVAL_EVIDENCE_TEXT_" + ("y" * 400)
+    package = retrieval_package_payload(
+        document_id=str(upload["document_id"]),
+        chunk=chunk_set["chunks"][0],
+        query_text=query_text,
+        evidence_text=evidence_text,
+    )
+
+    record = build_retrieval_package_persistence_record(package)
+
+    assert record["retrieval_package_schema_version"] == (
+        "cx_retrieval_package.persistence.v1"
+    )
+    assert record["retrieval_package_id"] == package["retrieval_package_id"]
+    assert record["query_text_sha256"] == sha256_text(query_text)
+    assert record["query_embedding_provided"] is True
+    assert record["query_embedding_dimension"] == 3
+    assert record["retrieval_policy_id"] == "weighted_rrf_vector_bm25_v1"
+    assert record["ranker_mix"] == "weighted_rrf_vector_bm25_v1"
+    assert record["rerank_state"] == "NOT_APPLIED"
+    assert record["evidence_count"] == 1
+    assert record["evidence_items"][0]["evidence_text_sha256"] == sha256_text(
+        evidence_text
+    )
+    assert record["evidence_items"][0]["final_score"] == 0.9
+    assert query_text not in str(record)
+    assert evidence_text not in str(record)
 
 
 def test_build_lexical_index_record_maps_terms_without_chunk_text(
@@ -938,6 +1119,34 @@ def test_in_memory_repository_saves_summary_embeddings_idempotently(
         model_profile_id="other",
         model_revision=record["model_revision"],
     ) is None
+
+
+def test_in_memory_repository_saves_retrieval_packages_idempotently(
+    tmp_path: Path,
+) -> None:
+    repository = InMemoryCxContentRepository()
+    upload = upload_registration(tmp_path)
+    chunk_set = chunk_set_payload(tmp_path, upload)
+    record = build_retrieval_package_persistence_record(
+        retrieval_package_payload(
+            document_id=str(upload["document_id"]),
+            chunk=chunk_set["chunks"][0],
+        )
+    )
+    duplicate = {
+        **record,
+        "retrieval_package_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbc",
+    }
+
+    assert repository.save_retrieval_package_record(record) == record
+    assert repository.save_retrieval_package_record(duplicate) == record
+    assert repository.get_retrieval_package_record(record["retrieval_package_id"]) == record
+    assert (
+        repository.find_retrieval_package_record_by_hash(record["package_hash"])
+        == record
+    )
+    assert repository.get_retrieval_package_record("missing") is None
+    assert repository.find_retrieval_package_record_by_hash("0" * 64) is None
 
 
 def test_in_memory_repository_ignores_inactive_content_for_active_lookup(
@@ -1831,6 +2040,41 @@ def test_sqlalchemy_repository_wraps_database_errors(tmp_path: Path) -> None:
             model_profile_id="mock-embedding-default",
             model_revision="mock-embedding-v1",
         ),
+        lambda repository: repository.save_retrieval_package_record(
+            {
+                "retrieval_package_schema_version": "cx_retrieval_package.persistence.v1",
+                "retrieval_package_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                "package_hash": "7" * 64,
+                "status": "NO_ANSWER",
+                "trace_id": TRACE_ID,
+                "request_id": REQUEST_ID,
+                "query_text_sha256": "8" * 64,
+                "query_text_preview": "private query preview",
+                "query_embedding_provided": False,
+                "query_embedding_sha256": None,
+                "query_embedding_dimension": 0,
+                "purpose": "grounded_answer",
+                "retrieval_policy_id": "weighted_rrf_vector_bm25_v1",
+                "retrieval_policy_version": "2026-08-09",
+                "retrieval_policy_hash": "9" * 64,
+                "retrieval_policy_source": "ag_registry_active",
+                "ranker_mix": "weighted_rrf_vector_bm25_v1",
+                "rerank_state": "NOT_APPLIED",
+                "permission_snapshot_hash": "a" * 64,
+                "source_summary": {},
+                "score_summary": {},
+                "warning_count": 0,
+                "evidence_count": 0,
+                "no_answer_reason": "no_terms_matched",
+                "created_at": "2026-08-09T00:00:00Z",
+                "updated_at": "2026-08-09T00:00:00Z",
+                "evidence_items": [],
+            }
+        ),
+        lambda repository: repository.get_retrieval_package_record(
+            "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+        ),
+        lambda repository: repository.find_retrieval_package_record_by_hash("7" * 64),
     ],
 )
 def test_sqlalchemy_repository_wraps_missing_table_errors(
@@ -1905,6 +2149,14 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
         ) -> dict[str, Any]:
             raise IntegrityError("insert summary embedding", {}, Exception("race"))
 
+    class RaceyRetrievalPackageRepository(SqlAlchemyCxContentRepository):
+        def _save_retrieval_package_record(
+            self,
+            session: Any,
+            record: dict[str, Any],
+        ) -> dict[str, Any]:
+            raise IntegrityError("insert retrieval package", {}, Exception("race"))
+
     repository, engine = sqlite_content_repository(tmp_path)
     upload = upload_registration(tmp_path)
     source_file_record = build_source_file_record(upload)
@@ -1943,6 +2195,9 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
     racey_chunk_embedding = RaceyChunkEmbeddingRepository(build_session_factory(engine))
     racey_document_summary = RaceyDocumentSummaryRepository(build_session_factory(engine))
     racey_summary_embedding = RaceySummaryEmbeddingRepository(build_session_factory(engine))
+    racey_retrieval_package = RaceyRetrievalPackageRepository(
+        build_session_factory(engine)
+    )
     lexical = repository.save_lexical_index(
         build_lexical_index_record(
             lexical_index_payload(chunk_set),
@@ -1973,6 +2228,14 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
             document_summary_id=summary["document_summary_id"],
         )
     )
+    retrieval_package = repository.save_retrieval_package_record(
+        build_retrieval_package_persistence_record(
+            retrieval_package_payload(
+                document_id=content["content_object_id"],
+                chunk=chunk_set["chunks"][0],
+            )
+        )
+    )
 
     assert racey_source.save_source_file(source_file_record) == source_file
     assert racey_content.save_content_object(content) == content
@@ -1987,6 +2250,10 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
     assert (
         racey_summary_embedding.save_summary_embedding_record(summary_embedding)
         == summary_embedding
+    )
+    assert (
+        racey_retrieval_package.save_retrieval_package_record(retrieval_package)
+        == retrieval_package
     )
 
 
@@ -2235,6 +2502,56 @@ def test_sqlalchemy_repository_summary_embedding_integrity_without_existing_row_
                 "status": "READY",
                 "created_trace_id": TRACE_ID,
                 "created_at": "2026-08-09T00:00:00Z",
+            }
+        )
+
+    assert exc_info.value.error_code == "cx_content.repository_unavailable"
+
+
+def test_sqlalchemy_repository_retrieval_package_integrity_without_existing_row_wraps(
+    tmp_path: Path,
+) -> None:
+    class RaceyRetrievalPackageRepository(SqlAlchemyCxContentRepository):
+        def _save_retrieval_package_record(
+            self,
+            session: Any,
+            record: dict[str, Any],
+        ) -> dict[str, Any]:
+            raise IntegrityError("insert retrieval package", {}, Exception("race"))
+
+    _, engine = sqlite_content_repository(tmp_path)
+    repository = RaceyRetrievalPackageRepository(build_session_factory(engine))
+
+    with pytest.raises(CxContentRepositoryError) as exc_info:
+        repository.save_retrieval_package_record(
+            {
+                "retrieval_package_schema_version": "cx_retrieval_package.persistence.v1",
+                "retrieval_package_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                "package_hash": "7" * 64,
+                "status": "NO_ANSWER",
+                "trace_id": TRACE_ID,
+                "request_id": REQUEST_ID,
+                "query_text_sha256": "8" * 64,
+                "query_text_preview": "private query preview",
+                "query_embedding_provided": False,
+                "query_embedding_sha256": None,
+                "query_embedding_dimension": 0,
+                "purpose": "grounded_answer",
+                "retrieval_policy_id": "weighted_rrf_vector_bm25_v1",
+                "retrieval_policy_version": "2026-08-09",
+                "retrieval_policy_hash": "9" * 64,
+                "retrieval_policy_source": "ag_registry_active",
+                "ranker_mix": "weighted_rrf_vector_bm25_v1",
+                "rerank_state": "NOT_APPLIED",
+                "permission_snapshot_hash": "a" * 64,
+                "source_summary": {},
+                "score_summary": {},
+                "warning_count": 0,
+                "evidence_count": 0,
+                "no_answer_reason": "no_terms_matched",
+                "created_at": "2026-08-09T00:00:00Z",
+                "updated_at": "2026-08-09T00:00:00Z",
+                "evidence_items": [],
             }
         )
 
@@ -2761,6 +3078,252 @@ def test_content_ingestion_store_with_sqlalchemy_repository_persists_summary_emb
         engine,
         ["cx_document_summary_embeddings"],
     )
+
+
+def test_sqlalchemy_repository_saves_and_finds_retrieval_package_metadata(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    source_text = "retrieval body SECRET_RETRIEVAL_SOURCE"
+    upload = upload_registration(tmp_path, content_text=source_text)
+    source_file = repository.save_source_file(build_source_file_record(upload))
+    content = repository.save_content_object(
+        build_content_object_record(upload, source_file_id=source_file["source_file_id"])
+    )
+    extraction = extraction_result(tmp_path, upload, markdown_text=source_text)
+    artifact = repository.save_extraction_artifact(
+        build_extraction_artifact_record(
+            extraction,
+            content_object_id=content["content_object_id"],
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    chunk_set = repository.save_chunk_set(
+        build_chunk_set_record(
+            chunk_set_payload(tmp_path, upload, markdown_text=source_text),
+            content_object_id=content["content_object_id"],
+            extraction_artifact_id=artifact["extraction_artifact_id"],
+        )
+    )
+    query_text = "SECRET_SQL_RETRIEVAL_QUERY_" + ("x" * 400)
+    evidence_text = "SECRET_SQL_RETRIEVAL_EVIDENCE_" + ("y" * 400)
+    record = build_retrieval_package_persistence_record(
+        retrieval_package_payload(
+            document_id=content["content_object_id"],
+            chunk=chunk_set["chunks"][0],
+            query_text=query_text,
+            evidence_text=evidence_text,
+        )
+    )
+    duplicate = {
+        **record,
+        "retrieval_package_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbc",
+    }
+
+    saved = repository.save_retrieval_package_record(record)
+
+    assert saved == record
+    assert repository.save_retrieval_package_record(duplicate) == record
+    assert (
+        repository.get_retrieval_package_record(record["retrieval_package_id"])
+        == record
+    )
+    assert (
+        repository.find_retrieval_package_record_by_hash(record["package_hash"])
+        == record
+    )
+    assert repository.get_retrieval_package_record(
+        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbd"
+    ) is None
+    assert repository.find_retrieval_package_record_by_hash("0" * 64) is None
+    assert _sqlite_table_count(engine, "cx_retrieval_packages") == 1
+    assert _sqlite_table_count(engine, "cx_retrieval_evidence_items") == 1
+    dump = _sqlite_table_dump(
+        engine,
+        ["cx_retrieval_packages", "cx_retrieval_evidence_items"],
+    )
+    assert query_text not in dump
+    assert evidence_text not in dump
+    assert "SECRET_RETRIEVAL_SOURCE" not in dump
+
+
+def test_sqlalchemy_repository_saves_no_answer_retrieval_package_without_evidence(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    package = retrieval_package_payload(
+        document_id="44444444-4444-4444-8444-444444444444",
+        chunk={
+            "chunk_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "text_sha256": "1" * 64,
+            "start_offset": 0,
+            "end_offset": 0,
+        },
+        query_text="SECRET_NO_ANSWER_QUERY_" + ("x" * 400),
+        evidence_text="unused",
+    )
+    package.update(
+        {
+            "retrieval_package_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+            "package_hash": "7" * 64,
+            "status": "NO_ANSWER",
+            "query_embedding_snapshot": {
+                "provided": False,
+                "embedding_sha256": None,
+                "vector_dimension": 0,
+            },
+            "evidence_items": [],
+            "score_summary": {
+                "best_score": 0.0,
+                "score_spread": 0.0,
+                "ranker_mix": "weighted_rrf_vector_bm25_v1",
+                "rerank_state": "NOT_APPLIED",
+            },
+            "no_answer_reason": "no_terms_matched",
+        }
+    )
+    record = build_retrieval_package_persistence_record(package)
+
+    saved = repository.save_retrieval_package_record(record)
+
+    assert saved == record
+    assert saved["query_embedding_provided"] is False
+    assert saved["query_embedding_sha256"] is None
+    assert saved["query_embedding_dimension"] == 0
+    assert saved["evidence_items"] == []
+    assert saved["evidence_count"] == 0
+    assert _sqlite_table_count(engine, "cx_retrieval_packages") == 1
+    assert _sqlite_table_count(engine, "cx_retrieval_evidence_items") == 0
+    assert package["query_text"] not in _sqlite_table_dump(
+        engine,
+        ["cx_retrieval_packages"],
+    )
+
+
+def test_content_ingestion_store_with_sqlalchemy_repository_persists_retrieval_package(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    store = ContentIngestionStore(content_repository=repository)
+    source_text = "retrieval body " + ("SOURCE_PRIVATE_" * 30)
+    document = upload_registration(tmp_path, content_text=source_text)
+    store.save_upload_registration(document, source_text=source_text)
+    extraction = run_text_extraction_job(
+        document["extraction"]["job_id"],
+        store=store,
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    chunk_set = store_chunk_set(
+        document_id=str(document["document_id"]),
+        extraction=extraction,
+        markdown_text=Path(extraction["extracted_markdown_path"]).read_text(
+            encoding="utf-8"
+        ),
+        store=store,
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    query_text = "SECRET_STORE_RETRIEVAL_QUERY_" + ("x" * 400)
+    evidence_text = "SECRET_STORE_RETRIEVAL_EVIDENCE_" + ("y" * 400)
+    package = retrieval_package_payload(
+        document_id=str(document["document_id"]),
+        chunk=chunk_set["chunks"][0],
+        query_text=query_text,
+        evidence_text=evidence_text,
+    )
+
+    saved = store.save_retrieval_package(package)
+
+    persisted = repository.find_retrieval_package_record_by_hash(package["package_hash"])
+    assert saved == package
+    assert persisted is not None
+    assert persisted["retrieval_package_id"] == package["retrieval_package_id"]
+    assert persisted["evidence_count"] == 1
+    assert persisted["evidence_items"][0]["chunk_id"] == chunk_set["chunks"][0][
+        "chunk_id"
+    ]
+    assert _sqlite_table_count(engine, "cx_retrieval_packages") == 1
+    assert _sqlite_table_count(engine, "cx_retrieval_evidence_items") == 1
+    dump = _sqlite_table_dump(
+        engine,
+        ["cx_retrieval_packages", "cx_retrieval_evidence_items"],
+    )
+    assert query_text not in dump
+    assert evidence_text not in dump
+    assert source_text not in dump
+
+
+def test_content_ingestion_store_persists_no_answer_retrieval_without_evidence_refs(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    store = ContentIngestionStore(content_repository=repository)
+    package = retrieval_package_payload(
+        document_id="44444444-4444-4444-8444-444444444444",
+        chunk={
+            "chunk_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "text_sha256": "1" * 64,
+            "start_offset": 0,
+            "end_offset": 0,
+        },
+        query_text="SECRET_STORE_NO_ANSWER_QUERY_" + ("x" * 400),
+        evidence_text="unused",
+    )
+    package.update(
+        {
+            "retrieval_package_id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            "package_hash": "b" * 64,
+            "status": "NO_ANSWER",
+            "query_embedding_snapshot": {
+                "provided": False,
+                "embedding_sha256": None,
+                "vector_dimension": 0,
+            },
+            "evidence_items": [],
+            "score_summary": {
+                "best_score": 0.0,
+                "score_spread": 0.0,
+                "ranker_mix": "weighted_rrf_vector_bm25_v1",
+                "rerank_state": "NOT_APPLIED",
+            },
+            "no_answer_reason": "no_terms_matched",
+        }
+    )
+
+    store.save_retrieval_package(package)
+
+    persisted = repository.get_retrieval_package_record(
+        str(package["retrieval_package_id"])
+    )
+    assert persisted is not None
+    assert persisted["status"] == "NO_ANSWER"
+    assert persisted["evidence_items"] == []
+    assert _sqlite_table_count(engine, "cx_retrieval_packages") == 1
+    assert _sqlite_table_count(engine, "cx_retrieval_evidence_items") == 0
+
+
+def test_content_ingestion_store_skips_retrieval_metadata_without_persisted_lineage(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    package = retrieval_package_payload(
+        document_id="44444444-4444-4444-8444-444444444444",
+        chunk={
+            "chunk_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "text_sha256": "1" * 64,
+            "start_offset": 0,
+            "end_offset": 10,
+        },
+    )
+
+    saved = store.save_retrieval_package(package)
+
+    assert saved == package
+    assert store.get_retrieval_package(str(package["retrieval_package_id"])) == package
+    assert store.content_repository.retrieval_package_records == {}
 
 
 def test_content_ingestion_store_saves_extraction_result_without_content_refs(

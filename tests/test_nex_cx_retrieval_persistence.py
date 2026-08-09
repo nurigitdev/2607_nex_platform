@@ -16,10 +16,11 @@ def test_retrieval_runtime_persistence_decision_freezes_target_mapping() -> None
     decision = build_retrieval_runtime_persistence_decision()
 
     assert decision["decision_slice"] == "0171"
-    assert (
-        decision["decision_status"]
-        == "runtime_mapping_decided_schema_pending_migration"
-    )
+    assert decision["decision_status"] == "postgres_adapter_ready"
+    assert decision["migration_version"] == "0172_cx_retrieval_package_persistence"
+    assert decision["adapter_slice"] == "0173"
+    assert decision["write_through_slice"] == "0174"
+    assert decision["postgres_smoke_slice"] == "0175"
     assert decision["target_tables"] == [
         CX_RETRIEVAL_PACKAGE_TABLE,
         CX_RETRIEVAL_EVIDENCE_ITEM_TABLE,
@@ -38,9 +39,8 @@ def test_retrieval_runtime_persistence_decision_freezes_target_mapping() -> None
         "query_embedding_raw_vector",
         "evidence_items[].text",
     ]
-    assert (
-        decision["next_slice"]
-        == "0172_cx_retrieval_package_schema_migration_draft"
+    assert decision["next_slice"] == (
+        "0176_ag_retrieval_package_operations_projection"
     )
 
 
@@ -60,9 +60,9 @@ def test_retrieval_package_persistence_preview_hashes_private_runtime_text() -> 
         "request_id": "request-001",
         "query_text": query_text,
         "query_embedding_snapshot": {
-            "embedding_provided": True,
+            "provided": True,
             "embedding_sha256": "e" * 64,
-            "embedding_dimension": 3,
+            "vector_dimension": 3,
         },
         "purpose": "grounded_answer",
         "retrieval_profile": {
@@ -123,6 +123,7 @@ def test_retrieval_package_persistence_preview_hashes_private_runtime_text() -> 
     assert "text" not in evidence
     assert evidence["evidence_text_sha256"] == sha256_text(evidence_text)
     assert len(evidence["evidence_text_preview"]) <= TEXT_PREVIEW_MAX_CHARS
+    assert evidence["final_score"] == 0.91
     assert evidence_text not in str(preview)
     assert evidence["target_table"] == CX_RETRIEVAL_EVIDENCE_ITEM_TABLE
 
@@ -151,6 +152,7 @@ def test_retrieval_package_persistence_preview_handles_sparse_runtime_package() 
     assert preview["header"]["evidence_count"] == 1
     assert preview["evidence_items"][0]["evidence_text_sha256"] is None
     assert preview["evidence_items"][0]["evidence_text_preview"] is None
+    assert preview["evidence_items"][0]["final_score"] == 0.0
 
 
 def test_bounded_text_preview_covers_empty_short_long_and_tiny_limits() -> None:

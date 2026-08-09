@@ -22,7 +22,7 @@ def build_retrieval_runtime_persistence_decision() -> dict[str, Any]:
         "decision_schema_version": CX_RETRIEVAL_RUNTIME_PERSISTENCE_DECISION_SCHEMA_VERSION,
         "decision_slice": "0171",
         "surface_id": "retrieval_packages",
-        "decision_status": "runtime_mapping_decided_schema_pending_migration",
+        "decision_status": "postgres_adapter_ready",
         "runtime_record_schema": "cx_retrieval_context_package.v1",
         "persistence_owner": "nex-cx",
         "repository_boundary": "CxContentRepository",
@@ -30,6 +30,10 @@ def build_retrieval_runtime_persistence_decision() -> dict[str, Any]:
             "ContentIngestionStore.save_retrieval_package write-through after "
             "package materialization"
         ),
+        "migration_version": "0172_cx_retrieval_package_persistence",
+        "adapter_slice": "0173",
+        "write_through_slice": "0174",
+        "postgres_smoke_slice": "0175",
         "target_tables": [
             CX_RETRIEVAL_PACKAGE_TABLE,
             CX_RETRIEVAL_EVIDENCE_ITEM_TABLE,
@@ -84,6 +88,7 @@ def build_retrieval_runtime_persistence_decision() -> dict[str, Any]:
             "evidence_text_sha256",
             "evidence_text_preview",
             "scores",
+            "final_score",
             "matched_terms",
             "permission_result",
             "neighbor_context",
@@ -95,8 +100,8 @@ def build_retrieval_runtime_persistence_decision() -> dict[str, Any]:
             "evidence_items[].text",
         ],
         "private_payload_policy": "query_hash_preview_and_evidence_hash_preview_only",
-        "migration_policy": "postgres_schema_before_adapter_write_through",
-        "next_slice": "0172_cx_retrieval_package_schema_migration_draft",
+        "migration_policy": "postgres_schema_and_adapter_write_through_ready",
+        "next_slice": "0176_ag_retrieval_package_operations_projection",
     }
 
 
@@ -130,10 +135,16 @@ def build_retrieval_package_persistence_preview(
         "query_text_sha256": sha256_text(query_text) if query_text is not None else None,
         "query_text_preview": bounded_text_preview(query_text),
         "query_embedding_provided": bool(
-            query_embedding_snapshot.get("embedding_provided", False)
+            query_embedding_snapshot.get(
+                "provided",
+                query_embedding_snapshot.get("embedding_provided", False),
+            )
         ),
         "query_embedding_sha256": query_embedding_snapshot.get("embedding_sha256"),
-        "query_embedding_dimension": query_embedding_snapshot.get("embedding_dimension"),
+        "query_embedding_dimension": query_embedding_snapshot.get(
+            "vector_dimension",
+            query_embedding_snapshot.get("embedding_dimension"),
+        ),
         "purpose": package.get("purpose"),
         "retrieval_policy_id": quality_policy.get("policy_id"),
         "retrieval_policy_version": quality_policy.get("policy_version"),
@@ -185,6 +196,7 @@ def _build_evidence_item_preview(
         ),
         "evidence_text_preview": bounded_text_preview(evidence_text),
         "scores": item.get("scores"),
+        "final_score": _final_score(item.get("scores")),
         "matched_terms": item.get("matched_terms"),
         "permission_result": item.get("permission_result"),
         "neighbor_context": item.get("neighbor_context"),
@@ -236,3 +248,12 @@ def _mapping_value(value: object) -> Mapping[str, Any]:
 
 def _list_value(value: object) -> list[Any]:
     return value if isinstance(value, list) else []
+
+
+def _final_score(value: object) -> float:
+    if not isinstance(value, Mapping):
+        return 0.0
+    score = value.get("final_score", 0.0)
+    if isinstance(score, bool) or not isinstance(score, int | float):
+        return 0.0
+    return float(score)

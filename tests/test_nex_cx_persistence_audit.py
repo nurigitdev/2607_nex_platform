@@ -49,25 +49,25 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
 
     assert audit["audit_schema_version"] == CX_PERSISTENCE_GAP_AUDIT_SCHEMA_VERSION
     assert audit["service_id"] == "nex-cx"
-    assert audit["checkpoint_slice"] == "0171"
+    assert audit["checkpoint_slice"] == "0175"
     assert audit["persistence_mode"] == "memory"
     assert audit["checkpoint_status"] == "ACTION_REQUIRED"
     assert audit["store_type"] is None
     assert audit["content_repository_type"] is None
     assert audit["summary"] == {
         "surface_count": 10,
-        "postgres_adapter_gap_count": 2,
-        "schema_deferred_count": 2,
-        "deferred_schema_decision_count": 4,
+        "postgres_adapter_gap_count": 1,
+        "schema_deferred_count": 1,
+        "deferred_schema_decision_count": 3,
         "private_payload_boundary_count": 6,
-        "next_recommended_slice": "0172_cx_retrieval_package_schema_migration_draft",
+        "next_recommended_slice": "0176_ag_retrieval_package_operations_projection",
     }
     assert all(count == 0 for count in audit["observed_store_counts"].values())
     assert {
         surface["surface_id"]
         for surface in audit["surfaces"]
         if surface["target_table_status"] == "schema_deferred"
-    } == {"processing_runs", "retrieval_packages"}
+    } == {"processing_runs"}
     closed_surfaces = {
         surface["surface_id"]: surface
         for surface in audit["surfaces"]
@@ -80,6 +80,7 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
         "document_summaries",
         "extraction_artifacts",
         "lexical_index",
+        "retrieval_packages",
         "source_files",
         "summary_embeddings",
     }
@@ -93,11 +94,13 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
         "chunk_embedding_index_header",
         "lexical_index_header",
         "processing_runs",
-        "retrieval_packages",
     }
     assert (
         audit["retrieval_runtime_persistence_decision"]["decision_status"]
-        == "runtime_mapping_decided_schema_pending_migration"
+        == "postgres_adapter_ready"
+    )
+    assert audit["retrieval_runtime_persistence_decision"]["postgres_smoke_slice"] == (
+        "0175"
     )
 
 
@@ -168,30 +171,10 @@ def test_cx_persistence_gap_audit_records_deferred_schema_decisions() -> None:
         for decision in audit["deferred_schema_decisions"]
     }
 
-    retrieval = decisions["retrieval_packages"]
     processing = decisions["processing_runs"]
     lexical_header = decisions["lexical_index_header"]
     chunk_embedding_header = decisions["chunk_embedding_index_header"]
 
-    assert retrieval["candidate_tables"] == [
-        "cx_retrieval_packages",
-        "cx_retrieval_evidence_items",
-    ]
-    assert (
-        retrieval["decision_status"]
-        == "runtime_mapping_decided_schema_pending_migration"
-    )
-    assert retrieval["decision_slice"] == "0171"
-    assert "query_text_sha256" in retrieval["minimum_persisted_metadata"]
-    assert "evidence_text_preview" in retrieval["minimum_persisted_metadata"]
-    assert (
-        retrieval["private_payload_policy"]
-        == "query_hash_preview_and_evidence_hash_preview_only"
-    )
-    assert (
-        retrieval["next_slice"]
-        == "0172_cx_retrieval_package_schema_migration_draft"
-    )
     assert processing["candidate_tables"] == [
         "cx_document_processing_runs",
         "cx_document_processing_steps",
@@ -199,15 +182,15 @@ def test_cx_persistence_gap_audit_records_deferred_schema_decisions() -> None:
     assert "step_summary" in processing["minimum_persisted_metadata"]
     assert lexical_header["decision_status"] == "header_table_deferred"
     assert chunk_embedding_header["decision_status"] == "header_table_deferred"
-    assert len(CX_DEFERRED_SCHEMA_DECISIONS) == 4
+    assert len(CX_DEFERRED_SCHEMA_DECISIONS) == 3
 
-    retrieval["candidate_tables"].append("mutated")
+    processing["candidate_tables"].append("mutated")
     fresh = build_cx_persistence_gap_audit()
-    fresh_retrieval = {
+    fresh_processing = {
         decision["decision_id"]: decision
         for decision in fresh["deferred_schema_decisions"]
-    }["retrieval_packages"]
-    assert "mutated" not in fresh_retrieval["candidate_tables"]
+    }["processing_runs"]
+    assert "mutated" not in fresh_processing["candidate_tables"]
 
 
 def test_cx_persistence_gap_audit_accepts_repository_without_public_dicts() -> None:

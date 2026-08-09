@@ -94,11 +94,11 @@ CX_CONTENT_PERSISTENCE_SURFACES: tuple[dict[str, Any], ...] = (
     {
         "surface_id": "retrieval_packages",
         "owned_records": ["retrieval_context_package"],
-        "current_boundary": "ContentIngestionStore",
-        "current_adapter_status": "memory_store_only",
-        "target_tables": [],
-        "postgres_adapter_required": True,
-        "private_payload_policy": "evidence_hash_preview_only",
+        "current_boundary": "ContentIngestionStore + CxContentRepository",
+        "current_adapter_status": "sqlalchemy_repository_ready",
+        "target_tables": ["cx_retrieval_packages", "cx_retrieval_evidence_items"],
+        "postgres_adapter_required": False,
+        "private_payload_policy": "query_hash_preview_and_evidence_hash_preview_only",
         "observed_count_key": "retrieval_package_count",
     },
     {
@@ -153,36 +153,6 @@ CX_PRIVATE_PAYLOAD_BOUNDARIES: tuple[dict[str, str], ...] = (
 )
 
 CX_DEFERRED_SCHEMA_DECISIONS: tuple[dict[str, Any], ...] = (
-    {
-        "decision_id": "retrieval_packages",
-        "surface_id": "retrieval_packages",
-        "decision_status": "runtime_mapping_decided_schema_pending_migration",
-        "decision_slice": "0171",
-        "candidate_tables": ["cx_retrieval_packages", "cx_retrieval_evidence_items"],
-        "minimum_persisted_metadata": [
-            "retrieval_package_id",
-            "package_hash",
-            "status",
-            "trace_id",
-            "request_id",
-            "query_text_sha256",
-            "query_text_preview",
-            "query_embedding_sha256",
-            "query_embedding_dimension",
-            "retrieval_policy_id",
-            "retrieval_policy_hash",
-            "ranker_mix",
-            "rerank_state",
-            "permission_snapshot_hash",
-            "score_summary",
-            "source_summary",
-            "evidence_text_sha256",
-            "evidence_text_preview",
-        ],
-        "private_payload_policy": "query_hash_preview_and_evidence_hash_preview_only",
-        "decision_trigger": "before retrieval package PostgreSQL migration",
-        "next_slice": "0172_cx_retrieval_package_schema_migration_draft",
-    },
     {
         "decision_id": "processing_runs",
         "surface_id": "processing_runs",
@@ -276,7 +246,7 @@ def build_cx_persistence_gap_audit(
     return {
         "audit_schema_version": CX_PERSISTENCE_GAP_AUDIT_SCHEMA_VERSION,
         "service_id": "nex-cx",
-        "checkpoint_slice": "0171",
+        "checkpoint_slice": "0175",
         "persistence_mode": mode,
         "store_type": type(store).__name__ if store is not None else None,
         "content_repository_type": (
@@ -289,7 +259,7 @@ def build_cx_persistence_gap_audit(
             "schema_deferred_count": schema_deferred_count,
             "deferred_schema_decision_count": len(CX_DEFERRED_SCHEMA_DECISIONS),
             "private_payload_boundary_count": len(CX_PRIVATE_PAYLOAD_BOUNDARIES),
-            "next_recommended_slice": "0172_cx_retrieval_package_schema_migration_draft",
+            "next_recommended_slice": "0176_ag_retrieval_package_operations_projection",
         },
         "observed_store_counts": counts,
         "surfaces": surfaces,

@@ -12,6 +12,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_cx.retrieval_persistence import build_retrieval_package_persistence_preview
+
 
 DEFAULT_TENANT_ID = "local-tenant"
 DEFAULT_OWNER_USER_ID = "local-user"
@@ -144,6 +146,21 @@ class CxContentRepository(Protocol):
     ) -> dict[str, Any] | None:
         ...
 
+    def save_retrieval_package_record(self, record: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+    def get_retrieval_package_record(
+        self,
+        retrieval_package_id: str,
+    ) -> dict[str, Any] | None:
+        ...
+
+    def find_retrieval_package_record_by_hash(
+        self,
+        package_hash: str,
+    ) -> dict[str, Any] | None:
+        ...
+
 
 @dataclass(frozen=True)
 class CxContentRepositoryError(Exception):
@@ -180,6 +197,8 @@ class InMemoryCxContentRepository:
     summary_embedding_ids_by_unique_key: dict[tuple[str, str, str], str] = field(
         default_factory=dict
     )
+    retrieval_package_records: dict[str, dict[str, Any]] = field(default_factory=dict)
+    retrieval_package_ids_by_hash: dict[str, str] = field(default_factory=dict)
 
     def save_source_file(self, record: dict[str, Any]) -> dict[str, Any]:
         existing_id = self.source_file_ids_by_sha256.get(record["source_sha256"])
@@ -402,6 +421,32 @@ class InMemoryCxContentRepository:
         if summary_embedding_id is None:
             return None
         return self.summary_embedding_records[summary_embedding_id]
+
+    def save_retrieval_package_record(self, record: dict[str, Any]) -> dict[str, Any]:
+        existing_id = self.retrieval_package_ids_by_hash.get(str(record["package_hash"]))
+        if existing_id is not None:
+            return self.retrieval_package_records[existing_id]
+        stored = deepcopy(record)
+        self.retrieval_package_records[stored["retrieval_package_id"]] = stored
+        self.retrieval_package_ids_by_hash[stored["package_hash"]] = stored[
+            "retrieval_package_id"
+        ]
+        return stored
+
+    def get_retrieval_package_record(
+        self,
+        retrieval_package_id: str,
+    ) -> dict[str, Any] | None:
+        return self.retrieval_package_records.get(retrieval_package_id)
+
+    def find_retrieval_package_record_by_hash(
+        self,
+        package_hash: str,
+    ) -> dict[str, Any] | None:
+        retrieval_package_id = self.retrieval_package_ids_by_hash.get(package_hash)
+        if retrieval_package_id is None:
+            return None
+        return self.retrieval_package_records[retrieval_package_id]
 
 
 class SqlAlchemyCxContentRepository:
@@ -783,6 +828,56 @@ class SqlAlchemyCxContentRepository:
         except SQLAlchemyError as exc:
             raise _content_repository_unavailable() from exc
 
+    def save_retrieval_package_record(self, record: dict[str, Any]) -> dict[str, Any]:
+        record_to_store = deepcopy(record)
+        try:
+            return self._run_in_transaction(
+                lambda session: self._save_retrieval_package_record(
+                    session,
+                    record_to_store,
+                )
+            )
+        except IntegrityError as exc:
+            existing = self.find_retrieval_package_record_by_hash(
+                str(record_to_store["package_hash"])
+            )
+            if existing is not None:
+                return existing
+            existing_by_id = self.get_retrieval_package_record(
+                str(record_to_store["retrieval_package_id"])
+            )
+            if existing_by_id is not None:
+                return existing_by_id
+            raise _content_repository_unavailable() from exc
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def get_retrieval_package_record(
+        self,
+        retrieval_package_id: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_retrieval_package_record(
+                    session,
+                    retrieval_package_id,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def find_retrieval_package_record_by_hash(
+        self,
+        package_hash: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_retrieval_package_record_by_hash(
+                    session,
+                    package_hash=package_hash,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
     def _run_in_transaction(self, operation: Any) -> Any:
         session = self._session_factory()
         try:
@@ -957,6 +1052,32 @@ class SqlAlchemyCxContentRepository:
         stored = self._select_summary_embedding_record(
             session,
             str(record["summary_embedding_id"]),
+        )
+        assert stored is not None
+        return stored
+
+    def _save_retrieval_package_record(
+        self,
+        session: Session,
+        record: dict[str, Any],
+    ) -> dict[str, Any]:
+        existing = self._select_retrieval_package_record_by_hash(
+            session,
+            package_hash=str(record["package_hash"]),
+        )
+        if existing is not None:
+            return existing
+        existing = self._select_retrieval_package_record(
+            session,
+            str(record["retrieval_package_id"]),
+        )
+        if existing is not None:
+            return existing
+        self._insert_retrieval_package_record(session, record)
+        self._insert_retrieval_evidence_items(session, record)
+        stored = self._select_retrieval_package_record(
+            session,
+            str(record["retrieval_package_id"]),
         )
         assert stored is not None
         return stored
@@ -1375,6 +1496,72 @@ class SqlAlchemyCxContentRepository:
         ).mappings().first()
         return _summary_embedding_from_row(row) if row is not None else None
 
+    def _select_retrieval_package_record(
+        self,
+        session: Session,
+        retrieval_package_id: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_RETRIEVAL_PACKAGE_SELECT_COLUMNS}
+                FROM cx_retrieval_packages
+                WHERE retrieval_package_id = :retrieval_package_id
+                """
+            ),
+            {"retrieval_package_id": retrieval_package_id},
+        ).mappings().first()
+        if row is None:
+            return None
+        return _retrieval_package_from_row(
+            row,
+            self._select_retrieval_evidence_items(session, retrieval_package_id),
+        )
+
+    def _select_retrieval_package_record_by_hash(
+        self,
+        session: Session,
+        *,
+        package_hash: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_RETRIEVAL_PACKAGE_SELECT_COLUMNS}
+                FROM cx_retrieval_packages
+                WHERE package_hash = :package_hash
+                """
+            ),
+            {"package_hash": package_hash},
+        ).mappings().first()
+        if row is None:
+            return None
+        return _retrieval_package_from_row(
+            row,
+            self._select_retrieval_evidence_items(
+                session,
+                str(row["retrieval_package_id"]),
+            ),
+        )
+
+    def _select_retrieval_evidence_items(
+        self,
+        session: Session,
+        retrieval_package_id: str,
+    ) -> list[dict[str, Any]]:
+        rows = session.execute(
+            text(
+                f"""
+                SELECT {_RETRIEVAL_EVIDENCE_SELECT_COLUMNS}
+                FROM cx_retrieval_evidence_items
+                WHERE retrieval_package_id = :retrieval_package_id
+                ORDER BY rank ASC
+                """
+            ),
+            {"retrieval_package_id": retrieval_package_id},
+        ).mappings().all()
+        return [_retrieval_evidence_from_row(row) for row in rows]
+
     def _insert_source_file(self, session: Session, record: dict[str, Any]) -> None:
         session.execute(
             text(
@@ -1762,6 +1949,142 @@ class SqlAlchemyCxContentRepository:
             _summary_embedding_insert_params(record),
         )
 
+    def _insert_retrieval_package_record(
+        self,
+        session: Session,
+        record: dict[str, Any],
+    ) -> None:
+        source_summary_expression = _json_sql_expression(session, "source_summary")
+        score_summary_expression = _json_sql_expression(session, "score_summary")
+        session.execute(
+            text(
+                f"""
+                INSERT INTO cx_retrieval_packages (
+                    retrieval_package_id,
+                    retrieval_package_schema_version,
+                    package_hash,
+                    status,
+                    trace_id,
+                    request_id,
+                    query_text_sha256,
+                    query_text_preview,
+                    query_embedding_provided,
+                    query_embedding_sha256,
+                    query_embedding_dimension,
+                    purpose,
+                    retrieval_policy_id,
+                    retrieval_policy_version,
+                    retrieval_policy_hash,
+                    retrieval_policy_source,
+                    ranker_mix,
+                    rerank_state,
+                    permission_snapshot_hash,
+                    source_summary,
+                    score_summary,
+                    warning_count,
+                    evidence_count,
+                    no_answer_reason,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    :retrieval_package_id,
+                    :retrieval_package_schema_version,
+                    :package_hash,
+                    :status,
+                    :trace_id,
+                    :request_id,
+                    :query_text_sha256,
+                    :query_text_preview,
+                    :query_embedding_provided,
+                    :query_embedding_sha256,
+                    :query_embedding_dimension,
+                    :purpose,
+                    :retrieval_policy_id,
+                    :retrieval_policy_version,
+                    :retrieval_policy_hash,
+                    :retrieval_policy_source,
+                    :ranker_mix,
+                    :rerank_state,
+                    :permission_snapshot_hash,
+                    {source_summary_expression},
+                    {score_summary_expression},
+                    :warning_count,
+                    :evidence_count,
+                    :no_answer_reason,
+                    :created_at,
+                    :updated_at
+                )
+                """
+            ),
+            _retrieval_package_insert_params(record),
+        )
+
+    def _insert_retrieval_evidence_items(
+        self,
+        session: Session,
+        record: dict[str, Any],
+    ) -> None:
+        evidence_items = record.get("evidence_items", [])
+        if not evidence_items:
+            return
+        source_anchor_expression = _json_sql_expression(session, "source_anchor")
+        scores_expression = _json_sql_expression(session, "scores")
+        matched_terms_expression = _json_sql_expression(session, "matched_terms")
+        permission_result_expression = _json_sql_expression(session, "permission_result")
+        neighbor_context_expression = _json_sql_expression(session, "neighbor_context")
+        quality_flags_expression = _json_sql_expression(session, "quality_flags")
+        session.execute(
+            text(
+                f"""
+                INSERT INTO cx_retrieval_evidence_items (
+                    retrieval_package_id,
+                    evidence_id,
+                    rank,
+                    content_object_id,
+                    content_version_id,
+                    chunk_id,
+                    chunk_policy_id,
+                    source_anchor,
+                    citation_label,
+                    evidence_text_sha256,
+                    evidence_text_preview,
+                    final_score,
+                    scores,
+                    matched_terms,
+                    permission_result,
+                    neighbor_context,
+                    quality_flags,
+                    created_at
+                )
+                VALUES (
+                    :retrieval_package_id,
+                    :evidence_id,
+                    :rank,
+                    :content_object_id,
+                    :content_version_id,
+                    :chunk_id,
+                    :chunk_policy_id,
+                    {source_anchor_expression},
+                    :citation_label,
+                    :evidence_text_sha256,
+                    :evidence_text_preview,
+                    :final_score,
+                    {scores_expression},
+                    {matched_terms_expression},
+                    {permission_result_expression},
+                    {neighbor_context_expression},
+                    {quality_flags_expression},
+                    :created_at
+                )
+                """
+            ),
+            [
+                _retrieval_evidence_insert_params(record, item)
+                for item in evidence_items
+            ],
+        )
+
     def _insert_owner_acl_entry(self, session: Session, record: dict[str, Any]) -> None:
         content_object_id = str(record["content_object_id"])
         owner_user_id = str(record["owner_user_id"])
@@ -2143,6 +2466,68 @@ def build_summary_embedding_persistence_record(
     }
 
 
+def build_retrieval_package_persistence_record(
+    package: dict[str, Any],
+) -> dict[str, Any]:
+    preview = build_retrieval_package_persistence_preview(package)
+    header = preview["header"]
+    created_at = header["created_at"]
+    return {
+        "retrieval_package_schema_version": "cx_retrieval_package.persistence.v1",
+        "retrieval_package_id": header["retrieval_package_id"],
+        "package_hash": header["package_hash"],
+        "status": header["status"],
+        "trace_id": header["trace_id"],
+        "request_id": header["request_id"],
+        "query_text_sha256": header["query_text_sha256"],
+        "query_text_preview": header["query_text_preview"],
+        "query_embedding_provided": header["query_embedding_provided"],
+        "query_embedding_sha256": header["query_embedding_sha256"],
+        "query_embedding_dimension": header["query_embedding_dimension"],
+        "purpose": header["purpose"],
+        "retrieval_policy_id": header["retrieval_policy_id"],
+        "retrieval_policy_version": header["retrieval_policy_version"],
+        "retrieval_policy_hash": header["retrieval_policy_hash"],
+        "retrieval_policy_source": header["retrieval_policy_source"],
+        "ranker_mix": header["ranker_mix"],
+        "rerank_state": header["rerank_state"],
+        "permission_snapshot_hash": header["permission_snapshot_hash"],
+        "source_summary": header["source_summary"] or {},
+        "score_summary": header["score_summary"] or {},
+        "warning_count": header["warning_count"],
+        "evidence_count": header["evidence_count"],
+        "no_answer_reason": header["no_answer_reason"],
+        "created_at": created_at,
+        "updated_at": header["updated_at"],
+        "evidence_items": [
+            {
+                "retrieval_evidence_schema_version": (
+                    "cx_retrieval_evidence_item.persistence.v1"
+                ),
+                "retrieval_package_id": header["retrieval_package_id"],
+                "evidence_id": item["evidence_id"],
+                "rank": item["rank"],
+                "content_object_id": item["content_object_id"],
+                "content_version_id": item["content_version_id"],
+                "chunk_id": item["chunk_id"],
+                "chunk_policy_id": item["chunk_policy_id"],
+                "source_anchor": item["source_anchor"] or {},
+                "citation_label": item["citation_label"],
+                "evidence_text_sha256": item["evidence_text_sha256"],
+                "evidence_text_preview": item["evidence_text_preview"],
+                "final_score": item["final_score"],
+                "scores": item["scores"] or {},
+                "matched_terms": item["matched_terms"] or [],
+                "permission_result": item["permission_result"] or {},
+                "neighbor_context": item["neighbor_context"] or [],
+                "quality_flags": item["quality_flags"] or [],
+                "created_at": created_at,
+            }
+            for item in preview["evidence_items"]
+        ],
+    }
+
+
 def markdown_storage_uri_from_path(extracted_markdown_path: str) -> str:
     path = Path(extracted_markdown_path)
     if len(path.parts) >= 2:
@@ -2294,6 +2679,56 @@ _SUMMARY_EMBEDDING_SELECT_COLUMNS = """
     embedding_storage_uri,
     status,
     created_trace_id,
+    created_at
+"""
+
+_RETRIEVAL_PACKAGE_SELECT_COLUMNS = """
+    retrieval_package_id,
+    retrieval_package_schema_version,
+    package_hash,
+    status,
+    trace_id,
+    request_id,
+    query_text_sha256,
+    query_text_preview,
+    query_embedding_provided,
+    query_embedding_sha256,
+    query_embedding_dimension,
+    purpose,
+    retrieval_policy_id,
+    retrieval_policy_version,
+    retrieval_policy_hash,
+    retrieval_policy_source,
+    ranker_mix,
+    rerank_state,
+    permission_snapshot_hash,
+    source_summary,
+    score_summary,
+    warning_count,
+    evidence_count,
+    no_answer_reason,
+    created_at,
+    updated_at
+"""
+
+_RETRIEVAL_EVIDENCE_SELECT_COLUMNS = """
+    retrieval_package_id,
+    evidence_id,
+    rank,
+    content_object_id,
+    content_version_id,
+    chunk_id,
+    chunk_policy_id,
+    source_anchor,
+    citation_label,
+    evidence_text_sha256,
+    evidence_text_preview,
+    final_score,
+    scores,
+    matched_terms,
+    permission_result,
+    neighbor_context,
+    quality_flags,
     created_at
 """
 
@@ -2475,6 +2910,63 @@ def _summary_embedding_insert_params(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _retrieval_package_insert_params(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "retrieval_package_id": record["retrieval_package_id"],
+        "retrieval_package_schema_version": "cx_retrieval_context_package.v1",
+        "package_hash": record["package_hash"],
+        "status": record["status"],
+        "trace_id": record.get("trace_id"),
+        "request_id": record["request_id"],
+        "query_text_sha256": record["query_text_sha256"],
+        "query_text_preview": record.get("query_text_preview"),
+        "query_embedding_provided": record.get("query_embedding_provided", False),
+        "query_embedding_sha256": record.get("query_embedding_sha256"),
+        "query_embedding_dimension": record.get("query_embedding_dimension", 0),
+        "purpose": record["purpose"],
+        "retrieval_policy_id": record["retrieval_policy_id"],
+        "retrieval_policy_version": record.get("retrieval_policy_version"),
+        "retrieval_policy_hash": record.get("retrieval_policy_hash"),
+        "retrieval_policy_source": record["retrieval_policy_source"],
+        "ranker_mix": record["ranker_mix"],
+        "rerank_state": record["rerank_state"],
+        "permission_snapshot_hash": record["permission_snapshot_hash"],
+        "source_summary": _json_dumps(record.get("source_summary", {})),
+        "score_summary": _json_dumps(record.get("score_summary", {})),
+        "warning_count": record.get("warning_count", 0),
+        "evidence_count": record.get("evidence_count", 0),
+        "no_answer_reason": record.get("no_answer_reason"),
+        "created_at": record["created_at"],
+        "updated_at": record["updated_at"],
+    }
+
+
+def _retrieval_evidence_insert_params(
+    record: dict[str, Any],
+    item: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "retrieval_package_id": record["retrieval_package_id"],
+        "evidence_id": item["evidence_id"],
+        "rank": item["rank"],
+        "content_object_id": item["content_object_id"],
+        "content_version_id": item["content_version_id"],
+        "chunk_id": item["chunk_id"],
+        "chunk_policy_id": item["chunk_policy_id"],
+        "source_anchor": _json_dumps(item.get("source_anchor", {})),
+        "citation_label": item["citation_label"],
+        "evidence_text_sha256": item["evidence_text_sha256"],
+        "evidence_text_preview": item["evidence_text_preview"],
+        "final_score": item.get("final_score", 0.0),
+        "scores": _json_dumps(item.get("scores", {})),
+        "matched_terms": _json_dumps(item.get("matched_terms", [])),
+        "permission_result": _json_dumps(item.get("permission_result", {})),
+        "neighbor_context": _json_dumps(item.get("neighbor_context", [])),
+        "quality_flags": _json_dumps(item.get("quality_flags", [])),
+        "created_at": item.get("created_at", record["created_at"]),
+    }
+
+
 def _content_object_from_row(row: Any) -> dict[str, Any]:
     return {
         "content_object_id": str(row["content_object_id"]),
@@ -2633,6 +3125,69 @@ def _summary_embedding_from_row(row: Any) -> dict[str, Any]:
         "embedding_storage_uri": row["embedding_storage_uri"],
         "status": row["status"],
         "created_trace_id": row["created_trace_id"],
+        "created_at": _timestamp_to_wire(row["created_at"]),
+    }
+
+
+def _retrieval_package_from_row(
+    row: Any,
+    evidence_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "retrieval_package_schema_version": "cx_retrieval_package.persistence.v1",
+        "retrieval_package_id": str(row["retrieval_package_id"]),
+        "package_hash": row["package_hash"],
+        "status": row["status"],
+        "trace_id": row["trace_id"],
+        "request_id": row["request_id"],
+        "query_text_sha256": row["query_text_sha256"],
+        "query_text_preview": row["query_text_preview"],
+        "query_embedding_provided": _bool_from_database(
+            row["query_embedding_provided"]
+        ),
+        "query_embedding_sha256": row["query_embedding_sha256"],
+        "query_embedding_dimension": int(row["query_embedding_dimension"]),
+        "purpose": row["purpose"],
+        "retrieval_policy_id": row["retrieval_policy_id"],
+        "retrieval_policy_version": row["retrieval_policy_version"],
+        "retrieval_policy_hash": row["retrieval_policy_hash"],
+        "retrieval_policy_source": row["retrieval_policy_source"],
+        "ranker_mix": row["ranker_mix"],
+        "rerank_state": row["rerank_state"],
+        "permission_snapshot_hash": row["permission_snapshot_hash"],
+        "source_summary": _json_loads(row["source_summary"], default={}),
+        "score_summary": _json_loads(row["score_summary"], default={}),
+        "warning_count": int(row["warning_count"]),
+        "evidence_count": int(row["evidence_count"]),
+        "no_answer_reason": row["no_answer_reason"],
+        "created_at": _timestamp_to_wire(row["created_at"]),
+        "updated_at": _timestamp_to_wire(row["updated_at"]),
+        "evidence_items": evidence_items,
+    }
+
+
+def _retrieval_evidence_from_row(row: Any) -> dict[str, Any]:
+    return {
+        "retrieval_evidence_schema_version": (
+            "cx_retrieval_evidence_item.persistence.v1"
+        ),
+        "retrieval_package_id": str(row["retrieval_package_id"]),
+        "evidence_id": str(row["evidence_id"]),
+        "rank": int(row["rank"]),
+        "content_object_id": str(row["content_object_id"]),
+        "content_version_id": row["content_version_id"],
+        "chunk_id": str(row["chunk_id"]),
+        "chunk_policy_id": row["chunk_policy_id"],
+        "source_anchor": _json_loads(row["source_anchor"], default={}),
+        "citation_label": row["citation_label"],
+        "evidence_text_sha256": row["evidence_text_sha256"],
+        "evidence_text_preview": row["evidence_text_preview"],
+        "final_score": float(row["final_score"]),
+        "scores": _json_loads(row["scores"], default={}),
+        "matched_terms": _json_loads(row["matched_terms"], default=[]),
+        "permission_result": _json_loads(row["permission_result"], default={}),
+        "neighbor_context": _json_loads(row["neighbor_context"], default=[]),
+        "quality_flags": _json_loads(row["quality_flags"], default=[]),
         "created_at": _timestamp_to_wire(row["created_at"]),
     }
 

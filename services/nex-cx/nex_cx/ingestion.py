@@ -32,6 +32,7 @@ from nex_cx.repository import (
     build_extraction_artifact_record,
     build_lexical_index_record,
     build_document_summary_persistence_record,
+    build_retrieval_package_persistence_record,
     build_summary_embedding_persistence_record,
     build_content_object_record,
     build_source_file_record,
@@ -365,10 +366,69 @@ class ContentIngestionStore:
 
     def save_retrieval_package(self, package: dict[str, Any]) -> dict[str, Any]:
         self.retrieval_packages[package["retrieval_package_id"]] = package
+        self._persist_retrieval_package_metadata(package)
         return package
 
     def get_retrieval_package(self, retrieval_package_id: str) -> dict[str, Any] | None:
         return self.retrieval_packages.get(retrieval_package_id)
+
+    def _persist_retrieval_package_metadata(self, package: dict[str, Any]) -> None:
+        required_keys = {
+            "created_at",
+            "evidence_items",
+            "package_hash",
+            "permission_snapshot",
+            "purpose",
+            "query_text",
+            "request_id",
+            "retrieval_package_id",
+            "retrieval_profile",
+            "score_summary",
+            "source_summary",
+            "status",
+            "trace_id",
+            "updated_at",
+        }
+        if not required_keys.issubset(package):
+            return
+        evidence_items = package.get("evidence_items")
+        if not isinstance(evidence_items, list):
+            return
+        if evidence_items and not self._retrieval_evidence_lineage_is_persisted(
+            evidence_items
+        ):
+            return
+        self.content_repository.save_retrieval_package_record(
+            build_retrieval_package_persistence_record(package)
+        )
+
+    def _retrieval_evidence_lineage_is_persisted(
+        self,
+        evidence_items: list[Any],
+    ) -> bool:
+        for item in evidence_items:
+            if not isinstance(item, dict):
+                return False
+            document_id_value = item.get("content_object_id")
+            chunk_id_value = item.get("chunk_id")
+            if not isinstance(document_id_value, str) or not document_id_value:
+                return False
+            if not isinstance(chunk_id_value, str) or not chunk_id_value:
+                return False
+            document_id = document_id_value
+            chunk_id = chunk_id_value
+            refs = self.document_content_refs.get(document_id)
+            if refs is None:
+                return False
+            persisted_chunk_set = self._find_persisted_chunk_set(document_id)
+            if persisted_chunk_set is None:
+                return False
+            if not any(
+                chunk["chunk_id"] == chunk_id
+                for chunk in persisted_chunk_set["chunks"]
+            ):
+                return False
+        return True
 
     def save_document_summary(
         self,

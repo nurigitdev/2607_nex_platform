@@ -20,6 +20,7 @@ import check_backend_service_endpoints as endpoint_smoke
 import check_db_readiness as db_smoke
 import run_cx_processing_postgres_event_smoke as cx_processing_event_smoke
 import run_cx_processing_postgres_jobqueue_smoke as cx_processing_smoke
+import run_cx_retrieval_postgres_smoke as cx_retrieval_smoke
 import run_postgres_job_replay_smoke as job_replay_smoke
 import run_postgres_jobqueue_smoke as jobqueue_smoke
 import run_postgres_operational_event_smoke as event_smoke
@@ -2696,6 +2697,11 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
     )
     monkeypatch.setattr(
         postgres_suite_smoke,
+        "run_cx_retrieval_postgres_smoke",
+        child_pass("cx_retrieval_postgres_smoke"),
+    )
+    monkeypatch.setattr(
+        postgres_suite_smoke,
         "run_cx_processing_postgres_jobqueue_smoke",
         child_pass("cx_processing_postgres_jobqueue_smoke"),
     )
@@ -2736,12 +2742,13 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("postgres_service_log_retention_http_smoke", "test"),
         ("ag_service_log_retention_postgres_smoke", "test"),
         ("postgres_operations_smoke_pack", "test"),
+        ("cx_retrieval_postgres_smoke", "test"),
         ("cx_processing_postgres_jobqueue_smoke", "test"),
         ("cx_processing_postgres_event_smoke", "test"),
         ("ag_cross_service_observability_smoke", "test"),
     ]
     assert postgres_suite_smoke.summary_line(evidence) == (
-        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=13"
+        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=14"
     )
 
 
@@ -2879,6 +2886,229 @@ def test_postgres_test_smoke_suite_reports_child_failure_and_main_summary(
     assert postgres_suite_smoke.summary_line(failure) == (
         "postgres_test_smoke_suite=fail services=1 reason=stage_failed stage=jobqueue"
     )
+
+
+def test_cx_retrieval_postgres_smoke_skips_by_default() -> None:
+    evidence = cx_retrieval_smoke.run_cx_retrieval_postgres_smoke(environ={})
+
+    assert evidence["status"] == "SKIPPED"
+    assert cx_retrieval_smoke.summary_line(evidence) == (
+        "cx_retrieval_postgres_smoke=skipped "
+        "reason=NEX_CX_RETRIEVAL_POSTGRES_SMOKE"
+    )
+
+
+def test_cx_retrieval_postgres_smoke_rejects_non_test_profile() -> None:
+    evidence = cx_retrieval_smoke.run_cx_retrieval_postgres_smoke(
+        environ={
+            "NEX_CX_RETRIEVAL_POSTGRES_SMOKE": "1",
+            "NEX_CX_RETRIEVAL_POSTGRES_SMOKE_PROFILE": "dev",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "profile_not_allowed"
+
+
+def test_cx_retrieval_postgres_smoke_reports_pass_without_leaking_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration_calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        cx_retrieval_smoke,
+        "service_database_env",
+        lambda service_id, profile: f"{service_id}:{profile}:env",
+    )
+    monkeypatch.setattr(
+        cx_retrieval_smoke,
+        "service_database_url",
+        lambda service_id, profile, environ: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        cx_retrieval_smoke,
+        "run_service_migrations",
+        lambda service_id, database_url, profile: migration_calls.append(
+            (service_id, profile)
+        ),
+    )
+    monkeypatch.setattr(
+        cx_retrieval_smoke,
+        "_execute_retrieval_repository_smoke",
+        lambda database_url: {
+            "retrieval_package_id": "retrieval-001",
+            "document_id": "document-001",
+            "evidence_count": 1,
+            "checks": {
+                "package_persisted": True,
+                "evidence_persisted": True,
+                "query_hash_persisted": True,
+                "query_preview_bounded": True,
+                "evidence_hash_persisted": True,
+                "final_score_persisted": True,
+                "repository_round_trip": True,
+                "raw_payload_absent": True,
+            },
+        },
+    )
+
+    evidence = cx_retrieval_smoke.run_cx_retrieval_postgres_smoke(
+        environ={"NEX_CX_RETRIEVAL_POSTGRES_SMOKE": "1"}
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["database_env"] == "nex-cx:test:env"
+    assert evidence["checks"]["raw_payload_absent"] is True
+    assert evidence["redacted_database_url"] == "postgresql://user:***@localhost/db"
+    assert "secret" not in str(evidence)
+    assert migration_calls == [("nex-cx", "test")]
+    assert cx_retrieval_smoke.summary_line(evidence) == (
+        "cx_retrieval_postgres_smoke=pass service=nex-cx db_env=nex-cx:test:env"
+    )
+
+
+def test_cx_retrieval_postgres_smoke_reports_config_and_execution_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_migration_error(*args: object, **kwargs: object) -> None:
+        raise cx_retrieval_smoke.MigrationError("missing database URL env")
+
+    monkeypatch.setattr(
+        cx_retrieval_smoke,
+        "service_database_url",
+        raise_migration_error,
+    )
+    config_failure = cx_retrieval_smoke.run_cx_retrieval_postgres_smoke(
+        environ={"NEX_CX_RETRIEVAL_POSTGRES_SMOKE": "1"}
+    )
+
+    assert config_failure["status"] == "FAIL"
+    assert config_failure["failure_code"] == "configuration_invalid"
+
+    monkeypatch.setattr(
+        cx_retrieval_smoke,
+        "service_database_url",
+        lambda *args, **kwargs: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        cx_retrieval_smoke,
+        "run_service_migrations",
+        lambda *args, **kwargs: None,
+    )
+
+    def raise_runtime_error(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        cx_retrieval_smoke,
+        "_execute_retrieval_repository_smoke",
+        raise_runtime_error,
+    )
+    execution_failure = cx_retrieval_smoke.run_cx_retrieval_postgres_smoke(
+        environ={"NEX_CX_RETRIEVAL_POSTGRES_SMOKE": "1"}
+    )
+
+    assert execution_failure["status"] == "FAIL"
+    assert execution_failure["failure_code"] == "execution_failed"
+    assert cx_retrieval_smoke.summary_line(execution_failure) == (
+        "cx_retrieval_postgres_smoke=fail service=nex-cx reason=execution_failed"
+    )
+
+
+def test_cx_retrieval_postgres_smoke_execute_with_sqlite_fixture(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'cx-retrieval-smoke.sqlite'}"
+    engine = cx_retrieval_smoke.build_engine(database_url)
+    _create_sqlite_cx_content_retrieval_tables(engine)
+
+    evidence = cx_retrieval_smoke._execute_retrieval_repository_smoke(
+        database_url=database_url,
+    )
+
+    assert evidence["checks"] == {
+        "package_persisted": True,
+        "evidence_persisted": True,
+        "query_hash_persisted": True,
+        "query_preview_bounded": True,
+        "evidence_hash_persisted": True,
+        "final_score_persisted": True,
+        "repository_round_trip": True,
+        "raw_payload_absent": True,
+    }
+    assert evidence["evidence_count"] == 1
+    with engine.begin() as connection:
+        remaining_packages = connection.execute(
+            text("SELECT count(*) FROM cx_retrieval_packages")
+        ).scalar_one()
+        remaining_evidence = connection.execute(
+            text("SELECT count(*) FROM cx_retrieval_evidence_items")
+        ).scalar_one()
+        remaining_content = connection.execute(
+            text("SELECT count(*) FROM cx_content_objects")
+        ).scalar_one()
+        remaining_sources = connection.execute(
+            text("SELECT count(*) FROM cx_source_files")
+        ).scalar_one()
+    assert remaining_packages == 0
+    assert remaining_evidence == 0
+    assert remaining_content == 0
+    assert remaining_sources == 0
+
+
+def test_cx_retrieval_postgres_smoke_helpers_cover_error_edges(tmp_path) -> None:
+    assert cx_retrieval_smoke.summary_line(
+        {
+            "smoke_schema_version": "cx_retrieval_postgres_smoke.v1",
+            "status": "FAIL",
+            "service_id": "nex-cx",
+            "failure_code": "execution_failed",
+        }
+    ) == "cx_retrieval_postgres_smoke=fail service=nex-cx reason=execution_failed"
+
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'cx-retrieval-helper.sqlite'}"
+    engine = cx_retrieval_smoke.build_engine(database_url)
+    _create_sqlite_cx_content_retrieval_tables(engine)
+
+    with pytest.raises(RuntimeError, match="stored retrieval package"):
+        cx_retrieval_smoke._read_stored_retrieval_package(
+            engine,
+            retrieval_package_id="missing",
+        )
+
+    assert (
+        cx_retrieval_smoke._read_smoke_retrieval_dump(
+            engine,
+            retrieval_package_id="missing",
+        )
+        == "[][]"
+    )
+    cx_retrieval_smoke._delete_smoke_retrieval_rows(
+        engine,
+        retrieval_package_id=None,
+        document_id=None,
+        source_file_id=None,
+    )
+
+
+def test_cx_retrieval_postgres_smoke_main_prints_summary_and_full_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cx_retrieval_smoke, "load_env_file", lambda path: None)
+    monkeypatch.setattr(
+        cx_retrieval_smoke,
+        "run_cx_retrieval_postgres_smoke",
+        lambda: {
+            "smoke_schema_version": "cx_retrieval_postgres_smoke.v1",
+            "status": "SKIPPED",
+            "skip_reason": "NEX_CX_RETRIEVAL_POSTGRES_SMOKE is not enabled.",
+        },
+    )
+
+    assert cx_retrieval_smoke.main(["--summary"]) == 0
+    assert "cx_retrieval_postgres_smoke=skipped" in capsys.readouterr().out
+
+    assert cx_retrieval_smoke.main([]) == 0
+    assert '"status": "SKIPPED"' in capsys.readouterr().out
 
 
 def test_cx_processing_postgres_jobqueue_smoke_skips_by_default() -> None:
@@ -3706,6 +3936,203 @@ def test_ag_cross_service_observability_smoke_main_prints_summary_and_full_evide
 
     assert ag_observability_smoke.main([]) == 0
     assert '"status": "SKIPPED"' in capsys.readouterr().out
+
+
+def _create_sqlite_cx_content_retrieval_tables(engine: object) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_source_files (
+                    source_file_id TEXT PRIMARY KEY,
+                    source_sha256 TEXT NOT NULL UNIQUE,
+                    size_bytes INTEGER NOT NULL,
+                    content_type TEXT NOT NULL,
+                    storage_uri TEXT NOT NULL,
+                    first_seen_trace_id TEXT,
+                    storage_backend TEXT NOT NULL DEFAULT 'local_filesystem',
+                    storage_key TEXT NOT NULL,
+                    stored_filename TEXT NOT NULL,
+                    stored_extension TEXT NOT NULL,
+                    checksum_verified_at TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_content_objects (
+                    content_object_id TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL,
+                    owner_user_id TEXT NOT NULL,
+                    source_file_id TEXT NOT NULL REFERENCES cx_source_files(source_file_id),
+                    source_sha256 TEXT NOT NULL,
+                    upload_id TEXT NOT NULL UNIQUE,
+                    original_filename TEXT NOT NULL,
+                    content_type TEXT NOT NULL,
+                    size_bytes INTEGER NOT NULL,
+                    classification TEXT NOT NULL DEFAULT 'internal',
+                    lifecycle_status TEXT NOT NULL DEFAULT 'ACTIVE',
+                    retrieval_policy TEXT NOT NULL DEFAULT '{}',
+                    created_trace_id TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE (tenant_id, owner_user_id, source_sha256)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_content_acl_entries (
+                    acl_entry_id TEXT PRIMARY KEY,
+                    content_object_id TEXT NOT NULL REFERENCES cx_content_objects(content_object_id),
+                    principal_type TEXT NOT NULL,
+                    principal_id TEXT NOT NULL,
+                    permission TEXT NOT NULL,
+                    granted_by_user_id TEXT,
+                    created_at TEXT NOT NULL,
+                    UNIQUE (content_object_id, principal_type, principal_id, permission)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_extraction_artifacts (
+                    extraction_artifact_id TEXT PRIMARY KEY,
+                    content_object_id TEXT NOT NULL REFERENCES cx_content_objects(content_object_id),
+                    source_file_id TEXT NOT NULL REFERENCES cx_source_files(source_file_id),
+                    artifact_kind TEXT NOT NULL DEFAULT 'markdown',
+                    status TEXT NOT NULL DEFAULT 'SUCCEEDED',
+                    extractor_name TEXT NOT NULL,
+                    extractor_version TEXT NOT NULL,
+                    markdown_sha256 TEXT NOT NULL,
+                    markdown_storage_uri TEXT NOT NULL,
+                    markdown_char_count INTEGER NOT NULL,
+                    created_trace_id TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE (
+                        content_object_id,
+                        extractor_name,
+                        extractor_version,
+                        markdown_sha256
+                    )
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_chunk_sets (
+                    chunk_set_id TEXT PRIMARY KEY,
+                    content_object_id TEXT NOT NULL REFERENCES cx_content_objects(content_object_id),
+                    extraction_artifact_id TEXT NOT NULL REFERENCES cx_extraction_artifacts(extraction_artifact_id),
+                    chunk_policy_id TEXT NOT NULL,
+                    chunk_size INTEGER NOT NULL,
+                    chunk_overlap INTEGER NOT NULL,
+                    source_markdown_sha256 TEXT NOT NULL,
+                    chunk_count INTEGER NOT NULL,
+                    created_trace_id TEXT,
+                    created_at TEXT NOT NULL,
+                    UNIQUE (
+                        content_object_id,
+                        extraction_artifact_id,
+                        chunk_policy_id,
+                        source_markdown_sha256
+                    )
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_chunks (
+                    chunk_id TEXT PRIMARY KEY,
+                    chunk_set_id TEXT NOT NULL REFERENCES cx_chunk_sets(chunk_set_id),
+                    content_object_id TEXT NOT NULL REFERENCES cx_content_objects(content_object_id),
+                    ordinal INTEGER NOT NULL,
+                    start_offset INTEGER NOT NULL,
+                    end_offset INTEGER NOT NULL,
+                    char_count INTEGER NOT NULL,
+                    text_sha256 TEXT NOT NULL,
+                    text_preview TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE (chunk_set_id, ordinal),
+                    UNIQUE (chunk_set_id, text_sha256)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_retrieval_packages (
+                    retrieval_package_id TEXT PRIMARY KEY,
+                    retrieval_package_schema_version TEXT NOT NULL DEFAULT 'cx_retrieval_context_package.v1',
+                    package_hash TEXT NOT NULL UNIQUE,
+                    status TEXT NOT NULL,
+                    trace_id TEXT,
+                    request_id TEXT NOT NULL,
+                    query_text_sha256 TEXT NOT NULL,
+                    query_text_preview TEXT,
+                    query_embedding_provided BOOLEAN NOT NULL DEFAULT 0,
+                    query_embedding_sha256 TEXT,
+                    query_embedding_dimension INTEGER NOT NULL DEFAULT 0,
+                    purpose TEXT NOT NULL,
+                    retrieval_policy_id TEXT NOT NULL,
+                    retrieval_policy_version TEXT,
+                    retrieval_policy_hash TEXT,
+                    retrieval_policy_source TEXT NOT NULL,
+                    ranker_mix TEXT NOT NULL,
+                    rerank_state TEXT NOT NULL,
+                    permission_snapshot_hash TEXT NOT NULL,
+                    source_summary TEXT NOT NULL DEFAULT '{}',
+                    score_summary TEXT NOT NULL DEFAULT '{}',
+                    warning_count INTEGER NOT NULL DEFAULT 0,
+                    evidence_count INTEGER NOT NULL DEFAULT 0,
+                    no_answer_reason TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_retrieval_evidence_items (
+                    retrieval_package_id TEXT NOT NULL REFERENCES cx_retrieval_packages(retrieval_package_id),
+                    evidence_id TEXT NOT NULL,
+                    rank INTEGER NOT NULL,
+                    content_object_id TEXT NOT NULL REFERENCES cx_content_objects(content_object_id),
+                    content_version_id TEXT NOT NULL,
+                    chunk_id TEXT NOT NULL REFERENCES cx_chunks(chunk_id),
+                    chunk_policy_id TEXT NOT NULL,
+                    source_anchor TEXT NOT NULL DEFAULT '{}',
+                    citation_label TEXT NOT NULL,
+                    evidence_text_sha256 TEXT NOT NULL,
+                    evidence_text_preview TEXT NOT NULL,
+                    final_score REAL NOT NULL DEFAULT 0,
+                    scores TEXT NOT NULL DEFAULT '{}',
+                    matched_terms TEXT NOT NULL DEFAULT '[]',
+                    permission_result TEXT NOT NULL DEFAULT '{}',
+                    neighbor_context TEXT NOT NULL DEFAULT '[]',
+                    quality_flags TEXT NOT NULL DEFAULT '[]',
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (retrieval_package_id, evidence_id),
+                    UNIQUE (retrieval_package_id, rank)
+                )
+                """
+            )
+        )
 
 
 def _create_sqlite_service_jobs_table(engine: object) -> None:

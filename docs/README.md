@@ -275,6 +275,10 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0169`](slices/0169_cx_summary_embedding_persistence_adapter.md) | `S17-009` CX summary embedding metadata persistence adapter. |
 | [`Slice 0170`](slices/0170_cx_retrieval_processing_schema_checkpoint.md) | `S17-010` CX retrieval/processing persistence schema checkpoint. |
 | [`Slice 0171`](slices/0171_cx_retrieval_runtime_persistence_decision.md) | `S18-001` CX retrieval runtime persistence decision. |
+| [`Slice 0172`](slices/0172_cx_retrieval_package_schema_migration.md) | `S18-002` CX retrieval package PostgreSQL schema migration. |
+| [`Slice 0173`](slices/0173_cx_retrieval_package_repository_adapter.md) | `S18-003` CX retrieval package repository adapter. |
+| [`Slice 0174`](slices/0174_cx_retrieval_package_write_through.md) | `S18-004` CX retrieval package store write-through. |
+| [`Slice 0175`](slices/0175_cx_retrieval_postgresql_smoke_evidence.md) | `S18-005` CX retrieval PostgreSQL smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
