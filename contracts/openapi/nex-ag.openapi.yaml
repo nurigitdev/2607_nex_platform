@@ -619,6 +619,83 @@ paths:
           description: Invalid job query or filter.
         "401":
           description: Service claim is missing or invalid.
+  /admin/v1/operations/retrieval-packages:
+    get:
+      operationId: getAgRetrievalPackageOperationsProjection
+      tags:
+        - Operations
+      parameters:
+        - $ref: "#/components/parameters/serviceId"
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - READY
+              - LOW_CONFIDENCE
+              - NO_ANSWER
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TraceId"
+        - name: request_id
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+        - name: retrieval_policy_id
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+        - $ref: "#/components/parameters/since"
+        - $ref: "#/components/parameters/until"
+        - $ref: "#/components/parameters/sort"
+        - $ref: "#/components/parameters/cursor"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only CX retrieval package operations projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "400":
+          description: Invalid retrieval package query or filter.
+        "401":
+          description: Service claim is missing or invalid.
+  /admin/v1/operations/retrieval-packages/{retrieval_package_id}:
+    get:
+      operationId: getAgRetrievalPackageDetailProjection
+      tags:
+        - Operations
+      parameters:
+        - name: retrieval_package_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - $ref: "#/components/parameters/serviceId"
+      responses:
+        "200":
+          description: Read-only CX retrieval package detail/debug projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "400":
+          description: Invalid retrieval package detail filter.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Retrieval package source or package was not found.
+        "503":
+          description: Retrieval package source is unavailable.
   /admin/v1/operations/jobs/{service_id}/{job_id}:
     get:
       operationId: getAgJobOperationDetailProjection
@@ -897,6 +974,8 @@ components:
             - ag_service_log_retention_dry_run_projection.v1
             - ag_job_operations_projection.v1
             - ag_job_operation_detail_projection.v1
+            - ag_retrieval_package_operations_projection.v1
+            - ag_retrieval_package_detail_projection.v1
             - ag_unified_operations_projection.v1
             - ag_operations_rollup_metrics_projection.v1
             - ag_operations_dashboard_snapshot_projection.v1

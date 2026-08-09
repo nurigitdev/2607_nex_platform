@@ -23,6 +23,7 @@ Current endpoints:
 - `GET /admin/v1/operations/jobs`
 - `GET /admin/v1/operations/jobs/{service_id}/{job_id}`
 - `GET /admin/v1/operations/retrieval-packages`
+- `GET /admin/v1/operations/retrieval-packages/{retrieval_package_id}`
 - `POST /admin/v1/operations/jobs/{service_id}/{job_id}/cancel`
 - `POST /admin/v1/operations/jobs/{service_id}/{job_id}/retry`
 - `GET /admin/v1/operations/sources`
@@ -149,6 +150,10 @@ Unified operations:
   projection of persisted retrieval packages for debugging grounded retrieval
   status, policy use, trace/request correlation, and low-confidence/no-answer
   outcomes without exposing raw source text or vector payloads.
+- `GET /admin/v1/operations/retrieval-packages/{retrieval_package_id}` returns
+  `ag_retrieval_package_detail_projection.v1`, including safe evidence metadata
+  such as ranks, hashes, score summaries, permission outcomes, and quality flags
+  while redacting evidence text previews and principal ids.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family and is included in `scripts/quality/run_quality_gate.sh`.
 - Operations query pagination uses a non-negative integer `cursor` offset,

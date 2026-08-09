@@ -13,13 +13,16 @@ from nex_ag.operations import (
     build_operation_query_options,
 )
 from nex_ag.retrieval_operations import (
+    AG_RETRIEVAL_PACKAGE_DETAIL_PROJECTION_SCHEMA_VERSION,
     AG_RETRIEVAL_PACKAGE_OPERATIONS_PROJECTION_SCHEMA_VERSION,
     InMemoryRetrievalPackageOperationsStore,
     RetrievalPackageOperationsError,
     SqlAlchemyRetrievalPackageOperationsStore,
+    build_retrieval_package_detail_projection,
     build_retrieval_package_operation_stores,
     build_retrieval_package_operations_projection,
     register_retrieval_package_operation_routes,
+    summarize_retrieval_package_detail,
     summarize_retrieval_package_operations,
 )
 from nex_runtime import (
@@ -84,6 +87,43 @@ def retrieval_record(
         "no_answer_reason": no_answer_reason,
         "created_at": created_at,
         "updated_at": created_at,
+    }
+
+
+def retrieval_evidence_record(
+    *,
+    evidence_id: str = "evidence-001",
+    rank: int = 1,
+    final_score: float = 0.92,
+    permission_allowed: bool = True,
+    quality_flags: list[str] | None = None,
+) -> dict[str, object]:
+    return {
+        "retrieval_package_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "evidence_id": evidence_id,
+        "rank": rank,
+        "content_object_id": "11111111-1111-4111-8111-111111111111",
+        "content_version_id": "version-001",
+        "chunk_id": "22222222-2222-4222-8222-222222222222",
+        "chunk_policy_id": "chunk_1000_100_v1",
+        "source_anchor": {"page": 3, "section": "safe-anchor"},
+        "citation_label": "[1]",
+        "evidence_text_sha256": "f" * 64,
+        "evidence_text_preview": "secret evidence text that must stay out of AG",
+        "final_score": final_score,
+        "scores": {"vector": final_score, "bm25": 0.41},
+        "matched_terms": ["retrieval", "debug"],
+        "permission_result": {
+            "allowed": permission_allowed,
+            "reason": "owner",
+            "policy_id": "cx-permission-v1",
+            "principal_type": "user",
+            "permission": "read",
+            "principal_id": "user-secret",
+        },
+        "neighbor_context": [{"chunk_id": "neighbor-001"}],
+        "quality_flags": quality_flags or [],
+        "created_at": "2026-08-09T00:00:00Z",
     }
 
 
@@ -190,6 +230,60 @@ def test_summarize_retrieval_package_operations_counts_empty_list() -> None:
     }
 
 
+def test_retrieval_package_detail_projection_redacts_evidence_text() -> None:
+    record = retrieval_record()
+    record["evidence_items"] = [
+        retrieval_evidence_record(),
+        retrieval_evidence_record(
+            evidence_id="evidence-002",
+            rank=2,
+            final_score=0.57,
+            permission_allowed=False,
+            quality_flags=["low_confidence"],
+        ),
+    ]
+    store = InMemoryRetrievalPackageOperationsStore(records=[record])
+
+    projection = build_retrieval_package_detail_projection(
+        service_id="nex-cx",
+        store=store,
+        package=record,
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == (
+        AG_RETRIEVAL_PACKAGE_DETAIL_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["retrieval_package"]["retrieval_package_id"] == (
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    )
+    assert projection["summary"]["score_range"] == {"min": 0.57, "max": 0.92}
+    assert projection["summary"]["permission_denied_count"] == 1
+    assert projection["summary"]["quality_flag_count"] == 1
+    first_evidence = projection["evidence_items"][0]
+    assert first_evidence["evidence_text_preview_redacted"] is True
+    assert first_evidence["evidence_text_sha256"] == "f" * 64
+    assert first_evidence["matched_term_count"] == 2
+    assert first_evidence["permission_result"] == {
+        "allowed": True,
+        "reason": "owner",
+        "policy_id": "cx-permission-v1",
+        "principal_type": "user",
+        "permission": "read",
+    }
+    assert "secret evidence text" not in str(projection)
+    assert "user-secret" not in str(projection)
+
+
+def test_summarize_retrieval_package_detail_handles_missing_evidence() -> None:
+    summary = summarize_retrieval_package_detail(retrieval_record(), [])
+
+    assert summary["returned_evidence_items"] == 0
+    assert summary["score_range"] is None
+    assert summary["evidence_text_preview_redacted"] is True
+
+
 def test_retrieval_package_operations_route_requires_auth_and_validates_filters() -> None:
     client = build_app(
         {
@@ -230,6 +324,49 @@ def test_retrieval_package_operations_route_requires_auth_and_validates_filters(
     assert bad_cursor.json()["error_code"] == "ag.operation_cursor_invalid"
     assert ok.status_code == 200
     assert ok.json()["summary"]["total"] == 1
+
+
+def test_retrieval_package_detail_route_returns_safe_package_debug_view() -> None:
+    record = retrieval_record()
+    record["evidence_items"] = [retrieval_evidence_record()]
+    client = build_app(
+        {"nex-cx": InMemoryRetrievalPackageOperationsStore(records=[record])}
+    )
+
+    response = client.get(
+        "/admin/v1/operations/retrieval-packages/"
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        headers=auth_headers(),
+    )
+    missing = client.get(
+        "/admin/v1/operations/retrieval-packages/missing",
+        headers=auth_headers(),
+    )
+    missing_source = build_app({}).get(
+        "/admin/v1/operations/retrieval-packages/"
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        headers=auth_headers(),
+    )
+    invalid_service = client.get(
+        "/admin/v1/operations/retrieval-packages/"
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?service_id=nex-ae-api",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["projection_schema_version"] == (
+        AG_RETRIEVAL_PACKAGE_DETAIL_PROJECTION_SCHEMA_VERSION
+    )
+    assert body["summary"]["returned_evidence_items"] == 1
+    assert "secret evidence text" not in str(body)
+    assert missing.status_code == 404
+    assert missing.json()["error_code"] == "ag.retrieval_package_not_found"
+    assert missing_source.status_code == 404
+    assert missing_source.json()["error_code"] == (
+        "ag.retrieval_package_source_not_configured"
+    )
+    assert invalid_service.status_code == 400
 
 
 def test_retrieval_package_operations_route_reads_runtime_from_app_state() -> None:
@@ -387,9 +524,67 @@ def test_sqlalchemy_retrieval_package_operations_store_reads_sqlite_rows(tmp_pat
                 "score_summary": '{"best_score":0.92}',
             },
         )
+        connection.execute(
+            text(
+                """
+                INSERT INTO cx_retrieval_evidence_items (
+                    retrieval_package_id,
+                    evidence_id,
+                    rank,
+                    content_object_id,
+                    content_version_id,
+                    chunk_id,
+                    chunk_policy_id,
+                    source_anchor,
+                    citation_label,
+                    evidence_text_sha256,
+                    evidence_text_preview,
+                    final_score,
+                    scores,
+                    matched_terms,
+                    permission_result,
+                    neighbor_context,
+                    quality_flags,
+                    created_at
+                )
+                VALUES (
+                    :retrieval_package_id,
+                    :evidence_id,
+                    :rank,
+                    :content_object_id,
+                    :content_version_id,
+                    :chunk_id,
+                    :chunk_policy_id,
+                    :source_anchor,
+                    :citation_label,
+                    :evidence_text_sha256,
+                    :evidence_text_preview,
+                    :final_score,
+                    :scores,
+                    :matched_terms,
+                    :permission_result,
+                    :neighbor_context,
+                    :quality_flags,
+                    :created_at
+                )
+                """
+            ),
+            {
+                **retrieval_evidence_record(),
+                "source_anchor": '{"page":3}',
+                "scores": '{"vector":0.92,"bm25":0.41}',
+                "matched_terms": '["retrieval","debug"]',
+                "permission_result": '{"allowed":true,"reason":"owner"}',
+                "neighbor_context": '[{"chunk_id":"neighbor-001"}]',
+                "quality_flags": '["debug_checked"]',
+            },
+        )
     store = SqlAlchemyRetrievalPackageOperationsStore(build_session_factory(engine))
 
     rows = store.list_retrieval_packages(status="READY", trace_id=TRACE_ID)
+    detail = store.get_retrieval_package(
+        retrieval_package_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    )
 
     assert len(rows) == 1
     assert rows[0]["retrieval_package_id"] == (
@@ -398,6 +593,10 @@ def test_sqlalchemy_retrieval_package_operations_store_reads_sqlite_rows(tmp_pat
     assert rows[0]["query_embedding_provided"] is False
     assert rows[0]["source_summary"]["chunk_count"] == 2
     assert rows[0]["score_summary"]["best_score"] == 0.92
+    assert detail is not None
+    assert detail["evidence_items"][0]["evidence_text_sha256"] == "f" * 64
+    assert detail["evidence_items"][0]["quality_flags"] == ["debug_checked"]
+    assert store.get_retrieval_package(retrieval_package_id="missing") is None
 
 
 def test_sqlalchemy_retrieval_package_operations_store_wraps_sql_errors(tmp_path) -> None:
@@ -445,6 +644,33 @@ def _create_sqlite_retrieval_package_table(engine: object) -> None:
                     no_answer_reason TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_retrieval_evidence_items (
+                    retrieval_package_id TEXT NOT NULL,
+                    evidence_id TEXT NOT NULL,
+                    rank INTEGER NOT NULL,
+                    content_object_id TEXT NOT NULL,
+                    content_version_id TEXT,
+                    chunk_id TEXT NOT NULL,
+                    chunk_policy_id TEXT,
+                    source_anchor TEXT NOT NULL DEFAULT '{}',
+                    citation_label TEXT,
+                    evidence_text_sha256 TEXT NOT NULL,
+                    evidence_text_preview TEXT,
+                    final_score REAL NOT NULL,
+                    scores TEXT NOT NULL DEFAULT '{}',
+                    matched_terms TEXT NOT NULL DEFAULT '[]',
+                    permission_result TEXT NOT NULL DEFAULT '{}',
+                    neighbor_context TEXT NOT NULL DEFAULT '[]',
+                    quality_flags TEXT NOT NULL DEFAULT '[]',
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (retrieval_package_id, evidence_id)
                 )
                 """
             )
