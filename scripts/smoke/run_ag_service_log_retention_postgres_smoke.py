@@ -26,6 +26,7 @@ sys.path.insert(0, str(SMOKE_PATH))
 from nex_ag.operations import (  # noqa: E402
     AG_SERVICE_LOG_RETENTION_EVENT_FAILED,
     AG_SERVICE_LOG_RETENTION_EVENT_SUCCEEDED,
+    AG_SERVICE_LOG_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION,
     register_service_log_routes,
 )
 from nex_runtime import (  # noqa: E402
@@ -123,6 +124,8 @@ def run_ag_service_log_retention_postgres_smoke(
             ag_client = _build_ag_client(
                 local_client=local_client,
                 audit_store=audit_store,
+                service_id=service_id,
+                store=store,
             )
             dry_run = _post_ag_json(
                 ag_client,
@@ -168,11 +171,17 @@ def run_ag_service_log_retention_postgres_smoke(
                 },
             )
             audit_events = audit_store.list_events(service_id="nex-ag", limit=10)
+            history = _get_ag_retention_history(
+                ag_client,
+                service_id=service_id,
+                request_id=request_id,
+            )
             state = _remaining_state(store, log_ids)
             checks = _checks(
                 dry_run=dry_run,
                 blocked=blocked,
                 execute=execute,
+                history=history,
                 state=state,
                 audit_events=audit_events,
                 calls_after_dry_run=calls_after_dry_run,
@@ -202,17 +211,23 @@ def run_ag_service_log_retention_postgres_smoke(
                     "service_response": execute.get("service_response", {}).get(
                         "retention_execution_schema_version"
                     ),
+                    "history": history.get("projection_schema_version"),
                 },
                 "http_statuses": {
                     "dry_run": dry_run["_http_status"],
                     "blocked": blocked["_http_status"],
                     "execute": execute["_http_status"],
+                    "history": history["_http_status"],
                 },
                 "counts": {
                     "candidate_count": execute.get("summary", {}).get(
                         "candidate_count"
                     ),
                     "deleted_count": execute.get("summary", {}).get("deleted_count"),
+                    "history_count": history.get("summary", {}).get("total"),
+                    "history_deleted_count": history.get("summary", {}).get(
+                        "deleted_count"
+                    ),
                     "audit_events": len(audit_events),
                     "service_calls": len(local_client.calls),
                     "remaining_old_count": int(state["old_001_remaining"])
@@ -266,10 +281,13 @@ def _build_ag_client(
     *,
     local_client: LocalAgServiceLogRetentionClient,
     audit_store: InMemoryOperationalEventStore,
+    service_id: str,
+    store: SqlAlchemyServiceLogStore,
 ) -> TestClient:
     ag_app = build_service_app(SERVICE_SPECS["nex-ag"])
     register_service_log_routes(
         ag_app,
+        service_log_stores={service_id: store},
         retention_control_client=local_client,
         audit_event_store=audit_store,
     )
@@ -286,6 +304,26 @@ def _post_ag_json(
     response = client.post(
         f"/admin/v1/operations/logs/retention/{service_id}/purge",
         json=payload,
+        headers=_ag_headers(request_id=request_id),
+    )
+    body = response.json()
+    body["_http_status"] = response.status_code
+    return body
+
+
+def _get_ag_retention_history(
+    client: TestClient,
+    *,
+    service_id: str,
+    request_id: str,
+) -> dict[str, Any]:
+    response = client.get(
+        "/admin/v1/operations/logs/retention/history",
+        params={
+            "service_id": service_id,
+            "request_id": request_id,
+            "limit": 10,
+        },
         headers=_ag_headers(request_id=request_id),
     )
     body = response.json()
@@ -357,6 +395,7 @@ def _checks(
     dry_run: dict[str, Any],
     blocked: dict[str, Any],
     execute: dict[str, Any],
+    history: dict[str, Any],
     state: dict[str, bool],
     audit_events: list[dict[str, Any]],
     calls_after_dry_run: int,
@@ -388,6 +427,21 @@ def _checks(
             == SERVICE_LOG_RETENTION_EXECUTION_SCHEMA_VERSION
             and service_call_count == 2
         ),
+        "ag_history_projection_reads_postgres_history": (
+            history["_http_status"] == 200
+            and history["projection_schema_version"]
+            == AG_SERVICE_LOG_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION
+            and history["projection_status"] == "READY"
+            and history["source_statuses"][execute["service_response"]["service_id"]][
+                "status"
+            ]
+            == "READY"
+            and history["summary"]["total"] == 2
+            and history["summary"]["by_mode"]["DRY_RUN"] == 1
+            and history["summary"]["by_mode"]["EXECUTE"] == 1
+            and history["summary"]["by_status"]["SUCCEEDED"] == 2
+            and history["summary"]["deleted_count"] == 1
+        ),
         "postgres_store_state_guarded": (
             state["old_001_remaining"] is False
             and state["old_002_remaining"] is True
@@ -403,7 +457,12 @@ def _checks(
             ]
         ),
         "private_values_redacted": _redaction_safe(
-            {"dry_run": dry_run, "blocked": blocked, "execute": execute}
+            {
+                "dry_run": dry_run,
+                "blocked": blocked,
+                "execute": execute,
+                "history": history,
+            }
         ),
     }
 
@@ -429,6 +488,15 @@ def _delete_smoke_logs(
                 "old_002": log_ids["old_002"],
                 "fresh": log_ids["fresh"],
             },
+        )
+        connection.execute(
+            text(
+                """
+                DELETE FROM service_log_retention_history
+                WHERE request_id = :request_id
+                """
+            ),
+            {"request_id": request_id},
         )
 
 
@@ -471,7 +539,8 @@ def summary_line(evidence: dict[str, object]) -> str:
             f"service={evidence['service_id']} db_env={evidence['database_env']} "
             f"audit_events={counts['audit_events']} "
             f"service_calls={counts['service_calls']} "
-            f"deleted={counts['deleted_count']}"
+            f"deleted={counts['deleted_count']} "
+            f"history={counts['history_count']}"
         )
     return (
         "ag_service_log_retention_postgres_smoke=fail "

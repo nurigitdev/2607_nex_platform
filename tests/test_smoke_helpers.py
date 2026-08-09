@@ -90,6 +90,7 @@ class FakeRetentionServiceLogStore:
     def __init__(self, session_factory: object) -> None:
         self.session_factory = session_factory
         self.entries: dict[str, dict[str, object]] = {}
+        self.retention_history: dict[str, dict[str, object]] = {}
 
     def append(self, entry: dict[str, object]) -> dict[str, object]:
         self.entries[str(entry["log_id"])] = dict(entry)
@@ -141,7 +142,7 @@ class FakeRetentionServiceLogStore:
                 self.entries.pop(str(entry["log_id"]), None)
             deleted = len(selected)
             blocked_reason = None
-        return {
+        result = {
             "retention_execution_schema_version": (
                 "service_log_retention_execution.v1"
             ),
@@ -162,6 +163,76 @@ class FakeRetentionServiceLogStore:
             "request_id": request_id,
             "blocked_reason": blocked_reason,
         }
+        self.record_retention_history(result, recorded_at=checked_at)
+        return result
+
+    def record_retention_history(
+        self,
+        execution: dict[str, object],
+        *,
+        recorded_at: str | None = None,
+    ) -> dict[str, object]:
+        entry = {
+            "retention_history_schema_version": (
+                "service_log_retention_history_entry.v1"
+            ),
+            "execution_id": execution["execution_id"],
+            "service_id": execution["service_id"],
+            "mode": execution["mode"],
+            "execution_status": execution["execution_status"],
+            "delete_enabled": execution["delete_enabled"],
+            "retention_days": execution["retention_days"],
+            "retention_cutoff": execution["retention_cutoff"],
+            "checked_at": execution["checked_at"],
+            "recorded_at": recorded_at or execution["checked_at"],
+            "candidate_count": execution["candidate_count"],
+            "deleted_count": execution["deleted_count"],
+            "requested_by": execution["requested_by"],
+            "idempotency_key": execution["idempotency_key"],
+            "trace_id": execution["trace_id"],
+            "request_id": execution["request_id"],
+            "blocked_reason": execution["blocked_reason"],
+            "error": None,
+            "execution": dict(execution),
+        }
+        self.retention_history[str(entry["execution_id"])] = entry
+        return dict(entry)
+
+    def get_retention_history(self, execution_id: str) -> dict[str, object] | None:
+        entry = self.retention_history.get(execution_id)
+        return dict(entry) if entry is not None else None
+
+    def list_retention_history(
+        self,
+        *,
+        service_id: str | None = None,
+        mode: str | None = None,
+        execution_status: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        idempotency_key: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, object]]:
+        entries = []
+        for entry in self.retention_history.values():
+            if service_id is not None and entry["service_id"] != service_id:
+                continue
+            if mode is not None and entry["mode"] != mode:
+                continue
+            if execution_status is not None and entry["execution_status"] != execution_status:
+                continue
+            if trace_id is not None and entry["trace_id"] != trace_id:
+                continue
+            if request_id is not None and entry["request_id"] != request_id:
+                continue
+            if idempotency_key is not None and entry["idempotency_key"] != idempotency_key:
+                continue
+            entries.append(dict(entry))
+        entries.sort(
+            key=lambda entry: (str(entry["recorded_at"]), str(entry["execution_id"])),
+            reverse=True,
+        )
+        return entries[:limit]
 
 
 @pytest.mark.parametrize(
@@ -557,15 +628,19 @@ def test_ag_service_log_retention_postgres_smoke_reports_pass_without_leaking_se
         "dry_run": 200,
         "blocked": 409,
         "execute": 200,
+        "history": 200,
     }
     assert evidence["projection_versions"] == {
         "dry_run": "ag_service_log_retention_dispatch.v1",
         "execute": "ag_service_log_retention_dispatch.v1",
         "service_response": "service_log_retention_execution.v1",
+        "history": "ag_service_log_retention_history_projection.v1",
     }
     assert evidence["counts"] == {
         "candidate_count": 2,
         "deleted_count": 1,
+        "history_count": 2,
+        "history_deleted_count": 1,
         "audit_events": 3,
         "service_calls": 2,
         "remaining_old_count": 1,
@@ -578,7 +653,7 @@ def test_ag_service_log_retention_postgres_smoke_reports_pass_without_leaking_se
     assert ag_log_retention_postgres_smoke.summary_line(evidence) == (
         "ag_service_log_retention_postgres_smoke=pass "
         "service=nex-cx db_env=nex-cx:test:env "
-        "audit_events=3 service_calls=2 deleted=1"
+        "audit_events=3 service_calls=2 deleted=1 history=2"
     )
 
 
@@ -710,7 +785,22 @@ def test_ag_service_log_retention_postgres_smoke_helpers_cover_edges() -> None:
             "service_response": {
                 "retention_execution_schema_version": (
                     "service_log_retention_execution.v1"
-                )
+                ),
+                "service_id": "nex-cx",
+            },
+        },
+        history={
+            "_http_status": 200,
+            "projection_schema_version": (
+                "ag_service_log_retention_history_projection.v1"
+            ),
+            "projection_status": "READY",
+            "source_statuses": {"nex-cx": {"status": "READY"}},
+            "summary": {
+                "total": 2,
+                "by_mode": {"DRY_RUN": 1, "EXECUTE": 1},
+                "by_status": {"SUCCEEDED": 2},
+                "deleted_count": 1,
             },
         },
         state={

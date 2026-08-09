@@ -73,5 +73,5 @@ Default skipped smoke:
 PostgreSQL test DB smoke evidence shape:
 
 ```text
-ag_service_log_retention_postgres_smoke=pass service=nex-cx db_env=NEX_CX_TEST_DATABASE_URL audit_events=3 service_calls=2 deleted=1
+ag_service_log_retention_postgres_smoke=pass service=nex-cx db_env=NEX_CX_TEST_DATABASE_URL audit_events=3 service_calls=2 deleted=1 history=2
 ```
