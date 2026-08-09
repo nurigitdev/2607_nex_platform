@@ -288,6 +288,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0182`](slices/0182_cx_processing_run_step_schema_migration.md) | `S19-002` CX processing run/step PostgreSQL schema migration. |
 | [`Slice 0183`](slices/0183_cx_processing_run_repository_adapter.md) | `S19-003` CX processing run repository adapter. |
 | [`Slice 0184`](slices/0184_cx_processing_run_write_through_integration.md) | `S19-004` CX processing run write-through integration. |
+| [`Slice 0185`](slices/0185_cx_processing_postgresql_smoke_evidence.md) | `S19-005` CX processing run PostgreSQL smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

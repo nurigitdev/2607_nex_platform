@@ -15,7 +15,7 @@ def test_processing_run_persistence_decision_freezes_target_mapping() -> None:
     decision = build_processing_run_persistence_decision()
 
     assert decision["decision_slice"] == "0181"
-    assert decision["decision_status"] == "write_through_ready_postgres_smoke_pending"
+    assert decision["decision_status"] == "postgres_smoke_ready"
     assert decision["runtime_record_schema"] == CX_PROCESSING_RUNTIME_RECORD_SCHEMA
     assert decision["migration_version"] == "0182_cx_processing_run_step_persistence"
     assert decision["adapter_slice"] == "0183"
@@ -35,7 +35,9 @@ def test_processing_run_persistence_decision_freezes_target_mapping() -> None:
     assert "job_status" in decision["run_metadata_fields"]
     assert "error_detail_sha256" in decision["step_metadata_fields"]
     assert "steps[].error.detail" in decision["private_payload_exclusions"]
-    assert decision["next_slice"] == "0185_cx_processing_postgresql_smoke_evidence"
+    assert decision["next_slice"] == (
+        "0186_cx_processing_persisted_read_model_query_foundation"
+    )
 
 
 def test_processing_run_persistence_preview_hashes_private_runtime_detail() -> None:

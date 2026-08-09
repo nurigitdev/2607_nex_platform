@@ -168,7 +168,7 @@ CX_DEFERRED_SCHEMA_DECISIONS: tuple[dict[str, Any], ...] = (
     {
         "decision_id": "processing_runs",
         "surface_id": "processing_runs",
-        "decision_status": "write_through_ready_postgres_smoke_pending",
+        "decision_status": "postgres_smoke_ready",
         "candidate_tables": [
             CX_DOCUMENT_PROCESSING_RUN_TABLE,
             CX_DOCUMENT_PROCESSING_STEP_TABLE,
@@ -200,7 +200,7 @@ CX_DEFERRED_SCHEMA_DECISIONS: tuple[dict[str, Any], ...] = (
         "private_payload_policy": (
             "run_header_step_status_output_ref_hash_and_error_hash_only"
         ),
-        "decision_trigger": "slice_0185_postgresql_smoke_evidence",
+        "decision_trigger": "slice_0186_persisted_read_model_query_foundation",
     },
     {
         "decision_id": "lexical_index_header",
@@ -295,7 +295,9 @@ def build_cx_persistence_gap_audit(
             "migration_pending_count": migration_pending_count,
             "deferred_schema_decision_count": len(CX_DEFERRED_SCHEMA_DECISIONS),
             "private_payload_boundary_count": len(CX_PRIVATE_PAYLOAD_BOUNDARIES),
-            "next_recommended_slice": "0185_cx_processing_postgresql_smoke_evidence",
+            "next_recommended_slice": (
+                "0186_cx_processing_persisted_read_model_query_foundation"
+            ),
         },
         "observed_store_counts": counts,
         "surfaces": surfaces,

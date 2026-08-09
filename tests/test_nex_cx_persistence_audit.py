@@ -61,7 +61,9 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
         "migration_pending_count": 0,
         "deferred_schema_decision_count": 3,
         "private_payload_boundary_count": 6,
-        "next_recommended_slice": "0185_cx_processing_postgresql_smoke_evidence",
+        "next_recommended_slice": (
+            "0186_cx_processing_persisted_read_model_query_foundation"
+        ),
     }
     assert all(count == 0 for count in audit["observed_store_counts"].values())
     processing_surface = {
@@ -106,10 +108,10 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
     )
     assert (
         audit["processing_run_persistence_decision"]["decision_status"]
-        == "write_through_ready_postgres_smoke_pending"
+        == "postgres_smoke_ready"
     )
     assert audit["processing_run_persistence_decision"]["next_slice"] == (
-        "0185_cx_processing_postgresql_smoke_evidence"
+        "0186_cx_processing_persisted_read_model_query_foundation"
     )
     assert audit["latest_processing_run_persistence_preview"] is None
 
@@ -209,10 +211,7 @@ def test_cx_persistence_gap_audit_records_deferred_schema_decisions() -> None:
         "cx_document_processing_runs",
         "cx_document_processing_steps",
     ]
-    assert (
-        processing["decision_status"]
-        == "write_through_ready_postgres_smoke_pending"
-    )
+    assert processing["decision_status"] == "postgres_smoke_ready"
     assert "step_total" in processing["minimum_persisted_metadata"]
     assert "steps[].error_detail_sha256" in processing["minimum_persisted_metadata"]
     assert lexical_header["decision_status"] == "header_table_deferred"
