@@ -33,7 +33,8 @@ the original execution evidence.
 ## Boundaries
 
 This Slice does not yet add persistence tables, service-local history query
-routes, AG history projection, issue rules, or OpenAPI surfaces. Those are
+routes, AG history projection, issue rules, or OpenAPI surfaces. Slice 0155 is
+the traceability checkpoint for this scope decision; the implementation work is
 reserved for Slices 0157-0160.
 
 ## Evidence
@@ -43,4 +44,3 @@ Targeted regression:
 ```bash
 ./.venv/bin/pytest tests/test_nex_runtime_service_logs.py tests/test_contract_validation.py
 ```
-
