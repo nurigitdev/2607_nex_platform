@@ -54,6 +54,9 @@ Internal persistence boundary:
 - `SqlAlchemyCxContentRepository` persists source file metadata, content object
   metadata, and owner ACL rows behind the existing repository port. It does not
   persist raw source bytes, extracted text, chunk text, summaries, or vectors.
+- SQLAlchemy-backed upload regression preserves owner-scoped duplicate behavior:
+  same owner and same `source_sha256` returns `ALREADY_EXISTS`, while different
+  owners get separate content objects that share one source file metadata row.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`

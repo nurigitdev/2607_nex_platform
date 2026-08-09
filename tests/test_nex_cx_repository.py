@@ -44,15 +44,27 @@ def storage_config(tmp_path: Path) -> CxStorageConfig:
     )
 
 
-def upload_registration(tmp_path: Path, *, content_text: str = "hello") -> dict[str, object]:
+def upload_registration(
+    tmp_path: Path,
+    *,
+    content_text: str = "hello",
+    request_id: str = REQUEST_ID,
+    tenant_id: str | None = None,
+    owner_user_id: str | None = None,
+) -> dict[str, object]:
+    payload = {
+        "filename": "source.md",
+        "content_type": "text/markdown",
+        "content_text": content_text,
+    }
+    if tenant_id is not None:
+        payload["tenant_id"] = tenant_id
+    if owner_user_id is not None:
+        payload["owner_user_id"] = owner_user_id
     return build_upload_registration(
-        {
-            "filename": "source.md",
-            "content_type": "text/markdown",
-            "content_text": content_text,
-        },
+        payload,
         storage_config=storage_config(tmp_path),
-        request_id=REQUEST_ID,
+        request_id=request_id,
         trace_id=TRACE_ID,
     )
 
@@ -515,3 +527,128 @@ def test_repository_json_and_timestamp_helpers_cover_database_type_variants() ->
     assert cx_repository._timestamp_to_wire(
         datetime.fromisoformat("2026-08-09T00:00:00")
     ) == "2026-08-09T00:00:00Z"
+
+
+def test_content_ingestion_store_with_sqlalchemy_repository_dedupes_same_owner(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    store = ContentIngestionStore(content_repository=repository)
+    first_upload = upload_registration(
+        tmp_path,
+        content_text="SAME_OWNER_SECRET_UPLOAD",
+        request_id=REQUEST_ID,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    second_upload = upload_registration(
+        tmp_path,
+        content_text="SAME_OWNER_SECRET_UPLOAD",
+        request_id="0189f0ff-8f22-4f72-9b47-b481dc21bb22",
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+
+    first = store.save_upload_registration(
+        first_upload,
+        source_text="SAME_OWNER_SECRET_UPLOAD",
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    second = store.save_upload_registration(
+        second_upload,
+        source_text="SAME_OWNER_SECRET_UPLOAD",
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+
+    assert first["dedupe"]["status"] == "CREATED"
+    assert second["dedupe"] == {
+        "scope": "owner_active_content",
+        "status": "ALREADY_EXISTS",
+        "existing_document_id": first["document_id"],
+    }
+    assert second["document_id"] == first["document_id"]
+    assert store.get_content_ref(first["document_id"]) is not None
+    assert Path(first["storage"]["source_storage_path"]).exists()
+    assert _sqlite_table_count(engine, "cx_source_files") == 1
+    assert _sqlite_table_count(engine, "cx_content_objects") == 1
+    assert _sqlite_table_count(engine, "cx_content_acl_entries") == 1
+    assert "SAME_OWNER_SECRET_UPLOAD" not in _sqlite_table_dump(
+        engine,
+        ["cx_source_files", "cx_content_objects", "cx_content_acl_entries"],
+    )
+
+
+def test_content_ingestion_store_with_sqlalchemy_repository_shares_source_across_owners(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    store = ContentIngestionStore(content_repository=repository)
+    first_upload = upload_registration(
+        tmp_path,
+        content_text="SHARED_SOURCE_SECRET_UPLOAD",
+        request_id=REQUEST_ID,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    second_upload = upload_registration(
+        tmp_path,
+        content_text="SHARED_SOURCE_SECRET_UPLOAD",
+        request_id="0189f0ff-8f22-4f72-9b47-b481dc21bb23",
+        tenant_id="tenant-a",
+        owner_user_id="user-b",
+    )
+
+    first = store.save_upload_registration(
+        first_upload,
+        source_text="SHARED_SOURCE_SECRET_UPLOAD",
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    second = store.save_upload_registration(
+        second_upload,
+        source_text="SHARED_SOURCE_SECRET_UPLOAD",
+        tenant_id="tenant-a",
+        owner_user_id="user-b",
+    )
+
+    first_ref = store.get_content_ref(first["document_id"])
+    second_ref = store.get_content_ref(second["document_id"])
+    assert first["dedupe"]["status"] == "CREATED"
+    assert second["dedupe"]["status"] == "CREATED"
+    assert first["document_id"] != second["document_id"]
+    assert first_ref is not None
+    assert second_ref is not None
+    assert first_ref["source_file_id"] == second_ref["source_file_id"]
+    assert first_ref["content_object_id"] != second_ref["content_object_id"]
+    assert _sqlite_table_count(engine, "cx_source_files") == 1
+    assert _sqlite_table_count(engine, "cx_content_objects") == 2
+    assert _sqlite_table_count(engine, "cx_content_acl_entries") == 2
+    assert repository.find_active_content_object(
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+        source_sha256=first["source_sha256"],
+    )["content_object_id"] == first["document_id"]
+    assert repository.find_active_content_object(
+        tenant_id="tenant-a",
+        owner_user_id="user-b",
+        source_sha256=second["source_sha256"],
+    )["content_object_id"] == second["document_id"]
+    assert "SHARED_SOURCE_SECRET_UPLOAD" not in _sqlite_table_dump(
+        engine,
+        ["cx_source_files", "cx_content_objects", "cx_content_acl_entries"],
+    )
+
+
+def _sqlite_table_count(engine: object, table_name: str) -> int:
+    with engine.connect() as connection:
+        return int(connection.execute(text(f"SELECT count(*) FROM {table_name}")).scalar_one())
+
+
+def _sqlite_table_dump(engine: object, table_names: list[str]) -> str:
+    rows: list[object] = []
+    with engine.connect() as connection:
+        for table_name in table_names:
+            rows.extend(connection.execute(text(f"SELECT * FROM {table_name}")).all())
+    return str(rows)
