@@ -138,19 +138,16 @@
     "retrieval_packages": {
       "type": "array",
       "items": {
-        "type": "object",
-        "additionalProperties": true
+        "$ref": "#/$defs/retrieval_package_operation"
       }
     },
     "retrieval_package": {
-      "type": "object",
-      "additionalProperties": true
+      "$ref": "#/$defs/retrieval_package_operation"
     },
     "evidence_items": {
       "type": "array",
       "items": {
-        "type": "object",
-        "additionalProperties": true
+        "$ref": "#/$defs/retrieval_evidence_item"
       }
     },
     "active_job": {
@@ -703,6 +700,10 @@
     "trace_id": {
       "type": "string",
       "pattern": "^[0-9a-f]{32}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
     },
     "subject_ref": {
       "type": "object",
@@ -2109,6 +2110,346 @@
         }
       }
     },
+    "retrieval_package_operation": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "service_id",
+        "operation_type",
+        "operation_timestamp",
+        "retrieval_package_id",
+        "package_hash",
+        "status",
+        "trace_id",
+        "request_id",
+        "query_text_sha256",
+        "query_embedding_provided",
+        "query_embedding_dimension",
+        "purpose",
+        "retrieval_policy_id",
+        "retrieval_policy_source",
+        "ranker_mix",
+        "rerank_state",
+        "permission_snapshot_hash",
+        "evidence_count",
+        "warning_count",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        },
+        "operation_type": {
+          "const": "retrieval_package"
+        },
+        "operation_timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "retrieval_package_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "LOW_CONFIDENCE",
+            "NO_ANSWER"
+          ]
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/trace_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "query_text_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "query_text_preview": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 240
+        },
+        "query_embedding_provided": {
+          "type": "boolean"
+        },
+        "query_embedding_sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "query_embedding_dimension": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retrieval_policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retrieval_policy_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retrieval_policy_hash": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retrieval_policy_source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ranker_mix": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rerank_state": {
+          "type": "string",
+          "enum": [
+            "APPLIED",
+            "NOT_APPLIED",
+            "FAILED"
+          ]
+        },
+        "permission_snapshot_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "evidence_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "no_answer_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "best_score": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "source_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "document_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "chunk_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "retrieval_evidence_item": {
+      "type": "object",
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "evidence_text_preview"
+            ]
+          },
+          {
+            "required": [
+              "evidence_text"
+            ]
+          },
+          {
+            "required": [
+              "raw_text"
+            ]
+          }
+        ]
+      },
+      "required": [
+        "service_id",
+        "retrieval_package_id",
+        "evidence_id",
+        "rank",
+        "content_object_id",
+        "chunk_id",
+        "evidence_text_sha256",
+        "evidence_text_preview_redacted",
+        "final_score",
+        "scores",
+        "score_keys",
+        "matched_term_count",
+        "permission_allowed",
+        "permission_result",
+        "neighbor_count",
+        "quality_flags",
+        "created_at"
+      ],
+      "properties": {
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        },
+        "retrieval_package_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "content_object_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_version_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "chunk_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "chunk_policy_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_anchor": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "citation_label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence_text_sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_text_preview_redacted": {
+          "const": true
+        },
+        "final_score": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "scores": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "score_keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "matched_term_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "permission_allowed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "permission_result": {
+          "type": "object",
+          "additionalProperties": true,
+          "not": {
+            "required": [
+              "principal_id"
+            ]
+          }
+        },
+        "neighbor_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quality_flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
     "timeline_item": {
       "type": "object",
       "additionalProperties": false,
@@ -2166,8 +2507,7 @@
           "$ref": "#/$defs/service_log"
         },
         "retrieval_package": {
-          "type": "object",
-          "additionalProperties": true
+          "$ref": "#/$defs/retrieval_package_operation"
         }
       },
       "oneOf": [

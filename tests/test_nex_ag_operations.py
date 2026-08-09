@@ -3177,7 +3177,11 @@ def test_cross_service_trace_timeline_projection_includes_retrieval_packages() -
         ("job", "job:nex-cx:job-cx-002"),
     ]
     package_item = projection["timeline"][2]["retrieval_package"]
+    assert package_item["service_id"] == "nex-cx"
+    assert package_item["operation_type"] == "retrieval_package"
+    assert package_item["operation_timestamp"] == "2026-08-05T00:00:02Z"
     assert package_item["retrieval_policy_id"] == "weighted_rrf_vector_bm25_v1"
+    assert package_item["permission_snapshot_hash"] == "e" * 64
     assert package_item["evidence_count"] == 2
     assert projection["summary"] == {
         "total": 5,
@@ -3195,6 +3199,18 @@ def test_cross_service_trace_timeline_projection_includes_retrieval_packages() -
     }
     assert "other-trace" not in str(projection)
     assert_ag_operations_projection_contract(projection)
+
+
+def test_retrieval_package_trace_timeline_numeric_helpers_cover_edges() -> None:
+    assert ag_operations._mapping_or_empty({"best_score": 0.9}) == {"best_score": 0.9}
+    assert ag_operations._mapping_or_empty("not-a-mapping") == {}
+    assert ag_operations._operation_number_or_none(0.91) == 0.91
+    assert ag_operations._operation_number_or_none(1) == 1.0
+    assert ag_operations._operation_number_or_none(True) is None
+    assert ag_operations._operation_number_or_none("0.91") is None
+    assert ag_operations._operation_integer_or_none(3) == 3
+    assert ag_operations._operation_integer_or_none(False) is None
+    assert ag_operations._operation_integer_or_none(3.0) is None
 
 
 def test_cross_service_trace_timeline_projection_filters_service_and_window() -> None:

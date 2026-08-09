@@ -1,0 +1,66 @@
+{
+  "projection_schema_version": "ag_retrieval_package_detail_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-09T00:00:00Z",
+  "service_id": "nex-cx",
+  "retrieval_package": {
+    "service_id": "nex-cx",
+    "operation_type": "retrieval_package",
+    "operation_timestamp": "2026-08-09T00:00:00Z",
+    "retrieval_package_id": "7ffcf694-7f86-528b-b1b3-f6a54c7ecbda",
+    "package_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "READY",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "query_text_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "query_embedding_provided": true,
+    "query_embedding_dimension": 3,
+    "purpose": "grounded_answer",
+    "retrieval_policy_id": "weighted_rrf_vector_bm25_v1",
+    "retrieval_policy_source": "ag_registry_active",
+    "ranker_mix": "weighted_rrf_vector_bm25_v1",
+    "rerank_state": "APPLIED",
+    "permission_snapshot_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "evidence_count": 1,
+    "warning_count": 0,
+    "created_at": "2026-08-09T00:00:00Z",
+    "updated_at": "2026-08-09T00:00:00Z"
+  },
+  "evidence_items": [
+    {
+      "service_id": "nex-cx",
+      "retrieval_package_id": "7ffcf694-7f86-528b-b1b3-f6a54c7ecbda",
+      "evidence_id": "8ffcf694-7f86-528b-b1b3-f6a54c7ecbdb",
+      "rank": 1,
+      "content_object_id": "9ffcf694-7f86-528b-b1b3-f6a54c7ecbdc",
+      "chunk_id": "affcf694-7f86-528b-b1b3-f6a54c7ecbdd",
+      "evidence_text_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "evidence_text_preview": "raw evidence text preview must not be emitted by AG",
+      "evidence_text_preview_redacted": true,
+      "final_score": 0.91,
+      "scores": {
+        "final_score": 0.91
+      },
+      "score_keys": [
+        "final_score"
+      ],
+      "matched_term_count": 1,
+      "permission_allowed": true,
+      "permission_result": {
+        "allowed": true,
+        "reason": "owner"
+      },
+      "neighbor_count": 0,
+      "quality_flags": [],
+      "created_at": "2026-08-09T00:00:00Z"
+    }
+  ],
+  "summary": {
+    "retrieval_package_id": "7ffcf694-7f86-528b-b1b3-f6a54c7ecbda",
+    "evidence_text_preview_redacted": true
+  },
+  "source_status": {
+    "status": "READY",
+    "package_count": 1
+  }
+}

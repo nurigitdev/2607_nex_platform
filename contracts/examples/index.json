@@ -236,6 +236,16 @@
       "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
     },
     {
+      "name": "ag_retrieval_package_operations_projection_mock",
+      "path": "examples/operations/ag_retrieval_package_operations_projection.mock_success.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
+      "name": "ag_retrieval_package_detail_mock",
+      "path": "examples/operations/ag_retrieval_package_detail.mock_success.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
       "name": "ag_unified_operations_projection_mock",
       "path": "examples/operations/ag_unified_operations_projection.mock_success.json",
       "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
@@ -278,6 +288,11 @@
     {
       "name": "ag_cross_service_trace_timeline_mock",
       "path": "examples/operations/ag_cross_service_trace_timeline.mock_success.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
+      "name": "ag_cross_service_trace_timeline_retrieval_package_mock",
+      "path": "examples/operations/ag_cross_service_trace_timeline.retrieval_package_success.json",
       "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
     },
     {

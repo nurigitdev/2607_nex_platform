@@ -1,0 +1,81 @@
+{
+  "projection_schema_version": "ag_retrieval_package_operations_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-09T00:00:00Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "filters": {
+    "service_id": "nex-cx",
+    "status": "READY",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": null,
+    "retrieval_policy_id": "weighted_rrf_vector_bm25_v1",
+    "limit": 50,
+    "since": null,
+    "until": null,
+    "sort": "desc",
+    "cursor": null
+  },
+  "retrieval_packages": [
+    {
+      "service_id": "nex-cx",
+      "operation_type": "retrieval_package",
+      "operation_timestamp": "2026-08-09T00:00:00Z",
+      "retrieval_package_id": "7ffcf694-7f86-528b-b1b3-f6a54c7ecbda",
+      "package_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "READY",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+      "query_text_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "query_text_preview": "bounded query preview for operator correlation",
+      "query_embedding_provided": true,
+      "query_embedding_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "query_embedding_dimension": 3,
+      "purpose": "grounded_answer",
+      "retrieval_policy_id": "weighted_rrf_vector_bm25_v1",
+      "retrieval_policy_version": "2026-08-09",
+      "retrieval_policy_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "retrieval_policy_source": "ag_registry_active",
+      "ranker_mix": "weighted_rrf_vector_bm25_v1",
+      "rerank_state": "APPLIED",
+      "permission_snapshot_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "evidence_count": 1,
+      "warning_count": 0,
+      "no_answer_reason": null,
+      "best_score": 0.91,
+      "source_count": 1,
+      "document_count": 1,
+      "chunk_count": 1,
+      "created_at": "2026-08-09T00:00:00Z",
+      "updated_at": "2026-08-09T00:00:00Z"
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "by_status": {
+      "READY": 1
+    },
+    "by_policy": {
+      "weighted_rrf_vector_bm25_v1": 1
+    },
+    "low_confidence": 0,
+    "no_answer": 0,
+    "evidence_count": 1
+  },
+  "source_statuses": {
+    "nex-cx": {
+      "status": "READY",
+      "service_id": "nex-cx",
+      "source_kind": "postgres-read",
+      "package_count": 1,
+      "database_env": "NEX_CX_TEST_DATABASE_URL",
+      "redacted_database_url": "postgresql://nex_cx_user:***@localhost/nex_cx_test"
+    }
+  },
+  "pagination": {
+    "limit": 50,
+    "cursor": null,
+    "returned": 1,
+    "total_after_filters": 1,
+    "next_cursor": null
+  }
+}

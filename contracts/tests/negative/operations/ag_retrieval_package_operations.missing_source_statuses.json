@@ -1,0 +1,24 @@
+{
+  "projection_schema_version": "ag_retrieval_package_operations_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-09T00:00:00Z",
+  "filters": {
+    "service_id": "nex-cx",
+    "limit": 50,
+    "since": null,
+    "until": null,
+    "sort": "desc",
+    "cursor": null
+  },
+  "retrieval_packages": [],
+  "summary": {
+    "total": 0
+  },
+  "pagination": {
+    "limit": 50,
+    "cursor": null,
+    "returned": 0,
+    "total_after_filters": 0,
+    "next_cursor": null
+  }
+}

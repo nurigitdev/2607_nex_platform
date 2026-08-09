@@ -170,3 +170,5 @@ Unified operations:
   positive examples in `contracts/examples/operations/`, negative examples in
   `contracts/tests/negative/operations/`, and route documentation in
   `contracts/openapi/nex-ag.openapi.yaml`.
+  Retrieval package examples cover list, detail, and trace timeline correlation,
+  including schema guards against raw evidence preview and principal id leakage.

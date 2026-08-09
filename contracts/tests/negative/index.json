@@ -156,6 +156,16 @@
       "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
     },
     {
+      "name": "ag_retrieval_package_operations_missing_source_statuses",
+      "path": "tests/negative/operations/ag_retrieval_package_operations.missing_source_statuses.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
+      "name": "ag_retrieval_package_detail_raw_evidence_preview",
+      "path": "tests/negative/operations/ag_retrieval_package_detail.raw_evidence_preview.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
       "name": "ag_operational_event_projection_missing_pagination",
       "path": "tests/negative/operations/ag_operational_event_projection.missing_pagination.json",
       "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"

@@ -1,0 +1,110 @@
+{
+  "projection_schema_version": "ag_retrieval_package_detail_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-09T00:00:00Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "service_id": "nex-cx",
+  "retrieval_package": {
+    "service_id": "nex-cx",
+    "operation_type": "retrieval_package",
+    "operation_timestamp": "2026-08-09T00:00:00Z",
+    "retrieval_package_id": "7ffcf694-7f86-528b-b1b3-f6a54c7ecbda",
+    "package_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "READY",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "query_text_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "query_text_preview": "bounded query preview for operator correlation",
+    "query_embedding_provided": true,
+    "query_embedding_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "query_embedding_dimension": 3,
+    "purpose": "grounded_answer",
+    "retrieval_policy_id": "weighted_rrf_vector_bm25_v1",
+    "retrieval_policy_version": "2026-08-09",
+    "retrieval_policy_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "retrieval_policy_source": "ag_registry_active",
+    "ranker_mix": "weighted_rrf_vector_bm25_v1",
+    "rerank_state": "APPLIED",
+    "permission_snapshot_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "evidence_count": 1,
+    "warning_count": 0,
+    "no_answer_reason": null,
+    "best_score": 0.91,
+    "source_count": 1,
+    "document_count": 1,
+    "chunk_count": 1,
+    "created_at": "2026-08-09T00:00:00Z",
+    "updated_at": "2026-08-09T00:00:00Z"
+  },
+  "evidence_items": [
+    {
+      "service_id": "nex-cx",
+      "retrieval_package_id": "7ffcf694-7f86-528b-b1b3-f6a54c7ecbda",
+      "evidence_id": "8ffcf694-7f86-528b-b1b3-f6a54c7ecbdb",
+      "rank": 1,
+      "content_object_id": "9ffcf694-7f86-528b-b1b3-f6a54c7ecbdc",
+      "content_version_id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "chunk_id": "affcf694-7f86-528b-b1b3-f6a54c7ecbdd",
+      "chunk_policy_id": "chunk_1000_100",
+      "source_anchor": {
+        "type": "character_range",
+        "start_offset": 0,
+        "end_offset": 640
+      },
+      "citation_label": "[1]",
+      "evidence_text_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "evidence_text_preview_redacted": true,
+      "final_score": 0.91,
+      "scores": {
+        "bm25_score": 0.73,
+        "vector_score": 0.88,
+        "rerank_score": 0.91,
+        "final_score": 0.91
+      },
+      "score_keys": [
+        "bm25_score",
+        "final_score",
+        "rerank_score",
+        "vector_score"
+      ],
+      "matched_term_count": 3,
+      "permission_allowed": true,
+      "permission_result": {
+        "allowed": true,
+        "reason": "owner",
+        "principal_type": "user",
+        "permission": "read"
+      },
+      "neighbor_count": 0,
+      "quality_flags": [
+        "postgres_smoke_verified"
+      ],
+      "created_at": "2026-08-09T00:00:00Z"
+    }
+  ],
+  "summary": {
+    "retrieval_package_id": "7ffcf694-7f86-528b-b1b3-f6a54c7ecbda",
+    "status": "READY",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "retrieval_policy_id": "weighted_rrf_vector_bm25_v1",
+    "evidence_count": 1,
+    "returned_evidence_items": 1,
+    "content_object_count": 1,
+    "permission_denied_count": 0,
+    "quality_flag_count": 1,
+    "score_range": {
+      "min": 0.91,
+      "max": 0.91
+    },
+    "evidence_text_preview_redacted": true
+  },
+  "source_status": {
+    "status": "READY",
+    "service_id": "nex-cx",
+    "source_kind": "postgres-read",
+    "package_count": 1,
+    "database_env": "NEX_CX_TEST_DATABASE_URL",
+    "redacted_database_url": "postgresql://nex_cx_user:***@localhost/nex_cx_test"
+  }
+}

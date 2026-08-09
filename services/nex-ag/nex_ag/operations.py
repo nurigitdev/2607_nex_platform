@@ -5714,6 +5714,8 @@ def _retrieval_package_trace_timeline_item(
     package: dict[str, Any],
 ) -> dict[str, Any]:
     retrieval_package_id = str(package["retrieval_package_id"])
+    score_summary = _mapping_or_empty(package.get("score_summary"))
+    source_summary = _mapping_or_empty(package.get("source_summary"))
     return {
         "timeline_item_type": "retrieval_package",
         "item_id": f"retrieval_package:{service_id}:{retrieval_package_id}",
@@ -5722,13 +5724,21 @@ def _retrieval_package_trace_timeline_item(
         "request_id": package.get("request_id"),
         "operation_timestamp": package["created_at"],
         "retrieval_package": {
+            "service_id": service_id,
+            "operation_type": "retrieval_package",
+            "operation_timestamp": package["created_at"],
             "retrieval_package_id": retrieval_package_id,
             "package_hash": package.get("package_hash"),
             "status": package.get("status"),
+            "trace_id": package.get("trace_id"),
             "request_id": package.get("request_id"),
             "query_text_sha256": package.get("query_text_sha256"),
             "query_text_preview": package.get("query_text_preview"),
             "query_embedding_provided": package.get("query_embedding_provided"),
+            "query_embedding_sha256": package.get("query_embedding_sha256"),
+            "query_embedding_dimension": int(
+                package.get("query_embedding_dimension", 0)
+            ),
             "purpose": package.get("purpose"),
             "retrieval_policy_id": package.get("retrieval_policy_id"),
             "retrieval_policy_version": package.get("retrieval_policy_version"),
@@ -5736,13 +5746,38 @@ def _retrieval_package_trace_timeline_item(
             "retrieval_policy_source": package.get("retrieval_policy_source"),
             "ranker_mix": package.get("ranker_mix"),
             "rerank_state": package.get("rerank_state"),
+            "permission_snapshot_hash": package.get("permission_snapshot_hash"),
             "evidence_count": int(package.get("evidence_count", 0)),
             "warning_count": int(package.get("warning_count", 0)),
             "no_answer_reason": package.get("no_answer_reason"),
+            "best_score": _operation_number_or_none(score_summary.get("best_score")),
+            "source_count": _operation_integer_or_none(
+                source_summary.get("source_count")
+            ),
+            "document_count": _operation_integer_or_none(
+                source_summary.get("document_count")
+            ),
+            "chunk_count": _operation_integer_or_none(source_summary.get("chunk_count")),
             "created_at": package["created_at"],
             "updated_at": package.get("updated_at"),
         },
     }
+
+
+def _mapping_or_empty(value: Any) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _operation_number_or_none(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
+
+
+def _operation_integer_or_none(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
 
 
 def _job_operation_timestamp(job: dict[str, Any]) -> str:
