@@ -83,6 +83,11 @@ Internal persistence boundary:
   rows store provider/model lineage, vector dimension, embedding hash, optional
   storage URI, status, and trace metadata only. Raw summary vectors remain in
   the private summary embedding vector boundary.
+- Retrieval package and processing run database schemas remain deliberately
+  deferred at Slice 0170. `build_cx_persistence_gap_audit()` now exposes the
+  candidate table names, minimum metadata, private payload policy, and decision
+  trigger for those future tables, plus optional header-table decisions for
+  zero-token lexical and zero-chunk embedding index history.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`

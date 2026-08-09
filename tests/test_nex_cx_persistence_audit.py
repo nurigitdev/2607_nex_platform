@@ -6,6 +6,7 @@ import pytest
 
 from nex_cx.ingestion import ContentIngestionStore, CxStorageConfig, build_upload_registration
 from nex_cx.persistence_audit import (
+    CX_DEFERRED_SCHEMA_DECISIONS,
     CX_PERSISTENCE_GAP_AUDIT_SCHEMA_VERSION,
     build_cx_persistence_gap_audit,
     normalize_cx_persistence_audit_mode,
@@ -48,7 +49,7 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
 
     assert audit["audit_schema_version"] == CX_PERSISTENCE_GAP_AUDIT_SCHEMA_VERSION
     assert audit["service_id"] == "nex-cx"
-    assert audit["checkpoint_slice"] == "0161"
+    assert audit["checkpoint_slice"] == "0170"
     assert audit["persistence_mode"] == "memory"
     assert audit["checkpoint_status"] == "ACTION_REQUIRED"
     assert audit["store_type"] is None
@@ -57,8 +58,9 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
         "surface_count": 10,
         "postgres_adapter_gap_count": 2,
         "schema_deferred_count": 2,
+        "deferred_schema_decision_count": 4,
         "private_payload_boundary_count": 6,
-        "next_recommended_slice": "0170_cx_retrieval_processing_schema_checkpoint",
+        "next_recommended_slice": "0171_cx_retrieval_runtime_persistence_decision",
     }
     assert all(count == 0 for count in audit["observed_store_counts"].values())
     assert {
@@ -85,6 +87,14 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
         surface["current_adapter_status"] == "sqlalchemy_repository_ready"
         for surface in closed_surfaces.values()
     )
+    assert {
+        decision["decision_id"] for decision in audit["deferred_schema_decisions"]
+    } == {
+        "chunk_embedding_index_header",
+        "lexical_index_header",
+        "processing_runs",
+        "retrieval_packages",
+    }
 
 
 def test_cx_persistence_gap_audit_counts_seeded_store_without_private_leak(
@@ -145,6 +155,42 @@ def test_cx_persistence_gap_audit_counts_seeded_store_without_private_leak(
     assert "SECRET_SOURCE_PAYLOAD" not in str(audit)
     assert "SECRET_CHUNK_PAYLOAD" not in str(audit)
     assert "SECRET_SUMMARY_PAYLOAD" not in str(audit)
+
+
+def test_cx_persistence_gap_audit_records_deferred_schema_decisions() -> None:
+    audit = build_cx_persistence_gap_audit()
+    decisions = {
+        decision["decision_id"]: decision
+        for decision in audit["deferred_schema_decisions"]
+    }
+
+    retrieval = decisions["retrieval_packages"]
+    processing = decisions["processing_runs"]
+    lexical_header = decisions["lexical_index_header"]
+    chunk_embedding_header = decisions["chunk_embedding_index_header"]
+
+    assert retrieval["candidate_tables"] == [
+        "cx_retrieval_packages",
+        "cx_retrieval_evidence_items",
+    ]
+    assert "query_hash" in retrieval["minimum_persisted_metadata"]
+    assert retrieval["private_payload_policy"] == "evidence_hash_preview_only"
+    assert processing["candidate_tables"] == [
+        "cx_document_processing_runs",
+        "cx_document_processing_steps",
+    ]
+    assert "step_summary" in processing["minimum_persisted_metadata"]
+    assert lexical_header["decision_status"] == "header_table_deferred"
+    assert chunk_embedding_header["decision_status"] == "header_table_deferred"
+    assert len(CX_DEFERRED_SCHEMA_DECISIONS) == 4
+
+    retrieval["candidate_tables"].append("mutated")
+    fresh = build_cx_persistence_gap_audit()
+    fresh_retrieval = {
+        decision["decision_id"]: decision
+        for decision in fresh["deferred_schema_decisions"]
+    }["retrieval_packages"]
+    assert "mutated" not in fresh_retrieval["candidate_tables"]
 
 
 def test_cx_persistence_gap_audit_accepts_repository_without_public_dicts() -> None:

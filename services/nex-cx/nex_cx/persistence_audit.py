@@ -151,6 +151,83 @@ CX_PRIVATE_PAYLOAD_BOUNDARIES: tuple[dict[str, str], ...] = (
     },
 )
 
+CX_DEFERRED_SCHEMA_DECISIONS: tuple[dict[str, Any], ...] = (
+    {
+        "decision_id": "retrieval_packages",
+        "surface_id": "retrieval_packages",
+        "decision_status": "schema_deferred_until_retrieval_runtime_stabilizes",
+        "candidate_tables": ["cx_retrieval_packages", "cx_retrieval_evidence_items"],
+        "minimum_persisted_metadata": [
+            "retrieval_package_id",
+            "trace_id",
+            "request_id",
+            "query_hash",
+            "policy_id",
+            "permission_snapshot_hash",
+            "candidate_counts",
+            "score_summary",
+            "evidence_hashes",
+            "evidence_previews",
+        ],
+        "private_payload_policy": "evidence_hash_preview_only",
+        "decision_trigger": "before production retrieval package replay or audit retention",
+    },
+    {
+        "decision_id": "processing_runs",
+        "surface_id": "processing_runs",
+        "decision_status": "schema_deferred_until_pipeline_runtime_stabilizes",
+        "candidate_tables": [
+            "cx_document_processing_runs",
+            "cx_document_processing_steps",
+        ],
+        "minimum_persisted_metadata": [
+            "pipeline_run_id",
+            "document_id",
+            "trace_id",
+            "request_id",
+            "status",
+            "step_summary",
+            "started_at",
+            "completed_at",
+        ],
+        "private_payload_policy": "step_summary_only",
+        "decision_trigger": "before durable CX pipeline replay or AG historical drilldown",
+    },
+    {
+        "decision_id": "lexical_index_header",
+        "surface_id": "lexical_index",
+        "decision_status": "header_table_deferred",
+        "candidate_tables": ["cx_lexical_indexes"],
+        "minimum_persisted_metadata": [
+            "chunk_set_id",
+            "tokenizer_requested",
+            "tokenizer_used",
+            "fallback_used",
+            "chunk_count",
+            "unique_token_count",
+        ],
+        "private_payload_policy": "token_counts_only",
+        "decision_trigger": "only if zero-token lexical index history must be durable",
+    },
+    {
+        "decision_id": "chunk_embedding_index_header",
+        "surface_id": "chunk_embeddings",
+        "decision_status": "header_table_deferred",
+        "candidate_tables": ["cx_chunk_embedding_indexes"],
+        "minimum_persisted_metadata": [
+            "chunk_set_id",
+            "provider_alias",
+            "model_profile_id",
+            "model_revision",
+            "deployment_id",
+            "chunk_count",
+            "vector_dimension",
+        ],
+        "private_payload_policy": "vector_hash_dimension_uri_only",
+        "decision_trigger": "only if zero-chunk embedding index history must be durable",
+    },
+)
+
 
 def normalize_cx_persistence_audit_mode(value: str | None) -> str:
     normalized = "memory" if value is None or not value.strip() else value.strip().lower()
@@ -188,7 +265,7 @@ def build_cx_persistence_gap_audit(
     return {
         "audit_schema_version": CX_PERSISTENCE_GAP_AUDIT_SCHEMA_VERSION,
         "service_id": "nex-cx",
-        "checkpoint_slice": "0161",
+        "checkpoint_slice": "0170",
         "persistence_mode": mode,
         "store_type": type(store).__name__ if store is not None else None,
         "content_repository_type": (
@@ -199,13 +276,17 @@ def build_cx_persistence_gap_audit(
             "surface_count": len(surfaces),
             "postgres_adapter_gap_count": postgres_gap_count,
             "schema_deferred_count": schema_deferred_count,
+            "deferred_schema_decision_count": len(CX_DEFERRED_SCHEMA_DECISIONS),
             "private_payload_boundary_count": len(CX_PRIVATE_PAYLOAD_BOUNDARIES),
-            "next_recommended_slice": "0170_cx_retrieval_processing_schema_checkpoint",
+            "next_recommended_slice": "0171_cx_retrieval_runtime_persistence_decision",
         },
         "observed_store_counts": counts,
         "surfaces": surfaces,
         "private_payload_boundaries": [
             dict(boundary) for boundary in CX_PRIVATE_PAYLOAD_BOUNDARIES
+        ],
+        "deferred_schema_decisions": [
+            deepcopy_decision(decision) for decision in CX_DEFERRED_SCHEMA_DECISIONS
         ],
         "refactoring_checkpoints": [
             "Keep file IO and provider calls outside database transactions.",
@@ -214,6 +295,13 @@ def build_cx_persistence_gap_audit(
             "Preserve owner-scoped duplicate detection on tenant_id + owner_user_id + source_sha256.",
             "Add PostgreSQL write-through behind existing store/repository ports before changing routes.",
         ],
+    }
+
+
+def deepcopy_decision(decision: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: list(value) if isinstance(value, list) else value
+        for key, value in decision.items()
     }
 
 
