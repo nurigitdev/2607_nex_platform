@@ -155,6 +155,11 @@ Unified operations:
   `ag_retrieval_package_detail_projection.v1`, including safe evidence metadata
   such as ranks, hashes, score summaries, permission outcomes, and quality flags
   while redacting evidence text previews and principal ids.
+- `scripts/smoke/run_ag_retrieval_package_postgres_smoke.py` is the guarded
+  PostgreSQL test-profile evidence path for the retrieval package list/detail
+  APIs and trace timeline correlation. It is skipped unless
+  `NEX_AG_RETRIEVAL_PACKAGE_POSTGRES_SMOKE=1` and is included in the optional
+  `run_postgres_test_smoke_suite.py` as `ag_retrieval_package_postgres`.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family and is included in `scripts/quality/run_quality_gate.sh`.
 - Operations query pagination uses a non-negative integer `cursor` offset,

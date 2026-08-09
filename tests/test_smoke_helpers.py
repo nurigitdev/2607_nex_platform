@@ -14,6 +14,7 @@ from sqlalchemy import text
 import run_ag_job_control_smoke as ag_job_control_smoke
 import run_ag_operations_dashboard_smoke as ag_operations_dashboard_smoke
 import run_ag_cross_service_observability_smoke as ag_observability_smoke
+import run_ag_retrieval_package_postgres_smoke as ag_retrieval_postgres_smoke
 import run_ag_service_log_retention_smoke as ag_log_retention_smoke
 import run_ag_service_log_retention_postgres_smoke as ag_log_retention_postgres_smoke
 import check_backend_service_endpoints as endpoint_smoke
@@ -2702,6 +2703,11 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
     )
     monkeypatch.setattr(
         postgres_suite_smoke,
+        "run_ag_retrieval_package_postgres_smoke",
+        child_pass("ag_retrieval_package_postgres_smoke"),
+    )
+    monkeypatch.setattr(
+        postgres_suite_smoke,
         "run_cx_processing_postgres_jobqueue_smoke",
         child_pass("cx_processing_postgres_jobqueue_smoke"),
     )
@@ -2743,12 +2749,13 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("ag_service_log_retention_postgres_smoke", "test"),
         ("postgres_operations_smoke_pack", "test"),
         ("cx_retrieval_postgres_smoke", "test"),
+        ("ag_retrieval_package_postgres_smoke", "test"),
         ("cx_processing_postgres_jobqueue_smoke", "test"),
         ("cx_processing_postgres_event_smoke", "test"),
         ("ag_cross_service_observability_smoke", "test"),
     ]
     assert postgres_suite_smoke.summary_line(evidence) == (
-        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=14"
+        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=15"
     )
 
 
@@ -3108,6 +3115,330 @@ def test_cx_retrieval_postgres_smoke_main_prints_summary_and_full_evidence(
     assert "cx_retrieval_postgres_smoke=skipped" in capsys.readouterr().out
 
     assert cx_retrieval_smoke.main([]) == 0
+    assert '"status": "SKIPPED"' in capsys.readouterr().out
+
+
+def test_ag_retrieval_package_postgres_smoke_skips_by_default() -> None:
+    evidence = ag_retrieval_postgres_smoke.run_ag_retrieval_package_postgres_smoke(
+        environ={}
+    )
+
+    assert evidence["status"] == "SKIPPED"
+    assert ag_retrieval_postgres_smoke.summary_line(evidence) == (
+        "ag_retrieval_package_postgres_smoke=skipped "
+        "reason=NEX_AG_RETRIEVAL_PACKAGE_POSTGRES_SMOKE"
+    )
+
+
+def test_ag_retrieval_package_postgres_smoke_rejects_non_test_profile() -> None:
+    evidence = ag_retrieval_postgres_smoke.run_ag_retrieval_package_postgres_smoke(
+        environ={
+            "NEX_AG_RETRIEVAL_PACKAGE_POSTGRES_SMOKE": "1",
+            "NEX_AG_RETRIEVAL_PACKAGE_POSTGRES_SMOKE_PROFILE": "dev",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "profile_not_allowed"
+
+
+def test_ag_retrieval_package_postgres_smoke_reports_pass_without_leaking_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration_calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        ag_retrieval_postgres_smoke,
+        "service_database_env",
+        lambda service_id, profile: f"{service_id}:{profile}:env",
+    )
+    monkeypatch.setattr(
+        ag_retrieval_postgres_smoke,
+        "service_database_url",
+        lambda service_id, profile, environ: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        ag_retrieval_postgres_smoke,
+        "run_service_migrations",
+        lambda service_id, database_url, profile: migration_calls.append(
+            (service_id, profile)
+        ),
+    )
+    monkeypatch.setattr(
+        ag_retrieval_postgres_smoke,
+        "_execute_ag_retrieval_package_postgres_smoke",
+        lambda database_url, database_env, environ: {
+            "retrieval_package_id": "retrieval-001",
+            "request_id": "request-001",
+            "trace_id": "0" * 32,
+            "projection_versions": {
+                "list": "ag_retrieval_package_operations_projection.v1",
+                "detail": "ag_retrieval_package_detail_projection.v1",
+                "trace": "ag_cross_service_trace_timeline_projection.v1",
+            },
+            "http_statuses": {"list": 200, "detail": 200, "trace": 200},
+            "counts": {
+                "list_total": 1,
+                "detail_evidence_items": 1,
+                "trace_timeline_total": 1,
+            },
+            "checks": {
+                "list_projection_reads_postgres": True,
+                "list_filter_returns_seeded_package": True,
+                "detail_projection_redacts_evidence": True,
+                "permission_projection_excludes_principal_id": True,
+                "trace_timeline_correlates_package": True,
+                "raw_values_absent_from_ag_evidence": True,
+            },
+            "raw_values": ["raw query", "raw evidence", "raw principal"],
+        },
+    )
+
+    evidence = ag_retrieval_postgres_smoke.run_ag_retrieval_package_postgres_smoke(
+        environ={"NEX_AG_RETRIEVAL_PACKAGE_POSTGRES_SMOKE": "1"}
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["database_env"] == "nex-cx:test:env"
+    assert evidence["redacted_database_url"] == "postgresql://user:***@localhost/db"
+    assert evidence["counts"] == {
+        "list_total": 1,
+        "detail_evidence_items": 1,
+        "trace_timeline_total": 1,
+    }
+    assert "secret" not in str(evidence)
+    assert "raw_values" not in evidence
+    assert migration_calls == [("nex-cx", "test")]
+    assert ag_retrieval_postgres_smoke.summary_line(evidence) == (
+        "ag_retrieval_package_postgres_smoke=pass "
+        "service=nex-cx db_env=nex-cx:test:env "
+        "list=1 detail_evidence=1 timeline=1"
+    )
+
+
+def test_ag_retrieval_package_postgres_smoke_reports_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ag_retrieval_postgres_smoke,
+        "service_database_env",
+        lambda *args, **kwargs: "NEX_CX_TEST_DATABASE_URL",
+    )
+
+    def raise_migration_error(*args: object, **kwargs: object) -> None:
+        raise ag_retrieval_postgres_smoke.MigrationError("missing database URL env")
+
+    monkeypatch.setattr(
+        ag_retrieval_postgres_smoke,
+        "service_database_url",
+        raise_migration_error,
+    )
+    config_failure = (
+        ag_retrieval_postgres_smoke.run_ag_retrieval_package_postgres_smoke(
+            environ={"NEX_AG_RETRIEVAL_PACKAGE_POSTGRES_SMOKE": "1"}
+        )
+    )
+
+    assert config_failure["status"] == "FAIL"
+    assert config_failure["failure_code"] == "configuration_invalid"
+
+    monkeypatch.setattr(
+        ag_retrieval_postgres_smoke,
+        "service_database_url",
+        lambda *args, **kwargs: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        ag_retrieval_postgres_smoke,
+        "run_service_migrations",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        ag_retrieval_postgres_smoke,
+        "_execute_ag_retrieval_package_postgres_smoke",
+        lambda *args, **kwargs: {
+            "failure_code": "checks_failed",
+            "detail": "checks failed",
+            "checks": {"ok": False},
+            "raw_values": ["raw"],
+        },
+    )
+    checks_failure = (
+        ag_retrieval_postgres_smoke.run_ag_retrieval_package_postgres_smoke(
+            environ={"NEX_AG_RETRIEVAL_PACKAGE_POSTGRES_SMOKE": "1"}
+        )
+    )
+
+    assert checks_failure["status"] == "FAIL"
+    assert checks_failure["failure_code"] == "checks_failed"
+    assert checks_failure["checks"] == {"ok": False}
+
+    def raise_runtime_error(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        ag_retrieval_postgres_smoke,
+        "_execute_ag_retrieval_package_postgres_smoke",
+        raise_runtime_error,
+    )
+    execution_failure = (
+        ag_retrieval_postgres_smoke.run_ag_retrieval_package_postgres_smoke(
+            environ={"NEX_AG_RETRIEVAL_PACKAGE_POSTGRES_SMOKE": "1"}
+        )
+    )
+
+    assert execution_failure["status"] == "FAIL"
+    assert execution_failure["failure_code"] == "execution_failed"
+    assert ag_retrieval_postgres_smoke.summary_line(execution_failure) == (
+        "ag_retrieval_package_postgres_smoke=fail "
+        "service=nex-cx reason=execution_failed"
+    )
+
+
+def test_ag_retrieval_package_postgres_smoke_execute_with_sqlite_fixture(
+    tmp_path,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'ag-retrieval-smoke.sqlite'}"
+    engine = ag_retrieval_postgres_smoke.build_engine(database_url)
+    _create_sqlite_cx_content_retrieval_tables(engine)
+
+    evidence = ag_retrieval_postgres_smoke._execute_ag_retrieval_package_postgres_smoke(
+        database_url=database_url,
+        database_env="NEX_CX_TEST_DATABASE_URL",
+        environ={},
+    )
+
+    assert evidence["http_statuses"] == {"list": 200, "detail": 200, "trace": 200}
+    assert evidence["counts"] == {
+        "list_total": 1,
+        "detail_evidence_items": 1,
+        "trace_timeline_total": 1,
+    }
+    assert all(evidence["checks"].values())
+    assert ag_retrieval_postgres_smoke._redaction_safe(
+        {key: value for key, value in evidence.items() if key != "raw_values"},
+        evidence["raw_values"],
+    )
+    with engine.begin() as connection:
+        remaining = {
+            "packages": connection.execute(
+                text("SELECT count(*) FROM cx_retrieval_packages")
+            ).scalar_one(),
+            "evidence": connection.execute(
+                text("SELECT count(*) FROM cx_retrieval_evidence_items")
+            ).scalar_one(),
+            "chunks": connection.execute(
+                text("SELECT count(*) FROM cx_chunks")
+            ).scalar_one(),
+            "chunk_sets": connection.execute(
+                text("SELECT count(*) FROM cx_chunk_sets")
+            ).scalar_one(),
+            "extractions": connection.execute(
+                text("SELECT count(*) FROM cx_extraction_artifacts")
+            ).scalar_one(),
+            "content": connection.execute(
+                text("SELECT count(*) FROM cx_content_objects")
+            ).scalar_one(),
+            "sources": connection.execute(
+                text("SELECT count(*) FROM cx_source_files")
+            ).scalar_one(),
+        }
+    assert remaining == {
+        "packages": 0,
+        "evidence": 0,
+        "chunks": 0,
+        "chunk_sets": 0,
+        "extractions": 0,
+        "content": 0,
+        "sources": 0,
+    }
+
+
+def test_ag_retrieval_package_postgres_smoke_helpers_cover_edges() -> None:
+    assert ag_retrieval_postgres_smoke._json_sql_expression(
+        SimpleNamespace(dialect=SimpleNamespace(name="postgresql")),
+        "payload",
+    ) == "CAST(:payload AS jsonb)"
+    assert ag_retrieval_postgres_smoke._json_sql_expression(
+        SimpleNamespace(dialect=SimpleNamespace(name="sqlite")),
+        "payload",
+    ) == ":payload"
+    assert (
+        ag_retrieval_postgres_smoke._redaction_safe({"value": "secret"}, [])
+        is False
+    )
+    assert ag_retrieval_postgres_smoke._preview("abcdef", max_chars=3) == "abc"
+    assert ag_retrieval_postgres_smoke.summary_line(
+        {
+            "smoke_schema_version": "ag_retrieval_package_postgres_smoke.v1",
+            "status": "FAIL",
+            "service_id": "nex-cx",
+            "failure_code": "checks_failed",
+        }
+    ) == "ag_retrieval_package_postgres_smoke=fail service=nex-cx reason=checks_failed"
+
+    bad_checks = ag_retrieval_postgres_smoke._checks(
+        list_response={
+            "_http_status": 503,
+            "projection_schema_version": "wrong",
+            "source_statuses": {},
+            "summary": {"total": 0},
+            "retrieval_packages": [],
+        },
+        detail_response={
+            "_http_status": 404,
+            "projection_schema_version": "wrong",
+            "summary": {},
+            "evidence_items": [],
+        },
+        trace_response={
+            "_http_status": 200,
+            "projection_schema_version": "wrong",
+            "retrieval_package_source_statuses": {"nex-cx": {"status": "UNAVAILABLE"}},
+            "timeline": [],
+        },
+        refs={
+            "retrieval_package_id": "missing",
+            "trace_id": "0" * 32,
+            "request_id": "request",
+        },
+        raw_values=["raw leak"],
+    )
+
+    assert bad_checks == {
+        "list_projection_reads_postgres": False,
+        "list_filter_returns_seeded_package": False,
+        "detail_projection_redacts_evidence": False,
+        "permission_projection_excludes_principal_id": False,
+        "trace_timeline_correlates_package": False,
+        "raw_values_absent_from_ag_evidence": True,
+    }
+
+
+def test_ag_retrieval_package_postgres_smoke_main_prints_summary_and_full_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        ag_retrieval_postgres_smoke,
+        "load_env_file",
+        lambda path: None,
+    )
+    monkeypatch.setattr(
+        ag_retrieval_postgres_smoke,
+        "run_ag_retrieval_package_postgres_smoke",
+        lambda: {
+            "smoke_schema_version": "ag_retrieval_package_postgres_smoke.v1",
+            "status": "SKIPPED",
+            "skip_reason": (
+                "NEX_AG_RETRIEVAL_PACKAGE_POSTGRES_SMOKE is not enabled."
+            ),
+        },
+    )
+
+    assert ag_retrieval_postgres_smoke.main(["--summary"]) == 0
+    assert "ag_retrieval_package_postgres_smoke=skipped" in capsys.readouterr().out
+
+    assert ag_retrieval_postgres_smoke.main([]) == 0
     assert '"status": "SKIPPED"' in capsys.readouterr().out
 
 
