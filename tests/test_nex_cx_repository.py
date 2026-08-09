@@ -3537,6 +3537,120 @@ def test_sqlalchemy_repository_upserts_processing_run_metadata_without_raw_paylo
     assert "SECRET_PROCESSING_ERROR_DETAIL" not in dump
 
 
+def test_in_memory_repository_lists_processing_runs_with_filters_and_step_toggle() -> None:
+    repository = InMemoryCxContentRepository()
+    succeeded = build_processing_run_persistence_record(
+        processing_run_payload(
+            document_id="44444444-4444-4444-8444-444444444444",
+            pipeline_run_id="99999999-9999-4999-8999-999999999999",
+            status="SUCCEEDED",
+            updated_at="2026-08-09T00:00:10Z",
+        )
+    )
+    failed_payload = processing_run_payload(
+        document_id="44444444-4444-4444-8444-444444444444",
+        pipeline_run_id="88888888-8888-4888-8888-888888888888",
+        status="FAILED",
+        updated_at="2026-08-09T00:00:20Z",
+    )
+    failed_payload["request_id"] = "request-failed"
+    failed_payload["job"]["job_id"] = "job-processing-failed"
+    failed = build_processing_run_persistence_record(failed_payload)
+    repository.save_processing_run_record(succeeded)
+    repository.save_processing_run_record(failed)
+
+    listed = repository.list_processing_run_records(
+        document_id="44444444-4444-4444-8444-444444444444",
+        include_steps=False,
+    )
+    failed_only = repository.list_processing_run_records(
+        status="FAILED",
+        request_id="request-failed",
+        job_id="job-processing-failed",
+    )
+
+    assert [record["pipeline_run_id"] for record in listed] == [
+        "88888888-8888-4888-8888-888888888888",
+        "99999999-9999-4999-8999-999999999999",
+    ]
+    assert listed[0]["steps"] == []
+    assert listed[0]["step_failed"] == 1
+    assert failed_only == [failed]
+    assert repository.list_processing_run_records(
+        document_id="33333333-3333-4333-8333-333333333333"
+    ) == []
+    assert repository.list_processing_run_records(trace_id="missing-trace") == []
+    assert repository.list_processing_run_records(request_id="missing-request") == []
+    assert repository.list_processing_run_records(job_id="missing-job") == []
+    assert repository.list_processing_run_records(status="CANCELLED") == []
+    assert len(repository.list_processing_run_records(limit=0)) == 1
+
+
+def test_sqlalchemy_repository_lists_processing_runs_with_filters_and_safe_rows(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    upload = upload_registration(tmp_path)
+    source_file = repository.save_source_file(build_source_file_record(upload))
+    content = repository.save_content_object(
+        build_content_object_record(
+            upload,
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    succeeded = build_processing_run_persistence_record(
+        processing_run_payload(
+            document_id=content["content_object_id"],
+            pipeline_run_id="99999999-9999-4999-8999-999999999999",
+            status="SUCCEEDED",
+            updated_at="2026-08-09T00:00:10Z",
+        )
+    )
+    failed_payload = processing_run_payload(
+        document_id=content["content_object_id"],
+        pipeline_run_id="88888888-8888-4888-8888-888888888888",
+        status="FAILED",
+        updated_at="2026-08-09T00:00:20Z",
+    )
+    failed_payload["request_id"] = "request-failed"
+    failed_payload["job"]["job_id"] = "job-processing-failed"
+    failed = build_processing_run_persistence_record(failed_payload)
+    repository.save_processing_run_record(succeeded)
+    repository.save_processing_run_record(failed)
+
+    listed = repository.list_processing_run_records(
+        document_id=content["content_object_id"],
+        include_steps=False,
+    )
+    failed_by_status = repository.list_processing_run_records(
+        status="FAILED",
+        trace_id=TRACE_ID,
+    )
+    failed_by_request_and_job = repository.list_processing_run_records(
+        request_id="request-failed",
+        job_id="job-processing-failed",
+    )
+
+    assert [record["pipeline_run_id"] for record in listed] == [
+        "88888888-8888-4888-8888-888888888888",
+        "99999999-9999-4999-8999-999999999999",
+    ]
+    assert listed[0]["steps"] == []
+    assert failed_by_status == [failed]
+    assert failed_by_request_and_job == [failed]
+    assert repository.list_processing_run_records(status="CANCELLED") == []
+    assert len(repository.list_processing_run_records(limit=0)) == 1
+    assert _sqlite_table_count(engine, "cx_document_processing_runs") == 2
+    dump = _sqlite_table_dump(
+        engine,
+        ["cx_document_processing_runs", "cx_document_processing_steps"],
+    )
+    assert "SECRET_OUTPUT_REF_TEXT" not in dump
+    assert "SECRET_PROCESSING_ERROR_DETAIL" not in dump
+
+
 def test_sqlalchemy_repository_saves_failed_processing_run_error_hash(
     tmp_path: Path,
 ) -> None:

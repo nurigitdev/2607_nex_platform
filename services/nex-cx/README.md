@@ -89,11 +89,14 @@ Internal persistence boundary:
   bounded previews, policy lineage, permission snapshot hash, scores, final
   score, and source summary; raw query text, raw evidence text, and raw query
   vectors stay outside durable public rows.
-- Processing run database schema, repository adapter, and runtime store
-  write-through are present; PostgreSQL smoke evidence is pending.
+- Processing run database schema, repository adapter, runtime store
+  write-through, PostgreSQL smoke evidence, and persisted read-model query
+  helpers are present.
   `build_cx_persistence_gap_audit()` exposes the planned
   `cx_document_processing_runs` / `cx_document_processing_steps` mapping,
   minimum metadata, private payload policy, and latest safe persistence preview.
+  Service API wiring for the persisted processing read-model is deferred to the
+  next slice.
   Optional header-table decisions for zero-token lexical and zero-chunk
   embedding index history remain deferred.
 

@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from nex_cx.processing_persistence import build_processing_run_persistence_preview
+from nex_cx.processing_read_model import bounded_processing_run_query_limit
 from nex_cx.retrieval_persistence import build_retrieval_package_persistence_preview
 
 
@@ -175,6 +176,19 @@ class CxContentRepository(Protocol):
         self,
         document_id: str,
     ) -> dict[str, Any] | None:
+        ...
+
+    def list_processing_run_records(
+        self,
+        *,
+        document_id: str | None = None,
+        status: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        job_id: str | None = None,
+        limit: int = 50,
+        include_steps: bool = True,
+    ) -> list[dict[str, Any]]:
         ...
 
 
@@ -488,6 +502,42 @@ class InMemoryCxContentRepository:
         if pipeline_run_id is None:
             return None
         return self.processing_run_records[pipeline_run_id]
+
+    def list_processing_run_records(
+        self,
+        *,
+        document_id: str | None = None,
+        status: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        job_id: str | None = None,
+        limit: int = 50,
+        include_steps: bool = True,
+    ) -> list[dict[str, Any]]:
+        filtered: list[dict[str, Any]] = []
+        for record in self.processing_run_records.values():
+            if document_id is not None and record.get("document_id") != document_id:
+                continue
+            if status is not None and record.get("status") != status:
+                continue
+            if trace_id is not None and record.get("trace_id") != trace_id:
+                continue
+            if request_id is not None and record.get("request_id") != request_id:
+                continue
+            if job_id is not None and record.get("job_id") != job_id:
+                continue
+            copy = deepcopy(record)
+            if not include_steps:
+                copy["steps"] = []
+            filtered.append(copy)
+        filtered.sort(
+            key=lambda record: (
+                str(record.get("updated_at") or ""),
+                str(record.get("pipeline_run_id") or ""),
+            ),
+            reverse=True,
+        )
+        return filtered[: bounded_processing_run_query_limit(limit)]
 
 
 class SqlAlchemyCxContentRepository:
@@ -950,6 +1000,32 @@ class SqlAlchemyCxContentRepository:
                 return self._select_latest_processing_run_record(
                     session,
                     document_id=document_id,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def list_processing_run_records(
+        self,
+        *,
+        document_id: str | None = None,
+        status: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        job_id: str | None = None,
+        limit: int = 50,
+        include_steps: bool = True,
+    ) -> list[dict[str, Any]]:
+        try:
+            with self._session_factory() as session:
+                return self._select_processing_run_records(
+                    session,
+                    document_id=document_id,
+                    status=status,
+                    trace_id=trace_id,
+                    request_id=request_id,
+                    job_id=job_id,
+                    limit=limit,
+                    include_steps=include_steps,
                 )
         except SQLAlchemyError as exc:
             raise _content_repository_unavailable() from exc
@@ -1706,6 +1782,61 @@ class SqlAlchemyCxContentRepository:
             row,
             self._select_processing_steps(session, str(row["pipeline_run_id"])),
         )
+
+    def _select_processing_run_records(
+        self,
+        session: Session,
+        *,
+        document_id: str | None,
+        status: str | None,
+        trace_id: str | None,
+        request_id: str | None,
+        job_id: str | None,
+        limit: int,
+        include_steps: bool,
+    ) -> list[dict[str, Any]]:
+        conditions: list[str] = []
+        params: dict[str, Any] = {
+            "limit": bounded_processing_run_query_limit(limit),
+        }
+        if document_id is not None:
+            conditions.append("document_id = :document_id")
+            params["document_id"] = document_id
+        if status is not None:
+            conditions.append("status = :status")
+            params["status"] = status
+        if trace_id is not None:
+            conditions.append("trace_id = :trace_id")
+            params["trace_id"] = trace_id
+        if request_id is not None:
+            conditions.append("request_id = :request_id")
+            params["request_id"] = request_id
+        if job_id is not None:
+            conditions.append("job_id = :job_id")
+            params["job_id"] = job_id
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        rows = session.execute(
+            text(
+                f"""
+                SELECT {_PROCESSING_RUN_SELECT_COLUMNS}
+                FROM cx_document_processing_runs
+                {where_clause}
+                ORDER BY updated_at DESC, pipeline_run_id DESC
+                LIMIT :limit
+                """
+            ),
+            params,
+        ).mappings().all()
+        records: list[dict[str, Any]] = []
+        for row in rows:
+            pipeline_run_id = str(row["pipeline_run_id"])
+            steps = (
+                self._select_processing_steps(session, pipeline_run_id)
+                if include_steps
+                else []
+            )
+            records.append(_processing_run_from_row(row, steps))
+        return records
 
     def _select_processing_steps(
         self,
