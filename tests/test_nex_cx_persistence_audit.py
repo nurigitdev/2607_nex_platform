@@ -49,7 +49,7 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
 
     assert audit["audit_schema_version"] == CX_PERSISTENCE_GAP_AUDIT_SCHEMA_VERSION
     assert audit["service_id"] == "nex-cx"
-    assert audit["checkpoint_slice"] == "0175"
+    assert audit["checkpoint_slice"] == "0181"
     assert audit["persistence_mode"] == "memory"
     assert audit["checkpoint_status"] == "ACTION_REQUIRED"
     assert audit["store_type"] is None
@@ -57,16 +57,17 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
     assert audit["summary"] == {
         "surface_count": 10,
         "postgres_adapter_gap_count": 1,
-        "schema_deferred_count": 1,
+        "schema_deferred_count": 0,
+        "migration_pending_count": 1,
         "deferred_schema_decision_count": 3,
         "private_payload_boundary_count": 6,
-        "next_recommended_slice": "0176_ag_retrieval_package_operations_projection",
+        "next_recommended_slice": "0182_cx_processing_run_step_schema_migration",
     }
     assert all(count == 0 for count in audit["observed_store_counts"].values())
     assert {
         surface["surface_id"]
         for surface in audit["surfaces"]
-        if surface["target_table_status"] == "schema_deferred"
+        if surface["target_table_status"] == "schema_ready_pending_migration"
     } == {"processing_runs"}
     closed_surfaces = {
         surface["surface_id"]: surface
@@ -102,6 +103,14 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
     assert audit["retrieval_runtime_persistence_decision"]["postgres_smoke_slice"] == (
         "0175"
     )
+    assert (
+        audit["processing_run_persistence_decision"]["decision_status"]
+        == "schema_ready_pending_migration"
+    )
+    assert audit["processing_run_persistence_decision"]["next_slice"] == (
+        "0182_cx_processing_run_step_schema_migration"
+    )
+    assert audit["latest_processing_run_persistence_preview"] is None
 
 
 def test_cx_persistence_gap_audit_counts_seeded_store_without_private_leak(
@@ -133,6 +142,19 @@ def test_cx_persistence_gap_audit_counts_seeded_store_without_private_leak(
     store.document_processing_runs["pipeline-001"] = {
         "document_id": document_id,
         "pipeline_run_id": "pipeline-001",
+        "status": "FAILED",
+        "steps": [
+            {
+                "step_id": "summary",
+                "status": "FAILED",
+                "output_ref": {"type": "cx.summary", "id": "summary-001"},
+                "error": {
+                    "error_code": "cx.summary_failed",
+                    "detail": "SECRET_ERROR_DETAIL",
+                    "retryable": False,
+                },
+            }
+        ],
     }
 
     audit = build_cx_persistence_gap_audit(
@@ -162,6 +184,13 @@ def test_cx_persistence_gap_audit_counts_seeded_store_without_private_leak(
     assert "SECRET_SOURCE_PAYLOAD" not in str(audit)
     assert "SECRET_CHUNK_PAYLOAD" not in str(audit)
     assert "SECRET_SUMMARY_PAYLOAD" not in str(audit)
+    assert "SECRET_ERROR_DETAIL" not in str(audit)
+    assert audit["latest_processing_run_persistence_preview"]["header"][
+        "pipeline_run_id"
+    ] == "pipeline-001"
+    assert audit["latest_processing_run_persistence_preview"]["steps"][0][
+        "error_code"
+    ] == "cx.summary_failed"
 
 
 def test_cx_persistence_gap_audit_records_deferred_schema_decisions() -> None:
@@ -179,7 +208,9 @@ def test_cx_persistence_gap_audit_records_deferred_schema_decisions() -> None:
         "cx_document_processing_runs",
         "cx_document_processing_steps",
     ]
-    assert "step_summary" in processing["minimum_persisted_metadata"]
+    assert processing["decision_status"] == "schema_ready_pending_migration"
+    assert "step_total" in processing["minimum_persisted_metadata"]
+    assert "steps[].error_detail_sha256" in processing["minimum_persisted_metadata"]
     assert lexical_header["decision_status"] == "header_table_deferred"
     assert chunk_embedding_header["decision_status"] == "header_table_deferred"
     assert len(CX_DEFERRED_SCHEMA_DECISIONS) == 3

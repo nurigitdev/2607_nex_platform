@@ -4,6 +4,12 @@ from collections.abc import Mapping
 from typing import Any
 
 from nex_cx.ingestion import ContentIngestionStore
+from nex_cx.processing_persistence import (
+    CX_DOCUMENT_PROCESSING_RUN_TABLE,
+    CX_DOCUMENT_PROCESSING_STEP_TABLE,
+    build_processing_run_persistence_decision,
+    build_processing_run_persistence_preview,
+)
 from nex_cx.retrieval_persistence import build_retrieval_runtime_persistence_decision
 
 
@@ -105,10 +111,16 @@ CX_CONTENT_PERSISTENCE_SURFACES: tuple[dict[str, Any], ...] = (
         "surface_id": "processing_runs",
         "owned_records": ["document_processing_run"],
         "current_boundary": "ContentIngestionStore",
-        "current_adapter_status": "memory_store_only",
-        "target_tables": [],
+        "current_adapter_status": "schema_ready_pending_migration",
+        "target_tables": [
+            CX_DOCUMENT_PROCESSING_RUN_TABLE,
+            CX_DOCUMENT_PROCESSING_STEP_TABLE,
+        ],
+        "target_table_status": "schema_ready_pending_migration",
         "postgres_adapter_required": True,
-        "private_payload_policy": "step_summary_only",
+        "private_payload_policy": (
+            "run_header_step_status_output_ref_hash_and_error_hash_only"
+        ),
         "observed_count_key": "processing_run_count",
     },
 )
@@ -156,23 +168,39 @@ CX_DEFERRED_SCHEMA_DECISIONS: tuple[dict[str, Any], ...] = (
     {
         "decision_id": "processing_runs",
         "surface_id": "processing_runs",
-        "decision_status": "schema_deferred_until_pipeline_runtime_stabilizes",
+        "decision_status": "schema_ready_pending_migration",
         "candidate_tables": [
-            "cx_document_processing_runs",
-            "cx_document_processing_steps",
+            CX_DOCUMENT_PROCESSING_RUN_TABLE,
+            CX_DOCUMENT_PROCESSING_STEP_TABLE,
         ],
         "minimum_persisted_metadata": [
             "pipeline_run_id",
+            "pipeline_schema_version",
             "document_id",
             "trace_id",
             "request_id",
             "status",
-            "step_summary",
+            "job_id",
+            "job_status",
+            "step_total",
+            "step_succeeded",
+            "step_skipped",
+            "step_failed",
+            "queued_at",
             "started_at",
             "completed_at",
+            "updated_at",
+            "steps[].step_order",
+            "steps[].step_id",
+            "steps[].status",
+            "steps[].output_ref_hash",
+            "steps[].error_code",
+            "steps[].error_detail_sha256",
         ],
-        "private_payload_policy": "step_summary_only",
-        "decision_trigger": "before durable CX pipeline replay or AG historical drilldown",
+        "private_payload_policy": (
+            "run_header_step_status_output_ref_hash_and_error_hash_only"
+        ),
+        "decision_trigger": "slice_0182_schema_migration",
     },
     {
         "decision_id": "lexical_index_header",
@@ -232,7 +260,8 @@ def build_cx_persistence_gap_audit(
             **surface,
             "observed_count": counts[surface["observed_count_key"]],
             "target_table_status": (
-                "migration_present" if surface["target_tables"] else "schema_deferred"
+                surface.get("target_table_status")
+                or ("migration_present" if surface["target_tables"] else "schema_deferred")
             ),
         }
         for surface in CX_CONTENT_PERSISTENCE_SURFACES
@@ -243,10 +272,16 @@ def build_cx_persistence_gap_audit(
     schema_deferred_count = sum(
         1 for surface in surfaces if surface["target_table_status"] == "schema_deferred"
     )
+    migration_pending_count = sum(
+        1
+        for surface in surfaces
+        if surface["target_table_status"] == "schema_ready_pending_migration"
+    )
+    latest_processing_run = _latest_processing_run(store)
     return {
         "audit_schema_version": CX_PERSISTENCE_GAP_AUDIT_SCHEMA_VERSION,
         "service_id": "nex-cx",
-        "checkpoint_slice": "0175",
+        "checkpoint_slice": "0181",
         "persistence_mode": mode,
         "store_type": type(store).__name__ if store is not None else None,
         "content_repository_type": (
@@ -257,9 +292,10 @@ def build_cx_persistence_gap_audit(
             "surface_count": len(surfaces),
             "postgres_adapter_gap_count": postgres_gap_count,
             "schema_deferred_count": schema_deferred_count,
+            "migration_pending_count": migration_pending_count,
             "deferred_schema_decision_count": len(CX_DEFERRED_SCHEMA_DECISIONS),
             "private_payload_boundary_count": len(CX_PRIVATE_PAYLOAD_BOUNDARIES),
-            "next_recommended_slice": "0176_ag_retrieval_package_operations_projection",
+            "next_recommended_slice": "0182_cx_processing_run_step_schema_migration",
         },
         "observed_store_counts": counts,
         "surfaces": surfaces,
@@ -271,6 +307,14 @@ def build_cx_persistence_gap_audit(
         ],
         "retrieval_runtime_persistence_decision": (
             build_retrieval_runtime_persistence_decision()
+        ),
+        "processing_run_persistence_decision": (
+            build_processing_run_persistence_decision()
+        ),
+        "latest_processing_run_persistence_preview": (
+            build_processing_run_persistence_preview(latest_processing_run)
+            if latest_processing_run is not None
+            else None
         ),
         "refactoring_checkpoints": [
             "Keep file IO and provider calls outside database transactions.",
@@ -331,6 +375,12 @@ def _observed_store_counts(store: ContentIngestionStore | None) -> dict[str, int
         "private_summary_embedding_vector_count": len(store.summary_embedding_vectors),
         "processing_run_count": len(store.document_processing_runs),
     }
+
+
+def _latest_processing_run(store: ContentIngestionStore | None) -> dict[str, Any] | None:
+    if store is None or not store.document_processing_runs:
+        return None
+    return next(reversed(store.document_processing_runs.values()))
 
 
 def _mapping_count(value: object) -> int:

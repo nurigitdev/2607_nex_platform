@@ -89,11 +89,12 @@ Internal persistence boundary:
   bounded previews, policy lineage, permission snapshot hash, scores, final
   score, and source summary; raw query text, raw evidence text, and raw query
   vectors stay outside durable public rows.
-- Processing run database schema remains deliberately deferred.
-  `build_cx_persistence_gap_audit()` exposes the remaining candidate table
-  names, minimum metadata, private payload policy, and decision trigger, plus
-  optional header-table decisions for zero-token lexical and zero-chunk
-  embedding index history.
+- Processing run database schema is decision-ready and pending migration.
+  `build_cx_persistence_gap_audit()` exposes the planned
+  `cx_document_processing_runs` / `cx_document_processing_steps` mapping,
+  minimum metadata, private payload policy, and latest safe persistence preview.
+  Optional header-table decisions for zero-token lexical and zero-chunk
+  embedding index history remain deferred.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`
