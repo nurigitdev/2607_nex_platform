@@ -85,6 +85,17 @@ class CxContentRepository(Protocol):
     ) -> dict[str, Any] | None:
         ...
 
+    def save_lexical_index(self, record: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+    def find_lexical_index(
+        self,
+        *,
+        chunk_set_id: str,
+        tokenizer_used: str,
+    ) -> dict[str, Any] | None:
+        ...
+
 
 @dataclass(frozen=True)
 class CxContentRepositoryError(Exception):
@@ -109,6 +120,7 @@ class InMemoryCxContentRepository:
     chunk_set_ids_by_unique_key: dict[tuple[str, str, str, str], str] = field(
         default_factory=dict
     )
+    lexical_indexes: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
 
     def save_source_file(self, record: dict[str, Any]) -> dict[str, Any]:
         existing_id = self.source_file_ids_by_sha256.get(record["source_sha256"])
@@ -234,6 +246,23 @@ class InMemoryCxContentRepository:
         if chunk_set_id is None:
             return None
         return self.chunk_sets[chunk_set_id]
+
+    def save_lexical_index(self, record: dict[str, Any]) -> dict[str, Any]:
+        key = _lexical_index_unique_key(record)
+        existing = self.lexical_indexes.get(key)
+        if existing is not None:
+            return existing
+        stored = deepcopy(record)
+        self.lexical_indexes[key] = stored
+        return stored
+
+    def find_lexical_index(
+        self,
+        *,
+        chunk_set_id: str,
+        tokenizer_used: str,
+    ) -> dict[str, Any] | None:
+        return self.lexical_indexes.get((chunk_set_id, tokenizer_used))
 
 
 class SqlAlchemyCxContentRepository:
@@ -439,6 +468,39 @@ class SqlAlchemyCxContentRepository:
         except SQLAlchemyError as exc:
             raise _content_repository_unavailable() from exc
 
+    def save_lexical_index(self, record: dict[str, Any]) -> dict[str, Any]:
+        record_to_store = deepcopy(record)
+        try:
+            return self._run_in_transaction(
+                lambda session: self._save_lexical_index(session, record_to_store)
+            )
+        except IntegrityError as exc:
+            existing = self.find_lexical_index(
+                chunk_set_id=str(record_to_store["chunk_set_id"]),
+                tokenizer_used=str(record_to_store["tokenizer_used"]),
+            )
+            if existing is not None:
+                return existing
+            raise _content_repository_unavailable() from exc
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def find_lexical_index(
+        self,
+        *,
+        chunk_set_id: str,
+        tokenizer_used: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_lexical_index(
+                    session,
+                    chunk_set_id=chunk_set_id,
+                    tokenizer_used=tokenizer_used,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
     def _run_in_transaction(self, operation: Any) -> Any:
         session = self._session_factory()
         try:
@@ -527,6 +589,28 @@ class SqlAlchemyCxContentRepository:
         self._insert_chunks(session, record)
         stored = self._select_chunk_set(session, str(record["chunk_set_id"]))
         assert stored is not None
+        return stored
+
+    def _save_lexical_index(
+        self,
+        session: Session,
+        record: dict[str, Any],
+    ) -> dict[str, Any]:
+        existing = self._select_lexical_index(
+            session,
+            chunk_set_id=str(record["chunk_set_id"]),
+            tokenizer_used=str(record["tokenizer_used"]),
+        )
+        if existing is not None:
+            return existing
+        self._insert_lexical_terms(session, record)
+        stored = self._select_lexical_index(
+            session,
+            chunk_set_id=str(record["chunk_set_id"]),
+            tokenizer_used=str(record["tokenizer_used"]),
+        )
+        if stored is None:
+            return deepcopy(record)
         return stored
 
     def _mark_source_file_checksum_verified(
@@ -751,6 +835,68 @@ class SqlAlchemyCxContentRepository:
         ).mappings().all()
         return [_chunk_from_row(row) for row in rows]
 
+    def _select_lexical_index(
+        self,
+        session: Session,
+        *,
+        chunk_set_id: str,
+        tokenizer_used: str,
+    ) -> dict[str, Any] | None:
+        rows = session.execute(
+            text(
+                f"""
+                SELECT {_LEXICAL_TERM_SELECT_COLUMNS}
+                FROM cx_lexical_terms
+                WHERE chunk_set_id = :chunk_set_id
+                  AND tokenizer_used = :tokenizer_used
+                ORDER BY term ASC
+                """
+            ),
+            {"chunk_set_id": chunk_set_id, "tokenizer_used": tokenizer_used},
+        ).mappings().all()
+        if not rows:
+            return None
+        terms = [
+            _lexical_term_from_row(
+                row,
+                self._select_lexical_postings(session, str(row["lexical_term_id"])),
+            )
+            for row in rows
+        ]
+        chunk_set = self._select_chunk_set(session, chunk_set_id)
+        chunk_count = chunk_set["chunk_count"] if chunk_set is not None else 0
+        first = terms[0]
+        return {
+            "lexical_index_schema_version": "cx_lexical_index.persistence.v1",
+            "chunk_set_id": chunk_set_id,
+            "tokenizer_requested": first["tokenizer_requested"],
+            "tokenizer_used": first["tokenizer_used"],
+            "tokenizer_fallback": first["tokenizer_fallback"],
+            "fallback_used": first["fallback_used"],
+            "chunk_count": chunk_count,
+            "unique_token_count": len(terms),
+            "terms": terms,
+            "created_at": first["created_at"],
+        }
+
+    def _select_lexical_postings(
+        self,
+        session: Session,
+        lexical_term_id: str,
+    ) -> list[dict[str, Any]]:
+        rows = session.execute(
+            text(
+                f"""
+                SELECT {_LEXICAL_POSTING_SELECT_COLUMNS}
+                FROM cx_lexical_postings
+                WHERE lexical_term_id = :lexical_term_id
+                ORDER BY chunk_id ASC
+                """
+            ),
+            {"lexical_term_id": lexical_term_id},
+        ).mappings().all()
+        return [_lexical_posting_from_row(row) for row in rows]
+
     def _insert_source_file(self, session: Session, record: dict[str, Any]) -> None:
         session.execute(
             text(
@@ -942,6 +1088,68 @@ class SqlAlchemyCxContentRepository:
                 """
             ),
             [_chunk_insert_params(record, chunk) for chunk in chunks],
+        )
+
+    def _insert_lexical_terms(self, session: Session, record: dict[str, Any]) -> None:
+        terms = record.get("terms", [])
+        if not terms:
+            return
+        session.execute(
+            text(
+                """
+                INSERT INTO cx_lexical_terms (
+                    lexical_term_id,
+                    chunk_set_id,
+                    tokenizer_requested,
+                    tokenizer_used,
+                    tokenizer_fallback,
+                    fallback_used,
+                    term,
+                    document_frequency,
+                    created_at
+                )
+                VALUES (
+                    :lexical_term_id,
+                    :chunk_set_id,
+                    :tokenizer_requested,
+                    :tokenizer_used,
+                    :tokenizer_fallback,
+                    :fallback_used,
+                    :term,
+                    :document_frequency,
+                    :created_at
+                )
+                """
+            ),
+            [_lexical_term_insert_params(record, term) for term in terms],
+        )
+        posting_params = [
+            _lexical_posting_insert_params(term, posting)
+            for term in terms
+            for posting in term["postings"]
+        ]
+        if not posting_params:
+            return
+        session.execute(
+            text(
+                """
+                INSERT INTO cx_lexical_postings (
+                    lexical_posting_id,
+                    lexical_term_id,
+                    chunk_id,
+                    occurrence_count,
+                    created_at
+                )
+                VALUES (
+                    :lexical_posting_id,
+                    :lexical_term_id,
+                    :chunk_id,
+                    :occurrence_count,
+                    :created_at
+                )
+                """
+            ),
+            posting_params,
         )
 
     def _insert_owner_acl_entry(self, session: Session, record: dict[str, Any]) -> None:
@@ -1154,6 +1362,65 @@ def build_chunk_set_record(
     }
 
 
+def build_lexical_index_record(
+    lexical_index: dict[str, Any],
+    *,
+    chunk_set_id: str,
+) -> dict[str, Any]:
+    created_at = lexical_index["created_at"]
+    tokenizer_used = str(lexical_index["tokenizer_used"])
+    terms = []
+    for posting in lexical_index["postings"]:
+        term_text = str(posting["term"])
+        lexical_term_id = str(
+            uuid5(
+                NAMESPACE_URL,
+                f"cx-lexical-term:{chunk_set_id}:{tokenizer_used}:{term_text}",
+            )
+        )
+        terms.append(
+            {
+                "lexical_term_id": lexical_term_id,
+                "chunk_set_id": chunk_set_id,
+                "tokenizer_requested": lexical_index["tokenizer_requested"],
+                "tokenizer_used": tokenizer_used,
+                "tokenizer_fallback": lexical_index["tokenizer_fallback"],
+                "fallback_used": lexical_index["fallback_used"],
+                "term": term_text,
+                "document_frequency": posting["document_frequency"],
+                "postings": [
+                    {
+                        "lexical_posting_id": str(
+                            uuid5(
+                                NAMESPACE_URL,
+                                "cx-lexical-posting:"
+                                f"{lexical_term_id}:{occurrence['chunk_id']}",
+                            )
+                        ),
+                        "lexical_term_id": lexical_term_id,
+                        "chunk_id": occurrence["chunk_id"],
+                        "occurrence_count": occurrence["count"],
+                        "created_at": created_at,
+                    }
+                    for occurrence in posting["occurrences"]
+                ],
+                "created_at": created_at,
+            }
+        )
+    return {
+        "lexical_index_schema_version": "cx_lexical_index.persistence.v1",
+        "chunk_set_id": chunk_set_id,
+        "tokenizer_requested": lexical_index["tokenizer_requested"],
+        "tokenizer_used": tokenizer_used,
+        "tokenizer_fallback": lexical_index["tokenizer_fallback"],
+        "fallback_used": lexical_index["fallback_used"],
+        "chunk_count": lexical_index["chunk_count"],
+        "unique_token_count": lexical_index["unique_token_count"],
+        "terms": terms,
+        "created_at": created_at,
+    }
+
+
 def markdown_storage_uri_from_path(extracted_markdown_path: str) -> str:
     path = Path(extracted_markdown_path)
     if len(path.parts) >= 2:
@@ -1235,6 +1502,26 @@ _CHUNK_SELECT_COLUMNS = """
     char_count,
     text_sha256,
     text_preview,
+    created_at
+"""
+
+_LEXICAL_TERM_SELECT_COLUMNS = """
+    lexical_term_id,
+    chunk_set_id,
+    tokenizer_requested,
+    tokenizer_used,
+    tokenizer_fallback,
+    fallback_used,
+    term,
+    document_frequency,
+    created_at
+"""
+
+_LEXICAL_POSTING_SELECT_COLUMNS = """
+    lexical_posting_id,
+    lexical_term_id,
+    chunk_id,
+    occurrence_count,
     created_at
 """
 
@@ -1327,6 +1614,36 @@ def _chunk_insert_params(
     }
 
 
+def _lexical_term_insert_params(
+    record: dict[str, Any],
+    term: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "lexical_term_id": term["lexical_term_id"],
+        "chunk_set_id": record["chunk_set_id"],
+        "tokenizer_requested": term["tokenizer_requested"],
+        "tokenizer_used": term["tokenizer_used"],
+        "tokenizer_fallback": term["tokenizer_fallback"],
+        "fallback_used": term["fallback_used"],
+        "term": term["term"],
+        "document_frequency": term["document_frequency"],
+        "created_at": term.get("created_at", record["created_at"]),
+    }
+
+
+def _lexical_posting_insert_params(
+    term: dict[str, Any],
+    posting: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "lexical_posting_id": posting["lexical_posting_id"],
+        "lexical_term_id": term["lexical_term_id"],
+        "chunk_id": posting["chunk_id"],
+        "occurrence_count": posting["occurrence_count"],
+        "created_at": posting.get("created_at", term["created_at"]),
+    }
+
+
 def _content_object_from_row(row: Any) -> dict[str, Any]:
     return {
         "content_object_id": str(row["content_object_id"]),
@@ -1399,6 +1716,34 @@ def _chunk_from_row(row: Any) -> dict[str, Any]:
     }
 
 
+def _lexical_term_from_row(
+    row: Any,
+    postings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "lexical_term_id": str(row["lexical_term_id"]),
+        "chunk_set_id": str(row["chunk_set_id"]),
+        "tokenizer_requested": row["tokenizer_requested"],
+        "tokenizer_used": row["tokenizer_used"],
+        "tokenizer_fallback": row["tokenizer_fallback"],
+        "fallback_used": _bool_from_database(row["fallback_used"]),
+        "term": row["term"],
+        "document_frequency": int(row["document_frequency"]),
+        "postings": postings,
+        "created_at": _timestamp_to_wire(row["created_at"]),
+    }
+
+
+def _lexical_posting_from_row(row: Any) -> dict[str, Any]:
+    return {
+        "lexical_posting_id": str(row["lexical_posting_id"]),
+        "lexical_term_id": str(row["lexical_term_id"]),
+        "chunk_id": str(row["chunk_id"]),
+        "occurrence_count": int(row["occurrence_count"]),
+        "created_at": _timestamp_to_wire(row["created_at"]),
+    }
+
+
 def _extraction_artifact_unique_key(record: dict[str, Any]) -> tuple[str, str, str, str]:
     return (
         str(record["content_object_id"]),
@@ -1415,6 +1760,10 @@ def _chunk_set_unique_key(record: dict[str, Any]) -> tuple[str, str, str, str]:
         str(record["chunk_policy_id"]),
         str(record["source_markdown_sha256"]),
     )
+
+
+def _lexical_index_unique_key(record: dict[str, Any]) -> tuple[str, str]:
+    return (str(record["chunk_set_id"]), str(record["tokenizer_used"]))
 
 
 def _owner_acl_entry_id(content_object_id: str, owner_user_id: str) -> str:
@@ -1461,6 +1810,16 @@ def _timestamp_to_wire_optional(value: Any) -> str | None:
     if value is None:
         return None
     return _timestamp_to_wire(value)
+
+
+def _bool_from_database(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return bool(value)
+    if isinstance(value, str):
+        return value.lower() in {"1", "t", "true", "yes"}
+    return bool(value)
 
 
 def _dialect_name(session: Session) -> str:

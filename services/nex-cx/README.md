@@ -66,6 +66,10 @@ Internal persistence boundary:
   hashes, counts, and short previews only.
 - Full chunk text remains in `ContentIngestionStore.chunk_texts` for mock-first
   testing and is not written to the public metadata tables.
+- Lexical index records now write through to `cx_lexical_terms` and
+  `cx_lexical_postings` when the repository supports it. Persisted rows store
+  tokenizer metadata, terms, document frequency, chunk references, and
+  occurrence counts only.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`

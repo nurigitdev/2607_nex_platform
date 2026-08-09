@@ -29,6 +29,7 @@ from nex_cx.repository import (
     InMemoryCxContentRepository,
     build_chunk_set_record,
     build_extraction_artifact_record,
+    build_lexical_index_record,
     build_content_object_record,
     build_source_file_record,
 )
@@ -232,21 +233,14 @@ class ContentIngestionStore:
 
     def _persist_chunk_set_metadata(self, chunk_set: dict[str, Any]) -> None:
         document_id = str(chunk_set["document_id"])
+        if "source_markdown_sha256" not in chunk_set:
+            return
         refs = self.document_content_refs.get(document_id)
-        extraction = self.extraction_results.get(document_id)
-        if refs is None or extraction is None:
-            return
-
-        extractor = extraction.get("extractor")
-        if not isinstance(extractor, dict):
-            return
-        artifact = self.content_repository.find_extraction_artifact(
-            content_object_id=refs["content_object_id"],
-            extractor_name=str(extractor["provider"]),
-            extractor_version=str(extractor["version"]),
+        artifact = self._find_extraction_artifact_for_markdown(
+            document_id,
             markdown_sha256=str(chunk_set["source_markdown_sha256"]),
         )
-        if artifact is None:
+        if refs is None or artifact is None:
             return
         self.content_repository.save_chunk_set(
             build_chunk_set_record(
@@ -274,10 +268,70 @@ class ContentIngestionStore:
 
     def save_lexical_index(self, lexical_index: dict[str, Any]) -> dict[str, Any]:
         self.lexical_indexes[lexical_index["document_id"]] = lexical_index
+        self._persist_lexical_index_metadata(lexical_index)
         return lexical_index
 
     def get_lexical_index(self, document_id: str) -> dict[str, Any] | None:
         return self.lexical_indexes.get(document_id)
+
+    def _persist_lexical_index_metadata(self, lexical_index: dict[str, Any]) -> None:
+        if "created_at" not in lexical_index or "tokenizer_requested" not in lexical_index:
+            return
+        persisted_chunk_set = self._find_persisted_chunk_set(
+            str(lexical_index["document_id"])
+        )
+        if persisted_chunk_set is None:
+            return
+        self.content_repository.save_lexical_index(
+            build_lexical_index_record(
+                lexical_index,
+                chunk_set_id=persisted_chunk_set["chunk_set_id"],
+            )
+        )
+
+    def _find_persisted_chunk_set(self, document_id: str) -> dict[str, Any] | None:
+        refs = self.document_content_refs.get(document_id)
+        public_chunk_set = self.chunk_sets.get(document_id)
+        if (
+            refs is None
+            or public_chunk_set is None
+            or "source_markdown_sha256" not in public_chunk_set
+            or "chunk_policy" not in public_chunk_set
+        ):
+            return None
+        artifact = self._find_extraction_artifact_for_markdown(
+            document_id,
+            markdown_sha256=str(public_chunk_set["source_markdown_sha256"]),
+        )
+        if artifact is None:
+            return None
+        return self.content_repository.find_chunk_set(
+            content_object_id=refs["content_object_id"],
+            extraction_artifact_id=artifact["extraction_artifact_id"],
+            chunk_policy_id=str(public_chunk_set["chunk_policy"]),
+            source_markdown_sha256=str(public_chunk_set["source_markdown_sha256"]),
+        )
+
+    def _find_extraction_artifact_for_markdown(
+        self,
+        document_id: str,
+        *,
+        markdown_sha256: str,
+    ) -> dict[str, Any] | None:
+        refs = self.document_content_refs.get(document_id)
+        extraction = self.extraction_results.get(document_id)
+        if refs is None or extraction is None:
+            return None
+
+        extractor = extraction.get("extractor")
+        if not isinstance(extractor, dict):
+            return None
+        return self.content_repository.find_extraction_artifact(
+            content_object_id=refs["content_object_id"],
+            extractor_name=str(extractor["provider"]),
+            extractor_version=str(extractor["version"]),
+            markdown_sha256=markdown_sha256,
+        )
 
     def save_retrieval_package(self, package: dict[str, Any]) -> dict[str, Any]:
         self.retrieval_packages[package["retrieval_package_id"]] = package

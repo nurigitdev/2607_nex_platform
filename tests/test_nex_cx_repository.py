@@ -27,6 +27,7 @@ from nex_cx.repository import (
     build_chunk_set_record,
     build_content_object_record,
     build_extraction_artifact_record,
+    build_lexical_index_record,
     build_source_file_record,
     markdown_storage_uri_from_path,
 )
@@ -211,6 +212,38 @@ def sqlite_content_repository(
                 """
             )
         )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_lexical_terms (
+                    lexical_term_id TEXT PRIMARY KEY,
+                    chunk_set_id TEXT NOT NULL REFERENCES cx_chunk_sets(chunk_set_id),
+                    tokenizer_requested TEXT NOT NULL,
+                    tokenizer_used TEXT NOT NULL,
+                    tokenizer_fallback TEXT NOT NULL,
+                    fallback_used BOOLEAN NOT NULL DEFAULT 0,
+                    term TEXT NOT NULL,
+                    document_frequency INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE (chunk_set_id, tokenizer_used, term)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_lexical_postings (
+                    lexical_posting_id TEXT PRIMARY KEY,
+                    lexical_term_id TEXT NOT NULL REFERENCES cx_lexical_terms(lexical_term_id),
+                    chunk_id TEXT NOT NULL REFERENCES cx_chunks(chunk_id),
+                    occurrence_count INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE (lexical_term_id, chunk_id)
+                )
+                """
+            )
+        )
     return (
         SqlAlchemyCxContentRepository(
             build_session_factory(engine),
@@ -269,6 +302,47 @@ def chunk_set_payload(
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     )
+
+
+def lexical_index_payload(chunk_set: dict[str, object]) -> dict[str, object]:
+    chunk = chunk_set["chunks"][0]
+    return {
+        "lexical_index_schema_version": "cx_lexical_index.v1",
+        "document_id": chunk_set.get("document_id", chunk_set.get("content_object_id")),
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "tokenizer_requested": "mecab_ko",
+        "tokenizer_used": "korean_mixed_v1",
+        "tokenizer_fallback": "korean_mixed_v1",
+        "fallback_used": True,
+        "tokenizer_profile": {
+            "bm25_tokenizer_requested": "mecab_ko",
+            "bm25_tokenizer": "korean_mixed_v1",
+            "bm25_tokenizer_fallback": "korean_mixed_v1",
+            "fallback_used": True,
+            "query_tokenizer_policy": "match_index_tokenizer_with_fallback",
+            "dictionary_profile": "none_regex_korean_mixed_v1",
+            "dictionary_path_env": None,
+            "dictionary_path_configured": False,
+        },
+        "chunk_count": chunk_set["chunk_count"],
+        "unique_token_count": 1,
+        "postings": [
+            {
+                "term": "trace",
+                "document_frequency": 1,
+                "occurrences": [
+                    {
+                        "chunk_id": chunk["chunk_id"],
+                        "ordinal": chunk["ordinal"],
+                        "count": 2,
+                    }
+                ],
+            }
+        ],
+        "created_at": chunk_set["created_at"],
+        "updated_at": chunk_set.get("updated_at", chunk_set["created_at"]),
+    }
 
 
 def test_build_source_file_record_maps_storage_metadata_without_raw_text(
@@ -352,6 +426,29 @@ def test_build_chunk_set_record_maps_metadata_without_private_chunk_text(
     assert record["chunk_count"] == len(record["chunks"])
     assert record["chunks"][0]["chunk_set_id"] == record["chunk_set_id"]
     assert record["chunks"][0]["content_object_id"] == upload["document_id"]
+    assert "SECRET_PRIVATE_CHUNK_SUFFIX" not in str(record)
+
+
+def test_build_lexical_index_record_maps_terms_without_chunk_text(
+    tmp_path: Path,
+) -> None:
+    upload = upload_registration(tmp_path)
+    chunk_set = chunk_set_payload(tmp_path, upload)
+    lexical_index = lexical_index_payload(chunk_set)
+
+    record = build_lexical_index_record(
+        lexical_index,
+        chunk_set_id="66666666-6666-4666-8666-666666666666",
+    )
+
+    term = record["terms"][0]
+    posting = term["postings"][0]
+    assert record["tokenizer_used"] == "korean_mixed_v1"
+    assert record["unique_token_count"] == 1
+    assert term["term"] == "trace"
+    assert term["document_frequency"] == 1
+    assert posting["chunk_id"] == chunk_set["chunks"][0]["chunk_id"]
+    assert posting["occurrence_count"] == 2
     assert "SECRET_PRIVATE_CHUNK_SUFFIX" not in str(record)
 
 
@@ -464,6 +561,38 @@ def test_in_memory_repository_saves_chunk_sets_idempotently(tmp_path: Path) -> N
         extraction_artifact_id=record["extraction_artifact_id"],
         chunk_policy_id="other",
         source_markdown_sha256=record["source_markdown_sha256"],
+    ) is None
+
+
+def test_in_memory_repository_saves_lexical_indexes_idempotently(
+    tmp_path: Path,
+) -> None:
+    repository = InMemoryCxContentRepository()
+    upload = upload_registration(tmp_path)
+    chunk_set = chunk_set_payload(tmp_path, upload)
+    record = build_lexical_index_record(
+        lexical_index_payload(chunk_set),
+        chunk_set_id="66666666-6666-4666-8666-666666666666",
+    )
+    duplicate = {
+        **record,
+        "terms": [
+            {
+                **record["terms"][0],
+                "lexical_term_id": "77777777-7777-4777-8777-777777777777",
+            }
+        ],
+    }
+
+    assert repository.save_lexical_index(record) == record
+    assert repository.save_lexical_index(duplicate) == record
+    assert repository.find_lexical_index(
+        chunk_set_id=record["chunk_set_id"],
+        tokenizer_used=record["tokenizer_used"],
+    ) == record
+    assert repository.find_lexical_index(
+        chunk_set_id=record["chunk_set_id"],
+        tokenizer_used="other",
     ) is None
 
 
@@ -732,6 +861,133 @@ def test_sqlalchemy_repository_saves_and_finds_chunk_set_metadata(
     )
 
 
+def test_sqlalchemy_repository_saves_and_finds_lexical_index_metadata(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    upload = upload_registration(tmp_path)
+    source_file = repository.save_source_file(build_source_file_record(upload))
+    content = repository.save_content_object(
+        build_content_object_record(
+            upload,
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    artifact = repository.save_extraction_artifact(
+        build_extraction_artifact_record(
+            extraction_result(tmp_path, upload),
+            content_object_id=content["content_object_id"],
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    chunk_set = repository.save_chunk_set(
+        build_chunk_set_record(
+            chunk_set_payload(tmp_path, upload),
+            content_object_id=content["content_object_id"],
+            extraction_artifact_id=artifact["extraction_artifact_id"],
+        )
+    )
+    record = build_lexical_index_record(
+        lexical_index_payload(chunk_set),
+        chunk_set_id=chunk_set["chunk_set_id"],
+    )
+    duplicate = {
+        **record,
+        "terms": [
+            {
+                **record["terms"][0],
+                "lexical_term_id": "77777777-7777-4777-8777-777777777777",
+            }
+        ],
+    }
+
+    saved = repository.save_lexical_index(record)
+
+    assert saved == record
+    assert repository.save_lexical_index(duplicate) == record
+    assert repository.find_lexical_index(
+        chunk_set_id=record["chunk_set_id"],
+        tokenizer_used=record["tokenizer_used"],
+    ) == record
+    assert repository.find_lexical_index(
+        chunk_set_id=record["chunk_set_id"],
+        tokenizer_used="other",
+    ) is None
+    assert _sqlite_table_count(engine, "cx_lexical_terms") == 1
+    assert _sqlite_table_count(engine, "cx_lexical_postings") == 1
+    assert "SECRET_PRIVATE_CHUNK_SUFFIX" not in _sqlite_table_dump(
+        engine,
+        ["cx_lexical_terms", "cx_lexical_postings"],
+    )
+
+
+def test_sqlalchemy_repository_keeps_empty_lexical_index_at_boundary(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    record = {
+        "lexical_index_schema_version": "cx_lexical_index.persistence.v1",
+        "chunk_set_id": "66666666-6666-4666-8666-666666666666",
+        "tokenizer_requested": "mecab_ko",
+        "tokenizer_used": "korean_mixed_v1",
+        "tokenizer_fallback": "korean_mixed_v1",
+        "fallback_used": True,
+        "chunk_count": 0,
+        "unique_token_count": 0,
+        "terms": [],
+        "created_at": "2026-08-09T00:00:00Z",
+    }
+
+    saved = repository.save_lexical_index(record)
+
+    assert saved == record
+    assert repository.find_lexical_index(
+        chunk_set_id=record["chunk_set_id"],
+        tokenizer_used=record["tokenizer_used"],
+    ) is None
+    assert _sqlite_table_count(engine, "cx_lexical_terms") == 0
+    assert _sqlite_table_count(engine, "cx_lexical_postings") == 0
+
+
+def test_sqlalchemy_repository_saves_lexical_term_without_postings(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    record = {
+        "lexical_index_schema_version": "cx_lexical_index.persistence.v1",
+        "chunk_set_id": "66666666-6666-4666-8666-666666666666",
+        "tokenizer_requested": "mecab_ko",
+        "tokenizer_used": "korean_mixed_v1",
+        "tokenizer_fallback": "korean_mixed_v1",
+        "fallback_used": True,
+        "chunk_count": 0,
+        "unique_token_count": 1,
+        "terms": [
+            {
+                "lexical_term_id": "77777777-7777-4777-8777-777777777777",
+                "chunk_set_id": "66666666-6666-4666-8666-666666666666",
+                "tokenizer_requested": "mecab_ko",
+                "tokenizer_used": "korean_mixed_v1",
+                "tokenizer_fallback": "korean_mixed_v1",
+                "fallback_used": True,
+                "term": "trace",
+                "document_frequency": 0,
+                "postings": [],
+                "created_at": "2026-08-09T00:00:00Z",
+            }
+        ],
+        "created_at": "2026-08-09T00:00:00Z",
+    }
+
+    saved = repository.save_lexical_index(record)
+
+    assert saved == record
+    assert _sqlite_table_count(engine, "cx_lexical_terms") == 1
+    assert _sqlite_table_count(engine, "cx_lexical_postings") == 0
+
+
 def test_sqlalchemy_repository_saves_empty_chunk_set_without_chunk_rows(
     tmp_path: Path,
 ) -> None:
@@ -882,6 +1138,37 @@ def test_sqlalchemy_repository_wraps_database_errors(tmp_path: Path) -> None:
             chunk_policy_id="chunk_1000_100",
             source_markdown_sha256="0" * 64,
         ),
+        lambda repository: repository.save_lexical_index(
+            {
+                "lexical_index_schema_version": "cx_lexical_index.persistence.v1",
+                "chunk_set_id": "66666666-6666-4666-8666-666666666666",
+                "tokenizer_requested": "mecab_ko",
+                "tokenizer_used": "korean_mixed_v1",
+                "tokenizer_fallback": "korean_mixed_v1",
+                "fallback_used": True,
+                "chunk_count": 0,
+                "unique_token_count": 0,
+                "terms": [
+                    {
+                        "lexical_term_id": "77777777-7777-4777-8777-777777777777",
+                        "chunk_set_id": "66666666-6666-4666-8666-666666666666",
+                        "tokenizer_requested": "mecab_ko",
+                        "tokenizer_used": "korean_mixed_v1",
+                        "tokenizer_fallback": "korean_mixed_v1",
+                        "fallback_used": True,
+                        "term": "trace",
+                        "document_frequency": 1,
+                        "postings": [],
+                        "created_at": "2026-08-09T00:00:00Z",
+                    }
+                ],
+                "created_at": "2026-08-09T00:00:00Z",
+            }
+        ),
+        lambda repository: repository.find_lexical_index(
+            chunk_set_id="66666666-6666-4666-8666-666666666666",
+            tokenizer_used="korean_mixed_v1",
+        ),
     ],
 )
 def test_sqlalchemy_repository_wraps_missing_table_errors(
@@ -924,6 +1211,14 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
         def _save_chunk_set(self, session: Any, record: dict[str, Any]) -> dict[str, Any]:
             raise IntegrityError("insert chunk set", {}, Exception("race"))
 
+    class RaceyLexicalRepository(SqlAlchemyCxContentRepository):
+        def _save_lexical_index(
+            self,
+            session: Any,
+            record: dict[str, Any],
+        ) -> dict[str, Any]:
+            raise IntegrityError("insert lexical", {}, Exception("race"))
+
     repository, engine = sqlite_content_repository(tmp_path)
     upload = upload_registration(tmp_path)
     source_file_record = build_source_file_record(upload)
@@ -958,11 +1253,19 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
     racey_content = RaceyContentRepository(build_session_factory(engine))
     racey_extraction = RaceyExtractionRepository(build_session_factory(engine))
     racey_chunk_set = RaceyChunkSetRepository(build_session_factory(engine))
+    racey_lexical = RaceyLexicalRepository(build_session_factory(engine))
+    lexical = repository.save_lexical_index(
+        build_lexical_index_record(
+            lexical_index_payload(chunk_set),
+            chunk_set_id=chunk_set["chunk_set_id"],
+        )
+    )
 
     assert racey_source.save_source_file(source_file_record) == source_file
     assert racey_content.save_content_object(content) == content
     assert racey_extraction.save_extraction_artifact(artifact) == artifact
     assert racey_chunk_set.save_chunk_set(chunk_set) == chunk_set
+    assert racey_lexical.save_lexical_index(lexical) == lexical
 
 
 def test_sqlalchemy_repository_extraction_integrity_without_existing_row_wraps(
@@ -1067,6 +1370,39 @@ def test_sqlalchemy_repository_chunk_set_integrity_without_existing_row_wraps(
     assert exc_info.value.error_code == "cx_content.repository_unavailable"
 
 
+def test_sqlalchemy_repository_lexical_integrity_without_existing_row_wraps(
+    tmp_path: Path,
+) -> None:
+    class RaceyLexicalRepository(SqlAlchemyCxContentRepository):
+        def _save_lexical_index(
+            self,
+            session: Any,
+            record: dict[str, Any],
+        ) -> dict[str, Any]:
+            raise IntegrityError("insert lexical", {}, Exception("race"))
+
+    _, engine = sqlite_content_repository(tmp_path)
+    repository = RaceyLexicalRepository(build_session_factory(engine))
+
+    with pytest.raises(CxContentRepositoryError) as exc_info:
+        repository.save_lexical_index(
+            {
+                "lexical_index_schema_version": "cx_lexical_index.persistence.v1",
+                "chunk_set_id": "66666666-6666-4666-8666-666666666666",
+                "tokenizer_requested": "mecab_ko",
+                "tokenizer_used": "korean_mixed_v1",
+                "tokenizer_fallback": "korean_mixed_v1",
+                "fallback_used": True,
+                "chunk_count": 0,
+                "unique_token_count": 0,
+                "terms": [],
+                "created_at": "2026-08-09T00:00:00Z",
+            }
+        )
+
+    assert exc_info.value.error_code == "cx_content.repository_unavailable"
+
+
 def test_repository_json_and_timestamp_helpers_cover_database_type_variants() -> None:
     assert cx_repository._json_loads(None, default={"empty": True}) == {"empty": True}
     assert cx_repository._json_loads({"a": 1}, default={}) == {"a": 1}
@@ -1080,6 +1416,11 @@ def test_repository_json_and_timestamp_helpers_cover_database_type_variants() ->
     assert cx_repository._timestamp_to_wire(
         datetime.fromisoformat("2026-08-09T00:00:00")
     ) == "2026-08-09T00:00:00Z"
+    assert cx_repository._bool_from_database(True) is True
+    assert cx_repository._bool_from_database(0) is False
+    assert cx_repository._bool_from_database("yes") is True
+    assert cx_repository._bool_from_database("no") is False
+    assert cx_repository._bool_from_database(None) is False
     postgres_session = SimpleNamespace(
         get_bind=lambda: SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
     )
@@ -1316,6 +1657,77 @@ def test_content_ingestion_store_with_sqlalchemy_repository_persists_chunk_set_m
     )
 
 
+def test_content_ingestion_store_with_sqlalchemy_repository_persists_lexical_index(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    store = ContentIngestionStore(content_repository=repository)
+    source_text = "trace trace SECRET_LEXICAL_PRIVATE_TEXT"
+    document = upload_registration(
+        tmp_path,
+        content_text=source_text,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    store.save_upload_registration(
+        document,
+        source_text=source_text,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    result = run_text_extraction_job(
+        document["extraction"]["job_id"],
+        store=store,
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    public_chunk_set = store_chunk_set(
+        document_id=str(document["document_id"]),
+        extraction=result,
+        markdown_text=Path(result["extracted_markdown_path"]).read_text(
+            encoding="utf-8"
+        ),
+        store=store,
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    lexical_index = lexical_index_payload(public_chunk_set)
+
+    saved = store.save_lexical_index(lexical_index)
+
+    refs = store.get_content_ref(str(document["document_id"]))
+    assert refs is not None
+    artifact = repository.find_extraction_artifact(
+        content_object_id=refs["content_object_id"],
+        extractor_name=result["extractor"]["provider"],
+        extractor_version=result["extractor"]["version"],
+        markdown_sha256=result["extracted_markdown_sha256"],
+    )
+    assert artifact is not None
+    persisted_chunk_set = repository.find_chunk_set(
+        content_object_id=refs["content_object_id"],
+        extraction_artifact_id=artifact["extraction_artifact_id"],
+        chunk_policy_id=public_chunk_set["chunk_policy"],
+        source_markdown_sha256=public_chunk_set["source_markdown_sha256"],
+    )
+    assert persisted_chunk_set is not None
+    persisted = repository.find_lexical_index(
+        chunk_set_id=persisted_chunk_set["chunk_set_id"],
+        tokenizer_used=saved["tokenizer_used"],
+    )
+    assert persisted is not None
+    assert persisted["unique_token_count"] == 1
+    assert persisted["terms"][0]["postings"][0]["occurrence_count"] == 2
+    assert _sqlite_table_count(engine, "cx_lexical_terms") == 1
+    assert _sqlite_table_count(engine, "cx_lexical_postings") == 1
+    assert "SECRET_LEXICAL_PRIVATE_TEXT" not in _sqlite_table_dump(
+        engine,
+        ["cx_lexical_terms", "cx_lexical_postings"],
+    )
+
+
 def test_content_ingestion_store_saves_extraction_result_without_content_refs(
     tmp_path: Path,
 ) -> None:
@@ -1389,6 +1801,57 @@ def test_content_ingestion_store_skips_chunk_metadata_without_artifact(
     )
 
     assert store.content_repository.chunk_sets == {}
+
+
+def test_content_ingestion_store_skips_lexical_metadata_without_persisted_chunk_set(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    document = upload_registration(tmp_path, content_text="source text")
+    store.save_upload_registration(document, source_text="source text")
+    document_id = str(document["document_id"])
+    store.chunk_sets[document_id] = {
+        "document_id": document_id,
+        "chunk_policy": "chunk_1000_100",
+        "chunk_count": 1,
+        "chunks": [{"chunk_id": "chunk-001", "ordinal": 0}],
+    }
+    lexical_index = {
+        "lexical_index_schema_version": "cx_lexical_index.v1",
+        "document_id": document_id,
+        "tokenizer_requested": "mecab_ko",
+        "tokenizer_used": "korean_mixed_v1",
+        "tokenizer_fallback": "korean_mixed_v1",
+        "fallback_used": True,
+        "chunk_count": 1,
+        "unique_token_count": 0,
+        "postings": [],
+        "created_at": "2026-08-09T00:00:00Z",
+        "updated_at": "2026-08-09T00:00:00Z",
+    }
+
+    saved = store.save_lexical_index(lexical_index)
+
+    assert saved == lexical_index
+    assert store.content_repository.lexical_indexes == {}
+
+
+def test_content_ingestion_store_skips_lexical_metadata_without_artifact(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    document = upload_registration(tmp_path, content_text="source text")
+    store.save_upload_registration(document, source_text="source text")
+    document_id = str(document["document_id"])
+    store.extraction_results[document_id] = extraction_result(tmp_path, document)
+    chunk_set = chunk_set_payload(tmp_path, document, markdown_text="source text")
+    store.chunk_sets[document_id] = chunk_set
+    lexical_index = lexical_index_payload(chunk_set)
+
+    saved = store.save_lexical_index(lexical_index)
+
+    assert saved == lexical_index
+    assert store.content_repository.lexical_indexes == {}
 
 
 def _sqlite_table_count(engine: object, table_name: str) -> int:

@@ -55,10 +55,10 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
     assert audit["content_repository_type"] is None
     assert audit["summary"] == {
         "surface_count": 10,
-        "postgres_adapter_gap_count": 6,
+        "postgres_adapter_gap_count": 5,
         "schema_deferred_count": 2,
         "private_payload_boundary_count": 6,
-        "next_recommended_slice": "0166_sqlalchemy_cx_lexical_index_repository",
+        "next_recommended_slice": "0167_sqlalchemy_cx_chunk_embedding_repository",
     }
     assert all(count == 0 for count in audit["observed_store_counts"].values())
     assert {
@@ -75,6 +75,7 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
         "chunks",
         "content_objects",
         "extraction_artifacts",
+        "lexical_index",
         "source_files",
     }
     assert all(
