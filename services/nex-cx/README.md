@@ -46,6 +46,11 @@ Internal persistence boundary:
   system prompt and prompt render events for summary jobs.
 - The current adapter is in-memory for mock-first testing; PostgreSQL
   write-through is added after migration execution is stable.
+- `nex_cx.persistence_audit.build_cx_persistence_gap_audit()` emits the
+  `cx_persistence_gap_audit.v1` checkpoint. It records current memory-only
+  surfaces, target migration tables, and private payload boundaries without
+  exposing raw source text, chunk text, summary text, provider endpoints, or
+  vectors.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`
