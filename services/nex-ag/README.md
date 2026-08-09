@@ -22,6 +22,7 @@ Current endpoints:
 - `GET /admin/v1/operations/events/{event_id}`
 - `GET /admin/v1/operations/jobs`
 - `GET /admin/v1/operations/jobs/{service_id}/{job_id}`
+- `GET /admin/v1/operations/retrieval-packages`
 - `POST /admin/v1/operations/jobs/{service_id}/{job_id}/cancel`
 - `POST /admin/v1/operations/jobs/{service_id}/{job_id}/retry`
 - `GET /admin/v1/operations/sources`
@@ -143,6 +144,11 @@ Unified operations:
   `ag_operations_issue_candidate_projection.v1`, applying deterministic
   read-only rules to operations dashboard signals. Notification delivery,
   acknowledgements, and incident mutation are intentionally deferred.
+- `GET /admin/v1/operations/retrieval-packages` returns
+  `ag_retrieval_package_operations_projection.v1`, a CX-sourced read-only
+  projection of persisted retrieval packages for debugging grounded retrieval
+  status, policy use, trace/request correlation, and low-confidence/no-answer
+  outcomes without exposing raw source text or vector payloads.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family and is included in `scripts/quality/run_quality_gate.sh`.
 - Operations query pagination uses a non-negative integer `cursor` offset,
