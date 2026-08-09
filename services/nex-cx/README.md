@@ -74,6 +74,10 @@ Internal persistence boundary:
   the repository supports it. Persisted rows store provider/model lineage,
   vector dimension, embedding hash, optional storage URI, status, and trace
   metadata only. Raw vectors remain in the private embedding vector boundary.
+- Document summary records now write through to `cx_document_summaries` when the
+  repository supports it. Persisted rows store summary hashes, storage URI,
+  limits, status, prompt/model lineage, and trace metadata only; full summary
+  text remains in the private summary text boundary.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`

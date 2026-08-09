@@ -31,6 +31,7 @@ from nex_cx.repository import (
     build_chunk_set_record,
     build_extraction_artifact_record,
     build_lexical_index_record,
+    build_document_summary_persistence_record,
     build_content_object_record,
     build_source_file_record,
 )
@@ -376,6 +377,7 @@ class ContentIngestionStore:
     ) -> dict[str, Any]:
         self.document_summaries[record["document_id"]] = record
         self.summary_texts[record["document_summary_id"]] = summary_text
+        self._persist_document_summary_metadata(record)
         return record
 
     def get_document_summary(self, document_id: str) -> dict[str, Any] | None:
@@ -383,6 +385,37 @@ class ContentIngestionStore:
 
     def get_summary_text(self, document_summary_id: str) -> str | None:
         return self.summary_texts.get(document_summary_id)
+
+    def _persist_document_summary_metadata(self, record: dict[str, Any]) -> None:
+        required_keys = {
+            "created_at",
+            "document_summary_id",
+            "source_markdown_sha256",
+            "summary_char_count",
+            "summary_chunk_policy_id",
+            "summary_hard_limit_chars",
+            "summary_max_chars",
+            "summary_storage_uri",
+            "summary_text_sha256",
+            "updated_at",
+        }
+        if not required_keys.issubset(record):
+            return
+        document_id = str(record["document_id"])
+        refs = self.document_content_refs.get(document_id)
+        artifact = self._find_extraction_artifact_for_markdown(
+            document_id,
+            markdown_sha256=str(record["source_markdown_sha256"]),
+        )
+        if refs is None or artifact is None:
+            return
+        self.content_repository.save_document_summary_record(
+            build_document_summary_persistence_record(
+                record,
+                content_object_id=refs["content_object_id"],
+                extraction_artifact_id=artifact["extraction_artifact_id"],
+            )
+        )
 
     def save_summary_embedding_index(
         self,

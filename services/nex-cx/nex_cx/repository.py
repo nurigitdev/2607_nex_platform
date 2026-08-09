@@ -108,6 +108,24 @@ class CxContentRepository(Protocol):
     ) -> dict[str, Any] | None:
         ...
 
+    def save_document_summary_record(self, record: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+    def get_document_summary_record(
+        self,
+        document_summary_id: str,
+    ) -> dict[str, Any] | None:
+        ...
+
+    def find_document_summary_record(
+        self,
+        *,
+        content_object_id: str,
+        extraction_artifact_id: str,
+        summary_text_sha256: str,
+    ) -> dict[str, Any] | None:
+        ...
+
 
 @dataclass(frozen=True)
 class CxContentRepositoryError(Exception):
@@ -134,6 +152,10 @@ class InMemoryCxContentRepository:
     )
     lexical_indexes: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
     chunk_embedding_indexes: dict[tuple[str, str, str], dict[str, Any]] = field(
+        default_factory=dict
+    )
+    document_summary_records: dict[str, dict[str, Any]] = field(default_factory=dict)
+    document_summary_ids_by_unique_key: dict[tuple[str, str, str], str] = field(
         default_factory=dict
     )
 
@@ -298,6 +320,36 @@ class InMemoryCxContentRepository:
         return self.chunk_embedding_indexes.get(
             (chunk_set_id, model_profile_id, model_revision)
         )
+
+    def save_document_summary_record(self, record: dict[str, Any]) -> dict[str, Any]:
+        key = _document_summary_unique_key(record)
+        existing_id = self.document_summary_ids_by_unique_key.get(key)
+        if existing_id is not None:
+            return self.document_summary_records[existing_id]
+        stored = deepcopy(record)
+        self.document_summary_records[stored["document_summary_id"]] = stored
+        self.document_summary_ids_by_unique_key[key] = stored["document_summary_id"]
+        return stored
+
+    def get_document_summary_record(
+        self,
+        document_summary_id: str,
+    ) -> dict[str, Any] | None:
+        return self.document_summary_records.get(document_summary_id)
+
+    def find_document_summary_record(
+        self,
+        *,
+        content_object_id: str,
+        extraction_artifact_id: str,
+        summary_text_sha256: str,
+    ) -> dict[str, Any] | None:
+        document_summary_id = self.document_summary_ids_by_unique_key.get(
+            (content_object_id, extraction_artifact_id, summary_text_sha256)
+        )
+        if document_summary_id is None:
+            return None
+        return self.document_summary_records[document_summary_id]
 
 
 class SqlAlchemyCxContentRepository:
@@ -575,6 +627,58 @@ class SqlAlchemyCxContentRepository:
         except SQLAlchemyError as exc:
             raise _content_repository_unavailable() from exc
 
+    def save_document_summary_record(self, record: dict[str, Any]) -> dict[str, Any]:
+        record_to_store = deepcopy(record)
+        try:
+            return self._run_in_transaction(
+                lambda session: self._save_document_summary_record(
+                    session,
+                    record_to_store,
+                )
+            )
+        except IntegrityError as exc:
+            existing = self.find_document_summary_record(
+                content_object_id=str(record_to_store["content_object_id"]),
+                extraction_artifact_id=str(record_to_store["extraction_artifact_id"]),
+                summary_text_sha256=str(record_to_store["summary_text_sha256"]),
+            )
+            if existing is not None:
+                return existing
+            raise _content_repository_unavailable() from exc
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def get_document_summary_record(
+        self,
+        document_summary_id: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_document_summary_record(
+                    session,
+                    document_summary_id,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def find_document_summary_record(
+        self,
+        *,
+        content_object_id: str,
+        extraction_artifact_id: str,
+        summary_text_sha256: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_document_summary_record_by_unique_key(
+                    session,
+                    content_object_id=content_object_id,
+                    extraction_artifact_id=extraction_artifact_id,
+                    summary_text_sha256=summary_text_sha256,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
     def _run_in_transaction(self, operation: Any) -> Any:
         session = self._session_factory()
         try:
@@ -709,6 +813,27 @@ class SqlAlchemyCxContentRepository:
         )
         if stored is None:
             return deepcopy(record)
+        return stored
+
+    def _save_document_summary_record(
+        self,
+        session: Session,
+        record: dict[str, Any],
+    ) -> dict[str, Any]:
+        existing = self._select_document_summary_record_by_unique_key(
+            session,
+            content_object_id=str(record["content_object_id"]),
+            extraction_artifact_id=str(record["extraction_artifact_id"]),
+            summary_text_sha256=str(record["summary_text_sha256"]),
+        )
+        if existing is not None:
+            return existing
+        self._insert_document_summary_record(session, record)
+        stored = self._select_document_summary_record(
+            session,
+            str(record["document_summary_id"]),
+        )
+        assert stored is not None
         return stored
 
     def _mark_source_file_checksum_verified(
@@ -1039,6 +1164,49 @@ class SqlAlchemyCxContentRepository:
             "created_at": first["created_at"],
         }
 
+    def _select_document_summary_record(
+        self,
+        session: Session,
+        document_summary_id: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_DOCUMENT_SUMMARY_SELECT_COLUMNS}
+                FROM cx_document_summaries
+                WHERE document_summary_id = :document_summary_id
+                """
+            ),
+            {"document_summary_id": document_summary_id},
+        ).mappings().first()
+        return _document_summary_from_row(row) if row is not None else None
+
+    def _select_document_summary_record_by_unique_key(
+        self,
+        session: Session,
+        *,
+        content_object_id: str,
+        extraction_artifact_id: str,
+        summary_text_sha256: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_DOCUMENT_SUMMARY_SELECT_COLUMNS}
+                FROM cx_document_summaries
+                WHERE content_object_id = :content_object_id
+                  AND extraction_artifact_id = :extraction_artifact_id
+                  AND summary_text_sha256 = :summary_text_sha256
+                """
+            ),
+            {
+                "content_object_id": content_object_id,
+                "extraction_artifact_id": extraction_artifact_id,
+                "summary_text_sha256": summary_text_sha256,
+            },
+        ).mappings().first()
+        return _document_summary_from_row(row) if row is not None else None
+
     def _insert_source_file(self, session: Session, record: dict[str, Any]) -> None:
         session.execute(
             text(
@@ -1332,6 +1500,57 @@ class SqlAlchemyCxContentRepository:
                 """
             ),
             [_chunk_embedding_insert_params(record, item) for item in embeddings],
+        )
+
+    def _insert_document_summary_record(
+        self,
+        session: Session,
+        record: dict[str, Any],
+    ) -> None:
+        session.execute(
+            text(
+                """
+                INSERT INTO cx_document_summaries (
+                    document_summary_id,
+                    content_object_id,
+                    extraction_artifact_id,
+                    prompt_template_version_id,
+                    summary_chunk_policy_id,
+                    summary_text_sha256,
+                    summary_storage_uri,
+                    summary_char_count,
+                    summary_max_chars,
+                    summary_hard_limit_chars,
+                    status,
+                    language_code,
+                    model_profile_id,
+                    model_revision,
+                    created_trace_id,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    :document_summary_id,
+                    :content_object_id,
+                    :extraction_artifact_id,
+                    :prompt_template_version_id,
+                    :summary_chunk_policy_id,
+                    :summary_text_sha256,
+                    :summary_storage_uri,
+                    :summary_char_count,
+                    :summary_max_chars,
+                    :summary_hard_limit_chars,
+                    :status,
+                    :language_code,
+                    :model_profile_id,
+                    :model_revision,
+                    :created_trace_id,
+                    :created_at,
+                    :updated_at
+                )
+                """
+            ),
+            _document_summary_insert_params(record),
         )
 
     def _insert_owner_acl_entry(self, session: Session, record: dict[str, Any]) -> None:
@@ -1650,6 +1869,37 @@ def build_chunk_embedding_index_record(
     }
 
 
+def build_document_summary_persistence_record(
+    summary: dict[str, Any],
+    *,
+    content_object_id: str,
+    extraction_artifact_id: str,
+) -> dict[str, Any]:
+    summarizer = summary.get("summarizer")
+    if not isinstance(summarizer, dict):
+        summarizer = {}
+    return {
+        "document_summary_schema_version": "cx_document_summary.persistence.v1",
+        "document_summary_id": summary["document_summary_id"],
+        "content_object_id": content_object_id,
+        "extraction_artifact_id": extraction_artifact_id,
+        "prompt_template_version_id": summary.get("prompt_template_version_id"),
+        "summary_chunk_policy_id": summary["summary_chunk_policy_id"],
+        "summary_text_sha256": summary["summary_text_sha256"],
+        "summary_storage_uri": summary["summary_storage_uri"],
+        "summary_char_count": summary["summary_char_count"],
+        "summary_max_chars": summary["summary_max_chars"],
+        "summary_hard_limit_chars": summary["summary_hard_limit_chars"],
+        "status": summary.get("status", "READY"),
+        "language_code": summary.get("language_code"),
+        "model_profile_id": summarizer.get("model_profile_id"),
+        "model_revision": summarizer.get("model_revision"),
+        "created_trace_id": summary.get("trace_id", summary.get("created_trace_id")),
+        "created_at": summary["created_at"],
+        "updated_at": summary["updated_at"],
+    }
+
+
 def markdown_storage_uri_from_path(extracted_markdown_path: str) -> str:
     path = Path(extracted_markdown_path)
     if len(path.parts) >= 2:
@@ -1767,6 +2017,26 @@ _CHUNK_EMBEDDING_SELECT_COLUMNS = """
     embedding.status,
     embedding.created_trace_id,
     embedding.created_at
+"""
+
+_DOCUMENT_SUMMARY_SELECT_COLUMNS = """
+    document_summary_id,
+    content_object_id,
+    extraction_artifact_id,
+    prompt_template_version_id,
+    summary_chunk_policy_id,
+    summary_text_sha256,
+    summary_storage_uri,
+    summary_char_count,
+    summary_max_chars,
+    summary_hard_limit_chars,
+    status,
+    language_code,
+    model_profile_id,
+    model_revision,
+    created_trace_id,
+    created_at,
+    updated_at
 """
 
 
@@ -1908,6 +2178,28 @@ def _chunk_embedding_insert_params(
     }
 
 
+def _document_summary_insert_params(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "document_summary_id": record["document_summary_id"],
+        "content_object_id": record["content_object_id"],
+        "extraction_artifact_id": record["extraction_artifact_id"],
+        "prompt_template_version_id": record.get("prompt_template_version_id"),
+        "summary_chunk_policy_id": record["summary_chunk_policy_id"],
+        "summary_text_sha256": record["summary_text_sha256"],
+        "summary_storage_uri": record["summary_storage_uri"],
+        "summary_char_count": record["summary_char_count"],
+        "summary_max_chars": record["summary_max_chars"],
+        "summary_hard_limit_chars": record["summary_hard_limit_chars"],
+        "status": record.get("status", "READY"),
+        "language_code": record.get("language_code"),
+        "model_profile_id": record.get("model_profile_id"),
+        "model_revision": record.get("model_revision"),
+        "created_trace_id": record.get("created_trace_id"),
+        "created_at": record["created_at"],
+        "updated_at": record["updated_at"],
+    }
+
+
 def _content_object_from_row(row: Any) -> dict[str, Any]:
     return {
         "content_object_id": str(row["content_object_id"]),
@@ -2025,6 +2317,31 @@ def _chunk_embedding_from_row(row: Any) -> dict[str, Any]:
     }
 
 
+def _document_summary_from_row(row: Any) -> dict[str, Any]:
+    return {
+        "document_summary_schema_version": "cx_document_summary.persistence.v1",
+        "document_summary_id": str(row["document_summary_id"]),
+        "content_object_id": str(row["content_object_id"]),
+        "extraction_artifact_id": str(row["extraction_artifact_id"]),
+        "prompt_template_version_id": _optional_uuid_to_wire(
+            row["prompt_template_version_id"]
+        ),
+        "summary_chunk_policy_id": row["summary_chunk_policy_id"],
+        "summary_text_sha256": row["summary_text_sha256"],
+        "summary_storage_uri": row["summary_storage_uri"],
+        "summary_char_count": int(row["summary_char_count"]),
+        "summary_max_chars": int(row["summary_max_chars"]),
+        "summary_hard_limit_chars": int(row["summary_hard_limit_chars"]),
+        "status": row["status"],
+        "language_code": row["language_code"],
+        "model_profile_id": row["model_profile_id"],
+        "model_revision": row["model_revision"],
+        "created_trace_id": row["created_trace_id"],
+        "created_at": _timestamp_to_wire(row["created_at"]),
+        "updated_at": _timestamp_to_wire(row["updated_at"]),
+    }
+
+
 def _extraction_artifact_unique_key(record: dict[str, Any]) -> tuple[str, str, str, str]:
     return (
         str(record["content_object_id"]),
@@ -2052,6 +2369,14 @@ def _chunk_embedding_index_unique_key(record: dict[str, Any]) -> tuple[str, str,
         str(record["chunk_set_id"]),
         str(record["model_profile_id"]),
         str(record["model_revision"]),
+    )
+
+
+def _document_summary_unique_key(record: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(record["content_object_id"]),
+        str(record["extraction_artifact_id"]),
+        str(record["summary_text_sha256"]),
     )
 
 
@@ -2099,6 +2424,12 @@ def _timestamp_to_wire_optional(value: Any) -> str | None:
     if value is None:
         return None
     return _timestamp_to_wire(value)
+
+
+def _optional_uuid_to_wire(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)
 
 
 def _bool_from_database(value: Any) -> bool:

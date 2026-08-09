@@ -27,11 +27,13 @@ from nex_cx.repository import (
     build_chunk_embedding_index_record,
     build_chunk_set_record,
     build_content_object_record,
+    build_document_summary_persistence_record,
     build_extraction_artifact_record,
     build_lexical_index_record,
     build_source_file_record,
     markdown_storage_uri_from_path,
 )
+from nex_cx.summaries import build_document_summary_record
 import nex_cx.repository as cx_repository
 
 
@@ -237,6 +239,33 @@ def sqlite_content_repository(
         connection.execute(
             text(
                 """
+                CREATE TABLE cx_document_summaries (
+                    document_summary_id TEXT PRIMARY KEY,
+                    content_object_id TEXT NOT NULL REFERENCES cx_content_objects(content_object_id),
+                    extraction_artifact_id TEXT NOT NULL REFERENCES cx_extraction_artifacts(extraction_artifact_id),
+                    prompt_template_version_id TEXT,
+                    summary_chunk_policy_id TEXT NOT NULL DEFAULT 'summary_1000_0',
+                    summary_text_sha256 TEXT NOT NULL,
+                    summary_storage_uri TEXT NOT NULL,
+                    summary_char_count INTEGER NOT NULL,
+                    summary_max_chars INTEGER NOT NULL DEFAULT 900,
+                    summary_hard_limit_chars INTEGER NOT NULL DEFAULT 1000,
+                    status TEXT NOT NULL DEFAULT 'READY',
+                    language_code TEXT,
+                    model_profile_id TEXT,
+                    model_revision TEXT,
+                    created_trace_id TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    CHECK (summary_char_count <= summary_hard_limit_chars),
+                    UNIQUE (content_object_id, extraction_artifact_id, summary_text_sha256)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
                 CREATE TABLE cx_lexical_terms (
                     lexical_term_id TEXT PRIMARY KEY,
                     chunk_set_id TEXT NOT NULL REFERENCES cx_chunk_sets(chunk_set_id),
@@ -394,6 +423,26 @@ def embedding_index_payload(chunk_set: dict[str, object]) -> dict[str, object]:
     }
 
 
+def document_summary_payload(
+    tmp_path: Path,
+    document: dict[str, object],
+    *,
+    extraction: dict[str, object] | None = None,
+    summary_text: str = "Bounded private summary text.",
+) -> dict[str, object]:
+    source_extraction = extraction or extraction_result(tmp_path, document)
+    return build_document_summary_record(
+        document_id=str(document["document_id"]),
+        extraction=source_extraction,
+        summary_text=summary_text,
+        prompt_event=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        max_chars=900,
+        hard_limit_chars=1000,
+    )
+
+
 def test_build_source_file_record_maps_storage_metadata_without_raw_text(
     tmp_path: Path,
 ) -> None:
@@ -499,6 +548,53 @@ def test_build_chunk_embedding_index_record_maps_hashes_without_vectors(
     assert first["vector_dimension"] == 3
     assert "SECRET_PRIVATE_VECTOR" not in str(record)
     assert "[0.0, 0.5, 1.0]" not in str(record)
+
+
+def test_build_document_summary_persistence_record_maps_metadata_without_text(
+    tmp_path: Path,
+) -> None:
+    upload = upload_registration(tmp_path)
+    summary = document_summary_payload(
+        tmp_path,
+        upload,
+        summary_text="SECRET_PRIVATE_SUMMARY_BODY",
+    )
+    summary["prompt_template_version_id"] = "11111111-1111-4111-8111-111111111111"
+
+    record = build_document_summary_persistence_record(
+        summary,
+        content_object_id=str(upload["document_id"]),
+        extraction_artifact_id="55555555-5555-4555-8555-555555555555",
+    )
+
+    assert record["document_summary_id"] == summary["document_summary_id"]
+    assert record["content_object_id"] == upload["document_id"]
+    assert record["summary_text_sha256"] == summary["summary_text_sha256"]
+    assert record["summary_storage_uri"] == summary["summary_storage_uri"]
+    assert record["summary_char_count"] == summary["summary_char_count"]
+    assert record["prompt_template_version_id"] == (
+        "11111111-1111-4111-8111-111111111111"
+    )
+    assert record["model_profile_id"] == "mock-document-summary"
+    assert record["model_revision"] == "slice-0027"
+    assert "SECRET_PRIVATE_SUMMARY_BODY" not in str(record)
+
+
+def test_build_document_summary_persistence_record_tolerates_legacy_summarizer_shape(
+    tmp_path: Path,
+) -> None:
+    upload = upload_registration(tmp_path)
+    summary = document_summary_payload(tmp_path, upload)
+    summary["summarizer"] = "legacy-summary-profile"
+
+    record = build_document_summary_persistence_record(
+        summary,
+        content_object_id=str(upload["document_id"]),
+        extraction_artifact_id="55555555-5555-4555-8555-555555555555",
+    )
+
+    assert record["model_profile_id"] is None
+    assert record["model_revision"] is None
 
 
 def test_build_lexical_index_record_maps_terms_without_chunk_text(
@@ -699,6 +795,37 @@ def test_in_memory_repository_saves_chunk_embedding_indexes_idempotently(
         chunk_set_id=record["chunk_set_id"],
         model_profile_id="other",
         model_revision=record["model_revision"],
+    ) is None
+
+
+def test_in_memory_repository_saves_document_summaries_idempotently(
+    tmp_path: Path,
+) -> None:
+    repository = InMemoryCxContentRepository()
+    upload = upload_registration(tmp_path)
+    record = build_document_summary_persistence_record(
+        document_summary_payload(tmp_path, upload),
+        content_object_id=str(upload["document_id"]),
+        extraction_artifact_id="55555555-5555-4555-8555-555555555555",
+    )
+    duplicate = {
+        **record,
+        "document_summary_id": "99999999-9999-4999-8999-999999999999",
+    }
+
+    assert repository.save_document_summary_record(record) == record
+    assert repository.save_document_summary_record(duplicate) == record
+    assert repository.get_document_summary_record(record["document_summary_id"]) == record
+    assert repository.find_document_summary_record(
+        content_object_id=record["content_object_id"],
+        extraction_artifact_id=record["extraction_artifact_id"],
+        summary_text_sha256=record["summary_text_sha256"],
+    ) == record
+    assert repository.get_document_summary_record("missing") is None
+    assert repository.find_document_summary_record(
+        content_object_id=record["content_object_id"],
+        extraction_artifact_id=record["extraction_artifact_id"],
+        summary_text_sha256="0" * 64,
     ) is None
 
 
@@ -1092,6 +1219,69 @@ def test_sqlalchemy_repository_saves_and_finds_chunk_embedding_metadata(
     )
 
 
+def test_sqlalchemy_repository_saves_and_finds_document_summary_metadata(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    upload = upload_registration(tmp_path)
+    source_file = repository.save_source_file(build_source_file_record(upload))
+    content = repository.save_content_object(
+        build_content_object_record(
+            upload,
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    extraction = extraction_result(tmp_path, upload)
+    artifact = repository.save_extraction_artifact(
+        build_extraction_artifact_record(
+            extraction,
+            content_object_id=content["content_object_id"],
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    record = build_document_summary_persistence_record(
+        document_summary_payload(
+            tmp_path,
+            upload,
+            extraction=extraction,
+            summary_text="SECRET_SQL_SUMMARY_TEXT",
+        ),
+        content_object_id=content["content_object_id"],
+        extraction_artifact_id=artifact["extraction_artifact_id"],
+    )
+    record["prompt_template_version_id"] = "11111111-1111-4111-8111-111111111111"
+    duplicate = {
+        **record,
+        "document_summary_id": "99999999-9999-4999-8999-999999999999",
+    }
+
+    saved = repository.save_document_summary_record(record)
+
+    assert saved == record
+    assert repository.save_document_summary_record(duplicate) == record
+    assert repository.get_document_summary_record(saved["document_summary_id"]) == record
+    assert repository.get_document_summary_record(
+        "99999999-9999-4999-8999-999999999998"
+    ) is None
+    assert repository.find_document_summary_record(
+        content_object_id=content["content_object_id"],
+        extraction_artifact_id=artifact["extraction_artifact_id"],
+        summary_text_sha256=record["summary_text_sha256"],
+    ) == record
+    assert repository.find_document_summary_record(
+        content_object_id=content["content_object_id"],
+        extraction_artifact_id=artifact["extraction_artifact_id"],
+        summary_text_sha256="0" * 64,
+    ) is None
+    assert _sqlite_table_count(engine, "cx_document_summaries") == 1
+    assert "SECRET_SQL_SUMMARY_TEXT" not in _sqlite_table_dump(
+        engine,
+        ["cx_document_summaries"],
+    )
+
+
 def test_sqlalchemy_repository_keeps_empty_chunk_embedding_index_at_boundary(
     tmp_path: Path,
 ) -> None:
@@ -1402,6 +1592,39 @@ def test_sqlalchemy_repository_wraps_database_errors(tmp_path: Path) -> None:
             model_profile_id="mock-embedding-default",
             model_revision="mock-embedding-v1",
         ),
+        lambda repository: repository.save_document_summary_record(
+            {
+                "document_summary_schema_version": "cx_document_summary.persistence.v1",
+                "document_summary_id": "99999999-9999-4999-8999-999999999999",
+                "content_object_id": "44444444-4444-4444-8444-444444444444",
+                "extraction_artifact_id": "55555555-5555-4555-8555-555555555555",
+                "prompt_template_version_id": None,
+                "summary_chunk_policy_id": "summary_1000_0",
+                "summary_text_sha256": "2" * 64,
+                "summary_storage_uri": (
+                    "memory://cx/document-summaries/"
+                    "99999999-9999-4999-8999-999999999999.md"
+                ),
+                "summary_char_count": 10,
+                "summary_max_chars": 900,
+                "summary_hard_limit_chars": 1000,
+                "status": "READY",
+                "language_code": None,
+                "model_profile_id": "mock-document-summary",
+                "model_revision": "slice-0027",
+                "created_trace_id": TRACE_ID,
+                "created_at": "2026-08-09T00:00:00Z",
+                "updated_at": "2026-08-09T00:00:00Z",
+            }
+        ),
+        lambda repository: repository.get_document_summary_record(
+            "99999999-9999-4999-8999-999999999999"
+        ),
+        lambda repository: repository.find_document_summary_record(
+            content_object_id="44444444-4444-4444-8444-444444444444",
+            extraction_artifact_id="55555555-5555-4555-8555-555555555555",
+            summary_text_sha256="2" * 64,
+        ),
     ],
 )
 def test_sqlalchemy_repository_wraps_missing_table_errors(
@@ -1460,6 +1683,14 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
         ) -> dict[str, Any]:
             raise IntegrityError("insert chunk embedding", {}, Exception("race"))
 
+    class RaceyDocumentSummaryRepository(SqlAlchemyCxContentRepository):
+        def _save_document_summary_record(
+            self,
+            session: Any,
+            record: dict[str, Any],
+        ) -> dict[str, Any]:
+            raise IntegrityError("insert document summary", {}, Exception("race"))
+
     repository, engine = sqlite_content_repository(tmp_path)
     upload = upload_registration(tmp_path)
     source_file_record = build_source_file_record(upload)
@@ -1496,6 +1727,7 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
     racey_chunk_set = RaceyChunkSetRepository(build_session_factory(engine))
     racey_lexical = RaceyLexicalRepository(build_session_factory(engine))
     racey_chunk_embedding = RaceyChunkEmbeddingRepository(build_session_factory(engine))
+    racey_document_summary = RaceyDocumentSummaryRepository(build_session_factory(engine))
     lexical = repository.save_lexical_index(
         build_lexical_index_record(
             lexical_index_payload(chunk_set),
@@ -1508,6 +1740,13 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
             chunk_set_id=chunk_set["chunk_set_id"],
         )
     )
+    summary = repository.save_document_summary_record(
+        build_document_summary_persistence_record(
+            document_summary_payload(tmp_path, upload),
+            content_object_id=content["content_object_id"],
+            extraction_artifact_id=artifact["extraction_artifact_id"],
+        )
+    )
 
     assert racey_source.save_source_file(source_file_record) == source_file
     assert racey_content.save_content_object(content) == content
@@ -1518,6 +1757,7 @@ def test_sqlalchemy_repository_integrity_race_fallbacks_return_existing_records(
         racey_chunk_embedding.save_chunk_embedding_index(chunk_embedding)
         == chunk_embedding
     )
+    assert racey_document_summary.save_document_summary_record(summary) == summary
 
 
 def test_sqlalchemy_repository_extraction_integrity_without_existing_row_wraps(
@@ -1683,6 +1923,50 @@ def test_sqlalchemy_repository_chunk_embedding_integrity_without_existing_row_wr
                 "chunk_embeddings": [],
                 "created_trace_id": TRACE_ID,
                 "created_at": "2026-08-09T00:00:00Z",
+            }
+        )
+
+    assert exc_info.value.error_code == "cx_content.repository_unavailable"
+
+
+def test_sqlalchemy_repository_document_summary_integrity_without_existing_row_wraps(
+    tmp_path: Path,
+) -> None:
+    class RaceyDocumentSummaryRepository(SqlAlchemyCxContentRepository):
+        def _save_document_summary_record(
+            self,
+            session: Any,
+            record: dict[str, Any],
+        ) -> dict[str, Any]:
+            raise IntegrityError("insert document summary", {}, Exception("race"))
+
+    _, engine = sqlite_content_repository(tmp_path)
+    repository = RaceyDocumentSummaryRepository(build_session_factory(engine))
+
+    with pytest.raises(CxContentRepositoryError) as exc_info:
+        repository.save_document_summary_record(
+            {
+                "document_summary_schema_version": "cx_document_summary.persistence.v1",
+                "document_summary_id": "99999999-9999-4999-8999-999999999999",
+                "content_object_id": "44444444-4444-4444-8444-444444444444",
+                "extraction_artifact_id": "55555555-5555-4555-8555-555555555555",
+                "prompt_template_version_id": None,
+                "summary_chunk_policy_id": "summary_1000_0",
+                "summary_text_sha256": "2" * 64,
+                "summary_storage_uri": (
+                    "memory://cx/document-summaries/"
+                    "99999999-9999-4999-8999-999999999999.md"
+                ),
+                "summary_char_count": 10,
+                "summary_max_chars": 900,
+                "summary_hard_limit_chars": 1000,
+                "status": "READY",
+                "language_code": None,
+                "model_profile_id": "mock-document-summary",
+                "model_revision": "slice-0027",
+                "created_trace_id": TRACE_ID,
+                "created_at": "2026-08-09T00:00:00Z",
+                "updated_at": "2026-08-09T00:00:00Z",
             }
         )
 
@@ -2097,6 +2381,64 @@ def test_content_ingestion_store_with_sqlalchemy_repository_persists_chunk_embed
     )
 
 
+def test_content_ingestion_store_with_sqlalchemy_repository_persists_document_summary(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    store = ContentIngestionStore(content_repository=repository)
+    source_text = "SECRET_SUMMARY_SOURCE"
+    summary_text = "SECRET_PRIVATE_DOCUMENT_SUMMARY"
+    document = upload_registration(
+        tmp_path,
+        content_text=source_text,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    store.save_upload_registration(
+        document,
+        source_text=source_text,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    result = run_text_extraction_job(
+        document["extraction"]["job_id"],
+        store=store,
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    summary = document_summary_payload(
+        tmp_path,
+        document,
+        extraction=result,
+        summary_text=summary_text,
+    )
+
+    saved = store.save_document_summary(summary, summary_text=summary_text)
+
+    refs = store.get_content_ref(str(document["document_id"]))
+    assert refs is not None
+    artifact = repository.find_extraction_artifact(
+        content_object_id=refs["content_object_id"],
+        extractor_name=result["extractor"]["provider"],
+        extractor_version=result["extractor"]["version"],
+        markdown_sha256=result["extracted_markdown_sha256"],
+    )
+    assert artifact is not None
+    persisted = repository.find_document_summary_record(
+        content_object_id=refs["content_object_id"],
+        extraction_artifact_id=artifact["extraction_artifact_id"],
+        summary_text_sha256=saved["summary_text_sha256"],
+    )
+    assert persisted is not None
+    assert persisted["document_summary_id"] == saved["document_summary_id"]
+    assert persisted["summary_char_count"] == len(summary_text)
+    assert persisted["model_profile_id"] == "mock-document-summary"
+    assert store.get_summary_text(saved["document_summary_id"]) == summary_text
+    assert _sqlite_table_count(engine, "cx_document_summaries") == 1
+    assert summary_text not in _sqlite_table_dump(engine, ["cx_document_summaries"])
+
+
 def test_content_ingestion_store_saves_extraction_result_without_content_refs(
     tmp_path: Path,
 ) -> None:
@@ -2221,6 +2563,40 @@ def test_content_ingestion_store_skips_lexical_metadata_without_artifact(
 
     assert saved == lexical_index
     assert store.content_repository.lexical_indexes == {}
+
+
+def test_content_ingestion_store_skips_summary_metadata_without_artifact(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    document = upload_registration(tmp_path, content_text="source text")
+    store.save_upload_registration(document, source_text="source text")
+    document_id = str(document["document_id"])
+    summary = document_summary_payload(tmp_path, document)
+
+    saved = store.save_document_summary(summary, summary_text="private summary")
+
+    assert saved == summary
+    assert store.get_document_summary(document_id) == summary
+    assert store.get_summary_text(summary["document_summary_id"]) == "private summary"
+    assert store.content_repository.document_summary_records == {}
+
+
+def test_content_ingestion_store_skips_summary_metadata_without_required_shape(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    document = upload_registration(tmp_path, content_text="source text")
+    store.save_upload_registration(document, source_text="source text")
+    record = {
+        "document_id": document["document_id"],
+        "document_summary_id": "summary-001",
+    }
+
+    saved = store.save_document_summary(record, summary_text="private summary")
+
+    assert saved == record
+    assert store.content_repository.document_summary_records == {}
 
 
 def _sqlite_table_count(engine: object, table_name: str) -> int:
