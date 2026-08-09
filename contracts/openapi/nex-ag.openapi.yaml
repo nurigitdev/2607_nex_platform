@@ -872,7 +872,7 @@ paths:
         - $ref: "#/components/parameters/limit"
       responses:
         "200":
-          description: Read-only cross-service trace timeline projection.
+          description: Read-only cross-service trace timeline projection over jobs, events, logs, and configured CX retrieval packages.
           content:
             application/json:
               schema:

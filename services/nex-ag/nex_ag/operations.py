@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse
@@ -138,6 +138,25 @@ SERVICE_LOG_QUERY_SUPPORTED_FILTERS = (
     "limit",
 )
 DEFAULT_SERVICE_LOG_RETENTION_DAYS = 30
+
+
+class RetrievalPackageTraceStore(Protocol):
+    source_kind: str
+    database_env: str | None
+    redacted_database_url: str | None
+
+    def list_retrieval_packages(
+        self,
+        *,
+        status: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        retrieval_policy_id: str | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        ...
+
+
 MIN_SERVICE_LOG_RETENTION_DAYS = 7
 MAX_SERVICE_LOG_RETENTION_DAYS = 365
 MAX_OPERATION_EVENT_QUERY_LENGTH = 128
@@ -1766,6 +1785,7 @@ def register_unified_operation_routes(
     job_queues: Mapping[str, JobQueue] | None = None,
     event_store: OperationalEventStore | None = None,
     service_log_stores: Mapping[str, ServiceLogStore] | None = None,
+    retrieval_package_stores: Mapping[str, RetrievalPackageTraceStore] | None = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -2102,6 +2122,7 @@ def register_unified_operation_routes(
             job_queues=job_queues,
             event_store=event_store,
             service_log_stores=service_log_stores,
+            retrieval_package_stores=retrieval_package_stores,
             registry=registry,
             service_id=service_id,
             query_options=query_options,
@@ -3379,6 +3400,7 @@ def build_cross_service_trace_timeline_projection(
     job_queues: Mapping[str, JobQueue] | None = None,
     event_store: OperationalEventStore | None = None,
     service_log_stores: Mapping[str, ServiceLogStore] | None = None,
+    retrieval_package_stores: Mapping[str, RetrievalPackageTraceStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     service_id: str | None = None,
     limit: int = 50,
@@ -3418,8 +3440,15 @@ def build_cross_service_trace_timeline_projection(
         selected_service_ids=selected_service_ids,
         trace_id=trace_id,
     )
+    retrieval_package_items, retrieval_package_source_statuses = (
+        _trace_retrieval_package_timeline_items(
+            retrieval_package_stores,
+            selected_service_ids=selected_service_ids,
+            trace_id=trace_id,
+        )
+    )
     page = _apply_operation_query_options(
-        [*job_items, *event_items, *log_items],
+        [*job_items, *event_items, *log_items, *retrieval_package_items],
         options,
         timestamp_field="operation_timestamp",
         tie_breaker_fields=("item_id",),
@@ -3434,6 +3463,10 @@ def build_cross_service_trace_timeline_projection(
         or any(
             source["status"] == "UNAVAILABLE"
             for source in log_source_statuses.values()
+        )
+        or any(
+            source["status"] == "UNAVAILABLE"
+            for source in retrieval_package_source_statuses.values()
         )
         else "READY"
     )
@@ -3451,6 +3484,7 @@ def build_cross_service_trace_timeline_projection(
         "job_source_statuses": job_source_statuses,
         "event_source_status": event_source_status,
         "log_source_statuses": log_source_statuses,
+        "retrieval_package_source_statuses": retrieval_package_source_statuses,
         "pagination": page["pagination"],
     }
     if request_trace_id is not None:
@@ -4864,6 +4898,58 @@ def _trace_log_timeline_items(
     return timeline_items, source_statuses
 
 
+def _trace_retrieval_package_timeline_items(
+    retrieval_package_stores: Mapping[str, RetrievalPackageTraceStore] | None,
+    *,
+    selected_service_ids: list[str],
+    trace_id: str,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    if retrieval_package_stores is None:
+        return [], {}
+    timeline_items: list[dict[str, Any]] = []
+    source_statuses: dict[str, dict[str, Any]] = {}
+    for selected_service_id in selected_service_ids:
+        if selected_service_id != "nex-cx":
+            continue
+        store = retrieval_package_stores.get(selected_service_id)
+        if store is None:
+            source_statuses[selected_service_id] = {
+                "status": "NOT_CONFIGURED",
+                "retrieval_package_count": 0,
+            }
+            continue
+        try:
+            packages = store.list_retrieval_packages(
+                trace_id=trace_id,
+                limit=500,
+            )
+        except Exception as exc:
+            source_statuses[selected_service_id] = {
+                "status": "UNAVAILABLE",
+                "retrieval_package_count": 0,
+                "error_code": getattr(
+                    exc,
+                    "error_code",
+                    "ag.retrieval_package_source_unavailable",
+                ),
+                "detail": getattr(
+                    exc,
+                    "detail",
+                    "Retrieval package source could not be read.",
+                ),
+            }
+            continue
+        source_statuses[selected_service_id] = {
+            "status": "READY",
+            "retrieval_package_count": len(packages),
+        }
+        timeline_items.extend(
+            _retrieval_package_trace_timeline_item(selected_service_id, package)
+            for package in packages
+        )
+    return timeline_items, source_statuses
+
+
 def _dashboard_source_runtime(
     *,
     runtime: AgOperationsSourceRuntime | None,
@@ -5620,6 +5706,42 @@ def _log_trace_timeline_item(entry: dict[str, Any]) -> dict[str, Any]:
         "trace_id": entry.get("trace_id"),
         "operation_timestamp": entry["observed_at"],
         "log": deepcopy(entry),
+    }
+
+
+def _retrieval_package_trace_timeline_item(
+    service_id: str,
+    package: dict[str, Any],
+) -> dict[str, Any]:
+    retrieval_package_id = str(package["retrieval_package_id"])
+    return {
+        "timeline_item_type": "retrieval_package",
+        "item_id": f"retrieval_package:{service_id}:{retrieval_package_id}",
+        "service_id": service_id,
+        "trace_id": package.get("trace_id"),
+        "request_id": package.get("request_id"),
+        "operation_timestamp": package["created_at"],
+        "retrieval_package": {
+            "retrieval_package_id": retrieval_package_id,
+            "package_hash": package.get("package_hash"),
+            "status": package.get("status"),
+            "request_id": package.get("request_id"),
+            "query_text_sha256": package.get("query_text_sha256"),
+            "query_text_preview": package.get("query_text_preview"),
+            "query_embedding_provided": package.get("query_embedding_provided"),
+            "purpose": package.get("purpose"),
+            "retrieval_policy_id": package.get("retrieval_policy_id"),
+            "retrieval_policy_version": package.get("retrieval_policy_version"),
+            "retrieval_policy_hash": package.get("retrieval_policy_hash"),
+            "retrieval_policy_source": package.get("retrieval_policy_source"),
+            "ranker_mix": package.get("ranker_mix"),
+            "rerank_state": package.get("rerank_state"),
+            "evidence_count": int(package.get("evidence_count", 0)),
+            "warning_count": int(package.get("warning_count", 0)),
+            "no_answer_reason": package.get("no_answer_reason"),
+            "created_at": package["created_at"],
+            "updated_at": package.get("updated_at"),
+        },
     }
 
 

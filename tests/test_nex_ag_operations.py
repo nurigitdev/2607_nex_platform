@@ -85,6 +85,10 @@ from nex_ag.operations import (
     service_log_query_policy,
 )
 from nex_ag.job_control import AgJobControlError
+from nex_ag.retrieval_operations import (
+    InMemoryRetrievalPackageOperationsStore,
+    RetrievalPackageOperationsError,
+)
 from nex_ag.service_log_retention import AgServiceLogRetentionError
 from nex_runtime import (
     AG_JOB_CONTROL_EVENT_FAILED,
@@ -121,6 +125,41 @@ CONTRACT_ROOT = Path(__file__).parents[1] / "contracts"
 def auth_headers() -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-oa", audience="nex-ag")
     return {"Authorization": f"Bearer {issued.access_token}"}
+
+
+def retrieval_package_record(
+    *,
+    retrieval_package_id: str = "retrieval-package-001",
+    trace_id: str = TRACE_ID,
+    created_at: str = "2026-08-05T00:00:02Z",
+) -> dict[str, object]:
+    return {
+        "retrieval_package_id": retrieval_package_id,
+        "package_hash": "a" * 64,
+        "status": "READY",
+        "trace_id": trace_id,
+        "request_id": REQUEST_ID,
+        "query_text_sha256": "b" * 64,
+        "query_text_preview": "bounded query preview",
+        "query_embedding_provided": True,
+        "query_embedding_sha256": "c" * 64,
+        "query_embedding_dimension": 3,
+        "purpose": "grounded_answer",
+        "retrieval_policy_id": "weighted_rrf_vector_bm25_v1",
+        "retrieval_policy_version": "2026-08-09",
+        "retrieval_policy_hash": "d" * 64,
+        "retrieval_policy_source": "ag_registry_active",
+        "ranker_mix": "weighted_rrf_vector_bm25_v1",
+        "rerank_state": "NOT_APPLIED",
+        "permission_snapshot_hash": "e" * 64,
+        "source_summary": {"source_count": 1},
+        "score_summary": {"best_score": 0.92},
+        "warning_count": 0,
+        "evidence_count": 2,
+        "no_answer_reason": None,
+        "created_at": created_at,
+        "updated_at": created_at,
+    }
 
 
 def ag_operations_projection_schema() -> dict[str, object]:
@@ -692,6 +731,18 @@ class BrokenServiceLogStore:
             error_code="service_log_retention_history.store_unavailable",
             detail="service log retention history store is unavailable",
             status_code=503,
+        )
+
+
+class BrokenRetrievalPackageStore:
+    source_kind = "postgres-read"
+    database_env = "NEX_CX_TEST_DATABASE_URL"
+    redacted_database_url = "postgresql://nex_cx_user:***@localhost/nex_cx_test"
+
+    def list_retrieval_packages(self, **kwargs):
+        raise RetrievalPackageOperationsError(
+            error_code="ag.retrieval_package_source_unavailable",
+            detail="retrieval package source is unavailable",
         )
 
 
@@ -3087,6 +3138,65 @@ def test_cross_service_trace_timeline_projection_includes_service_logs() -> None
     assert_ag_operations_projection_contract(projection)
 
 
+def test_cross_service_trace_timeline_projection_includes_retrieval_packages() -> None:
+    registry = build_operations_source_registry(
+        job_queues=build_job_queues(),
+        event_stores=build_event_stores(),
+        service_log_stores=build_log_stores(),
+    )
+    retrieval_store = InMemoryRetrievalPackageOperationsStore(
+        records=[
+            retrieval_package_record(),
+            retrieval_package_record(
+                retrieval_package_id="retrieval-package-other-trace",
+                trace_id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            ),
+        ]
+    )
+
+    projection = build_cross_service_trace_timeline_projection(
+        trace_id=TRACE_ID,
+        registry=registry,
+        service_id="nex-cx",
+        retrieval_package_stores={"nex-cx": retrieval_store},
+        query_options=build_operation_query_options(limit=5, sort="asc"),
+    )
+
+    assert projection["projection_status"] == "READY"
+    assert [
+        (item["timeline_item_type"], item["item_id"])
+        for item in projection["timeline"]
+    ] == [
+        ("event", "event:event-cx-001"),
+        ("log", "log:nex-cx:log-001"),
+        (
+            "retrieval_package",
+            "retrieval_package:nex-cx:retrieval-package-001",
+        ),
+        ("job", "job:nex-cx:job-cx-001"),
+        ("job", "job:nex-cx:job-cx-002"),
+    ]
+    package_item = projection["timeline"][2]["retrieval_package"]
+    assert package_item["retrieval_policy_id"] == "weighted_rrf_vector_bm25_v1"
+    assert package_item["evidence_count"] == 2
+    assert projection["summary"] == {
+        "total": 5,
+        "by_item_type": {
+            "event": 1,
+            "log": 1,
+            "retrieval_package": 1,
+            "job": 2,
+        },
+        "by_service": {"nex-cx": 5},
+    }
+    assert projection["retrieval_package_source_statuses"]["nex-cx"] == {
+        "status": "READY",
+        "retrieval_package_count": 1,
+    }
+    assert "other-trace" not in str(projection)
+    assert_ag_operations_projection_contract(projection)
+
+
 def test_cross_service_trace_timeline_projection_filters_service_and_window() -> None:
     projection = build_cross_service_trace_timeline_projection(
         trace_id=TRACE_ID,
@@ -3120,6 +3230,7 @@ def test_cross_service_trace_timeline_projection_reports_unavailable_sources() -
         job_queues={"nex-cx": BrokenJobQueue()},
         event_store=BrokenOperationalEventStore(),
         service_log_stores={"nex-cx": BrokenServiceLogStore()},
+        retrieval_package_stores={"nex-cx": BrokenRetrievalPackageStore()},
         service_id="nex-cx",
     )
 
@@ -3142,6 +3253,12 @@ def test_cross_service_trace_timeline_projection_reports_unavailable_sources() -
         "log_count": 0,
         "error_code": "service_log.store_unavailable",
         "detail": "service log store is unavailable",
+    }
+    assert projection["retrieval_package_source_statuses"]["nex-cx"] == {
+        "status": "UNAVAILABLE",
+        "retrieval_package_count": 0,
+        "error_code": "ag.retrieval_package_source_unavailable",
+        "detail": "retrieval package source is unavailable",
     }
     assert_ag_operations_projection_contract(projection)
 
@@ -3172,13 +3289,21 @@ def test_cross_service_trace_timeline_route_requires_auth_and_returns_projection
         event_stores=build_event_stores(),
     )
     app = build_service_app(SERVICE_SPECS["nex-ag"])
-    register_unified_operation_routes(app, registry=registry)
+    register_unified_operation_routes(
+        app,
+        registry=registry,
+        retrieval_package_stores={
+            "nex-cx": InMemoryRetrievalPackageOperationsStore(
+                records=[retrieval_package_record()]
+            )
+        },
+    )
     client = TestClient(app)
 
     missing_auth = client.get(f"/admin/v1/operations/traces/{TRACE_ID}")
     response = client.get(
         f"/admin/v1/operations/traces/{TRACE_ID}",
-        params={"service_id": "nex-cx", "sort": "asc", "limit": 2},
+        params={"service_id": "nex-cx", "sort": "asc", "limit": 3},
         headers={
             **auth_headers(),
             "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
@@ -3194,8 +3319,13 @@ def test_cross_service_trace_timeline_route_requires_auth_and_returns_projection
     assert payload["filters"]["service_id"] == "nex-cx"
     assert [item["timeline_item_type"] for item in payload["timeline"]] == [
         "event",
+        "retrieval_package",
         "job",
     ]
+    assert payload["retrieval_package_source_statuses"]["nex-cx"] == {
+        "status": "READY",
+        "retrieval_package_count": 1,
+    }
     assert payload["log_source_statuses"]["nex-cx"] == {
         "status": "NOT_CONFIGURED",
         "log_count": 0,

@@ -281,6 +281,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0175`](slices/0175_cx_retrieval_postgresql_smoke_evidence.md) | `S18-005` CX retrieval PostgreSQL smoke evidence. |
 | [`Slice 0176`](slices/0176_ag_retrieval_package_operations_projection.md) | `S18-006` AG retrieval package operations projection. |
 | [`Slice 0177`](slices/0177_ag_retrieval_package_detail_debug_projection.md) | `S18-007` AG retrieval package detail/debug projection. |
+| [`Slice 0178`](slices/0178_ag_trace_timeline_retrieval_package_correlation.md) | `S18-008` AG trace timeline retrieval package correlation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

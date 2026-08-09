@@ -53,6 +53,7 @@ register_operation_source_readiness_routes(app, runtime=OPERATIONS_SOURCE_RUNTIM
 register_unified_operation_routes(
     app,
     event_store=SERVICE_PERSISTENCE.operational_event_store,
+    retrieval_package_stores=RETRIEVAL_PACKAGE_OPERATION_STORES,
     registry=OPERATIONS_SOURCE_REGISTRY,
     runtime=OPERATIONS_SOURCE_RUNTIME,
 )

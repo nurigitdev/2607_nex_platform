@@ -23,6 +23,8 @@
         "ag_service_log_retention_history_projection.v1",
         "ag_job_operations_projection.v1",
         "ag_job_operation_detail_projection.v1",
+        "ag_retrieval_package_operations_projection.v1",
+        "ag_retrieval_package_detail_projection.v1",
         "ag_unified_operations_projection.v1",
         "ag_operations_rollup_metrics_projection.v1",
         "ag_operations_dashboard_snapshot_projection.v1",
@@ -132,6 +134,24 @@
     },
     "job": {
       "$ref": "#/$defs/job"
+    },
+    "retrieval_packages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "retrieval_package": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "evidence_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
     },
     "active_job": {
       "oneOf": [
@@ -265,6 +285,12 @@
         "$ref": "#/$defs/source_status"
       }
     },
+    "retrieval_package_source_statuses": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/source_status"
+      }
+    },
     "worker_source_statuses": {
       "type": "object",
       "additionalProperties": {
@@ -272,6 +298,9 @@
       }
     },
     "event_source_status": {
+      "$ref": "#/$defs/source_status"
+    },
+    "source_status": {
       "$ref": "#/$defs/source_status"
     },
     "source_registry": {
@@ -472,6 +501,44 @@
           "job",
           "lifecycle_timeline",
           "summary"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_retrieval_package_operations_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "filters",
+          "retrieval_packages",
+          "summary",
+          "source_statuses",
+          "pagination"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_retrieval_package_detail_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "service_id",
+          "retrieval_package",
+          "evidence_items",
+          "summary",
+          "source_status"
         ]
       }
     },
@@ -2058,7 +2125,8 @@
           "enum": [
             "job",
             "event",
-            "log"
+            "log",
+            "retrieval_package"
           ]
         },
         "item_id": {
@@ -2082,6 +2150,12 @@
           "type": "string",
           "format": "date-time"
         },
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "job": {
           "$ref": "#/$defs/job"
         },
@@ -2090,6 +2164,10 @@
         },
         "log": {
           "$ref": "#/$defs/service_log"
+        },
+        "retrieval_package": {
+          "type": "object",
+          "additionalProperties": true
         }
       },
       "oneOf": [
@@ -2106,6 +2184,11 @@
         {
           "required": [
             "log"
+          ]
+        },
+        {
+          "required": [
+            "retrieval_package"
           ]
         }
       ]
