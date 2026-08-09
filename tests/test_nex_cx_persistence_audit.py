@@ -61,7 +61,7 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
         "migration_pending_count": 0,
         "deferred_schema_decision_count": 3,
         "private_payload_boundary_count": 6,
-        "next_recommended_slice": "0183_cx_processing_run_repository_adapter",
+        "next_recommended_slice": "0184_cx_processing_run_write_through_integration",
     }
     assert all(count == 0 for count in audit["observed_store_counts"].values())
     processing_surface = {
@@ -69,7 +69,7 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
     }["processing_runs"]
     assert processing_surface["target_table_status"] == "migration_present"
     assert processing_surface["current_adapter_status"] == (
-        "schema_migration_present_adapter_pending"
+        "repository_adapter_ready_write_through_pending"
     )
     closed_surfaces = {
         surface["surface_id"]: surface
@@ -107,10 +107,10 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
     )
     assert (
         audit["processing_run_persistence_decision"]["decision_status"]
-        == "schema_migration_present_adapter_pending"
+        == "repository_adapter_ready_write_through_pending"
     )
     assert audit["processing_run_persistence_decision"]["next_slice"] == (
-        "0183_cx_processing_run_repository_adapter"
+        "0184_cx_processing_run_write_through_integration"
     )
     assert audit["latest_processing_run_persistence_preview"] is None
 
@@ -210,7 +210,10 @@ def test_cx_persistence_gap_audit_records_deferred_schema_decisions() -> None:
         "cx_document_processing_runs",
         "cx_document_processing_steps",
     ]
-    assert processing["decision_status"] == "schema_migration_present_adapter_pending"
+    assert (
+        processing["decision_status"]
+        == "repository_adapter_ready_write_through_pending"
+    )
     assert "step_total" in processing["minimum_persisted_metadata"]
     assert "steps[].error_detail_sha256" in processing["minimum_persisted_metadata"]
     assert lexical_header["decision_status"] == "header_table_deferred"

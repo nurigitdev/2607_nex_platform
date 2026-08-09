@@ -286,6 +286,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0180`](slices/0180_retrieval_observability_contract_examples_closure.md) | `S18-010` Retrieval observability contract examples closure. |
 | [`Slice 0181`](slices/0181_cx_processing_run_persistence_decision_checkpoint.md) | `S19-001` CX processing run persistence decision checkpoint. |
 | [`Slice 0182`](slices/0182_cx_processing_run_step_schema_migration.md) | `S19-002` CX processing run/step PostgreSQL schema migration. |
+| [`Slice 0183`](slices/0183_cx_processing_run_repository_adapter.md) | `S19-003` CX processing run repository adapter. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

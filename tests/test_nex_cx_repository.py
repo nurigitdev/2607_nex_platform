@@ -30,6 +30,7 @@ from nex_cx.repository import (
     build_document_summary_persistence_record,
     build_extraction_artifact_record,
     build_lexical_index_record,
+    build_processing_run_persistence_record,
     build_retrieval_package_persistence_record,
     build_source_file_record,
     build_summary_embedding_persistence_record,
@@ -380,6 +381,58 @@ def sqlite_content_repository(
                 """
             )
         )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_document_processing_runs (
+                    pipeline_run_id TEXT PRIMARY KEY,
+                    pipeline_schema_version TEXT NOT NULL DEFAULT 'cx_document_processing_pipeline.v1',
+                    document_id TEXT NOT NULL REFERENCES cx_content_objects(content_object_id),
+                    status TEXT NOT NULL,
+                    trace_id TEXT,
+                    request_id TEXT NOT NULL,
+                    job_id TEXT,
+                    job_type TEXT,
+                    job_status TEXT,
+                    job_attempt_count INTEGER NOT NULL DEFAULT 0,
+                    job_max_attempts INTEGER NOT NULL DEFAULT 0,
+                    job_retryable BOOLEAN,
+                    job_subject_ref TEXT NOT NULL DEFAULT '{}',
+                    job_links TEXT NOT NULL DEFAULT '{}',
+                    step_total INTEGER NOT NULL DEFAULT 0,
+                    step_succeeded INTEGER NOT NULL DEFAULT 0,
+                    step_skipped INTEGER NOT NULL DEFAULT 0,
+                    step_failed INTEGER NOT NULL DEFAULT 0,
+                    queued_at TEXT,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cx_document_processing_steps (
+                    pipeline_run_id TEXT NOT NULL REFERENCES cx_document_processing_runs(pipeline_run_id),
+                    step_order INTEGER NOT NULL,
+                    step_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    output_ref_type TEXT,
+                    output_ref_id TEXT,
+                    output_ref_document_id TEXT REFERENCES cx_content_objects(content_object_id),
+                    output_ref_hash TEXT,
+                    error_code TEXT,
+                    error_detail_sha256 TEXT,
+                    error_retryable BOOLEAN,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (pipeline_run_id, step_order),
+                    UNIQUE (pipeline_run_id, step_id)
+                )
+                """
+            )
+        )
     return (
         SqlAlchemyCxContentRepository(
             build_session_factory(engine),
@@ -630,6 +683,77 @@ def retrieval_package_payload(
     }
 
 
+def processing_run_payload(
+    *,
+    document_id: str,
+    pipeline_run_id: str = "99999999-9999-4999-8999-999999999999",
+    status: str = "SUCCEEDED",
+    updated_at: str = "2026-08-09T00:00:10Z",
+) -> dict[str, Any]:
+    completed_at = updated_at if status in {"SUCCEEDED", "FAILED", "CANCELLED"} else None
+    steps: list[dict[str, Any]] = []
+    if status == "SUCCEEDED":
+        steps = [
+            {
+                "step_id": "summary",
+                "status": "SUCCEEDED",
+                "output_ref": {
+                    "type": "cx.document_summary",
+                    "id": "77777777-7777-4777-8777-777777777777",
+                    "document_id": document_id,
+                    "text": "SECRET_OUTPUT_REF_TEXT",
+                },
+                "error": None,
+            }
+        ]
+    if status == "FAILED":
+        steps = [
+            {
+                "step_id": "summary",
+                "status": "FAILED",
+                "output_ref": None,
+                "error": {
+                    "error_code": "cx.summary_failed",
+                    "detail": "SECRET_PROCESSING_ERROR_DETAIL",
+                    "retryable": False,
+                },
+            }
+        ]
+    return {
+        "pipeline_schema_version": "cx_document_processing_pipeline.v1",
+        "pipeline_run_id": pipeline_run_id,
+        "document_id": document_id,
+        "status": status,
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "job": {
+            "job_schema_version": "common_job.v1",
+            "job_id": "job-processing-001",
+            "job_type": "cx.document_processing",
+            "status": status,
+            "subject_ref": {"type": "cx.document", "id": document_id},
+            "idempotency_key": f"cx.document_processing:{document_id}",
+            "attempt_count": 1 if status != "QUEUED" else 0,
+            "max_attempts": 3,
+            "retryable": status != "SUCCEEDED",
+            "links": {"processing": f"/api/v1/documents/{document_id}/processing"},
+            "created_at": "2026-08-09T00:00:00Z",
+            "updated_at": updated_at,
+        },
+        "steps": steps,
+        "step_summary": {
+            "total": len(steps),
+            "succeeded": sum(1 for step in steps if step["status"] == "SUCCEEDED"),
+            "skipped": 0,
+            "failed": sum(1 for step in steps if step["status"] == "FAILED"),
+        },
+        "queued_at": "2026-08-09T00:00:00Z" if status == "QUEUED" else None,
+        "started_at": None if status == "QUEUED" else "2026-08-09T00:00:01Z",
+        "completed_at": completed_at,
+        "updated_at": updated_at,
+    }
+
+
 def test_build_source_file_record_maps_storage_metadata_without_raw_text(
     tmp_path: Path,
 ) -> None:
@@ -856,6 +980,37 @@ def test_build_retrieval_package_persistence_record_maps_hashes_without_raw_text
     assert record["evidence_items"][0]["final_score"] == 0.9
     assert query_text not in str(record)
     assert evidence_text not in str(record)
+
+
+def test_build_processing_run_persistence_record_maps_safe_metadata() -> None:
+    run = processing_run_payload(
+        document_id="44444444-4444-4444-8444-444444444444",
+        status="FAILED",
+    )
+
+    record = build_processing_run_persistence_record(run)
+
+    assert record["processing_run_schema_version"] == (
+        "cx_document_processing_run.persistence.v1"
+    )
+    assert record["pipeline_run_id"] == run["pipeline_run_id"]
+    assert record["document_id"] == run["document_id"]
+    assert record["job_id"] == "job-processing-001"
+    assert record["job_status"] == "FAILED"
+    assert record["job_subject_ref"] == {
+        "type": "cx.document",
+        "id": "44444444-4444-4444-8444-444444444444",
+    }
+    assert record["step_failed"] == 1
+    assert record["steps"][0]["processing_step_schema_version"] == (
+        "cx_document_processing_step.persistence.v1"
+    )
+    assert record["steps"][0]["error_code"] == "cx.summary_failed"
+    assert record["steps"][0]["error_detail_sha256"] == sha256_text(
+        "SECRET_PROCESSING_ERROR_DETAIL"
+    )
+    assert "SECRET_PROCESSING_ERROR_DETAIL" not in str(record)
+    assert "SECRET_OUTPUT_REF_TEXT" not in str(record)
 
 
 def test_build_lexical_index_record_maps_terms_without_chunk_text(
@@ -1189,6 +1344,24 @@ def test_content_ingestion_store_persists_private_repository_records(
     assert "private source text" not in str(store.content_repository.content_objects)
     assert DEFAULT_TENANT_ID
     assert DEFAULT_OWNER_USER_ID
+
+
+def test_in_memory_repository_saves_processing_run_record() -> None:
+    repository = InMemoryCxContentRepository()
+    record = build_processing_run_persistence_record(
+        processing_run_payload(
+            document_id="44444444-4444-4444-8444-444444444444",
+            status="SUCCEEDED",
+        )
+    )
+
+    saved = repository.save_processing_run_record(record)
+
+    assert saved == record
+    assert repository.get_processing_run_record(record["pipeline_run_id"]) == record
+    assert repository.get_latest_processing_run_record(record["document_id"]) == record
+    assert repository.get_processing_run_record("missing") is None
+    assert repository.get_latest_processing_run_record("missing") is None
 
 
 def test_sqlalchemy_repository_dedupes_source_files_by_sha256_and_storage_path(
@@ -3303,6 +3476,102 @@ def test_content_ingestion_store_persists_no_answer_retrieval_without_evidence_r
     assert persisted["evidence_items"] == []
     assert _sqlite_table_count(engine, "cx_retrieval_packages") == 1
     assert _sqlite_table_count(engine, "cx_retrieval_evidence_items") == 0
+
+
+def test_sqlalchemy_repository_upserts_processing_run_metadata_without_raw_payloads(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    upload = upload_registration(tmp_path)
+    source_file = repository.save_source_file(build_source_file_record(upload))
+    content = repository.save_content_object(
+        build_content_object_record(
+            upload,
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    queued = build_processing_run_persistence_record(
+        processing_run_payload(
+            document_id=content["content_object_id"],
+            status="QUEUED",
+            updated_at="2026-08-09T00:00:00Z",
+        )
+    )
+    succeeded = build_processing_run_persistence_record(
+        processing_run_payload(
+            document_id=content["content_object_id"],
+            status="SUCCEEDED",
+            updated_at="2026-08-09T00:00:10Z",
+        )
+    )
+
+    saved_queued = repository.save_processing_run_record(queued)
+    saved_succeeded = repository.save_processing_run_record(succeeded)
+
+    assert saved_queued["status"] == "QUEUED"
+    assert saved_queued["steps"] == []
+    assert saved_succeeded == succeeded
+    assert (
+        repository.get_processing_run_record(succeeded["pipeline_run_id"])
+        == succeeded
+    )
+    assert (
+        repository.get_latest_processing_run_record(content["content_object_id"])
+        == succeeded
+    )
+    assert repository.get_processing_run_record(
+        "11111111-1111-4111-8111-111111111111"
+    ) is None
+    assert repository.get_latest_processing_run_record(
+        "22222222-2222-4222-8222-222222222222"
+    ) is None
+    assert _sqlite_table_count(engine, "cx_document_processing_runs") == 1
+    assert _sqlite_table_count(engine, "cx_document_processing_steps") == 1
+    dump = _sqlite_table_dump(
+        engine,
+        ["cx_document_processing_runs", "cx_document_processing_steps"],
+    )
+    assert "SECRET_OUTPUT_REF_TEXT" not in dump
+    assert "SECRET_PROCESSING_ERROR_DETAIL" not in dump
+
+
+def test_sqlalchemy_repository_saves_failed_processing_run_error_hash(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    upload = upload_registration(tmp_path)
+    source_file = repository.save_source_file(build_source_file_record(upload))
+    content = repository.save_content_object(
+        build_content_object_record(
+            upload,
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    failed = build_processing_run_persistence_record(
+        processing_run_payload(
+            document_id=content["content_object_id"],
+            status="FAILED",
+            updated_at="2026-08-09T00:00:10Z",
+        )
+    )
+
+    saved = repository.save_processing_run_record(failed)
+
+    assert saved == failed
+    assert saved["steps"][0]["error_code"] == "cx.summary_failed"
+    assert saved["steps"][0]["error_detail_sha256"] == sha256_text(
+        "SECRET_PROCESSING_ERROR_DETAIL"
+    )
+    assert _sqlite_table_count(engine, "cx_document_processing_runs") == 1
+    assert _sqlite_table_count(engine, "cx_document_processing_steps") == 1
+    assert "SECRET_PROCESSING_ERROR_DETAIL" not in _sqlite_table_dump(
+        engine,
+        ["cx_document_processing_runs", "cx_document_processing_steps"],
+    )
 
 
 def test_content_ingestion_store_skips_retrieval_metadata_without_persisted_lineage(

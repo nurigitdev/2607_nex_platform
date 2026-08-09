@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_cx.processing_persistence import build_processing_run_persistence_preview
 from nex_cx.retrieval_persistence import build_retrieval_package_persistence_preview
 
 
@@ -161,6 +162,21 @@ class CxContentRepository(Protocol):
     ) -> dict[str, Any] | None:
         ...
 
+    def save_processing_run_record(self, record: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+    def get_processing_run_record(
+        self,
+        pipeline_run_id: str,
+    ) -> dict[str, Any] | None:
+        ...
+
+    def get_latest_processing_run_record(
+        self,
+        document_id: str,
+    ) -> dict[str, Any] | None:
+        ...
+
 
 @dataclass(frozen=True)
 class CxContentRepositoryError(Exception):
@@ -199,6 +215,8 @@ class InMemoryCxContentRepository:
     )
     retrieval_package_records: dict[str, dict[str, Any]] = field(default_factory=dict)
     retrieval_package_ids_by_hash: dict[str, str] = field(default_factory=dict)
+    processing_run_records: dict[str, dict[str, Any]] = field(default_factory=dict)
+    latest_processing_run_ids_by_document: dict[str, str] = field(default_factory=dict)
 
     def save_source_file(self, record: dict[str, Any]) -> dict[str, Any]:
         existing_id = self.source_file_ids_by_sha256.get(record["source_sha256"])
@@ -447,6 +465,29 @@ class InMemoryCxContentRepository:
         if retrieval_package_id is None:
             return None
         return self.retrieval_package_records[retrieval_package_id]
+
+    def save_processing_run_record(self, record: dict[str, Any]) -> dict[str, Any]:
+        stored = deepcopy(record)
+        self.processing_run_records[stored["pipeline_run_id"]] = stored
+        self.latest_processing_run_ids_by_document[stored["document_id"]] = stored[
+            "pipeline_run_id"
+        ]
+        return stored
+
+    def get_processing_run_record(
+        self,
+        pipeline_run_id: str,
+    ) -> dict[str, Any] | None:
+        return self.processing_run_records.get(pipeline_run_id)
+
+    def get_latest_processing_run_record(
+        self,
+        document_id: str,
+    ) -> dict[str, Any] | None:
+        pipeline_run_id = self.latest_processing_run_ids_by_document.get(document_id)
+        if pipeline_run_id is None:
+            return None
+        return self.processing_run_records[pipeline_run_id]
 
 
 class SqlAlchemyCxContentRepository:
@@ -878,6 +919,41 @@ class SqlAlchemyCxContentRepository:
         except SQLAlchemyError as exc:
             raise _content_repository_unavailable() from exc
 
+    def save_processing_run_record(self, record: dict[str, Any]) -> dict[str, Any]:
+        record_to_store = deepcopy(record)
+        try:
+            return self._run_in_transaction(
+                lambda session: self._save_processing_run_record(
+                    session,
+                    record_to_store,
+                )
+            )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def get_processing_run_record(
+        self,
+        pipeline_run_id: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_processing_run_record(session, pipeline_run_id)
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def get_latest_processing_run_record(
+        self,
+        document_id: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_latest_processing_run_record(
+                    session,
+                    document_id=document_id,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
     def _run_in_transaction(self, operation: Any) -> Any:
         session = self._session_factory()
         try:
@@ -1078,6 +1154,28 @@ class SqlAlchemyCxContentRepository:
         stored = self._select_retrieval_package_record(
             session,
             str(record["retrieval_package_id"]),
+        )
+        assert stored is not None
+        return stored
+
+    def _save_processing_run_record(
+        self,
+        session: Session,
+        record: dict[str, Any],
+    ) -> dict[str, Any]:
+        existing = self._select_processing_run_record(
+            session,
+            str(record["pipeline_run_id"]),
+        )
+        if existing is None:
+            self._insert_processing_run_record(session, record)
+        else:
+            self._update_processing_run_record(session, record)
+            self._delete_processing_steps(session, str(record["pipeline_run_id"]))
+        self._insert_processing_steps(session, record)
+        stored = self._select_processing_run_record(
+            session,
+            str(record["pipeline_run_id"]),
         )
         assert stored is not None
         return stored
@@ -1561,6 +1659,71 @@ class SqlAlchemyCxContentRepository:
             {"retrieval_package_id": retrieval_package_id},
         ).mappings().all()
         return [_retrieval_evidence_from_row(row) for row in rows]
+
+    def _select_processing_run_record(
+        self,
+        session: Session,
+        pipeline_run_id: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_PROCESSING_RUN_SELECT_COLUMNS}
+                FROM cx_document_processing_runs
+                WHERE pipeline_run_id = :pipeline_run_id
+                """
+            ),
+            {"pipeline_run_id": pipeline_run_id},
+        ).mappings().first()
+        if row is None:
+            return None
+        return _processing_run_from_row(
+            row,
+            self._select_processing_steps(session, pipeline_run_id),
+        )
+
+    def _select_latest_processing_run_record(
+        self,
+        session: Session,
+        *,
+        document_id: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_PROCESSING_RUN_SELECT_COLUMNS}
+                FROM cx_document_processing_runs
+                WHERE document_id = :document_id
+                ORDER BY updated_at DESC, pipeline_run_id DESC
+                LIMIT 1
+                """
+            ),
+            {"document_id": document_id},
+        ).mappings().first()
+        if row is None:
+            return None
+        return _processing_run_from_row(
+            row,
+            self._select_processing_steps(session, str(row["pipeline_run_id"])),
+        )
+
+    def _select_processing_steps(
+        self,
+        session: Session,
+        pipeline_run_id: str,
+    ) -> list[dict[str, Any]]:
+        rows = session.execute(
+            text(
+                f"""
+                SELECT {_PROCESSING_STEP_SELECT_COLUMNS}
+                FROM cx_document_processing_steps
+                WHERE pipeline_run_id = :pipeline_run_id
+                ORDER BY step_order ASC
+                """
+            ),
+            {"pipeline_run_id": pipeline_run_id},
+        ).mappings().all()
+        return [_processing_step_from_row(row) for row in rows]
 
     def _insert_source_file(self, session: Session, record: dict[str, Any]) -> None:
         session.execute(
@@ -2085,6 +2248,162 @@ class SqlAlchemyCxContentRepository:
             ],
         )
 
+    def _insert_processing_run_record(
+        self,
+        session: Session,
+        record: dict[str, Any],
+    ) -> None:
+        job_subject_ref_expression = _json_sql_expression(session, "job_subject_ref")
+        job_links_expression = _json_sql_expression(session, "job_links")
+        session.execute(
+            text(
+                f"""
+                INSERT INTO cx_document_processing_runs (
+                    pipeline_run_id,
+                    pipeline_schema_version,
+                    document_id,
+                    status,
+                    trace_id,
+                    request_id,
+                    job_id,
+                    job_type,
+                    job_status,
+                    job_attempt_count,
+                    job_max_attempts,
+                    job_retryable,
+                    job_subject_ref,
+                    job_links,
+                    step_total,
+                    step_succeeded,
+                    step_skipped,
+                    step_failed,
+                    queued_at,
+                    started_at,
+                    completed_at,
+                    updated_at
+                )
+                VALUES (
+                    :pipeline_run_id,
+                    :pipeline_schema_version,
+                    :document_id,
+                    :status,
+                    :trace_id,
+                    :request_id,
+                    :job_id,
+                    :job_type,
+                    :job_status,
+                    :job_attempt_count,
+                    :job_max_attempts,
+                    :job_retryable,
+                    {job_subject_ref_expression},
+                    {job_links_expression},
+                    :step_total,
+                    :step_succeeded,
+                    :step_skipped,
+                    :step_failed,
+                    :queued_at,
+                    :started_at,
+                    :completed_at,
+                    :updated_at
+                )
+                """
+            ),
+            _processing_run_insert_params(record),
+        )
+
+    def _update_processing_run_record(
+        self,
+        session: Session,
+        record: dict[str, Any],
+    ) -> None:
+        job_subject_ref_expression = _json_sql_expression(session, "job_subject_ref")
+        job_links_expression = _json_sql_expression(session, "job_links")
+        session.execute(
+            text(
+                f"""
+                UPDATE cx_document_processing_runs
+                SET pipeline_schema_version = :pipeline_schema_version,
+                    document_id = :document_id,
+                    status = :status,
+                    trace_id = :trace_id,
+                    request_id = :request_id,
+                    job_id = :job_id,
+                    job_type = :job_type,
+                    job_status = :job_status,
+                    job_attempt_count = :job_attempt_count,
+                    job_max_attempts = :job_max_attempts,
+                    job_retryable = :job_retryable,
+                    job_subject_ref = {job_subject_ref_expression},
+                    job_links = {job_links_expression},
+                    step_total = :step_total,
+                    step_succeeded = :step_succeeded,
+                    step_skipped = :step_skipped,
+                    step_failed = :step_failed,
+                    queued_at = :queued_at,
+                    started_at = :started_at,
+                    completed_at = :completed_at,
+                    updated_at = :updated_at
+                WHERE pipeline_run_id = :pipeline_run_id
+                """
+            ),
+            _processing_run_insert_params(record),
+        )
+
+    def _delete_processing_steps(self, session: Session, pipeline_run_id: str) -> None:
+        session.execute(
+            text(
+                """
+                DELETE FROM cx_document_processing_steps
+                WHERE pipeline_run_id = :pipeline_run_id
+                """
+            ),
+            {"pipeline_run_id": pipeline_run_id},
+        )
+
+    def _insert_processing_steps(
+        self,
+        session: Session,
+        record: dict[str, Any],
+    ) -> None:
+        steps = record.get("steps", [])
+        if not steps:
+            return
+        session.execute(
+            text(
+                """
+                INSERT INTO cx_document_processing_steps (
+                    pipeline_run_id,
+                    step_order,
+                    step_id,
+                    status,
+                    output_ref_type,
+                    output_ref_id,
+                    output_ref_document_id,
+                    output_ref_hash,
+                    error_code,
+                    error_detail_sha256,
+                    error_retryable,
+                    created_at
+                )
+                VALUES (
+                    :pipeline_run_id,
+                    :step_order,
+                    :step_id,
+                    :status,
+                    :output_ref_type,
+                    :output_ref_id,
+                    :output_ref_document_id,
+                    :output_ref_hash,
+                    :error_code,
+                    :error_detail_sha256,
+                    :error_retryable,
+                    :created_at
+                )
+                """
+            ),
+            [_processing_step_insert_params(record, step) for step in steps],
+        )
+
     def _insert_owner_acl_entry(self, session: Session, record: dict[str, Any]) -> None:
         content_object_id = str(record["content_object_id"])
         owner_user_id = str(record["owner_user_id"])
@@ -2528,6 +2847,58 @@ def build_retrieval_package_persistence_record(
     }
 
 
+def build_processing_run_persistence_record(
+    run: dict[str, Any],
+) -> dict[str, Any]:
+    preview = build_processing_run_persistence_preview(run)
+    header = preview["header"]
+    return {
+        "processing_run_schema_version": "cx_document_processing_run.persistence.v1",
+        "pipeline_run_id": header["pipeline_run_id"],
+        "pipeline_schema_version": header["pipeline_schema_version"],
+        "document_id": header["document_id"],
+        "status": header["status"],
+        "trace_id": header["trace_id"],
+        "request_id": header["request_id"],
+        "job_id": header["job_id"],
+        "job_type": header["job_type"],
+        "job_status": header["job_status"],
+        "job_attempt_count": header["job_attempt_count"],
+        "job_max_attempts": header["job_max_attempts"],
+        "job_retryable": header["job_retryable"],
+        "job_subject_ref": header["job_subject_ref"] or {},
+        "job_links": header["job_links"] or {},
+        "step_total": header["step_total"],
+        "step_succeeded": header["step_succeeded"],
+        "step_skipped": header["step_skipped"],
+        "step_failed": header["step_failed"],
+        "queued_at": header["queued_at"],
+        "started_at": header["started_at"],
+        "completed_at": header["completed_at"],
+        "updated_at": header["updated_at"],
+        "steps": [
+            {
+                "processing_step_schema_version": (
+                    "cx_document_processing_step.persistence.v1"
+                ),
+                "pipeline_run_id": header["pipeline_run_id"],
+                "step_order": step["step_order"],
+                "step_id": step["step_id"],
+                "status": step["status"],
+                "output_ref_type": step["output_ref_type"],
+                "output_ref_id": step["output_ref_id"],
+                "output_ref_document_id": step["output_ref_document_id"],
+                "output_ref_hash": step["output_ref_hash"],
+                "error_code": step["error_code"],
+                "error_detail_sha256": step["error_detail_sha256"],
+                "error_retryable": step["error_retryable"],
+                "created_at": header["updated_at"],
+            }
+            for step in preview["steps"]
+        ],
+    }
+
+
 def markdown_storage_uri_from_path(extracted_markdown_path: str) -> str:
     path = Path(extracted_markdown_path)
     if len(path.parts) >= 2:
@@ -2729,6 +3100,46 @@ _RETRIEVAL_EVIDENCE_SELECT_COLUMNS = """
     permission_result,
     neighbor_context,
     quality_flags,
+    created_at
+"""
+
+_PROCESSING_RUN_SELECT_COLUMNS = """
+    pipeline_run_id,
+    pipeline_schema_version,
+    document_id,
+    status,
+    trace_id,
+    request_id,
+    job_id,
+    job_type,
+    job_status,
+    job_attempt_count,
+    job_max_attempts,
+    job_retryable,
+    job_subject_ref,
+    job_links,
+    step_total,
+    step_succeeded,
+    step_skipped,
+    step_failed,
+    queued_at,
+    started_at,
+    completed_at,
+    updated_at
+"""
+
+_PROCESSING_STEP_SELECT_COLUMNS = """
+    pipeline_run_id,
+    step_order,
+    step_id,
+    status,
+    output_ref_type,
+    output_ref_id,
+    output_ref_document_id,
+    output_ref_hash,
+    error_code,
+    error_detail_sha256,
+    error_retryable,
     created_at
 """
 
@@ -2967,6 +3378,53 @@ def _retrieval_evidence_insert_params(
     }
 
 
+def _processing_run_insert_params(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "pipeline_run_id": record["pipeline_run_id"],
+        "pipeline_schema_version": record["pipeline_schema_version"],
+        "document_id": record["document_id"],
+        "status": record["status"],
+        "trace_id": record.get("trace_id"),
+        "request_id": record["request_id"],
+        "job_id": record.get("job_id"),
+        "job_type": record.get("job_type"),
+        "job_status": record.get("job_status"),
+        "job_attempt_count": record.get("job_attempt_count", 0),
+        "job_max_attempts": record.get("job_max_attempts", 0),
+        "job_retryable": record.get("job_retryable"),
+        "job_subject_ref": _json_dumps(record.get("job_subject_ref", {})),
+        "job_links": _json_dumps(record.get("job_links", {})),
+        "step_total": record.get("step_total", 0),
+        "step_succeeded": record.get("step_succeeded", 0),
+        "step_skipped": record.get("step_skipped", 0),
+        "step_failed": record.get("step_failed", 0),
+        "queued_at": record.get("queued_at"),
+        "started_at": record.get("started_at"),
+        "completed_at": record.get("completed_at"),
+        "updated_at": record["updated_at"],
+    }
+
+
+def _processing_step_insert_params(
+    record: dict[str, Any],
+    step: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "pipeline_run_id": record["pipeline_run_id"],
+        "step_order": step["step_order"],
+        "step_id": step["step_id"],
+        "status": step["status"],
+        "output_ref_type": step.get("output_ref_type"),
+        "output_ref_id": step.get("output_ref_id"),
+        "output_ref_document_id": step.get("output_ref_document_id"),
+        "output_ref_hash": step.get("output_ref_hash"),
+        "error_code": step.get("error_code"),
+        "error_detail_sha256": step.get("error_detail_sha256"),
+        "error_retryable": step.get("error_retryable"),
+        "created_at": step.get("created_at", record["updated_at"]),
+    }
+
+
 def _content_object_from_row(row: Any) -> dict[str, Any]:
     return {
         "content_object_id": str(row["content_object_id"]),
@@ -3188,6 +3646,64 @@ def _retrieval_evidence_from_row(row: Any) -> dict[str, Any]:
         "permission_result": _json_loads(row["permission_result"], default={}),
         "neighbor_context": _json_loads(row["neighbor_context"], default=[]),
         "quality_flags": _json_loads(row["quality_flags"], default=[]),
+        "created_at": _timestamp_to_wire(row["created_at"]),
+    }
+
+
+def _processing_run_from_row(
+    row: Any,
+    steps: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "processing_run_schema_version": "cx_document_processing_run.persistence.v1",
+        "pipeline_run_id": str(row["pipeline_run_id"]),
+        "pipeline_schema_version": row["pipeline_schema_version"],
+        "document_id": str(row["document_id"]),
+        "status": row["status"],
+        "trace_id": row["trace_id"],
+        "request_id": row["request_id"],
+        "job_id": row["job_id"],
+        "job_type": row["job_type"],
+        "job_status": row["job_status"],
+        "job_attempt_count": int(row["job_attempt_count"]),
+        "job_max_attempts": int(row["job_max_attempts"]),
+        "job_retryable": (
+            None
+            if row["job_retryable"] is None
+            else _bool_from_database(row["job_retryable"])
+        ),
+        "job_subject_ref": _json_loads(row["job_subject_ref"], default={}),
+        "job_links": _json_loads(row["job_links"], default={}),
+        "step_total": int(row["step_total"]),
+        "step_succeeded": int(row["step_succeeded"]),
+        "step_skipped": int(row["step_skipped"]),
+        "step_failed": int(row["step_failed"]),
+        "queued_at": _timestamp_to_wire_optional(row["queued_at"]),
+        "started_at": _timestamp_to_wire_optional(row["started_at"]),
+        "completed_at": _timestamp_to_wire_optional(row["completed_at"]),
+        "updated_at": _timestamp_to_wire(row["updated_at"]),
+        "steps": steps,
+    }
+
+
+def _processing_step_from_row(row: Any) -> dict[str, Any]:
+    return {
+        "processing_step_schema_version": "cx_document_processing_step.persistence.v1",
+        "pipeline_run_id": str(row["pipeline_run_id"]),
+        "step_order": int(row["step_order"]),
+        "step_id": row["step_id"],
+        "status": row["status"],
+        "output_ref_type": row["output_ref_type"],
+        "output_ref_id": row["output_ref_id"],
+        "output_ref_document_id": _optional_uuid_to_wire(row["output_ref_document_id"]),
+        "output_ref_hash": row["output_ref_hash"],
+        "error_code": row["error_code"],
+        "error_detail_sha256": row["error_detail_sha256"],
+        "error_retryable": (
+            None
+            if row["error_retryable"] is None
+            else _bool_from_database(row["error_retryable"])
+        ),
         "created_at": _timestamp_to_wire(row["created_at"]),
     }
 
