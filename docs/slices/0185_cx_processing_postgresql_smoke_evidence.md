@@ -58,3 +58,29 @@ Expected result:
 ```text
 pass
 ```
+
+Actual PostgreSQL test DB smoke:
+
+```bash
+NEX_CX_TEST_DATABASE_URL='postgresql+psycopg://nex_cx_user:***@127.0.0.1:5432/nex_cx_test' \
+NEX_CX_PROCESSING_POSTGRES_PERSISTENCE_SMOKE=1 \
+./.venv/bin/python scripts/smoke/run_cx_processing_postgres_persistence_smoke.py --summary
+```
+
+Observed result:
+
+```text
+cx_processing_postgres_persistence_smoke=pass service=nex-cx db_env=NEX_CX_TEST_DATABASE_URL
+```
+
+JSON evidence confirmed:
+
+- database: `nex_cx_test`
+- user: `nex_cx_user`
+- migration `0182_cx_processing_run_step_persistence`: present
+- queued run persisted and upserted to succeeded
+- failed run and failed step hash persisted
+- repository round trip and latest-run lookup passed
+- raw private payload was absent from persisted rows
+- smoke cleanup left `0` processing runs, `0` processing steps, and `0`
+  content objects for the smoke ids
