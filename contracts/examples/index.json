@@ -51,6 +51,11 @@
       "schema": "schemas/common/service_claims.v1.schema.json"
     },
     {
+      "name": "oa_subject_registry_snapshot_mock",
+      "path": "examples/auth/oa_subject_registry_snapshot.mock_success.json",
+      "schema": "schemas/service/nex_oa/subject_registry_snapshot.v1.schema.json"
+    },
+    {
       "name": "mo_provider_route_generation",
       "path": "examples/generation/mo_provider_route.general_llm_default.json",
       "schema": "schemas/service/nex_mo/provider_route.v1.schema.json"

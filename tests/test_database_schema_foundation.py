@@ -168,6 +168,30 @@ def test_service_log_entries_foundation_exists_for_every_service_database() -> N
         assert "0137_service_log_entries_foundation" in compact
 
 
+def test_oa_subject_registry_foundation_tracks_stable_tenant_and_user_refs() -> None:
+    compact = normalized(
+        read_migration_named("nex-oa", "0193_oa_subject_registry_foundation.sql")
+    )
+
+    assert "create table if not exists oa_tenants" in compact
+    assert "tenant_ref_type text not null default 'oa.tenant'" in compact
+    assert "check (tenant_ref_type = 'oa.tenant')" in compact
+    assert "status text not null default 'active'" in compact
+    assert "check (status in ('active', 'disabled', 'deleted'))" in compact
+    assert "metadata jsonb not null default '{}'::jsonb" in compact
+
+    assert "create table if not exists oa_subjects" in compact
+    assert "tenant_id text not null references oa_tenants(tenant_id)" in compact
+    assert "subject_ref_type text not null default 'oa.user'" in compact
+    assert "check (subject_ref_type = 'oa.user')" in compact
+    assert "primary key (tenant_id, subject_ref_type, subject_id)" in compact
+    assert "ix_oa_tenants_status_updated" in compact
+    assert "ix_oa_subjects_tenant_status_updated" in compact
+    assert "ix_oa_subjects_subject_ref" in compact
+    assert "0193_oa_subject_registry_foundation" in compact
+    assert "password" not in compact
+
+
 def test_cx_schema_scopes_duplicate_uploads_to_active_owner_documents() -> None:
     compact = normalized(read_migration("nex-cx"))
     storage_policy = normalized(

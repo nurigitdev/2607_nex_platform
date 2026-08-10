@@ -5,11 +5,16 @@ from nex_runtime import (
     register_service_job_control_routes,
     register_service_log_retention_routes,
 )
+from nex_oa.subjects import (
+    build_subject_registry_for_runtime,
+    register_subject_registry_routes,
+)
 
 
 SERVICE_SPEC = SERVICE_SPECS["nex-oa"]
 app = build_service_app(SERVICE_SPEC)
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
+SUBJECT_REGISTRY = build_subject_registry_for_runtime(SERVICE_PERSISTENCE)
 register_service_job_control_routes(
     app,
     service_id=SERVICE_SPEC.service_id,
@@ -20,3 +25,4 @@ register_service_log_retention_routes(
     service_id=SERVICE_SPEC.service_id,
     store=SERVICE_PERSISTENCE.service_log_store,
 )
+register_subject_registry_routes(app, registry=SUBJECT_REGISTRY)

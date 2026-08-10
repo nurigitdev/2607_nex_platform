@@ -1,0 +1,266 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/subject_registry_snapshot.v1.schema.json",
+  "title": "NeX OA Subject Registry Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "snapshot_schema_version",
+    "service_id",
+    "registry_capability",
+    "tenant_ref",
+    "subject_ref",
+    "tenant",
+    "subject",
+    "compatibility_aliases",
+    "capabilities",
+    "deferred",
+    "private_payload_policy",
+    "next_slice"
+  ],
+  "properties": {
+    "snapshot_schema_version": {
+      "const": "oa_subject_registry_snapshot.v1"
+    },
+    "service_id": {
+      "const": "nex-oa"
+    },
+    "registry_capability": {
+      "const": "stable_subject_registry"
+    },
+    "tenant_ref": {
+      "$ref": "#/$defs/tenant_ref"
+    },
+    "subject_ref": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/user_ref"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "tenant": {
+      "$ref": "#/$defs/tenant"
+    },
+    "subject": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/subject"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "compatibility_aliases": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenant_id"
+      ],
+      "properties": {
+        "tenant_id": {
+          "$ref": "#/$defs/registry_id"
+        },
+        "owner_user_id": {
+          "$ref": "#/$defs/registry_id"
+        },
+        "user_id": {
+          "$ref": "#/$defs/registry_id"
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stable_subject_registry",
+        "password_login",
+        "external_identity_provider_mapping",
+        "role_management",
+        "full_user_profile"
+      ],
+      "properties": {
+        "stable_subject_registry": {
+          "const": true
+        },
+        "password_login": {
+          "const": false
+        },
+        "external_identity_provider_mapping": {
+          "const": false
+        },
+        "role_management": {
+          "const": false
+        },
+        "full_user_profile": {
+          "const": false
+        }
+      }
+    },
+    "deferred": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "private_payload_policy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "next_slice": {
+      "const": "0194_cx_source_ownership_schema_migration"
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "registry_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "tenant_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "const": "oa.tenant"
+        },
+        "id": {
+          "$ref": "#/$defs/registry_id"
+        }
+      }
+    },
+    "user_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "const": "oa.user"
+        },
+        "id": {
+          "$ref": "#/$defs/registry_id"
+        }
+      }
+    },
+    "tenant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "registry_schema_version",
+        "tenant_id",
+        "tenant_ref",
+        "display_name",
+        "status",
+        "metadata",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "registry_schema_version": {
+          "const": "oa_subject_registry.v1"
+        },
+        "tenant_id": {
+          "$ref": "#/$defs/registry_id"
+        },
+        "tenant_ref": {
+          "$ref": "#/$defs/tenant_ref"
+        },
+        "display_name": {
+          "$ref": "#/$defs/display_name"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "registry_schema_version",
+        "tenant_ref",
+        "subject_id",
+        "subject_ref",
+        "display_name",
+        "status",
+        "metadata",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "registry_schema_version": {
+          "const": "oa_subject_registry.v1"
+        },
+        "tenant_ref": {
+          "$ref": "#/$defs/tenant_ref"
+        },
+        "subject_id": {
+          "$ref": "#/$defs/registry_id"
+        },
+        "subject_ref": {
+          "$ref": "#/$defs/user_ref"
+        },
+        "display_name": {
+          "$ref": "#/$defs/display_name"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ACTIVE",
+        "DISABLED",
+        "DELETED"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

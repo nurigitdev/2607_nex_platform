@@ -1,0 +1,69 @@
+{
+  "snapshot_schema_version": "oa_subject_registry_snapshot.v1",
+  "service_id": "nex-oa",
+  "registry_capability": "stable_subject_registry",
+  "tenant_ref": {
+    "type": "oa.tenant",
+    "id": "local-tenant"
+  },
+  "subject_ref": {
+    "type": "oa.user",
+    "id": "local-user"
+  },
+  "tenant": {
+    "registry_schema_version": "oa_subject_registry.v1",
+    "tenant_id": "local-tenant",
+    "tenant_ref": {
+      "type": "oa.tenant",
+      "id": "local-tenant"
+    },
+    "display_name": "Local Tenant",
+    "status": "ACTIVE",
+    "metadata": {
+      "registry_mode": "local_mock"
+    },
+    "created_at": "2026-08-10T00:00:00Z",
+    "updated_at": "2026-08-10T00:00:00Z"
+  },
+  "subject": {
+    "registry_schema_version": "oa_subject_registry.v1",
+    "tenant_ref": {
+      "type": "oa.tenant",
+      "id": "local-tenant"
+    },
+    "subject_id": "local-user",
+    "subject_ref": {
+      "type": "oa.user",
+      "id": "local-user"
+    },
+    "display_name": "Local User",
+    "status": "ACTIVE",
+    "metadata": {
+      "registry_mode": "local_mock"
+    },
+    "created_at": "2026-08-10T00:00:00Z",
+    "updated_at": "2026-08-10T00:00:00Z"
+  },
+  "compatibility_aliases": {
+    "tenant_id": "local-tenant",
+    "owner_user_id": "local-user",
+    "user_id": "local-user"
+  },
+  "capabilities": {
+    "stable_subject_registry": true,
+    "password_login": false,
+    "external_identity_provider_mapping": false,
+    "role_management": false,
+    "full_user_profile": false
+  },
+  "deferred": [
+    "password_login",
+    "external_identity_provider_mapping",
+    "role_management",
+    "full_user_profile"
+  ],
+  "private_payload_policy": "Store stable tenant/user subject refs, display names, status, and safe metadata only. Do not store passwords, tokens, raw identity profiles, email addresses, phone numbers, or other identity secrets.",
+  "next_slice": "0194_cx_source_ownership_schema_migration",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
+}
