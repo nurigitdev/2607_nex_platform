@@ -69,6 +69,11 @@ from run_cx_upload_ownership_postgres_smoke import (  # noqa: E402
     SMOKE_PROFILE_ENV as CX_UPLOAD_OWNERSHIP_PROFILE_ENV,
     run_cx_upload_ownership_postgres_smoke,
 )
+from run_cx_document_library_postgres_smoke import (  # noqa: E402
+    SMOKE_ENV as CX_DOCUMENT_LIBRARY_SMOKE_ENV,
+    SMOKE_PROFILE_ENV as CX_DOCUMENT_LIBRARY_PROFILE_ENV,
+    run_cx_document_library_postgres_smoke,
+)
 from run_cx_retrieval_postgres_smoke import (  # noqa: E402
     SMOKE_ENV as CX_RETRIEVAL_SMOKE_ENV,
     SMOKE_PROFILE_ENV as CX_RETRIEVAL_PROFILE_ENV,
@@ -145,6 +150,7 @@ SUITE_STAGE_ORDER = (
     "operations_pack",
     "cx_retrieval",
     "cx_upload_ownership",
+    "cx_document_library",
     "ag_retrieval_package_postgres",
     "cx_processing_jobqueue",
     "cx_processing_events",
@@ -236,6 +242,8 @@ def run_postgres_test_smoke_suite(
         CX_RETRIEVAL_PROFILE_ENV: profile,
         CX_UPLOAD_OWNERSHIP_SMOKE_ENV: "1",
         CX_UPLOAD_OWNERSHIP_PROFILE_ENV: profile,
+        CX_DOCUMENT_LIBRARY_SMOKE_ENV: "1",
+        CX_DOCUMENT_LIBRARY_PROFILE_ENV: profile,
         AG_RETRIEVAL_PACKAGE_POSTGRES_SMOKE_ENV: "1",
         AG_RETRIEVAL_PACKAGE_POSTGRES_PROFILE_ENV: profile,
         CX_PROCESSING_JOBQUEUE_SMOKE_ENV: "1",
@@ -280,6 +288,9 @@ def run_postgres_test_smoke_suite(
     )
     stages["cx_upload_ownership"] = _stage_from_child_smoke(
         run_cx_upload_ownership_postgres_smoke(environ=smoke_env)
+    )
+    stages["cx_document_library"] = _stage_from_child_smoke(
+        run_cx_document_library_postgres_smoke(environ=smoke_env)
     )
     stages["ag_retrieval_package_postgres"] = _stage_from_child_smoke(
         run_ag_retrieval_package_postgres_smoke(environ=smoke_env)
