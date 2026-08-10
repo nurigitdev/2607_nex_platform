@@ -23,6 +23,8 @@ DEFAULT_OWNER_USER_ID = "local-user"
 CX_SOURCE_OWNERSHIP_REF_SCHEMA_VERSION = "cx_source_ownership_ref.v1"
 OA_TENANT_REF_TYPE = "oa.tenant"
 OA_USER_SUBJECT_REF_TYPE = "oa.user"
+DEFAULT_CONTENT_OBJECT_QUERY_LIMIT = 50
+MAX_CONTENT_OBJECT_QUERY_LIMIT = 100
 
 
 class CxContentRepository(Protocol):
@@ -56,6 +58,15 @@ class CxContentRepository(Protocol):
         owner_user_id: str,
         source_sha256: str,
     ) -> dict[str, Any] | None:
+        ...
+
+    def list_active_content_objects(
+        self,
+        *,
+        tenant_id: str,
+        owner_user_id: str,
+        limit: int = DEFAULT_CONTENT_OBJECT_QUERY_LIMIT,
+    ) -> list[dict[str, Any]]:
         ...
 
     def save_extraction_artifact(self, record: dict[str, Any]) -> dict[str, Any]:
@@ -134,6 +145,12 @@ class CxContentRepository(Protocol):
     ) -> dict[str, Any] | None:
         ...
 
+    def get_latest_document_summary_record(
+        self,
+        content_object_id: str,
+    ) -> dict[str, Any] | None:
+        ...
+
     def save_summary_embedding_record(self, record: dict[str, Any]) -> dict[str, Any]:
         ...
 
@@ -149,6 +166,12 @@ class CxContentRepository(Protocol):
         document_summary_id: str,
         model_profile_id: str,
         model_revision: str,
+    ) -> dict[str, Any] | None:
+        ...
+
+    def get_latest_summary_embedding_record(
+        self,
+        document_summary_id: str,
     ) -> dict[str, Any] | None:
         ...
 
@@ -296,6 +319,38 @@ class InMemoryCxContentRepository:
             return None
         return self.content_objects[content_object_id]
 
+    def list_active_content_objects(
+        self,
+        *,
+        tenant_id: str,
+        owner_user_id: str,
+        limit: int = DEFAULT_CONTENT_OBJECT_QUERY_LIMIT,
+    ) -> list[dict[str, Any]]:
+        ownership_ref = _build_content_ownership_ref(
+            tenant_id=tenant_id,
+            owner_user_id=owner_user_id,
+        )
+        tenant_ref = ownership_ref["tenant_ref"]
+        owner_subject_ref = ownership_ref["owner_subject_ref"]
+        filtered: list[dict[str, Any]] = []
+        for record in self.content_objects.values():
+            if record.get("lifecycle_status") != "ACTIVE":
+                continue
+            record_ownership = _ownership_ref_from_content_object(record)
+            if record_ownership["tenant_ref"] != tenant_ref:
+                continue
+            if record_ownership["owner_subject_ref"] != owner_subject_ref:
+                continue
+            filtered.append(deepcopy(record))
+        filtered.sort(
+            key=lambda record: (
+                str(record.get("created_at") or ""),
+                str(record.get("content_object_id") or ""),
+            ),
+            reverse=True,
+        )
+        return filtered[: bounded_content_object_query_limit(limit)]
+
     def save_extraction_artifact(self, record: dict[str, Any]) -> dict[str, Any]:
         key = _extraction_artifact_unique_key(record)
         existing_id = self.extraction_artifact_ids_by_content_hash.get(key)
@@ -429,6 +484,26 @@ class InMemoryCxContentRepository:
             return None
         return self.document_summary_records[document_summary_id]
 
+    def get_latest_document_summary_record(
+        self,
+        content_object_id: str,
+    ) -> dict[str, Any] | None:
+        summaries = [
+            deepcopy(record)
+            for record in self.document_summary_records.values()
+            if record.get("content_object_id") == content_object_id
+        ]
+        if not summaries:
+            return None
+        summaries.sort(
+            key=lambda record: (
+                str(record.get("updated_at") or ""),
+                str(record.get("document_summary_id") or ""),
+            ),
+            reverse=True,
+        )
+        return summaries[0]
+
     def save_summary_embedding_record(self, record: dict[str, Any]) -> dict[str, Any]:
         key = _summary_embedding_unique_key(record)
         existing_id = self.summary_embedding_ids_by_unique_key.get(key)
@@ -458,6 +533,26 @@ class InMemoryCxContentRepository:
         if summary_embedding_id is None:
             return None
         return self.summary_embedding_records[summary_embedding_id]
+
+    def get_latest_summary_embedding_record(
+        self,
+        document_summary_id: str,
+    ) -> dict[str, Any] | None:
+        embeddings = [
+            deepcopy(record)
+            for record in self.summary_embedding_records.values()
+            if record.get("document_summary_id") == document_summary_id
+        ]
+        if not embeddings:
+            return None
+        embeddings.sort(
+            key=lambda record: (
+                str(record.get("created_at") or ""),
+                str(record.get("summary_embedding_id") or ""),
+            ),
+            reverse=True,
+        )
+        return embeddings[0]
 
     def save_retrieval_package_record(self, record: dict[str, Any]) -> dict[str, Any]:
         existing_id = self.retrieval_package_ids_by_hash.get(str(record["package_hash"]))
@@ -643,6 +738,27 @@ class SqlAlchemyCxContentRepository:
             ownership_ref=ownership_ref,
             source_sha256=source_sha256,
         )
+
+    def list_active_content_objects(
+        self,
+        *,
+        tenant_id: str,
+        owner_user_id: str,
+        limit: int = DEFAULT_CONTENT_OBJECT_QUERY_LIMIT,
+    ) -> list[dict[str, Any]]:
+        ownership_ref = _build_content_ownership_ref(
+            tenant_id=tenant_id,
+            owner_user_id=owner_user_id,
+        )
+        try:
+            with self._session_factory() as session:
+                return self._select_active_content_objects_by_ownership_ref(
+                    session,
+                    ownership_ref=ownership_ref,
+                    limit=limit,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
 
     def _find_active_content_object_by_ownership_ref(
         self,
@@ -885,6 +1001,19 @@ class SqlAlchemyCxContentRepository:
         except SQLAlchemyError as exc:
             raise _content_repository_unavailable() from exc
 
+    def get_latest_document_summary_record(
+        self,
+        content_object_id: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_latest_document_summary_record(
+                    session,
+                    content_object_id=content_object_id,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
     def save_summary_embedding_record(self, record: dict[str, Any]) -> dict[str, Any]:
         record_to_store = deepcopy(record)
         try:
@@ -933,6 +1062,19 @@ class SqlAlchemyCxContentRepository:
                     document_summary_id=document_summary_id,
                     model_profile_id=model_profile_id,
                     model_revision=model_revision,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def get_latest_summary_embedding_record(
+        self,
+        document_summary_id: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_latest_summary_embedding_record(
+                    session,
+                    document_summary_id=document_summary_id,
                 )
         except SQLAlchemyError as exc:
             raise _content_repository_unavailable() from exc
@@ -1387,6 +1529,39 @@ class SqlAlchemyCxContentRepository:
         ).mappings().first()
         return _content_object_from_row(row) if row is not None else None
 
+    def _select_active_content_objects_by_ownership_ref(
+        self,
+        session: Session,
+        *,
+        ownership_ref: dict[str, Any],
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        tenant_ref = ownership_ref["tenant_ref"]
+        owner_subject_ref = ownership_ref["owner_subject_ref"]
+        rows = session.execute(
+            text(
+                f"""
+                SELECT {_CONTENT_OBJECT_SELECT_COLUMNS}
+                FROM cx_content_objects
+                WHERE tenant_ref_type = :tenant_ref_type
+                  AND tenant_ref_id = :tenant_ref_id
+                  AND owner_subject_ref_type = :owner_subject_ref_type
+                  AND owner_subject_ref_id = :owner_subject_ref_id
+                  AND lifecycle_status = 'ACTIVE'
+                ORDER BY created_at DESC, content_object_id DESC
+                LIMIT :limit
+                """
+            ),
+            {
+                "tenant_ref_type": tenant_ref["type"],
+                "tenant_ref_id": tenant_ref["id"],
+                "owner_subject_ref_type": owner_subject_ref["type"],
+                "owner_subject_ref_id": owner_subject_ref["id"],
+                "limit": bounded_content_object_query_limit(limit),
+            },
+        ).mappings().all()
+        return [_content_object_from_row(row) for row in rows]
+
     def _select_extraction_artifact(
         self,
         session: Session,
@@ -1649,6 +1824,26 @@ class SqlAlchemyCxContentRepository:
         ).mappings().first()
         return _document_summary_from_row(row) if row is not None else None
 
+    def _select_latest_document_summary_record(
+        self,
+        session: Session,
+        *,
+        content_object_id: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_DOCUMENT_SUMMARY_SELECT_COLUMNS}
+                FROM cx_document_summaries
+                WHERE content_object_id = :content_object_id
+                ORDER BY updated_at DESC, document_summary_id DESC
+                LIMIT 1
+                """
+            ),
+            {"content_object_id": content_object_id},
+        ).mappings().first()
+        return _document_summary_from_row(row) if row is not None else None
+
     def _select_summary_embedding_record(
         self,
         session: Session,
@@ -1689,6 +1884,26 @@ class SqlAlchemyCxContentRepository:
                 "model_profile_id": model_profile_id,
                 "model_revision": model_revision,
             },
+        ).mappings().first()
+        return _summary_embedding_from_row(row) if row is not None else None
+
+    def _select_latest_summary_embedding_record(
+        self,
+        session: Session,
+        *,
+        document_summary_id: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_SUMMARY_EMBEDDING_SELECT_COLUMNS}
+                FROM cx_document_summary_embeddings
+                WHERE document_summary_id = :document_summary_id
+                ORDER BY created_at DESC, summary_embedding_id DESC
+                LIMIT 1
+                """
+            ),
+            {"document_summary_id": document_summary_id},
         ).mappings().first()
         return _summary_embedding_from_row(row) if row is not None else None
 
@@ -3969,6 +4184,18 @@ def _summary_embedding_unique_key(record: dict[str, Any]) -> tuple[str, str, str
         str(record["model_profile_id"]),
         str(record["model_revision"]),
     )
+
+
+def bounded_content_object_query_limit(limit: int | str | None) -> int:
+    if limit is None:
+        return DEFAULT_CONTENT_OBJECT_QUERY_LIMIT
+    try:
+        value = int(limit)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("CX content object query limit must be an integer.") from exc
+    if value < 1:
+        return 1
+    return min(value, MAX_CONTENT_OBJECT_QUERY_LIMIT)
 
 
 def _content_object_with_ownership_ref(record: dict[str, Any]) -> dict[str, Any]:

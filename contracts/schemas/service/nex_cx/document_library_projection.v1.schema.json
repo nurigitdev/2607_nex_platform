@@ -1,0 +1,495 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_cx/document_library_projection.v1.schema.json",
+  "title": "NeX CX Owner-Scoped Document Library Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "projection_schema_version",
+    "service_id",
+    "source",
+    "filters",
+    "pagination",
+    "summary",
+    "documents",
+    "metadata"
+  ],
+  "properties": {
+    "projection_schema_version": {
+      "const": "cx_document_library_projection.v1"
+    },
+    "service_id": {
+      "const": "nex-cx"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_kind",
+        "database_env",
+        "redacted_database_url"
+      ],
+      "properties": {
+        "source_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "database_env": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "redacted_database_url": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^postgresql\\+psycopg://[^:]+:\\*\\*\\*@.+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "filter_schema_version",
+        "tenant_ref",
+        "owner_subject_ref",
+        "lifecycle_status"
+      ],
+      "properties": {
+        "filter_schema_version": {
+          "const": "cx_document_library_query_filters.v1"
+        },
+        "tenant_ref": {
+          "$ref": "#/$defs/tenant_ref"
+        },
+        "owner_subject_ref": {
+          "$ref": "#/$defs/user_subject_ref"
+        },
+        "lifecycle_status": {
+          "const": "ACTIVE"
+        }
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "limit",
+        "returned"
+      ],
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "returned": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "document_count",
+        "summary_available_count",
+        "summary_embedding_available_count"
+      ],
+      "properties": {
+        "document_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "summary_available_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "summary_embedding_available_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "documents": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/document_library_item"
+      }
+    },
+    "metadata": {
+      "$ref": "#/$defs/privacy_metadata"
+    }
+  },
+  "$defs": {
+    "tenant_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "const": "oa.tenant"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "user_subject_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "const": "oa.user"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "optional_hash": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "optional_text": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "optional_date_time": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "document_library_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "document_library_schema_version",
+        "document_id",
+        "upload_id",
+        "tenant_ref",
+        "owner_subject_ref",
+        "uploaded_by_subject_ref",
+        "filename",
+        "content_type",
+        "size_bytes",
+        "source_sha256",
+        "classification",
+        "lifecycle_status",
+        "retrieval_policy",
+        "created_at",
+        "updated_at",
+        "summary",
+        "summary_embedding",
+        "processing",
+        "links",
+        "metadata"
+      ],
+      "properties": {
+        "document_library_schema_version": {
+          "const": "cx_document_library_item.v1"
+        },
+        "document_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "upload_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenant_ref": {
+          "$ref": "#/$defs/tenant_ref"
+        },
+        "owner_subject_ref": {
+          "$ref": "#/$defs/user_subject_ref"
+        },
+        "uploaded_by_subject_ref": {
+          "$ref": "#/$defs/user_subject_ref"
+        },
+        "filename": {
+          "type": "string",
+          "pattern": "^[^/\\\\]{1,255}$"
+        },
+        "content_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "classification": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lifecycle_status": {
+          "const": "ACTIVE"
+        },
+        "retrieval_policy": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "summary": {
+          "$ref": "#/$defs/document_summary_projection"
+        },
+        "summary_embedding": {
+          "$ref": "#/$defs/summary_embedding_projection"
+        },
+        "processing": {
+          "$ref": "#/$defs/processing_projection"
+        },
+        "links": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cx_document",
+            "cx_summary",
+            "cx_summary_embedding",
+            "cx_processing_runs"
+          ],
+          "properties": {
+            "cx_document": {
+              "type": "string",
+              "pattern": "^/api/v1/documents/[^/]+$"
+            },
+            "cx_summary": {
+              "type": "string",
+              "pattern": "^/api/v1/documents/[^/]+/summary$"
+            },
+            "cx_summary_embedding": {
+              "type": "string",
+              "pattern": "^/api/v1/documents/[^/]+/summary-embedding$"
+            },
+            "cx_processing_runs": {
+              "type": "string",
+              "pattern": "^/api/v1/documents/[^/]+/processing/runs$"
+            }
+          }
+        },
+        "metadata": {
+          "$ref": "#/$defs/privacy_metadata"
+        }
+      }
+    },
+    "document_summary_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available",
+        "status",
+        "document_summary_id",
+        "summary_text_sha256",
+        "summary_preview",
+        "summary_char_count",
+        "model_profile_id",
+        "model_revision",
+        "updated_at"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "document_summary_id": {
+          "$ref": "#/$defs/optional_text"
+        },
+        "summary_text_sha256": {
+          "$ref": "#/$defs/optional_hash"
+        },
+        "summary_preview": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 240
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary_char_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "model_profile_id": {
+          "$ref": "#/$defs/optional_text"
+        },
+        "model_revision": {
+          "$ref": "#/$defs/optional_text"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/optional_date_time"
+        }
+      }
+    },
+    "summary_embedding_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available",
+        "status",
+        "summary_embedding_id",
+        "model_profile_id",
+        "model_revision",
+        "vector_dimension",
+        "embedding_sha256",
+        "created_at"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary_embedding_id": {
+          "$ref": "#/$defs/optional_text"
+        },
+        "model_profile_id": {
+          "$ref": "#/$defs/optional_text"
+        },
+        "model_revision": {
+          "$ref": "#/$defs/optional_text"
+        },
+        "vector_dimension": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "embedding_sha256": {
+          "$ref": "#/$defs/optional_hash"
+        },
+        "created_at": {
+          "$ref": "#/$defs/optional_date_time"
+        }
+      }
+    },
+    "processing_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available",
+        "latest_pipeline_run_id",
+        "status",
+        "step_total",
+        "step_failed",
+        "updated_at"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "latest_pipeline_run_id": {
+          "$ref": "#/$defs/optional_text"
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "step_failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "updated_at": {
+          "$ref": "#/$defs/optional_date_time"
+        }
+      }
+    },
+    "privacy_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_source_included",
+        "raw_summary_included",
+        "embedding_vector_included",
+        "storage_path_redacted"
+      ],
+      "properties": {
+        "owner_scoped": {
+          "const": true
+        },
+        "raw_source_included": {
+          "const": false
+        },
+        "raw_summary_included": {
+          "const": false
+        },
+        "embedding_vector_included": {
+          "const": false
+        },
+        "storage_path_redacted": {
+          "const": true
+        }
+      }
+    }
+  }
+}

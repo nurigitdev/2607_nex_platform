@@ -34,6 +34,7 @@ from nex_cx.repository import (
     build_retrieval_package_persistence_record,
     build_source_file_record,
     build_summary_embedding_persistence_record,
+    bounded_content_object_query_limit,
     markdown_storage_uri_from_path,
 )
 from nex_cx.summaries import build_document_summary_record
@@ -1171,6 +1172,85 @@ def test_in_memory_repository_finds_active_content_object_by_owner_and_hash(
     assert repository.get_source_file_by_sha256("0" * 64) is None
 
 
+def test_in_memory_repository_lists_active_content_objects_by_owner_scope(
+    tmp_path: Path,
+) -> None:
+    repository = InMemoryCxContentRepository()
+    user_a_first = upload_registration(
+        tmp_path,
+        content_text="first",
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    user_a_second = upload_registration(
+        tmp_path,
+        content_text="second",
+        request_id="0189f0ff-8f22-4f72-9b47-b481dc21bb22",
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+    user_b = upload_registration(
+        tmp_path,
+        content_text="third",
+        request_id="0189f0ff-8f22-4f72-9b47-b481dc21bb23",
+        tenant_id="tenant-a",
+        owner_user_id="user-b",
+    )
+    tenant_b = upload_registration(
+        tmp_path,
+        content_text="fourth",
+        request_id="0189f0ff-8f22-4f72-9b47-b481dc21bb24",
+        tenant_id="tenant-b",
+        owner_user_id="user-a",
+    )
+    for upload in (user_a_first, user_a_second, user_b, tenant_b):
+        source_file = repository.save_source_file(build_source_file_record(upload))
+        repository.save_content_object(
+            build_content_object_record(
+                upload,
+                tenant_id=str(upload["ownership"]["tenant_id"]),
+                owner_user_id=str(upload["ownership"]["owner_user_id"]),
+                source_file_id=source_file["source_file_id"],
+            )
+        )
+    inactive = {
+        **repository.get_content_object(str(user_a_first["document_id"])),
+        "content_object_id": "22222222-2222-4222-8222-222222222222",
+        "upload_id": "33333333-3333-4333-8333-333333333333",
+        "lifecycle_status": "ARCHIVED",
+    }
+    repository.save_content_object(inactive)
+
+    records = repository.list_active_content_objects(
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+        limit=10,
+    )
+
+    assert [record["content_object_id"] for record in records] == [
+        user_a_second["document_id"],
+        user_a_first["document_id"],
+    ]
+    assert repository.list_active_content_objects(
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+        limit=1,
+    ) == [records[0]]
+    assert repository.list_active_content_objects(
+        tenant_id="tenant-a",
+        owner_user_id="user-b",
+    )[0]["content_object_id"] == user_b["document_id"]
+    assert repository.list_active_content_objects(
+        tenant_id="tenant-b",
+        owner_user_id="user-a",
+    )[0]["content_object_id"] == tenant_b["document_id"]
+    assert bounded_content_object_query_limit(None) == 50
+    assert bounded_content_object_query_limit(0) == 1
+    assert bounded_content_object_query_limit(500) == 100
+    with pytest.raises(ValueError, match="query limit must be an integer"):
+        bounded_content_object_query_limit("wide")
+
+
 def test_in_memory_repository_normalizes_legacy_content_owner_fields(
     tmp_path: Path,
 ) -> None:
@@ -1440,6 +1520,33 @@ def test_in_memory_repository_saves_document_summaries_idempotently(
     ) is None
 
 
+def test_in_memory_repository_returns_latest_document_summary(
+    tmp_path: Path,
+) -> None:
+    repository = InMemoryCxContentRepository()
+    upload = upload_registration(tmp_path)
+    older = build_document_summary_persistence_record(
+        document_summary_payload(tmp_path, upload, summary_text="older"),
+        content_object_id=str(upload["document_id"]),
+        extraction_artifact_id="55555555-5555-4555-8555-555555555555",
+    )
+    newer = {
+        **older,
+        "document_summary_id": "99999999-9999-4999-8999-999999999999",
+        "extraction_artifact_id": "66666666-6666-4666-8666-666666666666",
+        "summary_text_sha256": "9" * 64,
+        "updated_at": "2099-01-01T00:00:00Z",
+    }
+
+    repository.save_document_summary_record(older)
+    repository.save_document_summary_record(newer)
+
+    assert repository.get_latest_document_summary_record(
+        str(upload["document_id"])
+    ) == newer
+    assert repository.get_latest_document_summary_record("missing") is None
+
+
 def test_in_memory_repository_saves_summary_embeddings_idempotently(
     tmp_path: Path,
 ) -> None:
@@ -1469,6 +1576,32 @@ def test_in_memory_repository_saves_summary_embeddings_idempotently(
         model_profile_id="other",
         model_revision=record["model_revision"],
     ) is None
+
+
+def test_in_memory_repository_returns_latest_summary_embedding(
+    tmp_path: Path,
+) -> None:
+    repository = InMemoryCxContentRepository()
+    upload = upload_registration(tmp_path)
+    summary = document_summary_payload(tmp_path, upload)
+    older = build_summary_embedding_persistence_record(
+        summary_embedding_payload(summary),
+        document_summary_id=str(summary["document_summary_id"]),
+    )
+    newer = {
+        **older,
+        "summary_embedding_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "model_profile_id": "explicit-latest-profile",
+        "created_at": "2099-01-01T00:00:00Z",
+    }
+
+    repository.save_summary_embedding_record(older)
+    repository.save_summary_embedding_record(newer)
+
+    assert repository.get_latest_summary_embedding_record(
+        str(summary["document_summary_id"])
+    ) == newer
+    assert repository.get_latest_summary_embedding_record("missing") is None
 
 
 def test_in_memory_repository_saves_retrieval_packages_idempotently(
@@ -1678,6 +1811,64 @@ def test_sqlalchemy_repository_saves_content_object_and_owner_acl(
         "granted_by_subject_ref_id": "user-a",
     }
     assert acl_count == 1
+
+
+def test_sqlalchemy_repository_lists_active_content_objects_by_owner_scope(
+    tmp_path: Path,
+) -> None:
+    repository, _ = sqlite_content_repository(tmp_path)
+    specs = [
+        ("tenant-a", "user-a", "first", "2026-08-10T00:00:00Z"),
+        ("tenant-a", "user-a", "second", "2026-08-10T00:00:02Z"),
+        ("tenant-a", "user-b", "third", "2026-08-10T00:00:03Z"),
+    ]
+    content_by_text: dict[str, dict[str, Any]] = {}
+    for index, (tenant_id, owner_user_id, text_value, created_at) in enumerate(specs):
+        upload = upload_registration(
+            tmp_path,
+            content_text=text_value,
+            request_id=f"0189f0ff-8f22-4f72-9b47-b481dc21bb3{index}",
+            tenant_id=tenant_id,
+            owner_user_id=owner_user_id,
+        )
+        source_file = repository.save_source_file(build_source_file_record(upload))
+        content = build_content_object_record(
+            upload,
+            tenant_id=tenant_id,
+            owner_user_id=owner_user_id,
+            source_file_id=source_file["source_file_id"],
+        )
+        content["created_at"] = created_at
+        content["updated_at"] = created_at
+        content_by_text[text_value] = repository.save_content_object(content)
+    inactive = {
+        **content_by_text["first"],
+        "content_object_id": "22222222-2222-4222-8222-222222222222",
+        "upload_id": "33333333-3333-4333-8333-333333333333",
+        "source_sha256": "4" * 64,
+        "lifecycle_status": "ARCHIVED",
+    }
+    repository.save_content_object(inactive)
+
+    records = repository.list_active_content_objects(
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+        limit=10,
+    )
+
+    assert [record["content_object_id"] for record in records] == [
+        content_by_text["second"]["content_object_id"],
+        content_by_text["first"]["content_object_id"],
+    ]
+    assert repository.list_active_content_objects(
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+        limit=1,
+    ) == [records[0]]
+    assert repository.list_active_content_objects(
+        tenant_id="tenant-a",
+        owner_user_id="user-b",
+    )[0]["content_object_id"] == content_by_text["third"]["content_object_id"]
 
 
 def test_sqlalchemy_repository_dedupes_by_canonical_owner_refs(
@@ -2045,6 +2236,70 @@ def test_sqlalchemy_repository_saves_and_finds_document_summary_metadata(
     )
 
 
+def test_sqlalchemy_repository_returns_latest_document_summary_metadata(
+    tmp_path: Path,
+) -> None:
+    repository, _ = sqlite_content_repository(tmp_path)
+    upload = upload_registration(tmp_path)
+    source_file = repository.save_source_file(build_source_file_record(upload))
+    content = repository.save_content_object(
+        build_content_object_record(
+            upload,
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    older_extraction = repository.save_extraction_artifact(
+        build_extraction_artifact_record(
+            extraction_result(tmp_path, upload, markdown_text="older markdown"),
+            content_object_id=content["content_object_id"],
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    newer_extraction = repository.save_extraction_artifact(
+        build_extraction_artifact_record(
+            extraction_result(tmp_path, upload, markdown_text="newer markdown"),
+            content_object_id=content["content_object_id"],
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    older = repository.save_document_summary_record(
+        build_document_summary_persistence_record(
+            document_summary_payload(
+                tmp_path,
+                upload,
+                extraction=extraction_result(
+                    tmp_path,
+                    upload,
+                    markdown_text="older markdown",
+                ),
+                summary_text="older",
+            ),
+            content_object_id=content["content_object_id"],
+            extraction_artifact_id=older_extraction["extraction_artifact_id"],
+        )
+    )
+    newer = build_document_summary_persistence_record(
+        document_summary_payload(
+            tmp_path,
+            upload,
+            extraction=extraction_result(tmp_path, upload, markdown_text="newer markdown"),
+            summary_text="newer",
+        ),
+        content_object_id=content["content_object_id"],
+        extraction_artifact_id=newer_extraction["extraction_artifact_id"],
+    )
+    newer["updated_at"] = "2099-01-01T00:00:00Z"
+    saved_newer = repository.save_document_summary_record(newer)
+
+    assert repository.get_latest_document_summary_record(
+        content["content_object_id"]
+    ) == saved_newer
+    assert repository.get_latest_document_summary_record("missing") is None
+    assert older["document_summary_id"] != saved_newer["document_summary_id"]
+
+
 def test_sqlalchemy_repository_saves_and_finds_summary_embedding_metadata(
     tmp_path: Path,
 ) -> None:
@@ -2111,6 +2366,62 @@ def test_sqlalchemy_repository_saves_and_finds_summary_embedding_metadata(
         engine,
         ["cx_document_summary_embeddings"],
     )
+
+
+def test_sqlalchemy_repository_returns_latest_summary_embedding_metadata(
+    tmp_path: Path,
+) -> None:
+    repository, _ = sqlite_content_repository(tmp_path)
+    upload = upload_registration(tmp_path)
+    source_file = repository.save_source_file(build_source_file_record(upload))
+    content = repository.save_content_object(
+        build_content_object_record(
+            upload,
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    extraction = extraction_result(tmp_path, upload)
+    artifact = repository.save_extraction_artifact(
+        build_extraction_artifact_record(
+            extraction,
+            content_object_id=content["content_object_id"],
+            source_file_id=source_file["source_file_id"],
+        )
+    )
+    summary = repository.save_document_summary_record(
+        build_document_summary_persistence_record(
+            document_summary_payload(tmp_path, upload, extraction=extraction),
+            content_object_id=content["content_object_id"],
+            extraction_artifact_id=artifact["extraction_artifact_id"],
+        )
+    )
+    older = repository.save_summary_embedding_record(
+        build_summary_embedding_persistence_record(
+            summary_embedding_payload(
+                {
+                    **document_summary_payload(tmp_path, upload, extraction=extraction),
+                    "document_summary_id": summary["document_summary_id"],
+                }
+            ),
+            document_summary_id=summary["document_summary_id"],
+        )
+    )
+    newer = {
+        **older,
+        "summary_embedding_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "model_profile_id": "explicit-latest-profile",
+        "model_revision": "mock-embedding-v2",
+        "created_at": "2099-01-01T00:00:00Z",
+    }
+    saved_newer = repository.save_summary_embedding_record(newer)
+
+    assert repository.get_latest_summary_embedding_record(
+        summary["document_summary_id"]
+    ) == saved_newer
+    assert repository.get_latest_summary_embedding_record("missing") is None
+    assert older["summary_embedding_id"] != saved_newer["summary_embedding_id"]
 
 
 def test_sqlalchemy_repository_keeps_empty_chunk_embedding_index_at_boundary(
