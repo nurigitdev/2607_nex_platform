@@ -4,7 +4,15 @@ from collections.abc import Mapping
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
+from fastapi import FastAPI, Header, Query, Request
+
+from nex_runtime import (
+    DEFAULT_SERVICE_SCOPE,
+    problem_response,
+    validate_authorization_header,
+)
 from nex_cx.repository import (
+    CxContentRepositoryError,
     DEFAULT_OWNER_USER_ID,
     DEFAULT_TENANT_ID,
     OA_TENANT_REF_TYPE,
@@ -19,6 +27,63 @@ if TYPE_CHECKING:
 CX_DOCUMENT_LIBRARY_PROJECTION_SCHEMA_VERSION = "cx_document_library_projection.v1"
 CX_DOCUMENT_LIBRARY_ITEM_SCHEMA_VERSION = "cx_document_library_item.v1"
 CX_DOCUMENT_LIBRARY_QUERY_FILTER_SCHEMA_VERSION = "cx_document_library_query_filters.v1"
+
+
+def register_document_library_routes(
+    app: FastAPI,
+    *,
+    store: ContentIngestionStore,
+    database_env: str | None = None,
+    redacted_database_url: str | None = None,
+    source_kind: str = "repository",
+) -> None:
+    @app.get("/api/v1/documents", response_model=None)
+    def list_documents(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        tenant_id: str | None = Query(default=None),
+        owner_user_id: str | None = Query(default=None),
+        limit: int | None = Query(default=None),
+    ):
+        auth_problem = _authorize_cx_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return build_document_library_projection(
+                store=store,
+                tenant_id=tenant_id,
+                owner_user_id=owner_user_id,
+                limit=limit,
+                source_kind=source_kind,
+                database_env=database_env,
+                redacted_database_url=redacted_database_url,
+            )
+        except ValueError as exc:
+            return problem_response(
+                request,
+                status_code=400,
+                error_code="cx.document_library_query_invalid",
+                title="Document library query failed",
+                detail=str(exc),
+                type_uri=(
+                    "https://nex-platform.local/problems/"
+                    "document-library-query-failed"
+                ),
+            )
+        except CxContentRepositoryError as exc:
+            return problem_response(
+                request,
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                title="Document library repository unavailable",
+                detail=exc.detail,
+                retryable=True,
+                type_uri=(
+                    "https://nex-platform.local/problems/"
+                    "document-library-repository-unavailable"
+                ),
+            )
 
 
 def build_document_library_query_filters(
@@ -324,3 +389,24 @@ def _positive_int_or_none(value: object) -> int | None:
     if value < 1:
         return None
     return value
+
+
+def _authorize_cx_request(
+    request: Request,
+    authorization: str | None,
+):
+    result = validate_authorization_header(
+        authorization,
+        expected_audience="nex-cx",
+        required_scopes=[DEFAULT_SERVICE_SCOPE],
+    )
+    if result.ok:
+        return None
+    return problem_response(
+        request,
+        status_code=401,
+        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
+        title="Authentication failed",
+        detail=result.detail or "CX requires a valid service claim.",
+        type_uri="https://nex-platform.local/problems/authentication-failed",
+    )

@@ -304,6 +304,93 @@ paths:
           description: Source job is not replayable or replay idempotency conflicts.
         "422":
           description: Replay payload is invalid.
+  /api/v1/documents:
+    get:
+      operationId: listCxOwnerScopedDocuments
+      tags:
+        - Content
+      parameters:
+        - name: tenant_id
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+          description: Legacy compatibility alias for tenant_ref.id.
+        - name: owner_user_id
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+          description: Legacy compatibility alias for owner_subject_ref.id.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Owner-scoped active CX document library projection.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                required:
+                  - projection_schema_version
+                  - service_id
+                  - filters
+                  - pagination
+                  - documents
+                  - metadata
+                properties:
+                  projection_schema_version:
+                    type: string
+                    const: cx_document_library_projection.v1
+                  service_id:
+                    type: string
+                    const: nex-cx
+                  filters:
+                    type: object
+                    additionalProperties: true
+                  pagination:
+                    type: object
+                    additionalProperties: true
+                  documents:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  metadata:
+                    type: object
+                    additionalProperties: true
+                    required:
+                      - raw_source_included
+                      - raw_summary_included
+                      - embedding_vector_included
+                      - storage_path_redacted
+                    properties:
+                      raw_source_included:
+                        type: boolean
+                        const: false
+                      raw_summary_included:
+                        type: boolean
+                        const: false
+                      embedding_vector_included:
+                        type: boolean
+                        const: false
+                      storage_path_redacted:
+                        type: boolean
+                        const: true
+        "400":
+          description: Document library query parameters are invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "503":
+          description: CX content repository is unavailable.
   /api/v1/documents/uploads:
     post:
       operationId: registerCxDocumentUpload

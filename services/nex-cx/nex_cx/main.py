@@ -11,6 +11,7 @@ from nex_runtime.compatibility import register_generation_compatibility_routes
 from nex_runtime.prompts import register_prompt_registry_routes
 from nex_runtime.recovery import register_generation_recovery_policy_routes
 from nex_cx.chunking import register_chunking_routes
+from nex_cx.document_library import register_document_library_routes
 from nex_cx.embedding_index import register_embedding_index_routes
 from nex_cx.generation import register_generation_routes
 from nex_cx.ingestion import (
@@ -75,6 +76,17 @@ register_ingestion_routes(
     app,
     store=DEFAULT_INGESTION_STORE,
     storage_config=CX_STORAGE_CONFIG,
+)
+register_document_library_routes(
+    app,
+    store=DEFAULT_INGESTION_STORE,
+    database_env=SERVICE_PERSISTENCE.database_env,
+    redacted_database_url=SERVICE_PERSISTENCE.redacted_database_url,
+    source_kind=(
+        "postgres-read"
+        if SERVICE_PERSISTENCE.mode == PERSISTENCE_MODE_POSTGRES
+        else "memory"
+    ),
 )
 register_chunking_routes(app, store=DEFAULT_INGESTION_STORE)
 register_embedding_index_routes(app, store=DEFAULT_INGESTION_STORE)

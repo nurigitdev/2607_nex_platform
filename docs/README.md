@@ -305,6 +305,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0199`](slices/0199_ae_upload_ownership_resolver_wiring.md) | `S20-009` AE upload ownership resolver wiring. |
 | [`Slice 0200`](slices/0200_cx_upload_ownership_resolver_guardrail_smoke.md) | `S20-010` CX upload ownership resolver guardrail smoke. |
 | [`Slice 0201`](slices/0201_cx_owner_scoped_document_library_projection.md) | `S21-001` CX owner-scoped document library projection. |
+| [`Slice 0202`](slices/0202_cx_document_library_service_api_wiring.md) | `S21-002` CX document library service API wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

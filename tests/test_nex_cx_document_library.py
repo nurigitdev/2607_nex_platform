@@ -4,11 +4,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 
 from nex_cx.document_library import (
     CX_DOCUMENT_LIBRARY_PROJECTION_SCHEMA_VERSION,
     build_document_library_projection,
     build_document_library_query_filters,
+    register_document_library_routes,
 )
 from nex_cx.ingestion import (
     ContentIngestionStore,
@@ -17,10 +19,12 @@ from nex_cx.ingestion import (
     sha256_text,
 )
 from nex_cx.repository import (
+    CxContentRepositoryError,
     InMemoryCxContentRepository,
     build_content_object_record,
     build_source_file_record,
 )
+from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
@@ -60,6 +64,43 @@ def upload_registration(
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     )
+
+
+def auth_headers() -> dict[str, str]:
+    issued = issue_mock_service_token(service_id="nex-ae-api", audience="nex-cx")
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": REQUEST_ID,
+        "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+    }
+
+
+def document_library_client(
+    *,
+    store: ContentIngestionStore | None = None,
+    database_env: str | None = None,
+    redacted_database_url: str | None = None,
+    source_kind: str = "memory",
+) -> tuple[TestClient, ContentIngestionStore]:
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    selected_store = store or ContentIngestionStore()
+    register_document_library_routes(
+        app,
+        store=selected_store,
+        database_env=database_env,
+        redacted_database_url=redacted_database_url,
+        source_kind=source_kind,
+    )
+    return TestClient(app), selected_store
+
+
+class FailingDocumentLibraryRepository:
+    def list_active_content_objects(self, **_: object) -> list[dict[str, Any]]:
+        raise CxContentRepositoryError(
+            error_code="cx.content_repository_unavailable",
+            detail="repository offline",
+            status_code=503,
+        )
 
 
 def test_document_library_filters_normalize_owner_scope_and_limit() -> None:
@@ -323,3 +364,91 @@ def test_document_library_projection_redacts_untrusted_embedding_dimensions(
     )
 
     assert projection["documents"][0]["summary_embedding"]["vector_dimension"] is None
+
+
+def test_document_library_route_lists_owner_scoped_documents(
+    tmp_path: Path,
+) -> None:
+    client, store = document_library_client(
+        database_env="NEX_CX_TEST_DATABASE_URL",
+        redacted_database_url=(
+            "postgresql+psycopg://nex_cx_user:***@127.0.0.1:5432/nex_cx_test"
+        ),
+        source_kind="postgres-read",
+    )
+    user_a = store.save_upload_registration(
+        upload_registration(tmp_path, content_text="source a"),
+    )
+    store.save_upload_registration(
+        upload_registration(
+            tmp_path,
+            content_text="source b",
+            owner_user_id="user-b",
+        ),
+    )
+
+    response = client.get(
+        "/api/v1/documents",
+        params={"tenant_id": "tenant-a", "owner_user_id": "user-a", "limit": 10},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["projection_schema_version"] == (
+        CX_DOCUMENT_LIBRARY_PROJECTION_SCHEMA_VERSION
+    )
+    assert payload["source"] == {
+        "source_kind": "postgres-read",
+        "database_env": "NEX_CX_TEST_DATABASE_URL",
+        "redacted_database_url": (
+            "postgresql+psycopg://nex_cx_user:***@127.0.0.1:5432/nex_cx_test"
+        ),
+    }
+    assert payload["pagination"] == {"limit": 10, "returned": 1}
+    assert payload["documents"][0]["document_id"] == user_a["document_id"]
+    assert payload["documents"][0]["links"]["cx_document"].endswith(
+        f"/{user_a['document_id']}"
+    )
+    assert "source b" not in str(payload)
+
+
+def test_document_library_route_requires_service_claim() -> None:
+    client, _ = document_library_client()
+
+    response = client.get("/api/v1/documents")
+
+    assert response.status_code == 401
+    assert response.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+
+
+def test_document_library_route_maps_query_validation_error() -> None:
+    client, _ = document_library_client()
+
+    response = client.get(
+        "/api/v1/documents",
+        params={"tenant_id": " ", "owner_user_id": "user-a"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "cx.document_library_query_invalid"
+
+
+def test_document_library_route_maps_repository_unavailable() -> None:
+    client, _ = document_library_client(
+        store=ContentIngestionStore(
+            content_repository=FailingDocumentLibraryRepository(),
+        ),
+    )
+
+    response = client.get(
+        "/api/v1/documents",
+        params={"tenant_id": "tenant-a", "owner_user_id": "user-a"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["error_code"] == "cx.content_repository_unavailable"
+    assert payload["retryable"] is True
