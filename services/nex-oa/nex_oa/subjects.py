@@ -457,7 +457,7 @@ def register_subject_registry_routes(
                 "capabilities": dict(OA_SUBJECT_REGISTRY_CAPABILITIES),
                 "deferred": list(OA_SUBJECT_REGISTRY_DEFERRED),
                 "private_payload_policy": _private_payload_policy(),
-                "next_slice": "0196_ae_upload_ownership_propagation_contract",
+                "next_slice": "0197_cx_upload_canonical_ownership_intake",
             },
             request,
         )
@@ -578,7 +578,7 @@ def build_subject_registry_snapshot(
         "capabilities": dict(OA_SUBJECT_REGISTRY_CAPABILITIES),
         "deferred": list(OA_SUBJECT_REGISTRY_DEFERRED),
         "private_payload_policy": _private_payload_policy(),
-        "next_slice": "0196_ae_upload_ownership_propagation_contract",
+        "next_slice": "0197_cx_upload_canonical_ownership_intake",
     }
 
 

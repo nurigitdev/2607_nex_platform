@@ -35,6 +35,9 @@ Internal persistence boundary:
   canonical owner refs, and create owner ACL entries with
   `principal_ref_type/id` plus `granted_by_subject_ref_type/id`. Legacy
   `tenant_id` and `owner_user_id` remain accepted compatibility aliases.
+- Slice 0196 updates AE to propagate canonical OA ownership refs to CX upload
+  APIs while still sending legacy aliases. CX canonical intake remains the next
+  compatibility step.
 - Same-owner duplicate uploads return the existing document; different owners
   get distinct document IDs without learning about each other.
 - Upload registration accepts `content_text`, `content_base64`, or metadata-only

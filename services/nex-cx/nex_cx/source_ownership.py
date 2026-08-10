@@ -138,13 +138,21 @@ def build_source_ownership_boundary_decision() -> dict[str, Any]:
                 "work": "ae_upload_ownership_propagation_contract",
                 "reason": "AE must forward OA subject context to CX upload APIs.",
             },
+            {
+                "slice": "0197",
+                "work": "cx_upload_canonical_ownership_intake",
+                "reason": (
+                    "CX upload registration should consume canonical owner "
+                    "refs directly."
+                ),
+            },
         ],
         "private_payload_policy": (
             "No raw source bytes, source text, extracted markdown, chunk text, "
             "summary text, vectors, prompts, or raw identity secrets are stored "
             "in ownership metadata."
         ),
-        "next_slice": "0196_ae_upload_ownership_propagation_contract",
+        "next_slice": "0197_cx_upload_canonical_ownership_intake",
     }
 
 

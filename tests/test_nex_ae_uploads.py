@@ -9,9 +9,12 @@ from fastapi.testclient import TestClient
 import nex_ae_api.uploads as ae_uploads
 from nex_ae_api.uploads import (
     HttpCxUploadClient,
+    OWNERSHIP_COMPATIBILITY_MODE,
+    OWNERSHIP_REF_SCHEMA_VERSION,
     UploadHandoffError,
     UploadHandoffStore,
     build_cx_upload_payload,
+    build_upload_ownership_ref,
     build_upload_handoff_record,
     non_negative_int,
     owner_scope_from_payload,
@@ -25,6 +28,14 @@ from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_tok
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
 SOURCE_HASH = "d12261539d27dcab69f873a5e1a30587919b8ce4802782151f1bc2ba5390b610"
+OWNER_REF = {
+    "ownership_schema_version": OWNERSHIP_REF_SCHEMA_VERSION,
+    "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+    "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+    "uploaded_by_subject_ref": {"type": "oa.user", "id": "user-a"},
+    "legacy": {"tenant_id": "tenant-a", "owner_user_id": "user-a"},
+    "compatibility_mode": OWNERSHIP_COMPATIBILITY_MODE,
+}
 
 
 class FakeCxUploadClient:
@@ -115,14 +126,60 @@ def test_build_cx_upload_payload_forwards_owner_scope_and_mock_text() -> None:
         "content_type": "text/markdown",
         "tenant_id": "tenant-a",
         "owner_user_id": "user-a",
+        "ownership_ref": OWNER_REF,
         "content_text": "hello",
         "source_sha256": SOURCE_HASH,
         "size_bytes": 5,
     }
 
 
+def test_build_cx_upload_payload_accepts_canonical_ownership_ref() -> None:
+    ownership_ref = {
+        "tenant_ref": {"type": "oa.tenant", "id": "tenant-b"},
+        "owner_subject_ref": {"type": "oa.user", "id": "user-b"},
+        "uploaded_by_subject_ref": {"type": "oa.user", "id": "uploader-b"},
+    }
+
+    payload = build_cx_upload_payload(
+        {
+            "filename": "report.md",
+            "tenant_ref": {"type": "oa.tenant", "id": "tenant-b"},
+            "ownership_ref": ownership_ref,
+            "content_text": "hello",
+        },
+        trace_id=TRACE_ID,
+    )
+
+    assert payload["tenant_id"] == "tenant-b"
+    assert payload["owner_user_id"] == "user-b"
+    assert payload["ownership_ref"] == {
+        "ownership_schema_version": OWNERSHIP_REF_SCHEMA_VERSION,
+        "tenant_ref": {"type": "oa.tenant", "id": "tenant-b"},
+        "owner_subject_ref": {"type": "oa.user", "id": "user-b"},
+        "uploaded_by_subject_ref": {"type": "oa.user", "id": "uploader-b"},
+        "legacy": {"tenant_id": "tenant-b", "owner_user_id": "user-b"},
+        "compatibility_mode": OWNERSHIP_COMPATIBILITY_MODE,
+    }
+
+
 def test_upload_validation_rejects_invalid_inputs() -> None:
     assert owner_scope_from_payload({}) == ("local-tenant", "local-user")
+    assert build_upload_ownership_ref({}) == {
+        "ownership_schema_version": OWNERSHIP_REF_SCHEMA_VERSION,
+        "tenant_ref": {"type": "oa.tenant", "id": "local-tenant"},
+        "owner_subject_ref": {"type": "oa.user", "id": "local-user"},
+        "uploaded_by_subject_ref": {"type": "oa.user", "id": "local-user"},
+        "legacy": {"tenant_id": "local-tenant", "owner_user_id": "local-user"},
+        "compatibility_mode": OWNERSHIP_COMPATIBILITY_MODE,
+    }
+    assert owner_scope_from_payload(
+        {
+            "ownership_ref": {
+                "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+                "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+            }
+        }
+    ) == ("tenant-a", "user-a")
     assert required_hash(SOURCE_HASH) == SOURCE_HASH
     assert non_negative_int(0) == 0
 
@@ -133,6 +190,42 @@ def test_upload_validation_rejects_invalid_inputs() -> None:
         {"filename": "x", "content_text": []},
         {"filename": "x", "source_sha256": "BAD"},
         {"filename": "x", "size_bytes": -1},
+        {"filename": "x", "ownership_ref": "owner-a"},
+        {"filename": "x", "tenant_ref": "tenant-a"},
+        {
+            "filename": "x",
+            "tenant_id": "tenant-a",
+            "ownership_ref": {
+                "tenant_ref": {"type": "oa.tenant", "id": "tenant-b"},
+                "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+            },
+        },
+        {
+            "filename": "x",
+            "tenant_ref": {"type": "cx.tenant", "id": "tenant-a"},
+        },
+        {
+            "filename": "x",
+            "tenant_ref": {"type": "oa.tenant", "id": "tenant-b"},
+            "ownership_ref": {
+                "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+                "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+            },
+        },
+        {
+            "filename": "x",
+            "ownership_ref": {
+                "tenant_ref": {"type": "oa.tenant"},
+                "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+            },
+        },
+        {
+            "filename": "x",
+            "ownership_ref": {
+                "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+                "owner_subject_ref": {"type": "oa.group", "id": "user-a"},
+            },
+        },
     ]
     for payload in invalid_payloads:
         with pytest.raises(UploadHandoffError):
@@ -163,6 +256,14 @@ def test_build_upload_handoff_record_redacts_source_and_storage_details() -> Non
     )
 
     assert handoff["status"] == "QUEUED"
+    assert handoff["ownership_ref"]["tenant_ref"] == {
+        "type": "oa.tenant",
+        "id": "local-tenant",
+    }
+    assert handoff["ownership_ref"]["owner_subject_ref"] == {
+        "type": "oa.user",
+        "id": "local-user",
+    }
     assert handoff["source"]["source_text_hash"]
     assert handoff["cx_document_ref"]["ingestion_job_id"] == "job-001"
     assert handoff["metadata"] == {
@@ -208,8 +309,10 @@ def test_upload_routes_accept_readback_duplicate_and_auth() -> None:
         f"/api/v1/uploads/{payload['upload_handoff_id']}",
         headers=auth_headers(),
     )
+    unauthorized_readback = client.get(f"/api/v1/uploads/{payload['upload_handoff_id']}")
 
     assert unauthorized.status_code == 401
+    assert unauthorized_readback.status_code == 401
     assert created.status_code == 202
     assert duplicate.status_code == 200
     assert duplicate.json()["status"] == "ALREADY_EXISTS"
@@ -218,6 +321,7 @@ def test_upload_routes_accept_readback_duplicate_and_auth() -> None:
     assert readback.json()["upload_handoff_id"] == payload["upload_handoff_id"]
     assert isinstance(cx_client, FakeCxUploadClient)
     assert cx_client.calls[0]["payload"]["owner_user_id"] == "user-a"
+    assert cx_client.calls[0]["payload"]["ownership_ref"] == OWNER_REF
 
 
 def test_upload_routes_report_invalid_missing_and_cx_failure() -> None:
@@ -242,6 +346,7 @@ def test_upload_routes_report_invalid_missing_and_cx_failure() -> None:
 
 def test_http_cx_upload_client_sends_service_claim(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
+    payloads: list[dict[str, Any]] = []
 
     def fake_post(
         url: str,
@@ -251,6 +356,7 @@ def test_http_cx_upload_client_sends_service_claim(monkeypatch: pytest.MonkeyPat
         timeout: float,
     ) -> httpx.Response:
         captured.update({"url": url, "json": json, "headers": headers, "timeout": timeout})
+        payloads.append(json)
         return httpx.Response(
             status_code=202,
             json={
@@ -278,11 +384,29 @@ def test_http_cx_upload_client_sends_service_claim(monkeypatch: pytest.MonkeyPat
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     )
+    prepared_payload = build_cx_upload_payload(
+        {"filename": "second.md", "content_text": "hello"},
+        trace_id=TRACE_ID,
+    )
+    second_response = HttpCxUploadClient(
+        base_url="http://cx",
+        timeout_seconds=2.5,
+    ).register_upload(
+        prepared_payload,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
 
     assert captured["url"] == "http://cx/api/v1/documents/uploads"
     assert captured["timeout"] == 2.5
     assert captured["headers"]["X-Service-ID"] == "nex-ae-api"
+    assert payloads[0]["ownership_ref"]["tenant_ref"] == {
+        "type": "oa.tenant",
+        "id": "local-tenant",
+    }
+    assert payloads[1] == prepared_payload
     assert response["document_id"] == "doc-001"
+    assert second_response["document_id"] == "doc-001"
 
 
 def test_http_cx_upload_client_maps_error_body_and_bad_json(
@@ -318,3 +442,15 @@ def test_http_cx_upload_client_maps_error_body_and_bad_json(
             trace_id=TRACE_ID,
         )
     assert bad_json.value.error_code == "cx.upload_request_failed"
+
+    def post_json_list(*args: Any, **kwargs: Any) -> httpx.Response:
+        return httpx.Response(status_code=502, json=["unavailable"])
+
+    monkeypatch.setattr(ae_uploads.httpx, "post", post_json_list)
+    with pytest.raises(UploadHandoffError) as json_list:
+        HttpCxUploadClient(base_url="http://cx").register_upload(
+            {"filename": "report.md"},
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+    assert json_list.value.error_code == "cx.upload_request_failed"

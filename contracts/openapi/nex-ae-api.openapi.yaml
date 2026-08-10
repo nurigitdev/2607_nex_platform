@@ -104,6 +104,38 @@ paths:
       operationId: createAeUploadHandoff
       tags:
         - Uploads
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              required:
+                - filename
+              properties:
+                filename:
+                  type: string
+                  minLength: 1
+                content_type:
+                  type: string
+                content_text:
+                  type: string
+                tenant_id:
+                  type: string
+                  description: Legacy compatibility alias for ownership_ref.tenant_ref.id.
+                owner_user_id:
+                  type: string
+                  description: Legacy compatibility alias for ownership_ref.owner_subject_ref.id.
+                user_id:
+                  type: string
+                  description: Older AE alias for owner_user_id.
+                uploaded_by_user_id:
+                  type: string
+                  description: Legacy compatibility alias for ownership_ref.uploaded_by_subject_ref.id.
+                ownership_ref:
+                  type: object
+                  description: Canonical OA tenant/user subject references propagated to CX.
       responses:
         "200":
           description: CX reported an existing owner-scoped document.

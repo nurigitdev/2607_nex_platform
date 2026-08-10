@@ -24,6 +24,10 @@ from nex_runtime import (
 
 DEFAULT_TENANT_ID = "local-tenant"
 DEFAULT_OWNER_USER_ID = "local-user"
+OWNERSHIP_REF_SCHEMA_VERSION = "cx_source_ownership_ref.v1"
+OA_TENANT_REF_TYPE = "oa.tenant"
+OA_USER_SUBJECT_REF_TYPE = "oa.user"
+OWNERSHIP_COMPATIBILITY_MODE = "legacy_owner_fields_mapped_to_oa_subject_refs"
 
 
 class CxUploadClient(Protocol):
@@ -50,13 +54,16 @@ class HttpCxUploadClient:
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
+        request_payload = {**payload, "trace_id": payload.get("trace_id", trace_id)}
+        if "ownership_ref" not in request_payload:
+            request_payload = build_cx_upload_payload(request_payload, trace_id=trace_id)
         token = self.service_token or issue_mock_service_token(
             service_id="nex-ae-api",
             audience="nex-cx",
         ).access_token
         response = httpx.post(
             f"{self.base_url}/api/v1/documents/uploads",
-            json=payload,
+            json=request_payload,
             headers={
                 "Authorization": f"Bearer {token}",
                 "X-Request-ID": request_id,
@@ -185,7 +192,9 @@ def build_cx_upload_payload(
     *,
     trace_id: str,
 ) -> dict[str, Any]:
-    tenant_id, owner_user_id = owner_scope_from_payload(source_payload)
+    ownership_ref = build_upload_ownership_ref(source_payload)
+    tenant_id = ownership_ref["legacy"]["tenant_id"]
+    owner_user_id = ownership_ref["legacy"]["owner_user_id"]
     filename = required_string(source_payload, "filename", "ae.upload_filename_required")
     content_type = optional_string(
         source_payload,
@@ -206,6 +215,7 @@ def build_cx_upload_payload(
         "content_type": content_type,
         "tenant_id": tenant_id,
         "owner_user_id": owner_user_id,
+        "ownership_ref": ownership_ref,
     }
     if isinstance(content_text, str):
         payload["content_text"] = content_text
@@ -214,6 +224,52 @@ def build_cx_upload_payload(
     if "size_bytes" in source_payload:
         payload["size_bytes"] = non_negative_int(source_payload["size_bytes"])
     return payload
+
+
+def build_upload_ownership_ref(source_payload: dict[str, Any]) -> dict[str, Any]:
+    ownership_ref = source_payload.get("ownership_ref")
+    if ownership_ref is not None and not isinstance(ownership_ref, dict):
+        raise UploadHandoffError(
+            status_code=400,
+            error_code="ae.upload_owner_invalid",
+            detail="ownership_ref must be an object when supplied.",
+        )
+    ownership_payload = ownership_ref or {}
+    tenant_ref = subject_ref_from_payload(
+        source_payload,
+        ownership_payload,
+        field_name="tenant_ref",
+        expected_type=OA_TENANT_REF_TYPE,
+        legacy_fields=("tenant_id",),
+        default_id=DEFAULT_TENANT_ID,
+    )
+    owner_subject_ref = subject_ref_from_payload(
+        source_payload,
+        ownership_payload,
+        field_name="owner_subject_ref",
+        expected_type=OA_USER_SUBJECT_REF_TYPE,
+        legacy_fields=("owner_user_id", "user_id"),
+        default_id=DEFAULT_OWNER_USER_ID,
+    )
+    uploaded_by_subject_ref = subject_ref_from_payload(
+        source_payload,
+        ownership_payload,
+        field_name="uploaded_by_subject_ref",
+        expected_type=OA_USER_SUBJECT_REF_TYPE,
+        legacy_fields=("uploaded_by_user_id",),
+        default_id=owner_subject_ref["id"],
+    )
+    return {
+        "ownership_schema_version": OWNERSHIP_REF_SCHEMA_VERSION,
+        "tenant_ref": tenant_ref,
+        "owner_subject_ref": owner_subject_ref,
+        "uploaded_by_subject_ref": uploaded_by_subject_ref,
+        "legacy": {
+            "tenant_id": tenant_ref["id"],
+            "owner_user_id": owner_subject_ref["id"],
+        },
+        "compatibility_mode": OWNERSHIP_COMPATIBILITY_MODE,
+    }
 
 
 def build_upload_handoff_record(
@@ -240,6 +296,7 @@ def build_upload_handoff_record(
         "workspace_id": workspace_id,
         "tenant_id": tenant_id,
         "owner_user_id": owner_user_id,
+        "ownership_ref": cx_payload["ownership_ref"],
         "status": upload_handoff_status(cx_record),
         "trace_id": trace_id,
         "request_id": request_id,
@@ -281,13 +338,135 @@ def upload_handoff_status(cx_record: dict[str, Any]) -> str:
 
 
 def owner_scope_from_payload(payload: dict[str, Any]) -> tuple[str, str]:
-    tenant_id = optional_string(payload, "tenant_id", DEFAULT_TENANT_ID)
-    owner_user_id = optional_string(
-        payload,
-        "owner_user_id",
-        optional_string(payload, "user_id", DEFAULT_OWNER_USER_ID),
+    ownership_ref = build_upload_ownership_ref(payload)
+    return (
+        ownership_ref["legacy"]["tenant_id"],
+        ownership_ref["legacy"]["owner_user_id"],
     )
-    return tenant_id, owner_user_id
+
+
+def subject_ref_from_payload(
+    source_payload: dict[str, Any],
+    ownership_payload: dict[str, Any],
+    *,
+    field_name: str,
+    expected_type: str,
+    legacy_fields: tuple[str, ...],
+    default_id: str,
+) -> dict[str, str]:
+    if field_name in ownership_payload:
+        subject_ref = required_subject_ref(
+            ownership_payload[field_name],
+            field_name=f"ownership_ref.{field_name}",
+            expected_type=expected_type,
+        )
+    elif field_name in source_payload:
+        subject_ref = required_subject_ref(
+            source_payload[field_name],
+            field_name=field_name,
+            expected_type=expected_type,
+        )
+    else:
+        subject_ref = {
+            "type": expected_type,
+            "id": first_legacy_subject_id(
+                source_payload,
+                legacy_fields=legacy_fields,
+                default_id=default_id,
+            ),
+        }
+
+    if field_name in ownership_payload and field_name in source_payload:
+        direct_ref = required_subject_ref(
+            source_payload[field_name],
+            field_name=field_name,
+            expected_type=expected_type,
+        )
+        ensure_matching_subject_ref(
+            subject_ref,
+            direct_ref,
+            field_name=field_name,
+        )
+    for legacy_field in legacy_fields:
+        if legacy_field in source_payload:
+            legacy_id = optional_string(source_payload, legacy_field, subject_ref["id"])
+            if legacy_id != subject_ref["id"]:
+                raise UploadHandoffError(
+                    status_code=400,
+                    error_code="ae.upload_owner_invalid",
+                    detail=(
+                        f"{legacy_field} must match {field_name}.id when both "
+                        "are supplied."
+                    ),
+                )
+    return subject_ref
+
+
+def first_legacy_subject_id(
+    payload: dict[str, Any],
+    *,
+    legacy_fields: tuple[str, ...],
+    default_id: str,
+) -> str:
+    for legacy_field in legacy_fields:
+        if legacy_field in payload:
+            return optional_string(payload, legacy_field, default_id)
+    return optional_string({legacy_fields[0]: default_id}, legacy_fields[0], default_id)
+
+
+def required_subject_ref(
+    value: Any,
+    *,
+    field_name: str,
+    expected_type: str,
+) -> dict[str, str]:
+    if not isinstance(value, dict):
+        raise UploadHandoffError(
+            status_code=400,
+            error_code="ae.upload_owner_invalid",
+            detail=f"{field_name} must be an object.",
+        )
+    subject_type = required_owner_string(value, "type", field_name=field_name)
+    if subject_type != expected_type:
+        raise UploadHandoffError(
+            status_code=400,
+            error_code="ae.upload_owner_invalid",
+            detail=f"{field_name}.type must be {expected_type}.",
+        )
+    return {
+        "type": subject_type,
+        "id": required_owner_string(value, "id", field_name=field_name),
+    }
+
+
+def required_owner_string(
+    value: dict[str, Any],
+    key: str,
+    *,
+    field_name: str,
+) -> str:
+    raw = value.get(key)
+    if not isinstance(raw, str) or not raw.strip():
+        raise UploadHandoffError(
+            status_code=400,
+            error_code="ae.upload_owner_invalid",
+            detail=f"{field_name}.{key} must be a non-empty string.",
+        )
+    return raw.strip()
+
+
+def ensure_matching_subject_ref(
+    expected_ref: dict[str, str],
+    actual_ref: dict[str, str],
+    *,
+    field_name: str,
+) -> None:
+    if expected_ref != actual_ref:
+        raise UploadHandoffError(
+            status_code=400,
+            error_code="ae.upload_owner_invalid",
+            detail=f"{field_name} must match ownership_ref.{field_name}.",
+        )
 
 
 def required_string(payload: dict[str, Any], field_name: str, error_code: str) -> str:

@@ -59,6 +59,13 @@ Upload handoff:
 - AE accepts upload metadata and mock `content_text`, forwards it to CX, and
   stores only safe CX document/job references. Source bytes, storage keys, and
   filesystem paths remain CX-owned.
+- Slice 0196 adds canonical OA ownership propagation to this existing upload
+  facade. AE now forwards `ownership_ref` with `oa.tenant`,
+  `owner_subject_ref`, and `uploaded_by_subject_ref` while retaining legacy
+  `tenant_id`, `owner_user_id`, and `user_id` aliases for compatibility.
+- Upload handoff records keep the propagated stable subject refs for debugging,
+  but do not store passwords, tokens, emails, raw identity profiles, source
+  bytes, storage keys, or local filesystem paths.
 
 Document library:
 

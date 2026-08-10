@@ -174,7 +174,7 @@
       "minLength": 1
     },
     "next_slice": {
-      "const": "0196_ae_upload_ownership_propagation_contract"
+      "const": "0197_cx_upload_canonical_ownership_intake"
     }
   },
   "$defs": {

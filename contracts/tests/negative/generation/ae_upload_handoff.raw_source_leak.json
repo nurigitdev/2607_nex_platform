@@ -4,6 +4,26 @@
   "workspace_id": "workspace-001",
   "tenant_id": "local-tenant",
   "owner_user_id": "local-user",
+  "ownership_ref": {
+    "ownership_schema_version": "cx_source_ownership_ref.v1",
+    "tenant_ref": {
+      "type": "oa.tenant",
+      "id": "local-tenant"
+    },
+    "owner_subject_ref": {
+      "type": "oa.user",
+      "id": "local-user"
+    },
+    "uploaded_by_subject_ref": {
+      "type": "oa.user",
+      "id": "local-user"
+    },
+    "legacy": {
+      "tenant_id": "local-tenant",
+      "owner_user_id": "local-user"
+    },
+    "compatibility_mode": "legacy_owner_fields_mapped_to_oa_subject_refs"
+  },
   "status": "QUEUED",
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
   "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
