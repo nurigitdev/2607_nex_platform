@@ -11,6 +11,7 @@ from nex_cx.processing_persistence import (
     build_processing_run_persistence_preview,
 )
 from nex_cx.retrieval_persistence import build_retrieval_runtime_persistence_decision
+from nex_cx.source_ownership import build_source_ownership_boundary_decision
 
 
 CX_PERSISTENCE_GAP_AUDIT_SCHEMA_VERSION = "cx_persistence_gap_audit.v1"
@@ -295,7 +296,7 @@ def build_cx_persistence_gap_audit(
             "migration_pending_count": migration_pending_count,
             "deferred_schema_decision_count": len(CX_DEFERRED_SCHEMA_DECISIONS),
             "private_payload_boundary_count": len(CX_PRIVATE_PAYLOAD_BOUNDARIES),
-            "next_recommended_slice": "0192_cx_source_ownership_boundary_decision",
+            "next_recommended_slice": "0193_nex_oa_subject_registry_foundation",
         },
         "observed_store_counts": counts,
         "surfaces": surfaces,
@@ -311,6 +312,9 @@ def build_cx_persistence_gap_audit(
         "processing_run_persistence_decision": (
             build_processing_run_persistence_decision()
         ),
+        "source_ownership_boundary_decision": (
+            build_source_ownership_boundary_decision()
+        ),
         "latest_processing_run_persistence_preview": (
             build_processing_run_persistence_preview(latest_processing_run)
             if latest_processing_run is not None
@@ -320,7 +324,7 @@ def build_cx_persistence_gap_audit(
             "Keep file IO and provider calls outside database transactions.",
             "Persist metadata, hashes, previews, lineage, and storage URIs only.",
             "Keep raw source bytes, chunk text, summaries, and vectors outside public records.",
-            "Preserve owner-scoped duplicate detection on tenant_id + owner_user_id + source_sha256.",
+            "Preserve owner-scoped duplicate detection and migrate legacy tenant_id + owner_user_id to OA subject refs.",
             "Add PostgreSQL write-through behind existing store/repository ports before changing routes.",
         ],
     }

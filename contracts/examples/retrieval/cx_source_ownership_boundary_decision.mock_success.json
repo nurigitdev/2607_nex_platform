@@ -1,0 +1,118 @@
+{
+  "decision_schema_version": "cx_source_ownership_boundary_decision.v1",
+  "decision_slice": "0192",
+  "service_id": "nex-cx",
+  "decision_status": "boundary_decided_oa_subject_registry_required",
+  "problem_statement": "CX source file bytes are global metadata, but document ownership, ACLs, and duplicate upload behavior must be scoped to a stable OA account subject.",
+  "current_compatibility_fields": {
+    "tenant_id": {
+      "status": "compatibility_alias",
+      "maps_to": "tenant_ref.id",
+      "default": "local-tenant"
+    },
+    "owner_user_id": {
+      "status": "compatibility_alias",
+      "maps_to": "owner_subject_ref.id",
+      "default": "local-user"
+    }
+  },
+  "canonical_fields": {
+    "tenant_ref": {
+      "type": "oa.tenant",
+      "owner_service": "nex-oa",
+      "required": true,
+      "purpose": "tenant isolation and future workspace policy scope"
+    },
+    "owner_subject_ref": {
+      "type": "oa.user",
+      "owner_service": "nex-oa",
+      "required": true,
+      "purpose": "owner-scoped duplicate detection and read ownership"
+    },
+    "uploaded_by_subject_ref": {
+      "type": "oa.user",
+      "owner_service": "nex-oa",
+      "required": true,
+      "purpose": "audit attribution for the upload actor"
+    }
+  },
+  "nex_oa_dependency": {
+    "required_before_cx_schema_migration": true,
+    "minimum_capability": "stable_subject_registry",
+    "minimum_fields": [
+      "tenant_ref",
+      "subject_ref",
+      "display_name",
+      "status"
+    ],
+    "recommended_slice": "0193_nex_oa_subject_registry_foundation",
+    "deferred": [
+      "password_login",
+      "external_identity_provider_mapping",
+      "role_management",
+      "full_user_profile"
+    ]
+  },
+  "storage_boundary": {
+    "cx_source_files": {
+      "ownership": "global_source_byte_metadata",
+      "dedupe_key": [
+        "source_sha256"
+      ],
+      "stores_raw_bytes": false,
+      "local_storage_owner": "/data/nex-platform/cx/source-files",
+      "future_object_storage_policy": "uri_and_hash_only"
+    },
+    "cx_content_objects": {
+      "ownership": "logical_document_registration",
+      "dedupe_key": [
+        "tenant_ref.id",
+        "owner_subject_ref.id",
+        "source_sha256"
+      ],
+      "compatibility_dedupe_key": [
+        "tenant_id",
+        "owner_user_id",
+        "source_sha256"
+      ]
+    },
+    "cx_content_acl_entries": {
+      "ownership": "permission_grants",
+      "owner_grant": {
+        "principal_ref": "owner_subject_ref",
+        "permission": "owner",
+        "granted_by": "uploaded_by_subject_ref"
+      }
+    }
+  },
+  "duplicate_policy": {
+    "same_owner_same_hash": "return_existing_document",
+    "different_owner_same_hash": "create_distinct_content_object",
+    "cross_owner_existing_document_id_visible": false,
+    "source_file_metadata_shared_by_hash": true
+  },
+  "migration_sequence": [
+    {
+      "slice": "0193",
+      "work": "nex_oa_subject_registry_foundation",
+      "reason": "CX needs stable OA subject ids before durable owner refs."
+    },
+    {
+      "slice": "0194",
+      "work": "cx_source_ownership_schema_migration",
+      "reason": "Add canonical subject ref columns while retaining legacy tenant_id/owner_user_id compatibility."
+    },
+    {
+      "slice": "0195",
+      "work": "cx_owner_scoped_repository_api_wiring",
+      "reason": "Write/read owner refs and preserve duplicate behavior."
+    },
+    {
+      "slice": "0196",
+      "work": "ae_upload_ownership_propagation_contract",
+      "reason": "AE must forward OA subject context to CX upload APIs."
+    }
+  ],
+  "private_payload_policy": "No raw source bytes, source text, extracted markdown, chunk text, summary text, vectors, prompts, or raw identity secrets are stored in ownership metadata.",
+  "next_slice": "0193_nex_oa_subject_registry_foundation"
+}

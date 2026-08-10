@@ -19,8 +19,12 @@ Internal persistence boundary:
 
 - Source file records are global byte/storage metadata records keyed by
   `source_sha256`.
-- Content object records are tenant/user-owned logical documents keyed by active
-  `tenant_id + owner_user_id + source_sha256`.
+- Content object records are owner-scoped logical documents. Slice 0192 freezes
+  the future canonical key as `tenant_ref.id + owner_subject_ref.id +
+  source_sha256`, where the refs are OA-owned subject identifiers.
+- Existing `tenant_id + owner_user_id + source_sha256` behavior remains the
+  compatibility key until the OA subject registry and CX schema migration are
+  wired.
 - Same-owner duplicate uploads return the existing document; different owners
   get distinct document IDs without learning about each other.
 - Upload registration accepts `content_text`, `content_base64`, or metadata-only
@@ -57,6 +61,11 @@ Internal persistence boundary:
 - SQLAlchemy-backed upload regression preserves owner-scoped duplicate behavior:
   same owner and same `source_sha256` returns `ALREADY_EXISTS`, while different
   owners get separate content objects that share one source file metadata row.
+- `nex_cx.source_ownership.build_source_ownership_boundary_decision()` records
+  the Slice 0192 ownership decision: CX should keep `cx_source_files` as global
+  source metadata, attach ownership to logical content/ACL rows, and consume a
+  minimal `nex-oa` stable subject registry before the durable owner-ref schema
+  migration.
 - Extraction results now write through to `cx_extraction_artifacts` when the
   repository supports it. The persisted artifact stores lineage, extractor
   version, Markdown hash, storage URI, and counts only; Markdown body text stays

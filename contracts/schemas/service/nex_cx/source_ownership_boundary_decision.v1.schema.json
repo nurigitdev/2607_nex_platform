@@ -1,0 +1,233 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_cx/source_ownership_boundary_decision.v1.schema.json",
+  "title": "NeX CX Source Ownership Boundary Decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decision_schema_version",
+    "decision_slice",
+    "service_id",
+    "decision_status",
+    "problem_statement",
+    "current_compatibility_fields",
+    "canonical_fields",
+    "nex_oa_dependency",
+    "storage_boundary",
+    "duplicate_policy",
+    "migration_sequence",
+    "private_payload_policy",
+    "next_slice"
+  ],
+  "properties": {
+    "decision_schema_version": {
+      "const": "cx_source_ownership_boundary_decision.v1"
+    },
+    "decision_slice": {
+      "const": "0192"
+    },
+    "service_id": {
+      "const": "nex-cx"
+    },
+    "decision_status": {
+      "const": "boundary_decided_oa_subject_registry_required"
+    },
+    "problem_statement": {
+      "type": "string",
+      "minLength": 1
+    },
+    "current_compatibility_fields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenant_id",
+        "owner_user_id"
+      ],
+      "properties": {
+        "tenant_id": {
+          "$ref": "#/$defs/compatibility_field"
+        },
+        "owner_user_id": {
+          "$ref": "#/$defs/compatibility_field"
+        }
+      }
+    },
+    "canonical_fields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenant_ref",
+        "owner_subject_ref",
+        "uploaded_by_subject_ref"
+      ],
+      "properties": {
+        "tenant_ref": {
+          "$ref": "#/$defs/canonical_field"
+        },
+        "owner_subject_ref": {
+          "$ref": "#/$defs/canonical_field"
+        },
+        "uploaded_by_subject_ref": {
+          "$ref": "#/$defs/canonical_field"
+        }
+      }
+    },
+    "nex_oa_dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_before_cx_schema_migration",
+        "minimum_capability",
+        "minimum_fields",
+        "recommended_slice",
+        "deferred"
+      ],
+      "properties": {
+        "required_before_cx_schema_migration": {
+          "const": true
+        },
+        "minimum_capability": {
+          "const": "stable_subject_registry"
+        },
+        "minimum_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "recommended_slice": {
+          "const": "0193_nex_oa_subject_registry_foundation"
+        },
+        "deferred": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "storage_boundary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "cx_source_files",
+        "cx_content_objects",
+        "cx_content_acl_entries"
+      ]
+    },
+    "duplicate_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "same_owner_same_hash",
+        "different_owner_same_hash",
+        "cross_owner_existing_document_id_visible",
+        "source_file_metadata_shared_by_hash"
+      ],
+      "properties": {
+        "same_owner_same_hash": {
+          "const": "return_existing_document"
+        },
+        "different_owner_same_hash": {
+          "const": "create_distinct_content_object"
+        },
+        "cross_owner_existing_document_id_visible": {
+          "const": false
+        },
+        "source_file_metadata_shared_by_hash": {
+          "const": true
+        }
+      }
+    },
+    "migration_sequence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "slice",
+          "work",
+          "reason"
+        ],
+        "properties": {
+          "slice": {
+            "type": "string",
+            "pattern": "^0[0-9]{3}$"
+          },
+          "work": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "private_payload_policy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "next_slice": {
+      "const": "0193_nex_oa_subject_registry_foundation"
+    }
+  },
+  "$defs": {
+    "compatibility_field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "maps_to",
+        "default"
+      ],
+      "properties": {
+        "status": {
+          "const": "compatibility_alias"
+        },
+        "maps_to": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "canonical_field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "owner_service",
+        "required",
+        "purpose"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "oa.tenant",
+            "oa.user"
+          ]
+        },
+        "owner_service": {
+          "const": "nex-oa"
+        },
+        "required": {
+          "const": true
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

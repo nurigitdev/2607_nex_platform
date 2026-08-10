@@ -316,6 +316,11 @@
       "schema": "schemas/service/nex_cx/upload_registration.v1.schema.json"
     },
     {
+      "name": "cx_source_ownership_boundary_decision_mock",
+      "path": "examples/retrieval/cx_source_ownership_boundary_decision.mock_success.json",
+      "schema": "schemas/service/nex_cx/source_ownership_boundary_decision.v1.schema.json"
+    },
+    {
       "name": "cx_text_extraction_mock",
       "path": "examples/retrieval/cx_text_extraction.mock_success.json",
       "schema": "schemas/service/nex_cx/text_extraction.v1.schema.json"
