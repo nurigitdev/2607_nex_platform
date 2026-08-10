@@ -45,7 +45,7 @@ def build_processing_run_persistence_decision() -> dict[str, Any]:
         "decision_schema_version": CX_PROCESSING_RUN_PERSISTENCE_DECISION_SCHEMA_VERSION,
         "decision_slice": "0181",
         "surface_id": "processing_runs",
-        "decision_status": "ag_operations_postgres_smoke_ready",
+        "decision_status": "ag_dashboard_integrated",
         "runtime_record_schema": CX_PROCESSING_RUNTIME_RECORD_SCHEMA,
         "persistence_owner": "nex-cx",
         "repository_boundary": "CxProcessingRunRepository",
@@ -62,6 +62,7 @@ def build_processing_run_persistence_decision() -> dict[str, Any]:
         "service_api_postgres_smoke_slice": "0188",
         "operations_projection_contract_slice": "0189",
         "ag_operations_postgres_smoke_slice": "0190",
+        "ag_dashboard_integration_slice": "0191",
         "target_tables": [
             CX_DOCUMENT_PROCESSING_RUN_TABLE,
             CX_DOCUMENT_PROCESSING_STEP_TABLE,
@@ -130,7 +131,7 @@ def build_processing_run_persistence_decision() -> dict[str, Any]:
             "run_header_step_status_output_ref_hash_and_error_hash_only"
         ),
         "migration_policy": "postgres_schema_then_repository_write_through",
-        "next_slice": "0191_cx_processing_operations_dashboard_integration",
+        "next_slice": "0192_cx_source_ownership_boundary_decision",
     }
 
 

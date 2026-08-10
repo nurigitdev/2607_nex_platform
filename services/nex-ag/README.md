@@ -142,8 +142,9 @@ Unified operations:
   and event totals plus source status counts for operator dashboards.
 - `GET /admin/v1/operations/dashboard` returns
   `ag_operations_dashboard_snapshot_projection.v1`, combining source readiness,
-  rollups, recent failed jobs/events, active jobs, and degraded source signals
-  for the first AG operations dashboard screen.
+  rollups, recent failed jobs/events, active jobs, CX processing run status
+  summary, and degraded source signals for the first AG operations dashboard
+  screen.
 - `GET /admin/v1/operations/issue-candidates` returns
   `ag_operations_issue_candidate_projection.v1`, applying deterministic
   read-only rules to operations dashboard signals. Notification delivery,
@@ -178,7 +179,8 @@ Unified operations:
   `NEX_AG_RETRIEVAL_PACKAGE_POSTGRES_SMOKE=1` and is included in the optional
   `run_postgres_test_smoke_suite.py` as `ag_retrieval_package_postgres`.
 - The mock-first AG operations dashboard smoke covers the full operations
-  endpoint family and is included in `scripts/quality/run_quality_gate.sh`.
+  endpoint family, including CX processing run list/detail visibility, and is
+  included in `scripts/quality/run_quality_gate.sh`.
 - Operations query pagination uses a non-negative integer `cursor` offset,
   returns `pagination.next_cursor` when more rows exist, and caps limit at the
   shared 500-row operations ceiling.

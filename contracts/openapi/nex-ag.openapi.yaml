@@ -176,7 +176,7 @@ paths:
             maximum: 20
       responses:
         "200":
-          description: Read-only operations dashboard snapshot projection.
+          description: Read-only operations dashboard snapshot projection, including CX processing run status summary when configured.
           content:
             application/json:
               schema:

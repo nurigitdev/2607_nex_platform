@@ -157,6 +157,25 @@ class RetrievalPackageTraceStore(Protocol):
         ...
 
 
+class CxProcessingRunDashboardStore(Protocol):
+    source_kind: str
+    database_env: str | None
+    redacted_database_url: str | None
+
+    def list_processing_runs(
+        self,
+        *,
+        document_id: str | None = None,
+        status: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        job_id: str | None = None,
+        include_steps: bool = False,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        ...
+
+
 MIN_SERVICE_LOG_RETENTION_DAYS = 7
 MAX_SERVICE_LOG_RETENTION_DAYS = 365
 MAX_OPERATION_EVENT_QUERY_LENGTH = 128
@@ -1786,6 +1805,7 @@ def register_unified_operation_routes(
     event_store: OperationalEventStore | None = None,
     service_log_stores: Mapping[str, ServiceLogStore] | None = None,
     retrieval_package_stores: Mapping[str, RetrievalPackageTraceStore] | None = None,
+    cx_processing_run_stores: Mapping[str, CxProcessingRunDashboardStore] | None = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -1925,6 +1945,7 @@ def register_unified_operation_routes(
             service_log_stores=service_log_stores,
             registry=registry,
             runtime=selected_runtime,
+            cx_processing_run_stores=cx_processing_run_stores,
             service_id=service_id,
             recent_limit=recent_limit,
             query_options=query_options,
@@ -3184,6 +3205,7 @@ def build_operations_dashboard_snapshot_projection(
     service_log_stores: Mapping[str, ServiceLogStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
+    cx_processing_run_stores: Mapping[str, CxProcessingRunDashboardStore] | None = None,
     service_id: str | None = None,
     recent_limit: int = 5,
     limit: int = 500,
@@ -3252,11 +3274,18 @@ def build_operations_dashboard_snapshot_projection(
         options=options,
         limit=normalized_recent_limit,
     )
+    cx_processing_runs = _dashboard_cx_processing_run_section(
+        cx_processing_run_stores,
+        service_id=service_id,
+        options=options,
+        limit=normalized_recent_limit,
+    )
     degraded_sources = _dashboard_degraded_sources(
         operation_sources=readiness_projection["sources"],
         job_source_statuses=rollup_projection["job_source_statuses"],
         event_source_statuses=rollup_projection["event_source_statuses"],
         log_source_statuses=log_source_statuses,
+        cx_processing_run_source_statuses=cx_processing_runs["source_statuses"],
     )
     projection = {
         "projection_schema_version": "ag_operations_dashboard_snapshot_projection.v1",
@@ -3275,6 +3304,7 @@ def build_operations_dashboard_snapshot_projection(
         "recent_failures": recent_failures,
         "replay_candidates": replay_candidates,
         "active_jobs": active_jobs,
+        "cx_processing_runs": cx_processing_runs,
         "degraded_sources": degraded_sources,
         "job_source_statuses": rollup_projection["job_source_statuses"],
         "event_source_statuses": rollup_projection["event_source_statuses"],
@@ -5101,6 +5131,239 @@ def _dashboard_failure_log_candidates(
     return page["items"], source_statuses
 
 
+def _dashboard_cx_processing_run_section(
+    stores: Mapping[str, CxProcessingRunDashboardStore] | None,
+    *,
+    service_id: str | None,
+    options: OperationQueryOptions,
+    limit: int,
+) -> dict[str, Any]:
+    source_statuses: dict[str, dict[str, Any]] = {}
+    if stores is None:
+        return _empty_dashboard_cx_processing_run_section(source_statuses)
+
+    selected_service_ids = (
+        ["nex-cx"]
+        if service_id is None
+        else (["nex-cx"] if service_id == "nex-cx" else [])
+    )
+    processing_runs: list[dict[str, Any]] = []
+    for selected_service_id in selected_service_ids:
+        store = stores.get(selected_service_id)
+        if store is None:
+            source_statuses[selected_service_id] = (
+                _dashboard_cx_processing_run_source_status(
+                    service_id=selected_service_id,
+                    store=None,
+                    run_count=0,
+                )
+            )
+            continue
+        try:
+            records = store.list_processing_runs(
+                include_steps=False,
+                limit=500,
+            )
+        except Exception as exc:
+            source_statuses[selected_service_id] = (
+                _dashboard_cx_processing_run_source_status(
+                    service_id=selected_service_id,
+                    store=store,
+                    run_count=0,
+                    error=exc,
+                )
+            )
+            continue
+        projected = [
+            _dashboard_cx_processing_run_item(selected_service_id, record)
+            for record in records
+        ]
+        visible = _filter_records_by_operation_time(
+            projected,
+            options,
+            timestamp_field="updated_at",
+        )
+        source_statuses[selected_service_id] = (
+            _dashboard_cx_processing_run_source_status(
+                service_id=selected_service_id,
+                store=store,
+                run_count=len(visible),
+            )
+        )
+        processing_runs.extend(visible)
+
+    dashboard_options = OperationQueryOptions(
+        limit=limit,
+        since=options.since,
+        until=options.until,
+        sort="desc",
+        cursor=None,
+    )
+    recent = _apply_operation_query_options(
+        processing_runs,
+        dashboard_options,
+        timestamp_field="updated_at",
+        tie_breaker_fields=("service_id", "pipeline_run_id"),
+    )["items"]
+    recent_failures = [
+        run
+        for run in recent
+        if run["status"] == "FAILED"
+    ][:limit]
+    active = [
+        run
+        for run in recent
+        if run["status"] in {"QUEUED", "RUNNING"}
+    ][:limit]
+    return {
+        "summary": _summarize_dashboard_cx_processing_runs(processing_runs),
+        "recent": recent,
+        "recent_failures": recent_failures,
+        "active": active,
+        "source_statuses": source_statuses,
+    }
+
+
+def _empty_dashboard_cx_processing_run_section(
+    source_statuses: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "summary": _summarize_dashboard_cx_processing_runs([]),
+        "recent": [],
+        "recent_failures": [],
+        "active": [],
+        "source_statuses": source_statuses,
+    }
+
+
+def _dashboard_cx_processing_run_item(
+    service_id: str,
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    status = str(record.get("status", "UNKNOWN"))
+    return {
+        "service_id": service_id,
+        "operation_type": "cx_processing_run",
+        "pipeline_run_id": str(record.get("pipeline_run_id", "")),
+        "document_id": str(record.get("document_id", "")),
+        "status": status,
+        "trace_id": record.get("trace_id"),
+        "request_id": record.get("request_id"),
+        "job_id": record.get("job_id"),
+        "job_type": record.get("job_type"),
+        "job_status": record.get("job_status"),
+        "job_retryable": record.get("job_retryable"),
+        "step_total": _safe_int(record.get("step_total")),
+        "step_succeeded": _safe_int(record.get("step_succeeded")),
+        "step_skipped": _safe_int(record.get("step_skipped")),
+        "step_failed": _safe_int(record.get("step_failed")),
+        "queued_at": _dashboard_optional_timestamp(record.get("queued_at")),
+        "started_at": _dashboard_optional_timestamp(record.get("started_at")),
+        "completed_at": _dashboard_optional_timestamp(record.get("completed_at")),
+        "updated_at": _dashboard_timestamp(
+            record.get("updated_at")
+            or record.get("completed_at")
+            or record.get("started_at")
+            or record.get("queued_at")
+        ),
+        "detail_path": (
+            "/admin/v1/operations/cx-processing-runs/"
+            f"{record.get('pipeline_run_id', '')}"
+        ),
+    }
+
+
+def _dashboard_cx_processing_run_source_status(
+    *,
+    service_id: str,
+    store: CxProcessingRunDashboardStore | None,
+    run_count: int,
+    error: Exception | None = None,
+) -> dict[str, Any]:
+    if store is None:
+        return {
+            "status": "NOT_CONFIGURED",
+            "service_id": service_id,
+            "source_kind": "none",
+            "processing_run_count": 0,
+            "database_env": None,
+            "redacted_database_url": None,
+        }
+    source = {
+        "status": "UNAVAILABLE" if error is not None else "READY",
+        "service_id": service_id,
+        "source_kind": store.source_kind,
+        "processing_run_count": run_count,
+        "database_env": store.database_env,
+        "redacted_database_url": store.redacted_database_url,
+    }
+    if error is not None:
+        source["error_code"] = getattr(
+            error,
+            "error_code",
+            "ag.cx_processing_run_source_unavailable",
+        )
+        source["detail"] = getattr(
+            error,
+            "detail",
+            "CX processing run source could not be read.",
+        )
+    return source
+
+
+def _summarize_dashboard_cx_processing_runs(
+    processing_runs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    by_status: dict[str, int] = {}
+    for run in processing_runs:
+        status = str(run["status"])
+        by_status[status] = by_status.get(status, 0) + 1
+    return {
+        "total": len(processing_runs),
+        "by_status": by_status,
+        "failed_count": by_status.get("FAILED", 0),
+        "running_count": by_status.get("RUNNING", 0),
+        "queued_count": by_status.get("QUEUED", 0),
+        "active_count": by_status.get("QUEUED", 0) + by_status.get("RUNNING", 0),
+        "retryable_failed_count": sum(
+            1
+            for run in processing_runs
+            if run["status"] == "FAILED" and run.get("job_retryable") is True
+        ),
+        "step_failed_count": sum(
+            _safe_int(run.get("step_failed"))
+            for run in processing_runs
+        ),
+    }
+
+
+def _safe_int(value: object) -> int:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+    return 0
+
+
+def _dashboard_optional_timestamp(value: object) -> str | None:
+    if value is None:
+        return None
+    return _dashboard_timestamp(value)
+
+
+def _dashboard_timestamp(value: object) -> str:
+    if isinstance(value, datetime):
+        return value.isoformat().replace("+00:00", "Z")
+    if value is None:
+        return "1970-01-01T00:00:00Z"
+    return str(value)
+
+
 def _dashboard_replay_candidates(
     failed_jobs: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -5141,6 +5404,7 @@ def _dashboard_degraded_sources(
     job_source_statuses: Mapping[str, dict[str, Any]],
     event_source_statuses: Mapping[str, dict[str, Any]],
     log_source_statuses: Mapping[str, dict[str, Any]] | None = None,
+    cx_processing_run_source_statuses: Mapping[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     degraded: list[dict[str, Any]] = []
     for source in operation_sources:
@@ -5158,6 +5422,7 @@ def _dashboard_degraded_sources(
         ("jobs", job_source_statuses),
         ("events", event_source_statuses),
         ("logs", log_source_statuses or {}),
+        ("cx_processing_runs", cx_processing_run_source_statuses or {}),
     ):
         for service_id, source_status in statuses.items():
             status = str(source_status["status"])

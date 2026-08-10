@@ -29,6 +29,10 @@ from nex_ag.operations import (  # noqa: E402
     register_service_log_routes,
     register_unified_operation_routes,
 )
+from nex_ag.processing_operations import (  # noqa: E402
+    InMemoryCxProcessingRunOperationsStore,
+    register_cx_processing_run_operation_routes,
+)
 from nex_runtime import (  # noqa: E402
     InMemoryJobQueue,
     InMemoryOperationalEventStore,
@@ -52,6 +56,7 @@ SCHEMA_VERSION = "ag_operations_dashboard_smoke.v1"
 
 
 def run_ag_operations_dashboard_smoke() -> dict[str, Any]:
+    cx_processing_run_stores = _build_cx_processing_run_stores()
     registry = build_operations_source_registry(
         job_queues=_build_job_queues(),
         event_stores=_build_event_stores(),
@@ -66,7 +71,17 @@ def run_ag_operations_dashboard_smoke() -> dict[str, Any]:
     )
     app = build_service_app(SERVICE_SPECS["nex-ag"])
     register_operation_source_readiness_routes(app, runtime=runtime)
-    register_unified_operation_routes(app, registry=registry, runtime=runtime)
+    register_cx_processing_run_operation_routes(
+        app,
+        stores=cx_processing_run_stores,
+        runtime=runtime,
+    )
+    register_unified_operation_routes(
+        app,
+        registry=registry,
+        runtime=runtime,
+        cx_processing_run_stores=cx_processing_run_stores,
+    )
     register_operational_event_taxonomy_routes(app)
     register_operational_event_routes(app, registry=registry)
     register_service_log_routes(app, registry=registry)
@@ -87,6 +102,31 @@ def run_ag_operations_dashboard_smoke() -> dict[str, Any]:
         },
         "counts": _projection_counts(projections),
         "checks": checks,
+    }
+
+
+def _build_cx_processing_run_stores() -> dict[str, InMemoryCxProcessingRunOperationsStore]:
+    return {
+        "nex-cx": InMemoryCxProcessingRunOperationsStore(
+            records=[
+                _sample_processing_run(
+                    pipeline_run_id="smoke-processing-run-cx-001",
+                    status="RUNNING",
+                    job_id="smoke-job-cx-001",
+                    updated_at="2026-08-05T00:00:04Z",
+                    step_failed=0,
+                    job_retryable=True,
+                ),
+                _sample_processing_run(
+                    pipeline_run_id="smoke-processing-run-cx-002",
+                    status="FAILED",
+                    job_id="smoke-job-cx-002",
+                    updated_at="2026-08-05T00:00:05Z",
+                    step_failed=1,
+                    job_retryable=False,
+                ),
+            ]
+        )
     }
 
 
@@ -303,6 +343,72 @@ def _sample_job(**overrides: Any) -> dict[str, Any]:
     )
 
 
+def _sample_processing_run(**overrides: Any) -> dict[str, Any]:
+    pipeline_run_id = overrides.pop("pipeline_run_id", "smoke-processing-run-cx-001")
+    status = overrides.pop("status", "RUNNING")
+    job_id = overrides.pop("job_id", "smoke-job-cx-001")
+    updated_at = overrides.pop("updated_at", "2026-08-05T00:00:04Z")
+    step_failed = int(overrides.pop("step_failed", 0))
+    job_retryable = bool(overrides.pop("job_retryable", True))
+    return {
+        "pipeline_run_id": pipeline_run_id,
+        "pipeline_schema_version": "cx_document_processing_pipeline.v1",
+        "document_id": "doc-smoke-001",
+        "status": status,
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "job_id": job_id,
+        "job_type": "cx.document_processing",
+        "job_status": status,
+        "job_attempt_count": 1,
+        "job_max_attempts": 2,
+        "job_retryable": job_retryable,
+        "job_subject_ref": {"type": "cx.document", "id": "doc-smoke-001"},
+        "job_links": {"processing": "/api/v1/documents/doc-smoke-001/processing"},
+        "step_total": 2,
+        "step_succeeded": 1 if step_failed else 2,
+        "step_skipped": 0,
+        "step_failed": step_failed,
+        "queued_at": "2026-08-05T00:00:01Z",
+        "started_at": "2026-08-05T00:00:02Z",
+        "completed_at": updated_at if status in {"SUCCEEDED", "FAILED"} else None,
+        "updated_at": updated_at,
+        "steps": [
+            {
+                "pipeline_run_id": pipeline_run_id,
+                "step_order": 1,
+                "step_id": "extract_text",
+                "status": "SUCCEEDED",
+                "output_ref_type": "text_extraction",
+                "output_ref_id": "smoke-text-extraction-001",
+                "output_ref_document_id": "doc-smoke-001",
+                "output_ref_hash": "a" * 64,
+                "error_code": None,
+                "error_detail_sha256": None,
+                "error_retryable": None,
+                "created_at": "2026-08-05T00:00:03Z",
+            },
+            {
+                "pipeline_run_id": pipeline_run_id,
+                "step_order": 2,
+                "step_id": "build_embedding_index",
+                "status": "FAILED" if step_failed else "SUCCEEDED",
+                "output_ref_type": None if step_failed else "chunk_embedding_index",
+                "output_ref_id": None if step_failed else "smoke-embedding-index-001",
+                "output_ref_document_id": "doc-smoke-001",
+                "output_ref_hash": None if step_failed else "b" * 64,
+                "error_code": (
+                    "cx.embedding.provider_unavailable" if step_failed else None
+                ),
+                "error_detail_sha256": "c" * 64 if step_failed else None,
+                "error_retryable": True if step_failed else None,
+                "created_at": updated_at,
+            },
+        ],
+        **overrides,
+    }
+
+
 def _read_operations_projections(client: TestClient) -> dict[str, dict[str, Any]]:
     return {
         "sources": _get_json(
@@ -360,6 +466,16 @@ def _read_operations_projections(client: TestClient) -> dict[str, dict[str, Any]
         "jobs": _get_json(
             client,
             "/admin/v1/operations/jobs",
+            params={"service_id": "nex-cx"},
+        ),
+        "cx_processing_runs": _get_json(
+            client,
+            "/admin/v1/operations/cx-processing-runs",
+            params={"service_id": "nex-cx", "limit": 10},
+        ),
+        "cx_processing_run_detail": _get_json(
+            client,
+            "/admin/v1/operations/cx-processing-runs/smoke-processing-run-cx-002",
             params={"service_id": "nex-cx"},
         ),
         "job_detail": _get_json(
@@ -434,6 +550,8 @@ def _ag_operations_dashboard_smoke_checks(
     log_retention_dry_run = projections["log_retention_dry_run"]
     log_retention_history = projections["log_retention_history"]
     job_detail = projections["job_detail"]
+    cx_processing_runs = projections["cx_processing_runs"]
+    cx_processing_run_detail = projections["cx_processing_run_detail"]
     workers = projections["workers"]
     worker_detail = projections["worker_detail"]
     trace_timeline = projections["trace_timeline"]
@@ -449,6 +567,8 @@ def _ag_operations_dashboard_smoke_checks(
         "log_retention_dry_run": "ag_service_log_retention_dry_run_projection.v1",
         "log_retention_history": "ag_service_log_retention_history_projection.v1",
         "jobs": "ag_job_operations_projection.v1",
+        "cx_processing_runs": "ag_cx_processing_run_operations_projection.v1",
+        "cx_processing_run_detail": "ag_cx_processing_run_detail_projection.v1",
         "job_detail": "ag_job_operation_detail_projection.v1",
         "workers": "ag_worker_runtime_projection.v1",
         "worker_detail": "ag_worker_detail_projection.v1",
@@ -501,6 +621,18 @@ def _ag_operations_dashboard_smoke_checks(
         "job_detail_timeline_ready": (
             job_detail["lifecycle_timeline"]["timeline_status"] == "READY"
         ),
+        "cx_processing_runs_visible_and_redacted": (
+            cx_processing_runs["summary"]["total"] == 2
+            and cx_processing_runs["summary"]["failed_count"] == 1
+            and cx_processing_run_detail["processing_run"]["pipeline_run_id"]
+            == "smoke-processing-run-cx-002"
+            and cx_processing_run_detail["summary"]["error_hash_count"] == 1
+            and "provider_unavailable" in json.dumps(
+                cx_processing_run_detail,
+                ensure_ascii=False,
+            )
+            and "SECRET" not in json.dumps(cx_processing_run_detail, ensure_ascii=False)
+        ),
         "worker_runtime_visible": (
             workers["workers"][0]["worker_id"] == "smoke-worker-cx-001"
             and workers["workers"][0]["active_job_id"] == "smoke-job-cx-001"
@@ -532,6 +664,20 @@ def _ag_operations_dashboard_smoke_checks(
             == "/admin/v1/operations/jobs/nex-cx/smoke-job-cx-002/replay"
             and dashboard["active_jobs"][0]["job_id"] == "smoke-job-cx-001"
         ),
+        "dashboard_cx_processing_runs_visible": (
+            dashboard["cx_processing_runs"]["summary"]["total"] == 2
+            and dashboard["cx_processing_runs"]["summary"]["failed_count"] == 1
+            and dashboard["cx_processing_runs"]["recent_failures"][0][
+                "pipeline_run_id"
+            ]
+            == "smoke-processing-run-cx-002"
+            and dashboard["cx_processing_runs"]["active"][0]["pipeline_run_id"]
+            == "smoke-processing-run-cx-001"
+            and dashboard["cx_processing_runs"]["source_statuses"]["nex-cx"][
+                "status"
+            ]
+            == "READY"
+        ),
         "issue_candidates_include_failed_and_active": {
             candidate["rule_id"]
             for candidate in issue_candidates["issue_candidates"]
@@ -552,6 +698,12 @@ def _projection_counts(projections: dict[str, dict[str, Any]]) -> dict[str, int]
             projections["log_retention_history"]["retention_history"]
         ),
         "jobs": len(projections["jobs"]["jobs"]),
+        "cx_processing_runs": len(
+            projections["cx_processing_runs"]["processing_runs"]
+        ),
+        "cx_processing_run_steps": len(
+            projections["cx_processing_run_detail"]["processing_run"]["steps"]
+        ),
         "workers": len(projections["workers"]["workers"]),
         "worker_detail_events": len(
             projections["worker_detail"]["worker_lifecycle_timeline"]["events"]
@@ -573,6 +725,7 @@ def summary_line(evidence: dict[str, Any]) -> str:
             "ag_operations_dashboard_smoke=pass "
             f"endpoints={evidence['endpoint_count']} "
             f"jobs={counts['jobs']} workers={counts['workers']} "
+            f"processing_runs={counts['cx_processing_runs']} "
             f"events={counts['events']} "
             f"logs={counts['logs']} "
             f"history={counts['retention_history']} "

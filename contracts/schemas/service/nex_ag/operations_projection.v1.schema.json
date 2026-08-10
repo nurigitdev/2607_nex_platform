@@ -228,6 +228,9 @@
         "$ref": "#/$defs/job"
       }
     },
+    "cx_processing_runs": {
+      "$ref": "#/$defs/dashboard_cx_processing_runs"
+    },
     "replay_candidates": {
       "type": "array",
       "items": {
@@ -645,6 +648,7 @@
           "recent_failures",
           "replay_candidates",
           "active_jobs",
+          "cx_processing_runs",
           "degraded_sources",
           "job_source_statuses",
           "event_source_statuses",
@@ -1125,6 +1129,225 @@
         }
       }
     },
+    "dashboard_cx_processing_runs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "recent",
+        "recent_failures",
+        "active",
+        "source_statuses"
+      ],
+      "properties": {
+        "summary": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "total",
+            "by_status",
+            "failed_count",
+            "running_count",
+            "queued_count",
+            "active_count",
+            "retryable_failed_count",
+            "step_failed_count"
+          ],
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "by_status": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "failed_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "running_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "queued_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "active_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "retryable_failed_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "step_failed_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "recent": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dashboard_cx_processing_run_item"
+          }
+        },
+        "recent_failures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dashboard_cx_processing_run_item"
+          }
+        },
+        "active": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dashboard_cx_processing_run_item"
+          }
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/source_status"
+          }
+        }
+      }
+    },
+    "dashboard_cx_processing_run_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service_id",
+        "operation_type",
+        "pipeline_run_id",
+        "document_id",
+        "status",
+        "trace_id",
+        "request_id",
+        "job_id",
+        "job_type",
+        "job_status",
+        "job_retryable",
+        "step_total",
+        "step_succeeded",
+        "step_skipped",
+        "step_failed",
+        "queued_at",
+        "started_at",
+        "completed_at",
+        "updated_at",
+        "detail_path"
+      ],
+      "properties": {
+        "service_id": {
+          "const": "nex-cx"
+        },
+        "operation_type": {
+          "const": "cx_processing_run"
+        },
+        "pipeline_run_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "document_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/trace_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_retryable": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "step_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "step_succeeded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "step_skipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "step_failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "queued_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "detail_path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "dashboard_degraded_source": {
       "type": "object",
       "additionalProperties": false,
@@ -1141,7 +1364,8 @@
             "readiness",
             "jobs",
             "events",
-            "logs"
+            "logs",
+            "cx_processing_runs"
           ]
         },
         "service_id": {

@@ -294,6 +294,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0188`](slices/0188_cx_processing_service_api_postgresql_smoke_evidence.md) | `S19-008` CX processing service API PostgreSQL smoke evidence. |
 | [`Slice 0189`](slices/0189_cx_processing_run_operations_projection_contract.md) | `S19-009` CX processing run operations projection contract. |
 | [`Slice 0190`](slices/0190_ag_cx_processing_operations_projection_postgres_smoke.md) | `S19-010` AG CX processing operations projection PostgreSQL smoke. |
+| [`Slice 0191`](slices/0191_cx_processing_operations_dashboard_integration.md) | `S20-001` CX processing operations dashboard integration. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

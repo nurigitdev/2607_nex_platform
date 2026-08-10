@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -89,6 +90,10 @@ from nex_ag.retrieval_operations import (
     InMemoryRetrievalPackageOperationsStore,
     RetrievalPackageOperationsError,
 )
+from nex_ag.processing_operations import (
+    CxProcessingRunOperationsError,
+    InMemoryCxProcessingRunOperationsStore,
+)
 from nex_ag.service_log_retention import AgServiceLogRetentionError
 from nex_runtime import (
     AG_JOB_CONTROL_EVENT_FAILED,
@@ -159,6 +164,41 @@ def retrieval_package_record(
         "no_answer_reason": None,
         "created_at": created_at,
         "updated_at": created_at,
+    }
+
+
+def cx_processing_run_record(
+    *,
+    pipeline_run_id: str = "processing-run-001",
+    status: str = "FAILED",
+    updated_at: str = "2026-08-05T00:00:06Z",
+    step_failed: int = 1,
+    job_retryable: bool = True,
+) -> dict[str, object]:
+    return {
+        "pipeline_run_id": pipeline_run_id,
+        "pipeline_schema_version": "cx_document_processing_pipeline.v1",
+        "document_id": "doc-001",
+        "status": status,
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "job_id": f"job-{pipeline_run_id}",
+        "job_type": "cx.document_processing",
+        "job_status": status,
+        "job_attempt_count": 1,
+        "job_max_attempts": 3,
+        "job_retryable": job_retryable,
+        "job_subject_ref": {"type": "cx.document", "id": "doc-001"},
+        "job_links": {},
+        "step_total": 2,
+        "step_succeeded": 1 if step_failed else 2,
+        "step_skipped": 0,
+        "step_failed": step_failed,
+        "queued_at": "2026-08-05T00:00:01Z",
+        "started_at": "2026-08-05T00:00:02Z",
+        "completed_at": updated_at if status in {"SUCCEEDED", "FAILED"} else None,
+        "updated_at": updated_at,
+        "steps": [],
     }
 
 
@@ -743,6 +783,18 @@ class BrokenRetrievalPackageStore:
         raise RetrievalPackageOperationsError(
             error_code="ag.retrieval_package_source_unavailable",
             detail="retrieval package source is unavailable",
+        )
+
+
+class BrokenCxProcessingRunStore:
+    source_kind = "postgres-read"
+    database_env = "NEX_CX_TEST_DATABASE_URL"
+    redacted_database_url = "postgresql://nex_cx_user:***@localhost/nex_cx_test"
+
+    def list_processing_runs(self, **kwargs):
+        raise CxProcessingRunOperationsError(
+            error_code="ag.cx_processing_run_source_unavailable",
+            detail="CX processing run source is unavailable.",
         )
 
 
@@ -2232,12 +2284,31 @@ def test_build_operations_dashboard_snapshot_projection_combines_sections() -> N
         event_stores=build_event_stores(),
     )
     runtime = build_ag_operations_source_runtime(environ={})
+    cx_processing_store = InMemoryCxProcessingRunOperationsStore(
+        records=[
+            cx_processing_run_record(
+                pipeline_run_id="processing-run-001",
+                status="FAILED",
+                updated_at="2026-08-05T00:00:06Z",
+                step_failed=1,
+                job_retryable=True,
+            ),
+            cx_processing_run_record(
+                pipeline_run_id="processing-run-002",
+                status="RUNNING",
+                updated_at="2026-08-05T00:00:07Z",
+                step_failed=0,
+                job_retryable=True,
+            ),
+        ]
+    )
 
     projection = build_operations_dashboard_snapshot_projection(
         registry=registry,
         runtime=runtime,
+        cx_processing_run_stores={"nex-cx": cx_processing_store},
         service_id="nex-cx",
-        recent_limit=1,
+        recent_limit=2,
         request_trace_id=TRACE_ID,
     )
 
@@ -2250,7 +2321,7 @@ def test_build_operations_dashboard_snapshot_projection_combines_sections() -> N
         "service_id": "nex-cx",
         "since": None,
         "until": None,
-        "recent_limit": 1,
+        "recent_limit": 2,
     }
     assert projection["source_readiness_summary"]["total"] == 1
     assert projection["operation_sources"][0]["service_id"] == "nex-cx"
@@ -2283,11 +2354,111 @@ def test_build_operations_dashboard_snapshot_projection_combines_sections() -> N
     assert projection["recent_failures"]["events"] == []
     assert projection["recent_failures"]["logs"] == []
     assert [job["job_id"] for job in projection["active_jobs"]] == ["job-cx-001"]
+    assert projection["cx_processing_runs"]["summary"] == {
+        "total": 2,
+        "by_status": {"FAILED": 1, "RUNNING": 1},
+        "failed_count": 1,
+        "running_count": 1,
+        "queued_count": 0,
+        "active_count": 1,
+        "retryable_failed_count": 1,
+        "step_failed_count": 1,
+    }
+    assert [
+        run["pipeline_run_id"]
+        for run in projection["cx_processing_runs"]["recent"]
+    ] == ["processing-run-002", "processing-run-001"]
+    assert (
+        projection["cx_processing_runs"]["recent_failures"][0]["detail_path"]
+        == "/admin/v1/operations/cx-processing-runs/processing-run-001"
+    )
+    assert projection["cx_processing_runs"]["active"][0]["pipeline_run_id"] == (
+        "processing-run-002"
+    )
+    assert projection["cx_processing_runs"]["source_statuses"]["nex-cx"] == {
+        "status": "READY",
+        "service_id": "nex-cx",
+        "source_kind": "memory",
+        "processing_run_count": 2,
+        "database_env": None,
+        "redacted_database_url": None,
+    }
     assert projection["degraded_sources"] == []
     assert projection["log_source_statuses"]["nex-cx"] == {
         "status": "NOT_CONFIGURED",
         "log_count": 0,
     }
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_dashboard_snapshot_reports_cx_processing_source_unavailable() -> None:
+    projection = build_operations_dashboard_snapshot_projection(
+        cx_processing_run_stores={"nex-cx": BrokenCxProcessingRunStore()},
+        service_id="nex-cx",
+    )
+
+    assert projection["projection_status"] == "DEGRADED"
+    assert projection["cx_processing_runs"]["summary"]["total"] == 0
+    assert projection["cx_processing_runs"]["source_statuses"]["nex-cx"] == {
+        "status": "UNAVAILABLE",
+        "service_id": "nex-cx",
+        "source_kind": "postgres-read",
+        "processing_run_count": 0,
+        "database_env": "NEX_CX_TEST_DATABASE_URL",
+        "redacted_database_url": "postgresql://nex_cx_user:***@localhost/nex_cx_test",
+        "error_code": "ag.cx_processing_run_source_unavailable",
+        "detail": "CX processing run source is unavailable.",
+    }
+    assert {
+        (source["source_type"], source["service_id"], source["status"])
+        for source in projection["degraded_sources"]
+    } == {("cx_processing_runs", "nex-cx", "UNAVAILABLE")}
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_dashboard_snapshot_cx_processing_handles_missing_store_and_coercions() -> None:
+    missing = build_operations_dashboard_snapshot_projection(
+        cx_processing_run_stores={},
+        service_id="nex-cx",
+    )
+
+    assert missing["projection_status"] == "DEGRADED"
+    assert missing["cx_processing_runs"]["source_statuses"]["nex-cx"]["status"] == (
+        "NOT_CONFIGURED"
+    )
+    assert {
+        (source["source_type"], source["service_id"], source["status"])
+        for source in missing["degraded_sources"]
+    } == {("cx_processing_runs", "nex-cx", "NOT_CONFIGURED")}
+
+    record = cx_processing_run_record(
+        pipeline_run_id="processing-run-coerce",
+        status="QUEUED",
+        updated_at="2026-08-05T00:00:08Z",
+    )
+    record["step_total"] = True
+    record["step_succeeded"] = "2"
+    record["step_skipped"] = "bad"
+    record["step_failed"] = "3"
+    record["queued_at"] = None
+    record["started_at"] = datetime(2026, 8, 5, 0, 0, 8, tzinfo=UTC)
+    record["updated_at"] = datetime(2026, 8, 5, 0, 0, 9, tzinfo=UTC)
+    projection = build_operations_dashboard_snapshot_projection(
+        cx_processing_run_stores={
+            "nex-cx": InMemoryCxProcessingRunOperationsStore(records=[record])
+        },
+        service_id="nex-cx",
+    )
+
+    item = projection["cx_processing_runs"]["recent"][0]
+    assert item["step_total"] == 0
+    assert item["step_succeeded"] == 2
+    assert item["step_skipped"] == 0
+    assert item["step_failed"] == 3
+    assert item["queued_at"] is None
+    assert item["started_at"] == "2026-08-05T00:00:08Z"
+    assert item["updated_at"] == "2026-08-05T00:00:09Z"
+    assert projection["cx_processing_runs"]["summary"]["queued_count"] == 1
     assert_ag_operations_projection_contract(projection)
 
 
@@ -2414,8 +2585,16 @@ def test_operations_dashboard_snapshot_route_requires_auth_returns_projection() 
         event_stores=build_event_stores(),
     )
     runtime = build_ag_operations_source_runtime(environ={})
+    cx_processing_store = InMemoryCxProcessingRunOperationsStore(
+        records=[cx_processing_run_record()]
+    )
     app = build_service_app(SERVICE_SPECS["nex-ag"])
-    register_unified_operation_routes(app, registry=registry, runtime=runtime)
+    register_unified_operation_routes(
+        app,
+        registry=registry,
+        runtime=runtime,
+        cx_processing_run_stores={"nex-cx": cx_processing_store},
+    )
     client = TestClient(app)
 
     missing_auth = client.get("/admin/v1/operations/dashboard")
@@ -2436,6 +2615,9 @@ def test_operations_dashboard_snapshot_route_requires_auth_returns_projection() 
     assert payload["projection_status"] == "READY"
     assert payload["rollup_summary"]["jobs"]["total"] == 2
     assert payload["recent_failures"]["jobs"][0]["job_id"] == "job-cx-002"
+    assert payload["cx_processing_runs"]["recent_failures"][0]["pipeline_run_id"] == (
+        "processing-run-001"
+    )
     assert payload["replay_candidates"][0]["control_path"] == (
         "/admin/v1/operations/jobs/nex-cx/job-cx-002/replay"
     )

@@ -227,6 +227,125 @@
       "service_id": "nex-cx"
     }
   ],
+  "cx_processing_runs": {
+    "summary": {
+      "total": 2,
+      "by_status": {
+        "FAILED": 1,
+        "RUNNING": 1
+      },
+      "failed_count": 1,
+      "running_count": 1,
+      "queued_count": 0,
+      "active_count": 1,
+      "retryable_failed_count": 1,
+      "step_failed_count": 1
+    },
+    "recent": [
+      {
+        "service_id": "nex-cx",
+        "operation_type": "cx_processing_run",
+        "pipeline_run_id": "processing-run-002",
+        "document_id": "doc-001",
+        "status": "RUNNING",
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+        "job_id": "job-processing-run-002",
+        "job_type": "cx.document_processing",
+        "job_status": "RUNNING",
+        "job_retryable": true,
+        "step_total": 2,
+        "step_succeeded": 1,
+        "step_skipped": 0,
+        "step_failed": 0,
+        "queued_at": "2026-08-05T00:00:01Z",
+        "started_at": "2026-08-05T00:00:02Z",
+        "completed_at": null,
+        "updated_at": "2026-08-05T00:00:07Z",
+        "detail_path": "/admin/v1/operations/cx-processing-runs/processing-run-002"
+      },
+      {
+        "service_id": "nex-cx",
+        "operation_type": "cx_processing_run",
+        "pipeline_run_id": "processing-run-001",
+        "document_id": "doc-001",
+        "status": "FAILED",
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+        "job_id": "job-processing-run-001",
+        "job_type": "cx.document_processing",
+        "job_status": "FAILED",
+        "job_retryable": true,
+        "step_total": 2,
+        "step_succeeded": 1,
+        "step_skipped": 0,
+        "step_failed": 1,
+        "queued_at": "2026-08-05T00:00:01Z",
+        "started_at": "2026-08-05T00:00:02Z",
+        "completed_at": "2026-08-05T00:00:06Z",
+        "updated_at": "2026-08-05T00:00:06Z",
+        "detail_path": "/admin/v1/operations/cx-processing-runs/processing-run-001"
+      }
+    ],
+    "recent_failures": [
+      {
+        "service_id": "nex-cx",
+        "operation_type": "cx_processing_run",
+        "pipeline_run_id": "processing-run-001",
+        "document_id": "doc-001",
+        "status": "FAILED",
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+        "job_id": "job-processing-run-001",
+        "job_type": "cx.document_processing",
+        "job_status": "FAILED",
+        "job_retryable": true,
+        "step_total": 2,
+        "step_succeeded": 1,
+        "step_skipped": 0,
+        "step_failed": 1,
+        "queued_at": "2026-08-05T00:00:01Z",
+        "started_at": "2026-08-05T00:00:02Z",
+        "completed_at": "2026-08-05T00:00:06Z",
+        "updated_at": "2026-08-05T00:00:06Z",
+        "detail_path": "/admin/v1/operations/cx-processing-runs/processing-run-001"
+      }
+    ],
+    "active": [
+      {
+        "service_id": "nex-cx",
+        "operation_type": "cx_processing_run",
+        "pipeline_run_id": "processing-run-002",
+        "document_id": "doc-001",
+        "status": "RUNNING",
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+        "job_id": "job-processing-run-002",
+        "job_type": "cx.document_processing",
+        "job_status": "RUNNING",
+        "job_retryable": true,
+        "step_total": 2,
+        "step_succeeded": 1,
+        "step_skipped": 0,
+        "step_failed": 0,
+        "queued_at": "2026-08-05T00:00:01Z",
+        "started_at": "2026-08-05T00:00:02Z",
+        "completed_at": null,
+        "updated_at": "2026-08-05T00:00:07Z",
+        "detail_path": "/admin/v1/operations/cx-processing-runs/processing-run-002"
+      }
+    ],
+    "source_statuses": {
+      "nex-cx": {
+        "status": "READY",
+        "service_id": "nex-cx",
+        "source_kind": "memory",
+        "processing_run_count": 2,
+        "database_env": null,
+        "redacted_database_url": null
+      }
+    }
+  },
   "degraded_sources": [],
   "job_source_statuses": {
     "nex-cx": {
