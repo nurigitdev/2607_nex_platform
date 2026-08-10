@@ -131,7 +131,7 @@ def build_processing_run_persistence_decision() -> dict[str, Any]:
             "run_header_step_status_output_ref_hash_and_error_hash_only"
         ),
         "migration_policy": "postgres_schema_then_repository_write_through",
-        "next_slice": "0198_oa_subject_registry_resolver_client",
+        "next_slice": "0199_ae_upload_ownership_resolver_wiring",
     }
 
 

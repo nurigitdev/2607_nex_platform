@@ -29,3 +29,10 @@ Slice 0193 minimum subject registry:
   tests cover the same repository boundary with SQLite.
 - The registry intentionally excludes raw identity payloads such as passwords,
   tokens, emails, phone numbers, raw external profiles, and secrets.
+
+Slice 0198 resolver client:
+
+- `nex_runtime.subject_resolver.HttpSubjectRegistryResolver` can verify or
+  ensure OA subject refs through the subject registry endpoints.
+- The resolver propagates service tokens, request ids, and trace headers while
+  rejecting unsupported ownership metadata before making OA calls.

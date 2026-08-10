@@ -154,13 +154,21 @@ def build_source_ownership_boundary_decision() -> dict[str, Any]:
                     "live authentication integration."
                 ),
             },
+            {
+                "slice": "0199",
+                "work": "ae_upload_ownership_resolver_wiring",
+                "reason": (
+                    "AE upload intake should optionally verify OA owner refs "
+                    "before forwarding CX handoffs."
+                ),
+            },
         ],
         "private_payload_policy": (
             "No raw source bytes, source text, extracted markdown, chunk text, "
             "summary text, vectors, prompts, or raw identity secrets are stored "
             "in ownership metadata."
         ),
-        "next_slice": "0198_oa_subject_registry_resolver_client",
+        "next_slice": "0199_ae_upload_ownership_resolver_wiring",
     }
 
 
