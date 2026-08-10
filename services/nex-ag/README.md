@@ -22,6 +22,8 @@ Current endpoints:
 - `GET /admin/v1/operations/events/{event_id}`
 - `GET /admin/v1/operations/jobs`
 - `GET /admin/v1/operations/jobs/{service_id}/{job_id}`
+- `GET /admin/v1/operations/cx-processing-runs`
+- `GET /admin/v1/operations/cx-processing-runs/{pipeline_run_id}`
 - `GET /admin/v1/operations/retrieval-packages`
 - `GET /admin/v1/operations/retrieval-packages/{retrieval_package_id}`
 - `POST /admin/v1/operations/jobs/{service_id}/{job_id}/cancel`
@@ -161,6 +163,15 @@ Unified operations:
   observability. These projections expose status, trace/request/job
   correlation, step counts, output refs, and error hashes without raw source
   text, markdown, chunks, summaries, vectors, prompts, or raw error details.
+- `GET /admin/v1/operations/cx-processing-runs` and
+  `GET /admin/v1/operations/cx-processing-runs/{pipeline_run_id}` are the
+  read-only AG APIs for the same projection family. In PostgreSQL source mode,
+  AG reads CX processing run and step rows without writing to the CX database.
+- `scripts/smoke/run_ag_cx_processing_run_postgres_smoke.py` is the guarded
+  PostgreSQL test-profile evidence path for the CX processing run list/detail
+  APIs. It is skipped unless `NEX_AG_CX_PROCESSING_RUN_POSTGRES_SMOKE=1` and is
+  included in the optional `run_postgres_test_smoke_suite.py` as
+  `ag_cx_processing_run_postgres`.
 - `scripts/smoke/run_ag_retrieval_package_postgres_smoke.py` is the guarded
   PostgreSQL test-profile evidence path for the retrieval package list/detail
   APIs and trace timeline correlation. It is skipped unless

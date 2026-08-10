@@ -14,6 +14,7 @@ from sqlalchemy import text
 import run_ag_job_control_smoke as ag_job_control_smoke
 import run_ag_operations_dashboard_smoke as ag_operations_dashboard_smoke
 import run_ag_cross_service_observability_smoke as ag_observability_smoke
+import run_ag_cx_processing_run_postgres_smoke as ag_cx_processing_smoke
 import run_ag_retrieval_package_postgres_smoke as ag_retrieval_postgres_smoke
 import run_ag_service_log_retention_smoke as ag_log_retention_smoke
 import run_ag_service_log_retention_postgres_smoke as ag_log_retention_postgres_smoke
@@ -2730,6 +2731,11 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
     )
     monkeypatch.setattr(
         postgres_suite_smoke,
+        "run_ag_cx_processing_run_postgres_smoke",
+        child_pass("ag_cx_processing_run_postgres_smoke"),
+    )
+    monkeypatch.setattr(
+        postgres_suite_smoke,
         "run_ag_cross_service_observability_smoke",
         child_pass("ag_cross_service_observability_smoke"),
     )
@@ -2766,10 +2772,11 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("cx_processing_postgres_event_smoke", "test"),
         ("cx_processing_postgres_persistence_smoke", "test"),
         ("cx_processing_postgres_api_smoke", "test"),
+        ("ag_cx_processing_run_postgres_smoke", "test"),
         ("ag_cross_service_observability_smoke", "test"),
     ]
     assert postgres_suite_smoke.summary_line(evidence) == (
-        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=17"
+        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=18"
     )
 
 
@@ -4435,6 +4442,238 @@ def test_cx_processing_postgres_api_smoke_main_prints_summary_and_full_evidence(
     assert "cx_processing_postgres_api_smoke=skipped" in capsys.readouterr().out
 
     assert cx_processing_api_smoke.main([]) == 0
+    assert '"status": "SKIPPED"' in capsys.readouterr().out
+
+
+def test_ag_cx_processing_run_postgres_smoke_skips_by_default() -> None:
+    evidence = ag_cx_processing_smoke.run_ag_cx_processing_run_postgres_smoke(environ={})
+
+    assert evidence["status"] == "SKIPPED"
+    assert ag_cx_processing_smoke.summary_line(evidence) == (
+        "ag_cx_processing_run_postgres_smoke=skipped "
+        "reason=NEX_AG_CX_PROCESSING_RUN_POSTGRES_SMOKE"
+    )
+
+
+def test_ag_cx_processing_run_postgres_smoke_rejects_non_test_profile() -> None:
+    evidence = ag_cx_processing_smoke.run_ag_cx_processing_run_postgres_smoke(
+        environ={
+            "NEX_AG_CX_PROCESSING_RUN_POSTGRES_SMOKE": "1",
+            "NEX_AG_CX_PROCESSING_RUN_POSTGRES_SMOKE_PROFILE": "dev",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "profile_not_allowed"
+
+
+def test_ag_cx_processing_run_postgres_smoke_reports_pass_without_leaking_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration_calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        ag_cx_processing_smoke,
+        "service_database_env",
+        lambda service_id, profile: f"{service_id}:{profile}:env",
+    )
+    monkeypatch.setattr(
+        ag_cx_processing_smoke,
+        "service_database_url",
+        lambda service_id, profile, environ: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        ag_cx_processing_smoke,
+        "run_service_migrations",
+        lambda service_id, database_url, profile: migration_calls.append(
+            (service_id, profile)
+        ),
+    )
+    monkeypatch.setattr(
+        ag_cx_processing_smoke,
+        "_execute_ag_cx_processing_run_postgres_smoke",
+        lambda database_url, database_env, environ: {
+            "pipeline_run_id": "pipeline-001",
+            "request_id": "request-001",
+            "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+            "projection_versions": {
+                "list": "ag_cx_processing_run_operations_projection.v1",
+                "detail": "ag_cx_processing_run_detail_projection.v1",
+            },
+            "http_statuses": {"list": 200, "detail": 200},
+            "counts": {
+                "list_total": 1,
+                "detail_steps": 2,
+                "detail_error_hashes": 1,
+            },
+            "checks": {"ok": True},
+        },
+    )
+
+    evidence = ag_cx_processing_smoke.run_ag_cx_processing_run_postgres_smoke(
+        environ={"NEX_AG_CX_PROCESSING_RUN_POSTGRES_SMOKE": "1"}
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["database_env"] == "nex-cx:test:env"
+    assert evidence["redacted_database_url"] == "postgresql://user:***@localhost/db"
+    assert "secret" not in str(evidence)
+    assert migration_calls == [("nex-cx", "test")]
+    assert ag_cx_processing_smoke.summary_line(evidence) == (
+        "ag_cx_processing_run_postgres_smoke=pass "
+        "service=nex-cx db_env=nex-cx:test:env "
+        "list=1 detail_steps=2 error_hashes=1"
+    )
+
+
+def test_ag_cx_processing_run_postgres_smoke_reports_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_migration_error(*args: object, **kwargs: object) -> None:
+        raise ag_cx_processing_smoke.MigrationError("missing database URL env")
+
+    monkeypatch.setattr(
+        ag_cx_processing_smoke,
+        "service_database_url",
+        raise_migration_error,
+    )
+    config_failure = ag_cx_processing_smoke.run_ag_cx_processing_run_postgres_smoke(
+        environ={"NEX_AG_CX_PROCESSING_RUN_POSTGRES_SMOKE": "1"}
+    )
+
+    assert config_failure["status"] == "FAIL"
+    assert config_failure["failure_code"] == "configuration_invalid"
+
+    monkeypatch.setattr(
+        ag_cx_processing_smoke,
+        "service_database_url",
+        lambda *args, **kwargs: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        ag_cx_processing_smoke,
+        "run_service_migrations",
+        lambda *args, **kwargs: None,
+    )
+
+    def raise_runtime_error(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        ag_cx_processing_smoke,
+        "_execute_ag_cx_processing_run_postgres_smoke",
+        raise_runtime_error,
+    )
+    execution_failure = ag_cx_processing_smoke.run_ag_cx_processing_run_postgres_smoke(
+        environ={"NEX_AG_CX_PROCESSING_RUN_POSTGRES_SMOKE": "1"}
+    )
+
+    assert execution_failure["status"] == "FAIL"
+    assert execution_failure["failure_code"] == "execution_failed"
+    assert ag_cx_processing_smoke.summary_line(execution_failure) == (
+        "ag_cx_processing_run_postgres_smoke=fail "
+        "service=nex-cx reason=execution_failed"
+    )
+
+
+def test_ag_cx_processing_run_postgres_smoke_execute_with_sqlite_fixture(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'ag-cx-processing-smoke.sqlite'}"
+    engine = ag_cx_processing_smoke.build_engine(database_url)
+    _create_sqlite_cx_processing_persistence_tables(engine)
+
+    evidence = ag_cx_processing_smoke._execute_ag_cx_processing_run_postgres_smoke(
+        database_url=database_url,
+        database_env="NEX_CX_TEST_DATABASE_URL",
+        environ={},
+    )
+
+    assert evidence["checks"] == {
+        "list_projection_reads_postgres": True,
+        "list_filter_returns_seeded_run": True,
+        "detail_projection_includes_safe_steps": True,
+        "detail_source_status_ready": True,
+        "raw_values_absent_from_ag_evidence": True,
+    }
+    assert evidence["counts"] == {
+        "list_total": 1,
+        "detail_steps": 2,
+        "detail_error_hashes": 1,
+    }
+    with engine.begin() as connection:
+        remaining_runs = connection.execute(
+            text("SELECT count(*) FROM cx_document_processing_runs")
+        ).scalar_one()
+        remaining_steps = connection.execute(
+            text("SELECT count(*) FROM cx_document_processing_steps")
+        ).scalar_one()
+        remaining_content = connection.execute(
+            text("SELECT count(*) FROM cx_content_objects")
+        ).scalar_one()
+        remaining_sources = connection.execute(
+            text("SELECT count(*) FROM cx_source_files")
+        ).scalar_one()
+    assert remaining_runs == 0
+    assert remaining_steps == 0
+    assert remaining_content == 0
+    assert remaining_sources == 0
+
+
+def test_ag_cx_processing_run_postgres_smoke_helpers_cover_edges() -> None:
+    refs = ag_cx_processing_smoke._smoke_refs()
+    checks = ag_cx_processing_smoke._checks(
+        list_response={
+            "_http_status": 500,
+            "processing_runs": [],
+            "summary": {},
+        },
+        detail_response={
+            "_http_status": 404,
+            "processing_run": {"steps": []},
+            "summary": {},
+        },
+        refs=refs,
+        raw_values=[refs["source_text"]],
+    )
+
+    assert checks == {
+        "list_projection_reads_postgres": False,
+        "list_filter_returns_seeded_run": False,
+        "detail_projection_includes_safe_steps": False,
+        "detail_source_status_ready": False,
+        "raw_values_absent_from_ag_evidence": True,
+    }
+    assert ag_cx_processing_smoke._json_sql_expression(
+        SimpleNamespace(dialect=SimpleNamespace(name="postgresql")),
+        "payload",
+    ) == "CAST(:payload AS jsonb)"
+    assert ag_cx_processing_smoke._redaction_safe(
+        {"safe": "value"},
+        [refs["source_text"]],
+    )
+    assert not ag_cx_processing_smoke._redaction_safe(
+        {"leak": refs["source_text"]},
+        [refs["source_text"]],
+    )
+
+
+def test_ag_cx_processing_run_postgres_smoke_main_prints_summary_and_full_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(ag_cx_processing_smoke, "load_env_file", lambda path: None)
+    monkeypatch.setattr(
+        ag_cx_processing_smoke,
+        "run_ag_cx_processing_run_postgres_smoke",
+        lambda: {
+            "smoke_schema_version": "ag_cx_processing_run_postgres_smoke.v1",
+            "status": "SKIPPED",
+            "skip_reason": "NEX_AG_CX_PROCESSING_RUN_POSTGRES_SMOKE is not enabled.",
+        },
+    )
+
+    assert ag_cx_processing_smoke.main(["--summary"]) == 0
+    assert "ag_cx_processing_run_postgres_smoke=skipped" in capsys.readouterr().out
+
+    assert ag_cx_processing_smoke.main([]) == 0
     assert '"status": "SKIPPED"' in capsys.readouterr().out
 
 

@@ -168,7 +168,7 @@ CX_DEFERRED_SCHEMA_DECISIONS: tuple[dict[str, Any], ...] = (
     {
         "decision_id": "processing_runs",
         "surface_id": "processing_runs",
-        "decision_status": "operations_projection_contract_ready",
+        "decision_status": "ag_operations_postgres_smoke_ready",
         "candidate_tables": [
             CX_DOCUMENT_PROCESSING_RUN_TABLE,
             CX_DOCUMENT_PROCESSING_STEP_TABLE,
@@ -200,7 +200,7 @@ CX_DEFERRED_SCHEMA_DECISIONS: tuple[dict[str, Any], ...] = (
         "private_payload_policy": (
             "run_header_step_status_output_ref_hash_and_error_hash_only"
         ),
-        "decision_trigger": "slice_0190_ag_cx_processing_operations_projection_postgres_smoke",
+        "decision_trigger": "slice_0191_cx_processing_operations_dashboard_integration",
     },
     {
         "decision_id": "lexical_index_header",
@@ -296,7 +296,7 @@ def build_cx_persistence_gap_audit(
             "deferred_schema_decision_count": len(CX_DEFERRED_SCHEMA_DECISIONS),
             "private_payload_boundary_count": len(CX_PRIVATE_PAYLOAD_BOUNDARIES),
             "next_recommended_slice": (
-                "0190_ag_cx_processing_operations_projection_postgres_smoke"
+                "0191_cx_processing_operations_dashboard_integration"
             ),
         },
         "observed_store_counts": counts,

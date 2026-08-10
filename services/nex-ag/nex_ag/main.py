@@ -15,6 +15,10 @@ from nex_ag.operations import (
     register_service_log_routes,
     register_unified_operation_routes,
 )
+from nex_ag.processing_operations import (
+    build_cx_processing_run_operation_stores,
+    register_cx_processing_run_operation_routes,
+)
 from nex_ag.readiness import register_readiness_routes
 from nex_ag.retrieval_policies import register_retrieval_policy_routes
 from nex_ag.retrieval_operations import (
@@ -41,9 +45,17 @@ OPERATIONS_SOURCE_REGISTRY = OPERATIONS_SOURCE_RUNTIME.registry
 RETRIEVAL_PACKAGE_OPERATION_STORES = build_retrieval_package_operation_stores(
     runtime=OPERATIONS_SOURCE_RUNTIME
 )
+CX_PROCESSING_RUN_OPERATION_STORES = build_cx_processing_run_operation_stores(
+    runtime=OPERATIONS_SOURCE_RUNTIME
+)
 register_readiness_routes(app)
 register_generation_audit_routes(app)
 register_retrieval_policy_routes(app)
+register_cx_processing_run_operation_routes(
+    app,
+    stores=CX_PROCESSING_RUN_OPERATION_STORES,
+    runtime=OPERATIONS_SOURCE_RUNTIME,
+)
 register_retrieval_package_operation_routes(
     app,
     stores=RETRIEVAL_PACKAGE_OPERATION_STORES,

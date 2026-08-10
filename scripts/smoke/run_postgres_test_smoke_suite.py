@@ -39,6 +39,11 @@ from run_ag_retrieval_package_postgres_smoke import (  # noqa: E402
     SMOKE_PROFILE_ENV as AG_RETRIEVAL_PACKAGE_POSTGRES_PROFILE_ENV,
     run_ag_retrieval_package_postgres_smoke,
 )
+from run_ag_cx_processing_run_postgres_smoke import (  # noqa: E402
+    SMOKE_ENV as AG_CX_PROCESSING_RUN_POSTGRES_SMOKE_ENV,
+    SMOKE_PROFILE_ENV as AG_CX_PROCESSING_RUN_POSTGRES_PROFILE_ENV,
+    run_ag_cx_processing_run_postgres_smoke,
+)
 from run_cx_processing_postgres_event_smoke import (  # noqa: E402
     SMOKE_ENV as CX_PROCESSING_EVENT_SMOKE_ENV,
     SMOKE_PROFILE_ENV as CX_PROCESSING_EVENT_PROFILE_ENV,
@@ -139,6 +144,7 @@ SUITE_STAGE_ORDER = (
     "cx_processing_events",
     "cx_processing_persistence",
     "cx_processing_api",
+    "ag_cx_processing_run_postgres",
     "ag_cross_service_observability",
 )
 
@@ -232,6 +238,8 @@ def run_postgres_test_smoke_suite(
         CX_PROCESSING_PERSISTENCE_PROFILE_ENV: profile,
         CX_PROCESSING_API_SMOKE_ENV: "1",
         CX_PROCESSING_API_PROFILE_ENV: profile,
+        AG_CX_PROCESSING_RUN_POSTGRES_SMOKE_ENV: "1",
+        AG_CX_PROCESSING_RUN_POSTGRES_PROFILE_ENV: profile,
         AG_OBSERVABILITY_SMOKE_ENV: "1",
         AG_OBSERVABILITY_PROFILE_ENV: profile,
     }
@@ -276,6 +284,9 @@ def run_postgres_test_smoke_suite(
     )
     stages["cx_processing_api"] = _stage_from_child_smoke(
         run_cx_processing_postgres_api_smoke(environ=smoke_env)
+    )
+    stages["ag_cx_processing_run_postgres"] = _stage_from_child_smoke(
+        run_ag_cx_processing_run_postgres_smoke(environ=smoke_env)
     )
     stages["ag_cross_service_observability"] = _stage_from_child_smoke(
         run_ag_cross_service_observability_smoke(environ=smoke_env)
