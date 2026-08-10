@@ -48,5 +48,6 @@ mkdir -p "$REPORT_DIR"
 "$PYTHON_BIN" scripts/smoke/run_cx_processing_postgres_jobqueue_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_processing_postgres_event_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_processing_postgres_persistence_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_cx_processing_postgres_api_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_cross_service_observability_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_postgres_test_smoke_suite.py --summary

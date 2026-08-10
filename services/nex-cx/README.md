@@ -201,3 +201,7 @@ Grounded generation validation:
   skipped by default and only writes to the CX test database when
   `NEX_CX_PROCESSING_POSTGRES_PERSISTENCE_SMOKE=1` is set with the `test`
   profile.
+- CX processing service API PostgreSQL evidence is available through
+  `scripts/smoke/run_cx_processing_postgres_api_smoke.py`. It is skipped by
+  default and only writes to the CX test database when
+  `NEX_CX_PROCESSING_POSTGRES_API_SMOKE=1` is set with the `test` profile.

@@ -38,7 +38,7 @@ DB connectivity or migration issues early.
 
 Recommended next slice:
 
-- `0188_cx_processing_run_operations_projection`
+- `0188_cx_processing_service_api_postgresql_smoke_evidence`
 
 ## Evidence
 

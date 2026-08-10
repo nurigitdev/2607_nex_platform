@@ -15,7 +15,7 @@ def test_processing_run_persistence_decision_freezes_target_mapping() -> None:
     decision = build_processing_run_persistence_decision()
 
     assert decision["decision_slice"] == "0181"
-    assert decision["decision_status"] == "service_api_persisted_read_ready_ag_pending"
+    assert decision["decision_status"] == "service_api_postgres_smoke_ready_ag_pending"
     assert decision["runtime_record_schema"] == CX_PROCESSING_RUNTIME_RECORD_SCHEMA
     assert decision["migration_version"] == "0182_cx_processing_run_step_persistence"
     assert decision["adapter_slice"] == "0183"
@@ -23,6 +23,7 @@ def test_processing_run_persistence_decision_freezes_target_mapping() -> None:
     assert decision["postgres_smoke_slice"] == "0185"
     assert decision["read_model_slice"] == "0186"
     assert decision["service_api_slice"] == "0187"
+    assert decision["service_api_postgres_smoke_slice"] == "0188"
     assert decision["target_tables"] == [
         CX_DOCUMENT_PROCESSING_RUN_TABLE,
         CX_DOCUMENT_PROCESSING_STEP_TABLE,
@@ -37,7 +38,9 @@ def test_processing_run_persistence_decision_freezes_target_mapping() -> None:
     assert "job_status" in decision["run_metadata_fields"]
     assert "error_detail_sha256" in decision["step_metadata_fields"]
     assert "steps[].error.detail" in decision["private_payload_exclusions"]
-    assert decision["next_slice"] == "0188_cx_processing_run_operations_projection"
+    assert decision["next_slice"] == (
+        "0189_cx_processing_run_operations_projection_contract"
+    )
 
 
 def test_processing_run_persistence_preview_hashes_private_runtime_detail() -> None:
