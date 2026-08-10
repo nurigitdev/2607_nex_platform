@@ -116,6 +116,12 @@ def sqlite_content_repository(
                     content_object_id TEXT PRIMARY KEY,
                     tenant_id TEXT NOT NULL,
                     owner_user_id TEXT NOT NULL,
+                    tenant_ref_type TEXT NOT NULL DEFAULT 'oa.tenant',
+                    tenant_ref_id TEXT NOT NULL,
+                    owner_subject_ref_type TEXT NOT NULL DEFAULT 'oa.user',
+                    owner_subject_ref_id TEXT NOT NULL,
+                    uploaded_by_subject_ref_type TEXT NOT NULL DEFAULT 'oa.user',
+                    uploaded_by_subject_ref_id TEXT NOT NULL,
                     source_file_id TEXT NOT NULL REFERENCES cx_source_files(source_file_id),
                     source_sha256 TEXT NOT NULL,
                     upload_id TEXT NOT NULL UNIQUE,
@@ -144,15 +150,47 @@ def sqlite_content_repository(
         connection.execute(
             text(
                 """
+                CREATE UNIQUE INDEX ux_cx_content_owner_subject_source_active
+                ON cx_content_objects (
+                    tenant_ref_type,
+                    tenant_ref_id,
+                    owner_subject_ref_type,
+                    owner_subject_ref_id,
+                    source_sha256
+                )
+                WHERE lifecycle_status = 'ACTIVE'
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
                 CREATE TABLE cx_content_acl_entries (
                     acl_entry_id TEXT PRIMARY KEY,
                     content_object_id TEXT NOT NULL REFERENCES cx_content_objects(content_object_id),
                     principal_type TEXT NOT NULL,
                     principal_id TEXT NOT NULL,
+                    principal_ref_type TEXT NOT NULL,
+                    principal_ref_id TEXT NOT NULL,
                     permission TEXT NOT NULL,
                     granted_by_user_id TEXT,
+                    granted_by_subject_ref_type TEXT,
+                    granted_by_subject_ref_id TEXT,
                     created_at TEXT NOT NULL,
                     UNIQUE (content_object_id, principal_type, principal_id, permission)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE UNIQUE INDEX ux_cx_content_acl_subject_ref_permission
+                ON cx_content_acl_entries (
+                    content_object_id,
+                    principal_ref_type,
+                    principal_ref_id,
+                    permission
                 )
                 """
             )
@@ -789,6 +827,63 @@ def test_build_content_object_record_keeps_owner_scope_and_source_ref(
     assert record["source_file_id"] == source_file["source_file_id"]
     assert record["lifecycle_status"] == "ACTIVE"
     assert record["retrieval_policy"]["chunk_policy"] == "chunk_1000_100"
+    assert record["ownership_ref"] == {
+        "ownership_schema_version": (
+            cx_repository.CX_SOURCE_OWNERSHIP_REF_SCHEMA_VERSION
+        ),
+        "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+        "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+        "uploaded_by_subject_ref": {"type": "oa.user", "id": "user-a"},
+        "legacy": {"tenant_id": "tenant-a", "owner_user_id": "user-a"},
+        "compatibility_mode": "legacy_owner_fields_mapped_to_oa_subject_refs",
+    }
+
+
+def test_build_content_object_record_allows_explicit_uploader_subject(
+    tmp_path: Path,
+) -> None:
+    upload = upload_registration(tmp_path)
+    source_file = build_source_file_record(upload)
+
+    record = build_content_object_record(
+        upload,
+        tenant_id="tenant-a",
+        owner_user_id="owner-a",
+        uploaded_by_user_id="uploader-a",
+        source_file_id=source_file["source_file_id"],
+    )
+
+    assert record["ownership_ref"]["owner_subject_ref"] == {
+        "type": "oa.user",
+        "id": "owner-a",
+    }
+    assert record["ownership_ref"]["uploaded_by_subject_ref"] == {
+        "type": "oa.user",
+        "id": "uploader-a",
+    }
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "field_name"),
+    [
+        ({"tenant_id": ""}, "tenant_id"),
+        ({"owner_user_id": "   "}, "owner_user_id"),
+    ],
+)
+def test_build_content_object_record_rejects_blank_owner_scope_aliases(
+    tmp_path: Path,
+    kwargs: dict[str, str],
+    field_name: str,
+) -> None:
+    upload = upload_registration(tmp_path)
+    source_file = build_source_file_record(upload)
+
+    with pytest.raises(ValueError, match=f"{field_name} must be a non-empty string"):
+        build_content_object_record(
+            upload,
+            source_file_id=source_file["source_file_id"],
+            **kwargs,
+        )
 
 
 def test_build_extraction_artifact_record_maps_metadata_without_markdown_text(
@@ -1074,6 +1169,106 @@ def test_in_memory_repository_finds_active_content_object_by_owner_and_hash(
         source_sha256=upload["source_sha256"],
     ) is None
     assert repository.get_source_file_by_sha256("0" * 64) is None
+
+
+def test_in_memory_repository_normalizes_legacy_content_owner_fields(
+    tmp_path: Path,
+) -> None:
+    repository = InMemoryCxContentRepository()
+    upload = upload_registration(tmp_path)
+    record = build_content_object_record(
+        upload,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+        source_file_id="source-file-a",
+    )
+    legacy_record = dict(record)
+    legacy_record.pop("ownership_ref")
+
+    saved = repository.save_content_object(legacy_record)
+
+    assert "ownership_ref" not in legacy_record
+    assert saved["ownership_ref"]["tenant_ref"] == {
+        "type": "oa.tenant",
+        "id": "tenant-a",
+    }
+    assert saved["ownership_ref"]["owner_subject_ref"] == {
+        "type": "oa.user",
+        "id": "user-a",
+    }
+    assert repository.find_active_content_object(
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+        source_sha256=upload["source_sha256"],
+    ) == saved
+
+
+def test_in_memory_repository_rejects_invalid_owner_subject_ref_type(
+    tmp_path: Path,
+) -> None:
+    repository = InMemoryCxContentRepository()
+    upload = upload_registration(tmp_path)
+    record = build_content_object_record(
+        upload,
+        source_file_id="source-file-a",
+    )
+    record["ownership_ref"]["owner_subject_ref"]["type"] = "cx.local_user"
+
+    with pytest.raises(ValueError, match="owner_subject_ref.type must be oa.user"):
+        repository.save_content_object(record)
+
+
+@pytest.mark.parametrize(
+    ("ref_name", "bad_type", "expected_field"),
+    [
+        ("tenant_ref", "cx.tenant", "tenant_ref.type"),
+        ("uploaded_by_subject_ref", "cx.local_user", "uploaded_by_subject_ref.type"),
+    ],
+)
+def test_in_memory_repository_rejects_invalid_content_ownership_ref_types(
+    tmp_path: Path,
+    ref_name: str,
+    bad_type: str,
+    expected_field: str,
+) -> None:
+    repository = InMemoryCxContentRepository()
+    upload = upload_registration(tmp_path)
+    record = build_content_object_record(
+        upload,
+        source_file_id="source-file-a",
+    )
+    record["ownership_ref"][ref_name]["type"] = bad_type
+
+    with pytest.raises(ValueError, match=f"{expected_field} must be"):
+        repository.save_content_object(record)
+
+
+def test_in_memory_repository_treats_incomplete_ownership_ref_as_legacy_alias(
+    tmp_path: Path,
+) -> None:
+    repository = InMemoryCxContentRepository()
+    upload = upload_registration(tmp_path)
+    record = build_content_object_record(
+        upload,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+        source_file_id="source-file-a",
+    )
+    record["ownership_ref"] = {
+        "tenant_ref": "legacy-string-ref",
+        "owner_subject_ref": None,
+    }
+
+    saved = repository.save_content_object(record)
+
+    assert saved["ownership_ref"]["tenant_ref"] == {
+        "type": "oa.tenant",
+        "id": "tenant-a",
+    }
+    assert saved["ownership_ref"]["owner_subject_ref"] == {
+        "type": "oa.user",
+        "id": "user-a",
+    }
 
 
 def test_in_memory_repository_saves_extraction_artifacts_idempotently(
@@ -1425,6 +1620,37 @@ def test_sqlalchemy_repository_saves_content_object_and_owner_acl(
         source_sha256=upload["source_sha256"],
     ) is None
     with engine.connect() as connection:
+        content_row = connection.execute(
+            text(
+                """
+                SELECT
+                    tenant_ref_type,
+                    tenant_ref_id,
+                    owner_subject_ref_type,
+                    owner_subject_ref_id,
+                    uploaded_by_subject_ref_type,
+                    uploaded_by_subject_ref_id
+                FROM cx_content_objects
+                WHERE content_object_id = :content_object_id
+                """
+            ),
+            {"content_object_id": saved["content_object_id"]},
+        ).mappings().one()
+        acl_row = connection.execute(
+            text(
+                """
+                SELECT
+                    principal_ref_type,
+                    principal_ref_id,
+                    granted_by_subject_ref_type,
+                    granted_by_subject_ref_id
+                FROM cx_content_acl_entries
+                WHERE content_object_id = :content_object_id
+                  AND permission = 'owner'
+                """
+            ),
+            {"content_object_id": saved["content_object_id"]},
+        ).mappings().one()
         acl_count = connection.execute(
             text(
                 """
@@ -1437,7 +1663,51 @@ def test_sqlalchemy_repository_saves_content_object_and_owner_acl(
             ),
             {"content_object_id": saved["content_object_id"]},
         ).scalar_one()
+    assert dict(content_row) == {
+        "tenant_ref_type": "oa.tenant",
+        "tenant_ref_id": "tenant-a",
+        "owner_subject_ref_type": "oa.user",
+        "owner_subject_ref_id": "user-a",
+        "uploaded_by_subject_ref_type": "oa.user",
+        "uploaded_by_subject_ref_id": "user-a",
+    }
+    assert dict(acl_row) == {
+        "principal_ref_type": "oa.user",
+        "principal_ref_id": "user-a",
+        "granted_by_subject_ref_type": "oa.user",
+        "granted_by_subject_ref_id": "user-a",
+    }
     assert acl_count == 1
+
+
+def test_sqlalchemy_repository_dedupes_by_canonical_owner_refs(
+    tmp_path: Path,
+) -> None:
+    repository, engine = sqlite_content_repository(tmp_path)
+    upload = upload_registration(tmp_path)
+    source_file = repository.save_source_file(build_source_file_record(upload))
+    first = build_content_object_record(
+        upload,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+        source_file_id=source_file["source_file_id"],
+    )
+    legacy_alias_drift = {
+        **first,
+        "content_object_id": "22222222-2222-4222-8222-222222222222",
+        "tenant_id": "legacy-tenant-alias",
+        "owner_user_id": "legacy-owner-alias",
+        "upload_id": "33333333-3333-4333-8333-333333333333",
+        "ownership_ref": first["ownership_ref"],
+    }
+
+    assert repository.save_content_object(first) == first
+    assert repository.save_content_object(legacy_alias_drift) == first
+    with engine.connect() as connection:
+        assert (
+            connection.execute(text("SELECT count(*) FROM cx_content_objects"))
+            .scalar_one()
+        ) == 1
 
 
 def test_sqlalchemy_repository_returns_existing_active_owner_content(

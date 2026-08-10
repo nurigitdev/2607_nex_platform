@@ -114,5 +114,5 @@
     }
   ],
   "private_payload_policy": "No raw source bytes, source text, extracted markdown, chunk text, summary text, vectors, prompts, or raw identity secrets are stored in ownership metadata.",
-  "next_slice": "0195_cx_owner_scoped_repository_api_wiring"
+  "next_slice": "0196_ae_upload_ownership_propagation_contract"
 }

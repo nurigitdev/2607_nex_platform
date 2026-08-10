@@ -63,7 +63,7 @@
     "full_user_profile"
   ],
   "private_payload_policy": "Store stable tenant/user subject refs, display names, status, and safe metadata only. Do not store passwords, tokens, raw identity profiles, email addresses, phone numbers, or other identity secrets.",
-  "next_slice": "0195_cx_owner_scoped_repository_api_wiring",
+  "next_slice": "0196_ae_upload_ownership_propagation_contract",
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
   "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
 }

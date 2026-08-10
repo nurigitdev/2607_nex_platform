@@ -5009,6 +5009,12 @@ def _create_sqlite_cx_content_retrieval_tables(engine: object) -> None:
                     content_object_id TEXT PRIMARY KEY,
                     tenant_id TEXT NOT NULL,
                     owner_user_id TEXT NOT NULL,
+                    tenant_ref_type TEXT NOT NULL DEFAULT 'oa.tenant',
+                    tenant_ref_id TEXT NOT NULL,
+                    owner_subject_ref_type TEXT NOT NULL DEFAULT 'oa.user',
+                    owner_subject_ref_id TEXT NOT NULL,
+                    uploaded_by_subject_ref_type TEXT NOT NULL DEFAULT 'oa.user',
+                    uploaded_by_subject_ref_id TEXT NOT NULL,
                     source_file_id TEXT NOT NULL REFERENCES cx_source_files(source_file_id),
                     source_sha256 TEXT NOT NULL,
                     upload_id TEXT NOT NULL UNIQUE,
@@ -5029,15 +5035,47 @@ def _create_sqlite_cx_content_retrieval_tables(engine: object) -> None:
         connection.execute(
             text(
                 """
+                CREATE UNIQUE INDEX ux_cx_content_owner_subject_source_active
+                ON cx_content_objects (
+                    tenant_ref_type,
+                    tenant_ref_id,
+                    owner_subject_ref_type,
+                    owner_subject_ref_id,
+                    source_sha256
+                )
+                WHERE lifecycle_status = 'ACTIVE'
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
                 CREATE TABLE cx_content_acl_entries (
                     acl_entry_id TEXT PRIMARY KEY,
                     content_object_id TEXT NOT NULL REFERENCES cx_content_objects(content_object_id),
                     principal_type TEXT NOT NULL,
                     principal_id TEXT NOT NULL,
+                    principal_ref_type TEXT NOT NULL,
+                    principal_ref_id TEXT NOT NULL,
                     permission TEXT NOT NULL,
                     granted_by_user_id TEXT,
+                    granted_by_subject_ref_type TEXT,
+                    granted_by_subject_ref_id TEXT,
                     created_at TEXT NOT NULL,
                     UNIQUE (content_object_id, principal_type, principal_id, permission)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE UNIQUE INDEX ux_cx_content_acl_subject_ref_permission
+                ON cx_content_acl_entries (
+                    content_object_id,
+                    principal_ref_type,
+                    principal_ref_id,
+                    permission
                 )
                 """
             )

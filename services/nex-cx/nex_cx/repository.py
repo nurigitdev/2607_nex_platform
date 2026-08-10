@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -19,6 +20,9 @@ from nex_cx.retrieval_persistence import build_retrieval_package_persistence_pre
 
 DEFAULT_TENANT_ID = "local-tenant"
 DEFAULT_OWNER_USER_ID = "local-user"
+CX_SOURCE_OWNERSHIP_REF_SCHEMA_VERSION = "cx_source_ownership_ref.v1"
+OA_TENANT_REF_TYPE = "oa.tenant"
+OA_USER_SUBJECT_REF_TYPE = "oa.user"
 
 
 class CxContentRepository(Protocol):
@@ -262,13 +266,14 @@ class InMemoryCxContentRepository:
         return source_file
 
     def save_content_object(self, record: dict[str, Any]) -> dict[str, Any]:
-        stored = dict(record)
+        stored = _content_object_with_ownership_ref(record)
         self.content_objects[stored["content_object_id"]] = stored
         if stored["lifecycle_status"] == "ACTIVE":
+            ownership_ref = _ownership_ref_from_content_object(stored)
             self.active_content_object_ids_by_owner_sha[
                 (
-                    stored["tenant_id"],
-                    stored["owner_user_id"],
+                    ownership_ref["tenant_ref"]["id"],
+                    ownership_ref["owner_subject_ref"]["id"],
                     stored["source_sha256"],
                 )
             ] = stored["content_object_id"]
@@ -581,15 +586,14 @@ class SqlAlchemyCxContentRepository:
             raise _content_repository_unavailable() from exc
 
     def save_content_object(self, record: dict[str, Any]) -> dict[str, Any]:
-        record_to_store = deepcopy(record)
+        record_to_store = _content_object_with_ownership_ref(record)
         try:
             return self._run_in_transaction(
                 lambda session: self._save_content_object(session, record_to_store)
             )
         except IntegrityError as exc:
-            existing = self.find_active_content_object(
-                tenant_id=str(record_to_store["tenant_id"]),
-                owner_user_id=str(record_to_store["owner_user_id"]),
+            existing = self._find_active_content_object_by_ownership_ref(
+                ownership_ref=_ownership_ref_from_content_object(record_to_store),
                 source_sha256=str(record_to_store["source_sha256"]),
             )
             if existing is not None:
@@ -631,12 +635,26 @@ class SqlAlchemyCxContentRepository:
         owner_user_id: str,
         source_sha256: str,
     ) -> dict[str, Any] | None:
+        ownership_ref = _build_content_ownership_ref(
+            tenant_id=tenant_id,
+            owner_user_id=owner_user_id,
+        )
+        return self._find_active_content_object_by_ownership_ref(
+            ownership_ref=ownership_ref,
+            source_sha256=source_sha256,
+        )
+
+    def _find_active_content_object_by_ownership_ref(
+        self,
+        *,
+        ownership_ref: dict[str, Any],
+        source_sha256: str,
+    ) -> dict[str, Any] | None:
         try:
             with self._session_factory() as session:
-                return self._select_active_content_object(
+                return self._select_active_content_object_by_ownership_ref(
                     session,
-                    tenant_id=tenant_id,
-                    owner_user_id=owner_user_id,
+                    ownership_ref=ownership_ref,
                     source_sha256=source_sha256,
                 )
         except SQLAlchemyError as exc:
@@ -1064,10 +1082,9 @@ class SqlAlchemyCxContentRepository:
         existing = self._select_content_object(session, str(record["content_object_id"]))
         if existing is not None:
             return existing
-        active = self._select_active_content_object(
+        active = self._select_active_content_object_by_ownership_ref(
             session,
-            tenant_id=str(record["tenant_id"]),
-            owner_user_id=str(record["owner_user_id"]),
+            ownership_ref=_ownership_ref_from_content_object(record),
             source_sha256=str(record["source_sha256"]),
         )
         if active is not None:
@@ -1338,28 +1355,33 @@ class SqlAlchemyCxContentRepository:
         ).mappings().first()
         return _content_object_from_row(row) if row is not None else None
 
-    def _select_active_content_object(
+    def _select_active_content_object_by_ownership_ref(
         self,
         session: Session,
         *,
-        tenant_id: str,
-        owner_user_id: str,
+        ownership_ref: dict[str, Any],
         source_sha256: str,
     ) -> dict[str, Any] | None:
+        tenant_ref = ownership_ref["tenant_ref"]
+        owner_subject_ref = ownership_ref["owner_subject_ref"]
         row = session.execute(
             text(
                 f"""
                 SELECT {_CONTENT_OBJECT_SELECT_COLUMNS}
                 FROM cx_content_objects
-                WHERE tenant_id = :tenant_id
-                  AND owner_user_id = :owner_user_id
+                WHERE tenant_ref_type = :tenant_ref_type
+                  AND tenant_ref_id = :tenant_ref_id
+                  AND owner_subject_ref_type = :owner_subject_ref_type
+                  AND owner_subject_ref_id = :owner_subject_ref_id
                   AND source_sha256 = :source_sha256
                   AND lifecycle_status = 'ACTIVE'
                 """
             ),
             {
-                "tenant_id": tenant_id,
-                "owner_user_id": owner_user_id,
+                "tenant_ref_type": tenant_ref["type"],
+                "tenant_ref_id": tenant_ref["id"],
+                "owner_subject_ref_type": owner_subject_ref["type"],
+                "owner_subject_ref_id": owner_subject_ref["id"],
                 "source_sha256": source_sha256,
             },
         ).mappings().first()
@@ -1902,6 +1924,12 @@ class SqlAlchemyCxContentRepository:
                     content_object_id,
                     tenant_id,
                     owner_user_id,
+                    tenant_ref_type,
+                    tenant_ref_id,
+                    owner_subject_ref_type,
+                    owner_subject_ref_id,
+                    uploaded_by_subject_ref_type,
+                    uploaded_by_subject_ref_id,
                     source_file_id,
                     source_sha256,
                     upload_id,
@@ -1919,6 +1947,12 @@ class SqlAlchemyCxContentRepository:
                     :content_object_id,
                     :tenant_id,
                     :owner_user_id,
+                    :tenant_ref_type,
+                    :tenant_ref_id,
+                    :owner_subject_ref_type,
+                    :owner_subject_ref_id,
+                    :uploaded_by_subject_ref_type,
+                    :uploaded_by_subject_ref_id,
                     :source_file_id,
                     :source_sha256,
                     :upload_id,
@@ -2537,21 +2571,24 @@ class SqlAlchemyCxContentRepository:
 
     def _insert_owner_acl_entry(self, session: Session, record: dict[str, Any]) -> None:
         content_object_id = str(record["content_object_id"])
-        owner_user_id = str(record["owner_user_id"])
+        ownership_ref = _ownership_ref_from_content_object(record)
+        owner_subject_ref = ownership_ref["owner_subject_ref"]
+        uploaded_by_subject_ref = ownership_ref["uploaded_by_subject_ref"]
         existing = session.execute(
             text(
                 """
                 SELECT acl_entry_id
                 FROM cx_content_acl_entries
                 WHERE content_object_id = :content_object_id
-                  AND principal_type = 'user'
-                  AND principal_id = :principal_id
+                  AND principal_ref_type = :principal_ref_type
+                  AND principal_ref_id = :principal_ref_id
                   AND permission = 'owner'
                 """
             ),
             {
                 "content_object_id": content_object_id,
-                "principal_id": owner_user_id,
+                "principal_ref_type": owner_subject_ref["type"],
+                "principal_ref_id": owner_subject_ref["id"],
             },
         ).mappings().first()
         if existing is not None:
@@ -2564,8 +2601,12 @@ class SqlAlchemyCxContentRepository:
                     content_object_id,
                     principal_type,
                     principal_id,
+                    principal_ref_type,
+                    principal_ref_id,
                     permission,
                     granted_by_user_id,
+                    granted_by_subject_ref_type,
+                    granted_by_subject_ref_id,
                     created_at
                 )
                 VALUES (
@@ -2573,17 +2614,28 @@ class SqlAlchemyCxContentRepository:
                     :content_object_id,
                     'user',
                     :principal_id,
+                    :principal_ref_type,
+                    :principal_ref_id,
                     'owner',
                     :granted_by_user_id,
+                    :granted_by_subject_ref_type,
+                    :granted_by_subject_ref_id,
                     :created_at
                 )
                 """
             ),
             {
-                "acl_entry_id": _owner_acl_entry_id(content_object_id, owner_user_id),
+                "acl_entry_id": _owner_acl_entry_id(
+                    content_object_id,
+                    owner_subject_ref["id"],
+                ),
                 "content_object_id": content_object_id,
-                "principal_id": owner_user_id,
-                "granted_by_user_id": owner_user_id,
+                "principal_id": owner_subject_ref["id"],
+                "principal_ref_type": owner_subject_ref["type"],
+                "principal_ref_id": owner_subject_ref["id"],
+                "granted_by_user_id": uploaded_by_subject_ref["id"],
+                "granted_by_subject_ref_type": uploaded_by_subject_ref["type"],
+                "granted_by_subject_ref_id": uploaded_by_subject_ref["id"],
                 "created_at": record["created_at"],
             },
         )
@@ -2641,13 +2693,20 @@ def build_content_object_record(
     *,
     tenant_id: str = DEFAULT_TENANT_ID,
     owner_user_id: str = DEFAULT_OWNER_USER_ID,
+    uploaded_by_user_id: str | None = None,
     source_file_id: str,
 ) -> dict[str, Any]:
     now = upload_registration["created_at"]
+    ownership_ref = _build_content_ownership_ref(
+        tenant_id=tenant_id,
+        owner_user_id=owner_user_id,
+        uploaded_by_subject_ref_id=uploaded_by_user_id or owner_user_id,
+    )
     return {
         "content_object_id": upload_registration["document_id"],
         "tenant_id": tenant_id,
         "owner_user_id": owner_user_id,
+        "ownership_ref": ownership_ref,
         "source_file_id": source_file_id,
         "source_sha256": upload_registration["source_sha256"],
         "upload_id": upload_registration["upload_id"],
@@ -3058,6 +3117,12 @@ _CONTENT_OBJECT_SELECT_COLUMNS = """
     content_object_id,
     tenant_id,
     owner_user_id,
+    tenant_ref_type,
+    tenant_ref_id,
+    owner_subject_ref_type,
+    owner_subject_ref_id,
+    uploaded_by_subject_ref_type,
+    uploaded_by_subject_ref_id,
     source_file_id,
     source_sha256,
     upload_id,
@@ -3293,10 +3358,19 @@ def _source_file_insert_params(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def _content_object_insert_params(record: dict[str, Any]) -> dict[str, Any]:
+    ownership_ref = _ownership_ref_from_content_object(record)
     return {
         "content_object_id": record["content_object_id"],
         "tenant_id": record["tenant_id"],
         "owner_user_id": record["owner_user_id"],
+        "tenant_ref_type": ownership_ref["tenant_ref"]["type"],
+        "tenant_ref_id": ownership_ref["tenant_ref"]["id"],
+        "owner_subject_ref_type": ownership_ref["owner_subject_ref"]["type"],
+        "owner_subject_ref_id": ownership_ref["owner_subject_ref"]["id"],
+        "uploaded_by_subject_ref_type": ownership_ref["uploaded_by_subject_ref"][
+            "type"
+        ],
+        "uploaded_by_subject_ref_id": ownership_ref["uploaded_by_subject_ref"]["id"],
         "source_file_id": record["source_file_id"],
         "source_sha256": record["source_sha256"],
         "upload_id": record["upload_id"],
@@ -3557,10 +3631,22 @@ def _processing_step_insert_params(
 
 
 def _content_object_from_row(row: Any) -> dict[str, Any]:
+    tenant_id = row["tenant_id"]
+    owner_user_id = row["owner_user_id"]
     return {
         "content_object_id": str(row["content_object_id"]),
-        "tenant_id": row["tenant_id"],
-        "owner_user_id": row["owner_user_id"],
+        "tenant_id": tenant_id,
+        "owner_user_id": owner_user_id,
+        "ownership_ref": _build_content_ownership_ref(
+            tenant_id=str(tenant_id),
+            owner_user_id=str(owner_user_id),
+            tenant_ref_type=row["tenant_ref_type"],
+            tenant_ref_id=row["tenant_ref_id"],
+            owner_subject_ref_type=row["owner_subject_ref_type"],
+            owner_subject_ref_id=row["owner_subject_ref_id"],
+            uploaded_by_subject_ref_type=row["uploaded_by_subject_ref_type"],
+            uploaded_by_subject_ref_id=row["uploaded_by_subject_ref_id"],
+        ),
         "source_file_id": str(row["source_file_id"]),
         "source_sha256": row["source_sha256"],
         "upload_id": str(row["upload_id"]),
@@ -3883,6 +3969,117 @@ def _summary_embedding_unique_key(record: dict[str, Any]) -> tuple[str, str, str
         str(record["model_profile_id"]),
         str(record["model_revision"]),
     )
+
+
+def _content_object_with_ownership_ref(record: dict[str, Any]) -> dict[str, Any]:
+    stored = deepcopy(record)
+    stored["ownership_ref"] = _ownership_ref_from_content_object(stored)
+    return stored
+
+
+def _ownership_ref_from_content_object(record: dict[str, Any]) -> dict[str, Any]:
+    ownership_ref = record.get("ownership_ref")
+    if isinstance(ownership_ref, dict):
+        tenant_ref = _mapping_value(ownership_ref.get("tenant_ref"))
+        owner_subject_ref = _mapping_value(ownership_ref.get("owner_subject_ref"))
+        uploaded_by_subject_ref = _mapping_value(
+            ownership_ref.get("uploaded_by_subject_ref")
+        )
+        return _build_content_ownership_ref(
+            tenant_id=str(record.get("tenant_id", DEFAULT_TENANT_ID)),
+            owner_user_id=str(record.get("owner_user_id", DEFAULT_OWNER_USER_ID)),
+            tenant_ref_type=tenant_ref.get("type"),
+            tenant_ref_id=tenant_ref.get("id"),
+            owner_subject_ref_type=owner_subject_ref.get("type"),
+            owner_subject_ref_id=owner_subject_ref.get("id"),
+            uploaded_by_subject_ref_type=uploaded_by_subject_ref.get("type"),
+            uploaded_by_subject_ref_id=uploaded_by_subject_ref.get("id"),
+        )
+    return _build_content_ownership_ref(
+        tenant_id=str(record.get("tenant_id", DEFAULT_TENANT_ID)),
+        owner_user_id=str(record.get("owner_user_id", DEFAULT_OWNER_USER_ID)),
+    )
+
+
+def _build_content_ownership_ref(
+    *,
+    tenant_id: str,
+    owner_user_id: str,
+    tenant_ref_type: object = None,
+    tenant_ref_id: object = None,
+    owner_subject_ref_type: object = None,
+    owner_subject_ref_id: object = None,
+    uploaded_by_subject_ref_type: object = None,
+    uploaded_by_subject_ref_id: object = None,
+) -> dict[str, Any]:
+    normalized_tenant_id = _required_non_empty_text(tenant_id, field_name="tenant_id")
+    normalized_owner_user_id = _required_non_empty_text(
+        owner_user_id,
+        field_name="owner_user_id",
+    )
+    normalized_tenant_ref_type = _expected_ref_type(
+        tenant_ref_type or OA_TENANT_REF_TYPE,
+        expected=OA_TENANT_REF_TYPE,
+        field_name="tenant_ref.type",
+    )
+    normalized_owner_subject_ref_type = _expected_ref_type(
+        owner_subject_ref_type or OA_USER_SUBJECT_REF_TYPE,
+        expected=OA_USER_SUBJECT_REF_TYPE,
+        field_name="owner_subject_ref.type",
+    )
+    normalized_uploaded_by_subject_ref_type = _expected_ref_type(
+        uploaded_by_subject_ref_type or OA_USER_SUBJECT_REF_TYPE,
+        expected=OA_USER_SUBJECT_REF_TYPE,
+        field_name="uploaded_by_subject_ref.type",
+    )
+    return {
+        "ownership_schema_version": CX_SOURCE_OWNERSHIP_REF_SCHEMA_VERSION,
+        "tenant_ref": {
+            "type": normalized_tenant_ref_type,
+            "id": _required_non_empty_text(
+                tenant_ref_id or normalized_tenant_id,
+                field_name="tenant_ref.id",
+            ),
+        },
+        "owner_subject_ref": {
+            "type": normalized_owner_subject_ref_type,
+            "id": _required_non_empty_text(
+                owner_subject_ref_id or normalized_owner_user_id,
+                field_name="owner_subject_ref.id",
+            ),
+        },
+        "uploaded_by_subject_ref": {
+            "type": normalized_uploaded_by_subject_ref_type,
+            "id": _required_non_empty_text(
+                uploaded_by_subject_ref_id
+                or owner_subject_ref_id
+                or normalized_owner_user_id,
+                field_name="uploaded_by_subject_ref.id",
+            ),
+        },
+        "legacy": {
+            "tenant_id": normalized_tenant_id,
+            "owner_user_id": normalized_owner_user_id,
+        },
+        "compatibility_mode": "legacy_owner_fields_mapped_to_oa_subject_refs",
+    }
+
+
+def _expected_ref_type(value: object, *, expected: str, field_name: str) -> str:
+    normalized = _required_non_empty_text(value, field_name=field_name)
+    if normalized != expected:
+        raise ValueError(f"{field_name} must be {expected}.")
+    return normalized
+
+
+def _required_non_empty_text(value: object, *, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field_name} must be a non-empty string.")
+    return value.strip()
+
+
+def _mapping_value(value: object) -> dict[str, Any]:
+    return dict(value) if isinstance(value, Mapping) else {}
 
 
 def _owner_acl_entry_id(content_object_id: str, owner_user_id: str) -> str:

@@ -113,7 +113,7 @@
       "minLength": 1
     },
     "next_slice": {
-      "const": "0195_cx_owner_scoped_repository_api_wiring"
+      "const": "0196_ae_upload_ownership_propagation_contract"
     },
     "trace_id": {
       "type": "string",

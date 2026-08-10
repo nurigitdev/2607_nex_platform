@@ -29,7 +29,12 @@ Internal persistence boundary:
   `uploaded_by_subject_ref_type/id` on `cx_content_objects`, plus
   `principal_ref_type/id` and `granted_by_subject_ref_type/id` on
   `cx_content_acl_entries`. Compatibility triggers backfill these columns from
-  legacy fields until Slice 0195 updates the repository write/read path.
+  legacy fields for external compatibility.
+- Slice 0195 updates the repository write/read path to normalize
+  `ownership_ref` into the decomposed OA ref columns, query active duplicates by
+  canonical owner refs, and create owner ACL entries with
+  `principal_ref_type/id` plus `granted_by_subject_ref_type/id`. Legacy
+  `tenant_id` and `owner_user_id` remain accepted compatibility aliases.
 - Same-owner duplicate uploads return the existing document; different owners
   get distinct document IDs without learning about each other.
 - Upload registration accepts `content_text`, `content_base64`, or metadata-only

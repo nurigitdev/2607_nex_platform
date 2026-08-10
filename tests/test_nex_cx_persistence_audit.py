@@ -61,7 +61,7 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
         "migration_pending_count": 0,
         "deferred_schema_decision_count": 3,
         "private_payload_boundary_count": 6,
-        "next_recommended_slice": "0195_cx_owner_scoped_repository_api_wiring",
+        "next_recommended_slice": "0196_ae_upload_ownership_propagation_contract",
     }
     assert all(count == 0 for count in audit["observed_store_counts"].values())
     processing_surface = {
@@ -109,7 +109,7 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
         == "ag_dashboard_integrated"
     )
     assert audit["processing_run_persistence_decision"]["next_slice"] == (
-        "0195_cx_owner_scoped_repository_api_wiring"
+        "0196_ae_upload_ownership_propagation_contract"
     )
     assert audit["source_ownership_boundary_decision"]["decision_slice"] == "0192"
     assert audit["source_ownership_boundary_decision"]["nex_oa_dependency"][
