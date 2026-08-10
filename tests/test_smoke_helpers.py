@@ -5103,8 +5103,16 @@ def test_cx_document_library_postgres_smoke_reports_pass_without_leaking_secret(
     monkeypatch.setattr(
         cx_document_library_smoke,
         "run_service_migrations",
-        lambda service_id, database_url, profile: migration_calls.append(
-            (service_id, profile)
+        lambda service_id, database_url, profile: (
+            migration_calls.append((service_id, profile))
+            or SimpleNamespace(
+                service_id=service_id,
+                profile=profile,
+                planned=("001", "002"),
+                applied=(),
+                skipped=("001", "002"),
+                dry_run=False,
+            )
         ),
     )
     monkeypatch.setattr(
@@ -5136,6 +5144,14 @@ def test_cx_document_library_postgres_smoke_reports_pass_without_leaking_secret(
     assert evidence["status"] == "PASS"
     assert evidence["database_env"] == "nex-cx:test:env"
     assert evidence["checks"]["owner_scope_filtered"] is True
+    assert evidence["migration"] == {
+        "service_id": "nex-cx",
+        "profile": "test",
+        "planned_count": 2,
+        "applied_count": 0,
+        "skipped_count": 2,
+        "dry_run": False,
+    }
     assert evidence["redacted_database_url"] == "postgresql://user:***@localhost/db"
     assert "secret" not in str(evidence)
     assert migration_calls == [("nex-cx", "test")]
@@ -5211,6 +5227,32 @@ def test_cx_document_library_postgres_smoke_execute_with_sqlite_fixture(
     )
 
     assert evidence["returned_count"] == 1
+    assert evidence["db_observations"] == {
+        "owner_a_active_content_count": 1,
+        "owner_b_active_content_count": 1,
+        "listed_document_count": 1,
+        "listed_document_ids": [evidence["document_id"]],
+    }
+    assert evidence["cleanup_observations"] == [
+        {
+            "label": "owner_a",
+            "document_id": evidence["document_id"],
+            "source_file_id": evidence["cleanup_observations"][0]["source_file_id"],
+            "content_rows_before_delete": 1,
+            "source_rows_before_delete": 1,
+            "content_rows_after_delete": 0,
+            "source_rows_after_delete": 0,
+        },
+        {
+            "label": "owner_b",
+            "document_id": evidence["other_owner_document_id"],
+            "source_file_id": evidence["cleanup_observations"][1]["source_file_id"],
+            "content_rows_before_delete": 1,
+            "source_rows_before_delete": 1,
+            "content_rows_after_delete": 0,
+            "source_rows_after_delete": 0,
+        },
+    ]
     assert evidence["checks"] == {
         "runtime_mode": True,
         "api_upload_status_created": True,
@@ -5232,6 +5274,68 @@ def test_cx_document_library_postgres_smoke_execute_with_sqlite_fixture(
         ).scalar_one()
     assert remaining_content == 0
     assert remaining_sources == 0
+
+
+def test_cx_document_library_postgres_smoke_observation_helpers(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'cx-document-library-helper.sqlite'}"
+    engine = cx_document_library_smoke.build_engine(database_url)
+    _create_sqlite_cx_document_library_tables(engine)
+
+    assert (
+        cx_document_library_smoke._count_content_object_by_id(
+            engine,
+            document_id=None,
+        )
+        == 0
+    )
+    assert (
+        cx_document_library_smoke._count_source_file_by_id(
+            engine,
+            source_file_id=None,
+        )
+        == 0
+    )
+    assert cx_document_library_smoke._migration_evidence(
+        SimpleNamespace(
+            service_id="nex-cx",
+            profile="test",
+            planned=("001",),
+            applied=("001",),
+            skipped=(),
+            dry_run=True,
+        )
+    ) == {
+        "service_id": "nex-cx",
+        "profile": "test",
+        "planned_count": 1,
+        "applied_count": 1,
+        "skipped_count": 0,
+        "dry_run": True,
+    }
+    assert cx_document_library_smoke._migration_evidence(object()) == {
+        "service_id": "nex-cx",
+        "profile": "test",
+        "planned_count": 0,
+        "applied_count": 0,
+        "skipped_count": 0,
+        "dry_run": False,
+    }
+    assert cx_document_library_smoke._delete_document_library_smoke_rows(
+        engine,
+        entries=[
+            {"label": "missing", "document_id": None, "source_file_id": None},
+        ],
+    ) == [
+        {
+            "label": "missing",
+            "document_id": None,
+            "source_file_id": None,
+            "content_rows_before_delete": 0,
+            "source_rows_before_delete": 0,
+            "content_rows_after_delete": 0,
+            "source_rows_after_delete": 0,
+        }
+    ]
 
 
 def test_cx_document_library_postgres_smoke_execute_failure_edges(

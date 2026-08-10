@@ -81,7 +81,11 @@ def run_cx_document_library_postgres_smoke(
     try:
         database_env = service_database_env(SERVICE_ID, profile=profile)
         database_url = service_database_url(SERVICE_ID, profile=profile, environ=env)
-        run_service_migrations(SERVICE_ID, database_url=database_url, profile=profile)
+        migration_result = run_service_migrations(
+            SERVICE_ID,
+            database_url=database_url,
+            profile=profile,
+        )
         execution = _execute_document_library_smoke(
             database_env=database_env,
             database_url=database_url,
@@ -98,6 +102,7 @@ def run_cx_document_library_postgres_smoke(
             "profile": profile,
             "database_env": database_env,
             "redacted_database_url": redact_database_url(database_url),
+            "migration": _migration_evidence(migration_result),
             **execution,
         }
     except (MigrationError, ValueError) as exc:
@@ -118,6 +123,7 @@ def _execute_document_library_smoke(
     owner_a_source_file_id: str | None = None
     owner_b_document_id: str | None = None
     owner_b_source_file_id: str | None = None
+    result: dict[str, object] = {}
     engine = build_engine(database_url)
     with tempfile.TemporaryDirectory(prefix="nex-cx-document-library-smoke-") as temp_dir:
         storage_config = _storage_config(Path(temp_dir))
@@ -226,23 +232,36 @@ def _execute_document_library_smoke(
             }
             if not all(checks.values()):
                 raise RuntimeError("CX document library PostgreSQL smoke checks failed")
-            return {
+            result = {
                 "document_id": owner_a_document_id,
                 "other_owner_document_id": owner_b_document_id,
                 "returned_count": len(returned_document_ids),
+                "db_observations": {
+                    "owner_a_active_content_count": persisted_owner_a_count,
+                    "owner_b_active_content_count": persisted_owner_b_count,
+                    "listed_document_count": len(returned_document_ids),
+                    "listed_document_ids": returned_document_ids,
+                },
                 "checks": checks,
             }
         finally:
-            _delete_smoke_upload_rows(
+            cleanup_observations = _delete_document_library_smoke_rows(
                 engine,
-                document_id=owner_a_document_id,
-                source_file_id=owner_a_source_file_id,
+                entries=[
+                    {
+                        "label": "owner_a",
+                        "document_id": owner_a_document_id,
+                        "source_file_id": owner_a_source_file_id,
+                    },
+                    {
+                        "label": "owner_b",
+                        "document_id": owner_b_document_id,
+                        "source_file_id": owner_b_source_file_id,
+                    },
+                ],
             )
-            _delete_smoke_upload_rows(
-                engine,
-                document_id=owner_b_document_id,
-                source_file_id=owner_b_source_file_id,
-            )
+            result["cleanup_observations"] = cleanup_observations
+    return result
 
 
 def _upload_document(
@@ -292,6 +311,103 @@ def _count_active_owner_documents(
                 {"tenant_id": tenant_id, "owner_user_id": owner_user_id},
             ).scalar_one()
         )
+
+
+def _delete_document_library_smoke_rows(
+    engine: object,
+    *,
+    entries: list[dict[str, str | None]],
+) -> list[dict[str, object]]:
+    observations: list[dict[str, object]] = []
+    for entry in entries:
+        document_id = entry.get("document_id")
+        source_file_id = entry.get("source_file_id")
+        observation = {
+            "label": entry.get("label"),
+            "document_id": document_id,
+            "source_file_id": source_file_id,
+            "content_rows_before_delete": _count_content_object_by_id(
+                engine,
+                document_id=document_id,
+            ),
+            "source_rows_before_delete": _count_source_file_by_id(
+                engine,
+                source_file_id=source_file_id,
+            ),
+        }
+        _delete_smoke_upload_rows(
+            engine,
+            document_id=document_id,
+            source_file_id=source_file_id,
+        )
+        observation["content_rows_after_delete"] = _count_content_object_by_id(
+            engine,
+            document_id=document_id,
+        )
+        observation["source_rows_after_delete"] = _count_source_file_by_id(
+            engine,
+            source_file_id=source_file_id,
+        )
+        observations.append(observation)
+    return observations
+
+
+def _count_content_object_by_id(
+    engine: object,
+    *,
+    document_id: str | None,
+) -> int:
+    if document_id is None:
+        return 0
+    with engine.begin() as connection:
+        return int(
+            connection.execute(
+                text(
+                    """
+                    SELECT count(*)
+                    FROM cx_content_objects
+                    WHERE content_object_id = :document_id
+                    """
+                ),
+                {"document_id": document_id},
+            ).scalar_one()
+        )
+
+
+def _count_source_file_by_id(
+    engine: object,
+    *,
+    source_file_id: str | None,
+) -> int:
+    if source_file_id is None:
+        return 0
+    with engine.begin() as connection:
+        return int(
+            connection.execute(
+                text(
+                    """
+                    SELECT count(*)
+                    FROM cx_source_files
+                    WHERE source_file_id = :source_file_id
+                    """
+                ),
+                {"source_file_id": source_file_id},
+            ).scalar_one()
+        )
+
+
+def _migration_evidence(migration_result: object) -> dict[str, object]:
+    planned = tuple(getattr(migration_result, "planned", ()))
+    applied = tuple(getattr(migration_result, "applied", ()))
+    skipped = tuple(getattr(migration_result, "skipped", ()))
+    return {
+        "service_id": getattr(migration_result, "service_id", SERVICE_ID),
+        "profile": getattr(migration_result, "profile", DEFAULT_PROFILE),
+        "planned_count": len(planned),
+        "applied_count": len(applied),
+        "skipped_count": len(skipped),
+        "dry_run": bool(getattr(migration_result, "dry_run", False)),
+    }
 
 
 def _failure(

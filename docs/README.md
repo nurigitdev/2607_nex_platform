@@ -308,6 +308,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0202`](slices/0202_cx_document_library_service_api_wiring.md) | `S21-002` CX document library service API wiring. |
 | [`Slice 0203`](slices/0203_cx_document_library_postgresql_smoke_evidence.md) | `S21-003` CX document library PostgreSQL smoke evidence. |
 | [`Slice 0204`](slices/0204_cx_upload_duplicate_upsert_postgresql_smoke_hardening.md) | `S21-004` CX upload duplicate/upsert PostgreSQL smoke hardening. |
+| [`Slice 0205`](slices/0205_cx_document_library_smoke_evidence_observability_hardening.md) | `S21-005` CX document library smoke evidence observability hardening. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
