@@ -155,6 +155,12 @@ Unified operations:
   `ag_retrieval_package_detail_projection.v1`, including safe evidence metadata
   such as ranks, hashes, score summaries, permission outcomes, and quality flags
   while redacting evidence text previews and principal ids.
+- The AG operations contract family also reserves
+  `ag_cx_processing_run_operations_projection.v1` and
+  `ag_cx_processing_run_detail_projection.v1` for CX processing run
+  observability. These projections expose status, trace/request/job
+  correlation, step counts, output refs, and error hashes without raw source
+  text, markdown, chunks, summaries, vectors, prompts, or raw error details.
 - `scripts/smoke/run_ag_retrieval_package_postgres_smoke.py` is the guarded
   PostgreSQL test-profile evidence path for the retrieval package list/detail
   APIs and trace timeline correlation. It is skipped unless

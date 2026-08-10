@@ -188,6 +188,38 @@ def test_iter_openapi_files_handles_missing_directory(tmp_path: Path) -> None:
     assert validate_contracts.iter_openapi_files(tmp_path) == []
 
 
+def test_nex_ag_operations_contract_includes_cx_processing_projections() -> None:
+    schema_path = (
+        Path(__file__).parents[1]
+        / "contracts"
+        / "schemas"
+        / "service"
+        / "nex_ag"
+        / "operations_projection.v1.schema.json"
+    )
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    projection_versions = schema["properties"]["projection_schema_version"]["enum"]
+    run_def = schema["$defs"]["cx_processing_run_operation"]
+    step_def = schema["$defs"]["cx_processing_step_operation"]
+
+    assert "ag_cx_processing_run_operations_projection.v1" in projection_versions
+    assert "ag_cx_processing_run_detail_projection.v1" in projection_versions
+    assert schema["properties"]["processing_runs"]["items"]["$ref"] == (
+        "#/$defs/cx_processing_run_operation"
+    )
+    assert schema["properties"]["processing_run"]["$ref"] == (
+        "#/$defs/cx_processing_run_operation"
+    )
+    assert run_def["additionalProperties"] is False
+    assert step_def["additionalProperties"] is False
+    assert {"error_detail"} in [
+        set(rule["required"])
+        for rule in step_def["not"]["anyOf"]
+        if "required" in rule
+    ]
+
+
 def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:
     openapi_path = (
         Path(__file__).parents[1] / "contracts" / "openapi" / "nex-ag.openapi.yaml"

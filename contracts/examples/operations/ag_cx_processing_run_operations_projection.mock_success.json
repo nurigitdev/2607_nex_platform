@@ -1,0 +1,83 @@
+{
+  "projection_schema_version": "ag_cx_processing_run_operations_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-10T00:00:00Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "filters": {
+    "service_id": "nex-cx",
+    "document_id": "doc-0189",
+    "status": "FAILED",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": null,
+    "job_id": null,
+    "include_steps": false,
+    "limit": 50,
+    "since": null,
+    "until": null,
+    "sort": "desc",
+    "cursor": null
+  },
+  "processing_runs": [
+    {
+      "service_id": "nex-cx",
+      "operation_type": "cx_processing_run",
+      "operation_timestamp": "2026-08-10T00:02:10Z",
+      "processing_run_schema_version": "cx_document_processing_run.persistence.v1",
+      "pipeline_run_id": "cx-processing-run-0189",
+      "pipeline_schema_version": "cx_document_processing_pipeline.v1",
+      "document_id": "doc-0189",
+      "status": "FAILED",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+      "job_id": "job-0189",
+      "job_type": "cx.document_processing",
+      "job_status": "FAILED",
+      "job_attempt_count": 1,
+      "job_max_attempts": 3,
+      "job_retryable": true,
+      "job_subject_ref": {
+        "type": "document",
+        "id": "doc-0189"
+      },
+      "job_links": {
+        "processing": "/api/v1/documents/doc-0189/processing"
+      },
+      "step_total": 3,
+      "step_succeeded": 2,
+      "step_skipped": 0,
+      "step_failed": 1,
+      "queued_at": "2026-08-10T00:00:00Z",
+      "started_at": "2026-08-10T00:01:00Z",
+      "completed_at": "2026-08-10T00:02:00Z",
+      "updated_at": "2026-08-10T00:02:10Z",
+      "steps_included": false,
+      "steps": []
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "by_status": {
+      "FAILED": 1
+    },
+    "failed_count": 1,
+    "retryable_failed_count": 1,
+    "step_failed_count": 1
+  },
+  "source_statuses": {
+    "nex-cx": {
+      "status": "READY",
+      "service_id": "nex-cx",
+      "source_kind": "postgres-read",
+      "processing_run_count": 1,
+      "database_env": "NEX_CX_TEST_DATABASE_URL",
+      "redacted_database_url": "postgresql://nex_cx_user:***@localhost/nex_cx_test"
+    }
+  },
+  "pagination": {
+    "limit": 50,
+    "cursor": null,
+    "returned": 1,
+    "total_after_filters": 1,
+    "next_cursor": null
+  }
+}

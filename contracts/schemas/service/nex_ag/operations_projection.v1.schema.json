@@ -25,6 +25,8 @@
         "ag_job_operation_detail_projection.v1",
         "ag_retrieval_package_operations_projection.v1",
         "ag_retrieval_package_detail_projection.v1",
+        "ag_cx_processing_run_operations_projection.v1",
+        "ag_cx_processing_run_detail_projection.v1",
         "ag_unified_operations_projection.v1",
         "ag_operations_rollup_metrics_projection.v1",
         "ag_operations_dashboard_snapshot_projection.v1",
@@ -149,6 +151,15 @@
       "items": {
         "$ref": "#/$defs/retrieval_evidence_item"
       }
+    },
+    "processing_runs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/cx_processing_run_operation"
+      }
+    },
+    "processing_run": {
+      "$ref": "#/$defs/cx_processing_run_operation"
     },
     "active_job": {
       "oneOf": [
@@ -534,6 +545,43 @@
           "service_id",
           "retrieval_package",
           "evidence_items",
+          "summary",
+          "source_status"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_cx_processing_run_operations_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "filters",
+          "processing_runs",
+          "summary",
+          "source_statuses",
+          "pagination"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_cx_processing_run_detail_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "service_id",
+          "processing_run",
           "summary",
           "source_status"
         ]
@@ -2443,6 +2491,383 @@
           "items": {
             "type": "string"
           }
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "cx_processing_run_operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "source_text"
+            ]
+          },
+          {
+            "required": [
+              "markdown_text"
+            ]
+          },
+          {
+            "required": [
+              "chunk_text"
+            ]
+          },
+          {
+            "required": [
+              "summary_text"
+            ]
+          },
+          {
+            "required": [
+              "embedding"
+            ]
+          },
+          {
+            "required": [
+              "vector"
+            ]
+          },
+          {
+            "required": [
+              "raw_prompt"
+            ]
+          },
+          {
+            "required": [
+              "raw_error_detail"
+            ]
+          },
+          {
+            "required": [
+              "error_detail"
+            ]
+          }
+        ]
+      },
+      "required": [
+        "service_id",
+        "operation_type",
+        "operation_timestamp",
+        "processing_run_schema_version",
+        "pipeline_run_id",
+        "pipeline_schema_version",
+        "document_id",
+        "status",
+        "trace_id",
+        "request_id",
+        "job_id",
+        "job_type",
+        "job_status",
+        "job_attempt_count",
+        "job_max_attempts",
+        "job_retryable",
+        "job_subject_ref",
+        "job_links",
+        "step_total",
+        "step_succeeded",
+        "step_skipped",
+        "step_failed",
+        "queued_at",
+        "started_at",
+        "completed_at",
+        "updated_at",
+        "steps_included",
+        "steps"
+      ],
+      "properties": {
+        "service_id": {
+          "const": "nex-cx"
+        },
+        "operation_type": {
+          "const": "cx_processing_run"
+        },
+        "operation_timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "processing_run_schema_version": {
+          "const": "cx_document_processing_run.persistence.v1"
+        },
+        "pipeline_run_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pipeline_schema_version": {
+          "const": "cx_document_processing_pipeline.v1"
+        },
+        "document_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "QUEUED",
+            "RUNNING",
+            "SUCCEEDED",
+            "FAILED",
+            "CANCELLED"
+          ]
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/trace_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "job_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "job_type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "job_status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "QUEUED",
+            "RUNNING",
+            "SUCCEEDED",
+            "FAILED",
+            "CANCELLED",
+            null
+          ]
+        },
+        "job_attempt_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "job_max_attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "job_retryable": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "job_subject_ref": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "job_links": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "step_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "step_succeeded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "step_skipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "step_failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "queued_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "steps_included": {
+          "type": "boolean"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/cx_processing_step_operation"
+          }
+        }
+      }
+    },
+    "cx_processing_step_operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "output"
+            ]
+          },
+          {
+            "required": [
+              "private_payload"
+            ]
+          },
+          {
+            "required": [
+              "error_detail"
+            ]
+          },
+          {
+            "required": [
+              "raw_error_detail"
+            ]
+          },
+          {
+            "required": [
+              "source_text"
+            ]
+          },
+          {
+            "required": [
+              "chunk_text"
+            ]
+          }
+        ]
+      },
+      "required": [
+        "processing_step_schema_version",
+        "pipeline_run_id",
+        "step_order",
+        "step_id",
+        "status",
+        "output_ref_type",
+        "output_ref_id",
+        "output_ref_document_id",
+        "output_ref_hash",
+        "error_code",
+        "error_detail_sha256",
+        "error_retryable",
+        "created_at"
+      ],
+      "properties": {
+        "processing_step_schema_version": {
+          "const": "cx_document_processing_step.persistence.v1"
+        },
+        "pipeline_run_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step_order": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "QUEUED",
+            "RUNNING",
+            "SUCCEEDED",
+            "FAILED",
+            "SKIPPED",
+            "CANCELLED"
+          ]
+        },
+        "output_ref_type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "output_ref_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "output_ref_document_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "output_ref_hash": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error_code": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "error_detail_sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error_retryable": {
+          "type": [
+            "boolean",
+            "null"
+          ]
         },
         "created_at": {
           "type": "string",

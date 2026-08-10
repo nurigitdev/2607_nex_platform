@@ -166,6 +166,11 @@
       "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
     },
     {
+      "name": "ag_cx_processing_run_detail_raw_error_detail",
+      "path": "tests/negative/operations/ag_cx_processing_run_detail.raw_error_detail.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
       "name": "ag_operational_event_projection_missing_pagination",
       "path": "tests/negative/operations/ag_operational_event_projection.missing_pagination.json",
       "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"

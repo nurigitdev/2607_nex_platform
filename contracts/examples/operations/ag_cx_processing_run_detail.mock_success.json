@@ -1,0 +1,109 @@
+{
+  "projection_schema_version": "ag_cx_processing_run_detail_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-10T00:00:00Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "service_id": "nex-cx",
+  "processing_run": {
+    "service_id": "nex-cx",
+    "operation_type": "cx_processing_run",
+    "operation_timestamp": "2026-08-10T00:02:10Z",
+    "processing_run_schema_version": "cx_document_processing_run.persistence.v1",
+    "pipeline_run_id": "cx-processing-run-0189",
+    "pipeline_schema_version": "cx_document_processing_pipeline.v1",
+    "document_id": "doc-0189",
+    "status": "FAILED",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "job_id": "job-0189",
+    "job_type": "cx.document_processing",
+    "job_status": "FAILED",
+    "job_attempt_count": 1,
+    "job_max_attempts": 3,
+    "job_retryable": true,
+    "job_subject_ref": {
+      "type": "document",
+      "id": "doc-0189"
+    },
+    "job_links": {
+      "processing": "/api/v1/documents/doc-0189/processing"
+    },
+    "step_total": 3,
+    "step_succeeded": 2,
+    "step_skipped": 0,
+    "step_failed": 1,
+    "queued_at": "2026-08-10T00:00:00Z",
+    "started_at": "2026-08-10T00:01:00Z",
+    "completed_at": "2026-08-10T00:02:00Z",
+    "updated_at": "2026-08-10T00:02:10Z",
+    "steps_included": true,
+    "steps": [
+      {
+        "processing_step_schema_version": "cx_document_processing_step.persistence.v1",
+        "pipeline_run_id": "cx-processing-run-0189",
+        "step_order": 1,
+        "step_id": "extract_text",
+        "status": "SUCCEEDED",
+        "output_ref_type": "text_extraction",
+        "output_ref_id": "text-extraction-0189",
+        "output_ref_document_id": "doc-0189",
+        "output_ref_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "error_code": null,
+        "error_detail_sha256": null,
+        "error_retryable": null,
+        "created_at": "2026-08-10T00:01:20Z"
+      },
+      {
+        "processing_step_schema_version": "cx_document_processing_step.persistence.v1",
+        "pipeline_run_id": "cx-processing-run-0189",
+        "step_order": 2,
+        "step_id": "build_chunks",
+        "status": "SUCCEEDED",
+        "output_ref_type": "chunk_set",
+        "output_ref_id": "chunk-set-0189",
+        "output_ref_document_id": "doc-0189",
+        "output_ref_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "error_code": null,
+        "error_detail_sha256": null,
+        "error_retryable": null,
+        "created_at": "2026-08-10T00:01:40Z"
+      },
+      {
+        "processing_step_schema_version": "cx_document_processing_step.persistence.v1",
+        "pipeline_run_id": "cx-processing-run-0189",
+        "step_order": 3,
+        "step_id": "build_embedding_index",
+        "status": "FAILED",
+        "output_ref_type": null,
+        "output_ref_id": null,
+        "output_ref_document_id": "doc-0189",
+        "output_ref_hash": null,
+        "error_code": "cx.embedding.provider_unavailable",
+        "error_detail_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "error_retryable": true,
+        "created_at": "2026-08-10T00:02:00Z"
+      }
+    ]
+  },
+  "summary": {
+    "pipeline_run_id": "cx-processing-run-0189",
+    "document_id": "doc-0189",
+    "status": "FAILED",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "job_id": "job-0189",
+    "step_total": 3,
+    "returned_step_count": 3,
+    "failed_step_count": 1,
+    "error_hash_count": 1,
+    "raw_payload_redacted": true
+  },
+  "source_status": {
+    "status": "READY",
+    "service_id": "nex-cx",
+    "source_kind": "postgres-read",
+    "processing_run_count": 1,
+    "database_env": "NEX_CX_TEST_DATABASE_URL",
+    "redacted_database_url": "postgresql://nex_cx_user:***@localhost/nex_cx_test"
+  }
+}

@@ -246,6 +246,16 @@
       "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
     },
     {
+      "name": "ag_cx_processing_run_operations_projection_mock",
+      "path": "examples/operations/ag_cx_processing_run_operations_projection.mock_success.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
+      "name": "ag_cx_processing_run_detail_mock",
+      "path": "examples/operations/ag_cx_processing_run_detail.mock_success.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
       "name": "ag_unified_operations_projection_mock",
       "path": "examples/operations/ag_unified_operations_projection.mock_success.json",
       "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
