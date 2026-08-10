@@ -27,6 +27,12 @@ if TYPE_CHECKING:
 CX_DOCUMENT_LIBRARY_PROJECTION_SCHEMA_VERSION = "cx_document_library_projection.v1"
 CX_DOCUMENT_LIBRARY_ITEM_SCHEMA_VERSION = "cx_document_library_item.v1"
 CX_DOCUMENT_LIBRARY_QUERY_FILTER_SCHEMA_VERSION = "cx_document_library_query_filters.v1"
+CX_DOCUMENT_DETAIL_PROJECTION_SCHEMA_VERSION = "cx_document_detail_projection.v1"
+CX_DOCUMENT_DETAIL_ITEM_SCHEMA_VERSION = "cx_document_detail_item.v1"
+CX_DOCUMENT_DETAIL_QUERY_FILTER_SCHEMA_VERSION = "cx_document_detail_query_filters.v1"
+CX_DOCUMENT_DETAIL_BOUNDARY_AUDIT_SCHEMA_VERSION = (
+    "cx_document_detail_boundary_audit.v1"
+)
 
 
 def register_document_library_routes(
@@ -173,6 +179,92 @@ def build_document_library_projection(
     }
 
 
+def build_document_detail_query_filters(
+    *,
+    document_id: str | None,
+    tenant_id: str | None = None,
+    owner_user_id: str | None = None,
+) -> dict[str, Any]:
+    normalized_document_id = _required_non_empty_text(
+        document_id,
+        field_name="document_id",
+    )
+    normalized_tenant_id = _required_non_empty_text(
+        tenant_id or DEFAULT_TENANT_ID,
+        field_name="tenant_id",
+    )
+    normalized_owner_user_id = _required_non_empty_text(
+        owner_user_id or DEFAULT_OWNER_USER_ID,
+        field_name="owner_user_id",
+    )
+    return {
+        "filter_schema_version": CX_DOCUMENT_DETAIL_QUERY_FILTER_SCHEMA_VERSION,
+        "document_ref": {"type": "cx.document", "id": normalized_document_id},
+        "tenant_ref": {"type": OA_TENANT_REF_TYPE, "id": normalized_tenant_id},
+        "owner_subject_ref": {
+            "type": OA_USER_SUBJECT_REF_TYPE,
+            "id": normalized_owner_user_id,
+        },
+        "lifecycle_status": "ACTIVE",
+    }
+
+
+def build_document_detail_projection(
+    *,
+    store: ContentIngestionStore,
+    document_id: str | None,
+    tenant_id: str | None = None,
+    owner_user_id: str | None = None,
+    source_kind: str = "repository",
+    database_env: str | None = None,
+    redacted_database_url: str | None = None,
+) -> dict[str, Any] | None:
+    filters = build_document_detail_query_filters(
+        document_id=document_id,
+        tenant_id=tenant_id,
+        owner_user_id=owner_user_id,
+    )
+    content_object = store.content_repository.get_content_object(
+        filters["document_ref"]["id"]
+    )
+    if content_object is None or not _content_object_matches_detail_scope(
+        content_object,
+        filters=filters,
+    ):
+        return None
+    document = project_document_detail_item(
+        store=store,
+        content_object=content_object,
+    )
+    return {
+        "projection_schema_version": CX_DOCUMENT_DETAIL_PROJECTION_SCHEMA_VERSION,
+        "service_id": "nex-cx",
+        "source": {
+            "source_kind": source_kind,
+            "database_env": database_env,
+            "redacted_database_url": redacted_database_url,
+        },
+        "filters": {
+            "filter_schema_version": filters["filter_schema_version"],
+            "document_ref": deepcopy(filters["document_ref"]),
+            "tenant_ref": deepcopy(filters["tenant_ref"]),
+            "owner_subject_ref": deepcopy(filters["owner_subject_ref"]),
+            "lifecycle_status": filters["lifecycle_status"],
+        },
+        "document": document,
+        "boundary_audit": build_document_detail_boundary_audit(),
+        "metadata": {
+            "owner_scoped": True,
+            "not_found_and_not_authorized_collapsed": True,
+            "legacy_upload_registration_route_replacement": True,
+            "raw_source_included": False,
+            "raw_summary_included": False,
+            "embedding_vector_included": False,
+            "storage_path_redacted": True,
+        },
+    }
+
+
 def project_document_library_item(
     *,
     store: ContentIngestionStore,
@@ -225,6 +317,139 @@ def project_document_library_item(
             "embedding_vector_included": False,
             "storage_path_redacted": True,
         },
+    }
+
+
+def project_document_detail_item(
+    *,
+    store: ContentIngestionStore,
+    content_object: Mapping[str, Any],
+) -> dict[str, Any]:
+    library_item = project_document_library_item(
+        store=store,
+        content_object=content_object,
+    )
+    upload_record = store.get_document(library_item["document_id"])
+    return {
+        "document_detail_schema_version": CX_DOCUMENT_DETAIL_ITEM_SCHEMA_VERSION,
+        **{
+            key: value
+            for key, value in library_item.items()
+            if key != "document_library_schema_version"
+        },
+        "source_lineage": _project_source_lineage(content_object),
+        "upload": _project_upload_metadata(
+            upload_record,
+            fallback_upload_id=library_item.get("upload_id"),
+        ),
+        "boundary_audit": build_document_detail_boundary_audit(),
+    }
+
+
+def build_document_detail_boundary_audit() -> dict[str, Any]:
+    return {
+        "audit_schema_version": CX_DOCUMENT_DETAIL_BOUNDARY_AUDIT_SCHEMA_VERSION,
+        "legacy_route": {
+            "path": "/api/v1/documents/{document_id}",
+            "current_payload": "cx_upload_registration.v1",
+            "owner_scope_required": False,
+            "may_expose_local_storage_path": True,
+            "replacement_projection_schema_version": (
+                CX_DOCUMENT_DETAIL_PROJECTION_SCHEMA_VERSION
+            ),
+        },
+        "projection": {
+            "owner_scope_required": True,
+            "not_found_and_not_authorized_collapsed": True,
+            "raw_source_included": False,
+            "raw_summary_included": False,
+            "embedding_vector_included": False,
+            "local_storage_path_included": False,
+            "storage_uri_included": False,
+            "storage_key_included": False,
+        },
+    }
+
+
+def _content_object_matches_detail_scope(
+    content_object: Mapping[str, Any],
+    *,
+    filters: Mapping[str, Any],
+) -> bool:
+    if content_object.get("lifecycle_status") != filters["lifecycle_status"]:
+        return False
+    if content_object.get("content_object_id") != filters["document_ref"]["id"]:
+        return False
+    return _content_object_ref_matches(
+        content_object,
+        ref_name="tenant_ref",
+        expected=filters["tenant_ref"],
+    ) and _content_object_ref_matches(
+        content_object,
+        ref_name="owner_subject_ref",
+        expected=filters["owner_subject_ref"],
+    )
+
+
+def _content_object_ref_matches(
+    content_object: Mapping[str, Any],
+    *,
+    ref_name: str,
+    expected: Mapping[str, Any],
+) -> bool:
+    ownership_ref = _mapping_copy(content_object.get("ownership_ref"))
+    actual_ref = _mapping_copy(ownership_ref.get(ref_name))
+    if actual_ref:
+        return actual_ref == expected
+    legacy_columns = {
+        "tenant_ref": ("tenant_ref_type", "tenant_ref_id"),
+        "owner_subject_ref": ("owner_subject_ref_type", "owner_subject_ref_id"),
+    }
+    type_key, id_key = legacy_columns[ref_name]
+    return (
+        content_object.get(type_key) == expected["type"]
+        and content_object.get(id_key) == expected["id"]
+    )
+
+
+def _project_source_lineage(content_object: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "source_file_id": content_object.get("source_file_id"),
+        "source_sha256": content_object.get("source_sha256"),
+        "content_type": content_object.get("content_type"),
+        "size_bytes": _int_value(content_object.get("size_bytes")),
+        "storage_backend": None,
+        "storage_key_included": False,
+        "storage_uri_included": False,
+        "storage_path_included": False,
+    }
+
+
+def _project_upload_metadata(
+    upload_record: Mapping[str, Any] | None,
+    *,
+    fallback_upload_id: object,
+) -> dict[str, Any]:
+    if upload_record is None:
+        return {
+            "available": False,
+            "upload_id": fallback_upload_id,
+            "request_id": None,
+            "trace_id": None,
+            "dedupe_status": None,
+            "source_content_in_record": False,
+        }
+    dedupe = _mapping_copy(upload_record.get("dedupe"))
+    upload_boundary = _mapping_copy(upload_record.get("upload_boundary"))
+    return {
+        "available": True,
+        "upload_id": upload_record.get("upload_id"),
+        "request_id": upload_record.get("request_id"),
+        "trace_id": upload_record.get("trace_id"),
+        "dedupe_status": dedupe.get("status"),
+        "existing_document_id": dedupe.get("existing_document_id"),
+        "payload_source": upload_boundary.get("payload_source"),
+        "source_content_in_record": False,
     }
 
 

@@ -7,7 +7,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from nex_cx.document_library import (
+    CX_DOCUMENT_DETAIL_BOUNDARY_AUDIT_SCHEMA_VERSION,
+    CX_DOCUMENT_DETAIL_PROJECTION_SCHEMA_VERSION,
     CX_DOCUMENT_LIBRARY_PROJECTION_SCHEMA_VERSION,
+    build_document_detail_boundary_audit,
+    build_document_detail_projection,
+    build_document_detail_query_filters,
     build_document_library_projection,
     build_document_library_query_filters,
     register_document_library_routes,
@@ -119,6 +124,265 @@ def test_document_library_filters_normalize_owner_scope_and_limit() -> None:
         build_document_library_query_filters(limit="many")
     with pytest.raises(ValueError, match="tenant_id"):
         build_document_library_query_filters(tenant_id=" ")
+
+
+def test_document_detail_filters_normalize_owner_scope() -> None:
+    filters = build_document_detail_query_filters(
+        document_id=" document-a ",
+        tenant_id=" tenant-a ",
+        owner_user_id=" user-a ",
+    )
+
+    assert filters == {
+        "filter_schema_version": "cx_document_detail_query_filters.v1",
+        "document_ref": {"type": "cx.document", "id": "document-a"},
+        "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+        "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+        "lifecycle_status": "ACTIVE",
+    }
+    with pytest.raises(ValueError, match="document_id"):
+        build_document_detail_query_filters(document_id=" ")
+    with pytest.raises(ValueError, match="tenant_id"):
+        build_document_detail_query_filters(
+            document_id="document-a",
+            tenant_id=" ",
+        )
+    with pytest.raises(ValueError, match="owner_user_id"):
+        build_document_detail_query_filters(
+            document_id="document-a",
+            owner_user_id=" ",
+        )
+
+
+def test_document_detail_projection_is_owner_scoped_and_raw_safe(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    document = store.save_upload_registration(
+        upload_registration(tmp_path, content_text="private source text"),
+        source_text="private source text",
+    )
+    store.save_document_summary(
+        {
+            "document_summary_id": "summary-detail-a",
+            "document_id": document["document_id"],
+            "status": "READY",
+            "summary_text_sha256": sha256_text("private summary body"),
+            "summary_preview": "private summary preview",
+            "summary_char_count": 22,
+            "model_profile_id": "mock-document-summary",
+            "model_revision": "slice-0027",
+            "updated_at": "2026-08-10T00:00:00Z",
+        },
+        summary_text="private summary body",
+    )
+    store.save_summary_embedding_index(
+        {
+            "summary_embedding_id": "summary-embedding-detail-a",
+            "document_id": document["document_id"],
+            "document_summary_id": "summary-detail-a",
+            "provider_alias": "qwen3-embedding",
+            "model_revision": "Qwen3-Embedding-4B",
+            "vector_dimension": 3,
+            "embedding_sha256": sha256_text("embedding metadata only"),
+            "status": "READY",
+            "created_at": "2026-08-10T00:00:01Z",
+        },
+        embedding_vector=[0.1, 0.2, 0.3],
+    )
+
+    projection = build_document_detail_projection(
+        store=store,
+        document_id=document["document_id"],
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+        source_kind="postgres-read",
+        database_env="NEX_CX_TEST_DATABASE_URL",
+        redacted_database_url="postgresql://nex_cx_user:***@localhost/nex_cx_test",
+    )
+
+    assert projection is not None
+    assert projection["projection_schema_version"] == (
+        CX_DOCUMENT_DETAIL_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["source"] == {
+        "source_kind": "postgres-read",
+        "database_env": "NEX_CX_TEST_DATABASE_URL",
+        "redacted_database_url": "postgresql://nex_cx_user:***@localhost/nex_cx_test",
+    }
+    assert projection["filters"]["document_ref"] == {
+        "type": "cx.document",
+        "id": document["document_id"],
+    }
+    detail = projection["document"]
+    assert detail["document_detail_schema_version"] == "cx_document_detail_item.v1"
+    assert detail["document_id"] == document["document_id"]
+    assert detail["owner_subject_ref"] == {"type": "oa.user", "id": "user-a"}
+    assert detail["summary"]["summary_preview"] == "private summary preview"
+    assert detail["summary_embedding"]["vector_dimension"] == 3
+    assert detail["source_lineage"] == {
+        "source_file_id": store.get_content_ref(document["document_id"])[
+            "source_file_id"
+        ],
+        "source_sha256": document["source_sha256"],
+        "content_type": "text/markdown",
+        "size_bytes": len("private source text"),
+        "storage_backend": None,
+        "storage_key_included": False,
+        "storage_uri_included": False,
+        "storage_path_included": False,
+    }
+    assert detail["upload"]["available"] is True
+    assert detail["upload"]["dedupe_status"] == "CREATED"
+    assert detail["upload"]["source_content_in_record"] is False
+    assert detail["boundary_audit"]["projection"]["owner_scope_required"] is True
+    assert projection["metadata"]["not_found_and_not_authorized_collapsed"] is True
+    assert "private source text" not in str(projection)
+    assert "private summary body" not in str(projection)
+    assert "source_storage_path" not in str(projection)
+    assert "source_storage_key" not in str(projection)
+    assert "source_storage_uri" not in str(projection)
+    assert "[0.1, 0.2, 0.3]" not in str(projection)
+
+
+def test_document_detail_projection_collapses_missing_wrong_owner_and_inactive(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    document = store.save_upload_registration(
+        upload_registration(tmp_path, content_text="private source text"),
+        source_text="private source text",
+    )
+    inactive = {
+        **store.content_repository.get_content_object(document["document_id"]),
+        "content_object_id": "inactive-document",
+        "upload_id": "inactive-upload",
+        "lifecycle_status": "ARCHIVED",
+    }
+    store.content_repository.save_content_object(inactive)
+    mismatched = {
+        **store.content_repository.get_content_object(document["document_id"]),
+        "content_object_id": "mismatched-inner-document",
+        "upload_id": "mismatched-upload",
+        "lifecycle_status": "ACTIVE",
+    }
+    store.content_repository.content_objects["mismatched-lookup-document"] = (
+        mismatched
+    )
+
+    assert (
+        build_document_detail_projection(
+            store=store,
+            document_id="missing-document",
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+        )
+        is None
+    )
+    assert (
+        build_document_detail_projection(
+            store=store,
+            document_id=document["document_id"],
+            tenant_id="tenant-b",
+            owner_user_id="user-a",
+        )
+        is None
+    )
+    assert (
+        build_document_detail_projection(
+            store=store,
+            document_id=document["document_id"],
+            tenant_id="tenant-a",
+            owner_user_id="user-b",
+        )
+        is None
+    )
+    assert (
+        build_document_detail_projection(
+            store=store,
+            document_id="inactive-document",
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+        )
+        is None
+    )
+    assert (
+        build_document_detail_projection(
+            store=store,
+            document_id="mismatched-lookup-document",
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+        )
+        is None
+    )
+
+
+def test_document_detail_projection_supports_repository_only_legacy_columns(
+    tmp_path: Path,
+) -> None:
+    repository = InMemoryCxContentRepository()
+    upload = upload_registration(tmp_path, content_text="repository-only source")
+    source_file = repository.save_source_file(build_source_file_record(upload))
+    content_object = build_content_object_record(
+        upload,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+        source_file_id=source_file["source_file_id"],
+    )
+    content_object_without_ref = {
+        key: value for key, value in content_object.items() if key != "ownership_ref"
+    }
+    content_object_without_ref.update(
+        {
+            "tenant_ref_type": "oa.tenant",
+            "tenant_ref_id": "tenant-a",
+            "owner_subject_ref_type": "oa.user",
+            "owner_subject_ref_id": "user-a",
+        }
+    )
+    repository.save_content_object(content_object_without_ref)
+    repository.content_objects[upload["document_id"]] = content_object_without_ref
+    store = ContentIngestionStore(content_repository=repository)
+
+    projection = build_document_detail_projection(
+        store=store,
+        document_id=upload["document_id"],
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+
+    assert projection is not None
+    assert projection["document"]["upload"] == {
+        "available": False,
+        "upload_id": upload["upload_id"],
+        "request_id": None,
+        "trace_id": None,
+        "dedupe_status": None,
+        "source_content_in_record": False,
+    }
+    assert projection["document"]["tenant_ref"] == {}
+    assert projection["document"]["source_lineage"]["source_file_id"] == (
+        source_file["source_file_id"]
+    )
+
+
+def test_document_detail_boundary_audit_marks_legacy_route_risk() -> None:
+    audit = build_document_detail_boundary_audit()
+
+    assert audit["audit_schema_version"] == (
+        CX_DOCUMENT_DETAIL_BOUNDARY_AUDIT_SCHEMA_VERSION
+    )
+    assert audit["legacy_route"] == {
+        "path": "/api/v1/documents/{document_id}",
+        "current_payload": "cx_upload_registration.v1",
+        "owner_scope_required": False,
+        "may_expose_local_storage_path": True,
+        "replacement_projection_schema_version": (
+            CX_DOCUMENT_DETAIL_PROJECTION_SCHEMA_VERSION
+        ),
+    }
+    assert audit["projection"]["raw_source_included"] is False
+    assert audit["projection"]["storage_key_included"] is False
 
 
 def test_document_library_projection_is_owner_scoped_and_raw_safe(
