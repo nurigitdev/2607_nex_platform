@@ -35,6 +35,7 @@ from nex_cx.ingestion import (
     write_extracted_markdown,
 )
 import nex_cx.ingestion as cx_ingestion
+from nex_cx.repository import CxContentRepositoryError
 from nex_runtime import (
     SERVICE_SPECS,
     SubjectRegistryResolverError,
@@ -95,6 +96,15 @@ class FailingOwnerResolver:
             error_code="oa.subject_not_found",
             detail="Subject was not found.",
             retryable=False,
+        )
+
+
+class FailingDocumentDetailRepository:
+    def get_content_object(self, content_object_id: str) -> dict[str, object]:
+        raise CxContentRepositoryError(
+            error_code="cx.content_repository_unavailable",
+            detail=f"repository offline for {content_object_id}",
+            status_code=503,
         )
 
 
@@ -1581,9 +1591,76 @@ def test_document_and_job_can_be_read_back(tmp_path: Path) -> None:
     )
 
     assert document_response.status_code == 200
-    assert document_response.json()["document_id"] == created["document_id"]
+    detail = document_response.json()
+    assert detail["projection_schema_version"] == "cx_document_detail_projection.v1"
+    assert detail["source"] == {
+        "source_kind": "memory",
+        "database_env": None,
+        "redacted_database_url": None,
+    }
+    assert detail["filters"]["document_ref"] == {
+        "type": "cx.document",
+        "id": created["document_id"],
+    }
+    assert detail["document"]["document_id"] == created["document_id"]
+    assert detail["document"]["upload"]["dedupe_status"] == "CREATED"
+    assert detail["document"]["extraction"] == {
+        "available": True,
+        "job_id": created["extraction"]["job_id"],
+        "status": "PENDING",
+        "markdown_available": False,
+    }
+    assert detail["metadata"]["not_found_and_not_authorized_collapsed"] is True
+    assert "source_storage_path" not in str(detail)
+    assert "hello" not in str(detail)
     assert job_response.status_code == 200
     assert job_response.json()["job_id"] == created["extraction"]["job_id"]
+
+
+def test_document_detail_read_collapses_wrong_owner_and_validates_query(
+    tmp_path: Path,
+) -> None:
+    client, _ = build_test_client(tmp_path)
+    created = client.post(
+        "/api/v1/documents/uploads",
+        json={"filename": "source.md", "content_text": "owner scoped source"},
+        headers=auth_headers(),
+    ).json()
+
+    wrong_owner = client.get(
+        f"/api/v1/documents/{created['document_id']}",
+        params={"tenant_id": "local-tenant", "owner_user_id": "other-user"},
+        headers=auth_headers(),
+    )
+    invalid_owner = client.get(
+        f"/api/v1/documents/{created['document_id']}",
+        params={"owner_user_id": " "},
+        headers=auth_headers(),
+    )
+
+    assert wrong_owner.status_code == 404
+    assert wrong_owner.json()["error_code"] == "cx.document_not_found"
+    assert "owner scoped source" not in str(wrong_owner.json())
+    assert invalid_owner.status_code == 400
+    assert invalid_owner.json()["error_code"] == "cx.document_detail_query_invalid"
+
+
+def test_document_detail_read_maps_repository_unavailable(tmp_path: Path) -> None:
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    register_ingestion_routes(
+        app,
+        store=ContentIngestionStore(
+            content_repository=FailingDocumentDetailRepository(),
+        ),
+        storage_config=storage_config(tmp_path),
+    )
+    client = TestClient(app)
+
+    response = client.get("/api/v1/documents/doc-001", headers=auth_headers())
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == "cx.content_repository_unavailable"
+    assert response.json()["retryable"] is True
 
 
 def test_run_job_endpoint_materializes_markdown_and_extraction_readback(

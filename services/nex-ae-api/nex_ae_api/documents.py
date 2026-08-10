@@ -342,6 +342,10 @@ def search_summary_items(
 
 def extraction_status(cx_document: dict[str, Any], document_ref: dict[str, Any]) -> str:
     extraction = cx_document.get("extraction")
+    if not isinstance(extraction, dict):
+        document = cx_document.get("document")
+        if isinstance(document, dict):
+            extraction = document.get("extraction")
     if isinstance(extraction, dict) and isinstance(extraction.get("status"), str):
         return extraction["status"]
     return document_ref["extraction_status"]
@@ -349,6 +353,10 @@ def extraction_status(cx_document: dict[str, Any], document_ref: dict[str, Any])
 
 def markdown_available(cx_document: dict[str, Any], document_ref: dict[str, Any]) -> bool:
     extraction = cx_document.get("extraction")
+    if not isinstance(extraction, dict):
+        document = cx_document.get("document")
+        if isinstance(document, dict):
+            extraction = document.get("extraction")
     if isinstance(extraction, dict) and isinstance(extraction.get("markdown_available"), bool):
         return extraction["markdown_available"]
     return bool(document_ref["markdown_available"])

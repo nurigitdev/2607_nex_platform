@@ -180,6 +180,29 @@ def test_summary_projection_handles_missing_summary_and_fallback_extraction() ->
     assert markdown_available({}, {"markdown_available": False}) is False
 
 
+def test_status_helpers_accept_cx_document_detail_projection() -> None:
+    detail_projection = {
+        "projection_schema_version": "cx_document_detail_projection.v1",
+        "document": {
+            "extraction": {
+                "available": True,
+                "job_id": "job-001",
+                "status": "SUCCEEDED",
+                "markdown_available": True,
+            }
+        },
+    }
+
+    assert extraction_status(
+        detail_projection,
+        {"extraction_status": "PENDING"},
+    ) == "SUCCEEDED"
+    assert markdown_available(
+        detail_projection,
+        {"markdown_available": False},
+    ) is True
+
+
 def test_search_summary_items_scores_and_sorts_matches() -> None:
     first = build_document_library_item(
         upload_handoff=upload_handoff(filename="mvp-srs.md"),

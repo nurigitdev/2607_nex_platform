@@ -548,7 +548,7 @@ paths:
           description: Upload metadata is invalid or unsafe.
   /api/v1/documents/{document_id}:
     get:
-      operationId: getCxDocumentRegistration
+      operationId: getCxDocumentDetail
       tags:
         - Content
       parameters:
@@ -557,13 +557,94 @@ paths:
           required: true
           schema:
             type: string
+        - name: tenant_id
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+        - name: owner_user_id
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
       responses:
         "200":
-          description: CX document upload registration.
+          description: Owner-scoped CX document detail projection.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                required:
+                  - projection_schema_version
+                  - service_id
+                  - source
+                  - filters
+                  - document
+                  - boundary_audit
+                  - metadata
+                properties:
+                  projection_schema_version:
+                    const: cx_document_detail_projection.v1
+                  service_id:
+                    const: nex-cx
+                  filters:
+                    type: object
+                    additionalProperties: true
+                    required:
+                      - filter_schema_version
+                      - document_ref
+                      - tenant_ref
+                      - owner_subject_ref
+                      - lifecycle_status
+                    properties:
+                      filter_schema_version:
+                        const: cx_document_detail_query_filters.v1
+                      lifecycle_status:
+                        const: ACTIVE
+                  document:
+                    type: object
+                    additionalProperties: true
+                    required:
+                      - document_detail_schema_version
+                      - document_id
+                      - source_lineage
+                      - upload
+                      - extraction
+                    properties:
+                      document_detail_schema_version:
+                        const: cx_document_detail_item.v1
+                  metadata:
+                    type: object
+                    additionalProperties: true
+                    required:
+                      - owner_scoped
+                      - not_found_and_not_authorized_collapsed
+                      - raw_source_included
+                      - raw_summary_included
+                      - embedding_vector_included
+                      - storage_path_redacted
+                    properties:
+                      owner_scoped:
+                        const: true
+                      not_found_and_not_authorized_collapsed:
+                        const: true
+                      raw_source_included:
+                        const: false
+                      raw_summary_included:
+                        const: false
+                      embedding_vector_included:
+                        const: false
+                      storage_path_redacted:
+                        const: true
+        "400":
+          description: Document detail query parameters are invalid.
         "401":
           description: Service claim is missing or invalid.
         "404":
-          description: Document registration was not found.
+          description: Document detail was not found or is not visible.
   /api/v1/documents/{document_id}/extraction:
     get:
       operationId: getCxTextExtraction

@@ -342,6 +342,7 @@ def project_document_detail_item(
             upload_record,
             fallback_upload_id=library_item.get("upload_id"),
         ),
+        "extraction": _project_extraction_metadata(upload_record),
         "boundary_audit": build_document_detail_boundary_audit(),
     }
 
@@ -450,6 +451,25 @@ def _project_upload_metadata(
         "existing_document_id": dedupe.get("existing_document_id"),
         "payload_source": upload_boundary.get("payload_source"),
         "source_content_in_record": False,
+    }
+
+
+def _project_extraction_metadata(
+    upload_record: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    if upload_record is None:
+        return {
+            "available": False,
+            "job_id": None,
+            "status": "UNKNOWN",
+            "markdown_available": False,
+        }
+    extraction = _mapping_copy(upload_record.get("extraction"))
+    return {
+        "available": bool(extraction),
+        "job_id": extraction.get("job_id"),
+        "status": extraction.get("status") or "UNKNOWN",
+        "markdown_available": extraction.get("markdown_available") is True,
     }
 
 

@@ -174,6 +174,14 @@ Current endpoints:
 - `GET /api/v1/generations/{cx_generation_id}/structured-draft`
 - `GET /api/v1/generations/{cx_generation_id}/events`
 
+Document detail:
+
+- `GET /api/v1/documents/{document_id}` returns
+  `cx_document_detail_projection.v1`, scoped by `tenant_id` and
+  `owner_user_id` query parameters. Missing, inactive, and wrong-owner
+  documents are collapsed to the same not-found response, and raw source,
+  summary body, embedding vectors, and local storage paths are excluded.
+
 Grounded generation validation:
 
 - `GENERAL_ANSWER` generation can run without retrieval.

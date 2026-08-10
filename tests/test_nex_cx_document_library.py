@@ -235,6 +235,12 @@ def test_document_detail_projection_is_owner_scoped_and_raw_safe(
     assert detail["upload"]["available"] is True
     assert detail["upload"]["dedupe_status"] == "CREATED"
     assert detail["upload"]["source_content_in_record"] is False
+    assert detail["extraction"] == {
+        "available": True,
+        "job_id": document["extraction"]["job_id"],
+        "status": "PENDING",
+        "markdown_available": False,
+    }
     assert detail["boundary_audit"]["projection"]["owner_scope_required"] is True
     assert projection["metadata"]["not_found_and_not_authorized_collapsed"] is True
     assert "private source text" not in str(projection)
@@ -361,6 +367,12 @@ def test_document_detail_projection_supports_repository_only_legacy_columns(
         "source_content_in_record": False,
     }
     assert projection["document"]["tenant_ref"] == {}
+    assert projection["document"]["extraction"] == {
+        "available": False,
+        "job_id": None,
+        "status": "UNKNOWN",
+        "markdown_available": False,
+    }
     assert projection["document"]["source_lineage"]["source_file_id"] == (
         source_file["source_file_id"]
     )

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
-from fastapi import FastAPI, Header, Request
+from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
@@ -26,7 +26,9 @@ from nex_runtime import (
     trace_id_from_headers,
     validate_authorization_header,
 )
+from nex_cx.document_library import build_document_detail_projection
 from nex_cx.repository import (
+    CxContentRepositoryError,
     CxContentRepository,
     DEFAULT_OWNER_USER_ID,
     DEFAULT_TENANT_ID,
@@ -674,6 +676,9 @@ def register_ingestion_routes(
     storage_config: CxStorageConfig | None = None,
     owner_resolver: SubjectRegistryResolver | None = None,
     owner_resolver_mode: str | None = None,
+    database_env: str | None = None,
+    redacted_database_url: str | None = None,
+    source_kind: str = "memory",
 ) -> None:
     ingestion_store = store or DEFAULT_INGESTION_STORE
     config = storage_config or build_storage_config()
@@ -732,22 +737,61 @@ def register_ingestion_routes(
         document_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        tenant_id: str | None = Query(default=None),
+        owner_user_id: str | None = Query(default=None),
     ):
         auth_problem = _authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
-        record = ingestion_store.get_document(document_id)
-        if record is None:
-            return _ingestion_problem_response(
+        try:
+            projection = build_document_detail_projection(
+                store=ingestion_store,
+                document_id=document_id,
+                tenant_id=tenant_id,
+                owner_user_id=owner_user_id,
+                source_kind=source_kind,
+                database_env=database_env,
+                redacted_database_url=redacted_database_url,
+            )
+        except ValueError as exc:
+            return problem_response(
                 request,
-                IngestionError(
-                    status_code=404,
-                    error_code="cx.document_not_found",
-                    detail=f"Document registration was not found: {document_id}",
+                status_code=400,
+                error_code="cx.document_detail_query_invalid",
+                title="Document detail query failed",
+                detail=str(exc),
+                type_uri=(
+                    "https://nex-platform.local/problems/"
+                    "document-detail-query-failed"
                 ),
             )
-        return record
+        except CxContentRepositoryError as exc:
+            return problem_response(
+                request,
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                title="Document detail repository unavailable",
+                detail=exc.detail,
+                retryable=True,
+                type_uri=(
+                    "https://nex-platform.local/problems/"
+                    "document-detail-repository-unavailable"
+                ),
+            )
+        if projection is None:
+            return problem_response(
+                request,
+                status_code=404,
+                error_code="cx.document_not_found",
+                title="Document detail was not found",
+                detail=(
+                    "Document detail was not found or is not visible "
+                    "for the requested owner scope."
+                ),
+                type_uri="https://nex-platform.local/problems/document-not-found",
+            )
+        return projection
 
     @app.get("/api/v1/jobs/{job_id}", response_model=None)
     def get_job(

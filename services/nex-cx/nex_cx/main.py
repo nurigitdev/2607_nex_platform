@@ -76,6 +76,13 @@ register_ingestion_routes(
     app,
     store=DEFAULT_INGESTION_STORE,
     storage_config=CX_STORAGE_CONFIG,
+    database_env=SERVICE_PERSISTENCE.database_env,
+    redacted_database_url=SERVICE_PERSISTENCE.redacted_database_url,
+    source_kind=(
+        "postgres-read"
+        if SERVICE_PERSISTENCE.mode == PERSISTENCE_MODE_POSTGRES
+        else "memory"
+    ),
 )
 register_document_library_routes(
     app,
