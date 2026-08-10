@@ -75,9 +75,11 @@ def test_source_ownership_boundary_decision_requires_minimal_oa_subject_registry
         "cross_owner_existing_document_id_visible": False,
         "source_file_metadata_shared_by_hash": True,
     }
-    assert decision["next_slice"] == "0199_ae_upload_ownership_resolver_wiring"
-    assert decision["migration_sequence"][-2]["slice"] == "0198"
-    assert decision["migration_sequence"][-1]["slice"] == "0199"
+    assert decision["next_slice"] == (
+        "0200_cx_upload_ownership_resolver_guardrail_smoke"
+    )
+    assert decision["migration_sequence"][-2]["slice"] == "0199"
+    assert decision["migration_sequence"][-1]["slice"] == "0200"
 
 
 def test_source_ownership_ref_maps_legacy_owner_fields_to_oa_subject_refs() -> None:

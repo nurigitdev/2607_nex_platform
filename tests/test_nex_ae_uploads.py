@@ -11,18 +11,28 @@ from nex_ae_api.uploads import (
     HttpCxUploadClient,
     OWNERSHIP_COMPATIBILITY_MODE,
     OWNERSHIP_REF_SCHEMA_VERSION,
+    UPLOAD_OWNER_RESOLVER_DISABLED,
+    UPLOAD_OWNER_RESOLVER_ENSURE,
+    UPLOAD_OWNER_RESOLVER_VERIFY,
     UploadHandoffError,
     UploadHandoffStore,
     build_cx_upload_payload,
     build_upload_ownership_ref,
     build_upload_handoff_record,
     non_negative_int,
+    normalize_upload_owner_resolver_mode,
     owner_scope_from_payload,
     register_upload_routes,
     required_hash,
+    resolve_upload_ownership,
     upload_handoff_status,
 )
-from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
+from nex_runtime import (
+    SERVICE_SPECS,
+    SubjectRegistryResolverError,
+    build_service_app,
+    issue_mock_service_token,
+)
 
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
@@ -87,6 +97,50 @@ class FailingCxUploadClient:
         )
 
 
+class FakeOwnerResolver:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def resolve_ownership_ref(
+        self,
+        ownership_ref: dict[str, Any],
+        *,
+        request_id: str,
+        trace_id: str,
+        ensure: bool = False,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            {
+                "ownership_ref": ownership_ref,
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "ensure": ensure,
+            }
+        )
+        return {
+            "resolver_schema_version": "oa_subject_registry_resolver.v1",
+            "resolution_status": "RESOLVED",
+            "ensure": ensure,
+        }
+
+
+class FailingOwnerResolver:
+    def resolve_ownership_ref(
+        self,
+        ownership_ref: dict[str, Any],
+        *,
+        request_id: str,
+        trace_id: str,
+        ensure: bool = False,
+    ) -> dict[str, Any]:
+        raise SubjectRegistryResolverError(
+            status_code=404,
+            error_code="oa.subject_not_found",
+            detail="Subject was not found.",
+            retryable=False,
+        )
+
+
 def auth_headers() -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-oa", audience="nex-ae-api")
     return {
@@ -98,11 +152,20 @@ def auth_headers() -> dict[str, str]:
 
 def build_client(
     cx_client: FakeCxUploadClient | FailingCxUploadClient | None = None,
+    *,
+    owner_resolver: FakeOwnerResolver | FailingOwnerResolver | None = None,
+    owner_resolver_mode: str | None = None,
 ) -> tuple[TestClient, UploadHandoffStore, FakeCxUploadClient | FailingCxUploadClient]:
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     store = UploadHandoffStore()
     client = cx_client or FakeCxUploadClient()
-    register_upload_routes(app, store=store, cx_client=client)
+    register_upload_routes(
+        app,
+        store=store,
+        cx_client=client,
+        owner_resolver=owner_resolver,
+        owner_resolver_mode=owner_resolver_mode,
+    )
     return TestClient(app), store, client
 
 
@@ -274,6 +337,79 @@ def test_build_upload_handoff_record_redacts_source_and_storage_details() -> Non
     assert "source_storage_path" not in str(handoff)
 
 
+def test_upload_owner_resolver_mode_normalization_and_disabled_skip() -> None:
+    assert normalize_upload_owner_resolver_mode(None) == UPLOAD_OWNER_RESOLVER_DISABLED
+    assert normalize_upload_owner_resolver_mode(" VERIFY ") == UPLOAD_OWNER_RESOLVER_VERIFY
+    assert normalize_upload_owner_resolver_mode("ensure") == UPLOAD_OWNER_RESOLVER_ENSURE
+    assert (
+        resolve_upload_ownership(
+            OWNER_REF,
+            owner_resolver=None,
+            owner_resolver_mode=UPLOAD_OWNER_RESOLVER_DISABLED,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+        is None
+    )
+
+    with pytest.raises(UploadHandoffError) as bad_mode:
+        normalize_upload_owner_resolver_mode("raw-identity")
+
+    assert bad_mode.value.error_code == "ae.upload_owner_resolver_mode_invalid"
+
+
+def test_resolve_upload_ownership_verify_and_ensure_modes() -> None:
+    resolver = FakeOwnerResolver()
+
+    verified = resolve_upload_ownership(
+        OWNER_REF,
+        owner_resolver=resolver,
+        owner_resolver_mode=UPLOAD_OWNER_RESOLVER_VERIFY,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    ensured = resolve_upload_ownership(
+        OWNER_REF,
+        owner_resolver=resolver,
+        owner_resolver_mode=UPLOAD_OWNER_RESOLVER_ENSURE,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert verified["resolution_status"] == "RESOLVED"
+    assert ensured["ensure"] is True
+    assert [call["ensure"] for call in resolver.calls] == [False, True]
+    assert resolver.calls[0]["ownership_ref"] == OWNER_REF
+
+
+def test_resolve_upload_ownership_requires_configured_resolver_and_maps_errors() -> None:
+    with pytest.raises(UploadHandoffError) as missing_resolver:
+        resolve_upload_ownership(
+            OWNER_REF,
+            owner_resolver=None,
+            owner_resolver_mode=UPLOAD_OWNER_RESOLVER_VERIFY,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert missing_resolver.value.status_code == 503
+    assert missing_resolver.value.error_code == "ae.upload_owner_resolver_unavailable"
+    assert missing_resolver.value.retryable is True
+
+    with pytest.raises(UploadHandoffError) as unresolved:
+        resolve_upload_ownership(
+            OWNER_REF,
+            owner_resolver=FailingOwnerResolver(),
+            owner_resolver_mode=UPLOAD_OWNER_RESOLVER_VERIFY,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert unresolved.value.status_code == 404
+    assert unresolved.value.error_code == "ae.upload_owner_unresolved"
+    assert unresolved.value.detail == "Subject was not found."
+
+
 def test_upload_handoff_status_maps_duplicate() -> None:
     assert upload_handoff_status({"dedupe": {"status": "CREATED"}}) == "QUEUED"
     assert (
@@ -322,6 +458,99 @@ def test_upload_routes_accept_readback_duplicate_and_auth() -> None:
     assert isinstance(cx_client, FakeCxUploadClient)
     assert cx_client.calls[0]["payload"]["owner_user_id"] == "user-a"
     assert cx_client.calls[0]["payload"]["ownership_ref"] == OWNER_REF
+
+
+def test_upload_route_resolves_owner_before_forwarding_to_cx() -> None:
+    owner_resolver = FakeOwnerResolver()
+    client, _, cx_client = build_client(
+        owner_resolver=owner_resolver,
+        owner_resolver_mode=UPLOAD_OWNER_RESOLVER_VERIFY,
+    )
+
+    response = client.post(
+        "/api/v1/uploads",
+        json={
+            "filename": "report.md",
+            "content_text": "hello",
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 202
+    assert len(owner_resolver.calls) == 1
+    assert owner_resolver.calls[0]["ensure"] is False
+    assert owner_resolver.calls[0]["request_id"] == REQUEST_ID
+    assert isinstance(cx_client, FakeCxUploadClient)
+    assert len(cx_client.calls) == 1
+    assert cx_client.calls[0]["payload"]["ownership_ref"] == OWNER_REF
+
+
+def test_upload_route_builds_default_resolver_when_env_mode_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner_resolver = FakeOwnerResolver()
+    monkeypatch.setenv("NEX_AE_UPLOAD_OWNER_RESOLVER_MODE", UPLOAD_OWNER_RESOLVER_VERIFY)
+    monkeypatch.setattr(
+        ae_uploads,
+        "build_default_subject_registry_resolver",
+        lambda *, caller_service_id: owner_resolver,
+    )
+
+    client, _, cx_client = build_client()
+    response = client.post(
+        "/api/v1/uploads",
+        json={
+            "filename": "report.md",
+            "content_text": "hello",
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 202
+    assert len(owner_resolver.calls) == 1
+    assert owner_resolver.calls[0]["ensure"] is False
+    assert isinstance(cx_client, FakeCxUploadClient)
+    assert len(cx_client.calls) == 1
+
+
+def test_upload_route_can_ensure_owner_before_forwarding_to_cx() -> None:
+    owner_resolver = FakeOwnerResolver()
+    client, _, _ = build_client(
+        owner_resolver=owner_resolver,
+        owner_resolver_mode=UPLOAD_OWNER_RESOLVER_ENSURE,
+    )
+
+    response = client.post(
+        "/api/v1/uploads",
+        json={"filename": "report.md", "content_text": "hello"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 202
+    assert owner_resolver.calls[0]["ensure"] is True
+
+
+def test_upload_route_reports_owner_resolution_failure_before_cx_call() -> None:
+    cx_client = FakeCxUploadClient()
+    client, _, _ = build_client(
+        cx_client,
+        owner_resolver=FailingOwnerResolver(),
+        owner_resolver_mode=UPLOAD_OWNER_RESOLVER_VERIFY,
+    )
+
+    response = client.post(
+        "/api/v1/uploads",
+        json={"filename": "report.md", "content_text": "hello"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "ae.upload_owner_unresolved"
+    assert cx_client.calls == []
 
 
 def test_upload_routes_report_invalid_missing_and_cx_failure() -> None:

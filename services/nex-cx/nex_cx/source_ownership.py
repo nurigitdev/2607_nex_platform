@@ -162,13 +162,21 @@ def build_source_ownership_boundary_decision() -> dict[str, Any]:
                     "before forwarding CX handoffs."
                 ),
             },
+            {
+                "slice": "0200",
+                "work": "cx_upload_ownership_resolver_guardrail_smoke",
+                "reason": (
+                    "CX should add a defense-in-depth owner resolver guardrail "
+                    "and PostgreSQL smoke evidence."
+                ),
+            },
         ],
         "private_payload_policy": (
             "No raw source bytes, source text, extracted markdown, chunk text, "
             "summary text, vectors, prompts, or raw identity secrets are stored "
             "in ownership metadata."
         ),
-        "next_slice": "0199_ae_upload_ownership_resolver_wiring",
+        "next_slice": "0200_cx_upload_ownership_resolver_guardrail_smoke",
     }
 
 

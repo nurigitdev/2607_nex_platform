@@ -174,7 +174,7 @@
       "minLength": 1
     },
     "next_slice": {
-      "const": "0199_ae_upload_ownership_resolver_wiring"
+      "const": "0200_cx_upload_ownership_resolver_guardrail_smoke"
     }
   },
   "$defs": {

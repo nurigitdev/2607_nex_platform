@@ -66,6 +66,10 @@ Upload handoff:
 - Slice 0197 completes the CX side of that handoff: CX now canonicalizes the
   propagated `ownership_ref` and rejects mismatched legacy aliases before
   owner-scoped duplicate detection runs.
+- Slice 0199 can verify or ensure upload ownership refs with OA before CX is
+  called. Set `NEX_AE_UPLOAD_OWNER_RESOLVER_MODE` to `verify` or `ensure` to
+  enable the guardrail; the default `disabled` mode preserves mock-first local
+  regression behavior.
 - Upload handoff records keep the propagated stable subject refs for debugging,
   but do not store passwords, tokens, emails, raw identity profiles, source
   bytes, storage keys, or local filesystem paths.

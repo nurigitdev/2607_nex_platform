@@ -14,6 +14,9 @@ from fastapi.responses import JSONResponse
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
+    SubjectRegistryResolver,
+    SubjectRegistryResolverError,
+    build_default_subject_registry_resolver,
     issue_mock_service_token,
     problem_response,
     request_id_from_headers,
@@ -28,6 +31,17 @@ OWNERSHIP_REF_SCHEMA_VERSION = "cx_source_ownership_ref.v1"
 OA_TENANT_REF_TYPE = "oa.tenant"
 OA_USER_SUBJECT_REF_TYPE = "oa.user"
 OWNERSHIP_COMPATIBILITY_MODE = "legacy_owner_fields_mapped_to_oa_subject_refs"
+UPLOAD_OWNER_RESOLVER_DISABLED = "disabled"
+UPLOAD_OWNER_RESOLVER_VERIFY = "verify"
+UPLOAD_OWNER_RESOLVER_ENSURE = "ensure"
+UPLOAD_OWNER_RESOLVER_MODES = frozenset(
+    {
+        UPLOAD_OWNER_RESOLVER_DISABLED,
+        UPLOAD_OWNER_RESOLVER_VERIFY,
+        UPLOAD_OWNER_RESOLVER_ENSURE,
+    }
+)
+UPLOAD_OWNER_RESOLVER_MODE_ENV = "NEX_AE_UPLOAD_OWNER_RESOLVER_MODE"
 
 
 class CxUploadClient(Protocol):
@@ -125,9 +139,19 @@ def register_upload_routes(
     *,
     store: UploadHandoffStore | None = None,
     cx_client: CxUploadClient | None = None,
+    owner_resolver: SubjectRegistryResolver | None = None,
+    owner_resolver_mode: str | None = None,
 ) -> None:
     upload_store = store or DEFAULT_UPLOAD_HANDOFF_STORE
     client = cx_client or build_default_cx_upload_client()
+    resolver_mode = normalize_upload_owner_resolver_mode(
+        owner_resolver_mode or os.getenv(UPLOAD_OWNER_RESOLVER_MODE_ENV)
+    )
+    resolver = owner_resolver
+    if resolver is None and resolver_mode != UPLOAD_OWNER_RESOLVER_DISABLED:
+        resolver = build_default_subject_registry_resolver(
+            caller_service_id="nex-ae-api"
+        )
 
     @app.post("/api/v1/uploads", response_model=None)
     def create_upload_handoff(
@@ -143,6 +167,13 @@ def register_upload_routes(
         trace_id = payload.get("trace_id") or trace_id_from_headers(request)
         try:
             cx_payload = build_cx_upload_payload(payload, trace_id=trace_id)
+            resolve_upload_ownership(
+                cx_payload["ownership_ref"],
+                owner_resolver=resolver,
+                owner_resolver_mode=resolver_mode,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
             cx_record = client.register_upload(
                 cx_payload,
                 request_id=request_id,
@@ -224,6 +255,54 @@ def build_cx_upload_payload(
     if "size_bytes" in source_payload:
         payload["size_bytes"] = non_negative_int(source_payload["size_bytes"])
     return payload
+
+
+def resolve_upload_ownership(
+    ownership_ref: dict[str, Any],
+    *,
+    owner_resolver: SubjectRegistryResolver | None,
+    owner_resolver_mode: str,
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any] | None:
+    mode = normalize_upload_owner_resolver_mode(owner_resolver_mode)
+    if mode == UPLOAD_OWNER_RESOLVER_DISABLED:
+        return None
+    if owner_resolver is None:
+        raise UploadHandoffError(
+            status_code=503,
+            error_code="ae.upload_owner_resolver_unavailable",
+            detail="AE upload owner resolver is enabled but not configured.",
+            retryable=True,
+        )
+    try:
+        return owner_resolver.resolve_ownership_ref(
+            ownership_ref,
+            request_id=request_id,
+            trace_id=trace_id,
+            ensure=mode == UPLOAD_OWNER_RESOLVER_ENSURE,
+        )
+    except SubjectRegistryResolverError as exc:
+        raise UploadHandoffError(
+            status_code=exc.status_code,
+            error_code="ae.upload_owner_unresolved",
+            detail=exc.detail,
+            retryable=exc.retryable,
+        ) from exc
+
+
+def normalize_upload_owner_resolver_mode(value: str | None) -> str:
+    mode = (value or UPLOAD_OWNER_RESOLVER_DISABLED).strip().lower()
+    if mode not in UPLOAD_OWNER_RESOLVER_MODES:
+        raise UploadHandoffError(
+            status_code=422,
+            error_code="ae.upload_owner_resolver_mode_invalid",
+            detail=(
+                f"{UPLOAD_OWNER_RESOLVER_MODE_ENV} must be one of: "
+                f"{', '.join(sorted(UPLOAD_OWNER_RESOLVER_MODES))}."
+            ),
+        )
+    return mode
 
 
 def build_upload_ownership_ref(source_payload: dict[str, Any]) -> dict[str, Any]:
