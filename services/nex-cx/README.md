@@ -43,6 +43,10 @@ Internal persistence boundary:
   records, and pass `uploaded_by_subject_ref` through to content object/owner
   ACL metadata. Legacy `tenant_id`, `owner_user_id`, and `user_id` aliases stay
   accepted for mock-first compatibility.
+- Slice 0200 adds the optional CX upload owner resolver guardrail. The default
+  `NEX_CX_UPLOAD_OWNER_RESOLVER_MODE=disabled` preserves local/mock regression
+  behavior. Set it to `verify` to require the OA subject registry to resolve the
+  upload `ownership_ref` before CX writes source/content metadata.
 - Same-owner duplicate uploads return the existing document; different owners
   get distinct document IDs without learning about each other.
 - Upload registration accepts `content_text`, `content_base64`, or metadata-only
@@ -219,6 +223,10 @@ Grounded generation validation:
   `scripts/smoke/run_cx_retrieval_postgres_smoke.py`. It is skipped by default
   and only writes to the CX test database when
   `NEX_CX_RETRIEVAL_POSTGRES_SMOKE=1` is set with the `test` profile.
+- CX upload ownership PostgreSQL smoke evidence is available through
+  `scripts/smoke/run_cx_upload_ownership_postgres_smoke.py`. It is skipped by
+  default and only writes to the CX test database when
+  `NEX_CX_UPLOAD_OWNERSHIP_POSTGRES_SMOKE=1` is set with the `test` profile.
 - CX processing PostgreSQL operational event evidence is available through
   `scripts/smoke/run_cx_processing_postgres_event_smoke.py`. It is skipped by
   default and only writes to the CX test database when

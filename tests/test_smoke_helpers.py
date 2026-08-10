@@ -24,6 +24,7 @@ import run_cx_processing_postgres_event_smoke as cx_processing_event_smoke
 import run_cx_processing_postgres_jobqueue_smoke as cx_processing_smoke
 import run_cx_processing_postgres_persistence_smoke as cx_processing_persistence_smoke
 import run_cx_processing_postgres_api_smoke as cx_processing_api_smoke
+import run_cx_upload_ownership_postgres_smoke as cx_upload_ownership_smoke
 import run_cx_retrieval_postgres_smoke as cx_retrieval_smoke
 import run_postgres_job_replay_smoke as job_replay_smoke
 import run_postgres_jobqueue_smoke as jobqueue_smoke
@@ -2708,6 +2709,11 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
     )
     monkeypatch.setattr(
         postgres_suite_smoke,
+        "run_cx_upload_ownership_postgres_smoke",
+        child_pass("cx_upload_ownership_postgres_smoke"),
+    )
+    monkeypatch.setattr(
+        postgres_suite_smoke,
         "run_ag_retrieval_package_postgres_smoke",
         child_pass("ag_retrieval_package_postgres_smoke"),
     )
@@ -2769,6 +2775,7 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("ag_service_log_retention_postgres_smoke", "test"),
         ("postgres_operations_smoke_pack", "test"),
         ("cx_retrieval_postgres_smoke", "test"),
+        ("cx_upload_ownership_postgres_smoke", "test"),
         ("ag_retrieval_package_postgres_smoke", "test"),
         ("cx_processing_postgres_jobqueue_smoke", "test"),
         ("cx_processing_postgres_event_smoke", "test"),
@@ -2778,7 +2785,7 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("ag_cross_service_observability_smoke", "test"),
     ]
     assert postgres_suite_smoke.summary_line(evidence) == (
-        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=18"
+        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=19"
     )
 
 
@@ -4444,6 +4451,332 @@ def test_cx_processing_postgres_api_smoke_main_prints_summary_and_full_evidence(
     assert "cx_processing_postgres_api_smoke=skipped" in capsys.readouterr().out
 
     assert cx_processing_api_smoke.main([]) == 0
+    assert '"status": "SKIPPED"' in capsys.readouterr().out
+
+
+def test_cx_upload_ownership_postgres_smoke_skips_by_default() -> None:
+    evidence = cx_upload_ownership_smoke.run_cx_upload_ownership_postgres_smoke(environ={})
+
+    assert evidence["status"] == "SKIPPED"
+    assert cx_upload_ownership_smoke.summary_line(evidence) == (
+        "cx_upload_ownership_postgres_smoke=skipped "
+        "reason=NEX_CX_UPLOAD_OWNERSHIP_POSTGRES_SMOKE"
+    )
+
+
+def test_cx_upload_ownership_postgres_smoke_rejects_non_test_profile() -> None:
+    evidence = cx_upload_ownership_smoke.run_cx_upload_ownership_postgres_smoke(
+        environ={
+            "NEX_CX_UPLOAD_OWNERSHIP_POSTGRES_SMOKE": "1",
+            "NEX_CX_UPLOAD_OWNERSHIP_POSTGRES_SMOKE_PROFILE": "dev",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "profile_not_allowed"
+
+
+def test_cx_upload_ownership_postgres_smoke_reports_pass_without_leaking_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration_calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        cx_upload_ownership_smoke,
+        "service_database_env",
+        lambda service_id, profile: f"{service_id}:{profile}:env",
+    )
+    monkeypatch.setattr(
+        cx_upload_ownership_smoke,
+        "service_database_url",
+        lambda service_id, profile, environ: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        cx_upload_ownership_smoke,
+        "run_service_migrations",
+        lambda service_id, database_url, profile: migration_calls.append(
+            (service_id, profile)
+        ),
+    )
+    monkeypatch.setattr(
+        cx_upload_ownership_smoke,
+        "_execute_upload_ownership_smoke",
+        lambda database_url, runtime_environ: {
+            "document_id": "doc-001",
+            "source_file_id": "source-001",
+            "checks": {
+                "api_status_created": True,
+                "runtime_mode": True,
+                "resolver_called_once": True,
+                "resolver_verify_only": True,
+                "persisted_content_owner_refs": True,
+                "persisted_owner_acl_ref": True,
+                "source_checksum_verified": True,
+                "source_file_path_materialized": True,
+                "raw_payload_absent": True,
+            },
+        },
+    )
+
+    evidence = cx_upload_ownership_smoke.run_cx_upload_ownership_postgres_smoke(
+        environ={"NEX_CX_UPLOAD_OWNERSHIP_POSTGRES_SMOKE": "1"}
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["database_env"] == "nex-cx:test:env"
+    assert evidence["checks"]["persisted_content_owner_refs"] is True
+    assert evidence["redacted_database_url"] == "postgresql://user:***@localhost/db"
+    assert "secret" not in str(evidence)
+    assert migration_calls == [("nex-cx", "test")]
+    assert cx_upload_ownership_smoke.summary_line(evidence) == (
+        "cx_upload_ownership_postgres_smoke=pass "
+        "service=nex-cx db_env=nex-cx:test:env"
+    )
+
+
+def test_cx_upload_ownership_postgres_smoke_reports_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_migration_error(*args: object, **kwargs: object) -> None:
+        raise cx_upload_ownership_smoke.MigrationError("missing database URL env")
+
+    monkeypatch.setattr(
+        cx_upload_ownership_smoke,
+        "service_database_url",
+        raise_migration_error,
+    )
+    config_failure = cx_upload_ownership_smoke.run_cx_upload_ownership_postgres_smoke(
+        environ={"NEX_CX_UPLOAD_OWNERSHIP_POSTGRES_SMOKE": "1"}
+    )
+
+    assert config_failure["status"] == "FAIL"
+    assert config_failure["failure_code"] == "configuration_invalid"
+
+    monkeypatch.setattr(
+        cx_upload_ownership_smoke,
+        "service_database_url",
+        lambda *args, **kwargs: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        cx_upload_ownership_smoke,
+        "run_service_migrations",
+        lambda *args, **kwargs: None,
+    )
+
+    def raise_runtime_error(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        cx_upload_ownership_smoke,
+        "_execute_upload_ownership_smoke",
+        raise_runtime_error,
+    )
+    execution_failure = cx_upload_ownership_smoke.run_cx_upload_ownership_postgres_smoke(
+        environ={"NEX_CX_UPLOAD_OWNERSHIP_POSTGRES_SMOKE": "1"}
+    )
+
+    assert execution_failure["status"] == "FAIL"
+    assert execution_failure["failure_code"] == "execution_failed"
+    assert cx_upload_ownership_smoke.summary_line(execution_failure) == (
+        "cx_upload_ownership_postgres_smoke=fail "
+        "service=nex-cx reason=execution_failed"
+    )
+
+
+def test_cx_upload_ownership_postgres_smoke_execute_with_sqlite_fixture(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'cx-upload-ownership.sqlite'}"
+    engine = cx_upload_ownership_smoke.build_engine(database_url)
+    _create_sqlite_cx_content_retrieval_tables(engine)
+
+    evidence = cx_upload_ownership_smoke._execute_upload_ownership_smoke(
+        database_url=database_url,
+        runtime_environ={
+            "NEX_CX_DATABASE_URL": database_url,
+            "NEX_CX_PERSISTENCE_MODE": "postgres",
+            "NEX_CX_UPLOAD_OWNER_RESOLVER_MODE": "verify",
+        },
+    )
+
+    assert evidence["checks"] == {
+        "api_status_created": True,
+        "runtime_mode": True,
+        "resolver_called_once": True,
+        "resolver_verify_only": True,
+        "persisted_content_owner_refs": True,
+        "persisted_owner_acl_ref": True,
+        "source_checksum_verified": True,
+        "source_file_path_materialized": True,
+        "raw_payload_absent": True,
+    }
+    with engine.begin() as connection:
+        remaining_content = connection.execute(
+            text("SELECT count(*) FROM cx_content_objects")
+        ).scalar_one()
+        remaining_sources = connection.execute(
+            text("SELECT count(*) FROM cx_source_files")
+        ).scalar_one()
+    assert remaining_content == 0
+    assert remaining_sources == 0
+
+
+def test_cx_upload_ownership_postgres_smoke_execute_failure_edges(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'cx-upload-ownership-edge.sqlite'}"
+    engine = cx_upload_ownership_smoke.build_engine(database_url)
+    _create_sqlite_cx_content_retrieval_tables(engine)
+
+    monkeypatch.setattr(
+        cx_upload_ownership_smoke,
+        "attach_service_persistence_runtime",
+        lambda *args, **kwargs: SimpleNamespace(api_session_factory=None),
+    )
+    with pytest.raises(RuntimeError, match="session factory"):
+        cx_upload_ownership_smoke._execute_upload_ownership_smoke(
+            database_url=database_url,
+            runtime_environ={
+                "NEX_CX_DATABASE_URL": database_url,
+                "NEX_CX_PERSISTENCE_MODE": "postgres",
+            },
+        )
+
+    monkeypatch.undo()
+    monkeypatch.setattr(
+        cx_upload_ownership_smoke,
+        "_content_owner_refs_match",
+        lambda stored, ownership_ref: False,
+    )
+    with pytest.raises(RuntimeError, match="smoke checks failed"):
+        cx_upload_ownership_smoke._execute_upload_ownership_smoke(
+            database_url=database_url,
+            runtime_environ={
+                "NEX_CX_DATABASE_URL": database_url,
+                "NEX_CX_PERSISTENCE_MODE": "postgres",
+            },
+        )
+
+    with engine.begin() as connection:
+        remaining_content = connection.execute(
+            text("SELECT count(*) FROM cx_content_objects")
+        ).scalar_one()
+        remaining_sources = connection.execute(
+            text("SELECT count(*) FROM cx_source_files")
+        ).scalar_one()
+    assert remaining_content == 0
+    assert remaining_sources == 0
+
+
+def test_cx_upload_ownership_postgres_smoke_helpers_cover_edges() -> None:
+    ownership_ref = cx_upload_ownership_smoke._ownership_ref(
+        "aabbccdd-0000-0000-0000-000000000000"
+    )
+    matching = {
+        "tenant_ref_type": "oa.tenant",
+        "tenant_ref_id": "tenant-smoke-aabbccdd",
+        "owner_subject_ref_type": "oa.user",
+        "owner_subject_ref_id": "owner-smoke-aabbccdd",
+        "uploaded_by_subject_ref_type": "oa.user",
+        "uploaded_by_subject_ref_id": "uploader-smoke-aabbccdd",
+        "principal_ref_type": "oa.user",
+        "principal_ref_id": "owner-smoke-aabbccdd",
+        "granted_by_subject_ref_type": "oa.user",
+        "granted_by_subject_ref_id": "uploader-smoke-aabbccdd",
+    }
+
+    assert cx_upload_ownership_smoke._content_owner_refs_match(
+        matching,
+        ownership_ref,
+    )
+    assert cx_upload_ownership_smoke._owner_acl_ref_matches(matching, ownership_ref)
+    assert not cx_upload_ownership_smoke._content_owner_refs_match(
+        {**matching, "owner_subject_ref_id": "other"},
+        ownership_ref,
+    )
+    assert not cx_upload_ownership_smoke._owner_acl_ref_matches(
+        {**matching, "principal_ref_id": "other"},
+        ownership_ref,
+    )
+
+
+def test_cx_upload_ownership_postgres_smoke_db_helper_edges(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'cx-upload-helper.sqlite'}"
+    engine = cx_upload_ownership_smoke.build_engine(database_url)
+    _create_sqlite_cx_content_retrieval_tables(engine)
+
+    with pytest.raises(RuntimeError, match="was not persisted"):
+        cx_upload_ownership_smoke._read_stored_upload_ownership(
+            engine,
+            document_id="00000000-0000-0000-0000-000000000000",
+        )
+
+    cx_upload_ownership_smoke._delete_smoke_upload_rows(
+        engine,
+        document_id=None,
+        source_file_id=None,
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO cx_source_files (
+                    source_file_id,
+                    source_sha256,
+                    size_bytes,
+                    content_type,
+                    storage_uri,
+                    storage_backend,
+                    storage_key,
+                    stored_filename,
+                    stored_extension,
+                    created_at
+                )
+                VALUES (
+                    'source-helper',
+                    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                    1,
+                    'text/plain',
+                    'local://cx/source-files/20260810/aa/aa/source-helper.txt',
+                    'local_filesystem',
+                    '20260810/aa/aa/source-helper.txt',
+                    'source-helper.txt',
+                    '.txt',
+                    '2026-08-10T00:00:00Z'
+                )
+                """
+            )
+        )
+    cx_upload_ownership_smoke._delete_smoke_upload_rows(
+        engine,
+        document_id=None,
+        source_file_id="source-helper",
+    )
+    with engine.begin() as connection:
+        remaining_sources = connection.execute(
+            text("SELECT count(*) FROM cx_source_files")
+        ).scalar_one()
+    assert remaining_sources == 0
+
+
+def test_cx_upload_ownership_postgres_smoke_main_prints_summary_and_full_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cx_upload_ownership_smoke, "load_env_file", lambda path: None)
+    monkeypatch.setattr(
+        cx_upload_ownership_smoke,
+        "run_cx_upload_ownership_postgres_smoke",
+        lambda: {
+            "smoke_schema_version": "cx_upload_ownership_postgres_smoke.v1",
+            "status": "SKIPPED",
+            "skip_reason": "NEX_CX_UPLOAD_OWNERSHIP_POSTGRES_SMOKE is not enabled.",
+        },
+    )
+
+    assert cx_upload_ownership_smoke.main(["--summary"]) == 0
+    assert "cx_upload_ownership_postgres_smoke=skipped" in capsys.readouterr().out
+
+    assert cx_upload_ownership_smoke.main([]) == 0
     assert '"status": "SKIPPED"' in capsys.readouterr().out
 
 

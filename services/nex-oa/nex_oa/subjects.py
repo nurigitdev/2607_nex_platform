@@ -457,7 +457,7 @@ def register_subject_registry_routes(
                 "capabilities": dict(OA_SUBJECT_REGISTRY_CAPABILITIES),
                 "deferred": list(OA_SUBJECT_REGISTRY_DEFERRED),
                 "private_payload_policy": _private_payload_policy(),
-                "next_slice": "0200_cx_upload_ownership_resolver_guardrail_smoke",
+                "next_slice": "0201_cx_owner_scoped_document_library_projection",
             },
             request,
         )
@@ -578,7 +578,7 @@ def build_subject_registry_snapshot(
         "capabilities": dict(OA_SUBJECT_REGISTRY_CAPABILITIES),
         "deferred": list(OA_SUBJECT_REGISTRY_DEFERRED),
         "private_payload_policy": _private_payload_policy(),
-        "next_slice": "0200_cx_upload_ownership_resolver_guardrail_smoke",
+        "next_slice": "0201_cx_owner_scoped_document_library_projection",
     }
 
 

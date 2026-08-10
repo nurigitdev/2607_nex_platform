@@ -297,7 +297,7 @@ def build_cx_persistence_gap_audit(
             "deferred_schema_decision_count": len(CX_DEFERRED_SCHEMA_DECISIONS),
             "private_payload_boundary_count": len(CX_PRIVATE_PAYLOAD_BOUNDARIES),
             "next_recommended_slice": (
-                "0200_cx_upload_ownership_resolver_guardrail_smoke"
+                "0201_cx_owner_scoped_document_library_projection"
             ),
         },
         "observed_store_counts": counts,

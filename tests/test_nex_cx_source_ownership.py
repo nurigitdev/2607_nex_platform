@@ -76,7 +76,7 @@ def test_source_ownership_boundary_decision_requires_minimal_oa_subject_registry
         "source_file_metadata_shared_by_hash": True,
     }
     assert decision["next_slice"] == (
-        "0200_cx_upload_ownership_resolver_guardrail_smoke"
+        "0201_cx_owner_scoped_document_library_projection"
     )
     assert decision["migration_sequence"][-2]["slice"] == "0199"
     assert decision["migration_sequence"][-1]["slice"] == "0200"

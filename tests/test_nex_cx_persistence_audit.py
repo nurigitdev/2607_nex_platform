@@ -62,7 +62,7 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
         "deferred_schema_decision_count": 3,
         "private_payload_boundary_count": 6,
         "next_recommended_slice": (
-            "0200_cx_upload_ownership_resolver_guardrail_smoke"
+            "0201_cx_owner_scoped_document_library_projection"
         ),
     }
     assert all(count == 0 for count in audit["observed_store_counts"].values())
@@ -111,7 +111,7 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
         == "ag_dashboard_integrated"
     )
     assert audit["processing_run_persistence_decision"]["next_slice"] == (
-        "0200_cx_upload_ownership_resolver_guardrail_smoke"
+        "0201_cx_owner_scoped_document_library_projection"
     )
     assert audit["source_ownership_boundary_decision"]["decision_slice"] == "0192"
     assert audit["source_ownership_boundary_decision"]["nex_oa_dependency"][

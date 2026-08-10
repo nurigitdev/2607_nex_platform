@@ -16,7 +16,10 @@ from fastapi.responses import JSONResponse
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
+    SubjectRegistryResolver,
+    SubjectRegistryResolverError,
     build_common_job,
+    build_default_subject_registry_resolver,
     build_subject_ref,
     problem_response,
     request_id_from_headers,
@@ -61,6 +64,15 @@ DEFAULT_BM25_TOKENIZER = "mecab_ko"
 DEFAULT_BM25_TOKENIZER_FALLBACK = "korean_mixed_v1"
 DEFAULT_MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
 OWNERSHIP_COMPATIBILITY_MODE = "legacy_owner_fields_mapped_to_oa_subject_refs"
+UPLOAD_OWNER_RESOLVER_DISABLED = "disabled"
+UPLOAD_OWNER_RESOLVER_VERIFY = "verify"
+UPLOAD_OWNER_RESOLVER_MODES = frozenset(
+    {
+        UPLOAD_OWNER_RESOLVER_DISABLED,
+        UPLOAD_OWNER_RESOLVER_VERIFY,
+    }
+)
+UPLOAD_OWNER_RESOLVER_MODE_ENV = "NEX_CX_UPLOAD_OWNER_RESOLVER_MODE"
 OWNERSHIP_REF_ALLOWED_FIELDS = frozenset(
     {
         "ownership_schema_version",
@@ -660,9 +672,17 @@ def register_ingestion_routes(
     *,
     store: ContentIngestionStore | None = None,
     storage_config: CxStorageConfig | None = None,
+    owner_resolver: SubjectRegistryResolver | None = None,
+    owner_resolver_mode: str | None = None,
 ) -> None:
     ingestion_store = store or DEFAULT_INGESTION_STORE
     config = storage_config or build_storage_config()
+    resolver_mode = normalize_upload_owner_resolver_mode(
+        owner_resolver_mode or os.getenv(UPLOAD_OWNER_RESOLVER_MODE_ENV)
+    )
+    resolver = owner_resolver
+    if resolver is None and resolver_mode != UPLOAD_OWNER_RESOLVER_DISABLED:
+        resolver = build_default_subject_registry_resolver(caller_service_id="nex-cx")
 
     @app.post("/api/v1/documents/uploads", response_model=None)
     def register_upload(
@@ -674,12 +694,21 @@ def register_ingestion_routes(
         if auth_problem is not None:
             return auth_problem
 
+        request_id = request_id_from_headers(request)
+        trace_id = payload.get("trace_id") or trace_id_from_headers(request)
         try:
             record = build_upload_registration(
                 payload,
                 storage_config=config,
-                request_id=request_id_from_headers(request),
-                trace_id=payload.get("trace_id") or trace_id_from_headers(request),
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            resolve_upload_ownership(
+                record["ownership_ref"],
+                owner_resolver=resolver,
+                owner_resolver_mode=resolver_mode,
+                request_id=request_id,
+                trace_id=trace_id,
             )
         except IngestionError as exc:
             return _ingestion_problem_response(request, exc)
@@ -1246,6 +1275,54 @@ def build_upload_ownership_ref(payload: Mapping[str, Any]) -> dict[str, Any]:
         owner_user_id=owner_subject_ref["id"],
         uploaded_by_user_id=uploaded_by_subject_ref["id"],
     )
+
+
+def resolve_upload_ownership(
+    ownership_ref: dict[str, Any],
+    *,
+    owner_resolver: SubjectRegistryResolver | None,
+    owner_resolver_mode: str,
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any] | None:
+    mode = normalize_upload_owner_resolver_mode(owner_resolver_mode)
+    if mode == UPLOAD_OWNER_RESOLVER_DISABLED:
+        return None
+    if owner_resolver is None:
+        raise IngestionError(
+            status_code=503,
+            error_code="cx.upload_owner_resolver_unavailable",
+            detail="CX upload owner resolver is enabled but not configured.",
+            retryable=True,
+        )
+    try:
+        return owner_resolver.resolve_ownership_ref(
+            ownership_ref,
+            request_id=request_id,
+            trace_id=trace_id,
+            ensure=False,
+        )
+    except SubjectRegistryResolverError as exc:
+        raise IngestionError(
+            status_code=exc.status_code,
+            error_code="cx.upload_owner_unresolved",
+            detail=exc.detail,
+            retryable=exc.retryable,
+        ) from exc
+
+
+def normalize_upload_owner_resolver_mode(value: str | None) -> str:
+    mode = (value or UPLOAD_OWNER_RESOLVER_DISABLED).strip().lower()
+    if mode not in UPLOAD_OWNER_RESOLVER_MODES:
+        raise IngestionError(
+            status_code=422,
+            error_code="cx.upload_owner_resolver_mode_invalid",
+            detail=(
+                f"{UPLOAD_OWNER_RESOLVER_MODE_ENV} must be one of: "
+                f"{', '.join(sorted(UPLOAD_OWNER_RESOLVER_MODES))}."
+            ),
+        )
+    return mode
 
 
 def _ownership_ref_from_upload_record(record: Mapping[str, Any]) -> dict[str, Any]:

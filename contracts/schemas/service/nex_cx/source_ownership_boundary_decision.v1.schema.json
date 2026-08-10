@@ -174,7 +174,7 @@
       "minLength": 1
     },
     "next_slice": {
-      "const": "0200_cx_upload_ownership_resolver_guardrail_smoke"
+      "const": "0201_cx_owner_scoped_document_library_projection"
     }
   },
   "$defs": {

@@ -42,7 +42,7 @@ def test_processing_run_persistence_decision_freezes_target_mapping() -> None:
     assert "error_detail_sha256" in decision["step_metadata_fields"]
     assert "steps[].error.detail" in decision["private_payload_exclusions"]
     assert decision["next_slice"] == (
-        "0200_cx_upload_ownership_resolver_guardrail_smoke"
+        "0201_cx_owner_scoped_document_library_projection"
     )
 
 

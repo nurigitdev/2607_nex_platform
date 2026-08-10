@@ -176,7 +176,7 @@ def build_source_ownership_boundary_decision() -> dict[str, Any]:
             "summary text, vectors, prompts, or raw identity secrets are stored "
             "in ownership metadata."
         ),
-        "next_slice": "0200_cx_upload_ownership_resolver_guardrail_smoke",
+        "next_slice": "0201_cx_owner_scoped_document_library_projection",
     }
 
 

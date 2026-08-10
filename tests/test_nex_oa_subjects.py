@@ -141,7 +141,7 @@ def test_subject_registry_snapshot_matches_contract_schema() -> None:
     assert snapshot["capabilities"]["stable_subject_registry"] is True
     assert snapshot["capabilities"]["password_login"] is False
     assert (
-        "0200_cx_upload_ownership_resolver_guardrail_smoke"
+        "0201_cx_owner_scoped_document_library_projection"
         == snapshot["next_slice"]
     )
 

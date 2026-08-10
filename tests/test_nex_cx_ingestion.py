@@ -10,6 +10,8 @@ from nex_cx.ingestion import (
     ContentIngestionStore,
     CxStorageConfig,
     IngestionError,
+    UPLOAD_OWNER_RESOLVER_DISABLED,
+    UPLOAD_OWNER_RESOLVER_VERIFY,
     build_ingestion_job,
     build_storage_config,
     build_upload_ownership_ref,
@@ -17,8 +19,10 @@ from nex_cx.ingestion import (
     markdown_from_source_text,
     materialize_local_source_bytes,
     materialize_local_source_file,
+    normalize_upload_owner_resolver_mode,
     payload_source_kind,
     register_ingestion_routes,
+    resolve_upload_ownership,
     run_text_extraction_job,
     sha256_bytes,
     sanitize_filename,
@@ -30,7 +34,13 @@ from nex_cx.ingestion import (
     validate_upload_size,
     write_extracted_markdown,
 )
-from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
+import nex_cx.ingestion as cx_ingestion
+from nex_runtime import (
+    SERVICE_SPECS,
+    SubjectRegistryResolverError,
+    build_service_app,
+    issue_mock_service_token,
+)
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
@@ -42,6 +52,50 @@ OWNER_REF = {
     "legacy": {"tenant_id": "tenant-a", "owner_user_id": "user-a"},
     "compatibility_mode": "legacy_owner_fields_mapped_to_oa_subject_refs",
 }
+
+
+class FakeOwnerResolver:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def resolve_ownership_ref(
+        self,
+        ownership_ref: dict[str, object],
+        *,
+        request_id: str,
+        trace_id: str,
+        ensure: bool = False,
+    ) -> dict[str, object]:
+        self.calls.append(
+            {
+                "ownership_ref": ownership_ref,
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "ensure": ensure,
+            }
+        )
+        return {
+            "resolver_schema_version": "oa_subject_registry_resolver.v1",
+            "resolution_status": "RESOLVED",
+            "ensure": ensure,
+        }
+
+
+class FailingOwnerResolver:
+    def resolve_ownership_ref(
+        self,
+        ownership_ref: dict[str, object],
+        *,
+        request_id: str,
+        trace_id: str,
+        ensure: bool = False,
+    ) -> dict[str, object]:
+        raise SubjectRegistryResolverError(
+            status_code=404,
+            error_code="oa.subject_not_found",
+            detail="Subject was not found.",
+            retryable=False,
+        )
 
 
 def auth_headers() -> dict[str, str]:
@@ -69,10 +123,19 @@ def storage_config(tmp_path: Path) -> CxStorageConfig:
 
 def build_test_client(
     tmp_path: Path,
+    *,
+    owner_resolver: FakeOwnerResolver | FailingOwnerResolver | None = None,
+    owner_resolver_mode: str | None = None,
 ) -> tuple[TestClient, ContentIngestionStore]:
     app = build_service_app(SERVICE_SPECS["nex-cx"])
     store = ContentIngestionStore()
-    register_ingestion_routes(app, store=store, storage_config=storage_config(tmp_path))
+    register_ingestion_routes(
+        app,
+        store=store,
+        storage_config=storage_config(tmp_path),
+        owner_resolver=owner_resolver,
+        owner_resolver_mode=owner_resolver_mode,
+    )
     return TestClient(app), store
 
 
@@ -976,6 +1039,73 @@ def test_build_upload_registration_reports_validation_errors(
     assert exc.value.error_code == error_code
 
 
+def test_upload_owner_resolver_mode_normalization_and_disabled_skip() -> None:
+    assert normalize_upload_owner_resolver_mode(None) == UPLOAD_OWNER_RESOLVER_DISABLED
+    assert normalize_upload_owner_resolver_mode(" VERIFY ") == UPLOAD_OWNER_RESOLVER_VERIFY
+    assert (
+        resolve_upload_ownership(
+            OWNER_REF,
+            owner_resolver=None,
+            owner_resolver_mode=UPLOAD_OWNER_RESOLVER_DISABLED,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+        is None
+    )
+
+    with pytest.raises(IngestionError) as bad_mode:
+        normalize_upload_owner_resolver_mode("ensure")
+
+    assert bad_mode.value.error_code == "cx.upload_owner_resolver_mode_invalid"
+
+
+def test_resolve_upload_ownership_verify_mode_and_error_mapping() -> None:
+    resolver = FakeOwnerResolver()
+    resolved = resolve_upload_ownership(
+        OWNER_REF,
+        owner_resolver=resolver,
+        owner_resolver_mode=UPLOAD_OWNER_RESOLVER_VERIFY,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert resolved["resolution_status"] == "RESOLVED"
+    assert resolver.calls == [
+        {
+            "ownership_ref": OWNER_REF,
+            "request_id": REQUEST_ID,
+            "trace_id": TRACE_ID,
+            "ensure": False,
+        }
+    ]
+
+    with pytest.raises(IngestionError) as missing_resolver:
+        resolve_upload_ownership(
+            OWNER_REF,
+            owner_resolver=None,
+            owner_resolver_mode=UPLOAD_OWNER_RESOLVER_VERIFY,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert missing_resolver.value.status_code == 503
+    assert missing_resolver.value.error_code == "cx.upload_owner_resolver_unavailable"
+    assert missing_resolver.value.retryable is True
+
+    with pytest.raises(IngestionError) as unresolved:
+        resolve_upload_ownership(
+            OWNER_REF,
+            owner_resolver=FailingOwnerResolver(),
+            owner_resolver_mode=UPLOAD_OWNER_RESOLVER_VERIFY,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert unresolved.value.status_code == 404
+    assert unresolved.value.error_code == "cx.upload_owner_unresolved"
+    assert unresolved.value.detail == "Subject was not found."
+
+
 def test_upload_registration_endpoint_requires_service_claim(tmp_path: Path) -> None:
     client, _ = build_test_client(tmp_path)
 
@@ -1044,6 +1174,100 @@ def test_upload_registration_endpoint_accepts_canonical_ownership_ref(
     assert payload["ownership_ref"] == OWNER_REF
     assert payload["ownership"] == {"tenant_id": "tenant-a", "owner_user_id": "user-a"}
     assert content_object["ownership_ref"]["uploaded_by_subject_ref"]["id"] == "uploader-a"
+
+
+def test_upload_registration_endpoint_resolves_owner_before_persisting(
+    tmp_path: Path,
+) -> None:
+    owner_resolver = FakeOwnerResolver()
+    client, store = build_test_client(
+        tmp_path,
+        owner_resolver=owner_resolver,
+        owner_resolver_mode=UPLOAD_OWNER_RESOLVER_VERIFY,
+    )
+
+    response = client.post(
+        "/api/v1/documents/uploads",
+        json={
+            "filename": "source.md",
+            "content_type": "text/markdown",
+            "content_text": "hello from verified owner upload",
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+            "ownership_ref": OWNER_REF,
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert len(owner_resolver.calls) == 1
+    assert owner_resolver.calls[0]["ownership_ref"] == OWNER_REF
+    assert owner_resolver.calls[0]["ensure"] is False
+    assert store.get_document(payload["document_id"]) == payload
+
+
+def test_upload_registration_endpoint_builds_default_resolver_when_env_mode_enabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner_resolver = FakeOwnerResolver()
+    monkeypatch.setenv("NEX_CX_UPLOAD_OWNER_RESOLVER_MODE", UPLOAD_OWNER_RESOLVER_VERIFY)
+    monkeypatch.setattr(
+        cx_ingestion,
+        "build_default_subject_registry_resolver",
+        lambda *, caller_service_id: owner_resolver,
+    )
+
+    client, store = build_test_client(tmp_path)
+    response = client.post(
+        "/api/v1/documents/uploads",
+        json={
+            "filename": "source.md",
+            "content_type": "text/markdown",
+            "content_text": "hello from env verified upload",
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+            "ownership_ref": OWNER_REF,
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert len(owner_resolver.calls) == 1
+    assert owner_resolver.calls[0]["ensure"] is False
+    assert store.get_document(payload["document_id"]) == payload
+
+
+def test_upload_registration_endpoint_blocks_unresolved_owner_before_persisting(
+    tmp_path: Path,
+) -> None:
+    client, store = build_test_client(
+        tmp_path,
+        owner_resolver=FailingOwnerResolver(),
+        owner_resolver_mode=UPLOAD_OWNER_RESOLVER_VERIFY,
+    )
+
+    response = client.post(
+        "/api/v1/documents/uploads",
+        json={
+            "filename": "source.md",
+            "content_type": "text/markdown",
+            "content_text": "this source must not be persisted",
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+            "ownership_ref": OWNER_REF,
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "cx.upload_owner_unresolved"
+    assert store.documents == {}
+    assert store.content_repository.get_source_file_by_sha256(
+        sha256_text("this source must not be persisted")
+    ) is None
 
 
 def test_upload_registration_endpoint_materializes_base64_source_bytes(
