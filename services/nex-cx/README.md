@@ -38,6 +38,11 @@ Internal persistence boundary:
 - Slice 0196 updates AE to propagate canonical OA ownership refs to CX upload
   APIs while still sending legacy aliases. CX canonical intake remains the next
   compatibility step.
+- Slice 0197 updates the CX upload intake to consume `ownership_ref` directly,
+  reject canonical/legacy owner mismatches, persist the canonical ref in upload
+  records, and pass `uploaded_by_subject_ref` through to content object/owner
+  ACL metadata. Legacy `tenant_id`, `owner_user_id`, and `user_id` aliases stay
+  accepted for mock-first compatibility.
 - Same-owner duplicate uploads return the existing document; different owners
   get distinct document IDs without learning about each other.
 - Upload registration accepts `content_text`, `content_base64`, or metadata-only

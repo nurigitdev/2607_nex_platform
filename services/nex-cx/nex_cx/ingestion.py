@@ -4,6 +4,7 @@ import base64
 import binascii
 import hashlib
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -38,6 +39,12 @@ from nex_cx.repository import (
     build_content_object_record,
     build_source_file_record,
 )
+from nex_cx.source_ownership import (
+    CX_SOURCE_OWNERSHIP_REF_SCHEMA_VERSION,
+    OA_TENANT_SUBJECT_TYPE,
+    OA_USER_SUBJECT_TYPE,
+    build_source_ownership_ref,
+)
 from nex_cx.extractors import (
     ExtractionAdapterError,
     ExtractorInput,
@@ -53,6 +60,19 @@ DEFAULT_CHUNK_OVERLAP = 100
 DEFAULT_BM25_TOKENIZER = "mecab_ko"
 DEFAULT_BM25_TOKENIZER_FALLBACK = "korean_mixed_v1"
 DEFAULT_MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
+OWNERSHIP_COMPATIBILITY_MODE = "legacy_owner_fields_mapped_to_oa_subject_refs"
+OWNERSHIP_REF_ALLOWED_FIELDS = frozenset(
+    {
+        "ownership_schema_version",
+        "tenant_ref",
+        "owner_subject_ref",
+        "uploaded_by_subject_ref",
+        "legacy",
+        "compatibility_mode",
+    }
+)
+OWNERSHIP_LEGACY_ALLOWED_FIELDS = frozenset({"tenant_id", "owner_user_id"})
+SUBJECT_REF_ALLOWED_FIELDS = frozenset({"type", "id"})
 
 
 @dataclass(frozen=True)
@@ -99,9 +119,13 @@ class ContentIngestionStore:
         *,
         source_text: str | None = None,
         source_bytes: bytes | None = None,
-        tenant_id: str = DEFAULT_TENANT_ID,
-        owner_user_id: str = DEFAULT_OWNER_USER_ID,
+        tenant_id: str | None = None,
+        owner_user_id: str | None = None,
     ) -> dict[str, Any]:
+        ownership_ref = _ownership_ref_from_upload_record(record)
+        tenant_id = tenant_id or ownership_ref["legacy"]["tenant_id"]
+        owner_user_id = owner_user_id or ownership_ref["legacy"]["owner_user_id"]
+        uploaded_by_user_id = ownership_ref["uploaded_by_subject_ref"]["id"]
         existing = self.content_repository.find_active_content_object(
             tenant_id=tenant_id,
             owner_user_id=owner_user_id,
@@ -125,6 +149,7 @@ class ContentIngestionStore:
                 record,
                 tenant_id=tenant_id,
                 owner_user_id=owner_user_id,
+                uploaded_by_user_id=uploaded_by_user_id,
                 source_file_id=source_file["source_file_id"],
             )
         )
@@ -775,8 +800,9 @@ def build_upload_registration(
     source_sha256 = _source_sha256_from_payload(payload, content_text, source_bytes)
     size_bytes = _size_bytes_from_payload(payload, content_text, source_bytes)
     validate_upload_size(size_bytes, max_upload_size_bytes=storage_config.max_upload_size_bytes)
-    tenant_id = _optional_string(payload, "tenant_id", DEFAULT_TENANT_ID)
-    owner_user_id = _optional_string(payload, "owner_user_id", DEFAULT_OWNER_USER_ID)
+    ownership_ref = build_upload_ownership_ref(payload)
+    tenant_id = ownership_ref["legacy"]["tenant_id"]
+    owner_user_id = ownership_ref["legacy"]["owner_user_id"]
     created_at = _utc_now()
     source_file_id = _source_file_id(source_sha256)
     document_id = _document_id(tenant_id, owner_user_id, source_sha256)
@@ -812,6 +838,7 @@ def build_upload_registration(
             "tenant_id": tenant_id,
             "owner_user_id": owner_user_id,
         },
+        "ownership_ref": ownership_ref,
         "storage": paths,
         "upload_boundary": {
             "payload_source": payload_source_kind(
@@ -1177,6 +1204,256 @@ def validate_upload_size(size_bytes: int, *, max_upload_size_bytes: int) -> None
             error_code="cx.upload_size_exceeds_limit",
             detail=f"size_bytes must be <= {max_upload_size_bytes}.",
         )
+
+
+def build_upload_ownership_ref(payload: Mapping[str, Any]) -> dict[str, Any]:
+    ownership_ref = payload.get("ownership_ref")
+    if ownership_ref is not None and not isinstance(ownership_ref, Mapping):
+        raise _upload_owner_invalid("ownership_ref must be an object when supplied.")
+    ownership_payload = ownership_ref or {}
+    _validate_ownership_envelope_metadata(ownership_payload)
+    tenant_ref = _subject_ref_from_payload(
+        payload,
+        ownership_payload,
+        field_name="tenant_ref",
+        expected_type=OA_TENANT_SUBJECT_TYPE,
+        legacy_fields=("tenant_id",),
+        default_id=DEFAULT_TENANT_ID,
+    )
+    owner_subject_ref = _subject_ref_from_payload(
+        payload,
+        ownership_payload,
+        field_name="owner_subject_ref",
+        expected_type=OA_USER_SUBJECT_TYPE,
+        legacy_fields=("owner_user_id", "user_id"),
+        default_id=DEFAULT_OWNER_USER_ID,
+    )
+    uploaded_by_subject_ref = _subject_ref_from_payload(
+        payload,
+        ownership_payload,
+        field_name="uploaded_by_subject_ref",
+        expected_type=OA_USER_SUBJECT_TYPE,
+        legacy_fields=("uploaded_by_user_id",),
+        default_id=owner_subject_ref["id"],
+    )
+    _validate_ownership_legacy_map(
+        ownership_payload,
+        tenant_ref=tenant_ref,
+        owner_subject_ref=owner_subject_ref,
+    )
+    return build_source_ownership_ref(
+        tenant_id=tenant_ref["id"],
+        owner_user_id=owner_subject_ref["id"],
+        uploaded_by_user_id=uploaded_by_subject_ref["id"],
+    )
+
+
+def _ownership_ref_from_upload_record(record: Mapping[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    ownership = record.get("ownership")
+    if isinstance(ownership, Mapping):
+        payload.update(
+            {
+                key: ownership[key]
+                for key in ("tenant_id", "owner_user_id")
+                if key in ownership
+            }
+        )
+    if "ownership_ref" in record:
+        payload["ownership_ref"] = record["ownership_ref"]
+    return build_upload_ownership_ref(payload)
+
+
+def _validate_ownership_envelope_metadata(
+    ownership_payload: Mapping[str, Any],
+) -> None:
+    unknown_fields = sorted(set(ownership_payload) - OWNERSHIP_REF_ALLOWED_FIELDS)
+    if unknown_fields:
+        raise _upload_owner_invalid(
+            "ownership_ref contains unsupported fields: "
+            f"{', '.join(unknown_fields)}."
+        )
+    schema_version = ownership_payload.get("ownership_schema_version")
+    if (
+        schema_version is not None
+        and schema_version != CX_SOURCE_OWNERSHIP_REF_SCHEMA_VERSION
+    ):
+        raise _upload_owner_invalid(
+            "ownership_ref.ownership_schema_version must be "
+            f"{CX_SOURCE_OWNERSHIP_REF_SCHEMA_VERSION}."
+        )
+    compatibility_mode = ownership_payload.get("compatibility_mode")
+    if compatibility_mode is not None and compatibility_mode != OWNERSHIP_COMPATIBILITY_MODE:
+        raise _upload_owner_invalid(
+            f"ownership_ref.compatibility_mode must be {OWNERSHIP_COMPATIBILITY_MODE}."
+        )
+
+
+def _subject_ref_from_payload(
+    payload: Mapping[str, Any],
+    ownership_payload: Mapping[str, Any],
+    *,
+    field_name: str,
+    expected_type: str,
+    legacy_fields: tuple[str, ...],
+    default_id: str,
+) -> dict[str, str]:
+    if field_name in ownership_payload:
+        subject_ref = _required_subject_ref(
+            ownership_payload[field_name],
+            field_name=f"ownership_ref.{field_name}",
+            expected_type=expected_type,
+        )
+    elif field_name in payload:
+        subject_ref = _required_subject_ref(
+            payload[field_name],
+            field_name=field_name,
+            expected_type=expected_type,
+        )
+    else:
+        subject_ref = {
+            "type": expected_type,
+            "id": _first_legacy_subject_id(
+                payload,
+                legacy_fields=legacy_fields,
+                default_id=default_id,
+            ),
+        }
+
+    if field_name in ownership_payload and field_name in payload:
+        direct_ref = _required_subject_ref(
+            payload[field_name],
+            field_name=field_name,
+            expected_type=expected_type,
+        )
+        _ensure_matching_subject_ref(
+            subject_ref,
+            direct_ref,
+            field_name=field_name,
+        )
+    for legacy_field in legacy_fields:
+        if legacy_field in payload:
+            legacy_id = _owner_string(
+                payload,
+                legacy_field,
+                default=subject_ref["id"],
+            )
+            if legacy_id != subject_ref["id"]:
+                raise _upload_owner_invalid(
+                    f"{legacy_field} must match {field_name}.id when both are supplied."
+                )
+    return subject_ref
+
+
+def _first_legacy_subject_id(
+    payload: Mapping[str, Any],
+    *,
+    legacy_fields: tuple[str, ...],
+    default_id: str,
+) -> str:
+    for legacy_field in legacy_fields:
+        if legacy_field in payload:
+            return _owner_string(payload, legacy_field, default=default_id)
+    return _owner_string({legacy_fields[0]: default_id}, legacy_fields[0], default=default_id)
+
+
+def _required_subject_ref(
+    value: Any,
+    *,
+    field_name: str,
+    expected_type: str,
+) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        raise _upload_owner_invalid(f"{field_name} must be an object.")
+    unknown_fields = sorted(set(value) - SUBJECT_REF_ALLOWED_FIELDS)
+    if unknown_fields:
+        raise _upload_owner_invalid(
+            f"{field_name} contains unsupported fields: {', '.join(unknown_fields)}."
+        )
+    subject_type = _owner_string(value, "type")
+    if subject_type != expected_type:
+        raise _upload_owner_invalid(f"{field_name}.type must be {expected_type}.")
+    return {
+        "type": subject_type,
+        "id": _owner_string(value, "id"),
+    }
+
+
+def _validate_ownership_legacy_map(
+    ownership_payload: Mapping[str, Any],
+    *,
+    tenant_ref: Mapping[str, str],
+    owner_subject_ref: Mapping[str, str],
+) -> None:
+    legacy = ownership_payload.get("legacy")
+    if legacy is None:
+        return
+    if not isinstance(legacy, Mapping):
+        raise _upload_owner_invalid("ownership_ref.legacy must be an object.")
+    unknown_fields = sorted(set(legacy) - OWNERSHIP_LEGACY_ALLOWED_FIELDS)
+    if unknown_fields:
+        raise _upload_owner_invalid(
+            "ownership_ref.legacy contains unsupported fields: "
+            f"{', '.join(unknown_fields)}."
+        )
+    _ensure_legacy_ref_match(
+        legacy,
+        legacy_field="tenant_id",
+        expected_id=tenant_ref["id"],
+        canonical_field="tenant_ref",
+    )
+    _ensure_legacy_ref_match(
+        legacy,
+        legacy_field="owner_user_id",
+        expected_id=owner_subject_ref["id"],
+        canonical_field="owner_subject_ref",
+    )
+
+
+def _ensure_legacy_ref_match(
+    legacy: Mapping[str, Any],
+    *,
+    legacy_field: str,
+    expected_id: str,
+    canonical_field: str,
+) -> None:
+    if legacy_field not in legacy:
+        return
+    legacy_id = _owner_string(legacy, legacy_field, default=expected_id)
+    if legacy_id != expected_id:
+        raise _upload_owner_invalid(
+            f"ownership_ref.legacy.{legacy_field} must match {canonical_field}.id."
+        )
+
+
+def _ensure_matching_subject_ref(
+    expected_ref: Mapping[str, str],
+    actual_ref: Mapping[str, str],
+    *,
+    field_name: str,
+) -> None:
+    if dict(expected_ref) != dict(actual_ref):
+        raise _upload_owner_invalid(f"{field_name} must match ownership_ref.{field_name}.")
+
+
+def _owner_string(
+    payload: Mapping[str, Any],
+    field_name: str,
+    *,
+    default: str | None = None,
+) -> str:
+    value = payload.get(field_name, default) if default is not None else payload.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise _upload_owner_invalid(f"{field_name} must be a non-empty string.")
+    return value.strip()
+
+
+def _upload_owner_invalid(detail: str) -> IngestionError:
+    return IngestionError(
+        status_code=422,
+        error_code="cx.upload_owner_invalid",
+        detail=detail,
+    )
 
 
 def _source_sha256_from_payload(

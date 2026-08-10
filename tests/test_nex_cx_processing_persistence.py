@@ -41,7 +41,7 @@ def test_processing_run_persistence_decision_freezes_target_mapping() -> None:
     assert "job_status" in decision["run_metadata_fields"]
     assert "error_detail_sha256" in decision["step_metadata_fields"]
     assert "steps[].error.detail" in decision["private_payload_exclusions"]
-    assert decision["next_slice"] == "0197_cx_upload_canonical_ownership_intake"
+    assert decision["next_slice"] == "0198_oa_subject_registry_resolver_client"
 
 
 def test_processing_run_persistence_preview_hashes_private_runtime_detail() -> None:

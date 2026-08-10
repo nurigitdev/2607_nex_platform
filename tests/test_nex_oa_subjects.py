@@ -140,7 +140,7 @@ def test_subject_registry_snapshot_matches_contract_schema() -> None:
     }
     assert snapshot["capabilities"]["stable_subject_registry"] is True
     assert snapshot["capabilities"]["password_login"] is False
-    assert "0197_cx_upload_canonical_ownership_intake" == snapshot["next_slice"]
+    assert "0198_oa_subject_registry_resolver_client" == snapshot["next_slice"]
 
 
 def test_subject_registry_defaults_are_local_refs_and_idempotent() -> None:

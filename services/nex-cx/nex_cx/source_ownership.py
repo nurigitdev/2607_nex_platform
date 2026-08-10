@@ -146,13 +146,21 @@ def build_source_ownership_boundary_decision() -> dict[str, Any]:
                     "refs directly."
                 ),
             },
+            {
+                "slice": "0198",
+                "work": "oa_subject_registry_resolver_client",
+                "reason": (
+                    "AE/CX should resolve or verify OA subject refs before "
+                    "live authentication integration."
+                ),
+            },
         ],
         "private_payload_policy": (
             "No raw source bytes, source text, extracted markdown, chunk text, "
             "summary text, vectors, prompts, or raw identity secrets are stored "
             "in ownership metadata."
         ),
-        "next_slice": "0197_cx_upload_canonical_ownership_intake",
+        "next_slice": "0198_oa_subject_registry_resolver_client",
     }
 
 

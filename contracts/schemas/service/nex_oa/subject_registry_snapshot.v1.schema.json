@@ -113,7 +113,7 @@
       "minLength": 1
     },
     "next_slice": {
-      "const": "0197_cx_upload_canonical_ownership_intake"
+      "const": "0198_oa_subject_registry_resolver_client"
     },
     "trace_id": {
       "type": "string",

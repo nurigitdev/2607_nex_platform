@@ -13,6 +13,26 @@
     "tenant_id": "local-tenant",
     "owner_user_id": "local-user"
   },
+  "ownership_ref": {
+    "ownership_schema_version": "cx_source_ownership_ref.v1",
+    "tenant_ref": {
+      "type": "oa.tenant",
+      "id": "local-tenant"
+    },
+    "owner_subject_ref": {
+      "type": "oa.user",
+      "id": "local-user"
+    },
+    "uploaded_by_subject_ref": {
+      "type": "oa.user",
+      "id": "local-user"
+    },
+    "legacy": {
+      "tenant_id": "local-tenant",
+      "owner_user_id": "local-user"
+    },
+    "compatibility_mode": "legacy_owner_fields_mapped_to_oa_subject_refs"
+  },
   "storage": {
     "source_storage_backend": "local_filesystem",
     "source_storage_key": "20260802/d1/22/338a4f26-3b69-5621-8d57-dd5b043251c0.md",

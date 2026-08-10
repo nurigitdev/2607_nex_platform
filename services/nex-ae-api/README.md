@@ -63,6 +63,9 @@ Upload handoff:
   facade. AE now forwards `ownership_ref` with `oa.tenant`,
   `owner_subject_ref`, and `uploaded_by_subject_ref` while retaining legacy
   `tenant_id`, `owner_user_id`, and `user_id` aliases for compatibility.
+- Slice 0197 completes the CX side of that handoff: CX now canonicalizes the
+  propagated `ownership_ref` and rejects mismatched legacy aliases before
+  owner-scoped duplicate detection runs.
 - Upload handoff records keep the propagated stable subject refs for debugging,
   but do not store passwords, tokens, emails, raw identity profiles, source
   bytes, storage keys, or local filesystem paths.

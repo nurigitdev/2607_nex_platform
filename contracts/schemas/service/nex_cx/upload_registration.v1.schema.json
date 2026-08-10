@@ -16,6 +16,7 @@
     "trace_id",
     "request_id",
     "ownership",
+    "ownership_ref",
     "storage",
     "retrieval_policy",
     "extraction",
@@ -80,6 +81,53 @@
         "owner_user_id": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "ownership_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownership_schema_version",
+        "tenant_ref",
+        "owner_subject_ref",
+        "uploaded_by_subject_ref",
+        "legacy",
+        "compatibility_mode"
+      ],
+      "properties": {
+        "ownership_schema_version": {
+          "const": "cx_source_ownership_ref.v1"
+        },
+        "tenant_ref": {
+          "$ref": "#/$defs/tenant_ref"
+        },
+        "owner_subject_ref": {
+          "$ref": "#/$defs/user_subject_ref"
+        },
+        "uploaded_by_subject_ref": {
+          "$ref": "#/$defs/user_subject_ref"
+        },
+        "legacy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "tenant_id",
+            "owner_user_id"
+          ],
+          "properties": {
+            "tenant_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "owner_user_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "compatibility_mode": {
+          "const": "legacy_owner_fields_mapped_to_oa_subject_refs"
         }
       }
     },
@@ -237,6 +285,40 @@
     }
   },
   "$defs": {
+    "tenant_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "const": "oa.tenant"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "user_subject_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "const": "oa.user"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "common_job": {
       "type": "object",
       "additionalProperties": false,

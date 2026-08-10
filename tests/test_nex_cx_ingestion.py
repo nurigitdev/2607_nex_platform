@@ -12,6 +12,7 @@ from nex_cx.ingestion import (
     IngestionError,
     build_ingestion_job,
     build_storage_config,
+    build_upload_ownership_ref,
     build_upload_registration,
     markdown_from_source_text,
     materialize_local_source_bytes,
@@ -33,6 +34,14 @@ from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_tok
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
+OWNER_REF = {
+    "ownership_schema_version": "cx_source_ownership_ref.v1",
+    "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+    "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+    "uploaded_by_subject_ref": {"type": "oa.user", "id": "uploader-a"},
+    "legacy": {"tenant_id": "tenant-a", "owner_user_id": "user-a"},
+    "compatibility_mode": "legacy_owner_fields_mapped_to_oa_subject_refs",
+}
 
 
 def auth_headers() -> dict[str, str]:
@@ -201,6 +210,14 @@ def test_build_upload_registration_hashes_content_without_leaking_text(tmp_path:
     assert record["size_bytes"] == len("# MVP\nTraceable content".encode("utf-8"))
     assert record["retrieval_policy"]["chunk_policy"] == "chunk_1000_100"
     assert record["retrieval_policy"]["bm25_tokenizer_fallback"] == "korean_mixed_v1"
+    assert record["ownership_ref"] == {
+        "ownership_schema_version": "cx_source_ownership_ref.v1",
+        "tenant_ref": {"type": "oa.tenant", "id": "local-tenant"},
+        "owner_subject_ref": {"type": "oa.user", "id": "local-user"},
+        "uploaded_by_subject_ref": {"type": "oa.user", "id": "local-user"},
+        "legacy": {"tenant_id": "local-tenant", "owner_user_id": "local-user"},
+        "compatibility_mode": "legacy_owner_fields_mapped_to_oa_subject_refs",
+    }
     assert "Traceable content" not in str(record)
 
 
@@ -307,6 +324,59 @@ def test_store_materializes_source_file_and_marks_checksum_verified(
     assert sha256_bytes(source_path.read_bytes()) == saved["source_sha256"]
     assert source_file["checksum_verified_at"] is not None
     assert saved["original_filename"] not in str(source_path.parent)
+
+
+def test_store_derives_owner_scope_and_uploaded_by_from_upload_record(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    record = build_upload_registration(
+        {
+            "filename": "source.md",
+            "content_text": "canonical source text",
+            "ownership_ref": OWNER_REF,
+        },
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    saved = store.save_upload_registration(record, source_text="canonical source text")
+    refs = store.get_content_ref(saved["document_id"])
+    content_object = store.content_repository.get_content_object(
+        refs["content_object_id"]
+    )
+
+    assert saved["ownership_ref"] == OWNER_REF
+    assert content_object["ownership_ref"] == OWNER_REF
+    assert content_object["tenant_id"] == "tenant-a"
+    assert content_object["owner_user_id"] == "user-a"
+
+
+def test_store_defaults_owner_scope_for_legacy_record_without_ownership_metadata(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    record = build_upload_registration(
+        {"filename": "source.md", "content_text": "legacy fallback text"},
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    legacy_record = {
+        key: value
+        for key, value in record.items()
+        if key not in {"ownership", "ownership_ref"}
+    }
+
+    saved = store.save_upload_registration(legacy_record)
+    refs = store.get_content_ref(saved["document_id"])
+    content_object = store.content_repository.get_content_object(
+        refs["content_object_id"]
+    )
+
+    assert content_object["tenant_id"] == "local-tenant"
+    assert content_object["owner_user_id"] == "local-user"
 
 
 def test_materialize_local_source_file_is_idempotent_for_matching_file(
@@ -469,6 +539,79 @@ def test_build_upload_registration_scopes_document_id_to_owner(tmp_path: Path) -
     assert user_a["source_sha256"] == user_b["source_sha256"]
     assert user_a["storage"]["source_storage_key"] == user_b["storage"]["source_storage_key"]
     assert user_a["ownership"] == {"tenant_id": "tenant-a", "owner_user_id": "user-a"}
+    assert user_a["ownership_ref"]["tenant_ref"]["id"] == "tenant-a"
+    assert user_a["ownership_ref"]["owner_subject_ref"]["id"] == "user-a"
+
+
+def test_build_upload_registration_consumes_canonical_ownership_ref(
+    tmp_path: Path,
+) -> None:
+    record = build_upload_registration(
+        {
+            "filename": "source.md",
+            "content_text": "canonical owner source bytes",
+            "ownership_ref": OWNER_REF,
+        },
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    legacy_record = build_upload_registration(
+        {
+            "filename": "renamed.md",
+            "content_text": "canonical owner source bytes",
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+        },
+        storage_config=storage_config(tmp_path),
+        request_id="other-request",
+        trace_id=TRACE_ID,
+    )
+
+    assert record["ownership"] == {"tenant_id": "tenant-a", "owner_user_id": "user-a"}
+    assert record["ownership_ref"] == OWNER_REF
+    assert record["document_id"] == legacy_record["document_id"]
+
+
+def test_build_upload_ownership_ref_accepts_direct_subject_refs() -> None:
+    ownership_ref = build_upload_ownership_ref(
+        {
+            "tenant_ref": {"type": "oa.tenant", "id": "tenant-b"},
+            "owner_subject_ref": {"type": "oa.user", "id": "user-b"},
+            "uploaded_by_subject_ref": {"type": "oa.user", "id": "uploader-b"},
+        }
+    )
+
+    assert ownership_ref["legacy"] == {
+        "tenant_id": "tenant-b",
+        "owner_user_id": "user-b",
+    }
+    assert ownership_ref["uploaded_by_subject_ref"] == {
+        "type": "oa.user",
+        "id": "uploader-b",
+    }
+
+
+def test_build_upload_ownership_ref_accepts_matching_direct_and_partial_legacy() -> None:
+    ownership_ref = build_upload_ownership_ref(
+        {
+            "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+            "ownership_ref": {
+                "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+                "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+                "legacy": {"tenant_id": "tenant-a"},
+            },
+        }
+    )
+
+    assert ownership_ref == {
+        "ownership_schema_version": "cx_source_ownership_ref.v1",
+        "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+        "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+        "uploaded_by_subject_ref": {"type": "oa.user", "id": "user-a"},
+        "legacy": {"tenant_id": "tenant-a", "owner_user_id": "user-a"},
+        "compatibility_mode": "legacy_owner_fields_mapped_to_oa_subject_refs",
+    }
 
 
 def test_store_returns_existing_registration_for_same_owner_duplicate(
@@ -517,6 +660,38 @@ def test_store_returns_existing_registration_for_same_owner_duplicate(
     assert duplicate["dedupe"]["existing_document_id"] == created["document_id"]
     assert store.get_source_text(created["upload_id"]) == "same source bytes"
     assert store.get_source_text(second["upload_id"]) is None
+
+
+def test_duplicate_upload_without_source_content_returns_existing_record(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    payload = {
+        "filename": "source.pdf",
+        "source_sha256": "a" * 64,
+        "size_bytes": 10,
+        "tenant_id": "tenant-a",
+        "owner_user_id": "user-a",
+    }
+    first = build_upload_registration(
+        payload,
+        storage_config=storage_config(tmp_path),
+        request_id="request-a",
+        trace_id=TRACE_ID,
+    )
+    second = build_upload_registration(
+        {**payload, "filename": "renamed.pdf"},
+        storage_config=storage_config(tmp_path),
+        request_id="request-b",
+        trace_id=TRACE_ID,
+    )
+
+    created = store.save_upload_registration(first)
+    duplicate = store.save_upload_registration(second)
+
+    assert duplicate["dedupe"]["status"] == "ALREADY_EXISTS"
+    assert duplicate["document_id"] == created["document_id"]
+    assert store.get_source_bytes(created["upload_id"]) is None
 
 
 def test_store_allows_same_hash_for_different_owner_without_leaking_duplicate(
@@ -629,6 +804,160 @@ def test_duplicate_upload_with_bytes_materializes_existing_metadata_only_source(
             {"filename": "report.pdf", "content_text": "hello", "content_base64": "aGVsbG8="},
             "cx.upload_content_source_conflict",
         ),
+        (
+            {"filename": "report.pdf", "content_text": "hello", "ownership_ref": "owner-a"},
+            "cx.upload_owner_invalid",
+        ),
+        (
+            {"filename": "report.pdf", "content_text": "hello", "tenant_id": ""},
+            "cx.upload_owner_invalid",
+        ),
+        (
+            {
+                "filename": "report.pdf",
+                "content_text": "hello",
+                "tenant_id": "tenant-a",
+                "ownership_ref": {
+                    "tenant_ref": {"type": "oa.tenant", "id": "tenant-b"},
+                    "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+                },
+            },
+            "cx.upload_owner_invalid",
+        ),
+        (
+            {
+                "filename": "report.pdf",
+                "content_text": "hello",
+                "tenant_ref": {"type": "cx.tenant", "id": "tenant-a"},
+            },
+            "cx.upload_owner_invalid",
+        ),
+        (
+            {
+                "filename": "report.pdf",
+                "content_text": "hello",
+                "tenant_ref": {"type": "oa.tenant", "id": "tenant-b"},
+                "ownership_ref": {
+                    "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+                    "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+                },
+            },
+            "cx.upload_owner_invalid",
+        ),
+        (
+            {
+                "filename": "report.pdf",
+                "content_text": "hello",
+                "ownership_ref": {
+                    "tenant_ref": {"type": "oa.tenant"},
+                    "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+                },
+            },
+            "cx.upload_owner_invalid",
+        ),
+        (
+            {
+                "filename": "report.pdf",
+                "content_text": "hello",
+                "ownership_ref": {
+                    "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+                    "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+                    "legacy": "tenant-a/user-a",
+                },
+            },
+            "cx.upload_owner_invalid",
+        ),
+        (
+            {
+                "filename": "report.pdf",
+                "content_text": "hello",
+                "ownership_ref": {
+                    "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+                    "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+                    "legacy": {
+                        "tenant_id": "tenant-a",
+                        "owner_user_id": "user-a",
+                        "raw_profile": {},
+                    },
+                },
+            },
+            "cx.upload_owner_invalid",
+        ),
+        (
+            {
+                "filename": "report.pdf",
+                "content_text": "hello",
+                "ownership_ref": {
+                    "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+                    "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+                    "email": "private@example.com",
+                },
+            },
+            "cx.upload_owner_invalid",
+        ),
+        (
+            {
+                "filename": "report.pdf",
+                "content_text": "hello",
+                "ownership_ref": {
+                    "ownership_schema_version": "cx_source_ownership_ref.v0",
+                    "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+                    "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+                },
+            },
+            "cx.upload_owner_invalid",
+        ),
+        (
+            {
+                "filename": "report.pdf",
+                "content_text": "hello",
+                "ownership_ref": {
+                    "compatibility_mode": "raw_identity",
+                    "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+                    "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+                },
+            },
+            "cx.upload_owner_invalid",
+        ),
+        (
+            {
+                "filename": "report.pdf",
+                "content_text": "hello",
+                "ownership_ref": {
+                    "tenant_ref": {
+                        "type": "oa.tenant",
+                        "id": "tenant-a",
+                        "email": "private@example.com",
+                    },
+                    "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+                },
+            },
+            "cx.upload_owner_invalid",
+        ),
+        (
+            {
+                "filename": "report.pdf",
+                "content_text": "hello",
+                "ownership_ref": {
+                    "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+                    "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+                    "legacy": {"tenant_id": "tenant-b"},
+                },
+            },
+            "cx.upload_owner_invalid",
+        ),
+        (
+            {
+                "filename": "report.pdf",
+                "content_text": "hello",
+                "ownership_ref": {
+                    "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+                    "owner_subject_ref": {"type": "oa.user", "id": "user-a"},
+                    "legacy": {"tenant_id": "tenant-a", "owner_user_id": "user-b"},
+                },
+            },
+            "cx.upload_owner_invalid",
+        ),
     ],
 )
 def test_build_upload_registration_reports_validation_errors(
@@ -677,6 +1006,7 @@ def test_upload_registration_endpoint_creates_document_and_job(tmp_path: Path) -
         "tenant_id": "local-tenant",
         "owner_user_id": "local-user",
     }
+    assert payload["ownership_ref"]["legacy"] == payload["ownership"]
     assert payload["dedupe"]["status"] == "CREATED"
     assert payload["extraction"]["status"] == "PENDING"
     assert payload["extraction"]["markdown_available"] is False
@@ -685,6 +1015,35 @@ def test_upload_registration_endpoint_creates_document_and_job(tmp_path: Path) -
     assert Path(payload["storage"]["source_storage_path"]).read_text(encoding="utf-8") == (
         "hello from upload"
     )
+
+
+def test_upload_registration_endpoint_accepts_canonical_ownership_ref(
+    tmp_path: Path,
+) -> None:
+    client, store = build_test_client(tmp_path)
+
+    response = client.post(
+        "/api/v1/documents/uploads",
+        json={
+            "filename": "source.md",
+            "content_type": "text/markdown",
+            "content_text": "hello from canonical owner upload",
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+            "ownership_ref": OWNER_REF,
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    refs = store.get_content_ref(payload["document_id"])
+    content_object = store.content_repository.get_content_object(
+        refs["content_object_id"]
+    )
+    assert payload["ownership_ref"] == OWNER_REF
+    assert payload["ownership"] == {"tenant_id": "tenant-a", "owner_user_id": "user-a"}
+    assert content_object["ownership_ref"]["uploaded_by_subject_ref"]["id"] == "uploader-a"
 
 
 def test_upload_registration_endpoint_materializes_base64_source_bytes(
