@@ -113,7 +113,7 @@
       "minLength": 1
     },
     "next_slice": {
-      "const": "0194_cx_source_ownership_schema_migration"
+      "const": "0195_cx_owner_scoped_repository_api_wiring"
     },
     "trace_id": {
       "type": "string",

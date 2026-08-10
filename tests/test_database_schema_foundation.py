@@ -209,6 +209,62 @@ def test_cx_schema_scopes_duplicate_uploads_to_active_owner_documents() -> None:
     assert "bytea" not in compact
 
 
+def test_cx_source_ownership_schema_migration_adds_indexable_oa_subject_refs() -> None:
+    migration = normalized(
+        read_migration_named(
+            "nex-cx",
+            "0194_cx_source_ownership_schema_migration.sql",
+        )
+    )
+
+    for column in (
+        "add column if not exists tenant_ref_type text",
+        "add column if not exists tenant_ref_id text",
+        "add column if not exists owner_subject_ref_type text",
+        "add column if not exists owner_subject_ref_id text",
+        "add column if not exists uploaded_by_subject_ref_type text",
+        "add column if not exists uploaded_by_subject_ref_id text",
+    ):
+        assert column in migration
+    assert "tenant_ref_id = coalesce(tenant_ref_id, tenant_id)" in migration
+    assert (
+        "owner_subject_ref_id = coalesce(owner_subject_ref_id, owner_user_id)"
+        in migration
+    )
+    assert "uploaded_by_subject_ref_id = coalesce(" in migration
+    assert "create or replace function cx_apply_content_object_ownership_refs()" in migration
+    assert "create trigger tr_cx_content_objects_apply_ownership_refs" in migration
+    assert "alter column tenant_ref_id set not null" in migration
+    assert "alter column owner_subject_ref_id set not null" in migration
+
+    assert "ux_cx_content_owner_subject_source_active" in migration
+    assert (
+        "on cx_content_objects ( tenant_ref_type, tenant_ref_id, "
+        "owner_subject_ref_type, owner_subject_ref_id, source_sha256 )"
+        in migration
+    )
+    assert "where lifecycle_status = 'active'" in migration
+    assert "idx_cx_content_objects_owner_subject_created" in migration
+    assert "idx_cx_content_objects_uploaded_by_subject_created" in migration
+
+    for column in (
+        "add column if not exists principal_ref_type text",
+        "add column if not exists principal_ref_id text",
+        "add column if not exists granted_by_subject_ref_type text",
+        "add column if not exists granted_by_subject_ref_id text",
+    ):
+        assert column in migration
+    assert "when 'user' then 'oa.user'" in migration
+    assert "when 'group' then 'oa.group'" in migration
+    assert "create or replace function cx_apply_acl_subject_refs()" in migration
+    assert "create trigger tr_cx_content_acl_entries_apply_subject_refs" in migration
+    assert "alter column principal_ref_id set not null" in migration
+    assert "ux_cx_content_acl_subject_ref_permission" in migration
+    assert "idx_cx_content_acl_principal_ref" in migration
+    assert "idx_cx_content_acl_granted_by_subject_ref" in migration
+    assert "0194_cx_source_ownership_schema_migration" in migration
+
+
 def test_cx_source_files_use_local_storage_key_policy() -> None:
     storage_policy = normalized(
         read_migration_named("nex-cx", "0022_source_file_storage_policy.sql")

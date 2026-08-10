@@ -296,7 +296,7 @@ def build_cx_persistence_gap_audit(
             "migration_pending_count": migration_pending_count,
             "deferred_schema_decision_count": len(CX_DEFERRED_SCHEMA_DECISIONS),
             "private_payload_boundary_count": len(CX_PRIVATE_PAYLOAD_BOUNDARIES),
-            "next_recommended_slice": "0194_cx_source_ownership_schema_migration",
+            "next_recommended_slice": "0195_cx_owner_scoped_repository_api_wiring",
         },
         "observed_store_counts": counts,
         "surfaces": surfaces,

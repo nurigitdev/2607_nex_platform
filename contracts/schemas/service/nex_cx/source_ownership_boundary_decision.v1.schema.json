@@ -174,7 +174,7 @@
       "minLength": 1
     },
     "next_slice": {
-      "const": "0193_nex_oa_subject_registry_foundation"
+      "const": "0195_cx_owner_scoped_repository_api_wiring"
     }
   },
   "$defs": {

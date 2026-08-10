@@ -75,7 +75,7 @@ def test_source_ownership_boundary_decision_requires_minimal_oa_subject_registry
         "cross_owner_existing_document_id_visible": False,
         "source_file_metadata_shared_by_hash": True,
     }
-    assert decision["next_slice"] == "0193_nex_oa_subject_registry_foundation"
+    assert decision["next_slice"] == "0195_cx_owner_scoped_repository_api_wiring"
 
 
 def test_source_ownership_ref_maps_legacy_owner_fields_to_oa_subject_refs() -> None:

@@ -297,6 +297,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0191`](slices/0191_cx_processing_operations_dashboard_integration.md) | `S20-001` CX processing operations dashboard integration. |
 | [`Slice 0192`](slices/0192_cx_source_ownership_boundary_decision.md) | `S20-002` CX source ownership boundary decision. |
 | [`Slice 0193`](slices/0193_nex_oa_subject_registry_foundation.md) | `S20-003` NeX-OA subject registry foundation. |
+| [`Slice 0194`](slices/0194_cx_source_ownership_schema_migration.md) | `S20-004` CX source ownership schema migration. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

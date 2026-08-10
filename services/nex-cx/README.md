@@ -23,8 +23,13 @@ Internal persistence boundary:
   the future canonical key as `tenant_ref.id + owner_subject_ref.id +
   source_sha256`, where the refs are OA-owned subject identifiers.
 - Existing `tenant_id + owner_user_id + source_sha256` behavior remains the
-  compatibility key until the OA subject registry and CX schema migration are
-  wired.
+  compatibility key until repository/API wiring consumes OA refs directly.
+- Slice 0194 adds decomposed PostgreSQL columns for indexable OA ownership refs:
+  `tenant_ref_type/id`, `owner_subject_ref_type/id`, and
+  `uploaded_by_subject_ref_type/id` on `cx_content_objects`, plus
+  `principal_ref_type/id` and `granted_by_subject_ref_type/id` on
+  `cx_content_acl_entries`. Compatibility triggers backfill these columns from
+  legacy fields until Slice 0195 updates the repository write/read path.
 - Same-owner duplicate uploads return the existing document; different owners
   get distinct document IDs without learning about each other.
 - Upload registration accepts `content_text`, `content_base64`, or metadata-only

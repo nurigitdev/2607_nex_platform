@@ -144,7 +144,7 @@ def build_source_ownership_boundary_decision() -> dict[str, Any]:
             "summary text, vectors, prompts, or raw identity secrets are stored "
             "in ownership metadata."
         ),
-        "next_slice": "0193_nex_oa_subject_registry_foundation",
+        "next_slice": "0195_cx_owner_scoped_repository_api_wiring",
     }
 
 
