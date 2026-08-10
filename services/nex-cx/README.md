@@ -235,6 +235,10 @@ Grounded generation validation:
   `scripts/smoke/run_cx_upload_ownership_postgres_smoke.py`. It is skipped by
   default and only writes to the CX test database when
   `NEX_CX_UPLOAD_OWNERSHIP_POSTGRES_SMOKE=1` is set with the `test` profile.
+- CX document detail PostgreSQL smoke evidence is available through
+  `scripts/smoke/run_cx_document_detail_postgres_smoke.py`. It is skipped by
+  default and only writes to the CX test database when
+  `NEX_CX_DOCUMENT_DETAIL_POSTGRES_SMOKE=1` is set with the `test` profile.
 - CX processing PostgreSQL operational event evidence is available through
   `scripts/smoke/run_cx_processing_postgres_event_smoke.py`. It is skipped by
   default and only writes to the CX test database when

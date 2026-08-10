@@ -27,6 +27,7 @@ import run_cx_processing_postgres_api_smoke as cx_processing_api_smoke
 import run_cx_upload_ownership_postgres_smoke as cx_upload_ownership_smoke
 import run_cx_upload_duplicate_postgres_smoke as cx_upload_duplicate_smoke
 import run_cx_document_library_postgres_smoke as cx_document_library_smoke
+import run_cx_document_detail_postgres_smoke as cx_document_detail_smoke
 import run_cx_retrieval_postgres_smoke as cx_retrieval_smoke
 import run_postgres_job_replay_smoke as job_replay_smoke
 import run_postgres_jobqueue_smoke as jobqueue_smoke
@@ -2726,6 +2727,11 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
     )
     monkeypatch.setattr(
         postgres_suite_smoke,
+        "run_cx_document_detail_postgres_smoke",
+        child_pass("cx_document_detail_postgres_smoke"),
+    )
+    monkeypatch.setattr(
+        postgres_suite_smoke,
         "run_ag_retrieval_package_postgres_smoke",
         child_pass("ag_retrieval_package_postgres_smoke"),
     )
@@ -2790,6 +2796,7 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("cx_upload_ownership_postgres_smoke", "test"),
         ("cx_upload_duplicate_postgres_smoke", "test"),
         ("cx_document_library_postgres_smoke", "test"),
+        ("cx_document_detail_postgres_smoke", "test"),
         ("ag_retrieval_package_postgres_smoke", "test"),
         ("cx_processing_postgres_jobqueue_smoke", "test"),
         ("cx_processing_postgres_event_smoke", "test"),
@@ -2799,7 +2806,7 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("ag_cross_service_observability_smoke", "test"),
     ]
     assert postgres_suite_smoke.summary_line(evidence) == (
-        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=21"
+        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=22"
     )
 
 
@@ -5407,6 +5414,275 @@ def test_cx_document_library_postgres_smoke_main_prints_summary_and_full_evidenc
     assert "cx_document_library_postgres_smoke=skipped" in capsys.readouterr().out
 
     assert cx_document_library_smoke.main([]) == 0
+    assert '"status": "SKIPPED"' in capsys.readouterr().out
+
+
+def test_cx_document_detail_postgres_smoke_skips_by_default() -> None:
+    evidence = cx_document_detail_smoke.run_cx_document_detail_postgres_smoke(
+        environ={}
+    )
+
+    assert evidence["status"] == "SKIPPED"
+    assert cx_document_detail_smoke.summary_line(evidence) == (
+        "cx_document_detail_postgres_smoke=skipped "
+        "reason=NEX_CX_DOCUMENT_DETAIL_POSTGRES_SMOKE"
+    )
+
+
+def test_cx_document_detail_postgres_smoke_rejects_non_test_profile() -> None:
+    evidence = cx_document_detail_smoke.run_cx_document_detail_postgres_smoke(
+        environ={
+            "NEX_CX_DOCUMENT_DETAIL_POSTGRES_SMOKE": "1",
+            "NEX_CX_DOCUMENT_DETAIL_POSTGRES_SMOKE_PROFILE": "dev",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "profile_not_allowed"
+
+
+def test_cx_document_detail_postgres_smoke_reports_pass_without_leaking_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration_calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        cx_document_detail_smoke,
+        "service_database_env",
+        lambda service_id, profile: f"{service_id}:{profile}:env",
+    )
+    monkeypatch.setattr(
+        cx_document_detail_smoke,
+        "service_database_url",
+        lambda service_id, profile, environ: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        cx_document_detail_smoke,
+        "run_service_migrations",
+        lambda service_id, database_url, profile: (
+            migration_calls.append((service_id, profile))
+            or SimpleNamespace(
+                service_id=service_id,
+                profile=profile,
+                planned=("001", "002"),
+                applied=("002",),
+                skipped=("001",),
+                dry_run=False,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        cx_document_detail_smoke,
+        "_execute_document_detail_smoke",
+        lambda database_env, database_url, runtime_environ: {
+            "document_id": "doc-001",
+            "wrong_owner_status": 404,
+            "checks": {
+                "runtime_mode": True,
+                "api_upload_status_created": True,
+                "detail_status_ok": True,
+                "wrong_owner_collapsed_not_found": True,
+                "source_metadata_uses_test_db": True,
+                "projection_schema_version": True,
+                "document_id_matches": True,
+                "owner_scope_matches": True,
+                "persisted_owner_count": True,
+                "raw_payload_absent": True,
+            },
+        },
+    )
+
+    evidence = cx_document_detail_smoke.run_cx_document_detail_postgres_smoke(
+        environ={"NEX_CX_DOCUMENT_DETAIL_POSTGRES_SMOKE": "1"}
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["database_env"] == "nex-cx:test:env"
+    assert evidence["migration"]["applied_count"] == 1
+    assert evidence["redacted_database_url"] == "postgresql://user:***@localhost/db"
+    assert "secret" not in str(evidence)
+    assert migration_calls == [("nex-cx", "test")]
+    assert cx_document_detail_smoke.summary_line(evidence) == (
+        "cx_document_detail_postgres_smoke=pass "
+        "service=nex-cx db_env=nex-cx:test:env"
+    )
+
+
+def test_cx_document_detail_postgres_smoke_reports_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_migration_error(*args: object, **kwargs: object) -> None:
+        raise cx_document_detail_smoke.MigrationError("missing database URL env")
+
+    monkeypatch.setattr(
+        cx_document_detail_smoke,
+        "service_database_url",
+        raise_migration_error,
+    )
+    config_failure = cx_document_detail_smoke.run_cx_document_detail_postgres_smoke(
+        environ={"NEX_CX_DOCUMENT_DETAIL_POSTGRES_SMOKE": "1"}
+    )
+
+    assert config_failure["status"] == "FAIL"
+    assert config_failure["failure_code"] == "configuration_invalid"
+
+    monkeypatch.setattr(
+        cx_document_detail_smoke,
+        "service_database_url",
+        lambda *args, **kwargs: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        cx_document_detail_smoke,
+        "run_service_migrations",
+        lambda *args, **kwargs: None,
+    )
+
+    def raise_runtime_error(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        cx_document_detail_smoke,
+        "_execute_document_detail_smoke",
+        raise_runtime_error,
+    )
+    execution_failure = cx_document_detail_smoke.run_cx_document_detail_postgres_smoke(
+        environ={"NEX_CX_DOCUMENT_DETAIL_POSTGRES_SMOKE": "1"}
+    )
+
+    assert execution_failure["status"] == "FAIL"
+    assert execution_failure["failure_code"] == "execution_failed"
+    assert cx_document_detail_smoke.summary_line(execution_failure) == (
+        "cx_document_detail_postgres_smoke=fail "
+        "service=nex-cx reason=execution_failed"
+    )
+
+
+def test_cx_document_detail_postgres_smoke_execute_with_sqlite_fixture(
+    tmp_path,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'cx-document-detail.sqlite'}"
+    engine = cx_document_detail_smoke.build_engine(database_url)
+    _create_sqlite_cx_document_library_tables(engine)
+
+    evidence = cx_document_detail_smoke._execute_document_detail_smoke(
+        database_env="NEX_CX_TEST_DATABASE_URL",
+        database_url=database_url,
+        runtime_environ={
+            cx_document_detail_smoke.SERVICE_SPEC.database_env: database_url,
+            "NEX_CX_PERSISTENCE_MODE": "postgres",
+        },
+    )
+
+    assert evidence["wrong_owner_status"] == 404
+    assert evidence["db_observations"] == {
+        "owner_active_content_count": 1,
+        "detail_projection_document_id": evidence["document_id"],
+        "detail_projection_schema_version": "cx_document_detail_projection.v1",
+        "detail_source_kind": "postgres-read",
+    }
+    assert evidence["cleanup_observations"] == [
+        {
+            "label": "detail",
+            "document_id": evidence["document_id"],
+            "source_file_id": evidence["cleanup_observations"][0]["source_file_id"],
+            "content_rows_before_delete": 1,
+            "source_rows_before_delete": 1,
+            "content_rows_after_delete": 0,
+            "source_rows_after_delete": 0,
+        }
+    ]
+    assert evidence["checks"] == {
+        "runtime_mode": True,
+        "api_upload_status_created": True,
+        "detail_status_ok": True,
+        "wrong_owner_collapsed_not_found": True,
+        "source_metadata_uses_test_db": True,
+        "projection_schema_version": True,
+        "document_id_matches": True,
+        "owner_scope_matches": True,
+        "persisted_owner_count": True,
+        "raw_payload_absent": True,
+    }
+    with engine.begin() as connection:
+        remaining_content = connection.execute(
+            text("SELECT count(*) FROM cx_content_objects")
+        ).scalar_one()
+        remaining_sources = connection.execute(
+            text("SELECT count(*) FROM cx_source_files")
+        ).scalar_one()
+    assert remaining_content == 0
+    assert remaining_sources == 0
+
+
+def test_cx_document_detail_postgres_smoke_execute_failure_edges(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'cx-document-detail-edge.sqlite'}"
+    engine = cx_document_detail_smoke.build_engine(database_url)
+    _create_sqlite_cx_document_library_tables(engine)
+
+    monkeypatch.setattr(
+        cx_document_detail_smoke,
+        "attach_service_persistence_runtime",
+        lambda *args, **kwargs: SimpleNamespace(api_session_factory=None),
+    )
+    with pytest.raises(RuntimeError, match="session factory"):
+        cx_document_detail_smoke._execute_document_detail_smoke(
+            database_env="NEX_CX_TEST_DATABASE_URL",
+            database_url=database_url,
+            runtime_environ={
+                cx_document_detail_smoke.SERVICE_SPEC.database_env: database_url,
+                "NEX_CX_PERSISTENCE_MODE": "postgres",
+            },
+        )
+
+    monkeypatch.undo()
+    monkeypatch.setattr(
+        cx_document_detail_smoke,
+        "_count_active_owner_documents",
+        lambda *args, **kwargs: 0,
+    )
+    with pytest.raises(RuntimeError, match="smoke checks failed"):
+        cx_document_detail_smoke._execute_document_detail_smoke(
+            database_env="NEX_CX_TEST_DATABASE_URL",
+            database_url=database_url,
+            runtime_environ={
+                cx_document_detail_smoke.SERVICE_SPEC.database_env: database_url,
+                "NEX_CX_PERSISTENCE_MODE": "postgres",
+            },
+        )
+
+    with engine.begin() as connection:
+        remaining_content = connection.execute(
+            text("SELECT count(*) FROM cx_content_objects")
+        ).scalar_one()
+        remaining_sources = connection.execute(
+            text("SELECT count(*) FROM cx_source_files")
+        ).scalar_one()
+    assert remaining_content == 0
+    assert remaining_sources == 0
+
+
+def test_cx_document_detail_postgres_smoke_main_prints_summary_and_full_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cx_document_detail_smoke, "load_env_file", lambda path: None)
+    monkeypatch.setattr(
+        cx_document_detail_smoke,
+        "run_cx_document_detail_postgres_smoke",
+        lambda: {
+            "smoke_schema_version": "cx_document_detail_postgres_smoke.v1",
+            "status": "SKIPPED",
+            "skip_reason": "NEX_CX_DOCUMENT_DETAIL_POSTGRES_SMOKE is not enabled.",
+        },
+    )
+
+    assert cx_document_detail_smoke.main(["--summary"]) == 0
+    assert "cx_document_detail_postgres_smoke=skipped" in capsys.readouterr().out
+
+    assert cx_document_detail_smoke.main([]) == 0
     assert '"status": "SKIPPED"' in capsys.readouterr().out
 
 
