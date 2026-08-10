@@ -290,6 +290,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0184`](slices/0184_cx_processing_run_write_through_integration.md) | `S19-004` CX processing run write-through integration. |
 | [`Slice 0185`](slices/0185_cx_processing_postgresql_smoke_evidence.md) | `S19-005` CX processing run PostgreSQL smoke evidence. |
 | [`Slice 0186`](slices/0186_cx_processing_persisted_read_model_query_foundation.md) | `S19-006` CX processing persisted read-model query foundation. |
+| [`Slice 0187`](slices/0187_cx_processing_run_service_api_persisted_wiring.md) | `S19-007` CX processing run service API persisted wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

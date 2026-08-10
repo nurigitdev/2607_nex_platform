@@ -26,6 +26,7 @@ from nex_cx.processing import (
     ProcessingPipelineError,
     _enqueue_or_resume_processing_job,
     _failed_step_id,
+    _processing_run_repository_from_request,
     _safe_emit_processing_event,
     _safe_emit_processing_worker_heartbeat,
     _safe_emit_processing_worker_lifecycle_event,
@@ -44,6 +45,13 @@ from nex_cx.processing import (
     run_document_processing_pipeline,
     safe_error_from_exception,
 )
+from nex_cx.repository import (
+    CxContentRepository,
+    CxContentRepositoryError,
+    InMemoryCxContentRepository,
+    SqlAlchemyCxContentRepository,
+    build_processing_run_persistence_record,
+)
 from nex_runtime import (
     BUSY,
     ERROR,
@@ -52,6 +60,7 @@ from nex_runtime import (
     InMemoryOperationalEventStore,
     InMemoryWorkerHeartbeatStore,
     OperationalEventEmitter,
+    PERSISTENCE_MODE_POSTGRES,
     SERVICE_SPECS,
     WorkerHeartbeatEmitter,
     WorkerHeartbeatEmitResult,
@@ -107,6 +116,15 @@ class ExplodingWorkerHeartbeatStore:
         return []
 
 
+class UnavailableProcessingRunRepository:
+    def get_latest_processing_run_record(self, document_id: str) -> dict[str, Any] | None:
+        raise CxContentRepositoryError(
+            error_code="cx_content.repository_unavailable",
+            detail=f"Processing run repository unavailable for: {document_id}",
+            status_code=503,
+        )
+
+
 def storage_config(tmp_path: Path) -> CxStorageConfig:
     return CxStorageConfig(
         data_root=tmp_path,
@@ -134,6 +152,7 @@ def build_test_client(
     tmp_path: Path,
     *,
     job_queue: InMemoryJobQueue | None = None,
+    processing_run_repository: CxContentRepository | None = None,
 ) -> tuple[TestClient, ContentIngestionStore, FakeMoEmbeddingClient]:
     app = build_service_app(SERVICE_SPECS["nex-cx"])
     store = ContentIngestionStore()
@@ -147,6 +166,7 @@ def build_test_client(
         mo_client=mo_client,
         embedding_alias="mock-embedding-default",
         job_queue=job_queue,
+        processing_run_repository=processing_run_repository,
     )
     return TestClient(app), store, mo_client
 
@@ -837,6 +857,198 @@ def test_processing_routes_run_and_read_latest_pipeline(tmp_path: Path) -> None:
     assert job_queue.summary()["statuses"]["SUCCEEDED"] == 1
     assert store.get_latest_document_processing_run(uploaded["document_id"]) == response.json()
     assert len(mo_client.calls) == 2
+
+
+def test_processing_route_read_latest_prefers_persisted_repository(
+    tmp_path: Path,
+) -> None:
+    document_id = "persisted-document"
+    persisted_repository = InMemoryCxContentRepository()
+    persisted_job = build_processing_job(
+        document_id=document_id,
+        pipeline_run_id="persisted-run",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        created_at=NOW,
+    )
+    persisted_repository.save_processing_run_record(
+        build_processing_run_persistence_record(
+            build_queued_pipeline_run_record(
+                document_id=document_id,
+                pipeline_run_id="persisted-run",
+                request_id=REQUEST_ID,
+                trace_id=TRACE_ID,
+                queued_at=NOW,
+                job=persisted_job,
+            )
+        )
+    )
+    client, store, _ = build_test_client(
+        tmp_path,
+        processing_run_repository=persisted_repository,
+    )
+    memory_job = build_processing_job(
+        document_id=document_id,
+        pipeline_run_id="memory-run",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        created_at=LATER,
+    )
+    store.save_document_processing_run(
+        build_queued_pipeline_run_record(
+            document_id=document_id,
+            pipeline_run_id="memory-run",
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            queued_at=LATER,
+            job=memory_job,
+        )
+    )
+
+    response = client.get(
+        f"/api/v1/documents/{document_id}/processing",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["pipeline_run_id"] == "persisted-run"
+    assert payload["processing_run_schema_version"] == (
+        "cx_document_processing_run.persistence.v1"
+    )
+    assert payload["job_id"] == persisted_job["job_id"]
+    assert payload["steps_included"] is True
+    assert "job" not in payload
+
+
+def test_processing_route_read_latest_falls_back_to_memory_record(
+    tmp_path: Path,
+) -> None:
+    document_id = "memory-document"
+    client, store, _ = build_test_client(
+        tmp_path,
+        processing_run_repository=InMemoryCxContentRepository(),
+    )
+    job = build_processing_job(
+        document_id=document_id,
+        pipeline_run_id="memory-only-run",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        created_at=NOW,
+    )
+    store.save_document_processing_run(
+        build_queued_pipeline_run_record(
+            document_id=document_id,
+            pipeline_run_id="memory-only-run",
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            queued_at=NOW,
+            job=job,
+        )
+    )
+
+    response = client.get(
+        f"/api/v1/documents/{document_id}/processing",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["pipeline_run_id"] == "memory-only-run"
+    assert payload["job"]["job_id"] == job["job_id"]
+    assert "processing_run_schema_version" not in payload
+
+
+def test_processing_route_read_latest_maps_repository_error_to_problem(
+    tmp_path: Path,
+) -> None:
+    client, _, _ = build_test_client(
+        tmp_path,
+        processing_run_repository=(
+            UnavailableProcessingRunRepository()  # type: ignore[arg-type]
+        ),
+    )
+
+    response = client.get(
+        "/api/v1/documents/unavailable/processing",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 503
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["error_code"] == "cx_content.repository_unavailable"
+
+
+def test_processing_run_repository_resolution_prefers_explicit_repository() -> None:
+    explicit_repository = InMemoryCxContentRepository()
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                nex_persistence=SimpleNamespace(
+                    mode=PERSISTENCE_MODE_POSTGRES,
+                    api_session_factory=lambda: None,
+                )
+            )
+        )
+    )
+
+    resolved = _processing_run_repository_from_request(
+        request,  # type: ignore[arg-type]
+        processing_run_repository=explicit_repository,
+    )
+
+    assert resolved is explicit_repository
+
+
+def test_processing_run_repository_resolution_uses_postgres_runtime() -> None:
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                nex_persistence=SimpleNamespace(
+                    mode=PERSISTENCE_MODE_POSTGRES,
+                    api_session_factory=lambda: None,
+                )
+            )
+        )
+    )
+
+    resolved = _processing_run_repository_from_request(request)  # type: ignore[arg-type]
+
+    assert isinstance(resolved, SqlAlchemyCxContentRepository)
+
+
+def test_processing_run_repository_resolution_skips_memory_runtime() -> None:
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                nex_persistence=SimpleNamespace(
+                    mode="memory",
+                    api_session_factory=lambda: None,
+                )
+            )
+        )
+    )
+    missing_session_factory_request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                nex_persistence=SimpleNamespace(
+                    mode=PERSISTENCE_MODE_POSTGRES,
+                    api_session_factory=None,
+                )
+            )
+        )
+    )
+
+    assert (
+        _processing_run_repository_from_request(request)  # type: ignore[arg-type]
+        is None
+    )
+    assert (
+        _processing_run_repository_from_request(  # type: ignore[arg-type]
+            missing_session_factory_request
+        )
+        is None
+    )
 
 
 def test_processing_routes_enqueue_and_worker_can_complete_pipeline(tmp_path: Path) -> None:

@@ -90,13 +90,14 @@ Internal persistence boundary:
   score, and source summary; raw query text, raw evidence text, and raw query
   vectors stay outside durable public rows.
 - Processing run database schema, repository adapter, runtime store
-  write-through, PostgreSQL smoke evidence, and persisted read-model query
-  helpers are present.
+  write-through, PostgreSQL smoke evidence, persisted read-model query helpers,
+  and service API read wiring are present.
   `build_cx_persistence_gap_audit()` exposes the planned
   `cx_document_processing_runs` / `cx_document_processing_steps` mapping,
   minimum metadata, private payload policy, and latest safe persistence preview.
-  Service API wiring for the persisted processing read-model is deferred to the
-  next slice.
+  `GET /api/v1/documents/{document_id}/processing` prefers persisted
+  repository rows when available and falls back to the in-memory runtime record
+  for local regression mode and pre-persistence records.
   Optional header-table decisions for zero-token lexical and zero-chunk
   embedding index history remain deferred.
 

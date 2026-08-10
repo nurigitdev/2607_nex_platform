@@ -29,6 +29,7 @@ from nex_runtime import (
     WorkerRunnerConfig,
     WorkerHeartbeatEmitResult,
     WorkerHeartbeatEmitter,
+    PERSISTENCE_MODE_POSTGRES,
     build_common_job,
     build_subject_ref,
     operational_event_emitter_from_app,
@@ -57,6 +58,12 @@ from nex_cx.ingestion import (
     run_text_extraction_job,
 )
 from nex_cx.lexical_index import LexicalIndexError, build_and_store_lexical_index
+from nex_cx.processing_read_model import project_processing_run_record
+from nex_cx.repository import (
+    CxContentRepository,
+    CxContentRepositoryError,
+    SqlAlchemyCxContentRepository,
+)
 from nex_cx.summaries import SummaryError, build_and_store_document_summary
 from nex_cx.summary_embeddings import (
     SummaryEmbeddingError,
@@ -104,6 +111,7 @@ def register_processing_routes(
     job_queue: JobQueue | None = None,
     event_emitter: OperationalEventEmitter | None = None,
     worker_heartbeat_emitter: WorkerHeartbeatEmitter | None = None,
+    processing_run_repository: CxContentRepository | None = None,
 ) -> None:
     config = storage_config or build_storage_config()
     client = mo_client or build_default_mo_embedding_client()
@@ -185,6 +193,25 @@ def register_processing_routes(
         if auth_problem is not None:
             return auth_problem
 
+        try:
+            persisted_record = _get_latest_persisted_processing_run(
+                request,
+                document_id=document_id,
+                processing_run_repository=processing_run_repository,
+            )
+        except CxContentRepositoryError as exc:
+            return _processing_problem_response(
+                request,
+                ProcessingPipelineError(
+                    status_code=exc.status_code,
+                    error_code=exc.error_code,
+                    detail=exc.detail,
+                    retryable=True,
+                ),
+            )
+        if persisted_record is not None:
+            return project_processing_run_record(persisted_record, include_steps=True)
+
         record = store.get_latest_document_processing_run(document_id)
         if record is None:
             return _processing_problem_response(
@@ -196,6 +223,38 @@ def register_processing_routes(
                 ),
             )
         return record
+
+
+def _get_latest_persisted_processing_run(
+    request: Request,
+    *,
+    document_id: str,
+    processing_run_repository: CxContentRepository | None = None,
+) -> dict[str, Any] | None:
+    repository = _processing_run_repository_from_request(
+        request,
+        processing_run_repository=processing_run_repository,
+    )
+    if repository is None:
+        return None
+    return repository.get_latest_processing_run_record(document_id)
+
+
+def _processing_run_repository_from_request(
+    request: Request,
+    *,
+    processing_run_repository: CxContentRepository | None = None,
+) -> CxContentRepository | None:
+    if processing_run_repository is not None:
+        return processing_run_repository
+
+    runtime = getattr(request.app.state, "nex_persistence", None)
+    if getattr(runtime, "mode", None) != PERSISTENCE_MODE_POSTGRES:
+        return None
+    session_factory = getattr(runtime, "api_session_factory", None)
+    if session_factory is None:
+        return None
+    return SqlAlchemyCxContentRepository(session_factory)
 
 
 def enqueue_document_processing_pipeline(
