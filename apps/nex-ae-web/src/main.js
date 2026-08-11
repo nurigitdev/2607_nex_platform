@@ -8,6 +8,9 @@ import {
   documentScopeLabel
 } from "./documentScope.js";
 import {
+  createMockRetrievalClient
+} from "./retrievalClient.js";
+import {
   createMockUploadClient
 } from "./uploadClient.js";
 import {
@@ -49,6 +52,7 @@ const workspaceState = {
   selectedDocumentId: "doc-001",
   documentScope: null,
   lastRetrievalRequest: null,
+  lastRetrievalResult: null,
   uploadSubmission: null,
   uploadDraft: buildUploadSurfaceDraft({
     workspaceId: "workspace-local",
@@ -163,6 +167,7 @@ workspaceState.documentDetailClient = createMockDocumentDetailClient({
   documents: workspaceState.documents
 });
 workspaceState.uploadClient = createMockUploadClient();
+workspaceState.retrievalClient = createMockRetrievalClient();
 workspaceState.documentScope = buildCurrentDocumentScope();
 
 const serviceList = document.querySelector("#service-list");
@@ -183,6 +188,7 @@ const uploadClientSummary = document.querySelector("#upload-client-summary");
 const uploadPayloadPreview = document.querySelector("#upload-payload-preview");
 const retrievalScopeStatus = document.querySelector("#retrieval-scope-status");
 const retrievalScopeSummary = document.querySelector("#retrieval-scope-summary");
+const retrievalClientSummary = document.querySelector("#retrieval-client-summary");
 const retrievalScopePreview = document.querySelector("#retrieval-scope-preview");
 const progressTimeline = document.querySelector("#progress-timeline");
 const timelineCount = document.querySelector("#timeline-count");
@@ -202,7 +208,7 @@ refreshButton.addEventListener("click", () => {
 
 composer.addEventListener("submit", event => {
   event.preventDefault();
-  appendPromptInteraction();
+  void appendPromptInteraction();
 });
 
 uploadSubmitButton.addEventListener("click", () => {
@@ -362,11 +368,12 @@ function renderUploadClientSummary(submission) {
 
 function renderRetrievalScope() {
   const scope = workspaceState.documentScope;
+  const retrievalResult = workspaceState.lastRetrievalResult;
   retrievalScopeStatus.textContent = statusLabel(
-    scope.selectedCount > 0 ? "READY" : "UNKNOWN"
+    retrievalResult?.status || (scope.selectedCount > 0 ? "READY" : "UNKNOWN")
   );
   retrievalScopeStatus.className = `badge ${badgeClass(
-    scope.selectedCount > 0 ? "READY" : "UNKNOWN"
+    retrievalResult?.status || (scope.selectedCount > 0 ? "READY" : "UNKNOWN")
   )}`;
   retrievalScopeSummary.innerHTML = `
     <div>
@@ -382,11 +389,46 @@ function renderRetrievalScope() {
       <dd>${escapeHtml(scope.document_scope.document_ids.join(", "))}</dd>
     </div>
   `;
+  retrievalClientSummary.innerHTML = renderRetrievalClientSummary(retrievalResult);
   retrievalScopePreview.textContent = JSON.stringify(
-    safeRetrievalPreview(workspaceState.lastRetrievalRequest, scope),
+    safeRetrievalPreview(workspaceState.lastRetrievalRequest, scope, retrievalResult),
     null,
     2
   );
+}
+
+function renderRetrievalClientSummary(retrievalResult) {
+  if (!retrievalResult) {
+    return `
+      <div>
+        <dt>client</dt>
+        <dd>${escapeHtml(workspaceState.retrievalClient.clientMode)}</dd>
+      </div>
+      <div>
+        <dt>result</dt>
+        <dd>READY_FOR_PROMPT</dd>
+      </div>
+    `;
+  }
+
+  return `
+    <div>
+      <dt>client</dt>
+      <dd>${escapeHtml(retrievalResult.clientMode || workspaceState.retrievalClient.clientMode)}</dd>
+    </div>
+    <div>
+      <dt>result</dt>
+      <dd>${escapeHtml(retrievalResult.status || "UNKNOWN")} · ${escapeHtml(retrievalResult.cxStatus || "UNKNOWN")}</dd>
+    </div>
+    <div>
+      <dt>package</dt>
+      <dd>${escapeHtml(retrievalResult.cxRetrievalPackageId || "n/a")}</dd>
+    </div>
+    <div>
+      <dt>evidence</dt>
+      <dd>${escapeHtml(retrievalResult.evidenceCount ?? 0)} · ${escapeHtml(retrievalResult.confidenceBucket || "UNKNOWN")}</dd>
+    </div>
+  `;
 }
 
 function renderMessages() {
@@ -648,7 +690,7 @@ function renderAuditSummary() {
   `;
 }
 
-function appendPromptInteraction() {
+async function appendPromptInteraction() {
   const prompt = promptInput.value.trim();
   if (!prompt) {
     promptInput.focus();
@@ -663,6 +705,7 @@ function appendPromptInteraction() {
     documentScope: workspaceState.documentScope,
     grounded
   });
+  const retrievalResult = await submitRetrievalRequest(retrievalRequest);
   workspaceState.messages.push({
     role: "user",
     label: "사용자",
@@ -672,12 +715,14 @@ function appendPromptInteraction() {
     role: "assistant",
     label: "assistant",
     text: grounded
-      ? `${documentScopeLabel(workspaceState.documentScope)} 범위로 근거 패키지와 ${format} handoff를 연결했습니다.`
+      ? `${documentScopeLabel(workspaceState.documentScope)} 범위로 ${retrievalResult.cxStatus} retrieval 결과와 ${format} handoff를 연결했습니다.`
       : `${format} 생성 요청을 일반 답변 흐름으로 연결했습니다.`,
     artifactRefs: [buildMockArtifactRef(format, grounded)],
-    retrievalScope: grounded ? workspaceState.documentScope : null
+    retrievalScope: grounded ? workspaceState.documentScope : null,
+    retrievalResult: grounded ? retrievalResult : null
   });
   workspaceState.lastRetrievalRequest = retrievalRequest;
+  workspaceState.lastRetrievalResult = retrievalResult;
   workspaceState.artifact.targetFormats = [format];
   workspaceState.artifact.handoffStatus = "READY";
   workspaceState.artifact.citationStatus = grounded ? "VALIDATED" : "NOT_REQUIRED";
@@ -686,6 +731,34 @@ function appendPromptInteraction() {
   workspaceState.artifact.downloadRoutes = workspaceState.artifactRef.downloadRoutes;
   workspaceState.progressEvents = buildProgressEvents(grounded);
   renderWorkspace();
+}
+
+async function submitRetrievalRequest(retrievalRequest) {
+  try {
+    return await workspaceState.retrievalClient.submitRetrievalRequest(retrievalRequest);
+  } catch (error) {
+    return {
+      clientMode: workspaceState.retrievalClient.clientMode,
+      route: retrievalRequest.route,
+      retrievalInteractionId: null,
+      chatDocumentId: retrievalRequest.chat_document_id,
+      status: "UNAVAILABLE",
+      cxStatus: error.status || "RETRIEVAL_CLIENT_ERROR",
+      cxRetrievalPackageId: null,
+      evidenceCount: 0,
+      bestScore: null,
+      confidenceBucket: "UNKNOWN",
+      noAnswerReason: null,
+      warnings: [],
+      retryable: Boolean(error.retryable),
+      metadata: {
+        userMessageIncluded: false,
+        sourcePreviewIncluded: false,
+        browserServiceTokenIncluded: false,
+        providerUrlIncluded: false
+      }
+    };
+  }
 }
 
 async function submitUploadDraft() {
@@ -748,16 +821,19 @@ function safeUploadPreview(payload, draft, submission) {
   return preview;
 }
 
-function safeRetrievalPreview(retrievalRequest, currentScope) {
+function safeRetrievalPreview(retrievalRequest, currentScope, retrievalResult) {
   if (!retrievalRequest) {
     return {
       route: currentScope.route,
       document_scope: currentScope.document_scope,
       selected_count: currentScope.selectedCount,
+      client: {
+        mode: workspaceState.retrievalClient.clientMode
+      },
       status: "READY_FOR_PROMPT"
     };
   }
-  return {
+  const preview = {
     route: retrievalRequest.route,
     chat_document_id: retrievalRequest.chat_document_id,
     execution_mode: retrievalRequest.retrieval.execution_mode,
@@ -768,6 +844,22 @@ function safeRetrievalPreview(retrievalRequest, currentScope) {
     purpose: retrievalRequest.retrieval.purpose,
     selected_count: retrievalRequest.surface.selected_count
   };
+  if (retrievalResult) {
+    preview.client = {
+      mode: retrievalResult.clientMode,
+      status: retrievalResult.status,
+      cx_status: retrievalResult.cxStatus,
+      retrieval_interaction_id: retrievalResult.retrievalInteractionId,
+      cx_retrieval_package_id: retrievalResult.cxRetrievalPackageId,
+      evidence_count: retrievalResult.evidenceCount,
+      best_score: retrievalResult.bestScore,
+      confidence_bucket: retrievalResult.confidenceBucket,
+      no_answer_reason: retrievalResult.noAnswerReason,
+      retryable: retrievalResult.retryable,
+      metadata: retrievalResult.metadata
+    };
+  }
+  return preview;
 }
 
 function buildMockArtifactRef(format, grounded) {
@@ -821,7 +913,7 @@ function createStatusDot(result) {
 }
 
 function badgeClass(status) {
-  if (["HEALTHY", "READY", "VALIDATED", "SUCCEEDED", "HIGH"].includes(status)) {
+  if (["HEALTHY", "READY", "VALIDATED", "SUCCEEDED", "HIGH", "COMPLETED"].includes(status)) {
     return "success";
   }
   if ([
@@ -843,6 +935,7 @@ function badgeClass(status) {
 function statusLabel(status) {
   const labels = {
     COMPLETED: "완료",
+    SKIPPED: "건너뜀",
     RUNNING: "진행",
     QUEUED: "대기열",
     READY: "준비",

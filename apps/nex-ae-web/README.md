@@ -66,5 +66,15 @@ Slice 0219 adds the upload client adapter foundation:
 - Upload client previews omit raw source content, service tokens, CX storage
   locations, provider URLs, and database details.
 
+Slice 0220 adds the retrieval context client adapter foundation:
+
+- `src/retrievalClient.js` owns mock and fetch retrieval client adapters.
+- Chat submit now passes the selected document-scope retrieval request through
+  the mock adapter by default.
+- The fetch adapter targets `/api/v1/retrieval/contexts` with same-origin
+  browser credentials and JSON request metadata.
+- Retrieval client previews omit raw prompts, source previews, chunk text,
+  service tokens, provider URLs, and database details.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.
