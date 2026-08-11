@@ -210,6 +210,154 @@ paths:
           description: Summary search request is invalid.
         "503":
           description: CX document status is unavailable.
+  /api/v1/documents/{document_id}:
+    get:
+      operationId: getAeDocumentDetail
+      tags:
+        - Documents
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AE-safe document detail projection composed from a CX detail read.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - projection_schema_version
+                  - service_id
+                  - workspace_id
+                  - tenant_id
+                  - owner_user_id
+                  - document
+                  - cx
+                  - metadata
+                properties:
+                  projection_schema_version:
+                    const: ae_document_detail_projection.v1
+                  service_id:
+                    const: nex-ae-api
+                  workspace_id:
+                    type: string
+                  tenant_id:
+                    type: string
+                  owner_user_id:
+                    type: string
+                  document:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - document_detail_schema_version
+                      - document_id
+                      - upload_handoff_id
+                      - filename
+                      - content_type
+                      - size_bytes
+                      - source_sha256
+                      - status
+                      - summary
+                      - processing
+                      - source_lineage
+                      - links
+                      - metadata
+                    properties:
+                      document_detail_schema_version:
+                        const: ae_document_detail_item.v1
+                      document_id:
+                        type: string
+                      upload_handoff_id:
+                        type: string
+                      filename:
+                        type: string
+                      content_type:
+                        type: string
+                      size_bytes:
+                        type: integer
+                        minimum: 0
+                      source_sha256:
+                        type: string
+                        pattern: ^[0-9a-f]{64}$
+                      status:
+                        type: object
+                        additionalProperties: false
+                      summary:
+                        type: object
+                        additionalProperties: false
+                      processing:
+                        type: object
+                        additionalProperties: false
+                      source_lineage:
+                        type: object
+                        additionalProperties: false
+                        required:
+                          - storage_key_included
+                          - storage_uri_included
+                          - storage_path_included
+                        properties:
+                          source_file_id:
+                            type:
+                              - string
+                              - "null"
+                          source_sha256:
+                            type: string
+                            pattern: ^[0-9a-f]{64}$
+                          content_type:
+                            type: string
+                          size_bytes:
+                            type: integer
+                            minimum: 0
+                          storage_key_included:
+                            const: false
+                          storage_uri_included:
+                            const: false
+                          storage_path_included:
+                            const: false
+                      links:
+                        type: object
+                        additionalProperties: false
+                      metadata:
+                        type: object
+                        additionalProperties: false
+                        properties:
+                          raw_source_stored_in_ae:
+                            const: false
+                          raw_summary_stored_in_ae:
+                            const: false
+                          embedding_vector_stored_in_ae:
+                            const: false
+                          cx_storage_redacted:
+                            const: true
+                  cx:
+                    type: object
+                    additionalProperties: false
+                  metadata:
+                    type: object
+                    additionalProperties: false
+                    properties:
+                      raw_source_stored_in_ae:
+                        const: false
+                      raw_summary_stored_in_ae:
+                        const: false
+                      embedding_vector_stored_in_ae:
+                        const: false
+                      cx_storage_redacted:
+                        const: true
+                      cx_detail_passthrough:
+                        const: false
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: AE upload handoff was not found for the requested document.
+        "422":
+          description: Stored AE document owner scope is invalid.
+        "503":
+          description: CX document detail is unavailable.
   /api/v1/artifact-handoffs:
     post:
       operationId: createAeArtifactHandoff

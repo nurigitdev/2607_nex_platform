@@ -1,0 +1,400 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/document_detail_projection.v1.schema.json",
+  "title": "NeX AE Document Detail Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "projection_schema_version",
+    "service_id",
+    "workspace_id",
+    "tenant_id",
+    "owner_user_id",
+    "document",
+    "cx",
+    "metadata"
+  ],
+  "properties": {
+    "projection_schema_version": {
+      "const": "ae_document_detail_projection.v1"
+    },
+    "service_id": {
+      "const": "nex-ae-api"
+    },
+    "workspace_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner_user_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "document": {
+      "$ref": "#/$defs/document_detail_item"
+    },
+    "cx": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "document_detail_schema_version",
+        "source_kind",
+        "owner_scoped",
+        "not_found_and_not_authorized_collapsed"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "$ref": "#/$defs/optional_text"
+        },
+        "document_detail_schema_version": {
+          "$ref": "#/$defs/optional_text"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/optional_text"
+        },
+        "owner_scoped": {
+          "type": "boolean"
+        },
+        "not_found_and_not_authorized_collapsed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "metadata": {
+      "$ref": "#/$defs/privacy_metadata"
+    }
+  },
+  "$defs": {
+    "optional_text": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "optional_hash": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "document_detail_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "document_detail_schema_version",
+        "document_id",
+        "upload_handoff_id",
+        "filename",
+        "content_type",
+        "size_bytes",
+        "source_sha256",
+        "status",
+        "summary",
+        "processing",
+        "source_lineage",
+        "links",
+        "metadata"
+      ],
+      "properties": {
+        "document_detail_schema_version": {
+          "const": "ae_document_detail_item.v1"
+        },
+        "document_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "upload_handoff_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "filename": {
+          "type": "string",
+          "pattern": "^[^/\\\\]{1,255}$"
+        },
+        "content_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "status": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "dedupe_status",
+            "extraction_status",
+            "markdown_available",
+            "summary_status",
+            "summary_embedding_status",
+            "processing_status"
+          ],
+          "properties": {
+            "dedupe_status": {
+              "type": "string",
+              "enum": [
+                "CREATED",
+                "ALREADY_EXISTS"
+              ]
+            },
+            "extraction_status": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "RUNNING",
+                "SUCCEEDED",
+                "FAILED"
+              ]
+            },
+            "markdown_available": {
+              "type": "boolean"
+            },
+            "summary_status": {
+              "type": "string",
+              "minLength": 1
+            },
+            "summary_embedding_status": {
+              "type": "string",
+              "minLength": 1
+            },
+            "processing_status": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "summary_available",
+            "summary_text_sha256",
+            "summary_preview",
+            "summary_char_count",
+            "summary_embedding_available",
+            "summary_embedding_model",
+            "summary_embedding_dimension"
+          ],
+          "properties": {
+            "summary_available": {
+              "type": "boolean"
+            },
+            "summary_text_sha256": {
+              "$ref": "#/$defs/optional_hash"
+            },
+            "summary_preview": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "summary_char_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "summary_embedding_available": {
+              "type": "boolean"
+            },
+            "summary_embedding_model": {
+              "$ref": "#/$defs/optional_text"
+            },
+            "summary_embedding_dimension": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "processing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "available",
+            "latest_pipeline_run_id",
+            "status",
+            "step_total",
+            "step_failed",
+            "updated_at"
+          ],
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "latest_pipeline_run_id": {
+              "$ref": "#/$defs/optional_text"
+            },
+            "status": {
+              "type": "string",
+              "minLength": 1
+            },
+            "step_total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "step_failed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "updated_at": {
+              "$ref": "#/$defs/optional_text"
+            }
+          }
+        },
+        "source_lineage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "source_file_id",
+            "source_sha256",
+            "content_type",
+            "size_bytes",
+            "storage_key_included",
+            "storage_uri_included",
+            "storage_path_included"
+          ],
+          "properties": {
+            "source_file_id": {
+              "$ref": "#/$defs/optional_text"
+            },
+            "source_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "content_type": {
+              "type": "string",
+              "minLength": 1
+            },
+            "size_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "storage_key_included": {
+              "const": false
+            },
+            "storage_uri_included": {
+              "const": false
+            },
+            "storage_path_included": {
+              "const": false
+            }
+          }
+        },
+        "links": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "upload_handoff",
+            "cx_document",
+            "cx_summary",
+            "cx_summary_embedding",
+            "cx_processing"
+          ],
+          "properties": {
+            "upload_handoff": {
+              "type": "string",
+              "pattern": "^/api/v1/uploads/[^/]+$"
+            },
+            "cx_document": {
+              "type": "string",
+              "pattern": "^/api/v1/documents/[^/]+$"
+            },
+            "cx_summary": {
+              "type": "string",
+              "pattern": "^/api/v1/documents/[^/]+/summary$"
+            },
+            "cx_summary_embedding": {
+              "type": "string",
+              "pattern": "^/api/v1/documents/[^/]+/summary-embedding$"
+            },
+            "cx_processing": {
+              "type": "string",
+              "pattern": "^/api/v1/documents/[^/]+/processing$"
+            }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "raw_source_stored_in_ae",
+            "raw_summary_stored_in_ae",
+            "embedding_vector_stored_in_ae",
+            "cx_storage_redacted"
+          ],
+          "properties": {
+            "raw_source_stored_in_ae": {
+              "const": false
+            },
+            "raw_summary_stored_in_ae": {
+              "const": false
+            },
+            "embedding_vector_stored_in_ae": {
+              "const": false
+            },
+            "cx_storage_redacted": {
+              "const": true
+            }
+          }
+        }
+      }
+    },
+    "privacy_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_source_stored_in_ae",
+        "raw_summary_stored_in_ae",
+        "embedding_vector_stored_in_ae",
+        "cx_storage_redacted",
+        "cx_detail_passthrough"
+      ],
+      "properties": {
+        "raw_source_stored_in_ae": {
+          "const": false
+        },
+        "raw_summary_stored_in_ae": {
+          "const": false
+        },
+        "embedding_vector_stored_in_ae": {
+          "const": false
+        },
+        "cx_storage_redacted": {
+          "const": true
+        },
+        "cx_detail_passthrough": {
+          "const": false
+        }
+      }
+    }
+  }
+}

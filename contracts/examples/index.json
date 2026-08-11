@@ -206,6 +206,11 @@
       "schema": "schemas/service/nex_ae_api/document_library_item.v1.schema.json"
     },
     {
+      "name": "ae_document_detail_projection_mock",
+      "path": "examples/generation/ae_document_detail_projection.mock_success.json",
+      "schema": "schemas/service/nex_ae_api/document_detail_projection.v1.schema.json"
+    },
+    {
       "name": "ag_readiness_projection_mock",
       "path": "examples/audit/ag_readiness_projection.mock_success.json",
       "schema": "schemas/service/nex_ag/readiness_projection.v1.schema.json"

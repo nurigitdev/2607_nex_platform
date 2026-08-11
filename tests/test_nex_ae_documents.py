@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 import httpx
+from jsonschema import Draft202012Validator
 from fastapi.testclient import TestClient
 import pytest
 
@@ -347,6 +350,24 @@ def test_build_document_detail_projection_projects_safe_cx_detail() -> None:
     assert "/data/nex-platform" not in str(projection)
     assert "private.md" not in str(projection)
     assert "raw_summary_text" not in str(projection)
+
+
+def test_build_document_detail_projection_matches_contract_schema() -> None:
+    schema_path = (
+        Path(__file__).parents[1]
+        / "contracts"
+        / "schemas"
+        / "service"
+        / "nex_ae_api"
+        / "document_detail_projection.v1.schema.json"
+    )
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    projection = build_document_detail_projection(
+        upload_handoff=upload_handoff(),
+        cx_document=cx_detail_projection(),
+    )
+
+    Draft202012Validator(schema).validate(projection)
 
 
 def test_build_document_detail_projection_defaults_unavailable_parts() -> None:

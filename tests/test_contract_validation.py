@@ -379,6 +379,46 @@ def test_nex_cx_openapi_hardens_document_detail_contract() -> None:
     assert schema["properties"]["metadata"]["properties"]["owner_scoped"]["const"] is True
 
 
+def test_nex_ae_openapi_hardens_document_detail_contract() -> None:
+    openapi_path = (
+        Path(__file__).parents[1]
+        / "contracts"
+        / "openapi"
+        / "nex-ae-api.openapi.yaml"
+    )
+    spec = yaml.safe_load(openapi_path.read_text(encoding="utf-8"))
+
+    operation = spec["paths"]["/api/v1/documents/{document_id}"]["get"]
+    parameters = {parameter["name"]: parameter for parameter in operation["parameters"]}
+    schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
+    document_schema = schema["properties"]["document"]
+    source_lineage_schema = document_schema["properties"]["source_lineage"]
+    document_metadata_schema = document_schema["properties"]["metadata"]
+    root_metadata_schema = schema["properties"]["metadata"]
+
+    assert operation["operationId"] == "getAeDocumentDetail"
+    assert parameters["document_id"]["required"] is True
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["projection_schema_version"]["const"] == (
+        "ae_document_detail_projection.v1"
+    )
+    assert document_schema["additionalProperties"] is False
+    assert document_schema["properties"]["document_detail_schema_version"]["const"] == (
+        "ae_document_detail_item.v1"
+    )
+    assert source_lineage_schema["additionalProperties"] is False
+    assert source_lineage_schema["properties"]["storage_key_included"]["const"] is False
+    assert source_lineage_schema["properties"]["storage_uri_included"]["const"] is False
+    assert source_lineage_schema["properties"]["storage_path_included"]["const"] is False
+    assert document_metadata_schema["properties"]["raw_summary_stored_in_ae"][
+        "const"
+    ] is False
+    assert document_metadata_schema["properties"]["embedding_vector_stored_in_ae"][
+        "const"
+    ] is False
+    assert root_metadata_schema["properties"]["cx_detail_passthrough"]["const"] is False
+
+
 def test_load_structured_file_rejects_unsupported_suffix(tmp_path: Path) -> None:
     unsupported = tmp_path / "payload.txt"
     unsupported.write_text("hello", encoding="utf-8")

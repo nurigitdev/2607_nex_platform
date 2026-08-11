@@ -88,6 +88,10 @@ Document library:
   the stored upload handoff, calls the owner-scoped CX detail endpoint once, and
   returns an AE-safe projection that omits source bytes, markdown text, raw
   summaries, embedding vectors, storage keys, storage URIs, and local paths.
+- Slice 0212 hardens that facade with
+  `document_detail_projection.v1.schema.json`, valid/negative contract
+  fixtures, and the `GET /api/v1/documents/{document_id}` OpenAPI response
+  boundary.
 
 Artifact handoff:
 
