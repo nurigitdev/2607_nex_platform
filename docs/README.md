@@ -320,6 +320,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0214`](slices/0214_ae_document_detail_postgresql_smoke_evidence.md) | `S22-004` AE document detail PostgreSQL smoke evidence. |
 | [`Slice 0215`](slices/0215_ae_web_document_surface_audit_refactoring_checkpoint.md) | `S22-005` AE Web document surface audit and refactoring checkpoint. |
 | [`Slice 0216`](slices/0216_ae_web_document_detail_client_adapter_foundation.md) | `S22-006` AE Web document detail client adapter foundation. |
+| [`Slice 0217`](slices/0217_ae_web_upload_surface_owner_scope_alignment.md) | `S22-007` AE Web upload surface audit and owner-scope alignment. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

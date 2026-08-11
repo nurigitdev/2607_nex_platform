@@ -2,6 +2,10 @@ import {
   createMockDocumentDetailClient,
   documentDetailRoute
 } from "./documentDetailClient.js";
+import {
+  buildUploadHandoffPayload,
+  buildUploadSurfaceDraft
+} from "./uploadSurface.js";
 
 const services = [
   ["nex-oa", 8101],
@@ -23,7 +27,8 @@ const baseProgressEvents = [
 
 const localOwnerScope = {
   tenantId: "tenant-local",
-  ownerUserId: "owner-local"
+  ownerUserId: "owner-local",
+  uploadedByUserId: "owner-local"
 };
 
 const workspaceState = {
@@ -34,6 +39,14 @@ const workspaceState = {
   retrievalPackageId: "cx-ret-local",
   artifactHandoffId: "handoff-local",
   selectedDocumentId: "doc-001",
+  uploadDraft: buildUploadSurfaceDraft({
+    workspaceId: "workspace-local",
+    filename: "new-reference-pack.md",
+    contentType: "text/markdown",
+    sizeBytes: 4096,
+    sourceSha256: "d12261539d27dcab69f873a5e1a30587919b8ce4802782151f1bc2ba5390b610",
+    ownerScope: localOwnerScope
+  }),
   artifactRef: {
     artifactId: "artifact-local",
     artifactVersionId: "artifact-version-local-001",
@@ -150,6 +163,9 @@ const messageList = document.querySelector("#message-list");
 const documentList = document.querySelector("#document-list");
 const documentDetail = document.querySelector("#document-detail");
 const documentDetailStatus = document.querySelector("#document-detail-status");
+const uploadStatus = document.querySelector("#upload-status");
+const uploadOwnerScope = document.querySelector("#upload-owner-scope");
+const uploadPayloadPreview = document.querySelector("#upload-payload-preview");
 const progressTimeline = document.querySelector("#progress-timeline");
 const timelineCount = document.querySelector("#timeline-count");
 const chatStatus = document.querySelector("#chat-status");
@@ -193,6 +209,7 @@ function renderWorkspace() {
   handoffBadge.textContent = statusLabel(workspaceState.artifact.citationStatus);
   handoffBadge.className = `badge ${badgeClass(workspaceState.artifact.citationStatus)}`;
   renderMessages();
+  renderUploadSurface();
   renderDocuments();
   void renderDocumentDetail();
   renderTimeline();
@@ -238,6 +255,51 @@ async function readJson(url) {
     throw new Error(`HTTP ${response.status}`);
   }
   return response.json();
+}
+
+function renderUploadSurface() {
+  const draft = workspaceState.uploadDraft;
+  const payload = buildUploadHandoffPayload(draft);
+  uploadStatus.textContent = statusLabel(draft.status);
+  uploadStatus.className = `badge ${badgeClass(draft.status)}`;
+  uploadOwnerScope.innerHTML = `
+    <div>
+      <dt>tenant</dt>
+      <dd>${escapeHtml(draft.ownerScope.tenantId)}</dd>
+    </div>
+    <div>
+      <dt>owner</dt>
+      <dd>${escapeHtml(draft.ownerScope.ownerUserId)}</dd>
+    </div>
+    <div>
+      <dt>uploaded_by</dt>
+      <dd>${escapeHtml(draft.ownerScope.uploadedByUserId)}</dd>
+    </div>
+    <div>
+      <dt>route</dt>
+      <dd><code>${escapeHtml(draft.uploadRoute)}</code></dd>
+    </div>
+    <div>
+      <dt>source</dt>
+      <dd>${escapeHtml(draft.filename)} · ${escapeHtml(draft.contentType)} · ${escapeHtml(draft.sizeBytes)} bytes</dd>
+    </div>
+  `;
+  uploadPayloadPreview.textContent = JSON.stringify(
+    {
+      workspace_id: payload.workspace_id,
+      filename: payload.filename,
+      content_type: payload.content_type,
+      size_bytes: payload.size_bytes,
+      source_sha256: payload.source_sha256,
+      tenant_id: payload.tenant_id,
+      owner_user_id: payload.owner_user_id,
+      uploaded_by_user_id: payload.uploaded_by_user_id,
+      ownership_ref: payload.ownership_ref,
+      metadata: draft.metadata
+    },
+    null,
+    2
+  );
 }
 
 function renderMessages() {
@@ -572,7 +634,7 @@ function badgeClass(status) {
   if (["HEALTHY", "READY", "VALIDATED", "SUCCEEDED", "HIGH"].includes(status)) {
     return "success";
   }
-  if (["DEGRADED", "LOW_CONFIDENCE", "MEDIUM", "PREVIEW_ONLY"].includes(status)) {
+  if (["DEGRADED", "LOW_CONFIDENCE", "MEDIUM", "PREVIEW_ONLY", "READY_FOR_HANDOFF"].includes(status)) {
     return "warning";
   }
   if (["RUNNING", "READY_FOR_RENDERING"].includes(status)) return "running";
@@ -585,6 +647,7 @@ function statusLabel(status) {
     COMPLETED: "완료",
     RUNNING: "진행",
     READY: "준비",
+    READY_FOR_HANDOFF: "전달 준비",
     READY_FOR_RENDERING: "렌더링 준비",
     PREVIEW_ONLY: "미리보기",
     VALIDATED: "검증됨",

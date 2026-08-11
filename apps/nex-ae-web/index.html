@@ -18,6 +18,7 @@
         </div>
         <nav>
           <a class="active" href="#workspace-summary">워크스페이스</a>
+          <a href="#upload-surface-panel">업로드</a>
           <a href="#document-list">문서</a>
           <a href="#document-detail-panel">상세</a>
           <a href="#artifact-panel">아티팩트</a>
@@ -28,7 +29,7 @@
       <main class="workspace">
         <header class="topbar">
           <div>
-            <p class="eyebrow">Slice 0216</p>
+            <p class="eyebrow">Slice 0217</p>
             <h1>NeX-Platform 작업면</h1>
           </div>
           <div class="status-strip" id="status-strip" aria-live="polite"></div>
@@ -104,6 +105,23 @@
                 <button id="refresh-button" type="button">새로고침</button>
               </div>
               <div class="service-list" id="service-list"></div>
+            </section>
+
+            <section
+              class="panel"
+              id="upload-surface-panel"
+              aria-labelledby="upload-surface-title"
+            >
+              <div class="section-header compact">
+                <h2 id="upload-surface-title">업로드 준비</h2>
+                <span class="badge pending" id="upload-status">대기</span>
+              </div>
+              <dl class="meta-list" id="upload-owner-scope"></dl>
+              <pre
+                class="payload-preview"
+                id="upload-payload-preview"
+                aria-label="AE 업로드 handoff payload preview"
+              ></pre>
             </section>
 
             <section class="panel" aria-labelledby="documents-title">

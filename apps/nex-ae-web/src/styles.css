@@ -590,6 +590,17 @@ code {
   padding: 4px 14px;
 }
 
+.payload-preview {
+  margin: 0;
+  border-top: 1px solid var(--nex-border);
+  background: #f8fafc;
+  padding: 12px 14px;
+  overflow-x: auto;
+  color: var(--nex-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .meta-list dt {
   color: var(--nex-muted);
   font-weight: 700;
@@ -618,7 +629,7 @@ code {
   }
 
   nav {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
   nav a {

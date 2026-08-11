@@ -39,5 +39,14 @@ Slice 0216 adds the document detail client adapter foundation:
 - Node built-in tests cover adapter success, not-found, HTTP failure, network
   failure, and invalid projection branches.
 
+Slice 0217 adds the upload surface owner-scope checkpoint:
+
+- `src/uploadSurface.js` owns the safe upload draft, ownership ref, and handoff
+  payload preview shape.
+- The workspace shows tenant, owner, uploaded-by, source hash, and
+  `/api/v1/uploads` handoff route metadata.
+- The browser surface does not include source content, service tokens, CX
+  storage locations, provider URLs, or database details.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.

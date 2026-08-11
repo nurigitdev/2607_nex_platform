@@ -18,6 +18,10 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "workspace-summary",
         "message-list",
         "progress-timeline",
+        "upload-surface-panel",
+        "upload-status",
+        "upload-owner-scope",
+        "upload-payload-preview",
         "document-list",
         "document-detail-panel",
         "document-detail",
@@ -28,8 +32,50 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "format-select",
     ]:
         assert f'id="{required_id}"' in html
-    assert "Slice 0216" in html
+    assert "Slice 0217" in html
     assert "lang=\"ko\"" in html
+
+
+def test_ae_web_upload_surface_tracks_owner_scope_contract() -> None:
+    javascript = read_web_file("src/main.js")
+    upload_surface = read_web_file("src/uploadSurface.js")
+
+    for expected in [
+        "buildUploadSurfaceDraft",
+        "buildUploadHandoffPayload",
+        "uploadDraft",
+        "renderUploadSurface",
+        "uploadedByUserId",
+        "ownership_ref",
+        "tenant_id",
+        "owner_user_id",
+        "uploaded_by_user_id",
+    ]:
+        assert expected in javascript
+
+    for expected in [
+        "ae_web_upload_surface.v1",
+        "ae_upload_handoff.v1",
+        "/api/v1/uploads",
+        "cx_source_ownership_ref.v1",
+        "legacy_owner_fields_mapped_to_oa_subject_refs",
+        "buildUploadSurfaceFromHandoff",
+        "UploadSurfaceError",
+        "browserServiceTokenIncluded: false",
+        "cxStorageIncluded: false",
+    ]:
+        assert expected in upload_surface
+
+    for forbidden in [
+        "content_text",
+        "content_base64",
+        "service_token",
+        "api_key",
+        "storage_uri",
+        "storage_path",
+    ]:
+        assert forbidden not in javascript
+        assert forbidden not in upload_surface
 
 
 def test_ae_web_document_surface_tracks_detail_facade_boundary() -> None:
@@ -105,6 +151,7 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert "overflow-wrap: anywhere" in styles
     assert ".document-detail" in styles
     assert ".document-detail.is-loading" in styles
+    assert ".payload-preview" in styles
     assert ".document-row.is-selected" in styles
     assert ".document-action-row" in styles
     assert ".artifact-link" in styles
@@ -114,10 +161,10 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert "linear-gradient" not in styles
 
 
-def test_ae_web_package_version_tracks_slice_0216() -> None:
+def test_ae_web_package_version_tracks_slice_0217() -> None:
     package = json.loads(read_web_file("package.json"))
 
     assert package["name"] == "nex-ae-web"
-    assert package["version"] == "0.0.0-slice0216"
+    assert package["version"] == "0.0.0-slice0217"
     assert package["scripts"]["dev"] == "node scripts/serve.mjs"
     assert package["scripts"]["test"] == "node --test test/*.test.mjs"
