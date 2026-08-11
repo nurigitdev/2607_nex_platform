@@ -39,7 +39,7 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "format-select",
     ]:
         assert f'id="{required_id}"' in html
-    assert "Slice 0220" in html
+    assert "Slice 0221" in html
     assert "lang=\"ko\"" in html
 
 
@@ -47,11 +47,11 @@ def test_ae_web_upload_surface_tracks_owner_scope_contract() -> None:
     javascript = read_web_file("src/main.js")
     upload_surface = read_web_file("src/uploadSurface.js")
     upload_client = read_web_file("src/uploadClient.js")
+    client_registry = read_web_file("src/clientRegistry.js")
 
     for expected in [
         "buildUploadSurfaceDraft",
         "buildUploadHandoffPayload",
-        "createMockUploadClient",
         "uploadDraft",
         "uploadClient",
         "uploadSubmission",
@@ -92,6 +92,8 @@ def test_ae_web_upload_surface_tracks_owner_scope_contract() -> None:
     ]:
         assert expected in upload_client
 
+    assert "createMockUploadClient" in client_registry
+
     for forbidden in [
         "content_text",
         "content_base64",
@@ -104,17 +106,20 @@ def test_ae_web_upload_surface_tracks_owner_scope_contract() -> None:
         assert forbidden not in javascript
         assert forbidden not in upload_surface
         assert forbidden not in upload_client
+        assert forbidden not in client_registry
 
 
 def test_ae_web_document_surface_tracks_detail_facade_boundary() -> None:
     javascript = read_web_file("src/main.js")
     client = read_web_file("src/documentDetailClient.js")
+    client_registry = read_web_file("src/clientRegistry.js")
 
     for expected in [
         "selectedDocumentId",
         "renderDocumentDetail",
         "documentDetailRoute",
-        "createMockDocumentDetailClient",
+        "createAeWebClients",
+        "clientRegistry",
         "ae_document_detail_projection.v1",
         "ownerScope",
         "sourceKind: \"postgres-read\"",
@@ -149,17 +154,18 @@ def test_ae_web_document_surface_tracks_detail_facade_boundary() -> None:
     ]:
         assert forbidden not in javascript
         assert forbidden not in client
+        assert forbidden not in client_registry
 
 
 def test_ae_web_document_scope_propagates_to_retrieval_surface() -> None:
     javascript = read_web_file("src/main.js")
     document_scope = read_web_file("src/documentScope.js")
     retrieval_client = read_web_file("src/retrievalClient.js")
+    client_registry = read_web_file("src/clientRegistry.js")
 
     for expected in [
         "buildDocumentScope",
         "buildRetrievalRequest",
-        "createMockRetrievalClient",
         "documentScopeLabel",
         "renderRetrievalScope",
         "renderRetrievalClientSummary",
@@ -211,6 +217,46 @@ def test_ae_web_document_scope_propagates_to_retrieval_surface() -> None:
         assert forbidden not in javascript
         assert forbidden not in document_scope
         assert forbidden not in retrieval_client
+        assert forbidden not in client_registry
+
+
+def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
+    javascript = read_web_file("src/main.js")
+    client_registry = read_web_file("src/clientRegistry.js")
+
+    for expected in [
+        "createAeWebClients",
+        "buildClientRegistrySummary",
+        "clientRegistry",
+    ]:
+        assert expected in javascript
+
+    for expected in [
+        "ae_web_client_registry.v1",
+        "AE_WEB_CLIENT_MODES",
+        "createMockDocumentDetailClient",
+        "createFetchDocumentDetailClient",
+        "createMockUploadClient",
+        "createFetchUploadClient",
+        "createMockRetrievalClient",
+        "createFetchRetrievalClient",
+        "CLIENT_MODE_UNSUPPORTED",
+        "CLIENT_REGISTRY_SUMMARY_INVALID",
+        "browserServiceTokenIncluded: false",
+        "databaseUrlIncluded: false",
+        "providerUrlIncluded: false",
+    ]:
+        assert expected in client_registry
+
+    for forbidden in [
+        "service_token",
+        "api_key",
+        "database_url",
+        "provider_url",
+        "/data/nex-platform",
+    ]:
+        assert forbidden not in javascript
+        assert forbidden not in client_registry
 
 
 def test_ae_web_mock_state_links_generation_artifact_and_audit_contracts() -> None:
@@ -253,10 +299,10 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert "linear-gradient" not in styles
 
 
-def test_ae_web_package_version_tracks_slice_0220() -> None:
+def test_ae_web_package_version_tracks_slice_0221() -> None:
     package = json.loads(read_web_file("package.json"))
 
     assert package["name"] == "nex-ae-web"
-    assert package["version"] == "0.0.0-slice0220"
+    assert package["version"] == "0.0.0-slice0221"
     assert package["scripts"]["dev"] == "node scripts/serve.mjs"
     assert package["scripts"]["test"] == "node --test test/*.test.mjs"

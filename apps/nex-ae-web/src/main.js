@@ -1,5 +1,8 @@
 import {
-  createMockDocumentDetailClient,
+  buildClientRegistrySummary,
+  createAeWebClients
+} from "./clientRegistry.js";
+import {
   documentDetailRoute
 } from "./documentDetailClient.js";
 import {
@@ -7,12 +10,6 @@ import {
   buildRetrievalRequest,
   documentScopeLabel
 } from "./documentScope.js";
-import {
-  createMockRetrievalClient
-} from "./retrievalClient.js";
-import {
-  createMockUploadClient
-} from "./uploadClient.js";
 import {
   buildUploadHandoffPayload,
   buildUploadSurfaceDraft
@@ -50,6 +47,7 @@ const workspaceState = {
   retrievalPackageId: "cx-ret-local",
   artifactHandoffId: "handoff-local",
   selectedDocumentId: "doc-001",
+  clientRegistry: null,
   documentScope: null,
   lastRetrievalRequest: null,
   lastRetrievalResult: null,
@@ -163,11 +161,13 @@ const workspaceState = {
 };
 
 workspaceState.messages[1].artifactRefs = [workspaceState.artifactRef];
-workspaceState.documentDetailClient = createMockDocumentDetailClient({
+workspaceState.clientRegistry = createAeWebClients({
+  mode: "mock",
   documents: workspaceState.documents
 });
-workspaceState.uploadClient = createMockUploadClient();
-workspaceState.retrievalClient = createMockRetrievalClient();
+workspaceState.documentDetailClient = workspaceState.clientRegistry.documentDetailClient;
+workspaceState.uploadClient = workspaceState.clientRegistry.uploadClient;
+workspaceState.retrievalClient = workspaceState.clientRegistry.retrievalClient;
 workspaceState.documentScope = buildCurrentDocumentScope();
 
 const serviceList = document.querySelector("#service-list");
@@ -804,7 +804,8 @@ function safeUploadPreview(payload, draft, submission) {
     ownership_ref: payload.ownership_ref,
     client: {
       mode: workspaceState.uploadClient.clientMode,
-      route: draft.uploadRoute
+      route: draft.uploadRoute,
+      registry: buildClientRegistrySummary(workspaceState.clientRegistry)
     },
     metadata: draft.metadata
   };
@@ -828,7 +829,8 @@ function safeRetrievalPreview(retrievalRequest, currentScope, retrievalResult) {
       document_scope: currentScope.document_scope,
       selected_count: currentScope.selectedCount,
       client: {
-        mode: workspaceState.retrievalClient.clientMode
+        mode: workspaceState.retrievalClient.clientMode,
+        registry: buildClientRegistrySummary(workspaceState.clientRegistry)
       },
       status: "READY_FOR_PROMPT"
     };

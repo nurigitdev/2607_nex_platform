@@ -76,5 +76,15 @@ Slice 0220 adds the retrieval context client adapter foundation:
 - Retrieval client previews omit raw prompts, source previews, chunk text,
   service tokens, provider URLs, and database details.
 
+Slice 0221 adds the runtime client composition registry:
+
+- `src/clientRegistry.js` composes document detail, upload, and retrieval
+  clients from one runtime boundary.
+- The static shell still defaults to mock mode.
+- Fetch-mode composition is available behind the registry for later safe
+  runtime config wiring.
+- Registry summaries omit service tokens, provider URLs, database URLs, raw
+  source content, and other server-only details.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.
