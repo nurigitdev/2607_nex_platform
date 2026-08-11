@@ -329,6 +329,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0223`](slices/0223_ae_web_fetch_mode_static_regression_harness.md) | `S23-003` AE Web fetch-mode static regression harness. |
 | [`Slice 0224`](slices/0224_ae_web_operation_state_model_foundation.md) | `S23-004` AE Web operation state model foundation. |
 | [`Slice 0225`](slices/0225_ae_web_error_retry_ux_wiring.md) | `S23-005` AE Web error/retry UX wiring. |
+| [`Slice 0226`](slices/0226_ae_web_runtime_diagnostics_surface.md) | `S23-006` AE Web runtime diagnostics surface. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

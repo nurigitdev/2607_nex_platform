@@ -16,6 +16,10 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
 
     for required_id in [
         "workspace-summary",
+        "runtime-diagnostics-panel",
+        "runtime-diagnostics-status",
+        "runtime-diagnostics-summary",
+        "runtime-diagnostics-preview",
         "message-list",
         "progress-timeline",
         "upload-surface-panel",
@@ -46,7 +50,7 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "format-select",
     ]:
         assert f'id="{required_id}"' in html
-    assert "Slice 0225" in html
+    assert "Slice 0226" in html
     assert "lang=\"ko\"" in html
 
 
@@ -234,6 +238,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     fetch_harness = read_web_file("src/fetchModeHarness.js")
     operation_state = read_web_file("src/operationState.js")
     operation_feedback = read_web_file("src/operationFeedback.js")
+    runtime_diagnostics = read_web_file("src/runtimeDiagnostics.js")
 
     for expected in [
         "createAeWebClients",
@@ -253,6 +258,9 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         "documentDetailRetryButton",
         "uploadRetryButton",
         "retrievalRetryButton",
+        "buildRuntimeDiagnostics",
+        "buildRuntimeDiagnosticsSummary",
+        "renderRuntimeDiagnostics",
     ]:
         assert expected in javascript
 
@@ -338,6 +346,24 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     ]:
         assert expected in operation_feedback
 
+    for expected in [
+        "ae_web_runtime_diagnostics.v1",
+        "RuntimeDiagnosticsError",
+        "buildRuntimeDiagnostics",
+        "buildRuntimeDiagnosticsSummary",
+        "RUNTIME_DIAGNOSTICS_SCHEMA_INVALID",
+        "RUNTIME_DIAGNOSTICS_OPERATIONS_INVALID",
+        "browserCredentialIncluded: false",
+        "serviceTokenIncluded: false",
+        "rawPromptRendered: false",
+        "rawSourceIncluded: false",
+        "databaseEndpointIncluded: false",
+        "providerEndpointIncluded: false",
+        "storageLocationIncluded: false",
+        "liveNetworkUsed: false",
+    ]:
+        assert expected in runtime_diagnostics
+
     for forbidden in [
         "service_token",
         "api_key",
@@ -351,6 +377,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         assert forbidden not in fetch_harness
         assert forbidden not in operation_state
         assert forbidden not in operation_feedback
+        assert forbidden not in runtime_diagnostics
 
 
 def test_ae_web_mock_state_links_generation_artifact_and_audit_contracts() -> None:
@@ -395,10 +422,10 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert "linear-gradient" not in styles
 
 
-def test_ae_web_package_version_tracks_slice_0225() -> None:
+def test_ae_web_package_version_tracks_slice_0226() -> None:
     package = json.loads(read_web_file("package.json"))
 
     assert package["name"] == "nex-ae-web"
-    assert package["version"] == "0.0.0-slice0225"
+    assert package["version"] == "0.0.0-slice0226"
     assert package["scripts"]["dev"] == "node scripts/serve.mjs"
     assert package["scripts"]["test"] == "node --test test/*.test.mjs"

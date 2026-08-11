@@ -124,5 +124,14 @@ Slice 0225 adds error and retry UX wiring:
 - Feedback text avoids raw error messages, prompts, source content, provider
   endpoints, database endpoints, and storage locations.
 
+Slice 0226 adds the runtime diagnostics surface:
+
+- `src/runtimeDiagnostics.js` summarizes runtime config, client registry, and
+  operation states under `ae_web_runtime_diagnostics.v1`.
+- The workspace now includes a runtime diagnostics panel with client mode,
+  fetch flag, base path, operation counts, failed counts, and retryable counts.
+- Diagnostics stay browser-safe and never include service tokens, provider
+  endpoints, database endpoints, storage locations, raw prompts, or source text.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.

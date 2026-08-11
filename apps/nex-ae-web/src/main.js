@@ -15,6 +15,10 @@ import {
   loadRuntimeConfig
 } from "./runtimeConfig.js";
 import {
+  buildRuntimeDiagnostics,
+  buildRuntimeDiagnosticsSummary
+} from "./runtimeDiagnostics.js";
+import {
   buildOperationStateSummary,
   createOperationState,
   markOperationFailed,
@@ -192,6 +196,9 @@ workspaceState.operations = initializeOperationStates();
 const serviceList = document.querySelector("#service-list");
 const statusStrip = document.querySelector("#status-strip");
 const refreshButton = document.querySelector("#refresh-button");
+const runtimeDiagnosticsStatus = document.querySelector("#runtime-diagnostics-status");
+const runtimeDiagnosticsSummary = document.querySelector("#runtime-diagnostics-summary");
+const runtimeDiagnosticsPreview = document.querySelector("#runtime-diagnostics-preview");
 const composer = document.querySelector("#composer");
 const promptInput = document.querySelector("#prompt");
 const retrievalToggle = document.querySelector("#retrieval-toggle");
@@ -283,6 +290,7 @@ function renderWorkspace() {
   renderTimeline();
   renderArtifactSummary();
   renderAuditSummary();
+  renderRuntimeDiagnostics();
 }
 
 async function renderServiceStatuses() {
@@ -373,6 +381,7 @@ function renderUploadSurface() {
     succeededMessage: "업로드 handoff가 접수되었습니다.",
     failedMessage: "업로드 handoff를 완료하지 못했습니다."
   });
+  renderRuntimeDiagnostics();
   uploadOwnerScope.innerHTML = `
     <div>
       <dt>tenant</dt>
@@ -455,6 +464,7 @@ function renderRetrievalScope() {
     succeededMessage: "검색 컨텍스트가 준비되었습니다.",
     failedMessage: "검색 요청을 완료하지 못했습니다."
   });
+  renderRuntimeDiagnostics();
   retrievalScopeSummary.innerHTML = `
     <div>
       <dt>route</dt>
@@ -658,6 +668,7 @@ async function renderDocumentDetail() {
   documentDetailStatus.textContent = statusLabel(surface.processingStatus);
   documentDetailStatus.className = `badge ${badgeClass(surface.processingStatus)}`;
   renderDocumentDetailFeedback();
+  renderRuntimeDiagnostics();
   documentDetail.innerHTML = `
     <strong>${escapeHtml(surface.filename)}</strong>
     <dl class="inline-meta">
@@ -703,6 +714,7 @@ function renderDocumentDetailError(error) {
   documentDetailStatus.textContent = statusLabel("UNAVAILABLE");
   documentDetailStatus.className = `badge ${badgeClass("UNAVAILABLE")}`;
   renderDocumentDetailFeedback();
+  renderRuntimeDiagnostics();
   documentDetail.innerHTML = `
     <strong>문서 상세를 불러오지 못했습니다.</strong>
     <dl class="inline-meta">
@@ -984,6 +996,43 @@ async function submitUploadDraft() {
     uploadSubmitButton.disabled = false;
     renderUploadSurface();
   }
+}
+
+function renderRuntimeDiagnostics() {
+  const diagnostics = buildRuntimeDiagnostics({
+    runtimeConfig: workspaceState.runtimeConfig,
+    clientRegistry: workspaceState.clientRegistry,
+    operations: workspaceState.operations
+  });
+  const summary = buildRuntimeDiagnosticsSummary(diagnostics);
+  const diagnosticsStatus =
+    summary.failed_operation_count > 0 ? "DEGRADED" : "READY";
+
+  runtimeDiagnosticsStatus.textContent = statusLabel(diagnosticsStatus);
+  runtimeDiagnosticsStatus.className = `badge ${badgeClass(diagnosticsStatus)}`;
+  runtimeDiagnosticsSummary.innerHTML = `
+    <div>
+      <dt>schema</dt>
+      <dd>${escapeHtml(summary.runtime_diagnostics_schema_version)}</dd>
+    </div>
+    <div>
+      <dt>mode</dt>
+      <dd>${escapeHtml(summary.client_mode)}</dd>
+    </div>
+    <div>
+      <dt>base</dt>
+      <dd>${escapeHtml(summary.ae_base_url || "same-origin")}</dd>
+    </div>
+    <div>
+      <dt>fetch</dt>
+      <dd>${escapeHtml(summary.fetch_clients_enabled)}</dd>
+    </div>
+    <div>
+      <dt>operations</dt>
+      <dd>${escapeHtml(summary.operation_count)} total · ${escapeHtml(summary.failed_operation_count)} failed · ${escapeHtml(summary.retryable_operation_count)} retryable</dd>
+    </div>
+  `;
+  runtimeDiagnosticsPreview.textContent = JSON.stringify(diagnostics, null, 2);
 }
 
 function renderOperationFeedback(container, retryButton, operationState, copy) {
