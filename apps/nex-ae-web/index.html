@@ -30,7 +30,7 @@
       <main class="workspace">
         <header class="topbar">
           <div>
-            <p class="eyebrow">Slice 0224</p>
+            <p class="eyebrow">Slice 0225</p>
             <h1>NeX-Platform 작업면</h1>
           </div>
           <div class="status-strip" id="status-strip" aria-live="polite"></div>
@@ -118,8 +118,10 @@
                 <div class="badge-pair">
                   <span class="badge pending" id="upload-status">대기</span>
                   <button id="upload-submit-button" type="button">전송</button>
+                  <button id="upload-retry-button" type="button" hidden>재시도</button>
                 </div>
               </div>
+              <div class="operation-feedback" id="upload-feedback" role="status"></div>
               <dl class="meta-list" id="upload-owner-scope"></dl>
               <dl
                 class="meta-list client-summary"
@@ -148,8 +150,18 @@
             >
               <div class="section-header compact">
                 <h2 id="document-detail-title">문서 상세</h2>
-                <span class="badge pending" id="document-detail-status">대기</span>
+                <div class="badge-pair">
+                  <span class="badge pending" id="document-detail-status">대기</span>
+                  <button id="document-detail-retry-button" type="button" hidden>
+                    재시도
+                  </button>
+                </div>
               </div>
+              <div
+                class="operation-feedback"
+                id="document-detail-feedback"
+                role="status"
+              ></div>
               <div class="document-detail" id="document-detail"></div>
             </section>
 
@@ -160,8 +172,16 @@
             >
               <div class="section-header compact">
                 <h2 id="retrieval-scope-title">검색 범위</h2>
-                <span class="badge pending" id="retrieval-scope-status">대기</span>
+                <div class="badge-pair">
+                  <span class="badge pending" id="retrieval-scope-status">대기</span>
+                  <button id="retrieval-retry-button" type="button" hidden>재시도</button>
+                </div>
               </div>
+              <div
+                class="operation-feedback"
+                id="retrieval-feedback"
+                role="status"
+              ></div>
               <dl class="meta-list" id="retrieval-scope-summary"></dl>
               <dl
                 class="meta-list client-summary"

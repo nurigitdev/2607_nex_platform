@@ -21,6 +21,8 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "upload-surface-panel",
         "upload-status",
         "upload-submit-button",
+        "upload-retry-button",
+        "upload-feedback",
         "upload-owner-scope",
         "upload-client-summary",
         "upload-payload-preview",
@@ -28,8 +30,12 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "document-detail-panel",
         "document-detail",
         "document-detail-status",
+        "document-detail-retry-button",
+        "document-detail-feedback",
         "retrieval-scope-panel",
         "retrieval-scope-status",
+        "retrieval-retry-button",
+        "retrieval-feedback",
         "retrieval-scope-summary",
         "retrieval-client-summary",
         "retrieval-scope-preview",
@@ -40,7 +46,7 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "format-select",
     ]:
         assert f'id="{required_id}"' in html
-    assert "Slice 0224" in html
+    assert "Slice 0225" in html
     assert "lang=\"ko\"" in html
 
 
@@ -227,6 +233,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     runtime_config = read_web_file("src/runtimeConfig.js")
     fetch_harness = read_web_file("src/fetchModeHarness.js")
     operation_state = read_web_file("src/operationState.js")
+    operation_feedback = read_web_file("src/operationFeedback.js")
 
     for expected in [
         "createAeWebClients",
@@ -240,6 +247,12 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         "markOperationRunning",
         "markOperationSucceeded",
         "markOperationFailed",
+        "buildOperationFeedback",
+        "renderOperationFeedback",
+        "retryLastRetrievalRequest",
+        "documentDetailRetryButton",
+        "uploadRetryButton",
+        "retrievalRetryButton",
     ]:
         assert expected in javascript
 
@@ -310,6 +323,21 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     ]:
         assert expected in operation_state
 
+    for expected in [
+        "ae_web_operation_feedback.v1",
+        "OperationFeedbackError",
+        "buildOperationFeedback",
+        "buildRetryControl",
+        "OPERATION_SUMMARY_INVALID",
+        "rawErrorMessageIncluded: false",
+        "rawPromptRendered: false",
+        "rawSourceIncluded: false",
+        "databaseEndpointIncluded: false",
+        "providerEndpointIncluded: false",
+        "storageLocationIncluded: false",
+    ]:
+        assert expected in operation_feedback
+
     for forbidden in [
         "service_token",
         "api_key",
@@ -322,6 +350,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         assert forbidden not in runtime_config
         assert forbidden not in fetch_harness
         assert forbidden not in operation_state
+        assert forbidden not in operation_feedback
 
 
 def test_ae_web_mock_state_links_generation_artifact_and_audit_contracts() -> None:
@@ -354,6 +383,8 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert ".document-detail.is-loading" in styles
     assert ".payload-preview" in styles
     assert ".client-summary" in styles
+    assert ".operation-feedback" in styles
+    assert ".operation-feedback[data-severity=\"danger\"]" in styles
     assert ".retrieval-scope-chip" in styles
     assert ".document-row.is-selected" in styles
     assert ".document-action-row" in styles
@@ -364,10 +395,10 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert "linear-gradient" not in styles
 
 
-def test_ae_web_package_version_tracks_slice_0224() -> None:
+def test_ae_web_package_version_tracks_slice_0225() -> None:
     package = json.loads(read_web_file("package.json"))
 
     assert package["name"] == "nex-ae-web"
-    assert package["version"] == "0.0.0-slice0224"
+    assert package["version"] == "0.0.0-slice0225"
     assert package["scripts"]["dev"] == "node scripts/serve.mjs"
     assert package["scripts"]["test"] == "node --test test/*.test.mjs"

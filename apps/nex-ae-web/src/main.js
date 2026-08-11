@@ -22,6 +22,9 @@ import {
   markOperationSucceeded
 } from "./operationState.js";
 import {
+  buildOperationFeedback
+} from "./operationFeedback.js";
+import {
   buildUploadHandoffPayload,
   buildUploadSurfaceDraft
 } from "./uploadSurface.js";
@@ -197,12 +200,18 @@ const messageList = document.querySelector("#message-list");
 const documentList = document.querySelector("#document-list");
 const documentDetail = document.querySelector("#document-detail");
 const documentDetailStatus = document.querySelector("#document-detail-status");
+const documentDetailFeedback = document.querySelector("#document-detail-feedback");
+const documentDetailRetryButton = document.querySelector("#document-detail-retry-button");
 const uploadStatus = document.querySelector("#upload-status");
 const uploadSubmitButton = document.querySelector("#upload-submit-button");
+const uploadRetryButton = document.querySelector("#upload-retry-button");
+const uploadFeedback = document.querySelector("#upload-feedback");
 const uploadOwnerScope = document.querySelector("#upload-owner-scope");
 const uploadClientSummary = document.querySelector("#upload-client-summary");
 const uploadPayloadPreview = document.querySelector("#upload-payload-preview");
 const retrievalScopeStatus = document.querySelector("#retrieval-scope-status");
+const retrievalFeedback = document.querySelector("#retrieval-feedback");
+const retrievalRetryButton = document.querySelector("#retrieval-retry-button");
 const retrievalScopeSummary = document.querySelector("#retrieval-scope-summary");
 const retrievalClientSummary = document.querySelector("#retrieval-client-summary");
 const retrievalScopePreview = document.querySelector("#retrieval-scope-preview");
@@ -229,6 +238,18 @@ composer.addEventListener("submit", event => {
 
 uploadSubmitButton.addEventListener("click", () => {
   void submitUploadDraft();
+});
+
+uploadRetryButton.addEventListener("click", () => {
+  void submitUploadDraft();
+});
+
+documentDetailRetryButton.addEventListener("click", () => {
+  void renderDocumentDetail();
+});
+
+retrievalRetryButton.addEventListener("click", () => {
+  void retryLastRetrievalRequest();
 });
 
 documentList.addEventListener("click", event => {
@@ -345,6 +366,13 @@ function renderUploadSurface() {
   const uploadState = operation.status || submission?.status || draft.status;
   uploadStatus.textContent = statusLabel(uploadState);
   uploadStatus.className = `badge ${badgeClass(uploadState)}`;
+  renderOperationFeedback(uploadFeedback, uploadRetryButton, operation, {
+    operationLabel: "업로드 전송",
+    idleMessage: "업로드 전송 준비가 완료되었습니다.",
+    runningMessage: "업로드 handoff를 전송하고 있습니다.",
+    succeededMessage: "업로드 handoff가 접수되었습니다.",
+    failedMessage: "업로드 handoff를 완료하지 못했습니다."
+  });
   uploadOwnerScope.innerHTML = `
     <div>
       <dt>tenant</dt>
@@ -420,6 +448,13 @@ function renderRetrievalScope() {
   retrievalScopeStatus.className = `badge ${badgeClass(
     operation.status || retrievalResult?.status || (scope.selectedCount > 0 ? "READY" : "UNKNOWN")
   )}`;
+  renderOperationFeedback(retrievalFeedback, retrievalRetryButton, operation, {
+    operationLabel: "검색 요청",
+    idleMessage: "검색 요청 준비가 완료되었습니다.",
+    runningMessage: "선택 문서 범위로 검색 요청을 처리하고 있습니다.",
+    succeededMessage: "검색 컨텍스트가 준비되었습니다.",
+    failedMessage: "검색 요청을 완료하지 못했습니다."
+  });
   retrievalScopeSummary.innerHTML = `
     <div>
       <dt>route</dt>
@@ -587,6 +622,7 @@ async function renderDocumentDetail() {
   documentDetailStatus.textContent = statusLabel("RUNNING");
   documentDetailStatus.className = `badge ${badgeClass("RUNNING")}`;
   documentDetail.classList.add("is-loading");
+  renderDocumentDetailFeedback();
 
   let surface;
   try {
@@ -621,6 +657,7 @@ async function renderDocumentDetail() {
   documentDetail.classList.remove("is-loading");
   documentDetailStatus.textContent = statusLabel(surface.processingStatus);
   documentDetailStatus.className = `badge ${badgeClass(surface.processingStatus)}`;
+  renderDocumentDetailFeedback();
   documentDetail.innerHTML = `
     <strong>${escapeHtml(surface.filename)}</strong>
     <dl class="inline-meta">
@@ -665,6 +702,7 @@ function renderDocumentDetailError(error) {
   documentDetail.classList.remove("is-loading");
   documentDetailStatus.textContent = statusLabel("UNAVAILABLE");
   documentDetailStatus.className = `badge ${badgeClass("UNAVAILABLE")}`;
+  renderDocumentDetailFeedback();
   documentDetail.innerHTML = `
     <strong>문서 상세를 불러오지 못했습니다.</strong>
     <dl class="inline-meta">
@@ -682,6 +720,21 @@ function renderDocumentDetailError(error) {
       </div>
     </dl>
   `;
+}
+
+function renderDocumentDetailFeedback() {
+  renderOperationFeedback(
+    documentDetailFeedback,
+    documentDetailRetryButton,
+    workspaceState.operations.documentDetail,
+    {
+      operationLabel: "문서 상세",
+      idleMessage: "문서 상세 조회 준비가 완료되었습니다.",
+      runningMessage: "문서 상세를 불러오고 있습니다.",
+      succeededMessage: "문서 상세를 불러왔습니다.",
+      failedMessage: "문서 상세를 불러오지 못했습니다."
+    }
+  );
 }
 
 function currentDocumentSurfaceItem() {
@@ -821,6 +874,7 @@ async function submitRetrievalRequest(retrievalRequest) {
       route: retrievalRequest.route
     }
   );
+  renderRetrievalScope();
   try {
     const result = await workspaceState.retrievalClient.submitRetrievalRequest(
       retrievalRequest
@@ -868,14 +922,30 @@ async function submitRetrievalRequest(retrievalRequest) {
   }
 }
 
+async function retryLastRetrievalRequest() {
+  if (!workspaceState.lastRetrievalRequest) return;
+  workspaceState.lastRetrievalResult = await submitRetrievalRequest(
+    workspaceState.lastRetrievalRequest
+  );
+  renderRetrievalScope();
+}
+
 async function submitUploadDraft() {
   workspaceState.operations.upload = markOperationRunning(workspaceState.operations.upload, {
     clientMode: workspaceState.uploadClient.clientMode,
     route: workspaceState.uploadDraft.uploadRoute
   });
   uploadSubmitButton.disabled = true;
+  uploadRetryButton.disabled = true;
   uploadStatus.textContent = statusLabel("RUNNING");
   uploadStatus.className = `badge ${badgeClass("RUNNING")}`;
+  renderOperationFeedback(uploadFeedback, uploadRetryButton, workspaceState.operations.upload, {
+    operationLabel: "업로드 전송",
+    idleMessage: "업로드 전송 준비가 완료되었습니다.",
+    runningMessage: "업로드 handoff를 전송하고 있습니다.",
+    succeededMessage: "업로드 handoff가 접수되었습니다.",
+    failedMessage: "업로드 handoff를 완료하지 못했습니다."
+  });
 
   try {
     workspaceState.uploadSubmission =
@@ -914,6 +984,17 @@ async function submitUploadDraft() {
     uploadSubmitButton.disabled = false;
     renderUploadSurface();
   }
+}
+
+function renderOperationFeedback(container, retryButton, operationState, copy) {
+  const feedback = buildOperationFeedback(operationState, copy);
+  container.textContent = feedback.message;
+  container.dataset.severity = feedback.severity;
+  container.dataset.phase = feedback.phase;
+  retryButton.hidden = !feedback.retry.available;
+  retryButton.disabled = !feedback.retry.enabled;
+  retryButton.textContent = feedback.retry.label;
+  retryButton.setAttribute("aria-label", feedback.retry.aria_label);
 }
 
 function safeUploadPreview(payload, draft, submission) {

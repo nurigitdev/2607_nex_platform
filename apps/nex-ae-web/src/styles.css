@@ -237,6 +237,27 @@ h2 {
   align-self: center;
 }
 
+.operation-feedback {
+  border-bottom: 1px solid var(--nex-border);
+  padding: 10px 14px;
+  color: var(--nex-muted);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.operation-feedback[data-severity="success"] {
+  color: var(--nex-success);
+}
+
+.operation-feedback[data-severity="running"] {
+  color: var(--nex-info);
+}
+
+.operation-feedback[data-severity="danger"] {
+  color: var(--nex-danger);
+}
+
 .message-list {
   display: grid;
   align-content: start;

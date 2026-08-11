@@ -115,5 +115,14 @@ Slice 0224 adds the shared operation state model:
 - Node tests cover operation transitions, invalid states, and safe metadata
   filtering.
 
+Slice 0225 adds error and retry UX wiring:
+
+- `src/operationFeedback.js` converts operation state into safe user feedback
+  and retry-control metadata.
+- Document detail, upload, and retrieval panels now expose retry buttons only
+  when the underlying operation is retryable.
+- Feedback text avoids raw error messages, prompts, source content, provider
+  endpoints, database endpoints, and storage locations.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.
