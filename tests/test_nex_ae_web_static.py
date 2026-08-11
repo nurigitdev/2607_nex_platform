@@ -50,7 +50,7 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "format-select",
     ]:
         assert f'id="{required_id}"' in html
-    assert "Slice 0226" in html
+    assert "Slice 0227" in html
     assert "lang=\"ko\"" in html
 
 
@@ -422,10 +422,47 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert "linear-gradient" not in styles
 
 
-def test_ae_web_package_version_tracks_slice_0226() -> None:
+def test_ae_web_static_browser_smoke_runner_is_quality_gate_wired() -> None:
+    runner = (
+        Path(__file__).parents[1]
+        / "scripts"
+        / "smoke"
+        / "run_ae_web_static_browser_smoke.py"
+    ).read_text(encoding="utf-8")
+    quality_gate = (
+        Path(__file__).parents[1] / "scripts" / "quality" / "run_quality_gate.sh"
+    ).read_text(encoding="utf-8")
+
+    for expected in [
+        "ae_web_static_browser_smoke",
+        "DEFAULT_SLICE_LABEL = \"Slice 0227\"",
+        "required_anchors",
+        "runtime-diagnostics-panel",
+        "upload-retry-button",
+        "document-detail-feedback",
+        "retrieval-retry-button",
+        "BrowserSmokeResult",
+        "validate_html",
+        "wait_for_html",
+        "stop_process",
+    ]:
+        assert expected in runner
+
+    assert "run_ae_web_static_browser_smoke.py --summary" in quality_gate
+    for forbidden in [
+        "service_token",
+        "api_key",
+        "database_url",
+        "provider_url",
+        "/data/nex-platform",
+    ]:
+        assert forbidden not in runner
+
+
+def test_ae_web_package_version_tracks_slice_0227() -> None:
     package = json.loads(read_web_file("package.json"))
 
     assert package["name"] == "nex-ae-web"
-    assert package["version"] == "0.0.0-slice0226"
+    assert package["version"] == "0.0.0-slice0227"
     assert package["scripts"]["dev"] == "node scripts/serve.mjs"
     assert package["scripts"]["test"] == "node --test test/*.test.mjs"

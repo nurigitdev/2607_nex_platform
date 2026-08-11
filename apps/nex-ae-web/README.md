@@ -133,5 +133,14 @@ Slice 0226 adds the runtime diagnostics surface:
 - Diagnostics stay browser-safe and never include service tokens, provider
   endpoints, database endpoints, storage locations, raw prompts, or source text.
 
+Slice 0227 adds the static browser smoke evidence runner:
+
+- `scripts/smoke/run_ae_web_static_browser_smoke.py` starts the AE Web dev
+  server, fetches the browser shell, and validates required static anchors.
+- The full quality gate now runs the AE Web static browser smoke after contract
+  validation.
+- Python tests cover pass, missing-anchor, timeout, retry, process shutdown,
+  and summary output branches.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.
