@@ -28,6 +28,7 @@ import run_cx_upload_ownership_postgres_smoke as cx_upload_ownership_smoke
 import run_cx_upload_duplicate_postgres_smoke as cx_upload_duplicate_smoke
 import run_cx_document_library_postgres_smoke as cx_document_library_smoke
 import run_cx_document_detail_postgres_smoke as cx_document_detail_smoke
+import run_ae_document_detail_postgres_smoke as ae_document_detail_smoke
 import run_cx_retrieval_postgres_smoke as cx_retrieval_smoke
 import run_postgres_job_replay_smoke as job_replay_smoke
 import run_postgres_jobqueue_smoke as jobqueue_smoke
@@ -2732,6 +2733,11 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
     )
     monkeypatch.setattr(
         postgres_suite_smoke,
+        "run_ae_document_detail_postgres_smoke",
+        child_pass("ae_document_detail_postgres_smoke"),
+    )
+    monkeypatch.setattr(
+        postgres_suite_smoke,
         "run_ag_retrieval_package_postgres_smoke",
         child_pass("ag_retrieval_package_postgres_smoke"),
     )
@@ -2797,6 +2803,7 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("cx_upload_duplicate_postgres_smoke", "test"),
         ("cx_document_library_postgres_smoke", "test"),
         ("cx_document_detail_postgres_smoke", "test"),
+        ("ae_document_detail_postgres_smoke", "test"),
         ("ag_retrieval_package_postgres_smoke", "test"),
         ("cx_processing_postgres_jobqueue_smoke", "test"),
         ("cx_processing_postgres_event_smoke", "test"),
@@ -2806,7 +2813,7 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("ag_cross_service_observability_smoke", "test"),
     ]
     assert postgres_suite_smoke.summary_line(evidence) == (
-        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=22"
+        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=23"
     )
 
 
@@ -5683,6 +5690,373 @@ def test_cx_document_detail_postgres_smoke_main_prints_summary_and_full_evidence
     assert "cx_document_detail_postgres_smoke=skipped" in capsys.readouterr().out
 
     assert cx_document_detail_smoke.main([]) == 0
+    assert '"status": "SKIPPED"' in capsys.readouterr().out
+
+
+def test_ae_document_detail_postgres_smoke_skips_by_default() -> None:
+    evidence = ae_document_detail_smoke.run_ae_document_detail_postgres_smoke(
+        environ={}
+    )
+
+    assert evidence["status"] == "SKIPPED"
+    assert ae_document_detail_smoke.summary_line(evidence) == (
+        "ae_document_detail_postgres_smoke=skipped "
+        "reason=NEX_AE_DOCUMENT_DETAIL_POSTGRES_SMOKE"
+    )
+
+
+def test_ae_document_detail_postgres_smoke_rejects_non_test_profile() -> None:
+    evidence = ae_document_detail_smoke.run_ae_document_detail_postgres_smoke(
+        environ={
+            "NEX_AE_DOCUMENT_DETAIL_POSTGRES_SMOKE": "1",
+            "NEX_AE_DOCUMENT_DETAIL_POSTGRES_SMOKE_PROFILE": "dev",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "profile_not_allowed"
+
+
+def test_ae_document_detail_postgres_smoke_reports_pass_without_leaking_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration_calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        ae_document_detail_smoke,
+        "service_database_env",
+        lambda service_id, profile: f"{service_id}:{profile}:env",
+    )
+    monkeypatch.setattr(
+        ae_document_detail_smoke,
+        "service_database_url",
+        lambda service_id, profile, environ: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        ae_document_detail_smoke,
+        "run_service_migrations",
+        lambda service_id, database_url, profile: (
+            migration_calls.append((service_id, profile))
+            or SimpleNamespace(
+                service_id=service_id,
+                profile=profile,
+                planned=("001", "002"),
+                applied=("002",),
+                skipped=("001",),
+                dry_run=False,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        ae_document_detail_smoke,
+        "_execute_ae_document_detail_smoke",
+        lambda database_env, database_url, runtime_environ: {
+            "document_id": "doc-001",
+            "upload_handoff_id": "handoff-001",
+            "checks": {
+                "cx_runtime_mode": True,
+                "ae_upload_status_accepted": True,
+                "ae_handoff_recorded": True,
+                "cx_upload_called_once": True,
+                "cx_detail_called_once": True,
+                "cx_detail_owner_scope_forwarded": True,
+                "ae_detail_status_ok": True,
+                "ae_projection_schema_version": True,
+                "ae_document_id_matches": True,
+                "ae_owner_scope_matches": True,
+                "cx_source_kind_postgres": True,
+                "cx_source_metadata_uses_test_db": True,
+                "persisted_owner_count": True,
+                "missing_handoff_not_found_without_cx_call": True,
+                "raw_payload_absent": True,
+            },
+        },
+    )
+
+    evidence = ae_document_detail_smoke.run_ae_document_detail_postgres_smoke(
+        environ={"NEX_AE_DOCUMENT_DETAIL_POSTGRES_SMOKE": "1"}
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["service_id"] == "nex-ae-api"
+    assert evidence["cx_service_id"] == "nex-cx"
+    assert evidence["database_env"] == "nex-cx:test:env"
+    assert evidence["migration"]["applied_count"] == 1
+    assert evidence["redacted_database_url"] == "postgresql://user:***@localhost/db"
+    assert "secret" not in str(evidence)
+    assert migration_calls == [("nex-cx", "test")]
+    assert ae_document_detail_smoke.summary_line(evidence) == (
+        "ae_document_detail_postgres_smoke=pass "
+        "service=nex-ae-api cx_db_env=nex-cx:test:env"
+    )
+
+
+def test_ae_document_detail_postgres_smoke_reports_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_migration_error(*args: object, **kwargs: object) -> None:
+        raise ae_document_detail_smoke.MigrationError("missing database URL env")
+
+    monkeypatch.setattr(
+        ae_document_detail_smoke,
+        "service_database_url",
+        raise_migration_error,
+    )
+    config_failure = ae_document_detail_smoke.run_ae_document_detail_postgres_smoke(
+        environ={"NEX_AE_DOCUMENT_DETAIL_POSTGRES_SMOKE": "1"}
+    )
+
+    assert config_failure["status"] == "FAIL"
+    assert config_failure["failure_code"] == "configuration_invalid"
+
+    monkeypatch.setattr(
+        ae_document_detail_smoke,
+        "service_database_url",
+        lambda *args, **kwargs: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        ae_document_detail_smoke,
+        "run_service_migrations",
+        lambda *args, **kwargs: None,
+    )
+
+    def raise_runtime_error(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        ae_document_detail_smoke,
+        "_execute_ae_document_detail_smoke",
+        raise_runtime_error,
+    )
+    execution_failure = ae_document_detail_smoke.run_ae_document_detail_postgres_smoke(
+        environ={"NEX_AE_DOCUMENT_DETAIL_POSTGRES_SMOKE": "1"}
+    )
+
+    assert execution_failure["status"] == "FAIL"
+    assert execution_failure["failure_code"] == "execution_failed"
+    assert ae_document_detail_smoke.summary_line(execution_failure) == (
+        "ae_document_detail_postgres_smoke=fail "
+        "service=nex-ae-api reason=execution_failed"
+    )
+
+
+def test_ae_document_detail_postgres_smoke_execute_with_sqlite_fixture(
+    tmp_path,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'ae-document-detail.sqlite'}"
+    engine = ae_document_detail_smoke.build_engine(database_url)
+    _create_sqlite_cx_document_library_tables(engine)
+
+    evidence = ae_document_detail_smoke._execute_ae_document_detail_smoke(
+        database_env="NEX_CX_TEST_DATABASE_URL",
+        database_url=database_url,
+        runtime_environ={
+            ae_document_detail_smoke.CX_SERVICE_SPEC.database_env: database_url,
+            "NEX_CX_PERSISTENCE_MODE": "postgres",
+        },
+    )
+
+    assert evidence["missing_handoff_status"] == 404
+    assert evidence["db_observations"] == {
+        "owner_active_content_count": 1,
+        "ae_detail_document_id": evidence["document_id"],
+        "ae_projection_schema_version": "ae_document_detail_projection.v1",
+        "cx_detail_source_kind": "postgres-read",
+        "cx_detail_database_env": "NEX_CX_TEST_DATABASE_URL",
+    }
+    assert evidence["adapter_observations"] == {
+        "cx_upload_calls": 1,
+        "cx_detail_calls": 1,
+    }
+    assert evidence["cleanup_observations"] == [
+        {
+            "label": "ae_detail",
+            "document_id": evidence["document_id"],
+            "source_file_id": evidence["cleanup_observations"][0]["source_file_id"],
+            "content_rows_before_delete": 1,
+            "source_rows_before_delete": 1,
+            "content_rows_after_delete": 0,
+            "source_rows_after_delete": 0,
+        }
+    ]
+    assert evidence["checks"] == {
+        "cx_runtime_mode": True,
+        "ae_upload_status_accepted": True,
+        "ae_handoff_recorded": True,
+        "cx_upload_called_once": True,
+        "cx_detail_called_once": True,
+        "cx_detail_owner_scope_forwarded": True,
+        "ae_detail_status_ok": True,
+        "ae_projection_schema_version": True,
+        "ae_document_id_matches": True,
+        "ae_owner_scope_matches": True,
+        "cx_source_kind_postgres": True,
+        "cx_source_metadata_uses_test_db": True,
+        "persisted_owner_count": True,
+        "missing_handoff_not_found_without_cx_call": True,
+        "raw_payload_absent": True,
+    }
+    with engine.begin() as connection:
+        remaining_content = connection.execute(
+            text("SELECT count(*) FROM cx_content_objects")
+        ).scalar_one()
+        remaining_sources = connection.execute(
+            text("SELECT count(*) FROM cx_source_files")
+        ).scalar_one()
+    assert remaining_content == 0
+    assert remaining_sources == 0
+
+
+def test_ae_document_detail_postgres_smoke_execute_failure_edges(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'ae-document-detail-edge.sqlite'}"
+    engine = ae_document_detail_smoke.build_engine(database_url)
+    _create_sqlite_cx_document_library_tables(engine)
+
+    monkeypatch.setattr(
+        ae_document_detail_smoke,
+        "attach_service_persistence_runtime",
+        lambda *args, **kwargs: SimpleNamespace(api_session_factory=None),
+    )
+    with pytest.raises(RuntimeError, match="session factory"):
+        ae_document_detail_smoke._execute_ae_document_detail_smoke(
+            database_env="NEX_CX_TEST_DATABASE_URL",
+            database_url=database_url,
+            runtime_environ={
+                ae_document_detail_smoke.CX_SERVICE_SPEC.database_env: database_url,
+                "NEX_CX_PERSISTENCE_MODE": "postgres",
+            },
+        )
+
+    monkeypatch.undo()
+    monkeypatch.setattr(
+        ae_document_detail_smoke,
+        "_count_active_owner_documents",
+        lambda *args, **kwargs: 0,
+    )
+    with pytest.raises(RuntimeError, match="smoke checks failed"):
+        ae_document_detail_smoke._execute_ae_document_detail_smoke(
+            database_env="NEX_CX_TEST_DATABASE_URL",
+            database_url=database_url,
+            runtime_environ={
+                ae_document_detail_smoke.CX_SERVICE_SPEC.database_env: database_url,
+                "NEX_CX_PERSISTENCE_MODE": "postgres",
+            },
+        )
+
+    with engine.begin() as connection:
+        remaining_content = connection.execute(
+            text("SELECT count(*) FROM cx_content_objects")
+        ).scalar_one()
+        remaining_sources = connection.execute(
+            text("SELECT count(*) FROM cx_source_files")
+        ).scalar_one()
+    assert remaining_content == 0
+    assert remaining_sources == 0
+
+
+def test_ae_document_detail_postgres_smoke_adapter_and_json_edges() -> None:
+    class FakeClient:
+        def post(self, *args: object, **kwargs: object) -> object:
+            return SimpleNamespace(
+                status_code=503,
+                json=lambda: {
+                    "error_code": "cx.upload_unavailable",
+                    "detail": "Upload unavailable.",
+                    "retryable": True,
+                },
+            )
+
+        def get(self, *args: object, **kwargs: object) -> object:
+            return SimpleNamespace(
+                status_code=404,
+                json=lambda: {
+                    "error_code": "cx.document_not_found",
+                    "detail": "Document not found.",
+                },
+            )
+
+    upload_adapter = ae_document_detail_smoke.TestClientCxUploadClient(
+        client=FakeClient()
+    )
+    with pytest.raises(ae_document_detail_smoke.UploadHandoffError) as upload_exc:
+        upload_adapter.register_upload(
+            {"tenant_id": "tenant", "owner_user_id": "owner"},
+            request_id="request",
+            trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+        )
+
+    assert upload_exc.value.error_code == "cx.upload_unavailable"
+    assert upload_exc.value.retryable is True
+    assert upload_adapter.calls[0]["status_code"] == 503
+
+    adapter = ae_document_detail_smoke.TestClientCxDocumentLibraryClient(
+        client=FakeClient()
+    )
+    with pytest.raises(ae_document_detail_smoke.DocumentLibraryError) as detail_exc:
+        adapter.get_document(
+            "doc",
+            tenant_id="tenant",
+            owner_user_id="owner",
+            request_id="request",
+            trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+        )
+
+    assert detail_exc.value.error_code == "cx.document_not_found"
+    assert adapter.calls[0]["status_code"] == 404
+
+    summary_adapter = ae_document_detail_smoke.TestClientCxDocumentLibraryClient(
+        client=object()
+    )
+
+    assert (
+        summary_adapter.get_summary("doc", request_id="request", trace_id="trace")
+        is None
+    )
+    assert (
+        summary_adapter.get_summary_embedding(
+            "doc",
+            request_id="request",
+            trace_id="trace",
+        )
+        is None
+    )
+    assert ae_document_detail_smoke._safe_response_json(
+        SimpleNamespace(json=lambda: {"ok": True})
+    ) == {"ok": True}
+    assert ae_document_detail_smoke._safe_response_json(
+        SimpleNamespace(json=lambda: ["not-an-object"])
+    ) == {}
+
+    def raise_value_error() -> object:
+        raise ValueError("not json")
+
+    assert ae_document_detail_smoke._safe_response_json(
+        SimpleNamespace(json=raise_value_error)
+    ) == {}
+
+
+def test_ae_document_detail_postgres_smoke_main_prints_summary_and_full_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(ae_document_detail_smoke, "load_env_file", lambda path: None)
+    monkeypatch.setattr(
+        ae_document_detail_smoke,
+        "run_ae_document_detail_postgres_smoke",
+        lambda: {
+            "smoke_schema_version": "ae_document_detail_postgres_smoke.v1",
+            "status": "SKIPPED",
+            "skip_reason": "NEX_AE_DOCUMENT_DETAIL_POSTGRES_SMOKE is not enabled.",
+        },
+    )
+
+    assert ae_document_detail_smoke.main(["--summary"]) == 0
+    assert "ae_document_detail_postgres_smoke=skipped" in capsys.readouterr().out
+
+    assert ae_document_detail_smoke.main([]) == 0
     assert '"status": "SKIPPED"' in capsys.readouterr().out
 
 

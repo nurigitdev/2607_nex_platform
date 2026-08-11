@@ -317,6 +317,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0211`](slices/0211_ae_document_detail_facade_api_wiring.md) | `S22-001` AE document detail facade API wiring. |
 | [`Slice 0212`](slices/0212_ae_document_detail_contract_schema_hardening.md) | `S22-002` AE document detail contract/schema hardening. |
 | [`Slice 0213`](slices/0213_ae_document_detail_ui_read_model_boundary_decision.md) | `S22-003` AE document detail UI/read-model boundary decision. |
+| [`Slice 0214`](slices/0214_ae_document_detail_postgresql_smoke_evidence.md) | `S22-004` AE document detail PostgreSQL smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

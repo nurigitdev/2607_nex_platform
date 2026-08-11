@@ -97,6 +97,10 @@ Document library:
   handoff and workspace-facing state. A persistent AE document detail read model
   remains deferred until latency, offline history, or UI aggregation needs make
   the duplication worth its synchronization cost.
+- Slice 0214 adds protected PostgreSQL smoke evidence for the AE detail path.
+  `NEX_AE_DOCUMENT_DETAIL_POSTGRES_SMOKE=1` runs the test-profile path:
+  `AE /api/v1/uploads -> CX PostgreSQL upload -> AE /api/v1/documents/{id}
+  -> CX PostgreSQL detail`.
 
 Artifact handoff:
 
