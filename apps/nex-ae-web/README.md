@@ -106,5 +106,14 @@ Slice 0223 adds the fetch-mode static regression harness:
 - Node tests assert AE facade route shapes and safe result summaries across all
   three fetch clients.
 
+Slice 0224 adds the shared operation state model:
+
+- `src/operationState.js` normalizes document detail, upload, and retrieval
+  states as `idle`, `running`, `succeeded`, or `failed`.
+- The workspace preview now includes safe operation summaries with attempts,
+  retryability, route, client mode, and redaction metadata.
+- Node tests cover operation transitions, invalid states, and safe metadata
+  filtering.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.

@@ -40,7 +40,7 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "format-select",
     ]:
         assert f'id="{required_id}"' in html
-    assert "Slice 0223" in html
+    assert "Slice 0224" in html
     assert "lang=\"ko\"" in html
 
 
@@ -226,6 +226,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     client_registry = read_web_file("src/clientRegistry.js")
     runtime_config = read_web_file("src/runtimeConfig.js")
     fetch_harness = read_web_file("src/fetchModeHarness.js")
+    operation_state = read_web_file("src/operationState.js")
 
     for expected in [
         "createAeWebClients",
@@ -234,6 +235,11 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         "buildRuntimeConfigSummary",
         "runtimeConfig",
         "clientRegistry",
+        "operations",
+        "buildOperationStateSummary",
+        "markOperationRunning",
+        "markOperationSucceeded",
+        "markOperationFailed",
     ]:
         assert expected in javascript
 
@@ -286,6 +292,24 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     ]:
         assert expected in fetch_harness
 
+    for expected in [
+        "ae_web_operation_state.v1",
+        "AE_WEB_OPERATION_PHASES",
+        "createOperationState",
+        "markOperationRunning",
+        "markOperationSucceeded",
+        "markOperationFailed",
+        "buildOperationStateSummary",
+        "OPERATION_PHASE_UNSUPPORTED",
+        "OPERATION_ATTEMPT_INVALID",
+        "browserServiceTokenIncluded: false",
+        "rawPromptRendered: false",
+        "rawSourceIncluded: false",
+        "databaseEndpointIncluded: false",
+        "providerEndpointIncluded: false",
+    ]:
+        assert expected in operation_state
+
     for forbidden in [
         "service_token",
         "api_key",
@@ -297,6 +321,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         assert forbidden not in client_registry
         assert forbidden not in runtime_config
         assert forbidden not in fetch_harness
+        assert forbidden not in operation_state
 
 
 def test_ae_web_mock_state_links_generation_artifact_and_audit_contracts() -> None:
@@ -339,10 +364,10 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert "linear-gradient" not in styles
 
 
-def test_ae_web_package_version_tracks_slice_0223() -> None:
+def test_ae_web_package_version_tracks_slice_0224() -> None:
     package = json.loads(read_web_file("package.json"))
 
     assert package["name"] == "nex-ae-web"
-    assert package["version"] == "0.0.0-slice0223"
+    assert package["version"] == "0.0.0-slice0224"
     assert package["scripts"]["dev"] == "node scripts/serve.mjs"
     assert package["scripts"]["test"] == "node --test test/*.test.mjs"

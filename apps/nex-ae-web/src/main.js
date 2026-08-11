@@ -15,6 +15,13 @@ import {
   loadRuntimeConfig
 } from "./runtimeConfig.js";
 import {
+  buildOperationStateSummary,
+  createOperationState,
+  markOperationFailed,
+  markOperationRunning,
+  markOperationSucceeded
+} from "./operationState.js";
+import {
   buildUploadHandoffPayload,
   buildUploadSurfaceDraft
 } from "./uploadSurface.js";
@@ -53,6 +60,7 @@ const workspaceState = {
   selectedDocumentId: "doc-001",
   runtimeConfig: null,
   clientRegistry: null,
+  operations: null,
   documentScope: null,
   lastRetrievalRequest: null,
   lastRetrievalResult: null,
@@ -176,6 +184,7 @@ workspaceState.documentDetailClient = workspaceState.clientRegistry.documentDeta
 workspaceState.uploadClient = workspaceState.clientRegistry.uploadClient;
 workspaceState.retrievalClient = workspaceState.clientRegistry.retrievalClient;
 workspaceState.documentScope = buildCurrentDocumentScope();
+workspaceState.operations = initializeOperationStates();
 
 const serviceList = document.querySelector("#service-list");
 const statusStrip = document.querySelector("#status-strip");
@@ -302,11 +311,38 @@ function buildCurrentDocumentScope() {
   });
 }
 
+function initializeOperationStates() {
+  return {
+    documentDetail: createOperationState({
+      operationId: "document_detail",
+      label: "Document detail",
+      status: "READY",
+      clientMode: workspaceState.documentDetailClient.clientMode,
+      route: documentDetailRoute(workspaceState.selectedDocumentId)
+    }),
+    upload: createOperationState({
+      operationId: "upload_handoff",
+      label: "Upload handoff",
+      status: "READY_FOR_SUBMIT",
+      clientMode: workspaceState.uploadClient.clientMode,
+      route: workspaceState.uploadDraft.uploadRoute
+    }),
+    retrieval: createOperationState({
+      operationId: "retrieval_context",
+      label: "Retrieval context",
+      status: "READY_FOR_PROMPT",
+      clientMode: workspaceState.retrievalClient.clientMode,
+      route: workspaceState.documentScope.route
+    })
+  };
+}
+
 function renderUploadSurface() {
   const draft = workspaceState.uploadDraft;
   const payload = buildUploadHandoffPayload(draft);
   const submission = workspaceState.uploadSubmission;
-  const uploadState = submission?.status || draft.status;
+  const operation = workspaceState.operations.upload;
+  const uploadState = operation.status || submission?.status || draft.status;
   uploadStatus.textContent = statusLabel(uploadState);
   uploadStatus.className = `badge ${badgeClass(uploadState)}`;
   uploadOwnerScope.innerHTML = `
@@ -340,6 +376,7 @@ function renderUploadSurface() {
 }
 
 function renderUploadClientSummary(submission) {
+  const operation = buildOperationStateSummary(workspaceState.operations.upload);
   if (!submission) {
     return `
       <div>
@@ -347,8 +384,8 @@ function renderUploadClientSummary(submission) {
         <dd>${escapeHtml(workspaceState.uploadClient.clientMode)}</dd>
       </div>
       <div>
-        <dt>result</dt>
-        <dd>READY_FOR_SUBMIT</dd>
+        <dt>operation</dt>
+        <dd>${escapeHtml(operation.phase)} · ${escapeHtml(operation.status)} · attempt ${escapeHtml(operation.attempt)}</dd>
       </div>
     `;
   }
@@ -359,8 +396,8 @@ function renderUploadClientSummary(submission) {
       <dd>${escapeHtml(submission.clientMode || workspaceState.uploadClient.clientMode)}</dd>
     </div>
     <div>
-      <dt>result</dt>
-      <dd>${escapeHtml(submission.status || "UNKNOWN")} · ${escapeHtml(submission.dedupeStatus || "UNKNOWN")}</dd>
+      <dt>operation</dt>
+      <dd>${escapeHtml(operation.phase)} · ${escapeHtml(operation.status)} · attempt ${escapeHtml(operation.attempt)}</dd>
     </div>
     <div>
       <dt>handoff</dt>
@@ -376,11 +413,12 @@ function renderUploadClientSummary(submission) {
 function renderRetrievalScope() {
   const scope = workspaceState.documentScope;
   const retrievalResult = workspaceState.lastRetrievalResult;
+  const operation = workspaceState.operations.retrieval;
   retrievalScopeStatus.textContent = statusLabel(
-    retrievalResult?.status || (scope.selectedCount > 0 ? "READY" : "UNKNOWN")
+    operation.status || retrievalResult?.status || (scope.selectedCount > 0 ? "READY" : "UNKNOWN")
   );
   retrievalScopeStatus.className = `badge ${badgeClass(
-    retrievalResult?.status || (scope.selectedCount > 0 ? "READY" : "UNKNOWN")
+    operation.status || retrievalResult?.status || (scope.selectedCount > 0 ? "READY" : "UNKNOWN")
   )}`;
   retrievalScopeSummary.innerHTML = `
     <div>
@@ -405,6 +443,7 @@ function renderRetrievalScope() {
 }
 
 function renderRetrievalClientSummary(retrievalResult) {
+  const operation = buildOperationStateSummary(workspaceState.operations.retrieval);
   if (!retrievalResult) {
     return `
       <div>
@@ -412,8 +451,8 @@ function renderRetrievalClientSummary(retrievalResult) {
         <dd>${escapeHtml(workspaceState.retrievalClient.clientMode)}</dd>
       </div>
       <div>
-        <dt>result</dt>
-        <dd>READY_FOR_PROMPT</dd>
+        <dt>operation</dt>
+        <dd>${escapeHtml(operation.phase)} · ${escapeHtml(operation.status)} · attempt ${escapeHtml(operation.attempt)}</dd>
       </div>
     `;
   }
@@ -424,8 +463,8 @@ function renderRetrievalClientSummary(retrievalResult) {
       <dd>${escapeHtml(retrievalResult.clientMode || workspaceState.retrievalClient.clientMode)}</dd>
     </div>
     <div>
-      <dt>result</dt>
-      <dd>${escapeHtml(retrievalResult.status || "UNKNOWN")} · ${escapeHtml(retrievalResult.cxStatus || "UNKNOWN")}</dd>
+      <dt>operation</dt>
+      <dd>${escapeHtml(operation.phase)} · ${escapeHtml(operation.status)} · attempt ${escapeHtml(operation.attempt)}</dd>
     </div>
     <div>
       <dt>package</dt>
@@ -538,6 +577,13 @@ async function renderDocumentDetail() {
   }
 
   const requestSequence = ++documentDetailRequestSequence;
+  workspaceState.operations.documentDetail = markOperationRunning(
+    workspaceState.operations.documentDetail,
+    {
+      clientMode: workspaceState.documentDetailClient.clientMode,
+      route: documentDetailRoute(documentItem.documentId)
+    }
+  );
   documentDetailStatus.textContent = statusLabel("RUNNING");
   documentDetailStatus.className = `badge ${badgeClass("RUNNING")}`;
   documentDetail.classList.add("is-loading");
@@ -549,11 +595,29 @@ async function renderDocumentDetail() {
     );
   } catch (error) {
     if (requestSequence !== documentDetailRequestSequence) return;
+    workspaceState.operations.documentDetail = markOperationFailed(
+      workspaceState.operations.documentDetail,
+      {
+        error,
+        clientMode: workspaceState.documentDetailClient.clientMode,
+        route: documentDetailRoute(documentItem.documentId)
+      }
+    );
     renderDocumentDetailError(error);
     return;
   }
 
   if (requestSequence !== documentDetailRequestSequence) return;
+  workspaceState.operations.documentDetail = markOperationSucceeded(
+    workspaceState.operations.documentDetail,
+    {
+      status: surface.processingStatus,
+      resultStatus: surface.processingStatus,
+      clientMode: surface.clientMode,
+      route: surface.detailRoute
+    }
+  );
+  const operation = buildOperationStateSummary(workspaceState.operations.documentDetail);
   documentDetail.classList.remove("is-loading");
   documentDetailStatus.textContent = statusLabel(surface.processingStatus);
   documentDetailStatus.className = `badge ${badgeClass(surface.processingStatus)}`;
@@ -581,6 +645,10 @@ async function renderDocumentDetail() {
         <dd>${escapeHtml(surface.clientMode)}</dd>
       </div>
       <div>
+        <dt>operation</dt>
+        <dd>${escapeHtml(operation.phase)} · attempt ${escapeHtml(operation.attempt)}</dd>
+      </div>
+      <div>
         <dt>extraction</dt>
         <dd>${statusLabel(surface.extractionStatus)}</dd>
       </div>
@@ -593,6 +661,7 @@ async function renderDocumentDetail() {
 }
 
 function renderDocumentDetailError(error) {
+  const operation = buildOperationStateSummary(workspaceState.operations.documentDetail);
   documentDetail.classList.remove("is-loading");
   documentDetailStatus.textContent = statusLabel("UNAVAILABLE");
   documentDetailStatus.className = `badge ${badgeClass("UNAVAILABLE")}`;
@@ -606,6 +675,10 @@ function renderDocumentDetailError(error) {
       <div>
         <dt>retryable</dt>
         <dd>${escapeHtml(Boolean(error.retryable))}</dd>
+      </div>
+      <div>
+        <dt>operation</dt>
+        <dd>${escapeHtml(operation.phase)} · attempt ${escapeHtml(operation.attempt)}</dd>
       </div>
     </dl>
   `;
@@ -741,9 +814,36 @@ async function appendPromptInteraction() {
 }
 
 async function submitRetrievalRequest(retrievalRequest) {
+  workspaceState.operations.retrieval = markOperationRunning(
+    workspaceState.operations.retrieval,
+    {
+      clientMode: workspaceState.retrievalClient.clientMode,
+      route: retrievalRequest.route
+    }
+  );
   try {
-    return await workspaceState.retrievalClient.submitRetrievalRequest(retrievalRequest);
+    const result = await workspaceState.retrievalClient.submitRetrievalRequest(
+      retrievalRequest
+    );
+    workspaceState.operations.retrieval = markOperationSucceeded(
+      workspaceState.operations.retrieval,
+      {
+        status: result.status,
+        resultStatus: result.cxStatus,
+        clientMode: result.clientMode,
+        route: result.route
+      }
+    );
+    return result;
   } catch (error) {
+    workspaceState.operations.retrieval = markOperationFailed(
+      workspaceState.operations.retrieval,
+      {
+        error,
+        clientMode: workspaceState.retrievalClient.clientMode,
+        route: retrievalRequest.route
+      }
+    );
     return {
       clientMode: workspaceState.retrievalClient.clientMode,
       route: retrievalRequest.route,
@@ -769,6 +869,10 @@ async function submitRetrievalRequest(retrievalRequest) {
 }
 
 async function submitUploadDraft() {
+  workspaceState.operations.upload = markOperationRunning(workspaceState.operations.upload, {
+    clientMode: workspaceState.uploadClient.clientMode,
+    route: workspaceState.uploadDraft.uploadRoute
+  });
   uploadSubmitButton.disabled = true;
   uploadStatus.textContent = statusLabel("RUNNING");
   uploadStatus.className = `badge ${badgeClass("RUNNING")}`;
@@ -776,7 +880,21 @@ async function submitUploadDraft() {
   try {
     workspaceState.uploadSubmission =
       await workspaceState.uploadClient.submitUploadDraft(workspaceState.uploadDraft);
+    workspaceState.operations.upload = markOperationSucceeded(
+      workspaceState.operations.upload,
+      {
+        status: workspaceState.uploadSubmission.status,
+        resultStatus: workspaceState.uploadSubmission.dedupeStatus,
+        clientMode: workspaceState.uploadSubmission.clientMode,
+        route: workspaceState.uploadSubmission.uploadRoute
+      }
+    );
   } catch (error) {
+    workspaceState.operations.upload = markOperationFailed(workspaceState.operations.upload, {
+      error,
+      clientMode: workspaceState.uploadClient.clientMode,
+      route: workspaceState.uploadDraft.uploadRoute
+    });
     workspaceState.uploadSubmission = {
       clientMode: workspaceState.uploadClient.clientMode,
       uploadRoute: workspaceState.uploadDraft.uploadRoute,
@@ -815,6 +933,7 @@ function safeUploadPreview(payload, draft, submission) {
       registry: buildClientRegistrySummary(workspaceState.clientRegistry),
       runtime_config: buildRuntimeConfigSummary(workspaceState.runtimeConfig)
     },
+    operation: buildOperationStateSummary(workspaceState.operations.upload),
     metadata: draft.metadata
   };
   if (submission) {
@@ -839,7 +958,8 @@ function safeRetrievalPreview(retrievalRequest, currentScope, retrievalResult) {
       client: {
         mode: workspaceState.retrievalClient.clientMode,
         registry: buildClientRegistrySummary(workspaceState.clientRegistry),
-        runtime_config: buildRuntimeConfigSummary(workspaceState.runtimeConfig)
+        runtime_config: buildRuntimeConfigSummary(workspaceState.runtimeConfig),
+        operation: buildOperationStateSummary(workspaceState.operations.retrieval)
       },
       status: "READY_FOR_PROMPT"
     };
@@ -867,6 +987,7 @@ function safeRetrievalPreview(retrievalRequest, currentScope, retrievalResult) {
       confidence_bucket: retrievalResult.confidenceBucket,
       no_answer_reason: retrievalResult.noAnswerReason,
       retryable: retrievalResult.retryable,
+      operation: buildOperationStateSummary(workspaceState.operations.retrieval),
       metadata: retrievalResult.metadata
     };
   }
@@ -933,6 +1054,8 @@ function badgeClass(status) {
     "MEDIUM",
     "PREVIEW_ONLY",
     "READY_FOR_HANDOFF",
+    "READY_FOR_PROMPT",
+    "READY_FOR_SUBMIT",
     "ALREADY_EXISTS",
     "QUEUED"
   ].includes(status)) {
@@ -952,6 +1075,8 @@ function statusLabel(status) {
     READY: "준비",
     ALREADY_EXISTS: "이미 있음",
     READY_FOR_HANDOFF: "전달 준비",
+    READY_FOR_PROMPT: "입력 준비",
+    READY_FOR_SUBMIT: "전송 준비",
     READY_FOR_RENDERING: "렌더링 준비",
     PREVIEW_ONLY: "미리보기",
     VALIDATED: "검증됨",
