@@ -21,6 +21,7 @@
           <a href="#upload-surface-panel">업로드</a>
           <a href="#document-list">문서</a>
           <a href="#document-detail-panel">상세</a>
+          <a href="#retrieval-scope-panel">검색</a>
           <a href="#artifact-panel">아티팩트</a>
           <a href="#audit-panel">감사</a>
         </nav>
@@ -29,7 +30,7 @@
       <main class="workspace">
         <header class="topbar">
           <div>
-            <p class="eyebrow">Slice 0217</p>
+            <p class="eyebrow">Slice 0218</p>
             <h1>NeX-Platform 작업면</h1>
           </div>
           <div class="status-strip" id="status-strip" aria-live="polite"></div>
@@ -142,6 +143,23 @@
                 <span class="badge pending" id="document-detail-status">대기</span>
               </div>
               <div class="document-detail" id="document-detail"></div>
+            </section>
+
+            <section
+              class="panel"
+              id="retrieval-scope-panel"
+              aria-labelledby="retrieval-scope-title"
+            >
+              <div class="section-header compact">
+                <h2 id="retrieval-scope-title">검색 범위</h2>
+                <span class="badge pending" id="retrieval-scope-status">대기</span>
+              </div>
+              <dl class="meta-list" id="retrieval-scope-summary"></dl>
+              <pre
+                class="payload-preview"
+                id="retrieval-scope-preview"
+                aria-label="AE retrieval scope preview"
+              ></pre>
             </section>
 
             <section class="panel" id="artifact-panel" aria-labelledby="artifact-title">

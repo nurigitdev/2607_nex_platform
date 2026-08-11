@@ -26,13 +26,17 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "document-detail-panel",
         "document-detail",
         "document-detail-status",
+        "retrieval-scope-panel",
+        "retrieval-scope-status",
+        "retrieval-scope-summary",
+        "retrieval-scope-preview",
         "artifact-panel",
         "audit-panel",
         "retrieval-toggle",
         "format-select",
     ]:
         assert f'id="{required_id}"' in html
-    assert "Slice 0217" in html
+    assert "Slice 0218" in html
     assert "lang=\"ko\"" in html
 
 
@@ -123,6 +127,46 @@ def test_ae_web_document_surface_tracks_detail_facade_boundary() -> None:
         assert forbidden not in client
 
 
+def test_ae_web_document_scope_propagates_to_retrieval_surface() -> None:
+    javascript = read_web_file("src/main.js")
+    document_scope = read_web_file("src/documentScope.js")
+
+    for expected in [
+        "buildDocumentScope",
+        "buildRetrievalRequest",
+        "documentScopeLabel",
+        "renderRetrievalScope",
+        "retrievalScope",
+        "lastRetrievalRequest",
+        "safeRetrievalPreview",
+        "document_scope",
+        "selected_count",
+    ]:
+        assert expected in javascript
+
+    for expected in [
+        "ae_web_document_scope.v1",
+        "ae_retrieval_interaction.v1",
+        "/api/v1/retrieval/contexts",
+        "DOCUMENT_SEARCH",
+        "GENERAL_CHAT",
+        "include_source_preview: false",
+        "DOCUMENT_SCOPE_EMPTY",
+        "DOCUMENT_SCOPE_UNKNOWN_DOCUMENT",
+    ]:
+        assert expected in document_scope
+
+    for forbidden in [
+        "raw_prompt",
+        "source_preview_text",
+        "chunk_text",
+        "content_text",
+        "provider_url",
+    ]:
+        assert forbidden not in javascript
+        assert forbidden not in document_scope
+
+
 def test_ae_web_mock_state_links_generation_artifact_and_audit_contracts() -> None:
     javascript = read_web_file("src/main.js")
 
@@ -152,6 +196,7 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert ".document-detail" in styles
     assert ".document-detail.is-loading" in styles
     assert ".payload-preview" in styles
+    assert ".retrieval-scope-chip" in styles
     assert ".document-row.is-selected" in styles
     assert ".document-action-row" in styles
     assert ".artifact-link" in styles
@@ -161,10 +206,10 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert "linear-gradient" not in styles
 
 
-def test_ae_web_package_version_tracks_slice_0217() -> None:
+def test_ae_web_package_version_tracks_slice_0218() -> None:
     package = json.loads(read_web_file("package.json"))
 
     assert package["name"] == "nex-ae-web"
-    assert package["version"] == "0.0.0-slice0217"
+    assert package["version"] == "0.0.0-slice0218"
     assert package["scripts"]["dev"] == "node scripts/serve.mjs"
     assert package["scripts"]["test"] == "node --test test/*.test.mjs"

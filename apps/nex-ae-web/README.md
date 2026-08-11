@@ -48,5 +48,13 @@ Slice 0217 adds the upload surface owner-scope checkpoint:
 - The browser surface does not include source content, service tokens, CX
   storage locations, provider URLs, or database details.
 
+Slice 0218 adds document scope propagation:
+
+- `src/documentScope.js` builds the selected document scope for retrieval.
+- The chat mock flow passes selected document IDs into the AE retrieval
+  interaction payload shape.
+- The retrieval scope preview omits raw prompt text, source previews, chunks,
+  provider URLs, and storage details.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.

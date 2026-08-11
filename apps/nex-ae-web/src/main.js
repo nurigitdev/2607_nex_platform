@@ -3,6 +3,11 @@ import {
   documentDetailRoute
 } from "./documentDetailClient.js";
 import {
+  buildDocumentScope,
+  buildRetrievalRequest,
+  documentScopeLabel
+} from "./documentScope.js";
+import {
   buildUploadHandoffPayload,
   buildUploadSurfaceDraft
 } from "./uploadSurface.js";
@@ -39,6 +44,8 @@ const workspaceState = {
   retrievalPackageId: "cx-ret-local",
   artifactHandoffId: "handoff-local",
   selectedDocumentId: "doc-001",
+  documentScope: null,
+  lastRetrievalRequest: null,
   uploadDraft: buildUploadSurfaceDraft({
     workspaceId: "workspace-local",
     filename: "new-reference-pack.md",
@@ -151,6 +158,7 @@ workspaceState.messages[1].artifactRefs = [workspaceState.artifactRef];
 workspaceState.documentDetailClient = createMockDocumentDetailClient({
   documents: workspaceState.documents
 });
+workspaceState.documentScope = buildCurrentDocumentScope();
 
 const serviceList = document.querySelector("#service-list");
 const statusStrip = document.querySelector("#status-strip");
@@ -166,6 +174,9 @@ const documentDetailStatus = document.querySelector("#document-detail-status");
 const uploadStatus = document.querySelector("#upload-status");
 const uploadOwnerScope = document.querySelector("#upload-owner-scope");
 const uploadPayloadPreview = document.querySelector("#upload-payload-preview");
+const retrievalScopeStatus = document.querySelector("#retrieval-scope-status");
+const retrievalScopeSummary = document.querySelector("#retrieval-scope-summary");
+const retrievalScopePreview = document.querySelector("#retrieval-scope-preview");
 const progressTimeline = document.querySelector("#progress-timeline");
 const timelineCount = document.querySelector("#timeline-count");
 const chatStatus = document.querySelector("#chat-status");
@@ -192,7 +203,9 @@ documentList.addEventListener("click", event => {
   if (!target) return;
 
   workspaceState.selectedDocumentId = target.dataset.documentId;
+  workspaceState.documentScope = buildCurrentDocumentScope();
   renderDocuments();
+  renderRetrievalScope();
   void renderDocumentDetail();
 });
 
@@ -211,6 +224,7 @@ function renderWorkspace() {
   renderMessages();
   renderUploadSurface();
   renderDocuments();
+  renderRetrievalScope();
   void renderDocumentDetail();
   renderTimeline();
   renderArtifactSummary();
@@ -255,6 +269,13 @@ async function readJson(url) {
     throw new Error(`HTTP ${response.status}`);
   }
   return response.json();
+}
+
+function buildCurrentDocumentScope() {
+  return buildDocumentScope({
+    documents: workspaceState.documents,
+    selectedDocumentIds: [workspaceState.selectedDocumentId]
+  });
 }
 
 function renderUploadSurface() {
@@ -302,6 +323,35 @@ function renderUploadSurface() {
   );
 }
 
+function renderRetrievalScope() {
+  const scope = workspaceState.documentScope;
+  retrievalScopeStatus.textContent = statusLabel(
+    scope.selectedCount > 0 ? "READY" : "UNKNOWN"
+  );
+  retrievalScopeStatus.className = `badge ${badgeClass(
+    scope.selectedCount > 0 ? "READY" : "UNKNOWN"
+  )}`;
+  retrievalScopeSummary.innerHTML = `
+    <div>
+      <dt>route</dt>
+      <dd><code>${escapeHtml(scope.route)}</code></dd>
+    </div>
+    <div>
+      <dt>documents</dt>
+      <dd>${escapeHtml(documentScopeLabel(scope))}</dd>
+    </div>
+    <div>
+      <dt>scope ids</dt>
+      <dd>${escapeHtml(scope.document_scope.document_ids.join(", "))}</dd>
+    </div>
+  `;
+  retrievalScopePreview.textContent = JSON.stringify(
+    safeRetrievalPreview(workspaceState.lastRetrievalRequest, scope),
+    null,
+    2
+  );
+}
+
 function renderMessages() {
   messageList.innerHTML = "";
   for (const message of workspaceState.messages) {
@@ -310,10 +360,23 @@ function renderMessages() {
     article.innerHTML = `
       <span>${escapeHtml(message.label)}</span>
       <p>${escapeHtml(message.text)}</p>
+      ${renderMessageRetrievalScope(message.retrievalScope)}
       ${renderArtifactRefs(message.artifactRefs || [])}
     `;
     messageList.appendChild(article);
   }
+}
+
+function renderMessageRetrievalScope(retrievalScope) {
+  if (!retrievalScope) return "";
+  return `
+    <dl class="inline-meta slim retrieval-scope-chip" aria-label="검색 범위">
+      <div>
+        <dt>scope</dt>
+        <dd>${escapeHtml(documentScopeLabel(retrievalScope))}</dd>
+      </div>
+    </dl>
+  `;
 }
 
 function renderArtifactRefs(artifactRefs) {
@@ -557,6 +620,12 @@ function appendPromptInteraction() {
 
   const format = formatSelect.value;
   const grounded = retrievalToggle.checked;
+  const retrievalRequest = buildRetrievalRequest({
+    userMessage: prompt,
+    chatDocumentId: workspaceState.chatDocumentId,
+    documentScope: workspaceState.documentScope,
+    grounded
+  });
   workspaceState.messages.push({
     role: "user",
     label: "사용자",
@@ -566,10 +635,12 @@ function appendPromptInteraction() {
     role: "assistant",
     label: "assistant",
     text: grounded
-      ? `근거 패키지와 ${format} handoff를 연결했습니다.`
+      ? `${documentScopeLabel(workspaceState.documentScope)} 범위로 근거 패키지와 ${format} handoff를 연결했습니다.`
       : `${format} 생성 요청을 일반 답변 흐름으로 연결했습니다.`,
-    artifactRefs: [buildMockArtifactRef(format, grounded)]
+    artifactRefs: [buildMockArtifactRef(format, grounded)],
+    retrievalScope: grounded ? workspaceState.documentScope : null
   });
+  workspaceState.lastRetrievalRequest = retrievalRequest;
   workspaceState.artifact.targetFormats = [format];
   workspaceState.artifact.handoffStatus = "READY";
   workspaceState.artifact.citationStatus = grounded ? "VALIDATED" : "NOT_REQUIRED";
@@ -578,6 +649,28 @@ function appendPromptInteraction() {
   workspaceState.artifact.downloadRoutes = workspaceState.artifactRef.downloadRoutes;
   workspaceState.progressEvents = buildProgressEvents(grounded);
   renderWorkspace();
+}
+
+function safeRetrievalPreview(retrievalRequest, currentScope) {
+  if (!retrievalRequest) {
+    return {
+      route: currentScope.route,
+      document_scope: currentScope.document_scope,
+      selected_count: currentScope.selectedCount,
+      status: "READY_FOR_PROMPT"
+    };
+  }
+  return {
+    route: retrievalRequest.route,
+    chat_document_id: retrievalRequest.chat_document_id,
+    execution_mode: retrievalRequest.retrieval.execution_mode,
+    document_scope: retrievalRequest.retrieval.document_scope,
+    retrieval_profile: retrievalRequest.retrieval.retrieval_profile,
+    top_k: retrievalRequest.retrieval.top_k,
+    include_source_preview: retrievalRequest.retrieval.include_source_preview,
+    purpose: retrievalRequest.retrieval.purpose,
+    selected_count: retrievalRequest.surface.selected_count
+  };
 }
 
 function buildMockArtifactRef(format, grounded) {
