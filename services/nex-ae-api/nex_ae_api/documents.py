@@ -25,6 +25,8 @@ class CxDocumentLibraryClient(Protocol):
         self,
         document_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
@@ -59,11 +61,17 @@ class HttpCxDocumentLibraryClient:
         self,
         document_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
         return self._get_json(
             f"/api/v1/documents/{document_id}",
+            params=owner_scope_query_params(
+                tenant_id=tenant_id,
+                owner_user_id=owner_user_id,
+            ),
             request_id=request_id,
             trace_id=trace_id,
             not_found_as_none=False,
@@ -101,6 +109,7 @@ class HttpCxDocumentLibraryClient:
         self,
         path: str,
         *,
+        params: dict[str, str] | None = None,
         request_id: str,
         trace_id: str,
         not_found_as_none: bool,
@@ -117,6 +126,7 @@ class HttpCxDocumentLibraryClient:
                 "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
                 "X-Service-ID": "nex-ae-api",
             },
+            params=params,
             timeout=self.timeout_seconds,
         )
         if response.status_code == 404 and not_found_as_none:
@@ -170,23 +180,11 @@ def register_document_library_routes(
         trace_id = trace_id_from_headers(request)
         try:
             items = [
-                build_document_library_item(
+                build_document_library_item_from_cx(
+                    client=client,
                     upload_handoff=upload_handoff,
-                    cx_document=client.get_document(
-                        upload_handoff["cx_document_ref"]["document_id"],
-                        request_id=request_id,
-                        trace_id=trace_id,
-                    ),
-                    summary=client.get_summary(
-                        upload_handoff["cx_document_ref"]["document_id"],
-                        request_id=request_id,
-                        trace_id=trace_id,
-                    ),
-                    summary_embedding=client.get_summary_embedding(
-                        upload_handoff["cx_document_ref"]["document_id"],
-                        request_id=request_id,
-                        trace_id=trace_id,
-                    ),
+                    request_id=request_id,
+                    trace_id=trace_id,
                 )
                 for upload_handoff in handoffs.list_by_workspace(workspace_id)
             ]
@@ -213,23 +211,11 @@ def register_document_library_routes(
         trace_id = trace_id_from_headers(request)
         try:
             items = [
-                build_document_library_item(
+                build_document_library_item_from_cx(
+                    client=client,
                     upload_handoff=upload_handoff,
-                    cx_document=client.get_document(
-                        upload_handoff["cx_document_ref"]["document_id"],
-                        request_id=request_id,
-                        trace_id=trace_id,
-                    ),
-                    summary=client.get_summary(
-                        upload_handoff["cx_document_ref"]["document_id"],
-                        request_id=request_id,
-                        trace_id=trace_id,
-                    ),
-                    summary_embedding=client.get_summary_embedding(
-                        upload_handoff["cx_document_ref"]["document_id"],
-                        request_id=request_id,
-                        trace_id=trace_id,
-                    ),
+                    request_id=request_id,
+                    trace_id=trace_id,
                 )
                 for upload_handoff in handoffs.list_by_workspace(workspace_id)
             ]
@@ -242,6 +228,58 @@ def register_document_library_routes(
             "query": query.strip(),
             "matches": matches,
         }
+
+
+def build_document_library_item_from_cx(
+    *,
+    client: CxDocumentLibraryClient,
+    upload_handoff: dict[str, Any],
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    owner_scope = owner_scope_from_handoff(upload_handoff)
+    document_id = upload_handoff["cx_document_ref"]["document_id"]
+    return build_document_library_item(
+        upload_handoff=upload_handoff,
+        cx_document=client.get_document(
+            document_id,
+            tenant_id=owner_scope["tenant_id"],
+            owner_user_id=owner_scope["owner_user_id"],
+            request_id=request_id,
+            trace_id=trace_id,
+        ),
+        summary=client.get_summary(
+            document_id,
+            request_id=request_id,
+            trace_id=trace_id,
+        ),
+        summary_embedding=client.get_summary_embedding(
+            document_id,
+            request_id=request_id,
+            trace_id=trace_id,
+        ),
+    )
+
+
+def owner_scope_from_handoff(upload_handoff: dict[str, Any]) -> dict[str, str]:
+    return owner_scope_query_params(
+        tenant_id=upload_handoff.get("tenant_id"),
+        owner_user_id=upload_handoff.get("owner_user_id"),
+    )
+
+
+def owner_scope_query_params(
+    *,
+    tenant_id: object,
+    owner_user_id: object,
+) -> dict[str, str]:
+    return {
+        "tenant_id": _required_owner_scope_text(tenant_id, field_name="tenant_id"),
+        "owner_user_id": _required_owner_scope_text(
+            owner_user_id,
+            field_name="owner_user_id",
+        ),
+    }
 
 
 def build_document_library_item(
@@ -360,6 +398,17 @@ def markdown_available(cx_document: dict[str, Any], document_ref: dict[str, Any]
     if isinstance(extraction, dict) and isinstance(extraction.get("markdown_available"), bool):
         return extraction["markdown_available"]
     return bool(document_ref["markdown_available"])
+
+
+def _required_owner_scope_text(value: object, *, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise DocumentLibraryError(
+            status_code=422,
+            error_code="ae.document_owner_scope_invalid",
+            detail=f"{field_name} must be a non-empty string.",
+            retryable=False,
+        )
+    return value.strip()
 
 
 def _authorize_ae_request(

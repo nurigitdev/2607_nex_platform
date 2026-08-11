@@ -79,6 +79,10 @@ Document library:
 - AE composes workspace document cards from upload handoffs and CX document,
   summary, and summary embedding status. Summary search is lexical and mock-only
   until a persistent AE read model is added.
+- AE propagates the upload handoff owner scope (`tenant_id`, `owner_user_id`) as
+  CX document detail query parameters before composing document cards. Invalid
+  stored owner scope fails in AE with `ae.document_owner_scope_invalid` and does
+  not call CX.
 
 Artifact handoff:
 

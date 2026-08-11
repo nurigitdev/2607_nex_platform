@@ -10,10 +10,12 @@ import nex_ae_api.documents as ae_documents
 from nex_ae_api.documents import (
     DocumentLibraryError,
     HttpCxDocumentLibraryClient,
+    build_document_library_item_from_cx,
     build_document_library_item,
     build_summary_projection,
     extraction_status,
     markdown_available,
+    owner_scope_query_params,
     register_document_library_routes,
     search_summary_items,
 )
@@ -36,10 +38,12 @@ class FakeCxDocumentLibraryClient:
         self,
         document_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
-        self.calls.append(f"document:{document_id}")
+        self.calls.append(f"document:{document_id}:{tenant_id}:{owner_user_id}")
         if self.fail_document:
             raise DocumentLibraryError(
                 status_code=503,
@@ -180,6 +184,22 @@ def test_summary_projection_handles_missing_summary_and_fallback_extraction() ->
     assert markdown_available({}, {"markdown_available": False}) is False
 
 
+def test_owner_scope_query_params_trim_and_validate() -> None:
+    assert owner_scope_query_params(
+        tenant_id=" tenant-a ",
+        owner_user_id=" user-a ",
+    ) == {"tenant_id": "tenant-a", "owner_user_id": "user-a"}
+
+    with pytest.raises(DocumentLibraryError) as tenant_exc:
+        owner_scope_query_params(tenant_id=" ", owner_user_id="user-a")
+    with pytest.raises(DocumentLibraryError) as owner_exc:
+        owner_scope_query_params(tenant_id="tenant-a", owner_user_id=None)
+
+    assert tenant_exc.value.error_code == "ae.document_owner_scope_invalid"
+    assert tenant_exc.value.status_code == 422
+    assert owner_exc.value.detail == "owner_user_id must be a non-empty string."
+
+
 def test_status_helpers_accept_cx_document_detail_projection() -> None:
     detail_projection = {
         "projection_schema_version": "cx_document_detail_projection.v1",
@@ -238,6 +258,29 @@ def test_search_summary_items_scores_and_sorts_matches() -> None:
     assert search_summary_items([first], query="   ") == []
 
 
+def test_build_document_library_item_from_cx_passes_owner_scope() -> None:
+    client = FakeCxDocumentLibraryClient()
+
+    item = build_document_library_item_from_cx(
+        client=client,
+        upload_handoff={
+            **upload_handoff(),
+            "tenant_id": " tenant-a ",
+            "owner_user_id": " user-a ",
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert item["document_id"] == "doc-001"
+    assert item["status"]["extraction_status"] == "SUCCEEDED"
+    assert client.calls == [
+        "document:doc-001:tenant-a:user-a",
+        "summary:doc-001",
+        "summary-embedding:doc-001",
+    ]
+
+
 def test_document_library_routes_list_empty_and_populated_workspace() -> None:
     store = UploadHandoffStore()
     store.save(upload_handoff())
@@ -251,7 +294,7 @@ def test_document_library_routes_list_empty_and_populated_workspace() -> None:
     assert populated.status_code == 200
     assert populated.json()["documents"][0]["document_id"] == "doc-001"
     assert cx_client.calls == [
-        "document:doc-001",
+        "document:doc-001:tenant-a:user-a",
         "summary:doc-001",
         "summary-embedding:doc-001",
     ]
@@ -269,6 +312,18 @@ def test_document_summary_search_route_matches_by_summary_preview() -> None:
 
     assert response.status_code == 200
     assert response.json()["matches"][0]["document"]["filename"] == "mvp-srs.md"
+
+
+def test_document_summary_search_route_requires_auth() -> None:
+    client, _, cx_client = build_client()
+
+    response = client.get(
+        "/api/v1/documents/summary-search?workspace_id=workspace-001&query=retrieval"
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert cx_client.calls == []
 
 
 def test_document_library_routes_require_auth_and_propagate_cx_error() -> None:
@@ -303,13 +358,48 @@ def test_document_library_route_handles_missing_summary() -> None:
     assert response.json()["documents"][0]["status"]["summary_status"] == "NOT_READY"
 
 
+def test_document_library_route_rejects_invalid_handoff_owner_scope() -> None:
+    store = UploadHandoffStore()
+    store.save({**upload_handoff(), "owner_user_id": " "})
+    client, _, cx_client = build_client(store=store)
+
+    response = client.get("/api/v1/workspaces/workspace-001/documents", headers=auth_headers())
+
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "ae.document_owner_scope_invalid"
+    assert response.json()["detail"] == "owner_user_id must be a non-empty string."
+    assert cx_client.calls == []
+
+
+def test_document_summary_search_route_rejects_invalid_handoff_owner_scope() -> None:
+    store = UploadHandoffStore()
+    store.save({**upload_handoff(), "tenant_id": None})
+    client, _, cx_client = build_client(store=store)
+
+    response = client.get(
+        "/api/v1/documents/summary-search?workspace_id=workspace-001&query=retrieval",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "ae.document_owner_scope_invalid"
+    assert response.json()["detail"] == "tenant_id must be a non-empty string."
+    assert cx_client.calls == []
+
+
 def test_http_cx_document_library_client_fetches_and_maps_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    captured: list[str] = []
+    captured: list[tuple[str, dict[str, str] | None]] = []
 
-    def fake_get(url: str, *, headers: dict[str, str], timeout: float) -> httpx.Response:
-        captured.append(url)
+    def fake_get(
+        url: str,
+        *,
+        headers: dict[str, str],
+        params: dict[str, str] | None = None,
+        timeout: float,
+    ) -> httpx.Response:
+        captured.append((url, params))
         if url.endswith("/summary"):
             return httpx.Response(status_code=404, json={"error_code": "missing"})
         if url.endswith("/summary-embedding"):
@@ -326,9 +416,13 @@ def test_http_cx_document_library_client_fetches_and_maps_errors(
     monkeypatch.setattr(ae_documents.httpx, "get", fake_get)
     client = HttpCxDocumentLibraryClient(base_url="http://cx")
 
-    assert client.get_document("doc-001", request_id=REQUEST_ID, trace_id=TRACE_ID) == {
-        "document_id": "doc-001"
-    }
+    assert client.get_document(
+        "doc-001",
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    ) == {"document_id": "doc-001"}
     assert client.get_summary("doc-001", request_id=REQUEST_ID, trace_id=TRACE_ID) is None
     with pytest.raises(DocumentLibraryError) as exc:
         client.get_summary_embedding(
@@ -338,9 +432,12 @@ def test_http_cx_document_library_client_fetches_and_maps_errors(
         )
 
     assert captured == [
-        "http://cx/api/v1/documents/doc-001",
-        "http://cx/api/v1/documents/doc-001/summary",
-        "http://cx/api/v1/documents/doc-001/summary-embedding",
+        (
+            "http://cx/api/v1/documents/doc-001",
+            {"tenant_id": "tenant-a", "owner_user_id": "user-a"},
+        ),
+        ("http://cx/api/v1/documents/doc-001/summary", None),
+        ("http://cx/api/v1/documents/doc-001/summary-embedding", None),
     ]
     assert exc.value.error_code == "cx.summary_embedding_unavailable"
 
@@ -355,6 +452,27 @@ def test_http_cx_document_library_client_uses_default_error_for_bad_json(
     with pytest.raises(DocumentLibraryError) as exc:
         HttpCxDocumentLibraryClient(base_url="http://cx").get_document(
             "doc-001",
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert exc.value.error_code == "cx.document_library_request_failed"
+
+
+def test_http_cx_document_library_client_uses_default_error_for_non_object_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_get(*args: Any, **kwargs: Any) -> httpx.Response:
+        return httpx.Response(status_code=500, json=["broken"])
+
+    monkeypatch.setattr(ae_documents.httpx, "get", fake_get)
+    with pytest.raises(DocumentLibraryError) as exc:
+        HttpCxDocumentLibraryClient(base_url="http://cx").get_document(
+            "doc-001",
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
             request_id=REQUEST_ID,
             trace_id=TRACE_ID,
         )
