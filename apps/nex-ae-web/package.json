@@ -1,10 +1,11 @@
 {
   "name": "nex-ae-web",
-  "version": "0.0.0-slice0215",
+  "version": "0.0.0-slice0216",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node scripts/serve.mjs",
-    "start": "node scripts/serve.mjs"
+    "start": "node scripts/serve.mjs",
+    "test": "node --test test/*.test.mjs"
   }
 }

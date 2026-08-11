@@ -1,3 +1,8 @@
+import {
+  createMockDocumentDetailClient,
+  documentDetailRoute
+} from "./documentDetailClient.js";
+
 const services = [
   ["nex-oa", 8101],
   ["nex-ag", 8102],
@@ -130,6 +135,9 @@ const workspaceState = {
 };
 
 workspaceState.messages[1].artifactRefs = [workspaceState.artifactRef];
+workspaceState.documentDetailClient = createMockDocumentDetailClient({
+  documents: workspaceState.documents
+});
 
 const serviceList = document.querySelector("#service-list");
 const statusStrip = document.querySelector("#status-strip");
@@ -152,6 +160,7 @@ const artifactStatus = document.querySelector("#artifact-status");
 const handoffBadge = document.querySelector("#handoff-badge");
 const artifactSummary = document.querySelector("#artifact-summary");
 const auditSummary = document.querySelector("#audit-summary");
+let documentDetailRequestSequence = 0;
 
 refreshButton.addEventListener("click", () => {
   renderServiceStatuses();
@@ -168,7 +177,7 @@ documentList.addEventListener("click", event => {
 
   workspaceState.selectedDocumentId = target.dataset.documentId;
   renderDocuments();
-  renderDocumentDetail();
+  void renderDocumentDetail();
 });
 
 renderWorkspace();
@@ -185,7 +194,7 @@ function renderWorkspace() {
   handoffBadge.className = `badge ${badgeClass(workspaceState.artifact.citationStatus)}`;
   renderMessages();
   renderDocuments();
-  renderDocumentDetail();
+  void renderDocumentDetail();
   renderTimeline();
   renderArtifactSummary();
   renderAuditSummary();
@@ -308,7 +317,7 @@ function renderDocuments() {
   }
 }
 
-function renderDocumentDetail() {
+async function renderDocumentDetail() {
   const documentItem = currentDocumentSurfaceItem();
   if (!documentItem) {
     documentDetailStatus.textContent = statusLabel("UNKNOWN");
@@ -317,7 +326,24 @@ function renderDocumentDetail() {
     return;
   }
 
-  const surface = buildDocumentSurface(documentItem);
+  const requestSequence = ++documentDetailRequestSequence;
+  documentDetailStatus.textContent = statusLabel("RUNNING");
+  documentDetailStatus.className = `badge ${badgeClass("RUNNING")}`;
+  documentDetail.classList.add("is-loading");
+
+  let surface;
+  try {
+    surface = await workspaceState.documentDetailClient.getDocumentDetail(
+      documentItem.documentId
+    );
+  } catch (error) {
+    if (requestSequence !== documentDetailRequestSequence) return;
+    renderDocumentDetailError(error);
+    return;
+  }
+
+  if (requestSequence !== documentDetailRequestSequence) return;
+  documentDetail.classList.remove("is-loading");
   documentDetailStatus.textContent = statusLabel(surface.processingStatus);
   documentDetailStatus.className = `badge ${badgeClass(surface.processingStatus)}`;
   documentDetail.innerHTML = `
@@ -340,6 +366,10 @@ function renderDocumentDetail() {
         <dd>${escapeHtml(surface.sourceService)} · ${escapeHtml(surface.sourceKind)}</dd>
       </div>
       <div>
+        <dt>client</dt>
+        <dd>${escapeHtml(surface.clientMode)}</dd>
+      </div>
+      <div>
         <dt>extraction</dt>
         <dd>${statusLabel(surface.extractionStatus)}</dd>
       </div>
@@ -351,35 +381,31 @@ function renderDocumentDetail() {
   `;
 }
 
+function renderDocumentDetailError(error) {
+  documentDetail.classList.remove("is-loading");
+  documentDetailStatus.textContent = statusLabel("UNAVAILABLE");
+  documentDetailStatus.className = `badge ${badgeClass("UNAVAILABLE")}`;
+  documentDetail.innerHTML = `
+    <strong>문서 상세를 불러오지 못했습니다.</strong>
+    <dl class="inline-meta">
+      <div>
+        <dt>status</dt>
+        <dd>${escapeHtml(error.status || "DOCUMENT_DETAIL_CLIENT_ERROR")}</dd>
+      </div>
+      <div>
+        <dt>retryable</dt>
+        <dd>${escapeHtml(Boolean(error.retryable))}</dd>
+      </div>
+    </dl>
+  `;
+}
+
 function currentDocumentSurfaceItem() {
   return (
     workspaceState.documents.find(
       documentItem => documentItem.documentId === workspaceState.selectedDocumentId
     ) || workspaceState.documents[0]
   );
-}
-
-function buildDocumentSurface(documentItem) {
-  return {
-    documentId: documentItem.documentId,
-    filename: documentItem.filename,
-    detailRoute: documentItem.detailRoute || documentDetailRoute(documentItem.documentId),
-    projectionSchemaVersion:
-      documentItem.projectionSchemaVersion || "ae_document_detail_projection.v1",
-    tenantId: documentItem.ownerScope?.tenantId || "UNKNOWN",
-    ownerUserId: documentItem.ownerScope?.ownerUserId || "UNKNOWN",
-    sourceService: documentItem.sourceService || "nex-cx",
-    sourceKind: documentItem.sourceKind || "ae-facade",
-    processingStatus: documentItem.processingStatus || "UNKNOWN",
-    extractionStatus: documentItem.extractionStatus || "UNKNOWN",
-    summaryStatus: documentItem.summaryStatus || "UNKNOWN",
-    confidenceBucket: documentItem.confidenceBucket || "UNKNOWN",
-    bestScore: documentItem.bestScore
-  };
-}
-
-function documentDetailRoute(documentId) {
-  return `/api/v1/documents/${encodeURIComponent(documentId)}`;
 }
 
 function formatScore(score) {
@@ -566,6 +592,7 @@ function statusLabel(status) {
     NOT_REQUIRED: "불필요",
     NOT_READY: "미준비",
     UNHEALTHY: "비정상",
+    UNAVAILABLE: "사용 불가",
     HIGH: "높음",
     MEDIUM: "중간"
   };

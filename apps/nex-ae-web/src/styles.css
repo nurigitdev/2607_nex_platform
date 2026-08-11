@@ -544,6 +544,10 @@ meter {
   padding: 14px;
 }
 
+.document-detail.is-loading {
+  opacity: 0.72;
+}
+
 .document-detail > strong,
 .artifact-summary > strong {
   overflow-wrap: anywhere;

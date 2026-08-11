@@ -30,5 +30,14 @@ Slice 0215 adds the AE document surface checkpoint:
 - Owner scope, CX source kind, extraction, summary, and confidence metadata
   surfaced without raw source, markdown, storage, summary text, or vector data.
 
+Slice 0216 adds the document detail client adapter foundation:
+
+- `src/documentDetailClient.js` owns mock and fetch client adapters.
+- The static shell uses the mock adapter by default.
+- The fetch adapter targets the AE facade route and uses same-origin browser
+  credentials without embedding service tokens or provider secrets.
+- Node built-in tests cover adapter success, not-found, HTTP failure, network
+  failure, and invalid projection branches.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.
