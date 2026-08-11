@@ -1583,6 +1583,7 @@ def test_document_and_job_can_be_read_back(tmp_path: Path) -> None:
 
     document_response = client.get(
         f"/api/v1/documents/{created['document_id']}",
+        params={"tenant_id": "local-tenant", "owner_user_id": "local-user"},
         headers=auth_headers(),
     )
     job_response = client.get(
@@ -1637,12 +1638,18 @@ def test_document_detail_read_collapses_wrong_owner_and_validates_query(
         params={"owner_user_id": " "},
         headers=auth_headers(),
     )
+    missing_owner_scope = client.get(
+        f"/api/v1/documents/{created['document_id']}",
+        headers=auth_headers(),
+    )
 
     assert wrong_owner.status_code == 404
     assert wrong_owner.json()["error_code"] == "cx.document_not_found"
     assert "owner scoped source" not in str(wrong_owner.json())
     assert invalid_owner.status_code == 400
     assert invalid_owner.json()["error_code"] == "cx.document_detail_query_invalid"
+    assert missing_owner_scope.status_code == 400
+    assert missing_owner_scope.json()["error_code"] == "cx.document_detail_query_invalid"
 
 
 def test_document_detail_read_maps_repository_unavailable(tmp_path: Path) -> None:
@@ -1656,7 +1663,11 @@ def test_document_detail_read_maps_repository_unavailable(tmp_path: Path) -> Non
     )
     client = TestClient(app)
 
-    response = client.get("/api/v1/documents/doc-001", headers=auth_headers())
+    response = client.get(
+        "/api/v1/documents/doc-001",
+        params={"tenant_id": "tenant-a", "owner_user_id": "user-a"},
+        headers=auth_headers(),
+    )
 
     assert response.status_code == 503
     assert response.json()["error_code"] == "cx.content_repository_unavailable"
@@ -1768,7 +1779,11 @@ def test_job_read_requires_service_claim(tmp_path: Path) -> None:
 def test_document_and_job_reads_return_not_found(tmp_path: Path) -> None:
     client, _ = build_test_client(tmp_path)
 
-    document_response = client.get("/api/v1/documents/missing", headers=auth_headers())
+    document_response = client.get(
+        "/api/v1/documents/missing",
+        params={"tenant_id": "local-tenant", "owner_user_id": "local-user"},
+        headers=auth_headers(),
+    )
     job_response = client.get("/api/v1/jobs/missing", headers=auth_headers())
 
     assert document_response.status_code == 404

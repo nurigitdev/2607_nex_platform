@@ -313,6 +313,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0207`](slices/0207_cx_document_detail_service_api_wiring.md) | `S21-007` CX document detail service API wiring. |
 | [`Slice 0208`](slices/0208_cx_document_detail_postgresql_smoke_evidence.md) | `S21-008` CX document detail PostgreSQL smoke evidence. |
 | [`Slice 0209`](slices/0209_ae_to_cx_document_detail_owner_scope_propagation.md) | `S21-009` AE to CX document detail owner-scope propagation. |
+| [`Slice 0210`](slices/0210_cx_document_detail_contract_schema_hardening.md) | `S21-010` CX document detail contract/schema hardening. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

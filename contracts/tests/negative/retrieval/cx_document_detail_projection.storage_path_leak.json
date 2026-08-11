@@ -1,0 +1,168 @@
+{
+  "projection_schema_version": "cx_document_detail_projection.v1",
+  "service_id": "nex-cx",
+  "source": {
+    "source_kind": "repository",
+    "database_env": null,
+    "redacted_database_url": null
+  },
+  "filters": {
+    "filter_schema_version": "cx_document_detail_query_filters.v1",
+    "document_ref": {
+      "type": "cx.document",
+      "id": "11111111-1111-4111-8111-111111111111"
+    },
+    "tenant_ref": {
+      "type": "oa.tenant",
+      "id": "tenant-a"
+    },
+    "owner_subject_ref": {
+      "type": "oa.user",
+      "id": "user-a"
+    },
+    "lifecycle_status": "ACTIVE"
+  },
+  "document": {
+    "document_detail_schema_version": "cx_document_detail_item.v1",
+    "document_id": "11111111-1111-4111-8111-111111111111",
+    "upload_id": "22222222-2222-4222-8222-222222222222",
+    "tenant_ref": {
+      "type": "oa.tenant",
+      "id": "tenant-a"
+    },
+    "owner_subject_ref": {
+      "type": "oa.user",
+      "id": "user-a"
+    },
+    "uploaded_by_subject_ref": {
+      "type": "oa.user",
+      "id": "user-a"
+    },
+    "filename": "source.md",
+    "content_type": "text/markdown",
+    "size_bytes": 1024,
+    "source_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "classification": "internal",
+    "lifecycle_status": "ACTIVE",
+    "retrieval_policy": {},
+    "created_at": "2026-08-10T00:00:00Z",
+    "updated_at": "2026-08-10T00:00:00Z",
+    "summary": {
+      "available": false,
+      "status": "NOT_AVAILABLE",
+      "document_summary_id": null,
+      "summary_text_sha256": null,
+      "summary_preview": null,
+      "summary_char_count": 0,
+      "model_profile_id": null,
+      "model_revision": null,
+      "updated_at": null
+    },
+    "summary_embedding": {
+      "available": false,
+      "status": "NOT_AVAILABLE",
+      "summary_embedding_id": null,
+      "model_profile_id": null,
+      "model_revision": null,
+      "vector_dimension": null,
+      "embedding_sha256": null,
+      "created_at": null
+    },
+    "processing": {
+      "available": false,
+      "latest_pipeline_run_id": null,
+      "status": "NOT_AVAILABLE",
+      "step_total": 0,
+      "step_failed": 0,
+      "updated_at": null
+    },
+    "links": {
+      "cx_document": "/api/v1/documents/11111111-1111-4111-8111-111111111111",
+      "cx_summary": "/api/v1/documents/11111111-1111-4111-8111-111111111111/summary",
+      "cx_summary_embedding": "/api/v1/documents/11111111-1111-4111-8111-111111111111/summary-embedding",
+      "cx_processing_runs": "/api/v1/documents/11111111-1111-4111-8111-111111111111/processing/runs"
+    },
+    "metadata": {
+      "raw_source_included": false,
+      "raw_summary_included": false,
+      "embedding_vector_included": false,
+      "storage_path_redacted": true
+    },
+    "source_lineage": {
+      "source_file_id": "66666666-6666-4666-8666-666666666666",
+      "source_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "content_type": "text/markdown",
+      "size_bytes": 1024,
+      "storage_backend": null,
+      "storage_key_included": false,
+      "storage_uri_included": false,
+      "storage_path_included": false,
+      "source_storage_path": "/data/nex-platform/cx/source-files/20260810/private.md"
+    },
+    "upload": {
+      "available": false,
+      "upload_id": "22222222-2222-4222-8222-222222222222",
+      "request_id": null,
+      "trace_id": null,
+      "dedupe_status": null,
+      "existing_document_id": null,
+      "payload_source": null,
+      "source_content_in_record": false
+    },
+    "extraction": {
+      "available": false,
+      "job_id": null,
+      "status": "UNKNOWN",
+      "markdown_available": false
+    },
+    "boundary_audit": {
+      "audit_schema_version": "cx_document_detail_boundary_audit.v1",
+      "legacy_route": {
+        "path": "/api/v1/documents/{document_id}",
+        "current_payload": "cx_upload_registration.v1",
+        "owner_scope_required": false,
+        "may_expose_local_storage_path": true,
+        "replacement_projection_schema_version": "cx_document_detail_projection.v1"
+      },
+      "projection": {
+        "owner_scope_required": true,
+        "not_found_and_not_authorized_collapsed": true,
+        "raw_source_included": false,
+        "raw_summary_included": false,
+        "embedding_vector_included": false,
+        "local_storage_path_included": false,
+        "storage_uri_included": false,
+        "storage_key_included": false
+      }
+    }
+  },
+  "boundary_audit": {
+    "audit_schema_version": "cx_document_detail_boundary_audit.v1",
+    "legacy_route": {
+      "path": "/api/v1/documents/{document_id}",
+      "current_payload": "cx_upload_registration.v1",
+      "owner_scope_required": false,
+      "may_expose_local_storage_path": true,
+      "replacement_projection_schema_version": "cx_document_detail_projection.v1"
+    },
+    "projection": {
+      "owner_scope_required": true,
+      "not_found_and_not_authorized_collapsed": true,
+      "raw_source_included": false,
+      "raw_summary_included": false,
+      "embedding_vector_included": false,
+      "local_storage_path_included": false,
+      "storage_uri_included": false,
+      "storage_key_included": false
+    }
+  },
+  "metadata": {
+    "owner_scoped": true,
+    "not_found_and_not_authorized_collapsed": true,
+    "legacy_upload_registration_route_replacement": true,
+    "raw_source_included": false,
+    "raw_summary_included": false,
+    "embedding_vector_included": false,
+    "storage_path_redacted": true
+  }
+}

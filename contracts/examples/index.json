@@ -361,6 +361,11 @@
       "schema": "schemas/service/nex_cx/document_library_projection.v1.schema.json"
     },
     {
+      "name": "cx_document_detail_projection_mock",
+      "path": "examples/retrieval/cx_document_detail_projection.mock_success.json",
+      "schema": "schemas/service/nex_cx/document_detail_projection.v1.schema.json"
+    },
+    {
       "name": "cx_retrieval_context_package_mock",
       "path": "examples/retrieval/cx_retrieval_context_package.mock_success.json",
       "schema": "schemas/service/nex_cx/retrieval_context_package.v1.schema.json"

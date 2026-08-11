@@ -181,6 +181,11 @@ Document detail:
   `owner_user_id` query parameters. Missing, inactive, and wrong-owner
   documents are collapsed to the same not-found response, and raw source,
   summary body, embedding vectors, and local storage paths are excluded.
+- Slice 0210 hardens the detail contract with
+  `document_detail_projection.v1.schema.json`, a valid fixture, a negative
+  storage-path leak fixture, and OpenAPI query parameters marked as required.
+  Legacy repository rows without embedded `ownership_ref` are projected back to
+  canonical OA tenant/subject refs from indexed owner columns.
 
 Grounded generation validation:
 

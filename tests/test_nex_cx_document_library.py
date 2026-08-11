@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from jsonschema import Draft202012Validator
 
 from nex_cx.document_library import (
     CX_DOCUMENT_DETAIL_BOUNDARY_AUDIT_SCHEMA_VERSION,
@@ -145,11 +147,17 @@ def test_document_detail_filters_normalize_owner_scope() -> None:
     with pytest.raises(ValueError, match="tenant_id"):
         build_document_detail_query_filters(
             document_id="document-a",
+            owner_user_id="user-a",
+        )
+    with pytest.raises(ValueError, match="tenant_id"):
+        build_document_detail_query_filters(
+            document_id="document-a",
             tenant_id=" ",
         )
     with pytest.raises(ValueError, match="owner_user_id"):
         build_document_detail_query_filters(
             document_id="document-a",
+            tenant_id="tenant-a",
             owner_user_id=" ",
         )
 
@@ -202,6 +210,13 @@ def test_document_detail_projection_is_owner_scoped_and_raw_safe(
     )
 
     assert projection is not None
+    schema = json.loads(
+        (
+            Path(__file__).parents[1]
+            / "contracts/schemas/service/nex_cx/document_detail_projection.v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    Draft202012Validator(schema).validate(projection)
     assert projection["projection_schema_version"] == (
         CX_DOCUMENT_DETAIL_PROJECTION_SCHEMA_VERSION
     )
@@ -364,9 +379,19 @@ def test_document_detail_projection_supports_repository_only_legacy_columns(
         "request_id": None,
         "trace_id": None,
         "dedupe_status": None,
+        "existing_document_id": None,
+        "payload_source": None,
         "source_content_in_record": False,
     }
-    assert projection["document"]["tenant_ref"] == {}
+    assert projection["document"]["tenant_ref"] == {"type": "oa.tenant", "id": "tenant-a"}
+    assert projection["document"]["owner_subject_ref"] == {
+        "type": "oa.user",
+        "id": "user-a",
+    }
+    assert projection["document"]["uploaded_by_subject_ref"] == {
+        "type": "oa.user",
+        "id": "user-a",
+    }
     assert projection["document"]["extraction"] == {
         "available": False,
         "job_id": None,
@@ -376,6 +401,45 @@ def test_document_detail_projection_supports_repository_only_legacy_columns(
     assert projection["document"]["source_lineage"]["source_file_id"] == (
         source_file["source_file_id"]
     )
+
+
+def test_document_detail_projection_falls_back_uploaded_by_to_owner_ref(
+    tmp_path: Path,
+) -> None:
+    repository = InMemoryCxContentRepository()
+    upload = upload_registration(tmp_path, content_text="legacy owner ref source")
+    source_file = build_source_file_record(upload)
+    content_object = build_content_object_record(
+        upload,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+        source_file_id=source_file["source_file_id"],
+    )
+    content_object["ownership_ref"] = {
+        key: value
+        for key, value in content_object["ownership_ref"].items()
+        if key != "uploaded_by_subject_ref"
+    }
+    content_object.pop("owner_user_id")
+    repository.content_objects[upload["document_id"]] = content_object
+    store = ContentIngestionStore(content_repository=repository)
+
+    projection = build_document_detail_projection(
+        store=store,
+        document_id=upload["document_id"],
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+
+    assert projection is not None
+    assert projection["document"]["owner_subject_ref"] == {
+        "type": "oa.user",
+        "id": "user-a",
+    }
+    assert projection["document"]["uploaded_by_subject_ref"] == {
+        "type": "oa.user",
+        "id": "user-a",
+    }
 
 
 def test_document_detail_boundary_audit_marks_legacy_route_risk() -> None:

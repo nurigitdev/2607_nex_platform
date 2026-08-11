@@ -12,6 +12,7 @@ from nex_runtime import (
     validate_authorization_header,
 )
 from nex_cx.repository import (
+    CX_SOURCE_OWNERSHIP_REF_SCHEMA_VERSION,
     CxContentRepositoryError,
     DEFAULT_OWNER_USER_ID,
     DEFAULT_TENANT_ID,
@@ -190,11 +191,11 @@ def build_document_detail_query_filters(
         field_name="document_id",
     )
     normalized_tenant_id = _required_non_empty_text(
-        tenant_id or DEFAULT_TENANT_ID,
+        tenant_id,
         field_name="tenant_id",
     )
     normalized_owner_user_id = _required_non_empty_text(
-        owner_user_id or DEFAULT_OWNER_USER_ID,
+        owner_user_id,
         field_name="owner_user_id",
     )
     return {
@@ -274,7 +275,7 @@ def project_document_library_item(
         content_object.get("content_object_id"),
         field_name="content_object_id",
     )
-    ownership_ref = _mapping_copy(content_object.get("ownership_ref"))
+    ownership_ref = _project_ownership_ref(content_object)
     summary = _latest_summary_record(store, document_id)
     summary_embedding = _latest_summary_embedding_record(
         store,
@@ -413,6 +414,89 @@ def _content_object_ref_matches(
     )
 
 
+def _project_ownership_ref(content_object: Mapping[str, Any]) -> dict[str, Any]:
+    tenant_ref = _project_subject_ref(
+        content_object,
+        ref_name="tenant_ref",
+        expected_type=OA_TENANT_REF_TYPE,
+        legacy_type_key="tenant_ref_type",
+        legacy_id_key="tenant_ref_id",
+        compatibility_id_key="tenant_id",
+    )
+    owner_subject_ref = _project_subject_ref(
+        content_object,
+        ref_name="owner_subject_ref",
+        expected_type=OA_USER_SUBJECT_REF_TYPE,
+        legacy_type_key="owner_subject_ref_type",
+        legacy_id_key="owner_subject_ref_id",
+        compatibility_id_key="owner_user_id",
+    )
+    uploaded_by_subject_ref = _project_subject_ref(
+        content_object,
+        ref_name="uploaded_by_subject_ref",
+        expected_type=OA_USER_SUBJECT_REF_TYPE,
+        legacy_type_key="uploaded_by_subject_ref_type",
+        legacy_id_key="uploaded_by_subject_ref_id",
+        compatibility_id_key="owner_user_id",
+        fallback=owner_subject_ref,
+    )
+    return {
+        "ownership_schema_version": CX_SOURCE_OWNERSHIP_REF_SCHEMA_VERSION,
+        "tenant_ref": tenant_ref,
+        "owner_subject_ref": owner_subject_ref,
+        "uploaded_by_subject_ref": uploaded_by_subject_ref,
+    }
+
+
+def _project_subject_ref(
+    content_object: Mapping[str, Any],
+    *,
+    ref_name: str,
+    expected_type: str,
+    legacy_type_key: str,
+    legacy_id_key: str,
+    compatibility_id_key: str,
+    fallback: Mapping[str, Any] | None = None,
+) -> dict[str, str]:
+    ownership_ref = _mapping_copy(content_object.get("ownership_ref"))
+    embedded_ref = _normalize_subject_ref(
+        ownership_ref.get(ref_name),
+        expected_type=expected_type,
+    )
+    if embedded_ref:
+        return embedded_ref
+
+    legacy_type = _optional_non_empty_text(content_object.get(legacy_type_key))
+    legacy_id = _optional_non_empty_text(content_object.get(legacy_id_key))
+    compatibility_id = _optional_non_empty_text(
+        content_object.get(compatibility_id_key)
+    )
+    projected = _normalize_subject_ref(
+        {
+            "type": legacy_type or expected_type,
+            "id": legacy_id or compatibility_id,
+        },
+        expected_type=expected_type,
+    )
+    if projected:
+        return projected
+
+    return _normalize_subject_ref(fallback, expected_type=expected_type)
+
+
+def _normalize_subject_ref(
+    value: object,
+    *,
+    expected_type: str,
+) -> dict[str, str]:
+    ref = _mapping_copy(value)
+    ref_type = _optional_non_empty_text(ref.get("type"))
+    ref_id = _optional_non_empty_text(ref.get("id"))
+    if ref_type != expected_type or ref_id is None:
+        return {}
+    return {"type": expected_type, "id": ref_id}
+
+
 def _project_source_lineage(content_object: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "source_file_id": content_object.get("source_file_id"),
@@ -438,6 +522,8 @@ def _project_upload_metadata(
             "request_id": None,
             "trace_id": None,
             "dedupe_status": None,
+            "existing_document_id": None,
+            "payload_source": None,
             "source_content_in_record": False,
         }
     dedupe = _mapping_copy(upload_record.get("dedupe"))

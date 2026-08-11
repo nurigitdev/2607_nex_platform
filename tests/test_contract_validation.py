@@ -349,6 +349,36 @@ def test_nex_cx_openapi_includes_service_log_retention_control() -> None:
     )
 
 
+def test_nex_cx_openapi_hardens_document_detail_contract() -> None:
+    openapi_path = (
+        Path(__file__).parents[1] / "contracts" / "openapi" / "nex-cx.openapi.yaml"
+    )
+    spec = yaml.safe_load(openapi_path.read_text(encoding="utf-8"))
+
+    operation = spec["paths"]["/api/v1/documents/{document_id}"]["get"]
+    parameters = {parameter["name"]: parameter for parameter in operation["parameters"]}
+    schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
+    document_schema = schema["properties"]["document"]
+    source_lineage_schema = document_schema["properties"]["source_lineage"]
+    upload_schema = document_schema["properties"]["upload"]
+
+    assert operation["operationId"] == "getCxDocumentDetail"
+    assert parameters["tenant_id"]["required"] is True
+    assert parameters["owner_user_id"]["required"] is True
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["projection_schema_version"]["const"] == (
+        "cx_document_detail_projection.v1"
+    )
+    assert document_schema["additionalProperties"] is False
+    assert {"tenant_ref", "owner_subject_ref", "uploaded_by_subject_ref"}.issubset(
+        set(document_schema["required"])
+    )
+    assert source_lineage_schema["additionalProperties"] is False
+    assert source_lineage_schema["properties"]["storage_path_included"]["const"] is False
+    assert upload_schema["properties"]["source_content_in_record"]["const"] is False
+    assert schema["properties"]["metadata"]["properties"]["owner_scoped"]["const"] is True
+
+
 def test_load_structured_file_rejects_unsupported_suffix(tmp_path: Path) -> None:
     unsupported = tmp_path / "payload.txt"
     unsupported.write_text("hello", encoding="utf-8")

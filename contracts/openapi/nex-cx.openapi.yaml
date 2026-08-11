@@ -559,13 +559,13 @@ paths:
             type: string
         - name: tenant_id
           in: query
-          required: false
+          required: true
           schema:
             type: string
             minLength: 1
         - name: owner_user_id
           in: query
-          required: false
+          required: true
           schema:
             type: string
             minLength: 1
@@ -576,7 +576,7 @@ paths:
             application/json:
               schema:
                 type: object
-                additionalProperties: true
+                additionalProperties: false
                 required:
                   - projection_schema_version
                   - service_id
@@ -590,9 +590,30 @@ paths:
                     const: cx_document_detail_projection.v1
                   service_id:
                     const: nex-cx
+                  source:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - source_kind
+                      - database_env
+                      - redacted_database_url
+                    properties:
+                      source_kind:
+                        type: string
+                        minLength: 1
+                      database_env:
+                        oneOf:
+                          - type: string
+                            minLength: 1
+                          - type: "null"
+                      redacted_database_url:
+                        oneOf:
+                          - type: string
+                            pattern: ^postgresql(\+psycopg)?://[^:]+:\*\*\*@.+$
+                          - type: "null"
                   filters:
                     type: object
-                    additionalProperties: true
+                    additionalProperties: false
                     required:
                       - filter_schema_version
                       - document_ref
@@ -602,26 +623,287 @@ paths:
                     properties:
                       filter_schema_version:
                         const: cx_document_detail_query_filters.v1
+                      document_ref:
+                        type: object
+                        additionalProperties: false
+                        required:
+                          - type
+                          - id
+                        properties:
+                          type:
+                            const: cx.document
+                          id:
+                            type: string
+                            minLength: 1
+                      tenant_ref:
+                        type: object
+                        additionalProperties: false
+                        required:
+                          - type
+                          - id
+                        properties:
+                          type:
+                            const: oa.tenant
+                          id:
+                            type: string
+                            minLength: 1
+                      owner_subject_ref:
+                        type: object
+                        additionalProperties: false
+                        required:
+                          - type
+                          - id
+                        properties:
+                          type:
+                            const: oa.user
+                          id:
+                            type: string
+                            minLength: 1
                       lifecycle_status:
                         const: ACTIVE
                   document:
                     type: object
-                    additionalProperties: true
+                    additionalProperties: false
                     required:
                       - document_detail_schema_version
                       - document_id
+                      - upload_id
+                      - tenant_ref
+                      - owner_subject_ref
+                      - uploaded_by_subject_ref
+                      - filename
+                      - content_type
+                      - size_bytes
+                      - source_sha256
+                      - classification
+                      - lifecycle_status
+                      - retrieval_policy
+                      - created_at
+                      - updated_at
+                      - summary
+                      - summary_embedding
+                      - processing
+                      - links
+                      - metadata
                       - source_lineage
                       - upload
                       - extraction
+                      - boundary_audit
                     properties:
                       document_detail_schema_version:
                         const: cx_document_detail_item.v1
+                      document_id:
+                        type: string
+                        minLength: 1
+                      upload_id:
+                        type: string
+                        minLength: 1
+                      filename:
+                        type: string
+                        pattern: ^[^/\\]{1,255}$
+                      content_type:
+                        type: string
+                        minLength: 1
+                      size_bytes:
+                        type: integer
+                        minimum: 0
+                      source_sha256:
+                        type: string
+                        pattern: ^[0-9a-f]{64}$
+                      classification:
+                        type: string
+                        minLength: 1
+                      lifecycle_status:
+                        const: ACTIVE
+                      retrieval_policy:
+                        type: object
+                        additionalProperties: true
+                      created_at:
+                        type: string
+                        format: date-time
+                      updated_at:
+                        type: string
+                        format: date-time
+                      tenant_ref:
+                        type: object
+                        additionalProperties: false
+                        required:
+                          - type
+                          - id
+                        properties:
+                          type:
+                            const: oa.tenant
+                          id:
+                            type: string
+                            minLength: 1
+                      owner_subject_ref:
+                        type: object
+                        additionalProperties: false
+                        required:
+                          - type
+                          - id
+                        properties:
+                          type:
+                            const: oa.user
+                          id:
+                            type: string
+                            minLength: 1
+                      uploaded_by_subject_ref:
+                        type: object
+                        additionalProperties: false
+                        required:
+                          - type
+                          - id
+                        properties:
+                          type:
+                            const: oa.user
+                          id:
+                            type: string
+                            minLength: 1
+                      source_lineage:
+                        type: object
+                        additionalProperties: false
+                        required:
+                          - source_file_id
+                          - source_sha256
+                          - content_type
+                          - size_bytes
+                          - storage_backend
+                          - storage_key_included
+                          - storage_uri_included
+                          - storage_path_included
+                        properties:
+                          source_file_id:
+                            oneOf:
+                              - type: string
+                                minLength: 1
+                              - type: "null"
+                          source_sha256:
+                            type: string
+                            pattern: ^[0-9a-f]{64}$
+                          content_type:
+                            type: string
+                            minLength: 1
+                          size_bytes:
+                            type: integer
+                            minimum: 0
+                          storage_backend:
+                            type: "null"
+                          storage_key_included:
+                            const: false
+                          storage_uri_included:
+                            const: false
+                          storage_path_included:
+                            const: false
+                      upload:
+                        type: object
+                        additionalProperties: false
+                        required:
+                          - available
+                          - upload_id
+                          - request_id
+                          - trace_id
+                          - dedupe_status
+                          - existing_document_id
+                          - payload_source
+                          - source_content_in_record
+                        properties:
+                          available:
+                            type: boolean
+                          upload_id:
+                            oneOf:
+                              - type: string
+                                minLength: 1
+                              - type: "null"
+                          request_id:
+                            oneOf:
+                              - type: string
+                                minLength: 1
+                              - type: "null"
+                          trace_id:
+                            oneOf:
+                              - type: string
+                                pattern: ^[0-9a-f]{32}$
+                              - type: "null"
+                          dedupe_status:
+                            oneOf:
+                              - type: string
+                                minLength: 1
+                              - type: "null"
+                          existing_document_id:
+                            oneOf:
+                              - type: string
+                                minLength: 1
+                              - type: "null"
+                          payload_source:
+                            oneOf:
+                              - type: string
+                                minLength: 1
+                              - type: "null"
+                          source_content_in_record:
+                            const: false
+                      extraction:
+                        type: object
+                        additionalProperties: false
+                        required:
+                          - available
+                          - job_id
+                          - status
+                          - markdown_available
+                        properties:
+                          available:
+                            type: boolean
+                          job_id:
+                            oneOf:
+                              - type: string
+                                minLength: 1
+                              - type: "null"
+                          status:
+                            type: string
+                            minLength: 1
+                          markdown_available:
+                            type: boolean
+                      summary:
+                        type: object
+                        additionalProperties: true
+                      summary_embedding:
+                        type: object
+                        additionalProperties: true
+                      processing:
+                        type: object
+                        additionalProperties: true
+                      links:
+                        type: object
+                        additionalProperties: true
+                      metadata:
+                        type: object
+                        additionalProperties: true
+                      boundary_audit:
+                        type: object
+                        additionalProperties: true
+                  boundary_audit:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - audit_schema_version
+                      - legacy_route
+                      - projection
+                    properties:
+                      audit_schema_version:
+                        const: cx_document_detail_boundary_audit.v1
+                      legacy_route:
+                        type: object
+                        additionalProperties: true
+                      projection:
+                        type: object
+                        additionalProperties: true
                   metadata:
                     type: object
-                    additionalProperties: true
+                    additionalProperties: false
                     required:
                       - owner_scoped
                       - not_found_and_not_authorized_collapsed
+                      - legacy_upload_registration_route_replacement
                       - raw_source_included
                       - raw_summary_included
                       - embedding_vector_included
