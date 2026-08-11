@@ -108,6 +108,16 @@ class UploadHandoffStore:
     def get(self, upload_handoff_id: str) -> dict[str, Any] | None:
         return self.records.get(upload_handoff_id)
 
+    def get_by_document_id(self, document_id: str) -> dict[str, Any] | None:
+        for record in self.records.values():
+            document_ref = record.get("cx_document_ref")
+            if (
+                isinstance(document_ref, dict)
+                and document_ref.get("document_id") == document_id
+            ):
+                return record
+        return None
+
     def list_by_workspace(self, workspace_id: str) -> list[dict[str, Any]]:
         return [
             record

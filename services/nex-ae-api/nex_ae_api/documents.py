@@ -20,6 +20,10 @@ from nex_runtime import (
 from nex_ae_api.uploads import DEFAULT_UPLOAD_HANDOFF_STORE, UploadHandoffStore
 
 
+AE_DOCUMENT_DETAIL_PROJECTION_SCHEMA_VERSION = "ae_document_detail_projection.v1"
+AE_DOCUMENT_DETAIL_ITEM_SCHEMA_VERSION = "ae_document_detail_item.v1"
+
+
 class CxDocumentLibraryClient(Protocol):
     def get_document(
         self,
@@ -229,6 +233,42 @@ def register_document_library_routes(
             "matches": matches,
         }
 
+    @app.get("/api/v1/documents/{document_id}", response_model=None)
+    def get_document_detail(
+        document_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        upload_handoff = handoffs.get_by_document_id(document_id)
+        if upload_handoff is None:
+            return _document_problem_response(
+                request,
+                DocumentLibraryError(
+                    status_code=404,
+                    error_code="ae.document_not_found",
+                    detail=(
+                        "Document detail was not found or is not visible "
+                        "in the AE upload handoff scope."
+                    ),
+                ),
+            )
+
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            return build_document_detail_from_cx(
+                client=client,
+                upload_handoff=upload_handoff,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        except DocumentLibraryError as exc:
+            return _document_problem_response(request, exc)
+
 
 def build_document_library_item_from_cx(
     *,
@@ -261,6 +301,120 @@ def build_document_library_item_from_cx(
     )
 
 
+def build_document_detail_from_cx(
+    *,
+    client: CxDocumentLibraryClient,
+    upload_handoff: dict[str, Any],
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    owner_scope = owner_scope_from_handoff(upload_handoff)
+    document_id = upload_handoff["cx_document_ref"]["document_id"]
+    cx_document = client.get_document(
+        document_id,
+        tenant_id=owner_scope["tenant_id"],
+        owner_user_id=owner_scope["owner_user_id"],
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    return build_document_detail_projection(
+        upload_handoff=upload_handoff,
+        cx_document=cx_document,
+    )
+
+
+def build_document_detail_projection(
+    *,
+    upload_handoff: dict[str, Any],
+    cx_document: dict[str, Any],
+) -> dict[str, Any]:
+    document_ref = upload_handoff["cx_document_ref"]
+    cx_detail = cx_document_detail_item(cx_document)
+    cx_summary = _mapping_copy(cx_detail.get("summary"))
+    cx_summary_embedding = _mapping_copy(cx_detail.get("summary_embedding"))
+    processing = _project_processing(cx_detail.get("processing"))
+    source_lineage = _project_source_lineage(
+        cx_detail.get("source_lineage"),
+        upload_handoff=upload_handoff,
+    )
+    return {
+        "projection_schema_version": AE_DOCUMENT_DETAIL_PROJECTION_SCHEMA_VERSION,
+        "service_id": "nex-ae-api",
+        "workspace_id": upload_handoff["workspace_id"],
+        "tenant_id": upload_handoff["tenant_id"],
+        "owner_user_id": upload_handoff["owner_user_id"],
+        "document": {
+            "document_detail_schema_version": AE_DOCUMENT_DETAIL_ITEM_SCHEMA_VERSION,
+            "document_id": document_ref["document_id"],
+            "upload_handoff_id": upload_handoff["upload_handoff_id"],
+            "filename": upload_handoff["source"]["filename"],
+            "content_type": upload_handoff["source"]["content_type"],
+            "size_bytes": upload_handoff["source"]["size_bytes"],
+            "source_sha256": upload_handoff["source"]["source_sha256"],
+            "status": {
+                "dedupe_status": document_ref["dedupe_status"],
+                "extraction_status": extraction_status(cx_document, document_ref),
+                "markdown_available": markdown_available(cx_document, document_ref),
+                "summary_status": _cx_status(cx_summary),
+                "summary_embedding_status": _cx_status(cx_summary_embedding),
+                "processing_status": processing["status"],
+            },
+            "summary": _project_detail_summary(cx_summary, cx_summary_embedding),
+            "processing": processing,
+            "source_lineage": source_lineage,
+            "links": {
+                "upload_handoff": (
+                    f"/api/v1/uploads/{upload_handoff['upload_handoff_id']}"
+                ),
+                "cx_document": f"/api/v1/documents/{document_ref['document_id']}",
+                "cx_summary": f"/api/v1/documents/{document_ref['document_id']}/summary",
+                "cx_summary_embedding": (
+                    f"/api/v1/documents/{document_ref['document_id']}"
+                    "/summary-embedding"
+                ),
+                "cx_processing": (
+                    f"/api/v1/documents/{document_ref['document_id']}/processing"
+                ),
+            },
+            "metadata": {
+                "raw_source_stored_in_ae": False,
+                "raw_summary_stored_in_ae": False,
+                "embedding_vector_stored_in_ae": False,
+                "cx_storage_redacted": True,
+            },
+        },
+        "cx": {
+            "projection_schema_version": cx_document.get("projection_schema_version"),
+            "document_detail_schema_version": cx_detail.get(
+                "document_detail_schema_version"
+            ),
+            "source_kind": _mapping_copy(cx_document.get("source")).get("source_kind"),
+            "owner_scoped": _mapping_copy(cx_document.get("metadata")).get(
+                "owner_scoped"
+            )
+            is True,
+            "not_found_and_not_authorized_collapsed": _mapping_copy(
+                cx_document.get("metadata")
+            ).get("not_found_and_not_authorized_collapsed")
+            is True,
+        },
+        "metadata": {
+            "raw_source_stored_in_ae": False,
+            "raw_summary_stored_in_ae": False,
+            "embedding_vector_stored_in_ae": False,
+            "cx_storage_redacted": True,
+            "cx_detail_passthrough": False,
+        },
+    }
+
+
+def cx_document_detail_item(cx_document: dict[str, Any]) -> dict[str, Any]:
+    document = cx_document.get("document")
+    if isinstance(document, dict):
+        return document
+    return cx_document
+
+
 def owner_scope_from_handoff(upload_handoff: dict[str, Any]) -> dict[str, str]:
     return owner_scope_query_params(
         tenant_id=upload_handoff.get("tenant_id"),
@@ -280,6 +434,88 @@ def owner_scope_query_params(
             field_name="owner_user_id",
         ),
     }
+
+
+def _project_detail_summary(
+    summary: dict[str, Any],
+    summary_embedding: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "summary_available": summary.get("available") is True,
+        "summary_text_sha256": summary.get("summary_text_sha256"),
+        "summary_preview": summary.get("summary_preview"),
+        "summary_char_count": _non_negative_int(summary.get("summary_char_count")),
+        "summary_embedding_available": summary_embedding.get("available") is True,
+        "summary_embedding_model": summary_embedding.get("model_profile_id"),
+        "summary_embedding_dimension": _positive_int_or_none(
+            summary_embedding.get("vector_dimension")
+        ),
+    }
+
+
+def _project_processing(processing: object) -> dict[str, Any]:
+    payload = _mapping_copy(processing)
+    status = payload.get("status")
+    return {
+        "available": payload.get("available") is True,
+        "latest_pipeline_run_id": payload.get("latest_pipeline_run_id"),
+        "status": status if isinstance(status, str) else "NOT_READY",
+        "step_total": _non_negative_int(payload.get("step_total")),
+        "step_failed": _non_negative_int(payload.get("step_failed")),
+        "updated_at": payload.get("updated_at"),
+    }
+
+
+def _project_source_lineage(
+    source_lineage: object,
+    *,
+    upload_handoff: dict[str, Any],
+) -> dict[str, Any]:
+    payload = _mapping_copy(source_lineage)
+    return {
+        "source_file_id": payload.get("source_file_id"),
+        "source_sha256": payload.get(
+            "source_sha256",
+            upload_handoff["source"]["source_sha256"],
+        ),
+        "content_type": payload.get(
+            "content_type",
+            upload_handoff["source"]["content_type"],
+        ),
+        "size_bytes": _non_negative_int(
+            payload.get("size_bytes", upload_handoff["source"]["size_bytes"])
+        ),
+        "storage_key_included": False,
+        "storage_uri_included": False,
+        "storage_path_included": False,
+    }
+
+
+def _cx_status(payload: dict[str, Any]) -> str:
+    if payload.get("available") is False:
+        return "NOT_READY"
+    status = payload.get("status")
+    if isinstance(status, str) and status:
+        return status
+    return "NOT_READY"
+
+
+def _mapping_copy(value: object) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+    return {}
+
+
+def _non_negative_int(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return 0
+    return value
+
+
+def _positive_int_or_none(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None
+    return value
 
 
 def build_document_library_item(

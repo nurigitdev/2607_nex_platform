@@ -10,9 +10,12 @@ import nex_ae_api.documents as ae_documents
 from nex_ae_api.documents import (
     DocumentLibraryError,
     HttpCxDocumentLibraryClient,
+    build_document_detail_from_cx,
+    build_document_detail_projection,
     build_document_library_item_from_cx,
     build_document_library_item,
     build_summary_projection,
+    cx_document_detail_item,
     extraction_status,
     markdown_available,
     owner_scope_query_params,
@@ -52,11 +55,7 @@ class FakeCxDocumentLibraryClient:
                 retryable=True,
             )
         return {
-            "document_id": document_id,
-            "extraction": {
-                "status": "SUCCEEDED",
-                "markdown_available": True,
-            },
+            **cx_detail_projection(document_id=document_id),
         }
 
     def get_summary(
@@ -130,6 +129,94 @@ def upload_handoff(
             "markdown_available": False,
             "dedupe_status": "CREATED",
             "existing_document_id": None,
+        },
+    }
+
+
+def cx_detail_projection(
+    *,
+    document_id: str = "doc-001",
+    summary_available: bool = True,
+    processing_status: str = "SUCCEEDED",
+) -> dict[str, Any]:
+    return {
+        "projection_schema_version": "cx_document_detail_projection.v1",
+        "source": {
+            "source_kind": "upload",
+        },
+        "document": {
+            "document_detail_schema_version": "cx_document_detail_item.v1",
+            "document_id": document_id,
+            "tenant_ref": {
+                "ref_type": "oa.tenant",
+                "id": "tenant-a",
+            },
+            "owner_subject_ref": {
+                "ref_type": "oa.user",
+                "id": "user-a",
+            },
+            "uploaded_by_subject_ref": {
+                "ref_type": "oa.user",
+                "id": "user-a",
+            },
+            "upload": {
+                "upload_id": "upload-001",
+                "upload_handoff_id": "handoff-001",
+                "filename": "mvp-srs.md",
+                "content_type": "text/markdown",
+                "size_bytes": 23,
+                "source_sha256": SOURCE_HASH,
+                "source_content_in_record": False,
+            },
+            "extraction": {
+                "available": True,
+                "job_id": "job-001",
+                "status": "SUCCEEDED",
+                "markdown_available": True,
+                "markdown_text_sha256": "b" * 64,
+                "markdown_char_count": 512,
+            },
+            "summary": {
+                "available": summary_available,
+                "status": "SUCCEEDED" if summary_available else "NOT_READY",
+                "summary_text_sha256": "a" * 64 if summary_available else None,
+                "summary_preview": (
+                    "MVP upload retrieval generation audit flow."
+                    if summary_available
+                    else None
+                ),
+                "summary_char_count": 42 if summary_available else 0,
+            },
+            "summary_embedding": {
+                "available": summary_available,
+                "status": "READY" if summary_available else "NOT_READY",
+                "model_profile_id": (
+                    "qwen3-embedding-4b-bf16" if summary_available else None
+                ),
+                "vector_dimension": 8 if summary_available else None,
+            },
+            "processing": {
+                "available": True,
+                "latest_pipeline_run_id": "run-001",
+                "status": processing_status,
+                "step_total": 4,
+                "step_failed": 0,
+                "updated_at": "2026-08-11T00:00:00Z",
+            },
+            "source_lineage": {
+                "source_file_id": "source-file-001",
+                "source_sha256": SOURCE_HASH,
+                "content_type": "text/markdown",
+                "size_bytes": 23,
+                "storage_key_included": False,
+                "storage_uri_included": False,
+                "storage_path_included": False,
+                "storage_path": "/data/nex-platform/cx/source-files/private.md",
+            },
+        },
+        "metadata": {
+            "owner_scoped": True,
+            "not_found_and_not_authorized_collapsed": True,
         },
     }
 
@@ -223,6 +310,111 @@ def test_status_helpers_accept_cx_document_detail_projection() -> None:
     ) is True
 
 
+def test_cx_document_detail_item_accepts_nested_and_flat_payloads() -> None:
+    nested = cx_detail_projection()
+    flat = {"document_id": "doc-flat"}
+
+    assert cx_document_detail_item(nested)["document_id"] == "doc-001"
+    assert cx_document_detail_item(flat) == flat
+
+
+def test_build_document_detail_projection_projects_safe_cx_detail() -> None:
+    projection = build_document_detail_projection(
+        upload_handoff=upload_handoff(),
+        cx_document=cx_detail_projection(),
+    )
+
+    document = projection["document"]
+    assert projection["projection_schema_version"] == "ae_document_detail_projection.v1"
+    assert document["document_detail_schema_version"] == "ae_document_detail_item.v1"
+    assert document["document_id"] == "doc-001"
+    assert document["status"] == {
+        "dedupe_status": "CREATED",
+        "extraction_status": "SUCCEEDED",
+        "markdown_available": True,
+        "summary_status": "SUCCEEDED",
+        "summary_embedding_status": "READY",
+        "processing_status": "SUCCEEDED",
+    }
+    assert document["summary"]["summary_available"] is True
+    assert document["summary"]["summary_embedding_dimension"] == 8
+    assert document["processing"]["step_total"] == 4
+    assert document["source_lineage"]["source_file_id"] == "source-file-001"
+    assert document["source_lineage"]["storage_path_included"] is False
+    assert projection["cx"]["owner_scoped"] is True
+    assert projection["cx"]["not_found_and_not_authorized_collapsed"] is True
+    assert projection["metadata"]["cx_detail_passthrough"] is False
+    assert "/data/nex-platform" not in str(projection)
+    assert "private.md" not in str(projection)
+    assert "raw_summary_text" not in str(projection)
+
+
+def test_build_document_detail_projection_defaults_unavailable_parts() -> None:
+    projection = build_document_detail_projection(
+        upload_handoff=upload_handoff(),
+        cx_document={
+            "projection_schema_version": "cx_document_detail_projection.v1",
+            "document": {
+                "document_detail_schema_version": "cx_document_detail_item.v1",
+                "extraction": {
+                    "status": "RUNNING",
+                    "markdown_available": False,
+                },
+                "summary": {
+                    "available": False,
+                    "summary_char_count": -1,
+                },
+                "summary_embedding": {
+                    "available": False,
+                    "vector_dimension": 0,
+                },
+                "processing": {
+                    "available": False,
+                    "status": False,
+                    "step_total": True,
+                    "step_failed": -2,
+                },
+                "source_lineage": "not-a-mapping",
+            },
+            "metadata": {
+                "owner_scoped": False,
+            },
+        },
+    )
+
+    assert projection["document"]["status"]["extraction_status"] == "RUNNING"
+    assert projection["document"]["status"]["markdown_available"] is False
+    assert projection["document"]["status"]["summary_status"] == "NOT_READY"
+    assert projection["document"]["status"]["summary_embedding_status"] == "NOT_READY"
+    assert projection["document"]["summary"]["summary_char_count"] == 0
+    assert projection["document"]["summary"]["summary_embedding_dimension"] is None
+    assert projection["document"]["processing"]["status"] == "NOT_READY"
+    assert projection["document"]["processing"]["step_total"] == 0
+    assert projection["document"]["processing"]["step_failed"] == 0
+    assert projection["document"]["source_lineage"]["source_sha256"] == SOURCE_HASH
+    assert projection["document"]["source_lineage"]["size_bytes"] == 23
+    assert projection["cx"]["owner_scoped"] is False
+
+
+def test_build_document_detail_from_cx_passes_owner_scope_and_uses_detail_once() -> None:
+    client = FakeCxDocumentLibraryClient()
+
+    detail = build_document_detail_from_cx(
+        client=client,
+        upload_handoff={
+            **upload_handoff(),
+            "tenant_id": " tenant-a ",
+            "owner_user_id": " user-a ",
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert detail["document"]["document_id"] == "doc-001"
+    assert detail["document"]["summary"]["summary_available"] is True
+    assert client.calls == ["document:doc-001:tenant-a:user-a"]
+
+
 def test_search_summary_items_scores_and_sorts_matches() -> None:
     first = build_document_library_item(
         upload_handoff=upload_handoff(filename="mvp-srs.md"),
@@ -312,6 +504,74 @@ def test_document_summary_search_route_matches_by_summary_preview() -> None:
 
     assert response.status_code == 200
     assert response.json()["matches"][0]["document"]["filename"] == "mvp-srs.md"
+
+
+def test_document_detail_route_returns_owner_scoped_projection() -> None:
+    store = UploadHandoffStore()
+    store.save(upload_handoff())
+    client, _, cx_client = build_client(store=store)
+
+    response = client.get("/api/v1/documents/doc-001", headers=auth_headers())
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["projection_schema_version"] == "ae_document_detail_projection.v1"
+    assert payload["workspace_id"] == "workspace-001"
+    assert payload["document"]["document_id"] == "doc-001"
+    assert payload["document"]["summary"]["summary_available"] is True
+    assert payload["document"]["source_lineage"]["storage_uri_included"] is False
+    assert cx_client.calls == ["document:doc-001:tenant-a:user-a"]
+
+
+def test_document_detail_route_requires_auth() -> None:
+    client, _, cx_client = build_client()
+
+    response = client.get("/api/v1/documents/doc-001")
+
+    assert response.status_code == 401
+    assert response.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert cx_client.calls == []
+
+
+def test_document_detail_route_returns_not_found_without_cx_call() -> None:
+    store = UploadHandoffStore()
+    store.save({**upload_handoff(upload_handoff_id="broken"), "cx_document_ref": None})
+    client, _, cx_client = build_client(store=store)
+
+    response = client.get("/api/v1/documents/missing", headers=auth_headers())
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "ae.document_not_found"
+    assert cx_client.calls == []
+
+
+def test_document_detail_route_rejects_invalid_handoff_owner_scope() -> None:
+    store = UploadHandoffStore()
+    store.save({**upload_handoff(), "tenant_id": " "})
+    client, _, cx_client = build_client(store=store)
+
+    response = client.get("/api/v1/documents/doc-001", headers=auth_headers())
+
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "ae.document_owner_scope_invalid"
+    assert response.json()["detail"] == "tenant_id must be a non-empty string."
+    assert cx_client.calls == []
+
+
+def test_document_detail_route_propagates_cx_error() -> None:
+    store = UploadHandoffStore()
+    store.save(upload_handoff())
+    client, _, cx_client = build_client(
+        store=store,
+        cx_client=FakeCxDocumentLibraryClient(fail_document=True),
+    )
+
+    response = client.get("/api/v1/documents/doc-001", headers=auth_headers())
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == "cx.document_unavailable"
+    assert response.json()["retryable"] is True
+    assert cx_client.calls == ["document:doc-001:tenant-a:user-a"]
 
 
 def test_document_summary_search_route_requires_auth() -> None:

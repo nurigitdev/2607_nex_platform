@@ -17,6 +17,7 @@ Current endpoints:
 - `GET /api/v1/uploads/{upload_handoff_id}`
 - `GET /api/v1/workspaces/{workspace_id}/documents`
 - `GET /api/v1/documents/summary-search`
+- `GET /api/v1/documents/{document_id}`
 - `POST /api/v1/artifact-handoffs`
 - `GET /api/v1/artifact-handoffs/{artifact_handoff_id}`
 - `POST /api/v1/artifacts`
@@ -83,6 +84,10 @@ Document library:
   CX document detail query parameters before composing document cards. Invalid
   stored owner scope fails in AE with `ae.document_owner_scope_invalid` and does
   not call CX.
+- Slice 0211 adds an AE document detail facade. It resolves the document through
+  the stored upload handoff, calls the owner-scoped CX detail endpoint once, and
+  returns an AE-safe projection that omits source bytes, markdown text, raw
+  summaries, embedding vectors, storage keys, storage URIs, and local paths.
 
 Artifact handoff:
 
