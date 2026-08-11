@@ -20,7 +20,9 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "progress-timeline",
         "upload-surface-panel",
         "upload-status",
+        "upload-submit-button",
         "upload-owner-scope",
+        "upload-client-summary",
         "upload-payload-preview",
         "document-list",
         "document-detail-panel",
@@ -36,18 +38,24 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "format-select",
     ]:
         assert f'id="{required_id}"' in html
-    assert "Slice 0218" in html
+    assert "Slice 0219" in html
     assert "lang=\"ko\"" in html
 
 
 def test_ae_web_upload_surface_tracks_owner_scope_contract() -> None:
     javascript = read_web_file("src/main.js")
     upload_surface = read_web_file("src/uploadSurface.js")
+    upload_client = read_web_file("src/uploadClient.js")
 
     for expected in [
         "buildUploadSurfaceDraft",
         "buildUploadHandoffPayload",
+        "createMockUploadClient",
         "uploadDraft",
+        "uploadClient",
+        "uploadSubmission",
+        "submitUploadDraft",
+        "safeUploadPreview",
         "renderUploadSurface",
         "uploadedByUserId",
         "ownership_ref",
@@ -70,6 +78,19 @@ def test_ae_web_upload_surface_tracks_owner_scope_contract() -> None:
     ]:
         assert expected in upload_surface
 
+    for expected in [
+        "ae_web_upload_client.v1",
+        "createMockUploadClient",
+        "createFetchUploadClient",
+        "submitUploadDraft",
+        "credentials: \"same-origin\"",
+        "Content-Type\": \"application/json\"",
+        "NETWORK_ERROR",
+        "FETCH_UNAVAILABLE",
+        "buildUploadSubmissionResult",
+    ]:
+        assert expected in upload_client
+
     for forbidden in [
         "content_text",
         "content_base64",
@@ -77,9 +98,11 @@ def test_ae_web_upload_surface_tracks_owner_scope_contract() -> None:
         "api_key",
         "storage_uri",
         "storage_path",
+        "provider_url",
     ]:
         assert forbidden not in javascript
         assert forbidden not in upload_surface
+        assert forbidden not in upload_client
 
 
 def test_ae_web_document_surface_tracks_detail_facade_boundary() -> None:
@@ -196,6 +219,7 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert ".document-detail" in styles
     assert ".document-detail.is-loading" in styles
     assert ".payload-preview" in styles
+    assert ".client-summary" in styles
     assert ".retrieval-scope-chip" in styles
     assert ".document-row.is-selected" in styles
     assert ".document-action-row" in styles
@@ -206,10 +230,10 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert "linear-gradient" not in styles
 
 
-def test_ae_web_package_version_tracks_slice_0218() -> None:
+def test_ae_web_package_version_tracks_slice_0219() -> None:
     package = json.loads(read_web_file("package.json"))
 
     assert package["name"] == "nex-ae-web"
-    assert package["version"] == "0.0.0-slice0218"
+    assert package["version"] == "0.0.0-slice0219"
     assert package["scripts"]["dev"] == "node scripts/serve.mjs"
     assert package["scripts"]["test"] == "node --test test/*.test.mjs"

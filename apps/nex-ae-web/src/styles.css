@@ -594,6 +594,10 @@ code {
   padding: 4px 14px;
 }
 
+.client-summary {
+  border-top: 1px solid var(--nex-border);
+}
+
 .payload-preview {
   margin: 0;
   border-top: 1px solid var(--nex-border);

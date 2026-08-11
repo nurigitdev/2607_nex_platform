@@ -30,7 +30,7 @@
       <main class="workspace">
         <header class="topbar">
           <div>
-            <p class="eyebrow">Slice 0218</p>
+            <p class="eyebrow">Slice 0219</p>
             <h1>NeX-Platform 작업면</h1>
           </div>
           <div class="status-strip" id="status-strip" aria-live="polite"></div>
@@ -115,9 +115,17 @@
             >
               <div class="section-header compact">
                 <h2 id="upload-surface-title">업로드 준비</h2>
-                <span class="badge pending" id="upload-status">대기</span>
+                <div class="badge-pair">
+                  <span class="badge pending" id="upload-status">대기</span>
+                  <button id="upload-submit-button" type="button">전송</button>
+                </div>
               </div>
               <dl class="meta-list" id="upload-owner-scope"></dl>
+              <dl
+                class="meta-list client-summary"
+                id="upload-client-summary"
+                aria-label="AE upload client summary"
+              ></dl>
               <pre
                 class="payload-preview"
                 id="upload-payload-preview"

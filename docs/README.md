@@ -322,6 +322,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0216`](slices/0216_ae_web_document_detail_client_adapter_foundation.md) | `S22-006` AE Web document detail client adapter foundation. |
 | [`Slice 0217`](slices/0217_ae_web_upload_surface_owner_scope_alignment.md) | `S22-007` AE Web upload surface audit and owner-scope alignment. |
 | [`Slice 0218`](slices/0218_ae_web_document_scope_retrieval_propagation.md) | `S22-008` AE Web document scope propagation to chat/retrieval surface. |
+| [`Slice 0219`](slices/0219_ae_web_upload_client_adapter_foundation.md) | `S22-009` AE Web upload client adapter foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

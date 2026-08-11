@@ -56,5 +56,15 @@ Slice 0218 adds document scope propagation:
 - The retrieval scope preview omits raw prompt text, source previews, chunks,
   provider URLs, and storage details.
 
+Slice 0219 adds the upload client adapter foundation:
+
+- `src/uploadClient.js` owns mock and fetch upload client adapters.
+- The static shell submits the safe upload draft through the mock adapter by
+  default.
+- The fetch adapter targets `/api/v1/uploads` with same-origin browser
+  credentials and JSON metadata only.
+- Upload client previews omit raw source content, service tokens, CX storage
+  locations, provider URLs, and database details.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.

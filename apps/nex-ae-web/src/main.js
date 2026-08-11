@@ -8,6 +8,9 @@ import {
   documentScopeLabel
 } from "./documentScope.js";
 import {
+  createMockUploadClient
+} from "./uploadClient.js";
+import {
   buildUploadHandoffPayload,
   buildUploadSurfaceDraft
 } from "./uploadSurface.js";
@@ -46,6 +49,7 @@ const workspaceState = {
   selectedDocumentId: "doc-001",
   documentScope: null,
   lastRetrievalRequest: null,
+  uploadSubmission: null,
   uploadDraft: buildUploadSurfaceDraft({
     workspaceId: "workspace-local",
     filename: "new-reference-pack.md",
@@ -158,6 +162,7 @@ workspaceState.messages[1].artifactRefs = [workspaceState.artifactRef];
 workspaceState.documentDetailClient = createMockDocumentDetailClient({
   documents: workspaceState.documents
 });
+workspaceState.uploadClient = createMockUploadClient();
 workspaceState.documentScope = buildCurrentDocumentScope();
 
 const serviceList = document.querySelector("#service-list");
@@ -172,7 +177,9 @@ const documentList = document.querySelector("#document-list");
 const documentDetail = document.querySelector("#document-detail");
 const documentDetailStatus = document.querySelector("#document-detail-status");
 const uploadStatus = document.querySelector("#upload-status");
+const uploadSubmitButton = document.querySelector("#upload-submit-button");
 const uploadOwnerScope = document.querySelector("#upload-owner-scope");
+const uploadClientSummary = document.querySelector("#upload-client-summary");
 const uploadPayloadPreview = document.querySelector("#upload-payload-preview");
 const retrievalScopeStatus = document.querySelector("#retrieval-scope-status");
 const retrievalScopeSummary = document.querySelector("#retrieval-scope-summary");
@@ -196,6 +203,10 @@ refreshButton.addEventListener("click", () => {
 composer.addEventListener("submit", event => {
   event.preventDefault();
   appendPromptInteraction();
+});
+
+uploadSubmitButton.addEventListener("click", () => {
+  void submitUploadDraft();
 });
 
 documentList.addEventListener("click", event => {
@@ -281,8 +292,10 @@ function buildCurrentDocumentScope() {
 function renderUploadSurface() {
   const draft = workspaceState.uploadDraft;
   const payload = buildUploadHandoffPayload(draft);
-  uploadStatus.textContent = statusLabel(draft.status);
-  uploadStatus.className = `badge ${badgeClass(draft.status)}`;
+  const submission = workspaceState.uploadSubmission;
+  const uploadState = submission?.status || draft.status;
+  uploadStatus.textContent = statusLabel(uploadState);
+  uploadStatus.className = `badge ${badgeClass(uploadState)}`;
   uploadOwnerScope.innerHTML = `
     <div>
       <dt>tenant</dt>
@@ -305,22 +318,46 @@ function renderUploadSurface() {
       <dd>${escapeHtml(draft.filename)} · ${escapeHtml(draft.contentType)} · ${escapeHtml(draft.sizeBytes)} bytes</dd>
     </div>
   `;
+  uploadClientSummary.innerHTML = renderUploadClientSummary(submission);
   uploadPayloadPreview.textContent = JSON.stringify(
-    {
-      workspace_id: payload.workspace_id,
-      filename: payload.filename,
-      content_type: payload.content_type,
-      size_bytes: payload.size_bytes,
-      source_sha256: payload.source_sha256,
-      tenant_id: payload.tenant_id,
-      owner_user_id: payload.owner_user_id,
-      uploaded_by_user_id: payload.uploaded_by_user_id,
-      ownership_ref: payload.ownership_ref,
-      metadata: draft.metadata
-    },
+    safeUploadPreview(payload, draft, submission),
     null,
     2
   );
+}
+
+function renderUploadClientSummary(submission) {
+  if (!submission) {
+    return `
+      <div>
+        <dt>client</dt>
+        <dd>${escapeHtml(workspaceState.uploadClient.clientMode)}</dd>
+      </div>
+      <div>
+        <dt>result</dt>
+        <dd>READY_FOR_SUBMIT</dd>
+      </div>
+    `;
+  }
+
+  return `
+    <div>
+      <dt>client</dt>
+      <dd>${escapeHtml(submission.clientMode || workspaceState.uploadClient.clientMode)}</dd>
+    </div>
+    <div>
+      <dt>result</dt>
+      <dd>${escapeHtml(submission.status || "UNKNOWN")} · ${escapeHtml(submission.dedupeStatus || "UNKNOWN")}</dd>
+    </div>
+    <div>
+      <dt>handoff</dt>
+      <dd>${escapeHtml(submission.uploadHandoffId || "n/a")}</dd>
+    </div>
+    <div>
+      <dt>document</dt>
+      <dd>${escapeHtml(submission.documentId || "n/a")}</dd>
+    </div>
+  `;
 }
 
 function renderRetrievalScope() {
@@ -651,6 +688,66 @@ function appendPromptInteraction() {
   renderWorkspace();
 }
 
+async function submitUploadDraft() {
+  uploadSubmitButton.disabled = true;
+  uploadStatus.textContent = statusLabel("RUNNING");
+  uploadStatus.className = `badge ${badgeClass("RUNNING")}`;
+
+  try {
+    workspaceState.uploadSubmission =
+      await workspaceState.uploadClient.submitUploadDraft(workspaceState.uploadDraft);
+  } catch (error) {
+    workspaceState.uploadSubmission = {
+      clientMode: workspaceState.uploadClient.clientMode,
+      uploadRoute: workspaceState.uploadDraft.uploadRoute,
+      status: "UNAVAILABLE",
+      dedupeStatus: error.status || "UPLOAD_CLIENT_ERROR",
+      uploadHandoffId: null,
+      documentId: null,
+      retryable: Boolean(error.retryable),
+      metadata: {
+        sourceContentIncluded: false,
+        browserServiceTokenIncluded: false,
+        cxStorageIncluded: false,
+        providerUrlIncluded: false
+      }
+    };
+  } finally {
+    uploadSubmitButton.disabled = false;
+    renderUploadSurface();
+  }
+}
+
+function safeUploadPreview(payload, draft, submission) {
+  const preview = {
+    workspace_id: payload.workspace_id,
+    filename: payload.filename,
+    content_type: payload.content_type,
+    size_bytes: payload.size_bytes,
+    source_sha256: payload.source_sha256,
+    tenant_id: payload.tenant_id,
+    owner_user_id: payload.owner_user_id,
+    uploaded_by_user_id: payload.uploaded_by_user_id,
+    ownership_ref: payload.ownership_ref,
+    client: {
+      mode: workspaceState.uploadClient.clientMode,
+      route: draft.uploadRoute
+    },
+    metadata: draft.metadata
+  };
+  if (submission) {
+    preview.submission = {
+      status: submission.status,
+      dedupe_status: submission.dedupeStatus,
+      upload_handoff_id: submission.uploadHandoffId,
+      document_id: submission.documentId,
+      retryable: submission.retryable,
+      metadata: submission.metadata
+    };
+  }
+  return preview;
+}
+
 function safeRetrievalPreview(retrievalRequest, currentScope) {
   if (!retrievalRequest) {
     return {
@@ -727,7 +824,15 @@ function badgeClass(status) {
   if (["HEALTHY", "READY", "VALIDATED", "SUCCEEDED", "HIGH"].includes(status)) {
     return "success";
   }
-  if (["DEGRADED", "LOW_CONFIDENCE", "MEDIUM", "PREVIEW_ONLY", "READY_FOR_HANDOFF"].includes(status)) {
+  if ([
+    "DEGRADED",
+    "LOW_CONFIDENCE",
+    "MEDIUM",
+    "PREVIEW_ONLY",
+    "READY_FOR_HANDOFF",
+    "ALREADY_EXISTS",
+    "QUEUED"
+  ].includes(status)) {
     return "warning";
   }
   if (["RUNNING", "READY_FOR_RENDERING"].includes(status)) return "running";
@@ -739,7 +844,9 @@ function statusLabel(status) {
   const labels = {
     COMPLETED: "완료",
     RUNNING: "진행",
+    QUEUED: "대기열",
     READY: "준비",
+    ALREADY_EXISTS: "이미 있음",
     READY_FOR_HANDOFF: "전달 준비",
     READY_FOR_RENDERING: "렌더링 준비",
     PREVIEW_ONLY: "미리보기",
