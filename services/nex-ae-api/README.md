@@ -92,6 +92,11 @@ Document library:
   `document_detail_projection.v1.schema.json`, valid/negative contract
   fixtures, and the `GET /api/v1/documents/{document_id}` OpenAPI response
   boundary.
+- Slice 0213 freezes the near-term UI/read-model boundary: AE Web should read
+  document detail through the AE facade, while `nex-ae-api` keeps only upload
+  handoff and workspace-facing state. A persistent AE document detail read model
+  remains deferred until latency, offline history, or UI aggregation needs make
+  the duplication worth its synchronization cost.
 
 Artifact handoff:
 

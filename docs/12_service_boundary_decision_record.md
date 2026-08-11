@@ -83,6 +83,38 @@ to freeze the first platform spine before writing service SRS documents.
 | Provider route, model alias, provider metric | `nex-mo` | CX, AE, AG | Only MO writes provider registry and runtime telemetry. |
 | Admin policy setting and audit event | `nex-ag` plus service-local emitters | Administrators and operators | AG owns governance view; each service emits local audit/log events. |
 
+## AE Document Detail UI Boundary Decision
+
+Slice 0213 freezes the first document detail UI path:
+
+- `nex-ae-web` reads document detail through `nex-ae-api`.
+- `nex-ae-api` resolves the document through its upload handoff and calls the
+  owner-scoped CX detail API.
+- `nex-cx` remains the authoritative document detail/read-model owner for
+  source lineage, extraction, summary, summary embedding, chunk, retrieval, and
+  processing metadata.
+- Do not add an AE-local document detail table in the current workstream.
+
+This keeps the first UI path simple and avoids duplicating CX-owned metadata
+before the UX has proven it needs a materialized AE read model. AE can still
+persist workspace state, upload handoffs, chat/activity state, and artifact
+metadata because those are AE-owned user-facing records.
+
+An AE-local document detail read model may be reconsidered when at least one of
+these is true:
+
+- document detail loading needs cross-document UI aggregation that CX does not
+  own
+- UI latency requires cached detail snapshots with explicit freshness metadata
+- offline/history views need immutable AE-owned snapshots
+- AG needs AE-specific display-state debugging beyond CX detail and AE handoff
+  records
+
+If this changes later, the AE read model must store only hashes, refs, status,
+small previews, and freshness metadata. It must not store source bytes,
+markdown text, raw summaries, embedding vectors, storage keys, storage URIs, or
+local filesystem paths.
+
 ## Generation Boundary Decision
 
 Several source documents place generation orchestration inside `nex-cx`. That

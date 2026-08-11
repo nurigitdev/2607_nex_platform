@@ -417,6 +417,22 @@ def test_build_document_detail_projection_defaults_unavailable_parts() -> None:
     assert projection["cx"]["owner_scoped"] is False
 
 
+def test_build_document_detail_projection_defaults_missing_detail_status_text() -> None:
+    cx_document = cx_detail_projection()
+    cx_document["document"]["summary"]["status"] = ""
+    cx_document["document"]["summary_embedding"]["status"] = None
+    cx_document["document"]["summary_embedding"]["vector_dimension"] = True
+
+    projection = build_document_detail_projection(
+        upload_handoff=upload_handoff(),
+        cx_document=cx_document,
+    )
+
+    assert projection["document"]["status"]["summary_status"] == "NOT_READY"
+    assert projection["document"]["status"]["summary_embedding_status"] == "NOT_READY"
+    assert projection["document"]["summary"]["summary_embedding_dimension"] is None
+
+
 def test_build_document_detail_from_cx_passes_owner_scope_and_uses_detail_once() -> None:
     client = FakeCxDocumentLibraryClient()
 
