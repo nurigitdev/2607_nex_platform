@@ -142,5 +142,16 @@ Slice 0227 adds the static browser smoke evidence runner:
 - Python tests cover pass, missing-anchor, timeout, retry, process shutdown,
   and summary output branches.
 
+Slice 0228 adds the protected fetch-mode smoke boundary:
+
+- `scripts/smoke/run_ae_web_fetch_mode_protected_smoke_boundary.py` records the
+  required env, phases, facade routes, and redaction rules for the next real
+  AE Web fetch-mode smoke.
+- The default quality gate runs this checker in skipped mode. It does not open
+  network connections or PostgreSQL sessions unless the future execution smoke
+  is explicitly enabled.
+- The boundary requires future protected execution to use `nex_ae_test` and
+  `nex_cx_test` readback evidence instead of a silent or metadata-only skip.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.

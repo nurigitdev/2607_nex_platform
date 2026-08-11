@@ -30,6 +30,7 @@ mkdir -p "$REPORT_DIR"
 "$PYTHON_BIN" scripts/quality/validate_contracts.py
 
 "$PYTHON_BIN" scripts/smoke/run_ae_web_static_browser_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_web_fetch_mode_protected_smoke_boundary.py --summary
 "$PYTHON_BIN" scripts/smoke/run_traceable_mock_flow.py --summary
 "$PYTHON_BIN" scripts/smoke/run_generation_recovery_mock_flow.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_operations_dashboard_smoke.py --summary
