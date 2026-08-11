@@ -40,7 +40,7 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "format-select",
     ]:
         assert f'id="{required_id}"' in html
-    assert "Slice 0222" in html
+    assert "Slice 0223" in html
     assert "lang=\"ko\"" in html
 
 
@@ -225,6 +225,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     javascript = read_web_file("src/main.js")
     client_registry = read_web_file("src/clientRegistry.js")
     runtime_config = read_web_file("src/runtimeConfig.js")
+    fetch_harness = read_web_file("src/fetchModeHarness.js")
 
     for expected in [
         "createAeWebClients",
@@ -270,6 +271,21 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     ]:
         assert expected in runtime_config
 
+    for expected in [
+        "ae_web_fetch_mode_harness.v1",
+        "runFetchModeHarness",
+        "createAeWebClients",
+        "normalizeRuntimeConfig",
+        "HARNESS_FETCH_REQUIRED",
+        "HARNESS_DOCUMENT_REQUIRED",
+        "liveNetworkUsed: false",
+        "rawPromptRendered: false",
+        "sourcePreviewIncluded: false",
+        "databaseEndpointIncluded: false",
+        "providerEndpointIncluded: false",
+    ]:
+        assert expected in fetch_harness
+
     for forbidden in [
         "service_token",
         "api_key",
@@ -280,6 +296,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         assert forbidden not in javascript
         assert forbidden not in client_registry
         assert forbidden not in runtime_config
+        assert forbidden not in fetch_harness
 
 
 def test_ae_web_mock_state_links_generation_artifact_and_audit_contracts() -> None:
@@ -322,10 +339,10 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert "linear-gradient" not in styles
 
 
-def test_ae_web_package_version_tracks_slice_0222() -> None:
+def test_ae_web_package_version_tracks_slice_0223() -> None:
     package = json.loads(read_web_file("package.json"))
 
     assert package["name"] == "nex-ae-web"
-    assert package["version"] == "0.0.0-slice0222"
+    assert package["version"] == "0.0.0-slice0223"
     assert package["scripts"]["dev"] == "node scripts/serve.mjs"
     assert package["scripts"]["test"] == "node --test test/*.test.mjs"

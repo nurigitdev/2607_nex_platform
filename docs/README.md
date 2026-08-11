@@ -326,6 +326,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0220`](slices/0220_ae_web_retrieval_context_client_adapter_foundation.md) | `S22-010` AE Web retrieval context client adapter foundation. |
 | [`Slice 0221`](slices/0221_ae_web_runtime_client_composition_registry.md) | `S23-001` AE Web runtime client composition registry. |
 | [`Slice 0222`](slices/0222_ae_web_safe_runtime_config_loader.md) | `S23-002` AE Web safe runtime config loader. |
+| [`Slice 0223`](slices/0223_ae_web_fetch_mode_static_regression_harness.md) | `S23-003` AE Web fetch-mode static regression harness. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

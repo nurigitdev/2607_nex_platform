@@ -97,5 +97,14 @@ Slice 0222 adds the safe runtime config loader:
   endpoints, storage locations, and raw source material cannot enter browser
   runtime config.
 
+Slice 0223 adds the fetch-mode static regression harness:
+
+- `src/fetchModeHarness.js` runs document detail, upload, and retrieval fetch
+  clients together with an injected fake fetch implementation.
+- The harness requires injected fetch so regression tests do not accidentally
+  use live network calls.
+- Node tests assert AE facade route shapes and safe result summaries across all
+  three fetch clients.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.
