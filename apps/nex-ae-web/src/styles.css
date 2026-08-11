@@ -414,6 +414,25 @@ button:hover {
   overflow-wrap: anywhere;
 }
 
+.document-row.is-selected {
+  border-left: 3px solid var(--nex-primary);
+  background: #f7fbff;
+  padding-left: 11px;
+}
+
+.document-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.document-action-row button {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
 meter {
   width: 100%;
   height: 8px;
@@ -519,8 +538,22 @@ meter {
   padding: 14px;
 }
 
+.document-detail {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.document-detail > strong,
 .artifact-summary > strong {
   overflow-wrap: anywhere;
+}
+
+code {
+  border-radius: 4px;
+  background: var(--nex-surface-muted);
+  padding: 2px 5px;
+  font-size: 12px;
 }
 
 .inline-meta,
@@ -581,7 +614,7 @@ meter {
   }
 
   nav {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   nav a {
@@ -626,5 +659,14 @@ meter {
   .inline-meta div,
   .meta-list div {
     grid-template-columns: 1fr;
+  }
+
+  .document-action-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .document-action-row button {
+    width: 100%;
   }
 }

@@ -19,6 +19,7 @@
         <nav>
           <a class="active" href="#workspace-summary">워크스페이스</a>
           <a href="#document-list">문서</a>
+          <a href="#document-detail-panel">상세</a>
           <a href="#artifact-panel">아티팩트</a>
           <a href="#audit-panel">감사</a>
         </nav>
@@ -27,7 +28,7 @@
       <main class="workspace">
         <header class="topbar">
           <div>
-            <p class="eyebrow">Slice 0045</p>
+            <p class="eyebrow">Slice 0215</p>
             <h1>NeX-Platform 작업면</h1>
           </div>
           <div class="status-strip" id="status-strip" aria-live="polite"></div>
@@ -111,6 +112,18 @@
                 <span class="badge success">READY</span>
               </div>
               <div class="document-list" id="document-list"></div>
+            </section>
+
+            <section
+              class="panel"
+              id="document-detail-panel"
+              aria-labelledby="document-detail-title"
+            >
+              <div class="section-header compact">
+                <h2 id="document-detail-title">문서 상세</h2>
+                <span class="badge pending" id="document-detail-status">대기</span>
+              </div>
+              <div class="document-detail" id="document-detail"></div>
             </section>
 
             <section class="panel" id="artifact-panel" aria-labelledby="artifact-title">

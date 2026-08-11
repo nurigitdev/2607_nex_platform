@@ -19,14 +19,49 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "message-list",
         "progress-timeline",
         "document-list",
+        "document-detail-panel",
+        "document-detail",
+        "document-detail-status",
         "artifact-panel",
         "audit-panel",
         "retrieval-toggle",
         "format-select",
     ]:
         assert f'id="{required_id}"' in html
-    assert "Slice 0045" in html
+    assert "Slice 0215" in html
     assert "lang=\"ko\"" in html
+
+
+def test_ae_web_document_surface_tracks_detail_facade_boundary() -> None:
+    javascript = read_web_file("src/main.js")
+
+    for expected in [
+        "selectedDocumentId",
+        "buildDocumentSurface",
+        "renderDocumentDetail",
+        "documentDetailRoute",
+        "ae_document_detail_projection.v1",
+        "/api/v1/documents/",
+        "ownerScope",
+        "sourceKind: \"postgres-read\"",
+        "nex-cx",
+    ]:
+        assert expected in javascript
+
+    for forbidden in [
+        "source_storage_path",
+        "sourceStoragePath",
+        "source_storage_uri",
+        "sourceStorageUri",
+        "raw_summary",
+        "rawSummary",
+        "embedding_vector",
+        "embeddingVector",
+        "markdown_text",
+        "markdownText",
+        "/data/nex-platform",
+    ]:
+        assert forbidden not in javascript
 
 
 def test_ae_web_mock_state_links_generation_artifact_and_audit_contracts() -> None:
@@ -55,6 +90,9 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert "grid-template-columns: minmax(220px, 260px) minmax(0, 1fr)" in styles
     assert "@media (max-width: 620px)" in styles
     assert "overflow-wrap: anywhere" in styles
+    assert ".document-detail" in styles
+    assert ".document-row.is-selected" in styles
+    assert ".document-action-row" in styles
     assert ".artifact-link" in styles
     assert ".artifact-actions" in styles
     assert "letter-spacing: 0" in styles
@@ -62,9 +100,9 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert "linear-gradient" not in styles
 
 
-def test_ae_web_package_version_tracks_slice_0040() -> None:
+def test_ae_web_package_version_tracks_slice_0215() -> None:
     package = json.loads(read_web_file("package.json"))
 
     assert package["name"] == "nex-ae-web"
-    assert package["version"] == "0.0.0-slice0045"
+    assert package["version"] == "0.0.0-slice0215"
     assert package["scripts"]["dev"] == "node scripts/serve.mjs"

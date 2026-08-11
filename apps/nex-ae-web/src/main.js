@@ -16,6 +16,11 @@ const baseProgressEvents = [
   ["generation.completed", "COMPLETED", "COMPLETED"]
 ];
 
+const localOwnerScope = {
+  tenantId: "tenant-local",
+  ownerUserId: "owner-local"
+};
+
 const workspaceState = {
   workspaceId: "workspace-local",
   chatDocumentId: "chat-doc-local",
@@ -23,6 +28,7 @@ const workspaceState = {
   cxGenerationId: "cx-gen-local",
   retrievalPackageId: "cx-ret-local",
   artifactHandoffId: "handoff-local",
+  selectedDocumentId: "doc-001",
   artifactRef: {
     artifactId: "artifact-local",
     artifactVersionId: "artifact-version-local-001",
@@ -49,6 +55,13 @@ const workspaceState = {
     {
       documentId: "doc-001",
       filename: "29_mvp_srs.md",
+      projectionSchemaVersion: "ae_document_detail_projection.v1",
+      detailRoute: documentDetailRoute("doc-001"),
+      ownerScope: localOwnerScope,
+      sourceService: "nex-cx",
+      sourceKind: "postgres-read",
+      processingStatus: "COMPLETED",
+      extractionStatus: "COMPLETED",
       summaryStatus: "READY",
       confidenceBucket: "HIGH",
       bestScore: 0.91
@@ -56,6 +69,13 @@ const workspaceState = {
     {
       documentId: "doc-002",
       filename: "31_traceability.md",
+      projectionSchemaVersion: "ae_document_detail_projection.v1",
+      detailRoute: documentDetailRoute("doc-002"),
+      ownerScope: localOwnerScope,
+      sourceService: "nex-cx",
+      sourceKind: "postgres-read",
+      processingStatus: "COMPLETED",
+      extractionStatus: "COMPLETED",
       summaryStatus: "READY",
       confidenceBucket: "HIGH",
       bestScore: 0.88
@@ -63,6 +83,13 @@ const workspaceState = {
     {
       documentId: "doc-003",
       filename: "36_sprint_backlog.md",
+      projectionSchemaVersion: "ae_document_detail_projection.v1",
+      detailRoute: documentDetailRoute("doc-003"),
+      ownerScope: localOwnerScope,
+      sourceService: "nex-cx",
+      sourceKind: "postgres-read",
+      processingStatus: "RUNNING",
+      extractionStatus: "COMPLETED",
       summaryStatus: "READY",
       confidenceBucket: "MEDIUM",
       bestScore: 0.74
@@ -113,6 +140,8 @@ const retrievalToggle = document.querySelector("#retrieval-toggle");
 const formatSelect = document.querySelector("#format-select");
 const messageList = document.querySelector("#message-list");
 const documentList = document.querySelector("#document-list");
+const documentDetail = document.querySelector("#document-detail");
+const documentDetailStatus = document.querySelector("#document-detail-status");
 const progressTimeline = document.querySelector("#progress-timeline");
 const timelineCount = document.querySelector("#timeline-count");
 const chatStatus = document.querySelector("#chat-status");
@@ -133,6 +162,15 @@ composer.addEventListener("submit", event => {
   appendPromptInteraction();
 });
 
+documentList.addEventListener("click", event => {
+  const target = event.target.closest("[data-document-id]");
+  if (!target) return;
+
+  workspaceState.selectedDocumentId = target.dataset.documentId;
+  renderDocuments();
+  renderDocumentDetail();
+});
+
 renderWorkspace();
 renderServiceStatuses();
 
@@ -147,6 +185,7 @@ function renderWorkspace() {
   handoffBadge.className = `badge ${badgeClass(workspaceState.artifact.citationStatus)}`;
   renderMessages();
   renderDocuments();
+  renderDocumentDetail();
   renderTimeline();
   renderArtifactSummary();
   renderAuditSummary();
@@ -244,21 +283,108 @@ function renderArtifactRef(artifactRef) {
 function renderDocuments() {
   documentList.innerHTML = "";
   for (const documentItem of workspaceState.documents) {
+    const isSelected = documentItem.documentId === workspaceState.selectedDocumentId;
     const article = document.createElement("article");
-    article.className = "document-row";
+    article.className = `document-row${isSelected ? " is-selected" : ""}`;
     article.innerHTML = `
       <div>
         <strong>${escapeHtml(documentItem.filename)}</strong>
         <span>${escapeHtml(documentItem.documentId)}</span>
       </div>
-      <div class="badge-pair">
-        <span class="badge ${badgeClass(documentItem.summaryStatus)}">${statusLabel(documentItem.summaryStatus)}</span>
-        <span class="badge ${badgeClass(documentItem.confidenceBucket)}">${statusLabel(documentItem.confidenceBucket)}</span>
+      <div class="document-action-row">
+        <div class="badge-pair">
+          <span class="badge ${badgeClass(documentItem.summaryStatus)}">${statusLabel(documentItem.summaryStatus)}</span>
+          <span class="badge ${badgeClass(documentItem.confidenceBucket)}">${statusLabel(documentItem.confidenceBucket)}</span>
+        </div>
+        <button
+          type="button"
+          data-document-id="${escapeHtml(documentItem.documentId)}"
+          aria-pressed="${isSelected ? "true" : "false"}"
+        >상세</button>
       </div>
       <meter min="0" max="1" value="${documentItem.bestScore}"></meter>
     `;
     documentList.appendChild(article);
   }
+}
+
+function renderDocumentDetail() {
+  const documentItem = currentDocumentSurfaceItem();
+  if (!documentItem) {
+    documentDetailStatus.textContent = statusLabel("UNKNOWN");
+    documentDetailStatus.className = `badge ${badgeClass("UNKNOWN")}`;
+    documentDetail.innerHTML = "";
+    return;
+  }
+
+  const surface = buildDocumentSurface(documentItem);
+  documentDetailStatus.textContent = statusLabel(surface.processingStatus);
+  documentDetailStatus.className = `badge ${badgeClass(surface.processingStatus)}`;
+  documentDetail.innerHTML = `
+    <strong>${escapeHtml(surface.filename)}</strong>
+    <dl class="inline-meta">
+      <div>
+        <dt>route</dt>
+        <dd><code>${escapeHtml(surface.detailRoute)}</code></dd>
+      </div>
+      <div>
+        <dt>schema</dt>
+        <dd>${escapeHtml(surface.projectionSchemaVersion)}</dd>
+      </div>
+      <div>
+        <dt>owner</dt>
+        <dd>${escapeHtml(surface.tenantId)} / ${escapeHtml(surface.ownerUserId)}</dd>
+      </div>
+      <div>
+        <dt>source</dt>
+        <dd>${escapeHtml(surface.sourceService)} · ${escapeHtml(surface.sourceKind)}</dd>
+      </div>
+      <div>
+        <dt>extraction</dt>
+        <dd>${statusLabel(surface.extractionStatus)}</dd>
+      </div>
+      <div>
+        <dt>summary</dt>
+        <dd>${statusLabel(surface.summaryStatus)} · ${statusLabel(surface.confidenceBucket)} · ${formatScore(surface.bestScore)}</dd>
+      </div>
+    </dl>
+  `;
+}
+
+function currentDocumentSurfaceItem() {
+  return (
+    workspaceState.documents.find(
+      documentItem => documentItem.documentId === workspaceState.selectedDocumentId
+    ) || workspaceState.documents[0]
+  );
+}
+
+function buildDocumentSurface(documentItem) {
+  return {
+    documentId: documentItem.documentId,
+    filename: documentItem.filename,
+    detailRoute: documentItem.detailRoute || documentDetailRoute(documentItem.documentId),
+    projectionSchemaVersion:
+      documentItem.projectionSchemaVersion || "ae_document_detail_projection.v1",
+    tenantId: documentItem.ownerScope?.tenantId || "UNKNOWN",
+    ownerUserId: documentItem.ownerScope?.ownerUserId || "UNKNOWN",
+    sourceService: documentItem.sourceService || "nex-cx",
+    sourceKind: documentItem.sourceKind || "ae-facade",
+    processingStatus: documentItem.processingStatus || "UNKNOWN",
+    extractionStatus: documentItem.extractionStatus || "UNKNOWN",
+    summaryStatus: documentItem.summaryStatus || "UNKNOWN",
+    confidenceBucket: documentItem.confidenceBucket || "UNKNOWN",
+    bestScore: documentItem.bestScore
+  };
+}
+
+function documentDetailRoute(documentId) {
+  return `/api/v1/documents/${encodeURIComponent(documentId)}`;
+}
+
+function formatScore(score) {
+  if (typeof score !== "number") return "n/a";
+  return score.toFixed(2);
 }
 
 function renderTimeline() {
