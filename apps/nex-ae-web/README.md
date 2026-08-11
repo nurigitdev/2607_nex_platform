@@ -86,5 +86,16 @@ Slice 0221 adds the runtime client composition registry:
 - Registry summaries omit service tokens, provider URLs, database URLs, raw
   source content, and other server-only details.
 
+Slice 0222 adds the safe runtime config loader:
+
+- `src/runtimeConfig.js` reads the inline browser config and optional global
+  override.
+- The runtime config may choose `mock` or guarded `fetch` client mode and AE
+  facade base URL.
+- Fetch mode requires `features.fetch_clients_enabled = true`.
+- Unsupported fields are rejected so credentials, provider endpoints, database
+  endpoints, storage locations, and raw source material cannot enter browser
+  runtime config.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.

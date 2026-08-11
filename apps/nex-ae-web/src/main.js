@@ -11,6 +11,10 @@ import {
   documentScopeLabel
 } from "./documentScope.js";
 import {
+  buildRuntimeConfigSummary,
+  loadRuntimeConfig
+} from "./runtimeConfig.js";
+import {
   buildUploadHandoffPayload,
   buildUploadSurfaceDraft
 } from "./uploadSurface.js";
@@ -47,6 +51,7 @@ const workspaceState = {
   retrievalPackageId: "cx-ret-local",
   artifactHandoffId: "handoff-local",
   selectedDocumentId: "doc-001",
+  runtimeConfig: null,
   clientRegistry: null,
   documentScope: null,
   lastRetrievalRequest: null,
@@ -161,8 +166,10 @@ const workspaceState = {
 };
 
 workspaceState.messages[1].artifactRefs = [workspaceState.artifactRef];
+workspaceState.runtimeConfig = loadRuntimeConfig();
 workspaceState.clientRegistry = createAeWebClients({
-  mode: "mock",
+  mode: workspaceState.runtimeConfig.clientMode,
+  baseUrl: workspaceState.runtimeConfig.aeBaseUrl,
   documents: workspaceState.documents
 });
 workspaceState.documentDetailClient = workspaceState.clientRegistry.documentDetailClient;
@@ -805,7 +812,8 @@ function safeUploadPreview(payload, draft, submission) {
     client: {
       mode: workspaceState.uploadClient.clientMode,
       route: draft.uploadRoute,
-      registry: buildClientRegistrySummary(workspaceState.clientRegistry)
+      registry: buildClientRegistrySummary(workspaceState.clientRegistry),
+      runtime_config: buildRuntimeConfigSummary(workspaceState.runtimeConfig)
     },
     metadata: draft.metadata
   };
@@ -830,7 +838,8 @@ function safeRetrievalPreview(retrievalRequest, currentScope, retrievalResult) {
       selected_count: currentScope.selectedCount,
       client: {
         mode: workspaceState.retrievalClient.clientMode,
-        registry: buildClientRegistrySummary(workspaceState.clientRegistry)
+        registry: buildClientRegistrySummary(workspaceState.clientRegistry),
+        runtime_config: buildRuntimeConfigSummary(workspaceState.runtimeConfig)
       },
       status: "READY_FOR_PROMPT"
     };
