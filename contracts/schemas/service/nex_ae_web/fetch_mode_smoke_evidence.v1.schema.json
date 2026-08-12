@@ -1,0 +1,394 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_web/fetch_mode_smoke_evidence.v1.schema.json",
+  "title": "NeX AE Web Fetch-Mode Smoke Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "smoke_schema_version",
+    "status",
+    "profile",
+    "services",
+    "database_envs",
+    "redacted_database_urls",
+    "migrations",
+    "boundary",
+    "request_id",
+    "trace_id",
+    "workspace_id",
+    "document_id",
+    "upload_handoff_id",
+    "retrieval_interaction_id",
+    "retrieval_package_id",
+    "db_observations",
+    "adapter_observations",
+    "cleanup_observations",
+    "checks"
+  ],
+  "properties": {
+    "smoke_schema_version": {
+      "const": "ae_web_fetch_mode_postgres_smoke.v1"
+    },
+    "status": {
+      "const": "PASS"
+    },
+    "profile": {
+      "const": "test"
+    },
+    "services": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": "nex-ae-api"
+        },
+        {
+          "const": "nex-cx"
+        }
+      ],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "database_envs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ae",
+        "cx"
+      ],
+      "properties": {
+        "ae": {
+          "const": "NEX_AE_TEST_DATABASE_URL"
+        },
+        "cx": {
+          "const": "NEX_CX_TEST_DATABASE_URL"
+        }
+      }
+    },
+    "redacted_database_urls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ae",
+        "cx"
+      ],
+      "properties": {
+        "ae": {
+          "$ref": "#/$defs/redacted_test_database_url"
+        },
+        "cx": {
+          "$ref": "#/$defs/redacted_test_database_url"
+        }
+      }
+    },
+    "migrations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ae",
+        "cx"
+      ],
+      "properties": {
+        "ae": {
+          "$ref": "#/$defs/migration_evidence"
+        },
+        "cx": {
+          "$ref": "#/$defs/migration_evidence"
+        }
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "status",
+        "phase_count"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "ae_web_fetch_mode_protected_smoke_boundary.v1"
+        },
+        "status": {
+          "const": "PASS"
+        },
+        "phase_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "workspace_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "upload_handoff_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "retrieval_interaction_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "retrieval_package_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "db_observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ae_marker_rows",
+        "cx_owner_active_content_count",
+        "cx_current_document_rows",
+        "cx_retrieval_evidence_count",
+        "cx_retrieval_status"
+      ],
+      "properties": {
+        "ae_marker_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cx_owner_active_content_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cx_current_document_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cx_retrieval_evidence_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cx_retrieval_status": {
+          "const": "READY"
+        }
+      }
+    },
+    "adapter_observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cx_upload_calls",
+        "cx_detail_calls",
+        "cx_retrieval_calls"
+      ],
+      "properties": {
+        "cx_upload_calls": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cx_detail_calls": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cx_retrieval_calls": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "cleanup_observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ae_marker_rows_after_delete",
+        "cx_retrieval_rows",
+        "cx_rows"
+      ],
+      "properties": {
+        "ae_marker_rows_after_delete": {
+          "const": 0
+        },
+        "cx_retrieval_rows": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "evidence_rows_after_delete",
+            "package_rows_after_delete"
+          ],
+          "properties": {
+            "evidence_rows_after_delete": {
+              "const": 0
+            },
+            "package_rows_after_delete": {
+              "const": 0
+            }
+          }
+        },
+        "cx_rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/cx_cleanup_row"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ae_health_status_ok",
+        "ae_runtime_mode",
+        "cx_runtime_mode",
+        "ae_marker_write_readback",
+        "upload_status_accepted",
+        "cx_upload_called_once",
+        "detail_status_ok",
+        "cx_detail_called_once",
+        "retrieval_status_ok",
+        "cx_retrieval_called_once",
+        "owner_scope_forwarded",
+        "current_document_persisted",
+        "retrieval_package_persisted",
+        "retrieval_evidence_persisted",
+        "raw_payload_absent"
+      ],
+      "properties": {
+        "ae_health_status_ok": {
+          "const": true
+        },
+        "ae_runtime_mode": {
+          "const": true
+        },
+        "cx_runtime_mode": {
+          "const": true
+        },
+        "ae_marker_write_readback": {
+          "const": true
+        },
+        "upload_status_accepted": {
+          "const": true
+        },
+        "cx_upload_called_once": {
+          "const": true
+        },
+        "detail_status_ok": {
+          "const": true
+        },
+        "cx_detail_called_once": {
+          "const": true
+        },
+        "retrieval_status_ok": {
+          "const": true
+        },
+        "cx_retrieval_called_once": {
+          "const": true
+        },
+        "owner_scope_forwarded": {
+          "const": true
+        },
+        "current_document_persisted": {
+          "const": true
+        },
+        "retrieval_package_persisted": {
+          "const": true
+        },
+        "retrieval_evidence_persisted": {
+          "const": true
+        },
+        "raw_payload_absent": {
+          "const": true
+        }
+      }
+    }
+  },
+  "$defs": {
+    "redacted_test_database_url": {
+      "type": "string",
+      "pattern": "^postgresql(\\+psycopg)?://[^\\s:/]+:\\*\\*\\*@[^\\s]+/[^\\s/]+_test$"
+    },
+    "migration_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service_id",
+        "profile",
+        "planned_count",
+        "applied_count",
+        "skipped_count",
+        "dry_run"
+      ],
+      "properties": {
+        "service_id": {
+          "type": "string",
+          "enum": [
+            "nex-ae-api",
+            "nex-cx"
+          ]
+        },
+        "profile": {
+          "const": "test"
+        },
+        "planned_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "applied_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dry_run": {
+          "const": false
+        }
+      }
+    },
+    "cx_cleanup_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "document_id",
+        "source_file_id",
+        "content_rows_before_delete",
+        "source_rows_before_delete",
+        "content_rows_after_delete",
+        "source_rows_after_delete"
+      ],
+      "properties": {
+        "label": {
+          "const": "ae_web_fetch_mode"
+        },
+        "document_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_file_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_rows_before_delete": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source_rows_before_delete": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "content_rows_after_delete": {
+          "const": 0
+        },
+        "source_rows_after_delete": {
+          "const": 0
+        }
+      }
+    }
+  }
+}

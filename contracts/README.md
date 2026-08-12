@@ -1,6 +1,6 @@
 # Contract Package
 
-Status: Contract catalog through Slice 0136.
+Status: Contract catalog through Slice 0230.
 
 This directory is the canonical home for shared JSON Schemas, OpenAPI
 descriptions, contract examples, and negative fixtures.
@@ -16,6 +16,7 @@ contracts/
       nex_oa/
       nex_ag/
       nex_ae_api/
+      nex_ae_web/
       nex_cx/
       nex_mo/
   openapi/
@@ -61,6 +62,8 @@ reject them. The validation command fails if a negative fixture becomes valid.
   mock text extraction result, chunk set, embedding index, lexical index, and
   retrieval context package.
 - AE orchestration: AE retrieval interaction.
+- AE Web: fetch-mode PostgreSQL smoke evidence for test DB readback,
+  redaction, facade call, and cleanup proof.
 - Audit/operations: AG readiness projection and AG operations projections for
   events, jobs, dashboard, issue candidates, traces, rollups, source readiness,
   worker runtime heartbeats, worker detail/job correlation, and CX worker

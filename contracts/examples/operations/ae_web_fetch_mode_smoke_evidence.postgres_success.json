@@ -1,0 +1,94 @@
+{
+  "smoke_schema_version": "ae_web_fetch_mode_postgres_smoke.v1",
+  "status": "PASS",
+  "profile": "test",
+  "services": [
+    "nex-ae-api",
+    "nex-cx"
+  ],
+  "database_envs": {
+    "ae": "NEX_AE_TEST_DATABASE_URL",
+    "cx": "NEX_CX_TEST_DATABASE_URL"
+  },
+  "redacted_database_urls": {
+    "ae": "postgresql+psycopg://nex_ae_user:***@127.0.0.1:5432/nex_ae_test",
+    "cx": "postgresql+psycopg://nex_cx_user:***@127.0.0.1:5432/nex_cx_test"
+  },
+  "migrations": {
+    "ae": {
+      "service_id": "nex-ae-api",
+      "profile": "test",
+      "planned_count": 6,
+      "applied_count": 0,
+      "skipped_count": 6,
+      "dry_run": false
+    },
+    "cx": {
+      "service_id": "nex-cx",
+      "profile": "test",
+      "planned_count": 18,
+      "applied_count": 0,
+      "skipped_count": 18,
+      "dry_run": false
+    }
+  },
+  "boundary": {
+    "schema_version": "ae_web_fetch_mode_protected_smoke_boundary.v1",
+    "status": "PASS",
+    "phase_count": 9
+  },
+  "request_id": "72d96a1f-1c13-4b74-86e1-bdbec5a5d6c1",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "workspace_id": "workspace-ae-web-fetch-smoke-72d96a1f",
+  "document_id": "content-object-slice-0230",
+  "upload_handoff_id": "upload-handoff-slice-0230",
+  "retrieval_interaction_id": "retrieval-interaction-slice-0230",
+  "retrieval_package_id": "retrieval-package-slice-0230",
+  "db_observations": {
+    "ae_marker_rows": 1,
+    "cx_owner_active_content_count": 1,
+    "cx_current_document_rows": 1,
+    "cx_retrieval_evidence_count": 1,
+    "cx_retrieval_status": "READY"
+  },
+  "adapter_observations": {
+    "cx_upload_calls": 1,
+    "cx_detail_calls": 1,
+    "cx_retrieval_calls": 1
+  },
+  "cleanup_observations": {
+    "ae_marker_rows_after_delete": 0,
+    "cx_retrieval_rows": {
+      "evidence_rows_after_delete": 0,
+      "package_rows_after_delete": 0
+    },
+    "cx_rows": [
+      {
+        "label": "ae_web_fetch_mode",
+        "document_id": "content-object-slice-0230",
+        "source_file_id": "source-file-slice-0230",
+        "content_rows_before_delete": 1,
+        "source_rows_before_delete": 1,
+        "content_rows_after_delete": 0,
+        "source_rows_after_delete": 0
+      }
+    ]
+  },
+  "checks": {
+    "ae_health_status_ok": true,
+    "ae_runtime_mode": true,
+    "cx_runtime_mode": true,
+    "ae_marker_write_readback": true,
+    "upload_status_accepted": true,
+    "cx_upload_called_once": true,
+    "detail_status_ok": true,
+    "cx_detail_called_once": true,
+    "retrieval_status_ok": true,
+    "cx_retrieval_called_once": true,
+    "owner_scope_forwarded": true,
+    "current_document_persisted": true,
+    "retrieval_package_persisted": true,
+    "retrieval_evidence_persisted": true,
+    "raw_payload_absent": true
+  }
+}

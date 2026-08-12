@@ -163,5 +163,15 @@ Slice 0229 adds the protected fetch-mode PostgreSQL smoke execution:
 - The default quality gate keeps this runner skipped until
   `NEX_AE_WEB_FETCH_MODE_PROTECTED_SMOKE=1` and the test DB URLs are supplied.
 
+Slice 0230 closes the fetch-mode evidence contract:
+
+- `contracts/schemas/service/nex_ae_web/fetch_mode_smoke_evidence.v1.schema.json`
+  freezes the PASS evidence shape for PostgreSQL readback, facade call counts,
+  cleanup observations, and redaction checks.
+- Positive and negative fixtures prove that redacted test DB URLs are allowed
+  while raw database credentials are rejected.
+- Regression tests validate the fixture contract and the smoke runner's
+  generated PASS evidence shape.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.

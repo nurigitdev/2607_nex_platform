@@ -6,8 +6,9 @@ from types import SimpleNamespace
 import pytest
 
 import run_ae_web_fetch_mode_postgres_smoke as smoke
-from nex_cx.repository import InMemoryCxContentRepository
+import validate_contracts
 from nex_cx.ingestion import ContentIngestionStore
+from nex_cx.repository import InMemoryCxContentRepository
 
 
 def protected_env() -> dict[str, str]:
@@ -569,6 +570,90 @@ def test_main_reports_summary_and_failures(
     )
 
 
+def test_fetch_mode_postgres_smoke_contract_fixtures_validate() -> None:
+    contracts_root = smoke.ROOT / "contracts"
+    schema = validate_contracts.load_structured_file(
+        contracts_root
+        / "schemas"
+        / "service"
+        / "nex_ae_web"
+        / "fetch_mode_smoke_evidence.v1.schema.json"
+    )
+    positive = validate_contracts.load_structured_file(
+        contracts_root
+        / "examples"
+        / "operations"
+        / "ae_web_fetch_mode_smoke_evidence.postgres_success.json"
+    )
+    negative = validate_contracts.load_structured_file(
+        contracts_root
+        / "tests"
+        / "negative"
+        / "operations"
+        / "ae_web_fetch_mode_smoke_evidence.raw_database_url.json"
+    )
+
+    validate_contracts.validate_payload(schema, positive)
+    with pytest.raises(validate_contracts.ValidationError):
+        validate_contracts.validate_payload(schema, negative)
+
+
+def test_fetch_mode_postgres_smoke_generated_pass_matches_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contracts_root = smoke.ROOT / "contracts"
+    schema = validate_contracts.load_structured_file(
+        contracts_root
+        / "schemas"
+        / "service"
+        / "nex_ae_web"
+        / "fetch_mode_smoke_evidence.v1.schema.json"
+    )
+    example = validate_contracts.load_structured_file(
+        contracts_root
+        / "examples"
+        / "operations"
+        / "ae_web_fetch_mode_smoke_evidence.postgres_success.json"
+    )
+    execution_keys = {
+        "request_id",
+        "trace_id",
+        "workspace_id",
+        "document_id",
+        "upload_handoff_id",
+        "retrieval_interaction_id",
+        "retrieval_package_id",
+        "db_observations",
+        "adapter_observations",
+        "cleanup_observations",
+        "checks",
+    }
+
+    def fake_migration(service_id: str, **kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(
+            service_id=service_id,
+            profile="test",
+            planned=("001",),
+            applied=(),
+            skipped=("001",),
+            dry_run=False,
+        )
+
+    monkeypatch.setattr(smoke, "run_service_migrations", fake_migration)
+    monkeypatch.setattr(
+        smoke,
+        "_execute_fetch_mode_postgres_smoke",
+        lambda **kwargs: {key: example[key] for key in execution_keys},
+    )
+
+    evidence = smoke.run_ae_web_fetch_mode_postgres_smoke(protected_env())
+
+    validate_contracts.validate_payload(schema, evidence)
+    serialized = json.dumps(evidence, default=str)
+    assert "secret-pass-0229" not in serialized
+    assert evidence["redacted_database_urls"]["ae"].endswith("/nex_ae_test")
+
+
 def test_fetch_mode_postgres_smoke_is_quality_gate_and_docs_wired() -> None:
     root = smoke.ROOT
     quality_gate = (root / "scripts" / "quality" / "run_quality_gate.sh").read_text(
@@ -581,8 +666,31 @@ def test_fetch_mode_postgres_smoke_is_quality_gate_and_docs_wired() -> None:
         / "slices"
         / "0229_ae_web_fetch_mode_postgresql_smoke_evidence_execution.md"
     ).read_text(encoding="utf-8")
+    contracts_readme = (root / "contracts" / "README.md").read_text(encoding="utf-8")
+    examples_index = json.loads(
+        (root / "contracts" / "examples" / "index.json").read_text(encoding="utf-8")
+    )
+    negative_index = json.loads(
+        (root / "contracts" / "tests" / "negative" / "index.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    example_paths = {entry["path"] for entry in examples_index["examples"]}
+    negative_paths = {
+        entry["path"] for entry in negative_index["negative_examples"]
+    }
 
     assert "run_ae_web_fetch_mode_postgres_smoke.py --summary" in quality_gate
     assert "0229_ae_web_fetch_mode_postgresql_smoke_evidence_execution.md" in docs_index
+    assert "0230_ae_web_fetch_mode_smoke_evidence_contract_closure.md" in docs_index
     assert smoke.boundary.AE_DATABASE_URL_ENV in slice_doc
     assert smoke.boundary.CX_DATABASE_URL_ENV in slice_doc
+    assert "nex_ae_web/" in contracts_readme
+    assert (
+        "examples/operations/ae_web_fetch_mode_smoke_evidence.postgres_success.json"
+        in example_paths
+    )
+    assert (
+        "tests/negative/operations/ae_web_fetch_mode_smoke_evidence.raw_database_url.json"
+        in negative_paths
+    )

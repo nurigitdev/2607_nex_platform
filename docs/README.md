@@ -333,6 +333,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0227`](slices/0227_ae_web_static_browser_smoke_evidence_runner.md) | `S23-007` AE Web static browser smoke evidence runner. |
 | [`Slice 0228`](slices/0228_ae_web_fetch_mode_protected_smoke_boundary.md) | `S23-008` AE Web fetch-mode protected smoke boundary. |
 | [`Slice 0229`](slices/0229_ae_web_fetch_mode_postgresql_smoke_evidence_execution.md) | `S23-009` AE Web fetch-mode PostgreSQL smoke evidence execution. |
+| [`Slice 0230`](slices/0230_ae_web_fetch_mode_smoke_evidence_contract_closure.md) | `S23-010` AE Web fetch-mode smoke evidence contract closure. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
