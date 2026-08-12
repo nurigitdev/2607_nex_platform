@@ -354,6 +354,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0248`](slices/0248_ae_oa_session_client_adapter_foundation.md) | `S25-008` AE OA session client adapter foundation. |
 | [`Slice 0249`](slices/0249_ae_auth_session_facade_oa_backed_cookie_wiring.md) | `S25-009` AE auth session facade OA-backed cookie wiring. |
 | [`Slice 0250`](slices/0250_oa_backed_ae_auth_postgresql_smoke_evidence.md) | `S25-010` OA-backed AE auth PostgreSQL smoke evidence. |
+| [`Slice 0251`](slices/0251_oa_user_bootstrap_login_boundary_audit.md) | `S26-001` OA user bootstrap/login boundary audit. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

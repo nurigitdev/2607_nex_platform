@@ -23,6 +23,7 @@ Current endpoints:
 - `POST /internal/v1/auth/user-sessions/{session_id}/revoke`
 - `GET /internal/v1/auth/user-sessions/{session_id}`
 - `GET /internal/v1/auth/session-credential-delivery-boundary`
+- `GET /internal/v1/auth/user-bootstrap-login-boundary`
 
 Slice 0193 minimum subject registry:
 
@@ -123,3 +124,16 @@ Slice 0247 OA session revocation API:
 - The protected PostgreSQL smoke runner now exercises issue, readback,
   introspection, revocation, revoked introspection, DB observation, and cleanup
   when `NEX_OA_SESSION_POSTGRES_SMOKE=1` is enabled.
+
+Slice 0251 OA user bootstrap/login boundary:
+
+- `GET /internal/v1/auth/user-bootstrap-login-boundary` freezes the MVP company
+  login mode as employee id plus password before credential persistence is
+  added.
+- OA owns employee login alias normalization, credential records, password hash
+  verification, membership lookup, user-session issuance, and login audit
+  events. AE Web may collect the login form and AE API may proxy the login
+  facade, but neither AE component persists passwords.
+- Employee id is treated as an OA credential lookup alias; downstream AE/CX/AG
+  behavior should depend on stable `oa.user` subject refs, not raw password-era
+  credential fields.
