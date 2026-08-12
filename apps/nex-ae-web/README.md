@@ -226,5 +226,11 @@ Slice 0239 upgrades the protected PostgreSQL smoke:
   retrieval evidence, and cleanup without exposing tokens or protected env
   values.
 
+Slice 0240 closes the authenticated fetch-mode track:
+
+- Static guardrails now verify the protected smoke remains browser-user
+  authenticated and its PASS evidence keeps claim-scope checks.
+- Real OA-backed login UI and browser automation remain deferred.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

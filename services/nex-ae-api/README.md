@@ -94,6 +94,9 @@ Upload handoff:
 - Slice 0239 updates the protected AE Web fetch-mode PostgreSQL smoke to call
   those facades with browser user auth, while preserving service-token auth for
   AE-to-CX handoff adapters.
+- Slice 0240 closes the authenticated fetch-mode track with static guardrails
+  that keep AE facade smoke calls browser-user authenticated and evidence
+  claim-scope aware.
 
 Document library:
 
