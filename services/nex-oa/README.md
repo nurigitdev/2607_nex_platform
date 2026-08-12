@@ -162,3 +162,14 @@ Slice 0253 OA user login API:
   issued session owner.
 - Responses keep the OA session issue shape and do not include raw passwords,
   password hashes, credential snapshots, service credentials, or cookie values.
+
+Slice 0254 OA user login PostgreSQL smoke:
+
+- `scripts/smoke/run_oa_user_login_postgres_smoke.py` applies `nex-oa`
+  migrations and exercises credential seed, membership ensure, user login,
+  session readback, introspection, revocation, DB observation, and cleanup
+  against the protected `test` profile.
+- The runner is skipped by default and requires
+  `NEX_OA_USER_LOGIN_POSTGRES_SMOKE=1` for write execution.
+- Evidence includes only redacted DB URLs and safe count/status observations;
+  raw passwords, password hashes, access tokens, and cookie values are excluded.
