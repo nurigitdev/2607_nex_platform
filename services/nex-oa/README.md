@@ -80,3 +80,11 @@ Slice 0243 OA user-session issuance:
   membership exists, is active, and grants the requested scopes.
 - Session responses deliberately omit raw tokens and cookies. AE facade
   delegation remains the next integration step after PostgreSQL smoke evidence.
+
+Slice 0244 OA session PostgreSQL smoke:
+
+- `scripts/smoke/run_oa_session_postgres_smoke.py` applies `nex-oa` migrations
+  and exercises membership ensure, session issue, session readback, DB
+  observation, and smoke-row cleanup against the protected `test` profile.
+- The smoke runner is skipped by default and requires
+  `NEX_OA_SESSION_POSTGRES_SMOKE=1` for write execution.
