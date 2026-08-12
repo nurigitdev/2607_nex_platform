@@ -22,6 +22,7 @@
     "retrieval_package_id",
     "db_observations",
     "adapter_observations",
+    "auth_observations",
     "cleanup_observations",
     "checks"
   ],
@@ -200,6 +201,34 @@
         }
       }
     },
+    "auth_observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ae_facade_auth_mode",
+        "ae_facade_transport",
+        "owner_scope_authority",
+        "browser_token_redacted",
+        "service_token_used_for_ae_facade"
+      ],
+      "properties": {
+        "ae_facade_auth_mode": {
+          "const": "browser_user"
+        },
+        "ae_facade_transport": {
+          "const": "authorization_header"
+        },
+        "owner_scope_authority": {
+          "const": "claim"
+        },
+        "browser_token_redacted": {
+          "const": true
+        },
+        "service_token_used_for_ae_facade": {
+          "const": false
+        }
+      }
+    },
     "cleanup_observations": {
       "type": "object",
       "additionalProperties": false,
@@ -251,6 +280,8 @@
         "cx_detail_called_once",
         "retrieval_status_ok",
         "cx_retrieval_called_once",
+        "browser_claim_owner_scope_enforced",
+        "retrieval_actor_scope_claim_derived",
         "owner_scope_forwarded",
         "current_document_persisted",
         "retrieval_package_persisted",
@@ -286,6 +317,12 @@
           "const": true
         },
         "cx_retrieval_called_once": {
+          "const": true
+        },
+        "browser_claim_owner_scope_enforced": {
+          "const": true
+        },
+        "retrieval_actor_scope_claim_derived": {
           "const": true
         },
         "owner_scope_forwarded": {

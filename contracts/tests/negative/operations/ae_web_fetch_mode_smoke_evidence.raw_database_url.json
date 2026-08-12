@@ -56,6 +56,13 @@
     "cx_detail_calls": 1,
     "cx_retrieval_calls": 1
   },
+  "auth_observations": {
+    "ae_facade_auth_mode": "browser_user",
+    "ae_facade_transport": "authorization_header",
+    "owner_scope_authority": "claim",
+    "browser_token_redacted": true,
+    "service_token_used_for_ae_facade": false
+  },
   "cleanup_observations": {
     "ae_marker_rows_after_delete": 0,
     "cx_retrieval_rows": {
@@ -85,6 +92,8 @@
     "cx_detail_called_once": true,
     "retrieval_status_ok": true,
     "cx_retrieval_called_once": true,
+    "browser_claim_owner_scope_enforced": true,
+    "retrieval_actor_scope_claim_derived": true,
     "owner_scope_forwarded": true,
     "current_document_persisted": true,
     "retrieval_package_persisted": true,

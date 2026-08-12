@@ -91,6 +91,9 @@ Upload handoff:
   fetch-mode routes. Upload, document-library/detail, and retrieval facades now
   accept either service claims or browser user sessions; browser sessions derive
   owner/actor scope from claims and reject mismatched payload or stored scope.
+- Slice 0239 updates the protected AE Web fetch-mode PostgreSQL smoke to call
+  those facades with browser user auth, while preserving service-token auth for
+  AE-to-CX handoff adapters.
 
 Document library:
 

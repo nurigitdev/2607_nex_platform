@@ -60,6 +60,7 @@ from nex_runtime import (  # noqa: E402
     build_engine,
     build_service_app,
     issue_mock_service_token,
+    issue_mock_user_token,
     load_env_file,
     redact_database_url,
 )
@@ -426,10 +427,13 @@ def _execute_fetch_mode_postgres_smoke(
                         f"{SECRET_SOURCE} request={request_id}. "
                         "retrieval smoke evidence uses PostgreSQL readback."
                     ),
-                    "tenant_id": tenant_id,
-                    "owner_user_id": owner_user_id,
                 },
-                headers=_ae_service_headers(trace_id=trace_id, request_id=request_id),
+                headers=_ae_browser_headers(
+                    trace_id=trace_id,
+                    request_id=request_id,
+                    tenant_id=tenant_id,
+                    owner_user_id=owner_user_id,
+                ),
             )
             upload_response.raise_for_status()
             upload = upload_response.json()
@@ -446,7 +450,12 @@ def _execute_fetch_mode_postgres_smoke(
 
             detail_response = ae_client.get(
                 f"/api/v1/documents/{document_id}",
-                headers=_ae_service_headers(trace_id=trace_id, request_id=request_id),
+                headers=_ae_browser_headers(
+                    trace_id=trace_id,
+                    request_id=request_id,
+                    tenant_id=tenant_id,
+                    owner_user_id=owner_user_id,
+                ),
             )
             detail_response.raise_for_status()
             detail = detail_response.json()
@@ -463,7 +472,12 @@ def _execute_fetch_mode_postgres_smoke(
                         "purpose": "search",
                     },
                 },
-                headers=_ae_service_headers(trace_id=trace_id, request_id=request_id),
+                headers=_ae_browser_headers(
+                    trace_id=trace_id,
+                    request_id=request_id,
+                    tenant_id=tenant_id,
+                    owner_user_id=owner_user_id,
+                ),
             )
             retrieval_response.raise_for_status()
             retrieval = retrieval_response.json()
@@ -498,6 +512,17 @@ def _execute_fetch_mode_postgres_smoke(
                 "cx_detail_called_once": len(cx_document_client.calls) == 1,
                 "retrieval_status_ok": retrieval_response.status_code == 200,
                 "cx_retrieval_called_once": len(cx_retrieval_client.calls) == 1,
+                "browser_claim_owner_scope_enforced": (
+                    upload["tenant_id"] == tenant_id
+                    and upload["owner_user_id"] == owner_user_id
+                    and cx_upload_client.calls[0]["tenant_id"] == tenant_id
+                    and cx_upload_client.calls[0]["owner_user_id"] == owner_user_id
+                ),
+                "retrieval_actor_scope_claim_derived": (
+                    retrieval["actor_claims_ref"].get("actor_type") == "user"
+                    and retrieval["actor_claims_ref"].get("actor_id") == owner_user_id
+                    and retrieval["actor_claims_ref"].get("tenant_id") == tenant_id
+                ),
                 "owner_scope_forwarded": (
                     cx_document_client.calls[0]["tenant_id"] == tenant_id
                     and cx_document_client.calls[0]["owner_user_id"] == owner_user_id
@@ -547,6 +572,13 @@ def _execute_fetch_mode_postgres_smoke(
                     "cx_upload_calls": len(cx_upload_client.calls),
                     "cx_detail_calls": len(cx_document_client.calls),
                     "cx_retrieval_calls": len(cx_retrieval_client.calls),
+                },
+                "auth_observations": {
+                    "ae_facade_auth_mode": "browser_user",
+                    "ae_facade_transport": "authorization_header",
+                    "owner_scope_authority": "claim",
+                    "browser_token_redacted": True,
+                    "service_token_used_for_ae_facade": False,
                 },
                 "checks": checks,
             }
@@ -830,8 +862,18 @@ def _count_current_document_rows(engine: object, *, document_id: str | None) -> 
         )
 
 
-def _ae_service_headers(*, trace_id: str, request_id: str) -> dict[str, str]:
-    issued = issue_mock_service_token(service_id="nex-oa", audience=AE_SERVICE_ID)
+def _ae_browser_headers(
+    *,
+    trace_id: str,
+    request_id: str,
+    tenant_id: str,
+    owner_user_id: str,
+) -> dict[str, str]:
+    issued = issue_mock_user_token(
+        tenant_id=tenant_id,
+        user_id=owner_user_id,
+        audience=AE_SERVICE_ID,
+    )
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": request_id,

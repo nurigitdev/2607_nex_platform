@@ -239,8 +239,17 @@ def test_execute_fetch_mode_postgres_smoke_runs_facade_flow_with_fake_db(
     assert evidence["checks"]["upload_status_accepted"] is True
     assert evidence["checks"]["detail_status_ok"] is True
     assert evidence["checks"]["retrieval_status_ok"] is True
+    assert evidence["checks"]["browser_claim_owner_scope_enforced"] is True
+    assert evidence["checks"]["retrieval_actor_scope_claim_derived"] is True
     assert evidence["checks"]["current_document_persisted"] is True
     assert evidence["checks"]["retrieval_package_persisted"] is True
+    assert evidence["auth_observations"] == {
+        "ae_facade_auth_mode": "browser_user",
+        "ae_facade_transport": "authorization_header",
+        "owner_scope_authority": "claim",
+        "browser_token_redacted": True,
+        "service_token_used_for_ae_facade": False,
+    }
     assert evidence["db_observations"]["cx_retrieval_evidence_count"] == 1
     assert evidence["cleanup_observations"]["ae_marker_rows_after_delete"] == 0
     assert (
@@ -625,6 +634,7 @@ def test_fetch_mode_postgres_smoke_generated_pass_matches_contract(
         "retrieval_package_id",
         "db_observations",
         "adapter_observations",
+        "auth_observations",
         "cleanup_observations",
         "checks",
     }

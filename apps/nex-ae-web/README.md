@@ -218,5 +218,13 @@ Slice 0238 adds authenticated AE API fetch route-guard support:
 - Browser fetch-mode owner and actor scope is claim-derived; mismatched payload
   or stored scope is rejected by AE API before CX handoff.
 
+Slice 0239 upgrades the protected PostgreSQL smoke:
+
+- The smoke uses browser user auth for AE facade upload, document detail, and
+  retrieval calls, while AE-to-CX calls remain service authenticated.
+- PASS evidence records browser-user auth mode, claim owner authority, persisted
+  retrieval evidence, and cleanup without exposing tokens or protected env
+  values.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
