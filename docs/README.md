@@ -344,6 +344,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0238`](slices/0238_ae_api_authenticated_fetch_route_guard_wiring.md) | `S24-008` AE API authenticated fetch route-guard wiring. |
 | [`Slice 0239`](slices/0239_authenticated_fetch_mode_postgresql_smoke_evidence.md) | `S24-009` Authenticated fetch-mode PostgreSQL smoke evidence. |
 | [`Slice 0240`](slices/0240_ae_web_authenticated_fetch_mode_closure.md) | `S24-010` AE Web authenticated fetch-mode closure. |
+| [`Slice 0241`](slices/0241_oa_identity_auth_boundary_audit.md) | `S25-001` OA identity/auth boundary audit. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

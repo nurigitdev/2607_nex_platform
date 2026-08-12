@@ -5,6 +5,7 @@ from nex_runtime import (
     register_service_job_control_routes,
     register_service_log_retention_routes,
 )
+from nex_oa.auth_boundary import register_identity_auth_boundary_routes
 from nex_oa.subjects import (
     build_subject_registry_for_runtime,
     register_subject_registry_routes,
@@ -26,3 +27,4 @@ register_service_log_retention_routes(
     store=SERVICE_PERSISTENCE.service_log_store,
 )
 register_subject_registry_routes(app, registry=SUBJECT_REGISTRY)
+register_identity_auth_boundary_routes(app)

@@ -15,6 +15,7 @@ Current endpoints:
 - `POST /internal/v1/subject-registry/ensure`
 - `GET /internal/v1/subject-registry/tenants/{tenant_id}`
 - `GET /internal/v1/subject-registry/tenants/{tenant_id}/subjects/{subject_id}`
+- `GET /internal/v1/identity-auth-boundary`
 
 Slice 0193 minimum subject registry:
 
@@ -45,3 +46,14 @@ Slice 0232 browser user-session/token foundation:
 - `contracts/schemas/service/nex_oa/browser_session.v1.schema.json` freezes the
   browser-safe session snapshot without raw tokens, passwords, or service
   credentials.
+
+Slice 0241 identity/auth boundary audit:
+
+- `GET /internal/v1/identity-auth-boundary` exposes the service-token protected
+  OA/AE/CX authority split for identity and browser auth.
+- OA owns stable tenant/user refs, the subject registry, and future session
+  issuance/introspection. AE owns the browser session facade and route guard, but
+  does not own durable identity authority or password verification. CX consumes
+  owner scope and ACLs, but does not issue browser sessions.
+- The report includes only enum/boolean decision evidence and omits raw tokens,
+  cookies, passwords, provider endpoints, and database URLs.

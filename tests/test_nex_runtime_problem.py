@@ -51,3 +51,19 @@ def test_problem_response_generates_missing_trace_refs() -> None:
 
     assert len(payload["request_id"]) == 36
     assert len(payload["trace_id"]) == 32
+
+
+def test_problem_response_replaces_malformed_traceparent() -> None:
+    client = TestClient(build_problem_app())
+
+    payload = client.get(
+        "/problem",
+        headers={
+            "X-Request-ID": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+            "traceparent": "not-a-w3c-traceparent",
+        },
+    ).json()
+
+    assert payload["request_id"] == "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
+    assert len(payload["trace_id"]) == 32
+    assert payload["trace_id"] != "not-a-w3c-traceparent"
