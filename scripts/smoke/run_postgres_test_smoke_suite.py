@@ -89,6 +89,11 @@ from run_ae_document_detail_postgres_smoke import (  # noqa: E402
     SMOKE_PROFILE_ENV as AE_DOCUMENT_DETAIL_PROFILE_ENV,
     run_ae_document_detail_postgres_smoke,
 )
+from run_ae_credential_login_postgres_smoke import (  # noqa: E402
+    SMOKE_ENV as AE_CREDENTIAL_LOGIN_SMOKE_ENV,
+    SMOKE_PROFILE_ENV as AE_CREDENTIAL_LOGIN_PROFILE_ENV,
+    run_ae_credential_login_postgres_smoke,
+)
 from run_cx_retrieval_postgres_smoke import (  # noqa: E402
     SMOKE_ENV as CX_RETRIEVAL_SMOKE_ENV,
     SMOKE_PROFILE_ENV as CX_RETRIEVAL_PROFILE_ENV,
@@ -169,6 +174,7 @@ SUITE_STAGE_ORDER = (
     "cx_document_library",
     "cx_document_detail",
     "ae_document_detail",
+    "ae_credential_login",
     "ag_retrieval_package_postgres",
     "cx_processing_jobqueue",
     "cx_processing_events",
@@ -268,6 +274,8 @@ def run_postgres_test_smoke_suite(
         CX_DOCUMENT_DETAIL_PROFILE_ENV: profile,
         AE_DOCUMENT_DETAIL_SMOKE_ENV: "1",
         AE_DOCUMENT_DETAIL_PROFILE_ENV: profile,
+        AE_CREDENTIAL_LOGIN_SMOKE_ENV: "1",
+        AE_CREDENTIAL_LOGIN_PROFILE_ENV: profile,
         AG_RETRIEVAL_PACKAGE_POSTGRES_SMOKE_ENV: "1",
         AG_RETRIEVAL_PACKAGE_POSTGRES_PROFILE_ENV: profile,
         CX_PROCESSING_JOBQUEUE_SMOKE_ENV: "1",
@@ -324,6 +332,9 @@ def run_postgres_test_smoke_suite(
     )
     stages["ae_document_detail"] = _stage_from_child_smoke(
         run_ae_document_detail_postgres_smoke(environ=smoke_env)
+    )
+    stages["ae_credential_login"] = _stage_from_child_smoke(
+        run_ae_credential_login_postgres_smoke(environ=smoke_env)
     )
     stages["ag_retrieval_package_postgres"] = _stage_from_child_smoke(
         run_ag_retrieval_package_postgres_smoke(environ=smoke_env)

@@ -58,5 +58,5 @@ in the HttpOnly browser cookie.
 
 ## Next
 
-Slice 0257 should update the AE Web login surface, if needed, so the browser
-form sends the company employee id and password fields expected by OA mode.
+Slice 0257 should add dedicated PostgreSQL smoke evidence for the AE
+credential-login path.

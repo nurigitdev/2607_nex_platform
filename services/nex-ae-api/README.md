@@ -125,6 +125,11 @@ Upload handoff:
   delegates verification to OA, and stores only the returned opaque OA session
   id in the HttpOnly browser cookie. The default `mock` mode still rejects
   password fields and keeps the local regression login flow.
+- Slice 0257 adds `scripts/smoke/run_ae_credential_login_postgres_smoke.py`
+  as the dedicated protected smoke for that company credential-login path. Set
+  `NEX_AE_CREDENTIAL_LOGIN_POSTGRES_SMOKE=1` with the AE and OA test database
+  URLs to verify credential seed, AE login, OA user-login, opaque cookie,
+  revocation, PostgreSQL readback, cleanup, and redaction-safe evidence.
 
 Document library:
 
