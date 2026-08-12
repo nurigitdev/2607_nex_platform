@@ -13,6 +13,9 @@ import {
 import {
   buildSessionStateSummary
 } from "./sessionClient.js";
+import {
+  buildSessionBootstrapSummary
+} from "./sessionBootstrap.js";
 
 export const AE_WEB_RUNTIME_DIAGNOSTICS_SCHEMA_VERSION =
   "ae_web_runtime_diagnostics.v1";
@@ -28,12 +31,16 @@ export class RuntimeDiagnosticsError extends Error {
 export function buildRuntimeDiagnostics({
   runtimeConfig,
   sessionState = null,
+  sessionBootstrap = null,
   authBoundary = null,
   clientRegistry,
   operations = {}
 } = {}) {
   const runtime = buildRuntimeConfigSummary(runtimeConfig);
   const session = sessionState ? buildSessionStateSummary(sessionState) : null;
+  const bootstrap = sessionBootstrap
+    ? buildSessionBootstrapSummary(sessionBootstrap)
+    : null;
   const auth = authBoundary ? buildAuthBoundarySummary(authBoundary) : null;
   const registry = buildClientRegistrySummary(clientRegistry);
   const operationSummaries = summarizeOperations(operations);
@@ -42,11 +49,13 @@ export function buildRuntimeDiagnostics({
     runtime_diagnostics_schema_version: AE_WEB_RUNTIME_DIAGNOSTICS_SCHEMA_VERSION,
     client_mode: runtime.client_mode,
     session_state: session?.status || "unknown",
+    session_bootstrap_phase: bootstrap?.phase || "unknown",
     ae_base_url: runtime.ae_base_url,
     fetch_clients_enabled: Boolean(runtime.features.fetch_clients_enabled),
     fetch_mode_allowed: Boolean(auth?.fetch_mode_allowed),
     feature_flags: runtime.features,
     session,
+    session_bootstrap: bootstrap,
     auth_boundary: auth,
     registry,
     operations: operationSummaries,
@@ -87,6 +96,7 @@ export function buildRuntimeDiagnosticsSummary(diagnostics) {
       diagnostics.runtime_diagnostics_schema_version,
     client_mode: diagnostics.client_mode,
     session_state: diagnostics.session_state,
+    session_bootstrap_phase: diagnostics.session_bootstrap_phase,
     ae_base_url: diagnostics.ae_base_url,
     fetch_clients_enabled: diagnostics.fetch_clients_enabled,
     fetch_mode_allowed: diagnostics.fetch_mode_allowed,

@@ -1,7 +1,11 @@
 import {
-  buildAuthenticatedRuntimeSummary,
-  createAuthenticatedAeWebRuntime
+  buildAuthenticatedRuntimeSummary
 } from "./authenticatedRuntime.js";
+import {
+  bootstrapAuthenticatedSessionRuntime,
+  buildSessionBootstrapSummary,
+  composeAuthenticatedSessionRuntime
+} from "./sessionBootstrap.js";
 import {
   buildClientRegistrySummary
 } from "./clientRegistry.js";
@@ -68,6 +72,7 @@ const workspaceState = {
   retrievalPackageId: "cx-ret-local",
   artifactHandoffId: "handoff-local",
   selectedDocumentId: "doc-001",
+  sessionBootstrap: null,
   authenticatedRuntime: null,
   runtimeConfig: null,
   sessionState: null,
@@ -188,18 +193,11 @@ const workspaceState = {
 };
 
 workspaceState.messages[1].artifactRefs = [workspaceState.artifactRef];
-workspaceState.authenticatedRuntime = createAuthenticatedAeWebRuntime({
+workspaceState.sessionBootstrap = composeAuthenticatedSessionRuntime({
   runtimeConfig: loadRuntimeConfig(),
   documents: workspaceState.documents
 });
-workspaceState.runtimeConfig = workspaceState.authenticatedRuntime.runtimeConfig;
-workspaceState.sessionState = workspaceState.authenticatedRuntime.sessionState;
-workspaceState.sessionClient = workspaceState.authenticatedRuntime.sessionClient;
-workspaceState.authBoundary = workspaceState.authenticatedRuntime.authBoundary;
-workspaceState.clientRegistry = workspaceState.authenticatedRuntime.clientRegistry;
-workspaceState.documentDetailClient = workspaceState.clientRegistry.documentDetailClient;
-workspaceState.uploadClient = workspaceState.clientRegistry.uploadClient;
-workspaceState.retrievalClient = workspaceState.clientRegistry.retrievalClient;
+applySessionBootstrap(workspaceState.sessionBootstrap);
 workspaceState.documentScope = buildCurrentDocumentScope();
 workspaceState.operations = initializeOperationStates();
 
@@ -282,6 +280,7 @@ documentList.addEventListener("click", event => {
 
 renderWorkspace();
 renderServiceStatuses();
+void refreshBrowserSessionRuntime();
 
 function renderWorkspace() {
   workspaceId.textContent = workspaceState.workspaceId;
@@ -341,6 +340,32 @@ async function readJson(url) {
     throw new Error(`HTTP ${response.status}`);
   }
   return response.json();
+}
+
+function applySessionBootstrap(sessionBootstrap) {
+  workspaceState.sessionBootstrap = sessionBootstrap;
+  workspaceState.authenticatedRuntime = sessionBootstrap.runtime;
+  workspaceState.runtimeConfig = workspaceState.authenticatedRuntime.runtimeConfig;
+  workspaceState.sessionState = workspaceState.authenticatedRuntime.sessionState;
+  workspaceState.sessionClient = workspaceState.authenticatedRuntime.sessionClient;
+  workspaceState.authBoundary = workspaceState.authenticatedRuntime.authBoundary;
+  workspaceState.clientRegistry = workspaceState.authenticatedRuntime.clientRegistry;
+  workspaceState.documentDetailClient = workspaceState.clientRegistry.documentDetailClient;
+  workspaceState.uploadClient = workspaceState.clientRegistry.uploadClient;
+  workspaceState.retrievalClient = workspaceState.clientRegistry.retrievalClient;
+}
+
+async function refreshBrowserSessionRuntime() {
+  const nextBootstrap = await bootstrapAuthenticatedSessionRuntime({
+    runtimeConfig: workspaceState.runtimeConfig,
+    sessionClient: workspaceState.sessionClient,
+    documents: workspaceState.documents
+  });
+  applySessionBootstrap(nextBootstrap);
+  workspaceState.operations = initializeOperationStates();
+  renderRuntimeDiagnostics();
+  renderUploadSurface();
+  renderRetrievalScope();
 }
 
 function buildCurrentDocumentScope() {
@@ -1012,6 +1037,7 @@ function renderRuntimeDiagnostics() {
   const diagnostics = buildRuntimeDiagnostics({
     runtimeConfig: workspaceState.runtimeConfig,
     sessionState: workspaceState.sessionState,
+    sessionBootstrap: workspaceState.sessionBootstrap,
     authBoundary: workspaceState.authBoundary,
     clientRegistry: workspaceState.clientRegistry,
     operations: workspaceState.operations
@@ -1041,7 +1067,11 @@ function renderRuntimeDiagnostics() {
     </div>
     <div>
       <dt>session</dt>
-      <dd>${escapeHtml(summary.session_state)}</dd>
+      <dd>${escapeHtml(summary.session_state)} · ${escapeHtml(summary.session_bootstrap_phase)}</dd>
+    </div>
+    <div>
+      <dt>bootstrap</dt>
+      <dd>${escapeHtml(buildSessionBootstrapSummary(workspaceState.sessionBootstrap).active_client_mode)}</dd>
     </div>
     <div>
       <dt>operations</dt>

@@ -197,7 +197,8 @@ export function createFetchSessionClient({
           method: "GET",
           headers: { Accept: "application/json" },
           credentials: "same-origin"
-        }
+        },
+        allowAnonymous: true
       });
     },
     async login(loginHint = {}) {

@@ -5,8 +5,8 @@ import {
   createAeWebClients
 } from "../src/clientRegistry.js";
 import {
-  createAuthenticatedAeWebRuntime
-} from "../src/authenticatedRuntime.js";
+  composeAuthenticatedSessionRuntime
+} from "../src/sessionBootstrap.js";
 import {
   createOperationState,
   markOperationFailed,
@@ -67,7 +67,7 @@ function operations() {
 
 describe("AE Web runtime diagnostics", () => {
   it("summarizes mock runtime, registry, and operations safely", () => {
-    const runtime = createAuthenticatedAeWebRuntime({
+    const bootstrap = composeAuthenticatedSessionRuntime({
       runtimeConfig: runtimeConfig(),
       documents: [
         {
@@ -80,9 +80,11 @@ describe("AE Web runtime diagnostics", () => {
         }
       ]
     });
+    const runtime = bootstrap.runtime;
     const diagnostics = buildRuntimeDiagnostics({
       runtimeConfig: runtime.runtimeConfig,
       sessionState: runtime.sessionState,
+      sessionBootstrap: bootstrap,
       authBoundary: runtime.authBoundary,
       clientRegistry: runtime.clientRegistry,
       operations: operations()
@@ -95,6 +97,7 @@ describe("AE Web runtime diagnostics", () => {
     );
     assert.equal(diagnostics.client_mode, "mock");
     assert.equal(diagnostics.session_state, "anonymous");
+    assert.equal(diagnostics.session_bootstrap_phase, "ready");
     assert.equal(diagnostics.fetch_clients_enabled, false);
     assert.equal(diagnostics.fetch_mode_allowed, false);
     assert.equal(diagnostics.operation_count, 2);
@@ -102,8 +105,10 @@ describe("AE Web runtime diagnostics", () => {
     assert.equal(diagnostics.retryable_operation_count, 1);
     assert.equal(diagnostics.registry.clients.upload, "mock");
     assert.equal(diagnostics.auth_boundary.owner_scope_source, "mock-local");
+    assert.equal(diagnostics.session_bootstrap.active_client_mode, "mock");
     assert.equal(summary.operation_count, 2);
     assert.equal(summary.session_state, "anonymous");
+    assert.equal(summary.session_bootstrap_phase, "ready");
     assert.equal(summary.metadata.liveNetworkUsed, false);
     assert.doesNotMatch(JSON.stringify(diagnostics), /service_token|api_key|database_url|provider_url|raw_prompt|source_text|\/data\/nex-platform/);
   });

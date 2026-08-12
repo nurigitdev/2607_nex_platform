@@ -340,6 +340,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0234`](slices/0234_ae_web_session_client_login_state_model.md) | `S24-004` AE Web session client and login state model. |
 | [`Slice 0235`](slices/0235_ae_web_authenticated_runtime_composition_gate.md) | `S24-005` AE Web authenticated runtime composition gate. |
 | [`Slice 0236`](slices/0236_ae_api_auth_session_facade_routes.md) | `S24-006` AE API auth session facade routes. |
+| [`Slice 0237`](slices/0237_ae_web_session_bootstrap_login_state_wiring.md) | `S24-007` AE Web session bootstrap and login-state wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

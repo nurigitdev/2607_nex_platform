@@ -129,7 +129,7 @@ def test_ae_web_document_surface_tracks_detail_facade_boundary() -> None:
         "selectedDocumentId",
         "renderDocumentDetail",
         "documentDetailRoute",
-        "createAuthenticatedAeWebRuntime",
+        "composeAuthenticatedSessionRuntime",
         "clientRegistry",
         "ae_document_detail_projection.v1",
         "ownerScope",
@@ -234,6 +234,7 @@ def test_ae_web_document_scope_propagates_to_retrieval_surface() -> None:
 def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     javascript = read_web_file("src/main.js")
     authenticated_runtime = read_web_file("src/authenticatedRuntime.js")
+    session_bootstrap = read_web_file("src/sessionBootstrap.js")
     client_registry = read_web_file("src/clientRegistry.js")
     runtime_config = read_web_file("src/runtimeConfig.js")
     fetch_harness = read_web_file("src/fetchModeHarness.js")
@@ -244,12 +245,15 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     session_client = read_web_file("src/sessionClient.js")
 
     for expected in [
-        "createAuthenticatedAeWebRuntime",
         "buildAuthenticatedRuntimeSummary",
+        "bootstrapAuthenticatedSessionRuntime",
+        "buildSessionBootstrapSummary",
+        "composeAuthenticatedSessionRuntime",
         "buildClientRegistrySummary",
         "loadRuntimeConfig",
         "buildRuntimeConfigSummary",
         "authenticatedRuntime",
+        "sessionBootstrap",
         "sessionState",
         "sessionClient",
         "authBoundary",
@@ -288,6 +292,23 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         "claimAuthoritativeWhenAuthenticated: true",
     ]:
         assert expected in authenticated_runtime
+
+    for expected in [
+        "ae_web_session_bootstrap.v1",
+        "AE_WEB_SESSION_BOOTSTRAP_PHASES",
+        "bootstrapAuthenticatedSessionRuntime",
+        "composeAuthenticatedSessionRuntime",
+        "buildSessionBootstrapSummary",
+        "SESSION_BOOTSTRAP_SUMMARY_INVALID",
+        "SESSION_BOOTSTRAP_PHASE_UNSUPPORTED",
+        "blockedFetchFallbackClientMode",
+        "sessionReadFailed: false",
+        "rawTokenStored: false",
+        "serviceTokenStored: false",
+        "passwordStored: false",
+        "claimAuthoritativeWhenAuthenticated: true",
+    ]:
+        assert expected in session_bootstrap
 
     for expected in [
         "ae_web_client_registry.v1",
@@ -387,9 +408,12 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         "storageLocationIncluded: false",
         "liveNetworkUsed: false",
         "session_state",
+        "session_bootstrap",
+        "session_bootstrap_phase",
         "auth_boundary",
         "fetch_mode_allowed",
         "buildSessionStateSummary",
+        "buildSessionBootstrapSummary",
         "buildAuthBoundarySummary",
     ]:
         assert expected in runtime_diagnostics
@@ -437,6 +461,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     ]:
         assert forbidden not in javascript
         assert forbidden not in authenticated_runtime
+        assert forbidden not in session_bootstrap
         assert forbidden not in client_registry
         assert forbidden not in runtime_config
         assert forbidden not in fetch_harness

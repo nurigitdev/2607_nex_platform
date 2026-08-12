@@ -155,6 +155,14 @@ describe("AE Web session client", () => {
   });
 
   it("maps fetch errors and rejects unsafe login hints", async () => {
+    assert.equal(
+      (
+        await createFetchSessionClient({
+          fetchImpl: async () => ({ ok: false, status: 401 })
+        }).getCurrentSession()
+      ).status,
+      "anonymous"
+    );
     await assert.rejects(
       () => createFetchSessionClient({ fetchImpl: null }).getCurrentSession(),
       error => error instanceof SessionClientError && error.status === "FETCH_UNAVAILABLE"

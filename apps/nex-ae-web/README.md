@@ -201,5 +201,15 @@ Slice 0235 adds the authenticated runtime composition gate:
 - Runtime diagnostics now expose session state, auth boundary, and fetch-mode
   allowed status without leaking browser credentials or server-only endpoints.
 
+Slice 0237 adds session bootstrap and login-state wiring:
+
+- `src/sessionBootstrap.js` reads the current browser session through the
+  session client and then recomposes the authenticated runtime.
+- Fetch mode with no authenticated session falls back to mock browser clients
+  while preserving blocked reasons in runtime diagnostics.
+- Runtime diagnostics now include session bootstrap phase and active client
+  mode, so anonymous, authenticated, blocked, and failed session reads are
+  visible without exposing credentials.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.
