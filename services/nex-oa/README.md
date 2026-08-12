@@ -24,6 +24,8 @@ Current endpoints:
 - `GET /internal/v1/auth/user-sessions/{session_id}`
 - `GET /internal/v1/auth/session-credential-delivery-boundary`
 - `GET /internal/v1/auth/user-bootstrap-login-boundary`
+- `POST /internal/v1/auth/local-credentials/ensure`
+- `GET /internal/v1/auth/local-credentials/tenants/{tenant_id}/employee-ids/{employee_id}`
 
 Slice 0193 minimum subject registry:
 
@@ -137,3 +139,15 @@ Slice 0251 OA user bootstrap/login boundary:
 - Employee id is treated as an OA credential lookup alias; downstream AE/CX/AG
   behavior should depend on stable `oa.user` subject refs, not raw password-era
   credential fields.
+
+Slice 0252 OA local credential registry:
+
+- `oa_local_credentials` stores tenant-scoped employee id aliases, stable
+  `oa.user` subject refs, credential status, password hashes, and safe metadata.
+  It never stores raw passwords.
+- `POST /internal/v1/auth/local-credentials/ensure` is a service-token protected
+  operator seed path. Responses omit password hashes and internal hash column
+  names.
+- The local MVP hash implementation is `pbkdf2_sha256.v1` using the Python
+  standard library. `argon2id` remains the recommended production target once
+  the dependency is introduced.

@@ -239,6 +239,28 @@ def test_oa_user_session_foundation_tracks_browser_safe_sessions() -> None:
     assert "password" not in compact
 
 
+def test_oa_local_credential_foundation_tracks_employee_login_hashes() -> None:
+    compact = normalized(
+        read_migration_named("nex-oa", "0252_oa_local_credential_foundation.sql")
+    )
+
+    assert "create table if not exists oa_local_credentials" in compact
+    assert "credential_schema_version text not null default 'oa_local_credential.v1'" in compact
+    assert "employee_id text not null" in compact
+    assert "normalized_employee_id text not null" in compact
+    assert "status text not null default 'active'" in compact
+    for status in ("active", "password_reset_required", "locked", "disabled"):
+        assert f"'{status}'" in compact
+    assert "password_hash text not null" in compact
+    assert "password_hash_algorithm text not null default 'pbkdf2_sha256.v1'" in compact
+    assert "unique (tenant_id, normalized_employee_id)" in compact
+    assert "references oa_subjects (tenant_id, subject_ref_type, subject_id)" in compact
+    assert "ix_oa_local_credentials_subject" in compact
+    assert "ix_oa_local_credentials_tenant_status" in compact
+    assert "0252_oa_local_credential_foundation" in compact
+    assert "nuri1004" not in compact
+
+
 def test_cx_schema_scopes_duplicate_uploads_to_active_owner_documents() -> None:
     compact = normalized(read_migration("nex-cx"))
     storage_policy = normalized(
