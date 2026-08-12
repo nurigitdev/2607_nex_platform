@@ -13,6 +13,7 @@ from nex_ae_api.analytics import (
     register_prompt_analytics_routes,
 )
 from nex_ae_api.artifacts import register_artifact_handoff_routes
+from nex_ae_api.auth_sessions import register_auth_session_routes
 from nex_ae_api.chat import register_chat_routes
 from nex_ae_api.documents import register_document_library_routes
 from nex_ae_api.prompts import DEFAULT_AE_PROMPT_STORE
@@ -35,6 +36,7 @@ register_service_log_retention_routes(
     service_id=SERVICE_SPEC.service_id,
     store=SERVICE_PERSISTENCE.service_log_store,
 )
+register_auth_session_routes(app)
 register_workspace_routes(app)
 register_upload_routes(app)
 register_document_library_routes(app)

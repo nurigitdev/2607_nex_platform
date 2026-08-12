@@ -10,6 +10,9 @@ Current endpoints:
 - `GET /ready`
 - `GET /version`
 - `GET /internal/v1/auth/service-claim`
+- `GET /api/v1/auth/session`
+- `POST /api/v1/auth/session/login`
+- `POST /api/v1/auth/session/logout`
 - `POST /api/v1/workspaces`
 - `GET /api/v1/workspaces/{workspace_id}`
 - `GET /api/v1/workspaces/{workspace_id}/activity`
@@ -78,6 +81,12 @@ Upload handoff:
   guard foundation. Browser user tokens are validated separately from
   service-to-service tokens, owner scope is claim-authoritative, and mismatched
   browser payload owner fields are rejected before downstream handoff wiring.
+- Slice 0236 adds AE API auth session facade routes for AE Web. The login route
+  issues a mock user token only into an HttpOnly same-site cookie and returns a
+  safe `oa_browser_session.v1` snapshot. Current-session and logout routes
+  validate either the Authorization header or that cookie and never return raw
+  tokens, passwords, service credentials, provider endpoints, database URLs, or
+  storage paths.
 
 Document library:
 

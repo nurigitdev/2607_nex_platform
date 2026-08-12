@@ -4,6 +4,7 @@ info:
   version: 0.0.0-slice0003
 tags:
   - name: Platform
+  - name: Auth
   - name: Workspace
   - name: Uploads
   - name: Documents
@@ -51,6 +52,62 @@ paths:
           description: Service claim is valid for this service.
         "401":
           description: Service claim is missing or invalid.
+  /api/v1/auth/session:
+    get:
+      operationId: getAeBrowserSession
+      tags:
+        - Auth
+      responses:
+        "200":
+          description: Safe OA browser session snapshot for the authenticated user.
+        "401":
+          description: Browser user session is missing, expired, or invalid.
+  /api/v1/auth/session/login:
+    post:
+      operationId: loginAeBrowserSession
+      tags:
+        - Auth
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                tenant_id:
+                  type: string
+                user_id:
+                  type: string
+                login_hint:
+                  type: string
+                scopes:
+                  type: array
+                  items:
+                    type: string
+                roles:
+                  type: array
+                  items:
+                    type: string
+                ttl_seconds:
+                  type: integer
+                  minimum: 1
+                  maximum: 86400
+      responses:
+        "200":
+          description: Safe OA browser session snapshot and HttpOnly session cookie.
+        "400":
+          description: Login request is invalid or includes credential material.
+  /api/v1/auth/session/logout:
+    post:
+      operationId: logoutAeBrowserSession
+      tags:
+        - Auth
+      responses:
+        "200":
+          description: Revoked safe OA browser session snapshot and cleared session cookie.
+        "401":
+          description: Browser user session is already missing, expired, or invalid.
   /api/v1/workspaces:
     post:
       operationId: createAeWorkspace
