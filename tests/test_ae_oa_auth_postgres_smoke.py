@@ -130,6 +130,31 @@ def sqlite_oa_auth_smoke_tables(*, ae_database_url: str, oa_database_url: str) -
         connection.execute(
             text(
                 """
+                CREATE TABLE oa_local_credentials (
+                    credential_id TEXT PRIMARY KEY,
+                    credential_schema_version TEXT NOT NULL DEFAULT 'oa_local_credential.v1',
+                    tenant_id TEXT NOT NULL,
+                    subject_ref_type TEXT NOT NULL DEFAULT 'oa.user',
+                    subject_id TEXT NOT NULL,
+                    employee_id TEXT NOT NULL,
+                    normalized_employee_id TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'ACTIVE',
+                    password_hash TEXT NOT NULL,
+                    password_hash_algorithm TEXT NOT NULL DEFAULT 'pbkdf2_sha256.v1',
+                    failed_attempt_count INTEGER NOT NULL DEFAULT 0,
+                    locked_at TEXT,
+                    password_changed_at TEXT NOT NULL,
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE (tenant_id, normalized_employee_id)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
                 CREATE TABLE oa_user_sessions (
                     session_id TEXT PRIMARY KEY,
                     session_schema_version TEXT NOT NULL DEFAULT 'oa_user_session.v1',
@@ -210,6 +235,7 @@ def test_ae_oa_auth_postgres_smoke_passes_with_fake_db_execution(
             "db_observations": {
                 "ae_marker_rows": 1,
                 "oa_membership_count": 1,
+                "oa_credential_count": 1,
                 "oa_session_count": 1,
                 "oa_session_status": "REVOKED",
                 "oa_session_revoked_at_present": True,
@@ -268,7 +294,9 @@ def test_execute_ae_oa_auth_postgres_smoke_runs_with_sqlite_fixture(tmp_path) ->
     assert evidence["checks"]["oa_runtime_mode"] is True
     assert evidence["checks"]["ae_marker_write_readback"] is True
     assert evidence["checks"]["membership_status_ok"] is True
+    assert evidence["checks"]["credential_status_ok"] is True
     assert evidence["checks"]["login_status_ok"] is True
+    assert evidence["checks"]["login_password_verified"] is True
     assert evidence["checks"]["current_status_ok"] is True
     assert evidence["checks"]["protected_status_ok"] is True
     assert evidence["checks"]["logout_status_ok"] is True
@@ -277,11 +305,13 @@ def test_execute_ae_oa_auth_postgres_smoke_runs_with_sqlite_fixture(tmp_path) ->
     assert evidence["checks"]["cookie_removed_after_logout"] is True
     assert evidence["checks"]["protected_owner_scope_claim_derived"] is True
     assert evidence["checks"]["oa_post_logout_inactive"] is True
+    assert evidence["checks"]["credential_persisted"] is True
     assert evidence["checks"]["db_session_revoked"] is True
     assert evidence["checks"]["raw_payload_absent"] is True
     assert evidence["db_observations"] == {
         "ae_marker_rows": 1,
         "oa_membership_count": 1,
+        "oa_credential_count": 1,
         "oa_session_count": 1,
         "oa_session_status": "REVOKED",
         "oa_session_revoked_at_present": True,
@@ -289,7 +319,7 @@ def test_execute_ae_oa_auth_postgres_smoke_runs_with_sqlite_fixture(tmp_path) ->
     assert evidence["auth_observations"]["ae_auth_session_mode"] == "oa"
     assert evidence["auth_observations"]["browser_cookie_material_in_evidence"] is False
     assert evidence["adapter_observations"]["oa_client_operations"] == [
-        "issue_session",
+        "login_with_credentials",
         "introspect_session",
         "introspect_session",
         "revoke_session",
@@ -298,6 +328,7 @@ def test_execute_ae_oa_auth_postgres_smoke_runs_with_sqlite_fixture(tmp_path) ->
     assert evidence["cleanup_observations"]["ae_marker_rows_after_delete"] == 0
     assert evidence["cleanup_observations"]["oa_rows"] == {
         "deleted_sessions": 1,
+        "deleted_credentials": 1,
         "deleted_memberships": 1,
         "deleted_subjects": 1,
         "deleted_tenants": 1,

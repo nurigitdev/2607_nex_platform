@@ -16,7 +16,9 @@ from nex_ae_api.auth_sessions import (
     SESSION_COOKIE_NAME,
     BrowserSessionFacadeError,
     build_browser_session_snapshot,
+    normalize_credential_login_request,
     normalize_auth_session_mode,
+    normalize_login_request_for_mode,
     normalize_login_request,
     register_auth_session_routes,
     stable_session_id,
@@ -71,6 +73,37 @@ class FakeOaSessionClient:
     def __init__(self) -> None:
         self.sessions: dict[str, dict[str, object]] = {}
         self.calls: list[tuple[str, str, str, str]] = []
+
+    def login_with_credentials(
+        self,
+        login_request: dict[str, object],
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, object]:
+        employee_id = str(login_request["employee_id"])
+        subject_id = {
+            "EMP-001": "user-oa",
+            "EMP-002": "user-login-identifier",
+            "EMP-003": "user-login-hint",
+        }.get(employee_id, f"user-{employee_id.lower()}")
+        session = oa_browser_session(
+            session_id=f"oa-session-{employee_id}",
+            tenant_id=str(login_request["tenant_id"]),
+            user_id=subject_id,
+            scopes=list(login_request["scopes"]),
+            roles=["employee"],
+        )
+        self.sessions[str(session["session_id"])] = session
+        self.calls.append(("login", str(session["session_id"]), request_id, trace_id))
+        return {
+            "login_response_schema_version": "oa_user_login_response.v1",
+            "session": session,
+            "metadata": {
+                "password_verified": True,
+                "raw_password_included": False,
+            },
+        }
 
     def issue_session(
         self,
@@ -313,7 +346,8 @@ def test_oa_backed_auth_session_login_current_logout_uses_opaque_cookie() -> Non
         headers=headers,
         json={
             "tenant_id": "tenant-oa",
-            "user_id": "user-oa",
+            "employee_id": "EMP-001",
+            "password": "Nuri1004!",
             "scopes": [DEFAULT_USER_SCOPE, "documents:upload"],
             "ttl_seconds": 1800,
         },
@@ -324,21 +358,22 @@ def test_oa_backed_auth_session_login_current_logout_uses_opaque_cookie() -> Non
 
     assert login.status_code == 200
     payload = login.json()
-    assert payload["session_id"] == "oa-session-user-oa"
+    assert payload["session_id"] == "oa-session-EMP-001"
     assert payload["tenant_ref"] == {"type": "oa.tenant", "id": "tenant-oa"}
     assert payload["subject_ref"] == {"type": "oa.user", "id": "user-oa"}
     assert payload["metadata"]["raw_token_included"] is False
+    assert "Nuri1004!" not in login.text
     set_cookie = login.headers["set-cookie"]
-    assert f"{SESSION_COOKIE_NAME}=oa-session-user-oa" in set_cookie
+    assert f"{SESSION_COOKIE_NAME}=oa-session-EMP-001" in set_cookie
     assert "nex-mock-user." not in set_cookie
     assert current.status_code == 200
-    assert current.json()["session_id"] == "oa-session-user-oa"
+    assert current.json()["session_id"] == "oa-session-EMP-001"
     assert logout.status_code == 200
     assert logout.json()["status"] == "REVOKED"
     assert "Max-Age=0" in logout.headers["set-cookie"]
     assert after_logout.status_code == 401
     assert [call[0] for call in fake_oa.calls] == [
-        "issue",
+        "login",
         "introspect",
         "revoke",
     ]
@@ -430,35 +465,44 @@ def test_oa_browser_session_shape_validation_rejects_bad_snapshots() -> None:
 
 def test_oa_backed_login_and_logout_map_oa_client_errors() -> None:
     class FailingOaSessionClient(FakeOaSessionClient):
-        def issue_session(self, *args, **kwargs):
+        def login_with_credentials(self, *args, **kwargs):
             raise auth_sessions.OaUserSessionClientError(
                 status_code=503,
-                error_code="oa.session_client_unavailable",
+                error_code="oa.user_login_client_unavailable",
                 detail="OA down",
                 retryable=True,
             )
 
-    class BadIssueOaSessionClient(FakeOaSessionClient):
-        def issue_session(self, *args, **kwargs):
+    class BadLoginOaSessionClient(FakeOaSessionClient):
+        def login_with_credentials(self, *args, **kwargs):
             return {"session": None}
 
     failing = app_client_oa(FailingOaSessionClient()).post(
         "/api/v1/auth/session/login",
-        json={"tenant_id": "tenant-oa", "user_id": "user-oa"},
+        json={
+            "tenant_id": "tenant-oa",
+            "employee_id": "EMP-001",
+            "password": "Nuri1004!",
+        },
     )
-    bad_issue = app_client_oa(BadIssueOaSessionClient()).post(
+    bad_login = app_client_oa(BadLoginOaSessionClient()).post(
         "/api/v1/auth/session/login",
-        json={"tenant_id": "tenant-oa", "user_id": "user-oa"},
+        json={
+            "tenant_id": "tenant-oa",
+            "employee_id": "EMP-001",
+            "password": "Nuri1004!",
+        },
     )
     missing_logout_client = app_client_oa(FakeOaSessionClient())
     missing_logout_client.cookies.set(SESSION_COOKIE_NAME, "missing")
     missing_logout = missing_logout_client.post("/api/v1/auth/session/logout")
 
     assert failing.status_code == 503
-    assert failing.json()["error_code"] == "oa.session_client_unavailable"
+    assert failing.json()["error_code"] == "oa.user_login_client_unavailable"
     assert failing.json()["retryable"] is True
-    assert bad_issue.status_code == 502
-    assert bad_issue.json()["error_code"] == "ae.oa_session_issue_invalid"
+    assert "Nuri1004!" not in failing.text
+    assert bad_login.status_code == 502
+    assert bad_login.json()["error_code"] == "ae.oa_user_login_invalid"
     assert missing_logout.status_code == 401
     assert missing_logout.json()["error_code"] == "ae.oa_session_inactive"
     assert "Max-Age=0" in missing_logout.headers["set-cookie"]
@@ -486,6 +530,84 @@ def test_login_request_validation_rejects_unsafe_or_malformed_payloads() -> None
     ]:
         with pytest.raises(BrowserSessionFacadeError) as exc:
             normalize_login_request(payload)
+        assert exc.value.error_code == error_code
+
+
+def test_credential_login_request_validation_is_oa_mode_only() -> None:
+    credential_payload = {
+        "tenant_id": "tenant-oa",
+        "employee_id": "EMP-001",
+        "password": "Nuri1004!",
+        "requested_scopes": [DEFAULT_USER_SCOPE],
+        "ttl_seconds": 1800,
+    }
+
+    assert normalize_login_request_for_mode(
+        credential_payload,
+        session_mode=AUTH_SESSION_MODE_OA,
+    ) == {
+        "tenant_id": "tenant-oa",
+        "employee_id": "EMP-001",
+        "password": "Nuri1004!",
+        "requested_scopes": (DEFAULT_USER_SCOPE,),
+        "scopes": (DEFAULT_USER_SCOPE,),
+        "ttl_seconds": 1800,
+    }
+    assert normalize_credential_login_request(
+        {
+            "tenant_id": "tenant-oa",
+            "login_identifier": "EMP-002",
+            "password": "Nuri1004!",
+        }
+    )["employee_id"] == "EMP-002"
+    assert normalize_credential_login_request(
+        {
+            "tenant_id": "tenant-oa",
+            "login_hint": "EMP-003",
+            "password": "Nuri1004!",
+            "scopes": [DEFAULT_USER_SCOPE, "documents:upload"],
+        }
+    )["requested_scopes"] == (DEFAULT_USER_SCOPE, "documents:upload")
+
+    with pytest.raises(BrowserSessionFacadeError) as mock_mode_secret:
+        normalize_login_request_for_mode({"password": "Nuri1004!"}, session_mode="mock")
+    assert mock_mode_secret.value.error_code == "ae.auth_session_login_sensitive_field"
+    with pytest.raises(BrowserSessionFacadeError) as mock_mode_employee:
+        normalize_login_request_for_mode(credential_payload, session_mode="mock")
+    assert mock_mode_employee.value.error_code == "ae.auth_session_login_field_unsupported"
+
+    for payload, error_code in [
+        (
+            {"tenant_id": "tenant-oa", "password": "Nuri1004!"},
+            "ae.auth_session_login_employee_id_missing",
+        ),
+        (
+            {"tenant_id": "tenant-oa", "employee_id": "EMP-001"},
+            "ae.auth_session_login_password_missing",
+        ),
+        (
+            {
+                **credential_payload,
+                "requested_scopes": [DEFAULT_USER_SCOPE],
+                "scopes": [DEFAULT_USER_SCOPE],
+            },
+            "ae.auth_session_login_scope_conflict",
+        ),
+        (
+            {**credential_payload, "roles": ["employee"]},
+            "ae.auth_session_login_field_unsupported",
+        ),
+        (
+            {**credential_payload, "password_hash": "secret"},
+            "ae.auth_session_login_sensitive_field",
+        ),
+        (
+            {**credential_payload, "employee_id": 3},
+            "ae.auth_session_login_text_invalid",
+        ),
+    ]:
+        with pytest.raises(BrowserSessionFacadeError) as exc:
+            normalize_credential_login_request(payload)
         assert exc.value.error_code == error_code
 
 

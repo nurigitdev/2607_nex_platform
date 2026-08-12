@@ -73,22 +73,44 @@ paths:
           application/json:
             schema:
               type: object
+              description: >
+                In OA mode, AE accepts company employee credential input and
+                delegates verification to OA. In mock mode, user_id/login_hint
+                remains available for local regression without password input.
               additionalProperties: false
               properties:
                 tenant_id:
                   type: string
+                employee_id:
+                  type: string
+                  description: Company employee id used for OA credential login.
+                login_identifier:
+                  type: string
+                  description: Alias for employee_id in OA credential-login mode.
+                password:
+                  type: string
+                  format: password
+                  description: Submitted only from AE to OA and never returned.
                 user_id:
                   type: string
+                  description: Mock-mode local user id.
                 login_hint:
                   type: string
+                  description: Mock-mode user alias or OA-mode employee id alias.
                 scopes:
                   type: array
                   items:
                     type: string
+                requested_scopes:
+                  type: array
+                  items:
+                    type: string
+                  description: Alias for scopes in OA credential-login mode.
                 roles:
                   type: array
                   items:
                     type: string
+                  description: Mock-mode local roles; OA mode derives roles from OA.
                 ttl_seconds:
                   type: integer
                   minimum: 1
@@ -97,7 +119,7 @@ paths:
         "200":
           description: Safe OA browser session snapshot and HttpOnly session cookie.
         "400":
-          description: Login request is invalid or includes credential material.
+          description: Login request is invalid or includes unsupported private fields.
   /api/v1/auth/session/logout:
     post:
       operationId: logoutAeBrowserSession

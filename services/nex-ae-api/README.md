@@ -119,6 +119,12 @@ Upload handoff:
   propagates trace/request ids and the AE service token, and keeps submitted
   passwords out of returned errors/evidence. The public AE login facade is
   still switched in the next slice.
+- Slice 0256 wires that credential-login adapter into
+  `POST /api/v1/auth/session/login` when `NEX_AE_AUTH_SESSION_MODE=oa`.
+  OA mode now accepts company `employee_id`/`login_identifier` plus `password`,
+  delegates verification to OA, and stores only the returned opaque OA session
+  id in the HttpOnly browser cookie. The default `mock` mode still rejects
+  password fields and keeps the local regression login flow.
 
 Document library:
 

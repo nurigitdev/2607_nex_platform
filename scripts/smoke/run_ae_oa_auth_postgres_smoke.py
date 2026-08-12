@@ -37,8 +37,13 @@ from nex_ae_api.auth_sessions import (  # noqa: E402
 from nex_ae_api.oa_session_client import (  # noqa: E402
     OaUserSessionClientError,
     oa_session_issue_payload,
+    oa_user_login_payload,
 )
 from nex_ae_api.route_auth import authorize_ae_facade_route_request  # noqa: E402
+from nex_oa.credentials import (  # noqa: E402
+    build_credential_registry_for_runtime,
+    register_local_credential_routes,
+)
 from nex_oa.memberships import (  # noqa: E402
     build_tenant_membership_registry_for_runtime,
     register_identity_membership_routes,
@@ -51,6 +56,7 @@ from nex_oa.subjects import (  # noqa: E402
     build_subject_registry_for_runtime,
     register_subject_registry_routes,
 )
+from nex_oa.user_login import OaUserLoginService, register_user_login_routes  # noqa: E402
 from nex_runtime import (  # noqa: E402
     DEFAULT_USER_SCOPE,
     SERVICE_SPECS,
@@ -74,12 +80,14 @@ SMOKE_ENV = "NEX_AE_OA_AUTH_POSTGRES_SMOKE"
 SMOKE_PROFILE_ENV = "NEX_AE_OA_AUTH_POSTGRES_SMOKE_PROFILE"
 TENANT_ID_ENV = "NEX_AE_OA_AUTH_POSTGRES_SMOKE_TENANT_ID"
 SUBJECT_ID_ENV = "NEX_AE_OA_AUTH_POSTGRES_SMOKE_SUBJECT_ID"
+EMPLOYEE_ID_ENV = "NEX_AE_OA_AUTH_POSTGRES_SMOKE_EMPLOYEE_ID"
 DEFAULT_PROFILE = "test"
 AE_SERVICE_ID = "nex-ae-api"
 OA_SERVICE_ID = "nex-oa"
 AE_SERVICE_SPEC = SERVICE_SPECS[AE_SERVICE_ID]
 OA_SERVICE_SPEC = SERVICE_SPECS[OA_SERVICE_ID]
 SECRET_MARKER = "AE OA auth PostgreSQL smoke private marker"
+SMOKE_LOGIN_PASSWORD = "Nuri1004!"
 
 
 @dataclass
@@ -104,6 +112,32 @@ class TestClientOaUserSessionClient:
             operation="issue_session",
             error_code="oa.session_issue_failed",
         )
+
+    def login_with_credentials(
+        self,
+        login_request: Mapping[str, Any],
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        response = self.client.post(
+            "/internal/v1/auth/user-login",
+            headers=_service_headers(trace_id=trace_id, request_id=request_id),
+            json=oa_user_login_payload(login_request),
+        )
+        payload = self._payload_or_error(
+            response,
+            operation="login_with_credentials",
+            error_code="oa.user_login_failed",
+        )
+        if self.calls:
+            metadata = payload.get("metadata")
+            self.calls[-1]["password_verified"] = (
+                metadata.get("password_verified") is True
+                if isinstance(metadata, Mapping)
+                else False
+            )
+        return payload
 
     def introspect_session(
         self,
@@ -247,6 +281,7 @@ def _execute_ae_oa_auth_postgres_smoke(
     suffix = request_id.split("-", maxsplit=1)[0]
     tenant_id = env.get(TENANT_ID_ENV) or f"tenant-ae-oa-auth-smoke-{suffix}"
     subject_id = env.get(SUBJECT_ID_ENV) or f"user-ae-oa-auth-smoke-{suffix}"
+    employee_id = env.get(EMPLOYEE_ID_ENV) or f"EMP-AE-OA-AUTH-{suffix}"
     ae_engine = build_engine(ae_database_url)
     oa_engine = build_engine(oa_database_url)
     ae_marker_id: str | None = None
@@ -277,13 +312,23 @@ def _execute_ae_oa_auth_postgres_smoke(
             oa_persistence,
             subject_registry=subject_registry,
         )
+        credential_registry = build_credential_registry_for_runtime(
+            oa_persistence,
+            subject_registry=subject_registry,
+        )
         session_registry = build_oa_session_registry_for_runtime(
             oa_persistence,
             membership_registry=membership_registry,
         )
+        user_login_service = OaUserLoginService(
+            credential_registry=credential_registry,
+            session_registry=session_registry,
+        )
         register_subject_registry_routes(oa_app, registry=subject_registry)
+        register_local_credential_routes(oa_app, registry=credential_registry)
         register_identity_membership_routes(oa_app, registry=membership_registry)
         register_user_session_routes(oa_app, registry=session_registry)
+        register_user_login_routes(oa_app, service=user_login_service)
         oa_client = TestClient(oa_app)
         oa_session_client = TestClientOaUserSessionClient(oa_client)
 
@@ -337,12 +382,26 @@ def _execute_ae_oa_auth_postgres_smoke(
         )
         membership_response.raise_for_status()
 
+        credential_response = oa_client.post(
+            "/internal/v1/auth/local-credentials/ensure",
+            headers=_service_headers(trace_id=trace_id, request_id=request_id),
+            json={
+                "tenant_id": tenant_id,
+                "employee_id": employee_id,
+                "subject_id": subject_id,
+                "password": SMOKE_LOGIN_PASSWORD,
+                "credential_metadata": {"smoke_marker": "ae-oa-auth-postgres"},
+            },
+        )
+        credential_response.raise_for_status()
+
         login_response = ae_client.post(
             "/api/v1/auth/session/login",
             headers=_ae_headers(trace_id=trace_id, request_id=request_id),
             json={
                 "tenant_id": tenant_id,
-                "user_id": subject_id,
+                "employee_id": employee_id,
+                "password": SMOKE_LOGIN_PASSWORD,
                 "scopes": [DEFAULT_USER_SCOPE],
                 "ttl_seconds": 1800,
             },
@@ -409,6 +468,7 @@ def _execute_ae_oa_auth_postgres_smoke(
             "oa_runtime_mode": oa_persistence.mode == "postgres",
             "ae_marker_write_readback": ae_marker_rows == 1,
             "membership_status_ok": membership_response.status_code == 200,
+            "credential_status_ok": credential_response.status_code == 200,
             "login_status_ok": login_response.status_code == 200,
             "current_status_ok": current_response.status_code == 200,
             "protected_status_ok": protected_response.status_code == 200,
@@ -433,17 +493,22 @@ def _execute_ae_oa_auth_postgres_smoke(
                 post_logout_introspection.get("active") is False
                 and post_logout_introspection.get("inactive_reason") == "revoked"
             ),
-            "oa_adapter_issue_introspect_revoke_called": [
+            "oa_adapter_login_introspect_revoke_called": [
                 call["operation"] for call in oa_session_client.calls
             ]
             == [
-                "issue_session",
+                "login_with_credentials",
                 "introspect_session",
                 "introspect_session",
                 "revoke_session",
                 "introspect_session",
             ],
+            "login_password_verified": (
+                bool(oa_session_client.calls)
+                and oa_session_client.calls[0].get("password_verified") is True
+            ),
             "membership_persisted": db_observations["membership_count"] == 1,
+            "credential_persisted": db_observations["credential_count"] == 1,
             "session_persisted": db_observations["session_count"] == 1,
             "db_session_revoked": (
                 db_observations.get("session_status") == "REVOKED"
@@ -459,6 +524,8 @@ def _execute_ae_oa_auth_postgres_smoke(
                     SECRET_MARKER,
                     "access_token",
                     "Bearer ",
+                    SMOKE_LOGIN_PASSWORD,
+                    "Nuri1004",
                     "nuri1004",
                     ae_database_url,
                     oa_database_url,
@@ -477,6 +544,7 @@ def _execute_ae_oa_auth_postgres_smoke(
             "db_observations": {
                 "ae_marker_rows": ae_marker_rows,
                 "oa_membership_count": db_observations["membership_count"],
+                "oa_credential_count": db_observations["credential_count"],
                 "oa_session_count": db_observations["session_count"],
                 "oa_session_status": db_observations["session_status"],
                 "oa_session_revoked_at_present": (
@@ -511,6 +579,7 @@ def _execute_ae_oa_auth_postgres_smoke(
                 oa_engine,
                 tenant_id=tenant_id,
                 subject_id=subject_id,
+                employee_id=employee_id,
                 session_id=session_id,
             ),
         }
@@ -536,6 +605,17 @@ def _db_observations(
             ),
             {"tenant_id": tenant_id, "subject_id": subject_id},
         ).scalar_one()
+        credential_count = connection.execute(
+            text(
+                """
+                SELECT count(*)
+                FROM oa_local_credentials
+                WHERE tenant_id = :tenant_id
+                  AND subject_id = :subject_id
+                """
+            ),
+            {"tenant_id": tenant_id, "subject_id": subject_id},
+        ).scalar_one()
         session_row = connection.execute(
             text(
                 """
@@ -548,6 +628,7 @@ def _db_observations(
         ).mappings().first()
     return {
         "membership_count": int(membership_count),
+        "credential_count": int(credential_count),
         "session_count": 1 if session_row is not None else 0,
         "session_tenant_id": session_row["tenant_id"] if session_row else None,
         "session_subject_id": session_row["subject_id"] if session_row else None,
@@ -659,6 +740,7 @@ def _delete_oa_smoke_rows(
     *,
     tenant_id: str,
     subject_id: str,
+    employee_id: str,
     session_id: str | None,
 ) -> dict[str, int]:
     with engine.begin() as connection:
@@ -674,6 +756,23 @@ def _delete_oa_smoke_rows(
                 "session_id": session_id or "",
                 "tenant_id": tenant_id,
                 "subject_id": subject_id,
+            },
+        ).rowcount
+        deleted_credentials = connection.execute(
+            text(
+                """
+                DELETE FROM oa_local_credentials
+                WHERE tenant_id = :tenant_id
+                  AND (
+                    subject_id = :subject_id
+                    OR normalized_employee_id = lower(:employee_id)
+                  )
+                """
+            ),
+            {
+                "tenant_id": tenant_id,
+                "subject_id": subject_id,
+                "employee_id": employee_id,
             },
         ).rowcount
         deleted_memberships = connection.execute(
@@ -707,6 +806,7 @@ def _delete_oa_smoke_rows(
         ).rowcount
     return {
         "deleted_sessions": int(deleted_sessions),
+        "deleted_credentials": int(deleted_credentials),
         "deleted_memberships": int(deleted_memberships),
         "deleted_subjects": int(deleted_subjects),
         "deleted_tenants": int(deleted_tenants),
@@ -759,6 +859,7 @@ def assert_smoke_evidence_redacted(
         service_database_env(OA_SERVICE_ID, profile=DEFAULT_PROFILE),
         TENANT_ID_ENV,
         SUBJECT_ID_ENV,
+        EMPLOYEE_ID_ENV,
         SMOKE_PROFILE_ENV,
     )
     leaked = [

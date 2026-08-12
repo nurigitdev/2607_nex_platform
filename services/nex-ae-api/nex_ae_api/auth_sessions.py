@@ -55,6 +55,18 @@ LOGIN_FIELDS = frozenset(
         "ttl_seconds",
     }
 )
+CREDENTIAL_LOGIN_FIELDS = frozenset(
+    {
+        "tenant_id",
+        "employee_id",
+        "login_identifier",
+        "login_hint",
+        "password",
+        "scopes",
+        "requested_scopes",
+        "ttl_seconds",
+    }
+)
 SENSITIVE_LOGIN_KEY_PARTS = (
     "access",
     "authorization",
@@ -115,7 +127,10 @@ def register_auth_session_routes(
     async def login_auth_session(request: Request) -> JSONResponse:
         try:
             payload = await _optional_json_object(request)
-            login_request = normalize_login_request(payload)
+            login_request = normalize_login_request_for_mode(
+                payload,
+                session_mode=resolved_session_mode,
+            )
             session, cookie_value = issue_browser_session(
                 login_request,
                 request=request,
@@ -254,7 +269,7 @@ def issue_browser_session(
     if resolved_mode == AUTH_SESSION_MODE_OA:
         client = required_oa_session_client(oa_session_client)
         try:
-            issued = client.issue_session(
+            issued = client.login_with_credentials(
                 login_request,
                 request_id=request_id_from_headers(request),
                 trace_id=trace_id_from_headers(request),
@@ -263,7 +278,7 @@ def issue_browser_session(
             raise browser_error_from_oa_client_error(exc) from exc
         session = required_oa_browser_session(
             issued.get("session"),
-            error_code="ae.oa_session_issue_invalid",
+            error_code="ae.oa_user_login_invalid",
         )
         user_claims_from_oa_browser_session(
             session,
@@ -448,8 +463,22 @@ def required_oa_browser_session(
     return dict(value)
 
 
+def normalize_login_request_for_mode(
+    payload: Mapping[str, Any],
+    *,
+    session_mode: str | None = None,
+) -> dict[str, Any]:
+    resolved_mode = normalize_auth_session_mode(session_mode)
+    if resolved_mode == AUTH_SESSION_MODE_OA:
+        return normalize_credential_login_request(payload)
+    return normalize_login_request(payload)
+
+
 def normalize_login_request(payload: Mapping[str, Any]) -> dict[str, Any]:
-    _reject_unsupported_or_sensitive_login_fields(payload)
+    _reject_unsupported_or_sensitive_login_fields(
+        payload,
+        allowed_fields=LOGIN_FIELDS,
+    )
     tenant_id = _text(payload.get("tenant_id")) or DEFAULT_LOGIN_TENANT_ID
     user_id = (
         _text(payload.get("user_id"))
@@ -465,6 +494,50 @@ def normalize_login_request(payload: Mapping[str, Any]) -> dict[str, Any]:
         "scopes": scopes,
         "roles": roles,
         "ttl_seconds": ttl_seconds,
+    }
+
+
+def normalize_credential_login_request(payload: Mapping[str, Any]) -> dict[str, Any]:
+    _reject_unsupported_or_sensitive_login_fields(
+        payload,
+        allowed_fields=CREDENTIAL_LOGIN_FIELDS,
+    )
+    if "scopes" in payload and "requested_scopes" in payload:
+        raise BrowserSessionFacadeError(
+            status_code=400,
+            error_code="ae.auth_session_login_scope_conflict",
+            detail="Login request must use either scopes or requested_scopes.",
+        )
+    tenant_id = _text(payload.get("tenant_id")) or DEFAULT_LOGIN_TENANT_ID
+    employee_id = (
+        _text(payload.get("employee_id"))
+        or _text(payload.get("login_identifier"))
+        or _text(payload.get("login_hint"))
+    )
+    if employee_id is None:
+        raise BrowserSessionFacadeError(
+            status_code=400,
+            error_code="ae.auth_session_login_employee_id_missing",
+            detail="OA login request requires employee_id.",
+        )
+    password = _text(payload.get("password"))
+    if password is None:
+        raise BrowserSessionFacadeError(
+            status_code=400,
+            error_code="ae.auth_session_login_password_missing",
+            detail="OA login request requires password.",
+        )
+    requested_scopes = _string_list(
+        payload.get("requested_scopes", payload.get("scopes")),
+        default=(DEFAULT_USER_SCOPE,),
+    )
+    return {
+        "tenant_id": tenant_id,
+        "employee_id": employee_id,
+        "password": password,
+        "requested_scopes": requested_scopes,
+        "scopes": requested_scopes,
+        "ttl_seconds": _ttl_seconds(payload.get("ttl_seconds")),
     }
 
 
@@ -624,27 +697,37 @@ def _non_empty_session_text(value: object, field_name: str) -> str:
     return value.strip()
 
 
-def _reject_unsupported_or_sensitive_login_fields(payload: Mapping[str, Any]) -> None:
+def _reject_unsupported_or_sensitive_login_fields(
+    payload: Mapping[str, Any],
+    *,
+    allowed_fields: frozenset[str],
+) -> None:
     for key, value in payload.items():
-        normalized_key = key.lower()
-        if any(part in normalized_key for part in SENSITIVE_LOGIN_KEY_PARTS):
-            raise BrowserSessionFacadeError(
-                status_code=400,
-                error_code="ae.auth_session_login_sensitive_field",
-                detail="Login request must not include credential material.",
-            )
-        if key not in LOGIN_FIELDS:
+        if key not in allowed_fields:
+            normalized_key = str(key).lower()
+            if any(part in normalized_key for part in SENSITIVE_LOGIN_KEY_PARTS):
+                raise BrowserSessionFacadeError(
+                    status_code=400,
+                    error_code="ae.auth_session_login_sensitive_field",
+                    detail="Login request must not include unsupported private fields.",
+                )
             raise BrowserSessionFacadeError(
                 status_code=400,
                 error_code="ae.auth_session_login_field_unsupported",
                 detail="Login request contains an unsupported field.",
             )
         if isinstance(value, Mapping):
-            _reject_unsupported_or_sensitive_login_fields(value)
+            _reject_unsupported_or_sensitive_login_fields(
+                value,
+                allowed_fields=allowed_fields,
+            )
         elif isinstance(value, list):
             for item in value:
                 if isinstance(item, Mapping):
-                    _reject_unsupported_or_sensitive_login_fields(item)
+                    _reject_unsupported_or_sensitive_login_fields(
+                        item,
+                        allowed_fields=allowed_fields,
+                    )
 
 
 def _text(value: Any) -> str | None:
