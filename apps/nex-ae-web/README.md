@@ -182,5 +182,15 @@ Slice 0231 adds the authenticated runtime boundary audit:
 - The boundary keeps service tokens, provider details, database URLs, storage
   paths, and raw source material out of browser runtime config.
 
+Slice 0234 adds the session client and login state model:
+
+- `src/sessionClient.js` normalizes `oa_browser_session.v1` snapshots into the
+  browser-safe `ae_web_session_state.v1` state.
+- Mock and fetch adapters cover current session, login, and logout without
+  storing raw user tokens, service credentials, passwords, provider endpoints,
+  database URLs, or CX storage paths.
+- The fetch adapter targets AE API auth facade routes with same-origin browser
+  credentials.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.
