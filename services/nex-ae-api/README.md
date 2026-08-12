@@ -108,6 +108,11 @@ Upload handoff:
   route guard calls use OA introspection, and logout delegates revocation to OA
   before deleting the cookie. The default `mock` mode remains available for
   local regression.
+- Slice 0250 adds protected PostgreSQL smoke evidence for that OA-backed AE
+  auth mode. Set `NEX_AE_OA_AUTH_POSTGRES_SMOKE=1` with
+  `NEX_AE_TEST_DATABASE_URL` and `NEX_OA_TEST_DATABASE_URL` to run the
+  test-profile flow: OA membership seed, AE login/current/protected/logout,
+  OA session revocation readback, AE marker readback, and cleanup.
 
 Document library:
 
