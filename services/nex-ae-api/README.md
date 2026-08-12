@@ -102,6 +102,12 @@ Upload handoff:
   trace, request-id, timeout, error mapping, and redaction-safe response
   handling. AE auth routes still default to the mock cookie mode until the
   facade wiring slice switches them to OA-backed opaque session ids.
+- Slice 0249 wires an opt-in OA-backed auth session mode through
+  `NEX_AE_AUTH_SESSION_MODE=oa`. In OA mode the browser cookie stores only the
+  opaque OA session id, login delegates session issue to OA, current-session and
+  route guard calls use OA introspection, and logout delegates revocation to OA
+  before deleting the cookie. The default `mock` mode remains available for
+  local regression.
 
 Document library:
 

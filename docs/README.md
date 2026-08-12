@@ -352,6 +352,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0246`](slices/0246_oa_session_introspection_api_foundation.md) | `S25-006` OA session introspection API foundation. |
 | [`Slice 0247`](slices/0247_oa_session_revocation_api_foundation.md) | `S25-007` OA session revocation API foundation. |
 | [`Slice 0248`](slices/0248_ae_oa_session_client_adapter_foundation.md) | `S25-008` AE OA session client adapter foundation. |
+| [`Slice 0249`](slices/0249_ae_auth_session_facade_oa_backed_cookie_wiring.md) | `S25-009` AE auth session facade OA-backed cookie wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

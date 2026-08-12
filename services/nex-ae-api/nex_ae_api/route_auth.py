@@ -11,6 +11,8 @@ from nex_runtime import (
     DEFAULT_USER_SCOPE,
     ServiceClaims,
     problem_response,
+    request_id_from_headers,
+    trace_id_from_headers,
     validate_authorization_header,
 )
 from nex_ae_api.auth_guard import (
@@ -23,6 +25,7 @@ from nex_ae_api.auth_sessions import (
     SESSION_COOKIE_NAME,
     validate_browser_session_credentials,
 )
+from nex_ae_api.oa_session_client import OaUserSessionClient
 
 
 AE_FACADE_ROUTE_AUTH_SCHEMA_VERSION = "ae_facade_route_auth.v1"
@@ -78,6 +81,8 @@ def authorize_ae_facade_route_request(
     authorization: str | None,
     *,
     required_user_scopes: tuple[str, ...] | list[str] = (DEFAULT_USER_SCOPE,),
+    oa_session_client: OaUserSessionClient | None = None,
+    session_mode: str | None = None,
 ) -> AeFacadeRouteAuthContext | JSONResponse:
     service_result = validate_authorization_header(
         authorization,
@@ -94,6 +99,10 @@ def authorize_ae_facade_route_request(
         authorization=authorization,
         cookie_token=request.cookies.get(SESSION_COOKIE_NAME),
         required_scopes=required_user_scopes,
+        request_id=request_id_from_headers(request),
+        trace_id=trace_id_from_headers(request),
+        oa_session_client=oa_session_client,
+        session_mode=session_mode,
     )
     if not isinstance(user_result, BrowserSessionFacadeError):
         try:
