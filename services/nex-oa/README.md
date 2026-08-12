@@ -20,6 +20,7 @@ Current endpoints:
 - `GET /internal/v1/identity/memberships/tenants/{tenant_id}/subjects/{subject_id}`
 - `POST /internal/v1/auth/user-sessions/issue`
 - `GET /internal/v1/auth/user-sessions/{session_id}`
+- `GET /internal/v1/auth/session-credential-delivery-boundary`
 
 Slice 0193 minimum subject registry:
 
@@ -88,3 +89,13 @@ Slice 0244 OA session PostgreSQL smoke:
   observation, and smoke-row cleanup against the protected `test` profile.
 - The smoke runner is skipped by default and requires
   `NEX_OA_SESSION_POSTGRES_SMOKE=1` for write execution.
+
+Slice 0245 OA-AE session credential delivery boundary:
+
+- `GET /internal/v1/auth/session-credential-delivery-boundary` freezes the
+  delegation decision before AE starts using OA-backed sessions.
+- OA owns session issuance, persistence, introspection, and revocation. AE owns
+  browser login composition, HttpOnly cookie set/delete, route-guard
+  introspection calls, and browser-safe session projection.
+- Browser JSON must not include raw user tokens, service credentials, password
+  material, database URLs, or cookie values.

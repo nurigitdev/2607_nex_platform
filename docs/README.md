@@ -348,6 +348,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0242`](slices/0242_oa_tenant_membership_persistence_foundation.md) | `S25-002` OA tenant membership persistence foundation. |
 | [`Slice 0243`](slices/0243_oa_session_issuance_api_foundation.md) | `S25-003` OA session issuance API foundation. |
 | [`Slice 0244`](slices/0244_oa_session_postgresql_smoke_evidence.md) | `S25-004` OA session PostgreSQL smoke evidence. |
+| [`Slice 0245`](slices/0245_oa_ae_session_credential_delivery_boundary_decision.md) | `S25-005` OA-AE session credential delivery boundary decision. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

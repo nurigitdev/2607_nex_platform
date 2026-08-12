@@ -6,6 +6,9 @@ from nex_runtime import (
     register_service_log_retention_routes,
 )
 from nex_oa.auth_boundary import register_identity_auth_boundary_routes
+from nex_oa.credential_delivery import (
+    register_session_credential_delivery_boundary_routes,
+)
 from nex_oa.memberships import (
     build_tenant_membership_registry_for_runtime,
     register_identity_membership_routes,
@@ -46,3 +49,4 @@ register_subject_registry_routes(app, registry=SUBJECT_REGISTRY)
 register_identity_auth_boundary_routes(app)
 register_identity_membership_routes(app, registry=TENANT_MEMBERSHIP_REGISTRY)
 register_user_session_routes(app, registry=USER_SESSION_REGISTRY)
+register_session_credential_delivery_boundary_routes(app)
