@@ -10,6 +10,10 @@ from nex_oa.memberships import (
     build_tenant_membership_registry_for_runtime,
     register_identity_membership_routes,
 )
+from nex_oa.sessions import (
+    build_oa_session_registry_for_runtime,
+    register_user_session_routes,
+)
 from nex_oa.subjects import (
     build_subject_registry_for_runtime,
     register_subject_registry_routes,
@@ -24,6 +28,10 @@ TENANT_MEMBERSHIP_REGISTRY = build_tenant_membership_registry_for_runtime(
     SERVICE_PERSISTENCE,
     subject_registry=SUBJECT_REGISTRY,
 )
+USER_SESSION_REGISTRY = build_oa_session_registry_for_runtime(
+    SERVICE_PERSISTENCE,
+    membership_registry=TENANT_MEMBERSHIP_REGISTRY,
+)
 register_service_job_control_routes(
     app,
     service_id=SERVICE_SPEC.service_id,
@@ -37,3 +45,4 @@ register_service_log_retention_routes(
 register_subject_registry_routes(app, registry=SUBJECT_REGISTRY)
 register_identity_auth_boundary_routes(app)
 register_identity_membership_routes(app, registry=TENANT_MEMBERSHIP_REGISTRY)
+register_user_session_routes(app, registry=USER_SESSION_REGISTRY)

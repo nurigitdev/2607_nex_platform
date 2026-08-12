@@ -214,6 +214,31 @@ def test_oa_tenant_membership_foundation_tracks_roles_and_scopes() -> None:
     assert "token" not in compact
 
 
+def test_oa_user_session_foundation_tracks_browser_safe_sessions() -> None:
+    compact = normalized(
+        read_migration_named("nex-oa", "0243_oa_user_session_foundation.sql")
+    )
+
+    assert "create table if not exists oa_user_sessions" in compact
+    assert "session_schema_version text not null default 'oa_user_session.v1'" in compact
+    assert "status text not null default 'active'" in compact
+    assert "check (status in ('active', 'expired', 'revoked'))" in compact
+    assert "issuer text not null default 'nex-oa'" in compact
+    assert "audience text not null default 'nex-ae-api'" in compact
+    assert "token_use text not null default 'user'" in compact
+    assert "scopes jsonb not null default '[]'::jsonb" in compact
+    assert "roles jsonb not null default '[]'::jsonb" in compact
+    assert "metadata jsonb not null default '{}'::jsonb" in compact
+    assert "references oa_tenant_memberships (tenant_id, subject_ref_type, subject_id)" in compact
+    assert "ck_oa_user_sessions_time_order" in compact
+    assert "ck_oa_user_sessions_revoked_at" in compact
+    assert "ix_oa_user_sessions_tenant_status_expires" in compact
+    assert "ix_oa_user_sessions_subject_issued" in compact
+    assert "0243_oa_user_session_foundation" in compact
+    assert "access_token" not in compact
+    assert "password" not in compact
+
+
 def test_cx_schema_scopes_duplicate_uploads_to_active_owner_documents() -> None:
     compact = normalized(read_migration("nex-cx"))
     storage_policy = normalized(

@@ -18,6 +18,8 @@ Current endpoints:
 - `GET /internal/v1/identity-auth-boundary`
 - `POST /internal/v1/identity/memberships/ensure`
 - `GET /internal/v1/identity/memberships/tenants/{tenant_id}/subjects/{subject_id}`
+- `POST /internal/v1/auth/user-sessions/issue`
+- `GET /internal/v1/auth/user-sessions/{session_id}`
 
 Slice 0193 minimum subject registry:
 
@@ -69,3 +71,12 @@ Slice 0242 tenant membership persistence:
 - The membership boundary intentionally excludes raw tokens, browser cookies,
   passwords, external identity profiles, emails, phone numbers, and provider
   secrets.
+
+Slice 0243 OA user-session issuance:
+
+- `oa_user_sessions` stores browser-safe session snapshots linked to active OA
+  tenant memberships.
+- `POST /internal/v1/auth/user-sessions/issue` issues a session only when the
+  membership exists, is active, and grants the requested scopes.
+- Session responses deliberately omit raw tokens and cookies. AE facade
+  delegation remains the next integration step after PostgreSQL smoke evidence.

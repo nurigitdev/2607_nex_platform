@@ -346,6 +346,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0240`](slices/0240_ae_web_authenticated_fetch_mode_closure.md) | `S24-010` AE Web authenticated fetch-mode closure. |
 | [`Slice 0241`](slices/0241_oa_identity_auth_boundary_audit.md) | `S25-001` OA identity/auth boundary audit. |
 | [`Slice 0242`](slices/0242_oa_tenant_membership_persistence_foundation.md) | `S25-002` OA tenant membership persistence foundation. |
+| [`Slice 0243`](slices/0243_oa_session_issuance_api_foundation.md) | `S25-003` OA session issuance API foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
