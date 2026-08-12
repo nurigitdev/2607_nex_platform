@@ -192,6 +192,28 @@ def test_oa_subject_registry_foundation_tracks_stable_tenant_and_user_refs() -> 
     assert "password" not in compact
 
 
+def test_oa_tenant_membership_foundation_tracks_roles_and_scopes() -> None:
+    compact = normalized(
+        read_migration_named("nex-oa", "0242_oa_tenant_membership_foundation.sql")
+    )
+
+    assert "create table if not exists oa_tenant_memberships" in compact
+    assert "subject_ref_type text not null default 'oa.user'" in compact
+    assert "membership_schema_version text not null default 'oa_tenant_membership.v1'" in compact
+    assert "status text not null default 'active'" in compact
+    assert "check (status in ('active', 'disabled'))" in compact
+    assert "roles jsonb not null default '[]'::jsonb" in compact
+    assert "scopes jsonb not null default '[]'::jsonb" in compact
+    assert "metadata jsonb not null default '{}'::jsonb" in compact
+    assert "primary key (tenant_id, subject_ref_type, subject_id)" in compact
+    assert "references oa_subjects (tenant_id, subject_ref_type, subject_id)" in compact
+    assert "ix_oa_tenant_memberships_status_updated" in compact
+    assert "ix_oa_tenant_memberships_subject" in compact
+    assert "0242_oa_tenant_membership_foundation" in compact
+    assert "password" not in compact
+    assert "token" not in compact
+
+
 def test_cx_schema_scopes_duplicate_uploads_to_active_owner_documents() -> None:
     compact = normalized(read_migration("nex-cx"))
     storage_policy = normalized(

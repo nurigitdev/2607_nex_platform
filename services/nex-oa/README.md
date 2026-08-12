@@ -16,6 +16,8 @@ Current endpoints:
 - `GET /internal/v1/subject-registry/tenants/{tenant_id}`
 - `GET /internal/v1/subject-registry/tenants/{tenant_id}/subjects/{subject_id}`
 - `GET /internal/v1/identity-auth-boundary`
+- `POST /internal/v1/identity/memberships/ensure`
+- `GET /internal/v1/identity/memberships/tenants/{tenant_id}/subjects/{subject_id}`
 
 Slice 0193 minimum subject registry:
 
@@ -57,3 +59,13 @@ Slice 0241 identity/auth boundary audit:
   owner scope and ACLs, but does not issue browser sessions.
 - The report includes only enum/boolean decision evidence and omits raw tokens,
   cookies, passwords, provider endpoints, and database URLs.
+
+Slice 0242 tenant membership persistence:
+
+- `oa_tenant_memberships` links stable `oa.tenant` and `oa.user` refs to
+  membership status, roles, scopes, and safe metadata.
+- `POST /internal/v1/identity/memberships/ensure` creates the subject registry
+  entry first, then stores an idempotent membership snapshot.
+- The membership boundary intentionally excludes raw tokens, browser cookies,
+  passwords, external identity profiles, emails, phone numbers, and provider
+  secrets.
