@@ -26,6 +26,7 @@ Current endpoints:
 - `GET /internal/v1/auth/user-bootstrap-login-boundary`
 - `POST /internal/v1/auth/local-credentials/ensure`
 - `GET /internal/v1/auth/local-credentials/tenants/{tenant_id}/employee-ids/{employee_id}`
+- `POST /internal/v1/auth/user-login`
 
 Slice 0193 minimum subject registry:
 
@@ -151,3 +152,13 @@ Slice 0252 OA local credential registry:
 - The local MVP hash implementation is `pbkdf2_sha256.v1` using the Python
   standard library. `argon2id` remains the recommended production target once
   the dependency is introduced.
+
+Slice 0253 OA user login API:
+
+- `POST /internal/v1/auth/user-login` lets the AE API facade ask OA to verify
+  `employee_id` plus `password` and issue a browser-safe OA session.
+- The endpoint composes the local credential registry with the existing
+  user-session issuer. Credential subject refs, not employee ids, determine the
+  issued session owner.
+- Responses keep the OA session issue shape and do not include raw passwords,
+  password hashes, credential snapshots, service credentials, or cookie values.

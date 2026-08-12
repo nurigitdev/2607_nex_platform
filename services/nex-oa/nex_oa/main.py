@@ -26,6 +26,7 @@ from nex_oa.subjects import (
     build_subject_registry_for_runtime,
     register_subject_registry_routes,
 )
+from nex_oa.user_login import OaUserLoginService, register_user_login_routes
 
 
 SERVICE_SPEC = SERVICE_SPECS["nex-oa"]
@@ -44,6 +45,10 @@ USER_SESSION_REGISTRY = build_oa_session_registry_for_runtime(
     SERVICE_PERSISTENCE,
     membership_registry=TENANT_MEMBERSHIP_REGISTRY,
 )
+USER_LOGIN_SERVICE = OaUserLoginService(
+    credential_registry=LOCAL_CREDENTIAL_REGISTRY,
+    session_registry=USER_SESSION_REGISTRY,
+)
 register_service_job_control_routes(
     app,
     service_id=SERVICE_SPEC.service_id,
@@ -59,5 +64,6 @@ register_identity_auth_boundary_routes(app)
 register_local_credential_routes(app, registry=LOCAL_CREDENTIAL_REGISTRY)
 register_identity_membership_routes(app, registry=TENANT_MEMBERSHIP_REGISTRY)
 register_user_session_routes(app, registry=USER_SESSION_REGISTRY)
+register_user_login_routes(app, service=USER_LOGIN_SERVICE)
 register_session_credential_delivery_boundary_routes(app)
 register_user_bootstrap_login_boundary_routes(app)
