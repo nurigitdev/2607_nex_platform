@@ -13,13 +13,13 @@ from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
     issue_mock_service_token,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
+from nex_ae_api.auth_guard import BrowserUserAuthContext
+from nex_ae_api.route_auth import authorize_ae_facade_route_request
 
 
 class CxRetrievalClient(Protocol):
@@ -117,14 +117,18 @@ def register_retrieval_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
         request_id = request_id_from_headers(request)
         trace_id = payload.get("trace_id") or trace_id_from_headers(request)
         try:
-            cx_payload = build_cx_retrieval_payload(payload, trace_id=trace_id)
+            source_payload = browser_actor_scoped_retrieval_payload(
+                payload,
+                auth_context.browser_context,
+            )
+            cx_payload = build_cx_retrieval_payload(source_payload, trace_id=trace_id)
             cx_package = client.create_retrieval_context(
                 cx_payload,
                 request_id=request_id,
@@ -132,7 +136,7 @@ def register_retrieval_routes(
             )
             return retrieval_store.save(
                 build_retrieval_interaction_record(
-                    source_payload=payload,
+                    source_payload=source_payload,
                     cx_payload=cx_payload,
                     cx_package=cx_package,
                     request_id=request_id,
@@ -148,9 +152,9 @@ def register_retrieval_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
         record = retrieval_store.get(retrieval_interaction_id)
         if record is None:
@@ -162,6 +166,14 @@ def register_retrieval_routes(
                     detail=f"Retrieval interaction was not found: {retrieval_interaction_id}",
                 ),
             )
+        if auth_context.browser_context is not None:
+            try:
+                ensure_retrieval_record_visible_to_browser(
+                    record,
+                    auth_context.browser_context,
+                )
+            except RetrievalInteractionError as exc:
+                return _retrieval_problem_response(request, exc)
         return record
 
 
@@ -228,6 +240,7 @@ def build_retrieval_interaction_record(
         "status": "COMPLETED",
         "trace_id": trace_id,
         "request_id": request_id,
+        "actor_claims_ref": cx_payload.get("actor_claims_ref"),
         "user_message_hash": cx_payload["metadata"]["user_message_hash"],
         "user_message_preview": user_message[:120],
         "cx_retrieval_package_id": cx_package["retrieval_package_id"],
@@ -257,30 +270,67 @@ def user_message_from_payload(payload: dict[str, Any]) -> str:
     return user_message.strip()
 
 
+def browser_actor_scoped_retrieval_payload(
+    payload: dict[str, Any],
+    context: BrowserUserAuthContext | None,
+) -> dict[str, Any]:
+    if context is None:
+        return payload
+    actor_claims_ref = payload.get("actor_claims_ref")
+    if isinstance(actor_claims_ref, dict):
+        tenant_id = _optional_text(actor_claims_ref.get("tenant_id"))
+        actor_id = _optional_text(actor_claims_ref.get("actor_id"))
+        if tenant_id is not None and tenant_id != context.tenant_id:
+            raise RetrievalInteractionError(
+                status_code=403,
+                error_code="ae.browser_owner_scope_mismatch",
+                detail="Retrieval actor tenant must match the authenticated browser claim.",
+            )
+        if actor_id is not None and actor_id != context.user_id:
+            raise RetrievalInteractionError(
+                status_code=403,
+                error_code="ae.browser_owner_scope_mismatch",
+                detail="Retrieval actor id must match the authenticated browser claim.",
+            )
+    normalized = dict(payload)
+    normalized["actor_claims_ref"] = {
+        "actor_type": "user",
+        "actor_id": context.user_id,
+        "tenant_id": context.tenant_id,
+    }
+    return normalized
+
+
+def ensure_retrieval_record_visible_to_browser(
+    record: dict[str, Any],
+    context: BrowserUserAuthContext,
+) -> None:
+    actor_claims_ref = record.get("actor_claims_ref")
+    if not isinstance(actor_claims_ref, dict):
+        raise RetrievalInteractionError(
+            status_code=403,
+            error_code="ae.browser_owner_scope_mismatch",
+            detail="Retrieval actor scope is not visible to the authenticated browser claim.",
+        )
+    if (
+        actor_claims_ref.get("tenant_id") != context.tenant_id
+        or actor_claims_ref.get("actor_id") != context.user_id
+    ):
+        raise RetrievalInteractionError(
+            status_code=403,
+            error_code="ae.browser_owner_scope_mismatch",
+            detail="Retrieval actor scope must match the authenticated browser claim.",
+        )
+
+
 def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _authorize_ae_request(
-    request: Request,
-    authorization: str | None,
-) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-ae-api",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "AE API requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
+def _optional_text(value: object) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
 
 
 def _retrieval_problem_response(

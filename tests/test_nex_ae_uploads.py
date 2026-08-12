@@ -28,10 +28,12 @@ from nex_ae_api.uploads import (
     upload_handoff_status,
 )
 from nex_runtime import (
+    DEFAULT_USER_SCOPE,
     SERVICE_SPECS,
     SubjectRegistryResolverError,
     build_service_app,
     issue_mock_service_token,
+    issue_mock_user_token,
 )
 
 
@@ -143,6 +145,24 @@ class FailingOwnerResolver:
 
 def auth_headers() -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-oa", audience="nex-ae-api")
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": REQUEST_ID,
+        "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+    }
+
+
+def user_headers(
+    *,
+    tenant_id: str = "tenant-a",
+    user_id: str = "user-a",
+) -> dict[str, str]:
+    issued = issue_mock_user_token(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        scopes=[DEFAULT_USER_SCOPE, "documents:upload"],
+        roles=["employee"],
+    )
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": REQUEST_ID,
@@ -458,6 +478,63 @@ def test_upload_routes_accept_readback_duplicate_and_auth() -> None:
     assert isinstance(cx_client, FakeCxUploadClient)
     assert cx_client.calls[0]["payload"]["owner_user_id"] == "user-a"
     assert cx_client.calls[0]["payload"]["ownership_ref"] == OWNER_REF
+
+
+def test_upload_routes_accept_browser_user_and_scope_payload_to_claims() -> None:
+    client, store, cx_client = build_client()
+
+    created = client.post(
+        "/api/v1/uploads",
+        json={
+            "workspace_id": "workspace-001",
+            "filename": "report.md",
+            "content_type": "text/markdown",
+            "content_text": "hello",
+        },
+        headers=user_headers(),
+    )
+
+    payload = created.json()
+    same_user_read = client.get(
+        f"/api/v1/uploads/{payload['upload_handoff_id']}",
+        headers=user_headers(),
+    )
+    other_user_read = client.get(
+        f"/api/v1/uploads/{payload['upload_handoff_id']}",
+        headers=user_headers(user_id="user-b"),
+    )
+
+    assert created.status_code == 202
+    assert payload["tenant_id"] == "tenant-a"
+    assert payload["owner_user_id"] == "user-a"
+    assert payload["ownership_ref"] == OWNER_REF
+    assert store.get(payload["upload_handoff_id"]) == payload
+    assert same_user_read.status_code == 200
+    assert other_user_read.status_code == 403
+    assert other_user_read.json()["error_code"] == "ae.browser_owner_scope_mismatch"
+    assert isinstance(cx_client, FakeCxUploadClient)
+    assert cx_client.calls[0]["payload"]["tenant_id"] == "tenant-a"
+    assert cx_client.calls[0]["payload"]["owner_user_id"] == "user-a"
+
+
+def test_upload_route_rejects_browser_owner_scope_mismatch_before_cx_call() -> None:
+    client, _, cx_client = build_client()
+
+    response = client.post(
+        "/api/v1/uploads",
+        json={
+            "filename": "report.md",
+            "content_text": "hello",
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-b",
+        },
+        headers=user_headers(),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error_code"] == "ae.browser_owner_scope_mismatch"
+    assert isinstance(cx_client, FakeCxUploadClient)
+    assert cx_client.calls == []
 
 
 def test_upload_route_resolves_owner_before_forwarding_to_cx() -> None:

@@ -211,5 +211,12 @@ Slice 0237 adds session bootstrap and login-state wiring:
   mode, so anonymous, authenticated, blocked, and failed session reads are
   visible without exposing credentials.
 
+Slice 0238 adds authenticated AE API fetch route-guard support:
+
+- AE API upload, document, and retrieval facade routes accept browser user
+  sessions in addition to existing service-token callers.
+- Browser fetch-mode owner and actor scope is claim-derived; mismatched payload
+  or stored scope is rejected by AE API before CX handoff.
+
 The browser shell is static and mock-first. Backend service calls are limited to
-readiness checks until service-authenticated browser mediation is added.
+authenticated fetch-mode clients and readiness checks.

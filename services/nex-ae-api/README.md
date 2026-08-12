@@ -87,6 +87,10 @@ Upload handoff:
   validate either the Authorization header or that cookie and never return raw
   tokens, passwords, service credentials, provider endpoints, database URLs, or
   storage paths.
+- Slice 0238 adds the shared facade-route auth boundary used by authenticated
+  fetch-mode routes. Upload, document-library/detail, and retrieval facades now
+  accept either service claims or browser user sessions; browser sessions derive
+  owner/actor scope from claims and reject mismatched payload or stored scope.
 
 Document library:
 

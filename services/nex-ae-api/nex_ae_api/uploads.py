@@ -5,7 +5,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
 import httpx
@@ -13,7 +13,6 @@ from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
     SubjectRegistryResolver,
     SubjectRegistryResolverError,
     build_default_subject_registry_resolver,
@@ -21,8 +20,10 @@ from nex_runtime import (
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
+
+if TYPE_CHECKING:
+    from nex_ae_api.auth_guard import BrowserUserAuthContext
 
 
 DEFAULT_TENANT_ID = "local-tenant"
@@ -169,14 +170,22 @@ def register_upload_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        from nex_ae_api.route_auth import authorize_ae_facade_route_request
+
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
         request_id = request_id_from_headers(request)
         trace_id = payload.get("trace_id") or trace_id_from_headers(request)
+        from nex_ae_api.auth_guard import BrowserAuthError, browser_auth_problem_response
+
         try:
-            cx_payload = build_cx_upload_payload(payload, trace_id=trace_id)
+            source_payload = _browser_owner_scoped_payload(
+                payload,
+                auth_context.browser_context,
+            )
+            cx_payload = build_cx_upload_payload(source_payload, trace_id=trace_id)
             resolve_upload_ownership(
                 cx_payload["ownership_ref"],
                 owner_resolver=resolver,
@@ -194,7 +203,7 @@ def register_upload_routes(
                 status_code=status_code,
                 content=upload_store.save(
                     build_upload_handoff_record(
-                        source_payload=payload,
+                        source_payload=source_payload,
                         cx_payload=cx_payload,
                         cx_record=cx_record,
                         request_id=request_id,
@@ -202,6 +211,8 @@ def register_upload_routes(
                     )
                 ),
             )
+        except BrowserAuthError as exc:
+            return browser_auth_problem_response(request, exc)
         except UploadHandoffError as exc:
             return _upload_problem_response(request, exc)
 
@@ -211,9 +222,11 @@ def register_upload_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        from nex_ae_api.route_auth import authorize_ae_facade_route_request
+
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
         record = upload_store.get(upload_handoff_id)
         if record is None:
@@ -225,6 +238,19 @@ def register_upload_routes(
                     detail=f"Upload handoff was not found: {upload_handoff_id}",
                 ),
             )
+        if auth_context.browser_context is not None:
+            from nex_ae_api.auth_guard import (
+                BrowserAuthError,
+                browser_auth_problem_response,
+            )
+
+            try:
+                ensure_upload_handoff_visible_to_browser(
+                    record,
+                    auth_context.browser_context,
+                )
+            except BrowserAuthError as exc:
+                return browser_auth_problem_response(request, exc)
         return record
 
 
@@ -434,6 +460,32 @@ def owner_scope_from_payload(payload: dict[str, Any]) -> tuple[str, str]:
     )
 
 
+def ensure_upload_handoff_visible_to_browser(
+    upload_handoff: dict[str, Any],
+    context: BrowserUserAuthContext,
+) -> None:
+    from nex_ae_api.auth_guard import apply_claim_owner_scope
+
+    apply_claim_owner_scope(
+        {
+            "tenant_id": upload_handoff.get("tenant_id"),
+            "owner_user_id": upload_handoff.get("owner_user_id"),
+        },
+        context,
+    )
+
+
+def _browser_owner_scoped_payload(
+    payload: dict[str, Any],
+    context: BrowserUserAuthContext | None,
+) -> dict[str, Any]:
+    if context is None:
+        return payload
+    from nex_ae_api.auth_guard import apply_claim_owner_scope
+
+    return apply_claim_owner_scope(payload, context)
+
+
 def subject_ref_from_payload(
     source_payload: dict[str, Any],
     ownership_payload: dict[str, Any],
@@ -609,28 +661,6 @@ def non_negative_int(value: Any) -> int:
 
 def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
-def _authorize_ae_request(
-    request: Request,
-    authorization: str | None,
-) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-ae-api",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "AE API requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
 
 
 def _upload_problem_response(

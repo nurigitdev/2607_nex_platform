@@ -24,9 +24,16 @@ from nex_ae_api.documents import (
     owner_scope_query_params,
     register_document_library_routes,
     search_summary_items,
+    visible_upload_handoffs,
 )
 from nex_ae_api.uploads import UploadHandoffStore
-from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
+from nex_runtime import (
+    DEFAULT_USER_SCOPE,
+    SERVICE_SPECS,
+    build_service_app,
+    issue_mock_service_token,
+    issue_mock_user_token,
+)
 
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
@@ -99,6 +106,24 @@ class FakeCxDocumentLibraryClient:
 
 def auth_headers() -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-oa", audience="nex-ae-api")
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": REQUEST_ID,
+        "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+    }
+
+
+def user_headers(
+    *,
+    tenant_id: str = "tenant-a",
+    user_id: str = "user-a",
+) -> dict[str, str]:
+    issued = issue_mock_user_token(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        scopes=[DEFAULT_USER_SCOPE],
+        roles=["employee"],
+    )
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": REQUEST_ID,
@@ -510,6 +535,29 @@ def test_build_document_library_item_from_cx_passes_owner_scope() -> None:
     ]
 
 
+def test_visible_upload_handoffs_filters_to_browser_owner_scope() -> None:
+    class Context:
+        tenant_id = "tenant-a"
+        user_id = "user-a"
+
+    visible = visible_upload_handoffs(
+        [
+            upload_handoff(document_id="doc-001"),
+            {
+                **upload_handoff(document_id="doc-002"),
+                "owner_user_id": "user-b",
+            },
+            {
+                **upload_handoff(document_id="doc-003"),
+                "tenant_id": "",
+            },
+        ],
+        browser_context=Context(),  # type: ignore[arg-type]
+    )
+
+    assert [item["cx_document_ref"]["document_id"] for item in visible] == ["doc-001"]
+
+
 def test_document_library_routes_list_empty_and_populated_workspace() -> None:
     store = UploadHandoffStore()
     store.save(upload_handoff())
@@ -522,6 +570,35 @@ def test_document_library_routes_list_empty_and_populated_workspace() -> None:
     assert empty.json() == {"workspace_id": "empty", "documents": []}
     assert populated.status_code == 200
     assert populated.json()["documents"][0]["document_id"] == "doc-001"
+    assert cx_client.calls == [
+        "document:doc-001:tenant-a:user-a",
+        "summary:doc-001",
+        "summary-embedding:doc-001",
+    ]
+
+
+def test_document_library_routes_filter_browser_user_scope() -> None:
+    store = UploadHandoffStore()
+    store.save(upload_handoff())
+    store.save(
+        {
+            **upload_handoff(
+                upload_handoff_id="handoff-002",
+                document_id="doc-002",
+                filename="private.md",
+            ),
+            "owner_user_id": "user-b",
+        }
+    )
+    client, _, cx_client = build_client(store=store)
+
+    response = client.get(
+        "/api/v1/workspaces/workspace-001/documents",
+        headers=user_headers(),
+    )
+
+    assert response.status_code == 200
+    assert [item["document_id"] for item in response.json()["documents"]] == ["doc-001"]
     assert cx_client.calls == [
         "document:doc-001:tenant-a:user-a",
         "summary:doc-001",
@@ -557,6 +634,24 @@ def test_document_detail_route_returns_owner_scoped_projection() -> None:
     assert payload["document"]["document_id"] == "doc-001"
     assert payload["document"]["summary"]["summary_available"] is True
     assert payload["document"]["source_lineage"]["storage_uri_included"] is False
+    assert cx_client.calls == ["document:doc-001:tenant-a:user-a"]
+
+
+def test_document_detail_route_accepts_browser_user_and_rejects_other_owner() -> None:
+    store = UploadHandoffStore()
+    store.save(upload_handoff())
+    client, _, cx_client = build_client(store=store)
+
+    allowed = client.get("/api/v1/documents/doc-001", headers=user_headers())
+    forbidden = client.get(
+        "/api/v1/documents/doc-001",
+        headers=user_headers(user_id="user-b"),
+    )
+
+    assert allowed.status_code == 200
+    assert allowed.json()["owner_user_id"] == "user-a"
+    assert forbidden.status_code == 403
+    assert forbidden.json()["error_code"] == "ae.browser_owner_scope_mismatch"
     assert cx_client.calls == ["document:doc-001:tenant-a:user-a"]
 
 

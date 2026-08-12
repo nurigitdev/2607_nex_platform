@@ -10,13 +10,13 @@ from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
     issue_mock_service_token,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
+from nex_ae_api.auth_guard import BrowserUserAuthContext
+from nex_ae_api.route_auth import authorize_ae_facade_route_request
 from nex_ae_api.uploads import DEFAULT_UPLOAD_HANDOFF_STORE, UploadHandoffStore
 
 
@@ -176,9 +176,9 @@ def register_document_library_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
         request_id = request_id_from_headers(request)
         trace_id = trace_id_from_headers(request)
@@ -190,7 +190,10 @@ def register_document_library_routes(
                     request_id=request_id,
                     trace_id=trace_id,
                 )
-                for upload_handoff in handoffs.list_by_workspace(workspace_id)
+                for upload_handoff in visible_upload_handoffs(
+                    handoffs.list_by_workspace(workspace_id),
+                    browser_context=auth_context.browser_context,
+                )
             ]
         except DocumentLibraryError as exc:
             return _document_problem_response(request, exc)
@@ -207,9 +210,9 @@ def register_document_library_routes(
         workspace_id: str = Query(min_length=1),
         query: str = Query(min_length=1),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
         request_id = request_id_from_headers(request)
         trace_id = trace_id_from_headers(request)
@@ -221,7 +224,10 @@ def register_document_library_routes(
                     request_id=request_id,
                     trace_id=trace_id,
                 )
-                for upload_handoff in handoffs.list_by_workspace(workspace_id)
+                for upload_handoff in visible_upload_handoffs(
+                    handoffs.list_by_workspace(workspace_id),
+                    browser_context=auth_context.browser_context,
+                )
             ]
             matches = search_summary_items(items, query=query)
         except DocumentLibraryError as exc:
@@ -239,9 +245,9 @@ def register_document_library_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
         upload_handoff = handoffs.get_by_document_id(document_id)
         if upload_handoff is None:
@@ -260,6 +266,10 @@ def register_document_library_routes(
         request_id = request_id_from_headers(request)
         trace_id = trace_id_from_headers(request)
         try:
+            ensure_document_handoff_visible_to_browser(
+                upload_handoff,
+                browser_context=auth_context.browser_context,
+            )
             return build_document_detail_from_cx(
                 client=client,
                 upload_handoff=upload_handoff,
@@ -320,6 +330,50 @@ def build_document_detail_from_cx(
     return build_document_detail_projection(
         upload_handoff=upload_handoff,
         cx_document=cx_document,
+    )
+
+
+def visible_upload_handoffs(
+    upload_handoffs: list[dict[str, Any]],
+    *,
+    browser_context: BrowserUserAuthContext | None,
+) -> list[dict[str, Any]]:
+    if browser_context is None:
+        return upload_handoffs
+    return [
+        upload_handoff
+        for upload_handoff in upload_handoffs
+        if handoff_matches_browser_context(upload_handoff, browser_context)
+    ]
+
+
+def ensure_document_handoff_visible_to_browser(
+    upload_handoff: dict[str, Any],
+    *,
+    browser_context: BrowserUserAuthContext | None,
+) -> None:
+    if browser_context is None:
+        return
+    if not handoff_matches_browser_context(upload_handoff, browser_context):
+        raise DocumentLibraryError(
+            status_code=403,
+            error_code="ae.browser_owner_scope_mismatch",
+            detail="Document owner scope must match the authenticated browser claim.",
+            retryable=False,
+        )
+
+
+def handoff_matches_browser_context(
+    upload_handoff: dict[str, Any],
+    browser_context: BrowserUserAuthContext,
+) -> bool:
+    try:
+        owner_scope = owner_scope_from_handoff(upload_handoff)
+    except DocumentLibraryError:
+        return False
+    return (
+        owner_scope["tenant_id"] == browser_context.tenant_id
+        and owner_scope["owner_user_id"] == browser_context.user_id
     )
 
 
@@ -645,28 +699,6 @@ def _required_owner_scope_text(value: object, *, field_name: str) -> str:
             retryable=False,
         )
     return value.strip()
-
-
-def _authorize_ae_request(
-    request: Request,
-    authorization: str | None,
-) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-ae-api",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "AE API requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
 
 
 def _document_problem_response(
