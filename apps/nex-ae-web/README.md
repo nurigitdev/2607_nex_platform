@@ -173,5 +173,14 @@ Slice 0230 closes the fetch-mode evidence contract:
 - Regression tests validate the fixture contract and the smoke runner's
   generated PASS evidence shape.
 
+Slice 0231 adds the authenticated runtime boundary audit:
+
+- `src/authBoundary.js` defines the browser authentication boundary before live
+  user-session wiring is added.
+- Fetch mode is allowed only when the browser is authenticated, uses same-origin
+  user credentials, and derives owner scope from session claims.
+- The boundary keeps service tokens, provider details, database URLs, storage
+  paths, and raw source material out of browser runtime config.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.

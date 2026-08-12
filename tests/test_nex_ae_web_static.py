@@ -239,6 +239,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     operation_state = read_web_file("src/operationState.js")
     operation_feedback = read_web_file("src/operationFeedback.js")
     runtime_diagnostics = read_web_file("src/runtimeDiagnostics.js")
+    auth_boundary = read_web_file("src/authBoundary.js")
 
     for expected in [
         "createAeWebClients",
@@ -364,6 +365,23 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     ]:
         assert expected in runtime_diagnostics
 
+    for expected in [
+        "ae_web_auth_boundary.v1",
+        "auditAuthenticatedRuntimeBoundary",
+        "buildAuthBoundarySummary",
+        "assertBrowserRuntimeSafe",
+        "BROWSER_RUNTIME_SECRET_FIELD",
+        "nex-ae-api-only",
+        "serviceTokenIncluded: false",
+        "databaseUrlIncluded: false",
+        "providerSecretIncluded: false",
+        "storagePathIncluded: false",
+        "rawSourceIncluded: false",
+        "browserPayloadAuthoritative: false",
+        "claimAuthoritative",
+    ]:
+        assert expected in auth_boundary
+
     for forbidden in [
         "service_token",
         "api_key",
@@ -378,6 +396,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         assert forbidden not in operation_state
         assert forbidden not in operation_feedback
         assert forbidden not in runtime_diagnostics
+        assert forbidden not in auth_boundary
 
 
 def test_ae_web_mock_state_links_generation_artifact_and_audit_contracts() -> None:
