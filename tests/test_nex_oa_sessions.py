@@ -19,13 +19,16 @@ from nex_oa.sessions import (
     InMemoryOaSessionRegistry,
     OA_BROWSER_SESSION_SCHEMA_VERSION,
     OA_SESSION_ISSUE_SCHEMA_VERSION,
+    OA_SESSION_INTROSPECTION_SCHEMA_VERSION,
     OA_USER_SESSION_SCHEMA_VERSION,
     OaSessionError,
     SqlAlchemyOaSessionRegistry,
     build_browser_session_snapshot,
     build_oa_session_registry_for_runtime,
     build_session_record,
+    build_session_introspection_response,
     normalize_session_issue_request,
+    normalize_session_introspection_request,
     register_user_session_routes,
     safe_session_metadata,
     stable_session_id,
@@ -294,6 +297,178 @@ def test_session_routes_require_service_claim_issue_and_readback() -> None:
     assert get_missing_auth.status_code == 401
 
 
+def test_session_routes_map_registry_errors_to_problem_json() -> None:
+    registry = InMemoryOaSessionRegistry(memory_membership_registry())
+    failure = OaSessionError(
+        status_code=503,
+        error_code="oa.session_registry_unavailable",
+        detail="registry failed",
+        retryable=True,
+    )
+
+    def raise_failure(*_: object, **__: object) -> dict[str, object]:
+        raise failure
+
+    registry.issue_session = raise_failure
+    registry.get_session = raise_failure
+    registry.introspect_session = raise_failure
+    client = build_client(registry)
+
+    issue = client.post(
+        "/internal/v1/auth/user-sessions/issue",
+        headers=auth_headers(),
+        json={},
+    )
+    readback = client.get(
+        "/internal/v1/auth/user-sessions/session-a",
+        headers=auth_headers(),
+    )
+    introspection = client.post(
+        "/internal/v1/auth/user-sessions/introspect",
+        headers=auth_headers(),
+        json={"session_id": "session-a"},
+    )
+
+    assert issue.status_code == 503
+    assert issue.json()["error_code"] == "oa.session_registry_unavailable"
+    assert readback.status_code == 503
+    assert readback.json()["retryable"] is True
+    assert introspection.status_code == 503
+    assert introspection.json()["title"] == "OA session request failed"
+
+
+def test_session_introspection_reports_active_inactive_and_hides_credentials() -> None:
+    registry = InMemoryOaSessionRegistry(memory_membership_registry())
+    issued = registry.issue_session(
+        {
+            "tenant_id": "tenant-a",
+            "subject_id": "user-a",
+            "requested_scopes": ["workspace:use"],
+        }
+    )
+    session_id = issued["session"]["session_id"]
+
+    active = registry.introspect_session({"session_id": session_id})
+    missing = registry.introspect_session({"session_id": "missing-session"})
+
+    revoked_record = dict(registry.sessions[session_id])
+    revoked_record.update(
+        {
+            "session_id": "revoked-session",
+            "status": "REVOKED",
+            "revoked_at": "2026-08-12T00:00:00Z",
+        }
+    )
+    registry.sessions["revoked-session"] = revoked_record
+    revoked = registry.introspect_session({"session_id": "revoked-session"})
+
+    expired_record = dict(registry.sessions[session_id])
+    expired_record.update(
+        {
+            "session_id": "expired-session",
+            "expires_at": "2000-01-01T00:00:00Z",
+        }
+    )
+    registry.sessions["expired-session"] = expired_record
+    expired = registry.introspect_session({"session_id": "expired-session"})
+
+    serialized = json.dumps(active, ensure_ascii=False)
+    assert active["session_introspection_schema_version"] == (
+        OA_SESSION_INTROSPECTION_SCHEMA_VERSION
+    )
+    assert active["active"] is True
+    assert active["inactive_reason"] is None
+    assert active["session"] == issued["session"]
+    assert active["tenant_ref"] == {"type": "oa.tenant", "id": "tenant-a"}
+    assert active["subject_ref"] == {"type": "oa.user", "id": "user-a"}
+    assert active["credential_delivery"] == {
+        "raw_token_included": False,
+        "cookie_value_included": False,
+        "service_credential_included": False,
+        "ae_cookie_owner": True,
+    }
+    assert active["metadata"]["session_id_authoritative"] is True
+    assert active["metadata"]["raw_token_stored"] is False
+    assert missing["active"] is False
+    assert missing["inactive_reason"] == "not_found"
+    assert missing["session"] is None
+    assert revoked["active"] is False
+    assert revoked["inactive_reason"] == "revoked"
+    assert expired["active"] is False
+    assert expired["inactive_reason"] == "expired"
+    assert "access_token" not in serialized
+    assert "secret-value" not in serialized
+
+
+def test_session_introspection_request_validation_rejects_private_payloads() -> None:
+    assert normalize_session_introspection_request({"session_id": " session-a "}) == {
+        "session_id": "session-a"
+    }
+    for payload, error_code in [
+        ({"session_id": ""}, "oa.session_field_invalid"),
+        (
+            {"session_id": "session-a", "tenant_id": "tenant-a"},
+            "oa.session_introspection_field_unsupported",
+        ),
+        (
+            {"session_id": "session-a", "cookie": "secret-value"},
+            "oa.private_identity_payload_rejected",
+        ),
+    ]:
+        with pytest.raises(OaSessionError) as exc:
+            normalize_session_introspection_request(payload)
+        assert exc.value.error_code == error_code
+        assert str(exc.value) == exc.value.detail
+
+
+def test_session_introspection_route_requires_service_claim_and_returns_context() -> None:
+    client = build_client()
+    issued = client.post(
+        "/internal/v1/auth/user-sessions/issue",
+        headers=auth_headers(),
+        json={"tenant_id": "tenant-a", "subject_id": "user-a"},
+    )
+    session_id = issued.json()["session"]["session_id"]
+
+    missing_auth = client.post(
+        "/internal/v1/auth/user-sessions/introspect",
+        json={"session_id": session_id},
+    )
+    wrong_audience = client.post(
+        "/internal/v1/auth/user-sessions/introspect",
+        headers=auth_headers(audience="nex-cx"),
+        json={"session_id": session_id},
+    )
+    active = client.post(
+        "/internal/v1/auth/user-sessions/introspect",
+        headers=auth_headers(),
+        json={"session_id": session_id},
+    )
+    missing = client.post(
+        "/internal/v1/auth/user-sessions/introspect",
+        headers=auth_headers(),
+        json={"session_id": "missing"},
+    )
+    rejected = client.post(
+        "/internal/v1/auth/user-sessions/introspect",
+        headers=auth_headers(),
+        json={"session_id": session_id, "token": "secret-value"},
+    )
+
+    assert missing_auth.status_code == 401
+    assert missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert wrong_audience.status_code == 401
+    assert wrong_audience.json()["error_code"] == "TOKEN_AUDIENCE_INVALID"
+    assert active.status_code == 200
+    assert active.json()["active"] is True
+    assert active.json()["trace_id"] == TRACE_ID
+    assert active.json()["request_id"] == REQUEST_ID
+    assert missing.status_code == 200
+    assert missing.json()["inactive_reason"] == "not_found"
+    assert rejected.status_code == 400
+    assert rejected.json()["error_code"] == "oa.private_identity_payload_rejected"
+
+
 def test_session_record_helpers_are_deterministic_and_validate_shape() -> None:
     issued = issue_mock_user_token(
         tenant_id="tenant-a",
@@ -308,6 +483,10 @@ def test_session_record_helpers_are_deterministic_and_validate_shape() -> None:
     assert record["session_schema_version"] == OA_USER_SESSION_SCHEMA_VERSION
     assert record["session_id"] == stable_session_id(issued.claims)
     assert snapshot["metadata"] == safe_session_metadata()
+    assert build_session_introspection_response(record)["active"] is True
+
+    expired = {**record, "status": "EXPIRED"}
+    assert build_session_introspection_response(expired)["inactive_reason"] == "expired"
 
     for mutated, error_code in [
         ({**record, "status": "LOCKED"}, "oa.session_status_invalid"),
@@ -329,9 +508,15 @@ def test_sqlalchemy_session_registry_persists_session_without_raw_token() -> Non
     )
     session_id = issued["session"]["session_id"]
     readback = registry.get_session(session_id)
+    introspection = registry.introspect_session({"session_id": session_id})
+    missing_introspection = registry.introspect_session({"session_id": "missing"})
 
     assert readback is not None
     assert readback["session"] == issued["session"]
+    assert introspection["active"] is True
+    assert introspection["session"] == issued["session"]
+    assert missing_introspection["active"] is False
+    assert missing_introspection["inactive_reason"] == "not_found"
     assert registry.get_session("missing") is None
     with engine.connect() as connection:
         table_dump = "\n".join(
@@ -367,6 +552,9 @@ def test_sqlalchemy_session_registry_reports_unavailable_and_rolls_back(monkeypa
     with pytest.raises(OaSessionError) as read_failure:
         registry.get_session("session-a")
     assert read_failure.value.error_code == "oa.session_registry_unavailable"
+    with pytest.raises(OaSessionError) as introspection_failure:
+        registry.introspect_session({"session_id": "session-a"})
+    assert introspection_failure.value.error_code == "oa.session_registry_unavailable"
 
     class RollbackSession:
         def __init__(self) -> None:
@@ -449,4 +637,5 @@ def test_nex_oa_entrypoint_registers_session_routes() -> None:
     paths = {getattr(route, "path", "") for route in main.app.routes}
 
     assert "/internal/v1/auth/user-sessions/issue" in paths
+    assert "/internal/v1/auth/user-sessions/introspect" in paths
     assert "/internal/v1/auth/user-sessions/{session_id}" in paths

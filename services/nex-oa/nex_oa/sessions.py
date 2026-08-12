@@ -44,6 +44,7 @@ from nex_runtime import (
 
 OA_USER_SESSION_SCHEMA_VERSION = "oa_user_session.v1"
 OA_SESSION_ISSUE_SCHEMA_VERSION = "oa_session_issue.v1"
+OA_SESSION_INTROSPECTION_SCHEMA_VERSION = "oa_session_introspection.v1"
 OA_BROWSER_SESSION_SCHEMA_VERSION = "oa_browser_session.v1"
 OA_SESSION_STATUSES = ("ACTIVE", "EXPIRED", "REVOKED")
 DEFAULT_SESSION_TTL_SECONDS = 3600
@@ -58,6 +59,7 @@ SESSION_ISSUE_FIELDS = frozenset(
         "ttl_seconds",
     }
 )
+SESSION_INTROSPECTION_FIELDS = frozenset({"session_id"})
 SENSITIVE_SESSION_KEY_PARTS = (
     "access",
     "authorization",
@@ -106,6 +108,11 @@ class InMemoryOaSessionRegistry:
             return None
         return build_session_issue_response(record, membership=None)
 
+    def introspect_session(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        introspection_request = normalize_session_introspection_request(payload)
+        record = self.sessions.get(introspection_request["session_id"])
+        return build_session_introspection_response(record)
+
 
 class SqlAlchemyOaSessionRegistry:
     def __init__(
@@ -145,6 +152,18 @@ class SqlAlchemyOaSessionRegistry:
         if record is None:
             return None
         return build_session_issue_response(record, membership=None)
+
+    def introspect_session(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        introspection_request = normalize_session_introspection_request(payload)
+        try:
+            with self._session_factory() as session:
+                record = self._select_session(
+                    session,
+                    introspection_request["session_id"],
+                )
+        except SQLAlchemyError as exc:
+            raise _session_unavailable() from exc
+        return build_session_introspection_response(record)
 
     def _run_in_transaction(self, operation: Any) -> Any:
         session = self._session_factory()
@@ -311,6 +330,21 @@ def register_user_session_routes(
             return _session_problem_response(request, exc)
         return _attach_request_context(response, request)
 
+    @app.post("/internal/v1/auth/user-sessions/introspect", response_model=None)
+    def introspect_user_session(
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any] | JSONResponse:
+        auth_problem = _authorize_oa_session_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        try:
+            response = registry.introspect_session(payload)
+        except OaSessionError as exc:
+            return _session_problem_response(request, exc)
+        return _attach_request_context(response, request)
+
     @app.get("/internal/v1/auth/user-sessions/{session_id}", response_model=None)
     def get_user_session(
         session_id: str,
@@ -337,7 +371,12 @@ def register_user_session_routes(
 
 
 def normalize_session_issue_request(payload: Mapping[str, Any]) -> dict[str, Any]:
-    _reject_unsupported_or_sensitive_session_fields(payload)
+    _reject_unsupported_or_sensitive_session_fields(
+        payload,
+        allowed_fields=SESSION_ISSUE_FIELDS,
+        error_code="oa.session_issue_field_unsupported",
+        request_name="Session issue",
+    )
     tenant_id = _normalize_ref_id(
         payload.get("tenant_id", DEFAULT_TENANT_ID),
         field_name="tenant_id",
@@ -354,6 +393,18 @@ def normalize_session_issue_request(payload: Mapping[str, Any]) -> dict[str, Any
             field_name="requested_scopes",
         ),
         "ttl_seconds": _ttl_seconds(payload.get("ttl_seconds")),
+    }
+
+
+def normalize_session_introspection_request(payload: Mapping[str, Any]) -> dict[str, Any]:
+    _reject_unsupported_or_sensitive_session_fields(
+        payload,
+        allowed_fields=SESSION_INTROSPECTION_FIELDS,
+        error_code="oa.session_introspection_field_unsupported",
+        request_name="Session introspection",
+    )
+    return {
+        "session_id": _non_empty_text(payload.get("session_id"), field_name="session_id"),
     }
 
 
@@ -443,6 +494,40 @@ def build_session_issue_response(
     }
 
 
+def build_session_introspection_response(
+    record: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    session = build_browser_session_snapshot(record) if record is not None else None
+    inactive_reason = (
+        _inactive_reason_for_session_snapshot(session) if session is not None else "not_found"
+    )
+    return {
+        "session_introspection_schema_version": (
+            OA_SESSION_INTROSPECTION_SCHEMA_VERSION
+        ),
+        "service_id": "nex-oa",
+        "active": inactive_reason is None,
+        "inactive_reason": inactive_reason,
+        "session": session,
+        "tenant_ref": session["tenant_ref"] if session is not None else None,
+        "subject_ref": session["subject_ref"] if session is not None else None,
+        "credential_delivery": {
+            "raw_token_included": False,
+            "cookie_value_included": False,
+            "service_credential_included": False,
+            "ae_cookie_owner": True,
+        },
+        "metadata": {
+            "session_id_authoritative": True,
+            "session_status_authoritative": True,
+            "session_persisted": record is not None,
+            "raw_token_stored": False,
+            "browser_payload_owner_authoritative": False,
+            "claim_owner_authoritative": True,
+        },
+    }
+
+
 def normalize_session_status(value: object) -> str:
     status = _non_empty_text(value, field_name="session_status").upper()
     if status not in OA_SESSION_STATUSES:
@@ -481,6 +566,20 @@ def safe_session_metadata() -> dict[str, bool]:
         "browser_payload_owner_authoritative": False,
         "claim_owner_authoritative": True,
     }
+
+
+def _inactive_reason_for_session_snapshot(
+    session: Mapping[str, Any],
+) -> str | None:
+    status = normalize_session_status(session.get("status"))
+    if status == "REVOKED":
+        return "revoked"
+    if status == "EXPIRED":
+        return "expired"
+    expires_at = _wire_timestamp_to_utc(session.get("expires_at"))
+    if expires_at <= datetime.now(UTC):
+        return "expired"
+    return None
 
 
 def _claims_for_membership(
@@ -597,14 +696,20 @@ def _membership_record(membership: Mapping[str, Any]) -> Mapping[str, Any]:
     return record
 
 
-def _reject_unsupported_or_sensitive_session_fields(payload: Mapping[str, Any]) -> None:
+def _reject_unsupported_or_sensitive_session_fields(
+    payload: Mapping[str, Any],
+    *,
+    allowed_fields: frozenset[str],
+    error_code: str,
+    request_name: str,
+) -> None:
     _reject_private_session_payload(payload)
     for key in payload:
-        if key not in SESSION_ISSUE_FIELDS:
+        if key not in allowed_fields:
             raise OaSessionError(
                 status_code=400,
-                error_code="oa.session_issue_field_unsupported",
-                detail="Session issue request contains an unsupported field.",
+                error_code=error_code,
+                detail=f"{request_name} request contains an unsupported field.",
             )
 
 
@@ -803,6 +908,17 @@ def _timestamp_to_wire(value: Any) -> str:
             observed = observed.replace(tzinfo=UTC)
         return observed.astimezone(UTC).isoformat().replace("+00:00", "Z")
     return str(value)
+
+
+def _wire_timestamp_to_utc(value: object) -> datetime:
+    text_value = _non_empty_text(value, field_name="expires_at")
+    normalized = (
+        f"{text_value[:-1]}+00:00" if text_value.endswith("Z") else text_value
+    )
+    observed = datetime.fromisoformat(normalized)
+    if observed.tzinfo is None:
+        observed = observed.replace(tzinfo=UTC)
+    return observed.astimezone(UTC)
 
 
 def _session_unavailable() -> OaSessionError:

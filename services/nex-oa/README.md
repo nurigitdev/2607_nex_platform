@@ -19,6 +19,7 @@ Current endpoints:
 - `POST /internal/v1/identity/memberships/ensure`
 - `GET /internal/v1/identity/memberships/tenants/{tenant_id}/subjects/{subject_id}`
 - `POST /internal/v1/auth/user-sessions/issue`
+- `POST /internal/v1/auth/user-sessions/introspect`
 - `GET /internal/v1/auth/user-sessions/{session_id}`
 - `GET /internal/v1/auth/session-credential-delivery-boundary`
 
@@ -99,3 +100,14 @@ Slice 0245 OA-AE session credential delivery boundary:
   introspection calls, and browser-safe session projection.
 - Browser JSON must not include raw user tokens, service credentials, password
   material, database URLs, or cookie values.
+
+Slice 0246 OA session introspection API:
+
+- `POST /internal/v1/auth/user-sessions/introspect` lets AE validate an opaque
+  OA session id with a service-token protected internal call.
+- The response returns `active`, `inactive_reason`, and the browser-safe session
+  snapshot when one exists. It never returns raw user tokens, service
+  credentials, passwords, or cookie values.
+- `ACTIVE` sessions become inactive when their `expires_at` timestamp has
+  passed; `EXPIRED`, `REVOKED`, and missing sessions return explicit inactive
+  reasons.
