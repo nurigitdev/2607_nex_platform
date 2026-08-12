@@ -74,6 +74,10 @@ Upload handoff:
 - Upload handoff records keep the propagated stable subject refs for debugging,
   but do not store passwords, tokens, emails, raw identity profiles, source
   bytes, storage keys, or local filesystem paths.
+- Slice 0233 adds `nex_ae_api.auth_guard` as the reusable browser user-auth
+  guard foundation. Browser user tokens are validated separately from
+  service-to-service tokens, owner scope is claim-authoritative, and mismatched
+  browser payload owner fields are rejected before downstream handoff wiring.
 
 Document library:
 

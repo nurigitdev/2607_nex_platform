@@ -336,6 +336,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0230`](slices/0230_ae_web_fetch_mode_smoke_evidence_contract_closure.md) | `S23-010` AE Web fetch-mode smoke evidence contract closure. |
 | [`Slice 0231`](slices/0231_ae_web_authenticated_runtime_boundary_audit.md) | `S24-001` AE Web authenticated runtime boundary audit. |
 | [`Slice 0232`](slices/0232_oa_user_session_token_contract_foundation.md) | `S24-002` OA user session/token contract foundation. |
+| [`Slice 0233`](slices/0233_ae_api_browser_user_auth_guard_foundation.md) | `S24-003` AE API browser-user auth guard foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
