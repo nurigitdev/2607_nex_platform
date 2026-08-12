@@ -97,6 +97,11 @@ Upload handoff:
 - Slice 0240 closes the authenticated fetch-mode track with static guardrails
   that keep AE facade smoke calls browser-user authenticated and evidence
   claim-scope aware.
+- Slice 0248 adds the AE-to-OA user-session client adapter. The adapter can call
+  OA session issue, introspection, and revocation endpoints with service-token,
+  trace, request-id, timeout, error mapping, and redaction-safe response
+  handling. AE auth routes still default to the mock cookie mode until the
+  facade wiring slice switches them to OA-backed opaque session ids.
 
 Document library:
 
