@@ -129,7 +129,7 @@ def test_ae_web_document_surface_tracks_detail_facade_boundary() -> None:
         "selectedDocumentId",
         "renderDocumentDetail",
         "documentDetailRoute",
-        "createAeWebClients",
+        "createAuthenticatedAeWebRuntime",
         "clientRegistry",
         "ae_document_detail_projection.v1",
         "ownerScope",
@@ -233,6 +233,7 @@ def test_ae_web_document_scope_propagates_to_retrieval_surface() -> None:
 
 def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     javascript = read_web_file("src/main.js")
+    authenticated_runtime = read_web_file("src/authenticatedRuntime.js")
     client_registry = read_web_file("src/clientRegistry.js")
     runtime_config = read_web_file("src/runtimeConfig.js")
     fetch_harness = read_web_file("src/fetchModeHarness.js")
@@ -243,10 +244,15 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     session_client = read_web_file("src/sessionClient.js")
 
     for expected in [
-        "createAeWebClients",
+        "createAuthenticatedAeWebRuntime",
+        "buildAuthenticatedRuntimeSummary",
         "buildClientRegistrySummary",
         "loadRuntimeConfig",
         "buildRuntimeConfigSummary",
+        "authenticatedRuntime",
+        "sessionState",
+        "sessionClient",
+        "authBoundary",
         "runtimeConfig",
         "clientRegistry",
         "operations",
@@ -265,6 +271,23 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         "renderRuntimeDiagnostics",
     ]:
         assert expected in javascript
+
+    for expected in [
+        "ae_web_authenticated_runtime.v1",
+        "createAuthenticatedAeWebRuntime",
+        "buildAuthenticatedRuntimeSummary",
+        "auditAuthenticatedRuntimeBoundary",
+        "createFetchSessionClient",
+        "createMockSessionClient",
+        "AUTHENTICATED_RUNTIME_FETCH_BLOCKED",
+        "AUTHENTICATED_RUNTIME_SESSION_INVALID",
+        "authBoundary.fetch_mode.blocked_reasons",
+        "rawTokenStored: false",
+        "serviceTokenStored: false",
+        "passwordStored: false",
+        "claimAuthoritativeWhenAuthenticated: true",
+    ]:
+        assert expected in authenticated_runtime
 
     for expected in [
         "ae_web_client_registry.v1",
@@ -363,6 +386,11 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         "providerEndpointIncluded: false",
         "storageLocationIncluded: false",
         "liveNetworkUsed: false",
+        "session_state",
+        "auth_boundary",
+        "fetch_mode_allowed",
+        "buildSessionStateSummary",
+        "buildAuthBoundarySummary",
     ]:
         assert expected in runtime_diagnostics
 
@@ -408,6 +436,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         "/data/nex-platform",
     ]:
         assert forbidden not in javascript
+        assert forbidden not in authenticated_runtime
         assert forbidden not in client_registry
         assert forbidden not in runtime_config
         assert forbidden not in fetch_harness

@@ -1,6 +1,9 @@
 import {
-  buildClientRegistrySummary,
-  createAeWebClients
+  buildAuthenticatedRuntimeSummary,
+  createAuthenticatedAeWebRuntime
+} from "./authenticatedRuntime.js";
+import {
+  buildClientRegistrySummary
 } from "./clientRegistry.js";
 import {
   documentDetailRoute
@@ -65,7 +68,11 @@ const workspaceState = {
   retrievalPackageId: "cx-ret-local",
   artifactHandoffId: "handoff-local",
   selectedDocumentId: "doc-001",
+  authenticatedRuntime: null,
   runtimeConfig: null,
+  sessionState: null,
+  sessionClient: null,
+  authBoundary: null,
   clientRegistry: null,
   operations: null,
   documentScope: null,
@@ -181,12 +188,15 @@ const workspaceState = {
 };
 
 workspaceState.messages[1].artifactRefs = [workspaceState.artifactRef];
-workspaceState.runtimeConfig = loadRuntimeConfig();
-workspaceState.clientRegistry = createAeWebClients({
-  mode: workspaceState.runtimeConfig.clientMode,
-  baseUrl: workspaceState.runtimeConfig.aeBaseUrl,
+workspaceState.authenticatedRuntime = createAuthenticatedAeWebRuntime({
+  runtimeConfig: loadRuntimeConfig(),
   documents: workspaceState.documents
 });
+workspaceState.runtimeConfig = workspaceState.authenticatedRuntime.runtimeConfig;
+workspaceState.sessionState = workspaceState.authenticatedRuntime.sessionState;
+workspaceState.sessionClient = workspaceState.authenticatedRuntime.sessionClient;
+workspaceState.authBoundary = workspaceState.authenticatedRuntime.authBoundary;
+workspaceState.clientRegistry = workspaceState.authenticatedRuntime.clientRegistry;
 workspaceState.documentDetailClient = workspaceState.clientRegistry.documentDetailClient;
 workspaceState.uploadClient = workspaceState.clientRegistry.uploadClient;
 workspaceState.retrievalClient = workspaceState.clientRegistry.retrievalClient;
@@ -1001,6 +1011,8 @@ async function submitUploadDraft() {
 function renderRuntimeDiagnostics() {
   const diagnostics = buildRuntimeDiagnostics({
     runtimeConfig: workspaceState.runtimeConfig,
+    sessionState: workspaceState.sessionState,
+    authBoundary: workspaceState.authBoundary,
     clientRegistry: workspaceState.clientRegistry,
     operations: workspaceState.operations
   });
@@ -1025,7 +1037,11 @@ function renderRuntimeDiagnostics() {
     </div>
     <div>
       <dt>fetch</dt>
-      <dd>${escapeHtml(summary.fetch_clients_enabled)}</dd>
+      <dd>${escapeHtml(summary.fetch_clients_enabled)} · allowed ${escapeHtml(summary.fetch_mode_allowed)}</dd>
+    </div>
+    <div>
+      <dt>session</dt>
+      <dd>${escapeHtml(summary.session_state)}</dd>
     </div>
     <div>
       <dt>operations</dt>
@@ -1060,6 +1076,9 @@ function safeUploadPreview(payload, draft, submission) {
     client: {
       mode: workspaceState.uploadClient.clientMode,
       route: draft.uploadRoute,
+      authenticated_runtime: buildAuthenticatedRuntimeSummary(
+        workspaceState.authenticatedRuntime
+      ),
       registry: buildClientRegistrySummary(workspaceState.clientRegistry),
       runtime_config: buildRuntimeConfigSummary(workspaceState.runtimeConfig)
     },
@@ -1087,6 +1106,9 @@ function safeRetrievalPreview(retrievalRequest, currentScope, retrievalResult) {
       selected_count: currentScope.selectedCount,
       client: {
         mode: workspaceState.retrievalClient.clientMode,
+        authenticated_runtime: buildAuthenticatedRuntimeSummary(
+          workspaceState.authenticatedRuntime
+        ),
         registry: buildClientRegistrySummary(workspaceState.clientRegistry),
         runtime_config: buildRuntimeConfigSummary(workspaceState.runtimeConfig),
         operation: buildOperationStateSummary(workspaceState.operations.retrieval)

@@ -192,5 +192,14 @@ Slice 0234 adds the session client and login state model:
 - The fetch adapter targets AE API auth facade routes with same-origin browser
   credentials.
 
+Slice 0235 adds the authenticated runtime composition gate:
+
+- `src/authenticatedRuntime.js` composes runtime config, session state, session
+  client, auth boundary audit, and browser client registry in one envelope.
+- Fetch-mode client composition is blocked unless the browser session is
+  authenticated and owner scope is claim-derived.
+- Runtime diagnostics now expose session state, auth boundary, and fetch-mode
+  allowed status without leaking browser credentials or server-only endpoints.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.

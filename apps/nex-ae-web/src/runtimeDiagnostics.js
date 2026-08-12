@@ -2,11 +2,17 @@ import {
   buildClientRegistrySummary
 } from "./clientRegistry.js";
 import {
+  buildAuthBoundarySummary
+} from "./authBoundary.js";
+import {
   buildOperationStateSummary
 } from "./operationState.js";
 import {
   buildRuntimeConfigSummary
 } from "./runtimeConfig.js";
+import {
+  buildSessionStateSummary
+} from "./sessionClient.js";
 
 export const AE_WEB_RUNTIME_DIAGNOSTICS_SCHEMA_VERSION =
   "ae_web_runtime_diagnostics.v1";
@@ -21,19 +27,27 @@ export class RuntimeDiagnosticsError extends Error {
 
 export function buildRuntimeDiagnostics({
   runtimeConfig,
+  sessionState = null,
+  authBoundary = null,
   clientRegistry,
   operations = {}
 } = {}) {
   const runtime = buildRuntimeConfigSummary(runtimeConfig);
+  const session = sessionState ? buildSessionStateSummary(sessionState) : null;
+  const auth = authBoundary ? buildAuthBoundarySummary(authBoundary) : null;
   const registry = buildClientRegistrySummary(clientRegistry);
   const operationSummaries = summarizeOperations(operations);
 
   return {
     runtime_diagnostics_schema_version: AE_WEB_RUNTIME_DIAGNOSTICS_SCHEMA_VERSION,
     client_mode: runtime.client_mode,
+    session_state: session?.status || "unknown",
     ae_base_url: runtime.ae_base_url,
     fetch_clients_enabled: Boolean(runtime.features.fetch_clients_enabled),
+    fetch_mode_allowed: Boolean(auth?.fetch_mode_allowed),
     feature_flags: runtime.features,
+    session,
+    auth_boundary: auth,
     registry,
     operations: operationSummaries,
     operation_count: operationSummaries.length,
@@ -72,8 +86,10 @@ export function buildRuntimeDiagnosticsSummary(diagnostics) {
     runtime_diagnostics_schema_version:
       diagnostics.runtime_diagnostics_schema_version,
     client_mode: diagnostics.client_mode,
+    session_state: diagnostics.session_state,
     ae_base_url: diagnostics.ae_base_url,
     fetch_clients_enabled: diagnostics.fetch_clients_enabled,
+    fetch_mode_allowed: diagnostics.fetch_mode_allowed,
     operation_count: diagnostics.operation_count,
     failed_operation_count: diagnostics.failed_operation_count,
     retryable_operation_count: diagnostics.retryable_operation_count,

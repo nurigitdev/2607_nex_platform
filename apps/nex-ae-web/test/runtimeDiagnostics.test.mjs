@@ -5,6 +5,9 @@ import {
   createAeWebClients
 } from "../src/clientRegistry.js";
 import {
+  createAuthenticatedAeWebRuntime
+} from "../src/authenticatedRuntime.js";
+import {
   createOperationState,
   markOperationFailed,
   markOperationRunning,
@@ -64,21 +67,24 @@ function operations() {
 
 describe("AE Web runtime diagnostics", () => {
   it("summarizes mock runtime, registry, and operations safely", () => {
-    const diagnostics = buildRuntimeDiagnostics({
+    const runtime = createAuthenticatedAeWebRuntime({
       runtimeConfig: runtimeConfig(),
-      clientRegistry: createAeWebClients({
-        mode: "mock",
-        documents: [
-          {
-            documentId: "doc-001",
-            filename: "29_mvp_srs.md",
-            ownerScope: {
-              tenantId: "tenant-local",
-              ownerUserId: "owner-local"
-            }
+      documents: [
+        {
+          documentId: "doc-001",
+          filename: "29_mvp_srs.md",
+          ownerScope: {
+            tenantId: "tenant-local",
+            ownerUserId: "owner-local"
           }
-        ]
-      }),
+        }
+      ]
+    });
+    const diagnostics = buildRuntimeDiagnostics({
+      runtimeConfig: runtime.runtimeConfig,
+      sessionState: runtime.sessionState,
+      authBoundary: runtime.authBoundary,
+      clientRegistry: runtime.clientRegistry,
       operations: operations()
     });
     const summary = buildRuntimeDiagnosticsSummary(diagnostics);
@@ -88,12 +94,16 @@ describe("AE Web runtime diagnostics", () => {
       AE_WEB_RUNTIME_DIAGNOSTICS_SCHEMA_VERSION
     );
     assert.equal(diagnostics.client_mode, "mock");
+    assert.equal(diagnostics.session_state, "anonymous");
     assert.equal(diagnostics.fetch_clients_enabled, false);
+    assert.equal(diagnostics.fetch_mode_allowed, false);
     assert.equal(diagnostics.operation_count, 2);
     assert.equal(diagnostics.failed_operation_count, 1);
     assert.equal(diagnostics.retryable_operation_count, 1);
     assert.equal(diagnostics.registry.clients.upload, "mock");
+    assert.equal(diagnostics.auth_boundary.owner_scope_source, "mock-local");
     assert.equal(summary.operation_count, 2);
+    assert.equal(summary.session_state, "anonymous");
     assert.equal(summary.metadata.liveNetworkUsed, false);
     assert.doesNotMatch(JSON.stringify(diagnostics), /service_token|api_key|database_url|provider_url|raw_prompt|source_text|\/data\/nex-platform/);
   });
