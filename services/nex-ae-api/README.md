@@ -113,6 +113,12 @@ Upload handoff:
   `NEX_AE_TEST_DATABASE_URL` and `NEX_OA_TEST_DATABASE_URL` to run the
   test-profile flow: OA membership seed, AE login/current/protected/logout,
   OA session revocation readback, AE marker readback, and cleanup.
+- Slice 0255 extends the AE-to-OA auth client with
+  `login_with_credentials(...)` for OA `POST /internal/v1/auth/user-login`.
+  The adapter maps `employee_id` or `login_identifier` plus `password` to OA,
+  propagates trace/request ids and the AE service token, and keeps submitted
+  passwords out of returned errors/evidence. The public AE login facade is
+  still switched in the next slice.
 
 Document library:
 

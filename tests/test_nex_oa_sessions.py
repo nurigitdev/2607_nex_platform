@@ -613,7 +613,7 @@ def test_session_record_helpers_are_deterministic_and_validate_shape() -> None:
         user_id="user-a",
         scopes=["workspace:use"],
         roles=[],
-        issued_at=datetime(2026, 8, 12, 12, 0, tzinfo=UTC),
+        issued_at=datetime(2999, 8, 12, 12, 0, tzinfo=UTC),
     )
     record = build_session_record(issued.claims)
     snapshot = build_browser_session_snapshot(record)

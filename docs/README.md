@@ -358,6 +358,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0252`](slices/0252_oa_local_credential_registry_foundation.md) | `S26-002` OA local credential registry foundation. |
 | [`Slice 0253`](slices/0253_oa_user_login_api_foundation.md) | `S26-003` OA user login API foundation. |
 | [`Slice 0254`](slices/0254_oa_user_login_postgresql_smoke_evidence.md) | `S26-004` OA user login PostgreSQL smoke evidence. |
+| [`Slice 0255`](slices/0255_ae_oa_credential_login_client_adapter_foundation.md) | `S26-005` AE OA credential-login client adapter foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

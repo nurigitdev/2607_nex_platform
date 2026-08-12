@@ -11,6 +11,7 @@ from nex_ae_api.oa_session_client import (
     OaUserSessionClientError,
     build_default_oa_user_session_client,
     oa_session_issue_payload,
+    oa_user_login_payload,
 )
 
 
@@ -23,11 +24,33 @@ def login_request() -> dict[str, object]:
     }
 
 
-def test_http_oa_session_client_calls_issue_introspect_and_revoke_shapes() -> None:
+def credential_login_request() -> dict[str, object]:
+    return {
+        "tenant_id": "tenant-a",
+        "employee_id": "EMP-001",
+        "password": "Nuri1004!",
+        "scopes": ["workspace:use", "documents:upload"],
+        "ttl_seconds": 1800,
+    }
+
+
+def test_http_oa_session_client_calls_login_issue_introspect_and_revoke_shapes() -> None:
     calls: list[dict[str, Any]] = []
 
     def requester(method: str, url: str, **kwargs: Any) -> httpx.Response:
         calls.append({"method": method, "url": url, **kwargs})
+        if url.endswith("/user-login"):
+            return httpx.Response(
+                200,
+                json={
+                    "login_response_schema_version": "oa_user_login_response.v1",
+                    "session": {"session_id": "session/credential"},
+                    "metadata": {
+                        "password_verified": True,
+                        "raw_password_included": False,
+                    },
+                },
+            )
         if url.endswith("/issue"):
             return httpx.Response(
                 200,
@@ -61,6 +84,11 @@ def test_http_oa_session_client_calls_issue_introspect_and_revoke_shapes() -> No
         requester=requester,
     )
 
+    logged_in = client.login_with_credentials(
+        credential_login_request(),
+        request_id="request-login",
+        trace_id="3bf92f3577b34da6a3ce929d0e0e4736",
+    )
     issued = client.issue_session(
         login_request(),
         request_id="request-a",
@@ -78,23 +106,85 @@ def test_http_oa_session_client_calls_issue_introspect_and_revoke_shapes() -> No
     )
 
     assert AE_OA_SESSION_CLIENT_SCHEMA_VERSION == "ae_oa_session_client.v1"
+    assert logged_in["session"]["session_id"] == "session/credential"
+    assert logged_in["metadata"]["password_verified"] is True
     assert issued["session"]["session_id"] == "session/a"
     assert introspection["active"] is True
     assert revocation["revoked"] is True
     assert calls[0]["method"] == "POST"
-    assert calls[0]["url"] == "http://oa.local/internal/v1/auth/user-sessions/issue"
+    assert calls[0]["url"] == "http://oa.local/internal/v1/auth/user-login"
     assert calls[0]["json"] == {
+        "tenant_id": "tenant-a",
+        "employee_id": "EMP-001",
+        "password": "Nuri1004!",
+        "requested_scopes": ["workspace:use", "documents:upload"],
+        "ttl_seconds": 1800,
+    }
+    assert calls[1]["url"] == "http://oa.local/internal/v1/auth/user-sessions/issue"
+    assert calls[1]["json"] == {
         "tenant_id": "tenant-a",
         "subject_id": "user-a",
         "requested_scopes": ["workspace:use", "documents:upload"],
         "ttl_seconds": 1800,
     }
-    assert calls[1]["json"] == {"session_id": "session/a"}
-    assert calls[2]["url"].endswith("/user-sessions/session%2Fa/revoke")
+    assert calls[2]["json"] == {"session_id": "session/a"}
+    assert calls[3]["url"].endswith("/user-sessions/session%2Fa/revoke")
     for call in calls:
         assert call["headers"]["Authorization"] == "Bearer service-secret"
         assert call["headers"]["X-Service-ID"] == "nex-ae-api"
         assert call["timeout"] == 2.5
+
+
+def test_oa_user_login_payload_maps_employee_password_request_shape() -> None:
+    assert oa_user_login_payload(credential_login_request()) == {
+        "tenant_id": "tenant-a",
+        "employee_id": "EMP-001",
+        "password": "Nuri1004!",
+        "requested_scopes": ["workspace:use", "documents:upload"],
+        "ttl_seconds": 1800,
+    }
+    assert oa_user_login_payload(
+        {
+            "tenant_id": "tenant-a",
+            "login_identifier": "EMP-002",
+            "password": "Nuri1004!",
+            "requested_scopes": ["workspace:use"],
+        }
+    ) == {
+        "tenant_id": "tenant-a",
+        "employee_id": "EMP-002",
+        "password": "Nuri1004!",
+        "requested_scopes": ["workspace:use"],
+    }
+    assert oa_user_login_payload(
+        {
+            "tenant_id": "tenant-a",
+            "employee_id": "EMP-003",
+            "password": "Nuri1004!",
+        }
+    ) == {
+        "tenant_id": "tenant-a",
+        "employee_id": "EMP-003",
+        "password": "Nuri1004!",
+    }
+
+    for payload, detail in [
+        ({**credential_login_request(), "tenant_id": ""}, "tenant_id"),
+        ({**credential_login_request(), "employee_id": None}, "employee_id"),
+        ({**credential_login_request(), "password": "  "}, "password"),
+        ({**credential_login_request(), "scopes": []}, "requested_scopes"),
+        (
+            {**credential_login_request(), "requested_scopes": ["workspace:use", ""]},
+            "requested_scopes",
+        ),
+        ({**credential_login_request(), "ttl_seconds": True}, "ttl_seconds"),
+        ({**credential_login_request(), "ttl_seconds": 0}, "ttl_seconds"),
+    ]:
+        with pytest.raises(OaUserSessionClientError) as exc:
+            oa_user_login_payload(payload)
+        assert exc.value.status_code == 422
+        assert exc.value.error_code == "oa.session_client_request_invalid"
+        assert detail in str(exc.value)
 
 
 def test_oa_session_issue_payload_rejects_malformed_login_request() -> None:
@@ -149,6 +239,41 @@ def test_http_oa_session_client_maps_problem_and_transport_failures() -> None:
         assert exc.value.retryable is True
 
 
+def test_http_oa_credential_login_client_maps_transport_failures_without_secret() -> None:
+    def problem_request(*_: Any, **__: Any) -> httpx.Response:
+        return httpx.Response(
+            401,
+            json={
+                "error_code": "oa.credential_not_verified",
+                "detail": "Employee id or password is invalid.",
+                "retryable": False,
+            },
+        )
+
+    def timeout_request(*_: Any, **__: Any) -> httpx.Response:
+        raise httpx.TimeoutException("slow")
+
+    def down_request(*_: Any, **__: Any) -> httpx.Response:
+        raise httpx.ConnectError("offline")
+
+    for requester, status_code, error_code in [
+        (problem_request, 401, "oa.credential_not_verified"),
+        (timeout_request, 504, "oa.user_login_client_timeout"),
+        (down_request, 503, "oa.user_login_client_unavailable"),
+    ]:
+        client = HttpOaUserSessionClient(requester=requester)
+        with pytest.raises(OaUserSessionClientError) as exc:
+            client.login_with_credentials(
+                credential_login_request(),
+                request_id="request-a",
+                trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+            )
+        serialized_error = str(exc.value)
+        assert exc.value.status_code == status_code
+        assert exc.value.error_code == error_code
+        assert "Nuri1004!" not in serialized_error
+
+
 def test_http_oa_session_client_rejects_invalid_response_payloads() -> None:
     for response in [
         httpx.Response(200, content=b"not-json"),
@@ -164,6 +289,33 @@ def test_http_oa_session_client_rejects_invalid_response_payloads() -> None:
                 trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
             )
         assert exc.value.error_code == "oa.session_client_response_invalid"
+
+
+def test_http_oa_credential_login_client_rejects_invalid_response_payloads() -> None:
+    for response, expected_error in [
+        (
+            httpx.Response(200, content=b"not-json"),
+            "oa.user_login_client_response_invalid",
+        ),
+        (
+            httpx.Response(200, json=["not", "object"]),
+            "oa.user_login_client_response_invalid",
+        ),
+        (
+            httpx.Response(502, json={}),
+            "oa.user_login_client_failed",
+        ),
+    ]:
+        client = HttpOaUserSessionClient(
+            requester=lambda *args, **kwargs: response,
+        )
+        with pytest.raises(OaUserSessionClientError) as exc:
+            client.login_with_credentials(
+                credential_login_request(),
+                request_id="request-a",
+                trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+            )
+        assert exc.value.error_code == expected_error
 
 
 def test_default_oa_session_client_reads_safe_env_and_validates_timeout() -> None:
