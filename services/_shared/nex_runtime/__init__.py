@@ -1,12 +1,19 @@
 from .app import SERVICE_SPECS, ServiceSpec, build_service_app
 from .auth import (
     DEFAULT_SERVICE_SCOPE,
+    DEFAULT_USER_SCOPE,
     ClaimValidationResult,
     IssuedServiceToken,
+    IssuedUserToken,
     ServiceClaims,
+    UserClaimValidationResult,
+    UserClaims,
     issue_mock_service_token,
+    issue_mock_user_token,
     validate_authorization_header,
     validate_mock_service_token,
+    validate_mock_user_token,
+    validate_user_authorization_header,
 )
 from .database import (
     DatabaseConfigError,

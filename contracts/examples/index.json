@@ -56,6 +56,11 @@
       "schema": "schemas/service/nex_oa/subject_registry_snapshot.v1.schema.json"
     },
     {
+      "name": "oa_browser_session_active_user",
+      "path": "examples/auth/oa_browser_session.active_user.json",
+      "schema": "schemas/service/nex_oa/browser_session.v1.schema.json"
+    },
+    {
       "name": "mo_provider_route_generation",
       "path": "examples/generation/mo_provider_route.general_llm_default.json",
       "schema": "schemas/service/nex_mo/provider_route.v1.schema.json"

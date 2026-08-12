@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/browser_session.v1.schema.json",
+  "title": "NeX OA Browser Session",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "browser_session_schema_version",
+    "session_id",
+    "status",
+    "issuer",
+    "audience",
+    "token_use",
+    "tenant_ref",
+    "subject_ref",
+    "scopes",
+    "roles",
+    "issued_at",
+    "expires_at",
+    "auth_time",
+    "metadata"
+  ],
+  "properties": {
+    "browser_session_schema_version": {
+      "const": "oa_browser_session.v1"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ACTIVE",
+        "EXPIRED",
+        "REVOKED"
+      ]
+    },
+    "issuer": {
+      "const": "nex-oa"
+    },
+    "audience": {
+      "const": "nex-ae-api"
+    },
+    "token_use": {
+      "const": "user"
+    },
+    "tenant_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "const": "oa.tenant"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "subject_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "const": "oa.user"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "scopes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]*(?::[a-z][a-z0-9_-]*)+$"
+      }
+    },
+    "roles": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      }
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "auth_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_token_included",
+        "service_token_included",
+        "password_included",
+        "browser_payload_owner_authoritative",
+        "claim_owner_authoritative"
+      ],
+      "properties": {
+        "raw_token_included": {
+          "const": false
+        },
+        "service_token_included": {
+          "const": false
+        },
+        "password_included": {
+          "const": false
+        },
+        "browser_payload_owner_authoritative": {
+          "const": false
+        },
+        "claim_owner_authoritative": {
+          "const": true
+        }
+      }
+    }
+  }
+}

@@ -56,6 +56,8 @@ reject them. The validation command fails if a negative fixture becomes valid.
 
 - Common envelopes: contract manifest, problem+json, trace refs, service claims,
   common job, worker heartbeat, and structured service log entry.
+- OA identity: subject registry snapshots and browser session snapshots for
+  user-token owner scope without raw token, password, or service-token leakage.
 - Generation: MO provider route, MO model profile, CX generation execution
   record, AE chat interaction.
 - Retrieval/content ingestion: CX upload registration, queued ingestion job,

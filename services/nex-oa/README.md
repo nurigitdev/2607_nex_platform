@@ -36,3 +36,12 @@ Slice 0198 resolver client:
   ensure OA subject refs through the subject registry endpoints.
 - The resolver propagates service tokens, request ids, and trace headers while
   rejecting unsupported ownership metadata before making OA calls.
+
+Slice 0232 browser user-session/token foundation:
+
+- `nex_runtime.auth` can issue and validate mock user tokens separately from
+  service tokens.
+- User claims carry tenant, user, roles, scopes, audience, and `token_use=user`.
+- `contracts/schemas/service/nex_oa/browser_session.v1.schema.json` freezes the
+  browser-safe session snapshot without raw tokens, passwords, or service
+  credentials.
