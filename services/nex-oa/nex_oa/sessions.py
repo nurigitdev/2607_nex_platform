@@ -45,6 +45,7 @@ from nex_runtime import (
 OA_USER_SESSION_SCHEMA_VERSION = "oa_user_session.v1"
 OA_SESSION_ISSUE_SCHEMA_VERSION = "oa_session_issue.v1"
 OA_SESSION_INTROSPECTION_SCHEMA_VERSION = "oa_session_introspection.v1"
+OA_SESSION_REVOCATION_SCHEMA_VERSION = "oa_session_revocation.v1"
 OA_BROWSER_SESSION_SCHEMA_VERSION = "oa_browser_session.v1"
 OA_SESSION_STATUSES = ("ACTIVE", "EXPIRED", "REVOKED")
 DEFAULT_SESSION_TTL_SECONDS = 3600
@@ -113,6 +114,23 @@ class InMemoryOaSessionRegistry:
         record = self.sessions.get(introspection_request["session_id"])
         return build_session_introspection_response(record)
 
+    def revoke_session(self, session_id: str) -> dict[str, Any]:
+        normalized_session_id = _non_empty_text(session_id, field_name="session_id")
+        record = self.sessions.get(normalized_session_id)
+        if record is None:
+            return build_session_revocation_response(
+                None,
+                session_id=normalized_session_id,
+                already_revoked=False,
+            )
+        revoked_record, already_revoked, _ = build_revoked_session_record(record)
+        self.sessions[normalized_session_id] = deepcopy(revoked_record)
+        return build_session_revocation_response(
+            revoked_record,
+            session_id=normalized_session_id,
+            already_revoked=already_revoked,
+        )
+
 
 class SqlAlchemyOaSessionRegistry:
     def __init__(
@@ -164,6 +182,15 @@ class SqlAlchemyOaSessionRegistry:
         except SQLAlchemyError as exc:
             raise _session_unavailable() from exc
         return build_session_introspection_response(record)
+
+    def revoke_session(self, session_id: str) -> dict[str, Any]:
+        normalized_session_id = _non_empty_text(session_id, field_name="session_id")
+        try:
+            return self._run_in_transaction(
+                lambda session: self._revoke_session(session, normalized_session_id)
+            )
+        except SQLAlchemyError as exc:
+            raise _session_unavailable() from exc
 
     def _run_in_transaction(self, operation: Any) -> Any:
         session = self._session_factory()
@@ -293,6 +320,46 @@ class SqlAlchemyOaSessionRegistry:
             return None
         return _session_from_row(row)
 
+    def _revoke_session(self, session: Session, session_id: str) -> dict[str, Any]:
+        record = self._select_session(session, session_id)
+        if record is None:
+            return build_session_revocation_response(
+                None,
+                session_id=session_id,
+                already_revoked=False,
+            )
+        revoked_record, already_revoked, update_required = (
+            build_revoked_session_record(record)
+        )
+        if update_required:
+            session.execute(
+                text(
+                    """
+                    UPDATE oa_user_sessions
+                    SET
+                        status = :status,
+                        revoked_at = :revoked_at,
+                        updated_at = :updated_at
+                    WHERE session_id = :session_id
+                    """
+                ),
+                {
+                    "session_id": session_id,
+                    "status": revoked_record["status"],
+                    "revoked_at": revoked_record["revoked_at"],
+                    "updated_at": revoked_record["updated_at"],
+                },
+            )
+            stored = self._select_session(session, session_id)
+        else:
+            stored = record
+        assert stored is not None
+        return build_session_revocation_response(
+            stored,
+            session_id=session_id,
+            already_revoked=already_revoked,
+        )
+
 
 def build_oa_session_registry_for_runtime(
     runtime: ServicePersistenceRuntime,
@@ -341,6 +408,24 @@ def register_user_session_routes(
             return auth_problem
         try:
             response = registry.introspect_session(payload)
+        except OaSessionError as exc:
+            return _session_problem_response(request, exc)
+        return _attach_request_context(response, request)
+
+    @app.post(
+        "/internal/v1/auth/user-sessions/{session_id}/revoke",
+        response_model=None,
+    )
+    def revoke_user_session(
+        session_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any] | JSONResponse:
+        auth_problem = _authorize_oa_session_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        try:
+            response = registry.revoke_session(session_id)
         except OaSessionError as exc:
             return _session_problem_response(request, exc)
         return _attach_request_context(response, request)
@@ -494,6 +579,32 @@ def build_session_issue_response(
     }
 
 
+def build_revoked_session_record(
+    record: Mapping[str, Any],
+) -> tuple[dict[str, Any], bool, bool]:
+    status = normalize_session_status(record.get("status"))
+    already_revoked = status == "REVOKED"
+    if already_revoked and record.get("revoked_at") is not None:
+        return deepcopy(dict(record)), True, False
+
+    now = _utc_now()
+    revoked_at = (
+        _timestamp_to_wire(record.get("revoked_at"))
+        if record.get("revoked_at") is not None
+        else now
+    )
+    return (
+        {
+            **deepcopy(dict(record)),
+            "status": "REVOKED",
+            "revoked_at": revoked_at,
+            "updated_at": now,
+        },
+        already_revoked,
+        True,
+    )
+
+
 def build_session_introspection_response(
     record: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
@@ -524,6 +635,34 @@ def build_session_introspection_response(
             "raw_token_stored": False,
             "browser_payload_owner_authoritative": False,
             "claim_owner_authoritative": True,
+        },
+    }
+
+
+def build_session_revocation_response(
+    record: Mapping[str, Any] | None,
+    *,
+    session_id: str,
+    already_revoked: bool,
+) -> dict[str, Any]:
+    introspection = build_session_introspection_response(record)
+    return {
+        "session_revocation_schema_version": OA_SESSION_REVOCATION_SCHEMA_VERSION,
+        "service_id": "nex-oa",
+        "session_id": session_id,
+        "revoked": record is not None,
+        "already_revoked": already_revoked,
+        "idempotent": True,
+        "active": False,
+        "inactive_reason": introspection["inactive_reason"],
+        "revoked_at": record.get("revoked_at") if record is not None else None,
+        "session": introspection["session"],
+        "tenant_ref": introspection["tenant_ref"],
+        "subject_ref": introspection["subject_ref"],
+        "credential_delivery": introspection["credential_delivery"],
+        "metadata": {
+            **introspection["metadata"],
+            "session_revocation_authoritative": record is not None,
         },
     }
 

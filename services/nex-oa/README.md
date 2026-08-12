@@ -20,6 +20,7 @@ Current endpoints:
 - `GET /internal/v1/identity/memberships/tenants/{tenant_id}/subjects/{subject_id}`
 - `POST /internal/v1/auth/user-sessions/issue`
 - `POST /internal/v1/auth/user-sessions/introspect`
+- `POST /internal/v1/auth/user-sessions/{session_id}/revoke`
 - `GET /internal/v1/auth/user-sessions/{session_id}`
 - `GET /internal/v1/auth/session-credential-delivery-boundary`
 
@@ -111,3 +112,14 @@ Slice 0246 OA session introspection API:
 - `ACTIVE` sessions become inactive when their `expires_at` timestamp has
   passed; `EXPIRED`, `REVOKED`, and missing sessions return explicit inactive
   reasons.
+
+Slice 0247 OA session revocation API:
+
+- `POST /internal/v1/auth/user-sessions/{session_id}/revoke` lets AE invalidate
+  the opaque OA session id during logout or guarded recovery flows.
+- Revocation is idempotent: repeated calls for an existing session stay `200`
+  and report `already_revoked=true`; missing sessions stay safe and report
+  `inactive_reason=not_found`.
+- The protected PostgreSQL smoke runner now exercises issue, readback,
+  introspection, revocation, revoked introspection, DB observation, and cleanup
+  when `NEX_OA_SESSION_POSTGRES_SMOKE=1` is enabled.

@@ -244,10 +244,19 @@ def test_oa_session_postgres_smoke_executes_with_sqlite_fixture(tmp_path) -> Non
     assert evidence["checks"]["membership_status_ok"] is True
     assert evidence["checks"]["issue_status_ok"] is True
     assert evidence["checks"]["readback_status_ok"] is True
+    assert evidence["checks"]["introspection_status_ok"] is True
+    assert evidence["checks"]["introspection_active"] is True
+    assert evidence["checks"]["revocation_status_ok"] is True
+    assert evidence["checks"]["revocation_inactive"] is True
+    assert evidence["checks"]["revoked_introspection_status_ok"] is True
+    assert evidence["checks"]["revoked_introspection_inactive"] is True
     assert evidence["checks"]["session_persisted"] is True
+    assert evidence["checks"]["db_session_revoked"] is True
     assert evidence["checks"]["raw_payload_absent"] is True
     assert evidence["db_observations"]["membership_count"] == 1
     assert evidence["db_observations"]["session_count"] == 1
+    assert evidence["db_observations"]["session_status"] == "REVOKED"
+    assert evidence["db_observations"]["session_revoked_at"] is not None
     assert evidence["cleanup_observations"] == {
         "deleted_sessions": 1,
         "deleted_memberships": 1,

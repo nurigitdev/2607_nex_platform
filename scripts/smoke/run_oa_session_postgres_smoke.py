@@ -182,6 +182,26 @@ def _execute_oa_session_postgres_smoke(
         )
         readback_response.raise_for_status()
         readback = readback_response.json()
+        introspection_response = client.post(
+            "/internal/v1/auth/user-sessions/introspect",
+            headers=_service_headers(trace_id=trace_id, request_id=request_id),
+            json={"session_id": session_id},
+        )
+        introspection_response.raise_for_status()
+        introspection = introspection_response.json()
+        revocation_response = client.post(
+            f"/internal/v1/auth/user-sessions/{session_id}/revoke",
+            headers=_service_headers(trace_id=trace_id, request_id=request_id),
+        )
+        revocation_response.raise_for_status()
+        revocation = revocation_response.json()
+        revoked_introspection_response = client.post(
+            "/internal/v1/auth/user-sessions/introspect",
+            headers=_service_headers(trace_id=trace_id, request_id=request_id),
+            json={"session_id": session_id},
+        )
+        revoked_introspection_response.raise_for_status()
+        revoked_introspection = revoked_introspection_response.json()
         db_observations = _db_observations(
             engine,
             tenant_id=tenant_id,
@@ -193,10 +213,28 @@ def _execute_oa_session_postgres_smoke(
             "membership_status_ok": membership_response.status_code == 200,
             "issue_status_ok": issue_response.status_code == 200,
             "readback_status_ok": readback_response.status_code == 200,
+            "introspection_status_ok": introspection_response.status_code == 200,
+            "introspection_active": introspection["active"] is True,
+            "revocation_status_ok": revocation_response.status_code == 200,
+            "revocation_inactive": (
+                revocation["revoked"] is True
+                and revocation["inactive_reason"] == "revoked"
+            ),
+            "revoked_introspection_status_ok": (
+                revoked_introspection_response.status_code == 200
+            ),
+            "revoked_introspection_inactive": (
+                revoked_introspection["active"] is False
+                and revoked_introspection["inactive_reason"] == "revoked"
+            ),
             "session_id_roundtrip": readback["session"]["session_id"] == session_id,
             "scope_subset_applied": issued["session"]["scopes"] == ["workspace:use"],
             "membership_persisted": db_observations["membership_count"] == 1,
             "session_persisted": db_observations["session_count"] == 1,
+            "db_session_revoked": (
+                db_observations.get("session_status") == "REVOKED"
+                and db_observations.get("session_revoked_at") is not None
+            ),
             "session_subject_matches": (
                 db_observations["session_tenant_id"] == tenant_id
                 and db_observations["session_subject_id"] == subject_id
@@ -206,6 +244,9 @@ def _execute_oa_session_postgres_smoke(
                     "membership": membership_response.json(),
                     "issued": issued,
                     "readback": readback,
+                    "introspection": introspection,
+                    "revocation": revocation,
+                    "revoked_introspection": revoked_introspection,
                     "db": db_observations,
                 },
                 forbidden_fragments=[
@@ -257,7 +298,7 @@ def _db_observations(
         session_row = connection.execute(
             text(
                 """
-                SELECT tenant_id, subject_id, status, scopes, roles
+                SELECT tenant_id, subject_id, status, revoked_at, scopes, roles
                 FROM oa_user_sessions
                 WHERE session_id = :session_id
                 """
@@ -270,6 +311,9 @@ def _db_observations(
         "session_tenant_id": session_row["tenant_id"] if session_row else None,
         "session_subject_id": session_row["subject_id"] if session_row else None,
         "session_status": session_row["status"] if session_row else None,
+        "session_revoked_at": (
+            str(session_row["revoked_at"]) if session_row and session_row["revoked_at"] else None
+        ),
         "session_scopes": _json_loads(session_row["scopes"]) if session_row else [],
         "session_roles": _json_loads(session_row["roles"]) if session_row else [],
     }
