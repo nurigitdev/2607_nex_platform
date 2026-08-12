@@ -153,5 +153,15 @@ Slice 0228 adds the protected fetch-mode smoke boundary:
 - The boundary requires future protected execution to use `nex_ae_test` and
   `nex_cx_test` readback evidence instead of a silent or metadata-only skip.
 
+Slice 0229 adds the protected fetch-mode PostgreSQL smoke execution:
+
+- `scripts/smoke/run_ae_web_fetch_mode_postgres_smoke.py` uses the Slice 0228
+  boundary, then runs real test-profile migrations against AE and CX test DBs.
+- The protected path writes and reads an AE API smoke marker, then exercises AE
+  upload, document detail, and retrieval facade routes against a CX store backed
+  by PostgreSQL.
+- The default quality gate keeps this runner skipped until
+  `NEX_AE_WEB_FETCH_MODE_PROTECTED_SMOKE=1` and the test DB URLs are supplied.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 readiness checks until service-authenticated browser mediation is added.
