@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import nex_ae_api.uploads as ae_uploads
+from nex_ae_api.auth_sessions import AUTH_SESSION_MODE_OA, SESSION_COOKIE_NAME
 from nex_ae_api.uploads import (
     HttpCxUploadClient,
     OWNERSHIP_COMPATIBILITY_MODE,
@@ -175,6 +176,8 @@ def build_client(
     *,
     owner_resolver: FakeOwnerResolver | FailingOwnerResolver | None = None,
     owner_resolver_mode: str | None = None,
+    oa_session_client: object | None = None,
+    session_mode: str | None = None,
 ) -> tuple[TestClient, UploadHandoffStore, FakeCxUploadClient | FailingCxUploadClient]:
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     store = UploadHandoffStore()
@@ -185,6 +188,8 @@ def build_client(
         cx_client=client,
         owner_resolver=owner_resolver,
         owner_resolver_mode=owner_resolver_mode,
+        oa_session_client=oa_session_client,
+        session_mode=session_mode,
     )
     return TestClient(app), store, client
 
@@ -515,6 +520,60 @@ def test_upload_routes_accept_browser_user_and_scope_payload_to_claims() -> None
     assert isinstance(cx_client, FakeCxUploadClient)
     assert cx_client.calls[0]["payload"]["tenant_id"] == "tenant-a"
     assert cx_client.calls[0]["payload"]["owner_user_id"] == "user-a"
+
+
+def test_upload_routes_accept_oa_mode_browser_cookie_and_scope_payload_to_claims() -> None:
+    class FakeOaSessionClient:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def introspect_session(self, session_id: str, **kwargs: object) -> dict[str, Any]:
+            self.calls.append({"session_id": session_id, **kwargs})
+            return {
+                "active": session_id == "oa-upload-session",
+                "inactive_reason": None if session_id == "oa-upload-session" else "missing",
+                "session": {
+                    "browser_session_schema_version": "oa_browser_session.v1",
+                    "session_id": session_id,
+                    "status": "ACTIVE",
+                    "issuer": "nex-oa",
+                    "audience": "nex-ae-api",
+                    "token_use": "user",
+                    "tenant_ref": {"type": "oa.tenant", "id": "tenant-oa"},
+                    "subject_ref": {"type": "oa.user", "id": "user-oa"},
+                    "scopes": [DEFAULT_USER_SCOPE, "documents:upload"],
+                    "roles": ["employee"],
+                    "issued_at": "2026-08-13T00:00:00Z",
+                    "expires_at": "2026-08-13T01:00:00Z",
+                    "auth_time": "2026-08-13T00:00:00Z",
+                },
+            }
+
+    oa_session_client = FakeOaSessionClient()
+    client, _, cx_client = build_client(
+        oa_session_client=oa_session_client,
+        session_mode=AUTH_SESSION_MODE_OA,
+    )
+    client.cookies.set(SESSION_COOKIE_NAME, "oa-upload-session")
+
+    response = client.post(
+        "/api/v1/uploads",
+        json={
+            "workspace_id": "workspace-oa",
+            "filename": "metadata-only.md",
+            "content_type": "text/markdown",
+            "source_sha256": SOURCE_HASH,
+            "size_bytes": 1536,
+        },
+    )
+
+    assert response.status_code == 202
+    assert len(oa_session_client.calls) == 1
+    assert isinstance(cx_client, FakeCxUploadClient)
+    assert cx_client.calls[0]["payload"]["tenant_id"] == "tenant-oa"
+    assert cx_client.calls[0]["payload"]["owner_user_id"] == "user-oa"
+    assert "content_text" not in cx_client.calls[0]["payload"]
+    assert cx_client.calls[0]["payload"]["source_sha256"] == SOURCE_HASH
 
 
 def test_upload_route_rejects_browser_owner_scope_mismatch_before_cx_call() -> None:

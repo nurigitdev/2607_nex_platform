@@ -403,5 +403,16 @@ Slice 0273 wires authenticated upload fetch:
   smoke in the default quality gate while keeping live PostgreSQL execution for
   the protected Slice 0274 Playwright smoke.
 
+Slice 0274 adds protected authenticated upload Playwright/PostgreSQL smoke:
+
+- `scripts/runAuthenticatedUploadPlaywrightSmoke.mjs` drives login, browser file
+  metadata, upload submit, and logout through `/ae-api`.
+- `scripts/smoke/run_ae_web_authenticated_upload_playwright_postgres_smoke.py`
+  runs AE/OA/CX migrations for test DBs, seeds OA credentials, starts AE API and
+  AE Web, verifies CX persisted upload rows, checks OA session revocation, and
+  cleans up smoke data.
+- The runner is skipped unless
+  `NEX_AE_WEB_AUTHENTICATED_UPLOAD_PLAYWRIGHT_SMOKE=1` is set.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

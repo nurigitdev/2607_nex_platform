@@ -24,6 +24,7 @@ from nex_runtime import (
 
 if TYPE_CHECKING:
     from nex_ae_api.auth_guard import BrowserUserAuthContext
+    from nex_ae_api.oa_session_client import OaUserSessionClient
 
 
 DEFAULT_TENANT_ID = "local-tenant"
@@ -152,12 +153,19 @@ def register_upload_routes(
     cx_client: CxUploadClient | None = None,
     owner_resolver: SubjectRegistryResolver | None = None,
     owner_resolver_mode: str | None = None,
+    oa_session_client: OaUserSessionClient | None = None,
+    session_mode: str | None = None,
 ) -> None:
     upload_store = store or DEFAULT_UPLOAD_HANDOFF_STORE
     client = cx_client or build_default_cx_upload_client()
     resolver_mode = normalize_upload_owner_resolver_mode(
         owner_resolver_mode or os.getenv(UPLOAD_OWNER_RESOLVER_MODE_ENV)
     )
+    resolved_session_mode = session_mode
+    if resolved_session_mode is None:
+        from nex_ae_api.auth_sessions import AUTH_SESSION_MODE_ENV
+
+        resolved_session_mode = os.getenv(AUTH_SESSION_MODE_ENV)
     resolver = owner_resolver
     if resolver is None and resolver_mode != UPLOAD_OWNER_RESOLVER_DISABLED:
         resolver = build_default_subject_registry_resolver(
@@ -172,15 +180,19 @@ def register_upload_routes(
     ):
         from nex_ae_api.route_auth import authorize_ae_facade_route_request
 
-        auth_context = authorize_ae_facade_route_request(request, authorization)
-        if isinstance(auth_context, JSONResponse):
-            return auth_context
-
         request_id = request_id_from_headers(request)
         trace_id = payload.get("trace_id") or trace_id_from_headers(request)
         from nex_ae_api.auth_guard import BrowserAuthError, browser_auth_problem_response
 
         try:
+            auth_context = authorize_ae_facade_route_request(
+                request,
+                authorization,
+                oa_session_client=oa_session_client,
+                session_mode=resolved_session_mode,
+            )
+            if isinstance(auth_context, JSONResponse):
+                return auth_context
             source_payload = _browser_owner_scoped_payload(
                 payload,
                 auth_context.browser_context,
@@ -224,7 +236,12 @@ def register_upload_routes(
     ):
         from nex_ae_api.route_auth import authorize_ae_facade_route_request
 
-        auth_context = authorize_ae_facade_route_request(request, authorization)
+        auth_context = authorize_ae_facade_route_request(
+            request,
+            authorization,
+            oa_session_client=oa_session_client,
+            session_mode=resolved_session_mode,
+        )
         if isinstance(auth_context, JSONResponse):
             return auth_context
 
