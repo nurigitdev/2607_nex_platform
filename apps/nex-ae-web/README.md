@@ -361,5 +361,16 @@ Slice 0269 adds the Playwright readiness foundation:
   system Chrome/Chromium binary when Playwright browser downloads are not
   installed.
 
+Slice 0270 adds protected Playwright PostgreSQL smoke execution:
+
+- `scripts/runCredentialLoginPlaywrightSmoke.mjs` drives the actual browser DOM
+  login/logout flow with Playwright through the same-origin `/ae-api` path.
+- `scripts/smoke/run_ae_web_credential_login_playwright_postgres_smoke.py`
+  starts AE API and AE Web on temporary local ports, seeds OA credentials in
+  `nex_oa_test`, writes AE readback evidence in `nex_ae_test`, runs Playwright,
+  verifies session revocation, and cleans up smoke rows.
+- The runner is skipped by default unless
+  `NEX_AE_WEB_CREDENTIAL_LOGIN_PLAYWRIGHT_SMOKE=1` is set.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

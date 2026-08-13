@@ -26,6 +26,14 @@ AE_API_PROXY_TARGET=http://127.0.0.1:8003
 
 # Optional when Playwright browser downloads are not installed.
 NEX_AE_WEB_PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome
+
+# Required only for the protected Playwright PostgreSQL browser smoke.
+NEX_AE_WEB_CREDENTIAL_LOGIN_PLAYWRIGHT_SMOKE=1
+NEX_AE_WEB_CREDENTIAL_LOGIN_PLAYWRIGHT_SMOKE_PROFILE=test
+NEX_AE_WEB_CREDENTIAL_LOGIN_PLAYWRIGHT_SMOKE_TENANT_ID=tenant-slice-smoke
+NEX_AE_WEB_CREDENTIAL_LOGIN_PLAYWRIGHT_SMOKE_SUBJECT_ID=user-slice-smoke
+NEX_AE_WEB_CREDENTIAL_LOGIN_PLAYWRIGHT_SMOKE_EMPLOYEE_ID=EMP-SMOKE
+NEX_AE_WEB_CREDENTIAL_LOGIN_PLAYWRIGHT_SMOKE_PASSWORD=...
 ```
 
 ## Commands
@@ -48,6 +56,12 @@ Check Playwright readiness before running a browser-driven smoke:
 ./.venv/bin/python scripts/smoke/run_ae_web_playwright_readiness.py --summary
 ```
 
+Run the protected Playwright PostgreSQL smoke:
+
+```bash
+./.venv/bin/python scripts/smoke/run_ae_web_credential_login_playwright_postgres_smoke.py --summary
+```
+
 Run the protected live smoke:
 
 ```bash
@@ -66,9 +80,11 @@ Run the hardened PostgreSQL evidence check:
   - `ae_web_credential_login_browser_operator_profile=pass mode=default`
   - `ae_web_same_origin_runtime_boundary=pass proxy=/ae-api`
   - `ae_web_playwright_readiness=pass dependency=@playwright/test`
+  - `ae_web_credential_login_playwright_postgres_smoke=skipped`
   - `ae_web_credential_login_browser_live_smoke=skipped`
   - `ae_web_credential_login_browser_postgres_evidence_hardening=skipped`
 - Protected profile:
+  - `ae_web_credential_login_playwright_postgres_smoke=pass ... live_db=true browser=playwright`
   - `ae_web_credential_login_browser_live_smoke=pass ... live_db=true`
   - `ae_web_credential_login_browser_postgres_evidence_hardening=pass ... issues=0`
 
