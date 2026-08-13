@@ -7,6 +7,10 @@
     "dev": "node scripts/serve.mjs",
     "start": "node scripts/serve.mjs",
     "smoke:credential-login-harness": "node scripts/runCredentialLoginBrowserHarnessSmoke.mjs --summary",
+    "smoke:playwright-readiness": "node scripts/runCredentialLoginPlaywrightReadiness.mjs --summary",
     "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
   }
 }

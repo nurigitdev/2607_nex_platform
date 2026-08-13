@@ -23,6 +23,9 @@ NEX_AE_WEB_CREDENTIAL_LOGIN_BROWSER_SMOKE_PASSWORD=...
 # Optional for same-origin browser execution through the AE Web dev server.
 # Browser runtime config should still use ae_base_url=/ae-api.
 AE_API_PROXY_TARGET=http://127.0.0.1:8003
+
+# Optional when Playwright browser downloads are not installed.
+NEX_AE_WEB_PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome
 ```
 
 ## Commands
@@ -37,6 +40,12 @@ Then check the same-origin dev-server boundary:
 
 ```bash
 ./.venv/bin/python scripts/smoke/run_ae_web_same_origin_runtime_boundary.py --summary
+```
+
+Check Playwright readiness before running a browser-driven smoke:
+
+```bash
+./.venv/bin/python scripts/smoke/run_ae_web_playwright_readiness.py --summary
 ```
 
 Run the protected live smoke:
@@ -56,6 +65,7 @@ Run the hardened PostgreSQL evidence check:
 - Default profile:
   - `ae_web_credential_login_browser_operator_profile=pass mode=default`
   - `ae_web_same_origin_runtime_boundary=pass proxy=/ae-api`
+  - `ae_web_playwright_readiness=pass dependency=@playwright/test`
   - `ae_web_credential_login_browser_live_smoke=skipped`
   - `ae_web_credential_login_browser_postgres_evidence_hardening=skipped`
 - Protected profile:

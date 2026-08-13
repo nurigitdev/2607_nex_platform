@@ -348,5 +348,18 @@ Slice 0268 adds the same-origin runtime boundary:
   server, runtime config, session client, proxy regression test, runbook, and
   quality-gate wiring.
 
+Slice 0269 adds the Playwright readiness foundation:
+
+- `@playwright/test` is declared as an AE Web dev dependency with a local
+  lockfile.
+- `scripts/runCredentialLoginPlaywrightReadiness.mjs` verifies that Playwright
+  is importable and can optionally run a Chromium launch check.
+- `scripts/smoke/run_ae_web_playwright_readiness.py` keeps the default quality
+  gate static, while `--require-installed` can execute the Node readiness
+  script after npm dependencies are installed.
+- `NEX_AE_WEB_PLAYWRIGHT_CHROMIUM_EXECUTABLE` can point the launch check at a
+  system Chrome/Chromium binary when Playwright browser downloads are not
+  installed.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

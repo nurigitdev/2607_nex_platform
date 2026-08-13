@@ -372,6 +372,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0266`](slices/0266_ae_web_credential_login_browser_postgres_evidence_hardening.md) | `S27-006` AE Web credential-login browser PostgreSQL evidence hardening. |
 | [`Slice 0267`](slices/0267_ae_web_credential_login_browser_operator_profile.md) | `S27-007` AE Web credential-login browser operator profile. |
 | [`Slice 0268`](slices/0268_ae_web_same_origin_runtime_boundary.md) | `S27-008` AE Web same-origin runtime boundary. |
+| [`Slice 0269`](slices/0269_ae_web_playwright_readiness_foundation.md) | `S27-009` AE Web Playwright readiness foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
