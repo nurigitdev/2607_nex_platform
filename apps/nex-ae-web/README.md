@@ -232,5 +232,14 @@ Slice 0240 closes the authenticated fetch-mode track:
   authenticated and its PASS evidence keeps claim-scope checks.
 - Real OA-backed login UI and browser automation remain deferred.
 
+Slice 0258 adds the AE Web credential-login surface:
+
+- `src/credentialLoginSurface.js` builds the company employee id plus password
+  login payload expected by the AE auth facade.
+- The workspace now includes a tenant, employee id, and password form, plus a
+  logout control and safe login summary.
+- The password is cleared after submit and is not stored in workspace state,
+  runtime diagnostics, or browser-safe summaries.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

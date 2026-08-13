@@ -341,6 +341,26 @@ h2 {
   font-weight: 800;
 }
 
+.credential-login-form {
+  display: grid;
+  grid-template-columns: minmax(92px, auto) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 14px;
+}
+
+.credential-login-form label {
+  color: var(--nex-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.credential-login-form button {
+  grid-column: 2;
+  justify-self: start;
+  min-width: 96px;
+}
+
 .composer {
   border-top: 1px solid var(--nex-border);
   padding: 14px 16px 16px;
@@ -700,9 +720,15 @@ code {
   }
 
   .timeline li,
+  .credential-login-form,
   .inline-meta div,
   .meta-list div {
     grid-template-columns: 1fr;
+  }
+
+  .credential-login-form button {
+    grid-column: auto;
+    width: 100%;
   }
 
   .document-action-row {

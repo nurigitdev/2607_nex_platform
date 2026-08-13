@@ -10,6 +10,11 @@ import {
   buildClientRegistrySummary
 } from "./clientRegistry.js";
 import {
+  buildCredentialLoginRequestFromForm,
+  buildCredentialLoginSurfaceSummary,
+  createCredentialLoginSurfaceState
+} from "./credentialLoginSurface.js";
+import {
   documentDetailRoute
 } from "./documentDetailClient.js";
 import {
@@ -77,6 +82,10 @@ const workspaceState = {
   runtimeConfig: null,
   sessionState: null,
   sessionClient: null,
+  credentialLogin: createCredentialLoginSurfaceState({
+    tenantId: localOwnerScope.tenantId,
+    requestedScopes: ["workspace:use", "documents:upload"]
+  }),
   authBoundary: null,
   clientRegistry: null,
   operations: null,
@@ -207,6 +216,15 @@ const refreshButton = document.querySelector("#refresh-button");
 const runtimeDiagnosticsStatus = document.querySelector("#runtime-diagnostics-status");
 const runtimeDiagnosticsSummary = document.querySelector("#runtime-diagnostics-summary");
 const runtimeDiagnosticsPreview = document.querySelector("#runtime-diagnostics-preview");
+const credentialLoginForm = document.querySelector("#credential-login-form");
+const credentialTenantInput = document.querySelector("#credential-tenant-id");
+const credentialEmployeeInput = document.querySelector("#credential-employee-id");
+const credentialPasswordInput = document.querySelector("#credential-password");
+const credentialLoginStatus = document.querySelector("#credential-login-status");
+const credentialLoginFeedback = document.querySelector("#credential-login-feedback");
+const credentialLoginSummary = document.querySelector("#credential-login-summary");
+const credentialLoginSubmitButton = document.querySelector("#credential-login-submit-button");
+const credentialLogoutButton = document.querySelector("#credential-logout-button");
 const composer = document.querySelector("#composer");
 const promptInput = document.querySelector("#prompt");
 const retrievalToggle = document.querySelector("#retrieval-toggle");
@@ -244,6 +262,15 @@ let documentDetailRequestSequence = 0;
 
 refreshButton.addEventListener("click", () => {
   renderServiceStatuses();
+});
+
+credentialLoginForm.addEventListener("submit", event => {
+  event.preventDefault();
+  void submitCredentialLogin();
+});
+
+credentialLogoutButton.addEventListener("click", () => {
+  void logoutCredentialSession();
 });
 
 composer.addEventListener("submit", event => {
@@ -292,6 +319,7 @@ function renderWorkspace() {
   handoffBadge.textContent = statusLabel(workspaceState.artifact.citationStatus);
   handoffBadge.className = `badge ${badgeClass(workspaceState.artifact.citationStatus)}`;
   renderMessages();
+  renderCredentialLoginSurface();
   renderUploadSurface();
   renderDocuments();
   renderRetrievalScope();
@@ -364,8 +392,160 @@ async function refreshBrowserSessionRuntime() {
   applySessionBootstrap(nextBootstrap);
   workspaceState.operations = initializeOperationStates();
   renderRuntimeDiagnostics();
+  renderCredentialLoginSurface();
   renderUploadSurface();
   renderRetrievalScope();
+}
+
+async function submitCredentialLogin() {
+  credentialLoginSubmitButton.disabled = true;
+  credentialLogoutButton.disabled = true;
+  workspaceState.credentialLogin = createCredentialLoginSurfaceState({
+    tenantId: credentialTenantInput.value,
+    employeeId: credentialEmployeeInput.value,
+    requestedScopes: ["workspace:use", "documents:upload"],
+    status: "SUBMITTING",
+    reason: "login_requested"
+  });
+  renderCredentialLoginSurface();
+
+  try {
+    const loginRequest = buildCredentialLoginRequestFromForm({
+      tenantInput: credentialTenantInput,
+      employeeInput: credentialEmployeeInput,
+      passwordInput: credentialPasswordInput,
+      requestedScopes: ["workspace:use", "documents:upload"]
+    });
+    credentialPasswordInput.value = "";
+    const sessionState = await workspaceState.sessionClient.login(loginRequest);
+    workspaceState.credentialLogin = createCredentialLoginSurfaceState({
+      tenantId: loginRequest.tenant_id,
+      employeeId: loginRequest.employee_id,
+      requestedScopes: loginRequest.requested_scopes,
+      ttlSeconds: loginRequest.ttl_seconds,
+      status: "AUTHENTICATED",
+      reason: "login_succeeded"
+    });
+    const nextBootstrap = composeAuthenticatedSessionRuntime({
+      runtimeConfig: workspaceState.runtimeConfig,
+      sessionState,
+      sessionClient: workspaceState.sessionClient,
+      documents: workspaceState.documents
+    });
+    applySessionBootstrap(nextBootstrap);
+    workspaceState.operations = initializeOperationStates();
+    renderWorkspace();
+  } catch (error) {
+    credentialPasswordInput.value = "";
+    workspaceState.credentialLogin = createCredentialLoginSurfaceState({
+      tenantId: credentialTenantInput.value,
+      employeeId: credentialEmployeeInput.value,
+      requestedScopes: ["workspace:use", "documents:upload"],
+      status: "FAILED",
+      reason: "login_failed",
+      errorStatus: error.status || "CREDENTIAL_LOGIN_FAILED"
+    });
+    renderCredentialLoginSurface();
+    renderRuntimeDiagnostics();
+  } finally {
+    credentialLoginSubmitButton.disabled = false;
+    credentialLogoutButton.disabled =
+      workspaceState.sessionState?.status !== "authenticated";
+  }
+}
+
+async function logoutCredentialSession() {
+  credentialLogoutButton.disabled = true;
+  try {
+    const sessionState = await workspaceState.sessionClient.logout();
+    workspaceState.credentialLogin = createCredentialLoginSurfaceState({
+      tenantId: credentialTenantInput.value,
+      employeeId: credentialEmployeeInput.value,
+      requestedScopes: ["workspace:use", "documents:upload"],
+      status: "LOGGED_OUT",
+      reason: "logout"
+    });
+    const nextBootstrap = composeAuthenticatedSessionRuntime({
+      runtimeConfig: workspaceState.runtimeConfig,
+      sessionState,
+      sessionClient: workspaceState.sessionClient,
+      documents: workspaceState.documents
+    });
+    applySessionBootstrap(nextBootstrap);
+    workspaceState.operations = initializeOperationStates();
+    renderWorkspace();
+  } catch (error) {
+    workspaceState.credentialLogin = createCredentialLoginSurfaceState({
+      tenantId: credentialTenantInput.value,
+      employeeId: credentialEmployeeInput.value,
+      requestedScopes: ["workspace:use", "documents:upload"],
+      status: "FAILED",
+      reason: "logout_failed",
+      errorStatus: error.status || "CREDENTIAL_LOGOUT_FAILED"
+    });
+    renderCredentialLoginSurface();
+    renderRuntimeDiagnostics();
+  } finally {
+    credentialLogoutButton.disabled =
+      workspaceState.sessionState?.status !== "authenticated";
+  }
+}
+
+function renderCredentialLoginSurface() {
+  const summary = buildCredentialLoginSurfaceSummary(workspaceState.credentialLogin);
+  credentialLoginStatus.textContent = statusLabel(summary.status);
+  credentialLoginStatus.className = `badge ${badgeClass(summary.status)}`;
+  credentialTenantInput.value = workspaceState.credentialLogin.tenantId;
+  credentialEmployeeInput.value = workspaceState.credentialLogin.employeeId;
+  credentialLogoutButton.hidden = workspaceState.sessionState?.status !== "authenticated";
+  credentialLogoutButton.disabled = workspaceState.sessionState?.status !== "authenticated";
+  credentialLoginFeedback.dataset.severity =
+    summary.status === "FAILED"
+      ? "danger"
+      : summary.status === "AUTHENTICATED"
+        ? "success"
+        : summary.status === "SUBMITTING"
+          ? "running"
+          : "idle";
+  credentialLoginFeedback.textContent = credentialLoginFeedbackMessage(summary);
+  credentialLoginSummary.innerHTML = `
+    <div>
+      <dt>tenant</dt>
+      <dd>${escapeHtml(summary.tenant_id)}</dd>
+    </div>
+    <div>
+      <dt>employee</dt>
+      <dd>${escapeHtml(summary.employee_id_present ? "present" : "empty")}</dd>
+    </div>
+    <div>
+      <dt>session</dt>
+      <dd>${escapeHtml(workspaceState.sessionState.status)} · ${escapeHtml(workspaceState.sessionBootstrap.phase)}</dd>
+    </div>
+    <div>
+      <dt>scopes</dt>
+      <dd>${escapeHtml(summary.requested_scope_count)}</dd>
+    </div>
+    <div>
+      <dt>metadata</dt>
+      <dd>${escapeHtml(summary.metadata.rawPasswordStored)} · ${escapeHtml(summary.metadata.passwordIncludedInSummary)}</dd>
+    </div>
+  `;
+}
+
+function credentialLoginFeedbackMessage(summary) {
+  if (summary.status === "AUTHENTICATED") {
+    return "로그인 세션이 활성화되었습니다.";
+  }
+  if (summary.status === "SUBMITTING") {
+    return "로그인 요청을 처리하고 있습니다.";
+  }
+  if (summary.status === "FAILED") {
+    return `로그인을 완료하지 못했습니다. ${summary.error_status || "LOGIN_FAILED"}`;
+  }
+  if (summary.status === "LOGGED_OUT") {
+    return "로그아웃되었습니다.";
+  }
+  return "로그인 준비가 완료되었습니다.";
 }
 
 function buildCurrentDocumentScope() {
@@ -1260,6 +1440,11 @@ function statusLabel(status) {
     READY_FOR_PROMPT: "입력 준비",
     READY_FOR_SUBMIT: "전송 준비",
     READY_FOR_RENDERING: "렌더링 준비",
+    READY_FOR_LOGIN: "로그인 준비",
+    SUBMITTING: "전송 중",
+    AUTHENTICATED: "인증됨",
+    FAILED: "실패",
+    LOGGED_OUT: "로그아웃",
     PREVIEW_ONLY: "미리보기",
     VALIDATED: "검증됨",
     SUCCEEDED: "성공",

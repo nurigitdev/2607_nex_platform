@@ -15,6 +15,7 @@ const ALLOWED_SERVER_METADATA_FIELDS = new Set([
   "claim_owner_authoritative"
 ]);
 const ALLOWED_BROWSER_SESSION_ROOT_FIELDS = new Set(["token_use"]);
+const ALLOWED_LOGIN_ROOT_SECRET_FIELDS = new Set(["password"]);
 
 const FORBIDDEN_SESSION_KEY_PARTS = [
   "access",
@@ -202,7 +203,7 @@ export function createFetchSessionClient({
       });
     },
     async login(loginHint = {}) {
-      assertSessionPayloadSafe(loginHint);
+      assertSessionLoginRequestSafe(loginHint);
       return fetchSessionSnapshot({
         fetchImpl,
         url: `${normalizedBaseUrl}/api/v1/auth/session/login`,
@@ -231,6 +232,12 @@ export function createFetchSessionClient({
   };
 }
 
+export function assertSessionLoginRequestSafe(value) {
+  assertSessionPayloadSafe(value, "session_login", {
+    allowedRootSecretFields: ALLOWED_LOGIN_ROOT_SECRET_FIELDS
+  });
+}
+
 export function buildSessionClientSummary(client) {
   if (
     !isObject(client) ||
@@ -247,17 +254,22 @@ export function buildSessionClientSummary(client) {
   };
 }
 
-export function assertSessionPayloadSafe(value, path = "session") {
+export function assertSessionPayloadSafe(value, path = "session", options = {}) {
   if (Array.isArray(value)) {
-    value.forEach((item, index) => assertSessionPayloadSafe(item, `${path}[${index}]`));
+    value.forEach((item, index) =>
+      assertSessionPayloadSafe(item, `${path}[${index}]`, options)
+    );
     return;
   }
   if (!isObject(value)) return;
   for (const [key, nestedValue] of Object.entries(value)) {
     const normalizedKey = key.toLowerCase();
+    const rootSecretAllowed =
+      path === "session_login" && options.allowedRootSecretFields?.has(key);
     if (
       !(path === "session" && ALLOWED_BROWSER_SESSION_ROOT_FIELDS.has(key)) &&
       !(path === "session.metadata" && ALLOWED_SERVER_METADATA_FIELDS.has(key)) &&
+      !rootSecretAllowed &&
       FORBIDDEN_SESSION_KEY_PARTS.some(part => normalizedKey.includes(part))
     ) {
       throw new SessionClientError("Session payload contains a forbidden field.", {
@@ -265,7 +277,7 @@ export function assertSessionPayloadSafe(value, path = "session") {
         fieldPath: `${path}.${key}`
       });
     }
-    assertSessionPayloadSafe(nestedValue, `${path}.${key}`);
+    assertSessionPayloadSafe(nestedValue, `${path}.${key}`, options);
   }
 }
 

@@ -33,6 +33,11 @@ def required_anchors(slice_label: str = DEFAULT_SLICE_LABEL) -> tuple[str, ...]:
     return (
         slice_label,
         "ae-web-runtime-config",
+        "credential-login-panel",
+        "credential-login-form",
+        "credential-employee-id",
+        "credential-password",
+        "credential-login-feedback",
         "runtime-diagnostics-panel",
         "runtime-diagnostics-preview",
         "upload-feedback",

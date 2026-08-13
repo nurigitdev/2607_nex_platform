@@ -6,6 +6,7 @@ import {
   AE_WEB_SESSION_STATE_SCHEMA_VERSION,
   SessionClientError,
   assertSessionPayloadSafe,
+  assertSessionLoginRequestSafe,
   buildSessionClientSummary,
   buildSessionStateSummary,
   createAnonymousSessionState,
@@ -146,12 +147,29 @@ describe("AE Web session client", () => {
 
     assert.equal((await client.getCurrentSession()).status, "authenticated");
     assert.equal((await client.login({ login_hint: "user-a" })).status, "authenticated");
+    assert.equal(
+      (
+        await client.login({
+          tenant_id: "tenant-oa",
+          employee_id: "EMP-001",
+          password: "Nuri1004!",
+          requested_scopes: ["workspace:use"]
+        })
+      ).status,
+      "authenticated"
+    );
     await client.logout();
 
     assert.equal(calls[0].url, "/ae-api/api/v1/auth/session");
     assert.equal(calls[0].options.credentials, "same-origin");
     assert.equal(calls[1].options.method, "POST");
-    assert.equal(calls[2].url, "/ae-api/api/v1/auth/session/logout");
+    assert.deepEqual(JSON.parse(calls[2].options.body), {
+      tenant_id: "tenant-oa",
+      employee_id: "EMP-001",
+      password: "Nuri1004!",
+      requested_scopes: ["workspace:use"]
+    });
+    assert.equal(calls[3].url, "/ae-api/api/v1/auth/session/logout");
   });
 
   it("maps fetch errors and rejects unsafe login hints", async () => {
@@ -204,16 +222,26 @@ describe("AE Web session client", () => {
     );
 
     assertSessionPayloadSafe({ safe: [{ nested: "ok" }] });
+    assertSessionLoginRequestSafe({
+      tenant_id: "tenant-a",
+      employee_id: "EMP-001",
+      password: "allowed-only-for-login"
+    });
     for (const payload of [
       { access_token: "raw" },
       { nested: { service_token: "raw" } },
       { nested: [{ database_url: "postgresql://user:pass@localhost/db" }] },
-      { password: "raw" }
+      { password: "raw" },
+      { password_hash: "raw" }
     ]) {
       assert.throws(
         () => assertSessionPayloadSafe(payload),
         error => error instanceof SessionClientError && error.status === "SESSION_SECRET_FIELD"
       );
     }
+    assert.throws(
+      () => assertSessionLoginRequestSafe({ nested: { password: "raw" } }),
+      error => error instanceof SessionClientError && error.status === "SESSION_SECRET_FIELD"
+    );
   });
 });

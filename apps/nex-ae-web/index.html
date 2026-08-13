@@ -18,6 +18,7 @@
         </div>
         <nav>
           <a class="active" href="#workspace-summary">워크스페이스</a>
+          <a href="#credential-login-panel">로그인</a>
           <a href="#runtime-diagnostics-panel">런타임</a>
           <a href="#upload-surface-panel">업로드</a>
           <a href="#document-list">문서</a>
@@ -107,6 +108,59 @@
                 <button id="refresh-button" type="button">새로고침</button>
               </div>
               <div class="service-list" id="service-list"></div>
+            </section>
+
+            <section
+              class="panel"
+              id="credential-login-panel"
+              aria-labelledby="credential-login-title"
+            >
+              <div class="section-header compact">
+                <h2 id="credential-login-title">사번 로그인</h2>
+                <div class="badge-pair">
+                  <span class="badge pending" id="credential-login-status">대기</span>
+                  <button id="credential-logout-button" type="button" hidden>
+                    로그아웃
+                  </button>
+                </div>
+              </div>
+              <form class="credential-login-form" id="credential-login-form">
+                <label for="credential-tenant-id">Tenant</label>
+                <input
+                  id="credential-tenant-id"
+                  name="tenant_id"
+                  type="text"
+                  value="tenant-local"
+                  autocomplete="organization"
+                />
+                <label for="credential-employee-id">사번</label>
+                <input
+                  id="credential-employee-id"
+                  name="employee_id"
+                  type="text"
+                  autocomplete="username"
+                />
+                <label for="credential-password">비밀번호</label>
+                <input
+                  id="credential-password"
+                  name="password"
+                  type="password"
+                  autocomplete="current-password"
+                />
+                <button id="credential-login-submit-button" type="submit">
+                  로그인
+                </button>
+              </form>
+              <div
+                class="operation-feedback"
+                id="credential-login-feedback"
+                role="status"
+              ></div>
+              <dl
+                class="meta-list"
+                id="credential-login-summary"
+                aria-label="AE Web credential login summary"
+              ></dl>
             </section>
 
             <section

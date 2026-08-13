@@ -20,6 +20,15 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "runtime-diagnostics-status",
         "runtime-diagnostics-summary",
         "runtime-diagnostics-preview",
+        "credential-login-panel",
+        "credential-login-form",
+        "credential-tenant-id",
+        "credential-employee-id",
+        "credential-password",
+        "credential-login-submit-button",
+        "credential-logout-button",
+        "credential-login-feedback",
+        "credential-login-summary",
         "message-list",
         "progress-timeline",
         "upload-surface-panel",
@@ -52,6 +61,73 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         assert f'id="{required_id}"' in html
     assert "Slice 0227" in html
     assert "lang=\"ko\"" in html
+
+
+def test_ae_web_credential_login_surface_wires_employee_password_form() -> None:
+    html = read_web_file("index.html")
+    javascript = read_web_file("src/main.js")
+    credential_surface = read_web_file("src/credentialLoginSurface.js")
+    session_client = read_web_file("src/sessionClient.js")
+    styles = read_web_file("src/styles.css")
+
+    for expected in [
+        "credential-login-panel",
+        "credential-login-form",
+        "credential-employee-id",
+        "credential-password",
+        "autocomplete=\"username\"",
+        "autocomplete=\"current-password\"",
+    ]:
+        assert expected in html
+
+    for expected in [
+        "buildCredentialLoginRequestFromForm",
+        "buildCredentialLoginSurfaceSummary",
+        "createCredentialLoginSurfaceState",
+        "submitCredentialLogin",
+        "logoutCredentialSession",
+        "renderCredentialLoginSurface",
+        "credentialLoginFeedbackMessage",
+        "credentialPasswordInput.value = \"\"",
+    ]:
+        assert expected in javascript
+
+    for expected in [
+        "ae_web_credential_login_surface.v1",
+        "buildCredentialLoginRequest",
+        "buildCredentialLoginRequestFromForm",
+        "buildCredentialLoginSurfaceSummary",
+        "assertCredentialLoginRequestShape",
+        "rawPasswordStored: false",
+        "passwordRendered: false",
+        "passwordIncludedInSummary: false",
+        "serviceTokenIncluded: false",
+        "databaseEndpointIncluded: false",
+        "providerEndpointIncluded: false",
+    ]:
+        assert expected in credential_surface
+
+    for expected in [
+        "assertSessionLoginRequestSafe",
+        "ALLOWED_LOGIN_ROOT_SECRET_FIELDS",
+        "allowedRootSecretFields",
+        "credentials: \"same-origin\"",
+    ]:
+        assert expected in session_client
+
+    assert ".credential-login-form" in styles
+    assert "grid-template-columns: minmax(92px, auto) minmax(0, 1fr)" in styles
+
+    for forbidden in [
+        "password_hash",
+        "access_token",
+        "service_token",
+        "database_url",
+        "provider_url",
+        "/data/nex-platform",
+    ]:
+        assert forbidden not in javascript
+        assert forbidden not in credential_surface
 
 
 def test_ae_web_upload_surface_tracks_owner_scope_contract() -> None:
@@ -243,6 +319,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     runtime_diagnostics = read_web_file("src/runtimeDiagnostics.js")
     auth_boundary = read_web_file("src/authBoundary.js")
     session_client = read_web_file("src/sessionClient.js")
+    credential_surface = read_web_file("src/credentialLoginSurface.js")
 
     for expected in [
         "buildAuthenticatedRuntimeSummary",
@@ -273,6 +350,8 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         "buildRuntimeDiagnostics",
         "buildRuntimeDiagnosticsSummary",
         "renderRuntimeDiagnostics",
+        "credentialLogin",
+        "renderCredentialLoginSurface",
     ]:
         assert expected in javascript
 
@@ -443,6 +522,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         "createFetchSessionClient",
         "buildSessionStateSummary",
         "buildSessionClientSummary",
+        "assertSessionLoginRequestSafe",
         "SESSION_SECRET_FIELD",
         "credentials: \"same-origin\"",
         "rawTokenIncluded: false",
@@ -451,6 +531,14 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         "claimOwnerAuthoritative: true",
     ]:
         assert expected in session_client
+
+    for expected in [
+        "ae_web_credential_login_surface.v1",
+        "CredentialLoginSurfaceError",
+        "CREDENTIAL_LOGIN_PASSWORD_REQUIRED",
+        "rawPasswordStored: false",
+    ]:
+        assert expected in credential_surface
 
     for forbidden in [
         "service_token",
@@ -470,6 +558,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         assert forbidden not in runtime_diagnostics
         assert forbidden not in auth_boundary
         assert forbidden not in session_client
+        assert forbidden not in credential_surface
 
 
 def test_ae_web_mock_state_links_generation_artifact_and_audit_contracts() -> None:
@@ -530,6 +619,9 @@ def test_ae_web_static_browser_smoke_runner_is_quality_gate_wired() -> None:
         "DEFAULT_SLICE_LABEL = \"Slice 0227\"",
         "required_anchors",
         "runtime-diagnostics-panel",
+        "credential-login-panel",
+        "credential-login-form",
+        "credential-password",
         "upload-retry-button",
         "document-detail-feedback",
         "retrieval-retry-button",
