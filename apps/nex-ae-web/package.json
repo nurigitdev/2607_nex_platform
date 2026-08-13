@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node scripts/serve.mjs",
     "start": "node scripts/serve.mjs",
+    "smoke:credential-login-harness": "node scripts/runCredentialLoginBrowserHarnessSmoke.mjs --summary",
     "test": "node --test test/*.test.mjs"
   }
 }

@@ -279,5 +279,16 @@ Slice 0262 adds the protected browser smoke boundary:
   cookie session facade behavior, route guard `allowed`, logout readback, and
   redacted evidence.
 
+Slice 0263 adds the deterministic browser harness smoke:
+
+- `scripts/runCredentialLoginBrowserHarnessSmoke.mjs` executes the Slice 0261
+  fake-fetch credential-login harness and emits
+  `ae_web_credential_login_browser_harness_smoke.v1` evidence.
+- `scripts/smoke/run_ae_web_credential_login_browser_harness_smoke.py` consumes
+  the Slice 0262 boundary, runs the Node smoke, redacts protected env values,
+  and reports a default quality-gate summary.
+- `npm --prefix apps/nex-ae-web run smoke:credential-login-harness` runs the
+  local AE Web smoke directly.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
