@@ -211,6 +211,11 @@
       "schema": "schemas/service/nex_ae_web/fetch_mode_smoke_evidence.v1.schema.json"
     },
     {
+      "name": "ae_web_credential_login_browser_live_smoke_evidence_raw_database_url",
+      "path": "tests/negative/operations/ae_web_credential_login_browser_live_smoke_evidence.raw_database_url.json",
+      "schema": "schemas/service/nex_ae_web/credential_login_browser_live_smoke_evidence.v1.schema.json"
+    },
+    {
       "name": "common_job_bad_status",
       "path": "tests/negative/retrieval/common_job.bad_status.json",
       "schema": "schemas/common/common_job.v1.schema.json"

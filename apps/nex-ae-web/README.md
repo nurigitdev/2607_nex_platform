@@ -314,5 +314,16 @@ Slice 0265 adds protected live smoke execution:
 - The browser smoke password is propagated into the server-side credential
   smoke while evidence remains redacted.
 
+Slice 0266 hardens PostgreSQL evidence:
+
+- `contracts/schemas/service/nex_ae_web/credential_login_browser_live_smoke_evidence.v1.schema.json`
+  freezes the PASS evidence shape for the credential-login browser live smoke.
+- `scripts/smoke/run_ae_web_credential_login_browser_postgres_evidence_hardening.py`
+  calls the live smoke when enabled, validates the contract, and checks DB
+  readback, migration, session revocation, cleanup, route guard, and redaction
+  invariants.
+- The hardening runner is skipped by default in the quality gate unless
+  `NEX_AE_WEB_CREDENTIAL_LOGIN_BROWSER_SMOKE=1` is set.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
