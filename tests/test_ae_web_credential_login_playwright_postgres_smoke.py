@@ -371,6 +371,68 @@ def test_redaction_output_helpers_and_main(
     assert "error=ValueError" in capsys.readouterr().out
 
 
+def test_prepared_cleanup_node_env_and_source_status_helpers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker_calls: list[dict[str, object]] = []
+    oa_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        smoke.base_auth,
+        "_delete_ae_smoke_marker",
+        lambda engine, *, event_id: marker_calls.append(
+            {"engine": engine, "event_id": event_id}
+        )
+        or 0,
+    )
+    monkeypatch.setattr(
+        smoke.base_auth,
+        "_delete_oa_smoke_rows",
+        lambda engine, **kwargs: oa_calls.append({"engine": engine, **kwargs})
+        or {"deleted_sessions": 1},
+    )
+
+    prepared = smoke.PreparedPlaywrightPostgresSmoke(
+        profile="test",
+        request_id="request-0270",
+        trace_id="trace0270",
+        tenant_id="tenant",
+        subject_id="subject",
+        employee_id="EMP0270",
+        password="dummy-password",
+        ae_database_env="NEX_AE_TEST_DATABASE_URL",
+        oa_database_env="NEX_OA_TEST_DATABASE_URL",
+        redacted_database_urls={},
+        migrations={},
+        ae_engine="ae-engine",
+        oa_engine="oa-engine",
+        ae_app=object(),
+        ae_marker_id="marker",
+    )
+
+    cleanup = prepared.cleanup(session_id="session")
+    node_env = smoke._node_environ(
+        {
+            smoke.CHROMIUM_EXECUTABLE_ENV: "/usr/bin/google-chrome",
+            smoke.TIMEOUT_MS_ENV: "15000",
+        },
+        web_url="http://127.0.0.1:5227/",
+        tenant_id="tenant",
+        employee_id="EMP0270",
+        password="dummy-password",
+    )
+
+    assert cleanup["ae_marker_rows_after_delete"] == 0
+    assert cleanup["oa_rows"]["deleted_sessions"] == 1
+    assert marker_calls == [{"engine": "ae-engine", "event_id": "marker"}]
+    assert oa_calls[0]["session_id"] == "session"
+    assert node_env[smoke.CHROMIUM_EXECUTABLE_ENV] == "/usr/bin/google-chrome"
+    assert node_env[smoke.TIMEOUT_MS_ENV] == "15000"
+    assert smoke._source_status({"status": "PASS"}, version_key="missing") == {
+        "status": "PASS"
+    }
+
+
 def test_playwright_postgres_smoke_is_quality_gate_docs_and_package_wired() -> None:
     root = Path(__file__).parents[1]
     quality_gate = (root / "scripts" / "quality" / "run_quality_gate.sh").read_text(
