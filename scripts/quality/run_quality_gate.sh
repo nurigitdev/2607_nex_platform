@@ -61,6 +61,7 @@ mkdir -p "$REPORT_DIR"
 "$PYTHON_BIN" scripts/smoke/run_ae_web_same_origin_runtime_boundary.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_playwright_readiness.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_credential_login_playwright_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_web_post_login_document_workflow_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_credential_login_browser_execution_readiness.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_credential_login_browser_live_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_credential_login_browser_postgres_evidence_hardening.py --summary

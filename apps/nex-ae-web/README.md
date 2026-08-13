@@ -372,5 +372,15 @@ Slice 0270 adds protected Playwright PostgreSQL smoke execution:
 - The runner is skipped by default unless
   `NEX_AE_WEB_CREDENTIAL_LOGIN_PLAYWRIGHT_SMOKE=1` is set.
 
+Slice 0271 audits the post-login document workflow:
+
+- `scripts/smoke/run_ae_web_post_login_document_workflow_audit.py` verifies the
+  upload, document detail, retrieval, client registry, AE API upload facade, and
+  Playwright login smoke anchors before adding the authenticated upload flow.
+- The audit records that Slice 0272-0274 should keep browser upload behavior on
+  metadata handoff first, use same-origin `/ae-api`, derive owner scope from OA
+  session claims, and reserve raw source bytes for a later explicit CX storage
+  boundary.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
