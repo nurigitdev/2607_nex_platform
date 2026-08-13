@@ -81,6 +81,7 @@ SMOKE_PROFILE_ENV = "NEX_AE_OA_AUTH_POSTGRES_SMOKE_PROFILE"
 TENANT_ID_ENV = "NEX_AE_OA_AUTH_POSTGRES_SMOKE_TENANT_ID"
 SUBJECT_ID_ENV = "NEX_AE_OA_AUTH_POSTGRES_SMOKE_SUBJECT_ID"
 EMPLOYEE_ID_ENV = "NEX_AE_OA_AUTH_POSTGRES_SMOKE_EMPLOYEE_ID"
+PASSWORD_ENV = "NEX_AE_OA_AUTH_POSTGRES_SMOKE_PASSWORD"
 DEFAULT_PROFILE = "test"
 AE_SERVICE_ID = "nex-ae-api"
 OA_SERVICE_ID = "nex-oa"
@@ -282,6 +283,7 @@ def _execute_ae_oa_auth_postgres_smoke(
     tenant_id = env.get(TENANT_ID_ENV) or f"tenant-ae-oa-auth-smoke-{suffix}"
     subject_id = env.get(SUBJECT_ID_ENV) or f"user-ae-oa-auth-smoke-{suffix}"
     employee_id = env.get(EMPLOYEE_ID_ENV) or f"EMP-AE-OA-AUTH-{suffix}"
+    login_password = env.get(PASSWORD_ENV) or SMOKE_LOGIN_PASSWORD
     ae_engine = build_engine(ae_database_url)
     oa_engine = build_engine(oa_database_url)
     ae_marker_id: str | None = None
@@ -389,7 +391,7 @@ def _execute_ae_oa_auth_postgres_smoke(
                 "tenant_id": tenant_id,
                 "employee_id": employee_id,
                 "subject_id": subject_id,
-                "password": SMOKE_LOGIN_PASSWORD,
+                "password": login_password,
                 "credential_metadata": {"smoke_marker": "ae-oa-auth-postgres"},
             },
         )
@@ -401,7 +403,7 @@ def _execute_ae_oa_auth_postgres_smoke(
             json={
                 "tenant_id": tenant_id,
                 "employee_id": employee_id,
-                "password": SMOKE_LOGIN_PASSWORD,
+                "password": login_password,
                 "scopes": [DEFAULT_USER_SCOPE],
                 "ttl_seconds": 1800,
             },
@@ -524,6 +526,7 @@ def _execute_ae_oa_auth_postgres_smoke(
                     SECRET_MARKER,
                     "access_token",
                     "Bearer ",
+                    login_password,
                     SMOKE_LOGIN_PASSWORD,
                     "Nuri1004",
                     "nuri1004",
@@ -860,6 +863,7 @@ def assert_smoke_evidence_redacted(
         TENANT_ID_ENV,
         SUBJECT_ID_ENV,
         EMPLOYEE_ID_ENV,
+        PASSWORD_ENV,
         SMOKE_PROFILE_ENV,
     )
     leaked = [

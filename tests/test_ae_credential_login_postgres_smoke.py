@@ -97,6 +97,7 @@ def test_ae_credential_login_postgres_smoke_maps_env_and_source_evidence(
         smoke.TENANT_ID_ENV: "tenant-secret-smoke",
         smoke.SUBJECT_ID_ENV: "subject-secret-smoke",
         smoke.EMPLOYEE_ID_ENV: "EMP-SECRET-SMOKE",
+        smoke.PASSWORD_ENV: "credential-password-secret",
         smoke.AE_DATABASE_ENV: (
             "postgresql+psycopg://nex_ae_user:nuri1004@127.0.0.1:5432/nex_ae_test"
         ),
@@ -118,6 +119,9 @@ def test_ae_credential_login_postgres_smoke_maps_env_and_source_evidence(
     )
     assert captured_env["NEX_AE_OA_AUTH_POSTGRES_SMOKE_EMPLOYEE_ID"] == (
         "EMP-SECRET-SMOKE"
+    )
+    assert captured_env["NEX_AE_OA_AUTH_POSTGRES_SMOKE_PASSWORD"] == (
+        "credential-password-secret"
     )
     assert evidence["status"] == "PASS"
     assert evidence["source_smoke"]["name"] == "ae_oa_auth_postgres_smoke"
@@ -142,6 +146,7 @@ def test_ae_credential_login_postgres_smoke_maps_env_and_source_evidence(
     assert "tenant-secret-smoke" not in serialized
     assert "subject-secret-smoke" not in serialized
     assert "EMP-SECRET-SMOKE" not in serialized
+    assert "credential-password-secret" not in serialized
     assert smoke.summary_line(evidence) == (
         "ae_credential_login_postgres_smoke=pass "
         "profile=test "
@@ -204,6 +209,11 @@ def test_ae_credential_login_postgres_smoke_redaction_and_main(
                     "postgresql+psycopg://nex_ae_user:nuri1004@127.0.0.1:5432/nex_ae_test"
                 )
             },
+        )
+    with pytest.raises(ValueError, match=smoke.PASSWORD_ENV):
+        smoke.assert_smoke_evidence_redacted(
+            "credential-password-secret",
+            {smoke.PASSWORD_ENV: "credential-password-secret"},
         )
 
     monkeypatch.setattr(smoke, "load_env_file", lambda path: None)

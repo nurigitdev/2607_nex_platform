@@ -368,6 +368,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0262`](slices/0262_ae_web_credential_login_browser_smoke_boundary.md) | `S27-002` AE Web credential-login browser smoke boundary. |
 | [`Slice 0263`](slices/0263_ae_web_credential_login_browser_harness_smoke.md) | `S27-003` AE Web credential-login browser harness smoke. |
 | [`Slice 0264`](slices/0264_ae_web_credential_login_browser_execution_readiness.md) | `S27-004` AE Web credential-login browser execution readiness. |
+| [`Slice 0265`](slices/0265_ae_web_credential_login_browser_live_smoke_execution.md) | `S27-005` AE Web credential-login browser live smoke execution. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

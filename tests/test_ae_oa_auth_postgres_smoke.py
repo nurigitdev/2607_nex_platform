@@ -285,6 +285,7 @@ def test_execute_ae_oa_auth_postgres_smoke_runs_with_sqlite_fixture(tmp_path) ->
         env={
             smoke.AE_SERVICE_SPEC.database_env: ae_database_url,
             smoke.OA_SERVICE_SPEC.database_env: oa_database_url,
+            smoke.PASSWORD_ENV: "custom-login-secret-0250",
         },
         ae_database_url=ae_database_url,
         oa_database_url=oa_database_url,
@@ -467,6 +468,11 @@ def test_ae_oa_auth_postgres_smoke_helpers_and_main(
         smoke.assert_smoke_evidence_redacted(
             "postgresql://user:secret@localhost/nex_ae_test",
             {"NEX_AE_TEST_DATABASE_URL": "postgresql://user:secret@localhost/nex_ae_test"},
+        )
+    with pytest.raises(ValueError, match="unredacted environment value"):
+        smoke.assert_smoke_evidence_redacted(
+            "custom-login-secret-0250",
+            {smoke.PASSWORD_ENV: "custom-login-secret-0250"},
         )
 
     monkeypatch.setattr(smoke, "load_env_file", lambda path: None)

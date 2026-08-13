@@ -303,5 +303,16 @@ Slice 0264 adds protected execution readiness:
   dependency decision; the next protected runner uses the existing FastAPI
   TestClient plus real PostgreSQL test databases.
 
+Slice 0265 adds protected live smoke execution:
+
+- `scripts/smoke/run_ae_web_credential_login_browser_live_smoke.py` combines
+  the browser boundary, execution readiness, AE/OA credential-login PostgreSQL
+  smoke, and deterministic browser harness evidence.
+- When `NEX_AE_WEB_CREDENTIAL_LOGIN_BROWSER_SMOKE=1`, the runner must connect
+  to `NEX_AE_TEST_DATABASE_URL` and `NEX_OA_TEST_DATABASE_URL`; otherwise it is
+  skipped by default in the quality gate.
+- The browser smoke password is propagated into the server-side credential
+  smoke while evidence remains redacted.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

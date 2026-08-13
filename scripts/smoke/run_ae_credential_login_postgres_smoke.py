@@ -19,6 +19,7 @@ from nex_runtime import load_env_file  # noqa: E402
 from run_ae_oa_auth_postgres_smoke import (  # noqa: E402
     DEFAULT_PROFILE,
     EMPLOYEE_ID_ENV as BASE_EMPLOYEE_ID_ENV,
+    PASSWORD_ENV as BASE_PASSWORD_ENV,
     SMOKE_ENV as BASE_SMOKE_ENV,
     SMOKE_PROFILE_ENV as BASE_SMOKE_PROFILE_ENV,
     SUBJECT_ID_ENV as BASE_SUBJECT_ID_ENV,
@@ -33,6 +34,7 @@ SMOKE_PROFILE_ENV = "NEX_AE_CREDENTIAL_LOGIN_POSTGRES_SMOKE_PROFILE"
 TENANT_ID_ENV = "NEX_AE_CREDENTIAL_LOGIN_POSTGRES_SMOKE_TENANT_ID"
 SUBJECT_ID_ENV = "NEX_AE_CREDENTIAL_LOGIN_POSTGRES_SMOKE_SUBJECT_ID"
 EMPLOYEE_ID_ENV = "NEX_AE_CREDENTIAL_LOGIN_POSTGRES_SMOKE_EMPLOYEE_ID"
+PASSWORD_ENV = "NEX_AE_CREDENTIAL_LOGIN_POSTGRES_SMOKE_PASSWORD"
 AE_DATABASE_ENV = "NEX_AE_TEST_DATABASE_URL"
 OA_DATABASE_ENV = "NEX_OA_TEST_DATABASE_URL"
 
@@ -66,6 +68,7 @@ def _base_environ(env: Mapping[str, str]) -> dict[str, str]:
     _copy_alias(base_env, source=TENANT_ID_ENV, target=BASE_TENANT_ID_ENV)
     _copy_alias(base_env, source=SUBJECT_ID_ENV, target=BASE_SUBJECT_ID_ENV)
     _copy_alias(base_env, source=EMPLOYEE_ID_ENV, target=BASE_EMPLOYEE_ID_ENV)
+    _copy_alias(base_env, source=PASSWORD_ENV, target=BASE_PASSWORD_ENV)
     return base_env
 
 
@@ -182,9 +185,11 @@ def assert_smoke_evidence_redacted(
         TENANT_ID_ENV,
         SUBJECT_ID_ENV,
         EMPLOYEE_ID_ENV,
+        PASSWORD_ENV,
         BASE_TENANT_ID_ENV,
         BASE_SUBJECT_ID_ENV,
         BASE_EMPLOYEE_ID_ENV,
+        BASE_PASSWORD_ENV,
     )
     leaked = [
         key
