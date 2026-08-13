@@ -325,5 +325,17 @@ Slice 0266 hardens PostgreSQL evidence:
 - The hardening runner is skipped by default in the quality gate unless
   `NEX_AE_WEB_CREDENTIAL_LOGIN_BROWSER_SMOKE=1` is set.
 
+Slice 0267 adds the operator profile:
+
+- `docs/runbooks/ae_web_credential_login_browser_smoke.md` records the required
+  env, command order, expected summaries, and redaction guardrails for protected
+  credential-login browser smoke execution.
+- `scripts/smoke/run_ae_web_credential_login_browser_operator_profile.py`
+  validates the runbook, quality-gate wiring, profile value, and `*_test`
+  database URL targeting without opening database connections.
+- Operators should treat skipped live/hardening runners as not executed; the
+  hardening runner is the final pass/fail signal when protected smoke is
+  enabled.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
