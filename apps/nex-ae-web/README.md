@@ -393,5 +393,15 @@ Slice 0272 hardens the authenticated upload metadata surface:
   and keeps service tokens, provider endpoints, database URLs, and source bytes
   out of browser state.
 
+Slice 0273 wires authenticated upload fetch:
+
+- `src/authenticatedUploadWorkflow.js` composes fetch session and upload clients
+  into a deterministic login -> owner-scope -> upload handoff -> logout flow.
+- `scripts/runAuthenticatedUploadFetchSmoke.mjs` proves the same-origin
+  `/ae-api` browser sequence with fake fetch and metadata-only upload payloads.
+- `scripts/smoke/run_ae_web_authenticated_upload_fetch_smoke.py` exposes the
+  smoke in the default quality gate while keeping live PostgreSQL execution for
+  the protected Slice 0274 Playwright smoke.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

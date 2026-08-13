@@ -376,6 +376,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0270`](slices/0270_ae_web_credential_login_playwright_postgresql_smoke.md) | `S27-010` AE Web credential-login Playwright PostgreSQL smoke. |
 | [`Slice 0271`](slices/0271_ae_web_post_login_document_workflow_audit.md) | `S28-001` AE Web post-login document workflow audit. |
 | [`Slice 0272`](slices/0272_ae_web_authenticated_upload_metadata_surface_hardening.md) | `S28-002` AE Web authenticated upload metadata surface hardening. |
+| [`Slice 0273`](slices/0273_ae_web_authenticated_upload_fetch_wiring.md) | `S28-003` AE Web authenticated upload fetch wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
