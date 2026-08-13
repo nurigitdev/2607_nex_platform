@@ -341,7 +341,8 @@ h2 {
   font-weight: 800;
 }
 
-.credential-login-form {
+.credential-login-form,
+.upload-metadata-form {
   display: grid;
   grid-template-columns: minmax(92px, auto) minmax(0, 1fr);
   gap: 10px;
@@ -349,7 +350,8 @@ h2 {
   padding: 14px;
 }
 
-.credential-login-form label {
+.credential-login-form label,
+.upload-metadata-form label {
   color: var(--nex-muted);
   font-size: 13px;
   font-weight: 700;
@@ -359,6 +361,10 @@ h2 {
   grid-column: 2;
   justify-self: start;
   min-width: 96px;
+}
+
+.upload-metadata-form {
+  border-bottom: 1px solid var(--nex-border);
 }
 
 .composer {

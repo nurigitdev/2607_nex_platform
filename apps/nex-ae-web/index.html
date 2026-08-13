@@ -198,11 +198,32 @@
                 <h2 id="upload-surface-title">업로드 준비</h2>
                 <div class="badge-pair">
                   <span class="badge pending" id="upload-status">대기</span>
+                  <button id="upload-metadata-apply-button" type="submit" form="upload-metadata-form">
+                    적용
+                  </button>
                   <button id="upload-submit-button" type="button">전송</button>
                   <button id="upload-retry-button" type="button" hidden>재시도</button>
                 </div>
               </div>
+              <form class="upload-metadata-form" id="upload-metadata-form">
+                <label for="upload-file-input">파일</label>
+                <input id="upload-file-input" name="source_file" type="file" />
+                <label for="upload-source-sha256">SHA-256</label>
+                <input
+                  id="upload-source-sha256"
+                  name="source_sha256"
+                  type="text"
+                  inputmode="latin"
+                  spellcheck="false"
+                  autocomplete="off"
+                />
+              </form>
               <div class="operation-feedback" id="upload-feedback" role="status"></div>
+              <dl
+                class="meta-list"
+                id="upload-file-metadata-summary"
+                aria-label="AE upload file metadata summary"
+              ></dl>
               <dl class="meta-list" id="upload-owner-scope"></dl>
               <dl
                 class="meta-list client-summary"

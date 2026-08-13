@@ -3,11 +3,14 @@ import { describe, it } from "node:test";
 
 import {
   AE_UPLOAD_ROUTE,
+  AE_WEB_UPLOAD_FILE_METADATA_SCHEMA_VERSION,
   AE_WEB_UPLOAD_SURFACE_SCHEMA_VERSION,
   UploadSurfaceError,
+  buildUploadFileMetadata,
   buildUploadHandoffPayload,
   buildUploadOwnershipRef,
   buildUploadSurfaceDraft,
+  buildUploadSurfaceDraftFromFileMetadata,
   buildUploadSurfaceFromHandoff
 } from "../src/uploadSurface.js";
 
@@ -90,6 +93,45 @@ describe("upload surface", () => {
     assert.doesNotMatch(JSON.stringify(payload), /content_text|content_base64|service_token/);
   });
 
+  it("builds upload drafts from browser file metadata without source bytes", () => {
+    const fileMetadata = buildUploadFileMetadata({
+      file: {
+        name: "selected-report.md",
+        type: "text/markdown",
+        size: 2048,
+        lastModified: 1770000000000,
+        webkitRelativePath: "private/selected-report.md"
+      },
+      sourceSha256
+    });
+    const draft = buildUploadSurfaceDraftFromFileMetadata({
+      workspaceId: "workspace-local",
+      fileMetadata,
+      ownerScope: ownerScope()
+    });
+    const payload = buildUploadHandoffPayload(draft);
+    const serialized = JSON.stringify({ fileMetadata, draft, payload });
+
+    assert.equal(
+      fileMetadata.upload_file_metadata_schema_version,
+      AE_WEB_UPLOAD_FILE_METADATA_SCHEMA_VERSION
+    );
+    assert.equal(fileMetadata.filename, "selected-report.md");
+    assert.equal(fileMetadata.contentType, "text/markdown");
+    assert.equal(fileMetadata.sizeBytes, 2048);
+    assert.equal(fileMetadata.fileSelected, true);
+    assert.equal(fileMetadata.metadata.sourceContentIncluded, false);
+    assert.equal(fileMetadata.metadata.localPathIncluded, false);
+    assert.equal(fileMetadata.metadata.lastModifiedIncluded, false);
+    assert.equal(draft.fileMetadata.filename, "selected-report.md");
+    assert.equal(payload.filename, "selected-report.md");
+    assert.doesNotMatch(
+      serialized,
+      /content_text|content_base64|service_token|webkitRelativePath|private\//
+    );
+    assert.doesNotMatch(serialized, /1770000000000/);
+  });
+
   it("normalizes upload handoff records back into a web surface", () => {
     const surface = buildUploadSurfaceFromHandoff(handoff());
 
@@ -132,6 +174,30 @@ describe("upload surface", () => {
           ownerScope: ownerScope()
         }),
       error => error instanceof UploadSurfaceError && error.status === "SOURCE_HASH_INVALID"
+    );
+    assert.throws(
+      () => buildUploadFileMetadata(),
+      error => error instanceof UploadSurfaceError && error.status === "TEXT_INVALID"
+    );
+    assert.throws(
+      () =>
+        buildUploadFileMetadata({
+          filename: "safe.md",
+          sizeBytes: 1,
+          sourceSha256: "BAD"
+        }),
+      error => error instanceof UploadSurfaceError && error.status === "SOURCE_HASH_INVALID"
+    );
+    assert.throws(
+      () =>
+        buildUploadSurfaceDraftFromFileMetadata({
+          workspaceId: "workspace-local",
+          fileMetadata: { upload_file_metadata_schema_version: "wrong" },
+          ownerScope: ownerScope()
+        }),
+      error =>
+        error instanceof UploadSurfaceError &&
+        error.status === "UPLOAD_FILE_METADATA_INVALID"
     );
     assert.throws(
       () => buildUploadHandoffPayload({ upload_surface_schema_version: "wrong" }),

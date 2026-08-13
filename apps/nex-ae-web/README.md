@@ -382,5 +382,16 @@ Slice 0271 audits the post-login document workflow:
   session claims, and reserve raw source bytes for a later explicit CX storage
   boundary.
 
+Slice 0272 hardens the authenticated upload metadata surface:
+
+- `src/uploadSurface.js` now exposes `ae_web_upload_file_metadata.v1` and builds
+  upload drafts from browser file metadata without reading raw source bytes.
+- The upload panel includes a file input and optional SHA-256 field. Selecting a
+  file updates filename, content type, size, hash presence, owner scope, and the
+  safe handoff preview.
+- The preview records `sourceContentIncluded=false`, `localPathIncluded=false`,
+  and keeps service tokens, provider endpoints, database URLs, and source bytes
+  out of browser state.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

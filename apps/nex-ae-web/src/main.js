@@ -46,8 +46,9 @@ import {
   buildOperationFeedback
 } from "./operationFeedback.js";
 import {
+  buildUploadFileMetadata,
   buildUploadHandoffPayload,
-  buildUploadSurfaceDraft
+  buildUploadSurfaceDraftFromFileMetadata
 } from "./uploadSurface.js";
 
 const services = [
@@ -74,6 +75,13 @@ const localOwnerScope = {
   uploadedByUserId: "owner-local"
 };
 
+const defaultUploadFileMetadata = buildUploadFileMetadata({
+  filename: "new-reference-pack.md",
+  contentType: "text/markdown",
+  sizeBytes: 4096,
+  sourceSha256: "d12261539d27dcab69f873a5e1a30587919b8ce4802782151f1bc2ba5390b610"
+});
+
 const workspaceState = {
   workspaceId: "workspace-local",
   chatDocumentId: "chat-doc-local",
@@ -99,12 +107,10 @@ const workspaceState = {
   lastRetrievalRequest: null,
   lastRetrievalResult: null,
   uploadSubmission: null,
-  uploadDraft: buildUploadSurfaceDraft({
+  uploadFileMetadata: defaultUploadFileMetadata,
+  uploadDraft: buildUploadSurfaceDraftFromFileMetadata({
     workspaceId: "workspace-local",
-    filename: "new-reference-pack.md",
-    contentType: "text/markdown",
-    sizeBytes: 4096,
-    sourceSha256: "d12261539d27dcab69f873a5e1a30587919b8ce4802782151f1bc2ba5390b610",
+    fileMetadata: defaultUploadFileMetadata,
     ownerScope: localOwnerScope
   }),
   artifactRef: {
@@ -242,10 +248,14 @@ const documentDetail = document.querySelector("#document-detail");
 const documentDetailStatus = document.querySelector("#document-detail-status");
 const documentDetailFeedback = document.querySelector("#document-detail-feedback");
 const documentDetailRetryButton = document.querySelector("#document-detail-retry-button");
+const uploadMetadataForm = document.querySelector("#upload-metadata-form");
+const uploadFileInput = document.querySelector("#upload-file-input");
+const uploadSourceSha256Input = document.querySelector("#upload-source-sha256");
 const uploadStatus = document.querySelector("#upload-status");
 const uploadSubmitButton = document.querySelector("#upload-submit-button");
 const uploadRetryButton = document.querySelector("#upload-retry-button");
 const uploadFeedback = document.querySelector("#upload-feedback");
+const uploadFileMetadataSummary = document.querySelector("#upload-file-metadata-summary");
 const uploadOwnerScope = document.querySelector("#upload-owner-scope");
 const uploadClientSummary = document.querySelector("#upload-client-summary");
 const uploadPayloadPreview = document.querySelector("#upload-payload-preview");
@@ -299,6 +309,15 @@ documentDetailRetryButton.addEventListener("click", () => {
 
 retrievalRetryButton.addEventListener("click", () => {
   void retryLastRetrievalRequest();
+});
+
+uploadMetadataForm.addEventListener("submit", event => {
+  event.preventDefault();
+  applyUploadFileMetadataFromForm();
+});
+
+uploadFileInput.addEventListener("change", () => {
+  applyUploadFileMetadataFromForm();
 });
 
 documentList.addEventListener("click", event => {
@@ -407,12 +426,9 @@ function syncOwnerScopeFromSessionClaims() {
       uploadedByUserId: ownerScope.uploadedByUserId
     }
   }));
-  workspaceState.uploadDraft = buildUploadSurfaceDraft({
+  workspaceState.uploadDraft = buildUploadSurfaceDraftFromFileMetadata({
     workspaceId: workspaceState.uploadDraft.workspaceId,
-    filename: workspaceState.uploadDraft.filename,
-    contentType: workspaceState.uploadDraft.contentType,
-    sizeBytes: workspaceState.uploadDraft.sizeBytes,
-    sourceSha256: workspaceState.uploadDraft.sourceSha256,
+    fileMetadata: workspaceState.uploadFileMetadata,
     ownerScope
   });
   workspaceState.documentScope = buildCurrentDocumentScope();
@@ -639,8 +655,54 @@ function initializeOperationStates() {
   };
 }
 
+function applyUploadFileMetadataFromForm() {
+  const ownerScope =
+    ownerScopeFromSessionState(workspaceState.sessionState) ||
+    workspaceState.uploadDraft.ownerScope;
+  const selectedFile = uploadFileInput.files?.[0] || null;
+
+  try {
+    const fileMetadata = buildUploadFileMetadata({
+      file: selectedFile || undefined,
+      filename: selectedFile?.name || workspaceState.uploadFileMetadata.filename,
+      contentType:
+        selectedFile?.type ||
+        workspaceState.uploadFileMetadata.contentType ||
+        "application/octet-stream",
+      sizeBytes: selectedFile?.size ?? workspaceState.uploadFileMetadata.sizeBytes,
+      sourceSha256: uploadSourceSha256Input.value.trim() || null
+    });
+    workspaceState.uploadFileMetadata = fileMetadata;
+    workspaceState.uploadDraft = buildUploadSurfaceDraftFromFileMetadata({
+      workspaceId: workspaceState.workspaceId,
+      fileMetadata,
+      ownerScope
+    });
+    workspaceState.uploadSubmission = null;
+    workspaceState.operations.upload = createOperationState({
+      operationId: "upload_handoff",
+      label: "Upload handoff",
+      status: "READY_FOR_SUBMIT",
+      clientMode: workspaceState.uploadClient.clientMode,
+      route: workspaceState.uploadDraft.uploadRoute
+    });
+  } catch (error) {
+    workspaceState.operations.upload = markOperationFailed(
+      workspaceState.operations.upload,
+      {
+        error,
+        clientMode: workspaceState.uploadClient.clientMode,
+        route: workspaceState.uploadDraft.uploadRoute
+      }
+    );
+  }
+
+  renderUploadSurface();
+}
+
 function renderUploadSurface() {
   const draft = workspaceState.uploadDraft;
+  const fileMetadata = workspaceState.uploadFileMetadata;
   const payload = buildUploadHandoffPayload(draft);
   const submission = workspaceState.uploadSubmission;
   const operation = workspaceState.operations.upload;
@@ -655,6 +717,25 @@ function renderUploadSurface() {
     failedMessage: "업로드 handoff를 완료하지 못했습니다."
   });
   renderRuntimeDiagnostics();
+  uploadSourceSha256Input.value = draft.sourceSha256 || "";
+  uploadFileMetadataSummary.innerHTML = `
+    <div>
+      <dt>file</dt>
+      <dd>${escapeHtml(fileMetadata.filename)}</dd>
+    </div>
+    <div>
+      <dt>type</dt>
+      <dd>${escapeHtml(fileMetadata.contentType)}</dd>
+    </div>
+    <div>
+      <dt>size</dt>
+      <dd>${escapeHtml(fileMetadata.sizeBytes)} bytes</dd>
+    </div>
+    <div>
+      <dt>hash</dt>
+      <dd>${escapeHtml(fileMetadata.sourceSha256 ? "present" : "empty")}</dd>
+    </div>
+  `;
   uploadOwnerScope.innerHTML = `
     <div>
       <dt>tenant</dt>
@@ -1336,6 +1417,7 @@ function renderOperationFeedback(container, retryButton, operationState, copy) {
 }
 
 function safeUploadPreview(payload, draft, submission) {
+  const fileMetadata = draft.fileMetadata || workspaceState.uploadFileMetadata;
   const preview = {
     workspace_id: payload.workspace_id,
     filename: payload.filename,
@@ -1346,6 +1428,15 @@ function safeUploadPreview(payload, draft, submission) {
     owner_user_id: payload.owner_user_id,
     uploaded_by_user_id: payload.uploaded_by_user_id,
     ownership_ref: payload.ownership_ref,
+    file_metadata: {
+      schema: fileMetadata.upload_file_metadata_schema_version,
+      filename: fileMetadata.filename,
+      content_type: fileMetadata.contentType,
+      size_bytes: fileMetadata.sizeBytes,
+      source_sha256_present: Boolean(fileMetadata.sourceSha256),
+      file_selected: fileMetadata.fileSelected,
+      metadata: fileMetadata.metadata
+    },
     client: {
       mode: workspaceState.uploadClient.clientMode,
       route: draft.uploadRoute,

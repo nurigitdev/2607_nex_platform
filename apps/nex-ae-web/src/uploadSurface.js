@@ -1,4 +1,6 @@
 export const AE_WEB_UPLOAD_SURFACE_SCHEMA_VERSION = "ae_web_upload_surface.v1";
+export const AE_WEB_UPLOAD_FILE_METADATA_SCHEMA_VERSION =
+  "ae_web_upload_file_metadata.v1";
 export const AE_UPLOAD_HANDOFF_SCHEMA_VERSION = "ae_upload_handoff.v1";
 export const CX_SOURCE_OWNERSHIP_REF_SCHEMA_VERSION = "cx_source_ownership_ref.v1";
 export const AE_UPLOAD_ROUTE = "/api/v1/uploads";
@@ -77,6 +79,62 @@ export function buildUploadSurfaceDraft({
       browserServiceTokenIncluded: false,
       cxStorageIncluded: false
     }
+  };
+}
+
+export function buildUploadFileMetadata({
+  file,
+  filename = file?.name,
+  contentType = file?.type || "application/octet-stream",
+  sizeBytes = file?.size,
+  sourceSha256
+} = {}) {
+  const normalizedFilename = requiredFilename(filename);
+  const normalizedContentType = requiredText(contentType, "contentType");
+  const normalizedSizeBytes = nonNegativeInteger(sizeBytes, "sizeBytes");
+  const normalizedSourceSha256 = optionalSha256(sourceSha256);
+
+  return {
+    upload_file_metadata_schema_version: AE_WEB_UPLOAD_FILE_METADATA_SCHEMA_VERSION,
+    filename: normalizedFilename,
+    contentType: normalizedContentType,
+    sizeBytes: normalizedSizeBytes,
+    sourceSha256: normalizedSourceSha256,
+    fileSelected: Boolean(file),
+    metadata: {
+      sourceContentIncluded: false,
+      browserServiceTokenIncluded: false,
+      localPathIncluded: false,
+      lastModifiedIncluded: false
+    }
+  };
+}
+
+export function buildUploadSurfaceDraftFromFileMetadata({
+  workspaceId,
+  fileMetadata,
+  ownerScope
+}) {
+  if (
+    !fileMetadata ||
+    fileMetadata.upload_file_metadata_schema_version !==
+      AE_WEB_UPLOAD_FILE_METADATA_SCHEMA_VERSION
+  ) {
+    throw new UploadSurfaceError("Upload file metadata is invalid.", {
+      status: "UPLOAD_FILE_METADATA_INVALID"
+    });
+  }
+
+  return {
+    ...buildUploadSurfaceDraft({
+      workspaceId,
+      filename: fileMetadata.filename,
+      contentType: fileMetadata.contentType,
+      sizeBytes: fileMetadata.sizeBytes,
+      sourceSha256: fileMetadata.sourceSha256,
+      ownerScope
+    }),
+    fileMetadata
   };
 }
 
