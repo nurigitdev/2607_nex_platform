@@ -131,6 +131,48 @@ def test_ae_web_credential_login_surface_wires_employee_password_form() -> None:
         assert forbidden not in credential_surface
 
 
+def test_ae_web_credential_login_browser_harness_exercises_safe_fetch_flow() -> None:
+    harness = read_web_file("src/credentialLoginHarness.js")
+
+    for expected in [
+        "ae_web_credential_login_harness.v1",
+        "runCredentialLoginHarness",
+        "buildCredentialLoginHarnessSummary",
+        "createFetchSessionClient",
+        "buildCredentialLoginRequest",
+        "composeAuthenticatedSessionRuntime",
+        "buildSessionRouteGuard",
+        "buildSessionRouteGuardSummary",
+        "/api/v1/auth/session/login",
+        "CREDENTIAL_LOGIN_HARNESS_FETCH_REQUIRED",
+        "CREDENTIAL_LOGIN_HARNESS_SECRET_LEAK",
+        "credentials: \"same-origin\"",
+        "liveNetworkUsed: false",
+        "injectedFetchRequired: true",
+        "rawPasswordStored: false",
+        "passwordIncludedInSummary: false",
+        "rawTokenStored: false",
+        "serviceTokenStored: false",
+        "browserPayloadOwnerAuthoritative: false",
+        "claimOwnerAuthoritative: true",
+        "databaseEndpointIncluded: false",
+        "providerEndpointIncluded: false",
+        "storageLocationIncluded: false",
+    ]:
+        assert expected in harness
+
+    for forbidden in [
+        "access_token",
+        "api_key",
+        "database_url",
+        "password_hash",
+        "provider_url",
+        "service_token",
+        "/data/nex-platform",
+    ]:
+        assert forbidden not in harness
+
+
 def test_ae_web_session_route_guard_tracks_authenticated_owner_scope() -> None:
     html = read_web_file("index.html")
     javascript = read_web_file("src/main.js")
@@ -373,6 +415,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     auth_boundary = read_web_file("src/authBoundary.js")
     session_client = read_web_file("src/sessionClient.js")
     credential_surface = read_web_file("src/credentialLoginSurface.js")
+    credential_harness = read_web_file("src/credentialLoginHarness.js")
     route_guard = read_web_file("src/sessionRouteGuard.js")
 
     for expected in [
@@ -597,6 +640,15 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         assert expected in credential_surface
 
     for expected in [
+        "ae_web_credential_login_harness.v1",
+        "runCredentialLoginHarness",
+        "buildCredentialLoginHarnessSummary",
+        "CREDENTIAL_LOGIN_HARNESS_FETCH_REQUIRED",
+        "liveNetworkUsed: false",
+    ]:
+        assert expected in credential_harness
+
+    for expected in [
         "ae_web_session_route_guard.v1",
         "SessionRouteGuardError",
         "mock_preview",
@@ -623,6 +675,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         assert forbidden not in auth_boundary
         assert forbidden not in session_client
         assert forbidden not in credential_surface
+        assert forbidden not in credential_harness
         assert forbidden not in route_guard
 
 

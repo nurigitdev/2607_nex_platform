@@ -259,5 +259,14 @@ Slice 0260 adds protected PostgreSQL smoke evidence:
 - The runner is skipped by default in the quality gate unless explicitly
   enabled with test database URLs.
 
+Slice 0261 adds the credential-login browser harness foundation:
+
+- `src/credentialLoginHarness.js` runs current session, credential login,
+  authenticated runtime composition, route guard, and logout through an injected
+  fake fetch.
+- The harness records browser request routes, methods, credential mode, and
+  redaction status without using live network calls.
+- Harness evidence fails if the raw password appears in the returned summary.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
