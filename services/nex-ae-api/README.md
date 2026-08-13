@@ -130,6 +130,9 @@ Upload handoff:
   `NEX_AE_CREDENTIAL_LOGIN_POSTGRES_SMOKE=1` with the AE and OA test database
   URLs to verify credential seed, AE login, OA user-login, opaque cookie,
   revocation, PostgreSQL readback, cleanup, and redaction-safe evidence.
+- Slice 0260 adds `scripts/smoke/run_ae_web_credential_login_postgres_smoke.py`
+  as the AE Web-facing protected smoke. It reuses the real AE/OA PostgreSQL
+  credential-login execution and adds web-surface plus route-guard evidence.
 
 Document library:
 

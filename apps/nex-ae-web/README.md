@@ -250,5 +250,14 @@ Slice 0259 adds the authenticated session route guard:
 - When a browser session becomes authenticated, upload and document owner scope
   is refreshed from OA session claims before protected route payloads are built.
 
+Slice 0260 adds protected PostgreSQL smoke evidence:
+
+- `scripts/smoke/run_ae_web_credential_login_postgres_smoke.py` verifies the AE
+  Web credential-login surface against real AE and OA test databases.
+- PASS evidence includes route guard `allowed`, credential count, revoked OA
+  session readback, and safe web-surface checks.
+- The runner is skipped by default in the quality gate unless explicitly
+  enabled with test database URLs.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

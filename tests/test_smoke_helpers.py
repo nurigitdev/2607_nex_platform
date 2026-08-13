@@ -2743,6 +2743,11 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
     )
     monkeypatch.setattr(
         postgres_suite_smoke,
+        "run_ae_web_credential_login_postgres_smoke",
+        child_pass("ae_web_credential_login_postgres_smoke"),
+    )
+    monkeypatch.setattr(
+        postgres_suite_smoke,
         "run_ag_retrieval_package_postgres_smoke",
         child_pass("ag_retrieval_package_postgres_smoke"),
     )
@@ -2810,6 +2815,7 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("cx_document_detail_postgres_smoke", "test"),
         ("ae_document_detail_postgres_smoke", "test"),
         ("ae_credential_login_postgres_smoke", "test"),
+        ("ae_web_credential_login_postgres_smoke", "test"),
         ("ag_retrieval_package_postgres_smoke", "test"),
         ("cx_processing_postgres_jobqueue_smoke", "test"),
         ("cx_processing_postgres_event_smoke", "test"),
@@ -2819,7 +2825,7 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("ag_cross_service_observability_smoke", "test"),
     ]
     assert postgres_suite_smoke.summary_line(evidence) == (
-        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=24"
+        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=25"
     )
 
 
