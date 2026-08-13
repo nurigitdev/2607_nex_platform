@@ -241,5 +241,14 @@ Slice 0258 adds the AE Web credential-login surface:
 - The password is cleared after submit and is not stored in workspace state,
   runtime diagnostics, or browser-safe summaries.
 
+Slice 0259 adds the authenticated session route guard:
+
+- `src/sessionRouteGuard.js` summarizes protected AE facade routes as
+  `allowed`, `blocked`, or `mock_preview`.
+- Runtime diagnostics now include route guard status alongside session
+  bootstrap and fetch-mode status.
+- When a browser session becomes authenticated, upload and document owner scope
+  is refreshed from OA session claims before protected route payloads are built.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

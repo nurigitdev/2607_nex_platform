@@ -16,6 +16,9 @@ import {
 import {
   buildSessionBootstrapSummary
 } from "./sessionBootstrap.js";
+import {
+  buildSessionRouteGuardSummary
+} from "./sessionRouteGuard.js";
 
 export const AE_WEB_RUNTIME_DIAGNOSTICS_SCHEMA_VERSION =
   "ae_web_runtime_diagnostics.v1";
@@ -32,6 +35,7 @@ export function buildRuntimeDiagnostics({
   runtimeConfig,
   sessionState = null,
   sessionBootstrap = null,
+  sessionRouteGuard = null,
   authBoundary = null,
   clientRegistry,
   operations = {}
@@ -42,6 +46,9 @@ export function buildRuntimeDiagnostics({
     ? buildSessionBootstrapSummary(sessionBootstrap)
     : null;
   const auth = authBoundary ? buildAuthBoundarySummary(authBoundary) : null;
+  const routeGuard = sessionRouteGuard
+    ? buildSessionRouteGuardSummary(sessionRouteGuard)
+    : null;
   const registry = buildClientRegistrySummary(clientRegistry);
   const operationSummaries = summarizeOperations(operations);
 
@@ -50,12 +57,14 @@ export function buildRuntimeDiagnostics({
     client_mode: runtime.client_mode,
     session_state: session?.status || "unknown",
     session_bootstrap_phase: bootstrap?.phase || "unknown",
+    route_guard_status: routeGuard?.guard_status || "unknown",
     ae_base_url: runtime.ae_base_url,
     fetch_clients_enabled: Boolean(runtime.features.fetch_clients_enabled),
     fetch_mode_allowed: Boolean(auth?.fetch_mode_allowed),
     feature_flags: runtime.features,
     session,
     session_bootstrap: bootstrap,
+    session_route_guard: routeGuard,
     auth_boundary: auth,
     registry,
     operations: operationSummaries,
@@ -97,6 +106,7 @@ export function buildRuntimeDiagnosticsSummary(diagnostics) {
     client_mode: diagnostics.client_mode,
     session_state: diagnostics.session_state,
     session_bootstrap_phase: diagnostics.session_bootstrap_phase,
+    route_guard_status: diagnostics.route_guard_status,
     ae_base_url: diagnostics.ae_base_url,
     fetch_clients_enabled: diagnostics.fetch_clients_enabled,
     fetch_mode_allowed: diagnostics.fetch_mode_allowed,

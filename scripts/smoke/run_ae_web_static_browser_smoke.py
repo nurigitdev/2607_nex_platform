@@ -38,6 +38,7 @@ def required_anchors(slice_label: str = DEFAULT_SLICE_LABEL) -> tuple[str, ...]:
         "credential-employee-id",
         "credential-password",
         "credential-login-feedback",
+        "session-route-guard-summary",
         "runtime-diagnostics-panel",
         "runtime-diagnostics-preview",
         "upload-feedback",

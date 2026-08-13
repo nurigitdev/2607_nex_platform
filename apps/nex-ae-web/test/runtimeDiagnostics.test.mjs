@@ -22,6 +22,9 @@ import {
 import {
   normalizeRuntimeConfig
 } from "../src/runtimeConfig.js";
+import {
+  buildSessionRouteGuard
+} from "../src/sessionRouteGuard.js";
 
 function runtimeConfig({ mode = "mock" } = {}) {
   return normalizeRuntimeConfig({
@@ -81,10 +84,16 @@ describe("AE Web runtime diagnostics", () => {
       ]
     });
     const runtime = bootstrap.runtime;
+    const sessionRouteGuard = buildSessionRouteGuard({
+      sessionState: runtime.sessionState,
+      authBoundary: runtime.authBoundary,
+      clientRegistry: runtime.clientRegistry
+    });
     const diagnostics = buildRuntimeDiagnostics({
       runtimeConfig: runtime.runtimeConfig,
       sessionState: runtime.sessionState,
       sessionBootstrap: bootstrap,
+      sessionRouteGuard,
       authBoundary: runtime.authBoundary,
       clientRegistry: runtime.clientRegistry,
       operations: operations()
@@ -98,6 +107,7 @@ describe("AE Web runtime diagnostics", () => {
     assert.equal(diagnostics.client_mode, "mock");
     assert.equal(diagnostics.session_state, "anonymous");
     assert.equal(diagnostics.session_bootstrap_phase, "ready");
+    assert.equal(diagnostics.route_guard_status, "mock_preview");
     assert.equal(diagnostics.fetch_clients_enabled, false);
     assert.equal(diagnostics.fetch_mode_allowed, false);
     assert.equal(diagnostics.operation_count, 2);
@@ -106,9 +116,11 @@ describe("AE Web runtime diagnostics", () => {
     assert.equal(diagnostics.registry.clients.upload, "mock");
     assert.equal(diagnostics.auth_boundary.owner_scope_source, "mock-local");
     assert.equal(diagnostics.session_bootstrap.active_client_mode, "mock");
+    assert.equal(diagnostics.session_route_guard.guard_status, "mock_preview");
     assert.equal(summary.operation_count, 2);
     assert.equal(summary.session_state, "anonymous");
     assert.equal(summary.session_bootstrap_phase, "ready");
+    assert.equal(summary.route_guard_status, "mock_preview");
     assert.equal(summary.metadata.liveNetworkUsed, false);
     assert.doesNotMatch(JSON.stringify(diagnostics), /service_token|api_key|database_url|provider_url|raw_prompt|source_text|\/data\/nex-platform/);
   });
@@ -128,6 +140,7 @@ describe("AE Web runtime diagnostics", () => {
     assert.equal(diagnostics.ae_base_url, "/ae-api");
     assert.equal(diagnostics.fetch_clients_enabled, true);
     assert.equal(diagnostics.operation_count, 0);
+    assert.equal(diagnostics.route_guard_status, "unknown");
     assert.equal(diagnostics.metadata.liveNetworkUsed, false);
   });
 

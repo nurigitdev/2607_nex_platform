@@ -29,6 +29,7 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "credential-logout-button",
         "credential-login-feedback",
         "credential-login-summary",
+        "session-route-guard-summary",
         "message-list",
         "progress-timeline",
         "upload-surface-panel",
@@ -128,6 +129,58 @@ def test_ae_web_credential_login_surface_wires_employee_password_form() -> None:
     ]:
         assert forbidden not in javascript
         assert forbidden not in credential_surface
+
+
+def test_ae_web_session_route_guard_tracks_authenticated_owner_scope() -> None:
+    html = read_web_file("index.html")
+    javascript = read_web_file("src/main.js")
+    route_guard = read_web_file("src/sessionRouteGuard.js")
+    runtime_diagnostics = read_web_file("src/runtimeDiagnostics.js")
+
+    assert "session-route-guard-summary" in html
+
+    for expected in [
+        "buildSessionRouteGuard",
+        "buildSessionRouteGuardSummary",
+        "ownerScopeFromSessionState",
+        "syncOwnerScopeFromSessionClaims",
+        "sessionRouteGuard",
+        "route_guard_status",
+    ]:
+        assert expected in javascript
+
+    for expected in [
+        "ae_web_session_route_guard.v1",
+        "AE_WEB_PROTECTED_ROUTE_IDS",
+        "auth_session",
+        "document_detail",
+        "upload_handoff",
+        "retrieval_context",
+        "buildSessionRouteGuard",
+        "buildSessionRouteGuardSummary",
+        "ownerScopeFromSessionState",
+        "SESSION_ROUTE_GUARD_SUMMARY_INVALID",
+        "session-claims",
+        "routeGuardUsesSessionClaims",
+        "browserPayloadOwnerAuthoritative: false",
+        "rawPasswordStored: false",
+    ]:
+        assert expected in route_guard
+
+    for expected in [
+        "buildSessionRouteGuardSummary",
+        "session_route_guard",
+        "route_guard_status",
+    ]:
+        assert expected in runtime_diagnostics
+
+    for forbidden in [
+        "service_token",
+        "database_url",
+        "provider_url",
+        "/data/nex-platform",
+    ]:
+        assert forbidden not in route_guard
 
 
 def test_ae_web_upload_surface_tracks_owner_scope_contract() -> None:
@@ -320,6 +373,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     auth_boundary = read_web_file("src/authBoundary.js")
     session_client = read_web_file("src/sessionClient.js")
     credential_surface = read_web_file("src/credentialLoginSurface.js")
+    route_guard = read_web_file("src/sessionRouteGuard.js")
 
     for expected in [
         "buildAuthenticatedRuntimeSummary",
@@ -352,6 +406,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         "renderRuntimeDiagnostics",
         "credentialLogin",
         "renderCredentialLoginSurface",
+        "sessionRouteGuard",
     ]:
         assert expected in javascript
 
@@ -494,6 +549,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         "buildSessionStateSummary",
         "buildSessionBootstrapSummary",
         "buildAuthBoundarySummary",
+        "buildSessionRouteGuardSummary",
     ]:
         assert expected in runtime_diagnostics
 
@@ -540,6 +596,14 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     ]:
         assert expected in credential_surface
 
+    for expected in [
+        "ae_web_session_route_guard.v1",
+        "SessionRouteGuardError",
+        "mock_preview",
+        "ownerScopeFromSessionState",
+    ]:
+        assert expected in route_guard
+
     for forbidden in [
         "service_token",
         "api_key",
@@ -559,6 +623,7 @@ def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
         assert forbidden not in auth_boundary
         assert forbidden not in session_client
         assert forbidden not in credential_surface
+        assert forbidden not in route_guard
 
 
 def test_ae_web_mock_state_links_generation_artifact_and_audit_contracts() -> None:
@@ -622,6 +687,7 @@ def test_ae_web_static_browser_smoke_runner_is_quality_gate_wired() -> None:
         "credential-login-panel",
         "credential-login-form",
         "credential-password",
+        "session-route-guard-summary",
         "upload-retry-button",
         "document-detail-feedback",
         "retrieval-retry-button",

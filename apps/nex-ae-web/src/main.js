@@ -31,6 +31,11 @@ import {
   buildRuntimeDiagnosticsSummary
 } from "./runtimeDiagnostics.js";
 import {
+  buildSessionRouteGuard,
+  buildSessionRouteGuardSummary,
+  ownerScopeFromSessionState
+} from "./sessionRouteGuard.js";
+import {
   buildOperationStateSummary,
   createOperationState,
   markOperationFailed,
@@ -82,6 +87,7 @@ const workspaceState = {
   runtimeConfig: null,
   sessionState: null,
   sessionClient: null,
+  sessionRouteGuard: null,
   credentialLogin: createCredentialLoginSurfaceState({
     tenantId: localOwnerScope.tenantId,
     requestedScopes: ["workspace:use", "documents:upload"]
@@ -223,6 +229,7 @@ const credentialPasswordInput = document.querySelector("#credential-password");
 const credentialLoginStatus = document.querySelector("#credential-login-status");
 const credentialLoginFeedback = document.querySelector("#credential-login-feedback");
 const credentialLoginSummary = document.querySelector("#credential-login-summary");
+const sessionRouteGuardSummary = document.querySelector("#session-route-guard-summary");
 const credentialLoginSubmitButton = document.querySelector("#credential-login-submit-button");
 const credentialLogoutButton = document.querySelector("#credential-logout-button");
 const composer = document.querySelector("#composer");
@@ -378,9 +385,37 @@ function applySessionBootstrap(sessionBootstrap) {
   workspaceState.sessionClient = workspaceState.authenticatedRuntime.sessionClient;
   workspaceState.authBoundary = workspaceState.authenticatedRuntime.authBoundary;
   workspaceState.clientRegistry = workspaceState.authenticatedRuntime.clientRegistry;
+  workspaceState.sessionRouteGuard = buildSessionRouteGuard({
+    sessionState: workspaceState.sessionState,
+    authBoundary: workspaceState.authBoundary,
+    clientRegistry: workspaceState.clientRegistry
+  });
+  syncOwnerScopeFromSessionClaims();
   workspaceState.documentDetailClient = workspaceState.clientRegistry.documentDetailClient;
   workspaceState.uploadClient = workspaceState.clientRegistry.uploadClient;
   workspaceState.retrievalClient = workspaceState.clientRegistry.retrievalClient;
+}
+
+function syncOwnerScopeFromSessionClaims() {
+  const ownerScope = ownerScopeFromSessionState(workspaceState.sessionState);
+  if (!ownerScope) return;
+  workspaceState.documents = workspaceState.documents.map(documentItem => ({
+    ...documentItem,
+    ownerScope: {
+      tenantId: ownerScope.tenantId,
+      ownerUserId: ownerScope.ownerUserId,
+      uploadedByUserId: ownerScope.uploadedByUserId
+    }
+  }));
+  workspaceState.uploadDraft = buildUploadSurfaceDraft({
+    workspaceId: workspaceState.uploadDraft.workspaceId,
+    filename: workspaceState.uploadDraft.filename,
+    contentType: workspaceState.uploadDraft.contentType,
+    sizeBytes: workspaceState.uploadDraft.sizeBytes,
+    sourceSha256: workspaceState.uploadDraft.sourceSha256,
+    ownerScope
+  });
+  workspaceState.documentScope = buildCurrentDocumentScope();
 }
 
 async function refreshBrowserSessionRuntime() {
@@ -493,6 +528,7 @@ async function logoutCredentialSession() {
 
 function renderCredentialLoginSurface() {
   const summary = buildCredentialLoginSurfaceSummary(workspaceState.credentialLogin);
+  const guard = buildSessionRouteGuardSummary(workspaceState.sessionRouteGuard);
   credentialLoginStatus.textContent = statusLabel(summary.status);
   credentialLoginStatus.className = `badge ${badgeClass(summary.status)}`;
   credentialTenantInput.value = workspaceState.credentialLogin.tenantId;
@@ -528,6 +564,28 @@ function renderCredentialLoginSurface() {
     <div>
       <dt>metadata</dt>
       <dd>${escapeHtml(summary.metadata.rawPasswordStored)} · ${escapeHtml(summary.metadata.passwordIncludedInSummary)}</dd>
+    </div>
+  `;
+  sessionRouteGuardSummary.innerHTML = `
+    <div>
+      <dt>guard</dt>
+      <dd>${escapeHtml(guard.guard_status)}</dd>
+    </div>
+    <div>
+      <dt>mode</dt>
+      <dd>${escapeHtml(guard.client_mode)}</dd>
+    </div>
+    <div>
+      <dt>owner</dt>
+      <dd>${escapeHtml(guard.owner_scope_source)}</dd>
+    </div>
+    <div>
+      <dt>routes</dt>
+      <dd>${escapeHtml(guard.allowed_route_count)} / ${escapeHtml(guard.protected_route_count)}</dd>
+    </div>
+    <div>
+      <dt>blocked</dt>
+      <dd>${escapeHtml(guard.blocked_reasons.join(", ") || "none")}</dd>
     </div>
   `;
 }
@@ -1220,6 +1278,7 @@ function renderRuntimeDiagnostics() {
     sessionBootstrap: workspaceState.sessionBootstrap,
     authBoundary: workspaceState.authBoundary,
     clientRegistry: workspaceState.clientRegistry,
+    sessionRouteGuard: workspaceState.sessionRouteGuard,
     operations: workspaceState.operations
   });
   const summary = buildRuntimeDiagnosticsSummary(diagnostics);
@@ -1252,6 +1311,10 @@ function renderRuntimeDiagnostics() {
     <div>
       <dt>bootstrap</dt>
       <dd>${escapeHtml(buildSessionBootstrapSummary(workspaceState.sessionBootstrap).active_client_mode)}</dd>
+    </div>
+    <div>
+      <dt>guard</dt>
+      <dd>${escapeHtml(summary.route_guard_status)}</dd>
     </div>
     <div>
       <dt>operations</dt>
