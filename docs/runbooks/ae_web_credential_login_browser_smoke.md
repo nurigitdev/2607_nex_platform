@@ -19,6 +19,10 @@ NEX_OA_TEST_DATABASE_URL=postgresql+psycopg://nex_oa_user:...@127.0.0.1:5432/nex
 NEX_AE_WEB_CREDENTIAL_LOGIN_BROWSER_SMOKE_TENANT_ID=tenant-slice-smoke
 NEX_AE_WEB_CREDENTIAL_LOGIN_BROWSER_SMOKE_EMPLOYEE_ID=EMP-SMOKE
 NEX_AE_WEB_CREDENTIAL_LOGIN_BROWSER_SMOKE_PASSWORD=...
+
+# Optional for same-origin browser execution through the AE Web dev server.
+# Browser runtime config should still use ae_base_url=/ae-api.
+AE_API_PROXY_TARGET=http://127.0.0.1:8003
 ```
 
 ## Commands
@@ -27,6 +31,12 @@ First check operator profile wiring:
 
 ```bash
 ./.venv/bin/python scripts/smoke/run_ae_web_credential_login_browser_operator_profile.py --summary
+```
+
+Then check the same-origin dev-server boundary:
+
+```bash
+./.venv/bin/python scripts/smoke/run_ae_web_same_origin_runtime_boundary.py --summary
 ```
 
 Run the protected live smoke:
@@ -45,6 +55,7 @@ Run the hardened PostgreSQL evidence check:
 
 - Default profile:
   - `ae_web_credential_login_browser_operator_profile=pass mode=default`
+  - `ae_web_same_origin_runtime_boundary=pass proxy=/ae-api`
   - `ae_web_credential_login_browser_live_smoke=skipped`
   - `ae_web_credential_login_browser_postgres_evidence_hardening=skipped`
 - Protected profile:
@@ -54,6 +65,8 @@ Run the hardened PostgreSQL evidence check:
 ## Guardrails
 
 - Do not use dev databases for protected smoke execution.
+- Keep `AE_API_PROXY_TARGET` server-side; browser runtime config should expose
+  only the same-origin `/ae-api` base path.
 - Do not store raw passwords, DB URLs, cookies, tokens, or provider endpoints in
   evidence files.
 - Treat a skipped protected runner as "not executed", not as live validation.

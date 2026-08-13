@@ -8,7 +8,8 @@ Run locally:
 npm --prefix apps/nex-ae-web run dev
 ```
 
-The shell uses only Node.js standard library for serving static files.
+The shell uses only Node.js standard library for serving static files and an
+optional same-origin `/ae-api` dev proxy.
 
 Slice 0045 integrates the first mock workspace surface and artifact card flow:
 
@@ -336,6 +337,16 @@ Slice 0267 adds the operator profile:
 - Operators should treat skipped live/hardening runners as not executed; the
   hardening runner is the final pass/fail signal when protected smoke is
   enabled.
+
+Slice 0268 adds the same-origin runtime boundary:
+
+- `scripts/serve.mjs` exports `createAeWebServer` and can proxy `/ae-api/*`
+  requests to server-side `AE_API_PROXY_TARGET` when explicitly configured.
+- Browser runtime config continues to use the safe same-origin `/ae-api` base
+  path; the backend target URL stays out of browser config and evidence.
+- `scripts/smoke/run_ae_web_same_origin_runtime_boundary.py` verifies the dev
+  server, runtime config, session client, proxy regression test, runbook, and
+  quality-gate wiring.
 
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
