@@ -55,6 +55,11 @@ Internal persistence boundary:
 - In the mock upload path, `content_text` is materialized to the local source
   file path and verified against `source_sha256`; `content_base64` follows the
   same checksum and materialization policy for binary source bytes.
+- Slice 0275 freezes the source-file materialization boundary before multipart
+  upload wiring: CX is the source-file system of record, AE is a transient
+  browser-file facade, AE must not keep long-term source-file copies, and the
+  future object storage adapter should preserve the same metadata/link-only
+  database contract.
 - Text extraction runs through the `nex_cx.extractors` adapter boundary. The
   local mock adapter performs real UTF-8 Markdown/plain-text conversion and
   emits explicit placeholders with warnings for PDF, DOCX, PPTX, and XLSX until
