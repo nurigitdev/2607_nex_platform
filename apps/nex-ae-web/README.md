@@ -290,5 +290,18 @@ Slice 0263 adds the deterministic browser harness smoke:
 - `npm --prefix apps/nex-ae-web run smoke:credential-login-harness` runs the
   local AE Web smoke directly.
 
+Slice 0264 adds protected execution readiness:
+
+- `scripts/smoke/run_ae_web_credential_login_browser_execution_readiness.py`
+  verifies that the browser boundary, harness smoke, AE Web anchors, package
+  command, quality-gate wiring, and Node dependency are ready for protected
+  execution.
+- The readiness evidence records that any enabled credential-login browser
+  smoke must connect to `NEX_AE_TEST_DATABASE_URL` and
+  `NEX_OA_TEST_DATABASE_URL`.
+- Playwright-style browser automation remains deferred until an explicit
+  dependency decision; the next protected runner uses the existing FastAPI
+  TestClient plus real PostgreSQL test databases.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
