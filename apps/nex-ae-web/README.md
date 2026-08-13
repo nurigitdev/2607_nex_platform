@@ -268,5 +268,16 @@ Slice 0261 adds the credential-login browser harness foundation:
   redaction status without using live network calls.
 - Harness evidence fails if the raw password appears in the returned summary.
 
+Slice 0262 adds the protected browser smoke boundary:
+
+- `scripts/smoke/run_ae_web_credential_login_browser_smoke_boundary.py` records
+  the required env, phases, browser routes, and redaction rules for a future
+  credential-login browser smoke.
+- The boundary is skipped by default in the quality gate and does not open
+  network or PostgreSQL connections until explicitly enabled.
+- Enabled execution must prove AE/OA test DB readiness, OA credential login, AE
+  cookie session facade behavior, route guard `allowed`, logout readback, and
+  redacted evidence.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
