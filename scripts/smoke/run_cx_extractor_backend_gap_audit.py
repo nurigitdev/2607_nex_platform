@@ -20,8 +20,10 @@ from nex_cx.extractors import (  # noqa: E402
     BINARY_SOURCE_FORMATS,
     DOCX_EXTRACTION_MODE,
     PDF_EXTRACTION_MODE,
+    PPTX_EXTRACTION_MODE,
     PLACEHOLDER_BINARY_MODE,
     PLACEHOLDER_BINARY_WARNING_PREFIX,
+    XLSX_EXTRACTION_MODE,
     ExtractionAdapterError,
     ExtractorInput,
     LocalMockTextExtractor,
@@ -172,6 +174,48 @@ REQUIRED_SOURCE_TOKENS = (
         "The local DOCX adapter uses the pinned parser dependency.",
     ),
     TokenRequirement(
+        "office_extraction_backend",
+        CX_EXTRACTORS,
+        "pptx_extraction_mode",
+        "PPTX_EXTRACTION_MODE",
+        "PPTX real extraction has a named mode for runtime evidence.",
+    ),
+    TokenRequirement(
+        "office_extraction_backend",
+        CX_EXTRACTORS,
+        "pptx_extraction_function",
+        "extract_pptx_markdown",
+        "PPTX extraction is implemented behind the extractor adapter boundary.",
+    ),
+    TokenRequirement(
+        "office_extraction_backend",
+        CX_EXTRACTORS,
+        "pptx_reader_backend",
+        "from pptx import Presentation",
+        "The local PPTX adapter uses the pinned parser dependency.",
+    ),
+    TokenRequirement(
+        "office_extraction_backend",
+        CX_EXTRACTORS,
+        "xlsx_extraction_mode",
+        "XLSX_EXTRACTION_MODE",
+        "XLSX real extraction has a named mode for runtime evidence.",
+    ),
+    TokenRequirement(
+        "office_extraction_backend",
+        CX_EXTRACTORS,
+        "xlsx_extraction_function",
+        "extract_xlsx_markdown",
+        "XLSX extraction is implemented behind the extractor adapter boundary.",
+    ),
+    TokenRequirement(
+        "office_extraction_backend",
+        CX_EXTRACTORS,
+        "xlsx_reader_backend",
+        "from openpyxl import load_workbook",
+        "The local XLSX adapter uses the pinned parser dependency.",
+    ),
+    TokenRequirement(
         "ingestion_adapter_wiring",
         CX_INGESTION,
         "default_local_mock_extractor",
@@ -258,6 +302,9 @@ def run_cx_extractor_backend_gap_audit(
         "docx_extraction_backend_ready": (
             token_groups.get("docx_extraction_backend") is True
         ),
+        "office_extraction_backend_ready": (
+            token_groups.get("office_extraction_backend") is True
+        ),
         "ingestion_adapter_wiring_ready": (
             token_groups.get("ingestion_adapter_wiring") is True
         ),
@@ -265,8 +312,7 @@ def run_cx_extractor_backend_gap_audit(
         "prior_evidence_recorded": token_groups.get("prior_evidence") is True,
         "service_docs_recorded": token_groups.get("service_docs") is True,
         "runtime_probe_passed": runtime_probe["status"] == "PASS",
-        "binary_gaps_explicit": set(gap_summary["gap_source_formats"])
-        == {"pptx", "xlsx"},
+        "binary_gaps_explicit": set(gap_summary["gap_source_formats"]) == set(),
         "redacted_evidence_only": True,
     }
     status = "PASS" if not issues and all(checks.values()) else "FAIL"
@@ -274,10 +320,10 @@ def run_cx_extractor_backend_gap_audit(
         "audit_schema_version": SCHEMA_VERSION,
         "status": status,
         "scope": {
-            "slice": "Slice 0286",
-            "focus": "cx_docx_extraction_adapter_foundation",
+            "slice": "Slice 0287",
+            "focus": "cx_office_extraction_adapter_foundation",
             "from": "uploaded_source_extraction_postgres_evidence",
-            "toward": "real_office_extractor_backends",
+            "toward": "real_document_extraction_postgres_smoke",
         },
         "paths": paths,
         "source_tokens": source_tokens,
@@ -290,9 +336,16 @@ def run_cx_extractor_backend_gap_audit(
             "refactoring_checkpoint": (
                 "keep extractor selection behind nex_cx.extractors.TextExtractor"
             ),
-            "implemented_now": ["markdown", "plain_text", "pdf", "docx"],
-            "placeholder_gaps": ["pptx", "xlsx"],
-            "next_slices": ["Slice 0287"],
+            "implemented_now": [
+                "markdown",
+                "plain_text",
+                "pdf",
+                "docx",
+                "pptx",
+                "xlsx",
+            ],
+            "placeholder_gaps": [],
+            "next_slices": ["Slice 0288"],
             "raw_source_in_evidence": False,
             "local_path_in_evidence": False,
         },
@@ -333,6 +386,8 @@ def run_extractor_backend_probe() -> dict[str, Any]:
             "source_format": output.source_format,
             "real_text_seen": "Slice 0285 PDF audit text" in output.markdown_text,
             "real_docx_text_seen": "Slice 0286 DOCX audit text" in output.markdown_text,
+            "real_pptx_text_seen": "Slice 0287 PPTX audit text" in output.markdown_text,
+            "real_xlsx_text_seen": "Slice 0287 XLSX audit text" in output.markdown_text,
             "raw_source_leaked": SECRET_SOURCE.decode("utf-8") in output.markdown_text,
         }
 
@@ -384,18 +439,27 @@ def run_extractor_backend_probe() -> dict[str, Any]:
             and binary_outputs["docx"]["warning"] is None
             and binary_outputs["docx"]["real_docx_text_seen"] is True
         ),
+        "pptx_real_extraction": (
+            binary_outputs["pptx"]["mode"] == PPTX_EXTRACTION_MODE
+            and binary_outputs["pptx"]["warning"] is None
+            and binary_outputs["pptx"]["real_pptx_text_seen"] is True
+        ),
+        "xlsx_real_extraction": (
+            binary_outputs["xlsx"]["mode"] == XLSX_EXTRACTION_MODE
+            and binary_outputs["xlsx"]["warning"] is None
+            and binary_outputs["xlsx"]["real_xlsx_text_seen"] is True
+        ),
         "remaining_binary_gaps_are_placeholders": all(
             output["mode"] == PLACEHOLDER_BINARY_MODE
             for source_format, output in binary_outputs.items()
-            if source_format not in {"pdf", "docx"}
+            if source_format not in set(BINARY_SOURCE_FORMATS)
+        ),
+        "all_binary_formats_are_real": all(
+            output["warning"] is None
+            for output in binary_outputs.values()
         ),
         "binary_warnings_are_stable": all(
-            output["warning"] == (
-                None
-                if source_format in {"pdf", "docx"}
-                else f"{PLACEHOLDER_BINARY_WARNING_PREFIX}:{source_format}"
-            )
-            for source_format, output in binary_outputs.items()
+            output["warning"] is None for output in binary_outputs.values()
         ),
         "binary_raw_source_not_serialized": not any(
             output["raw_source_leaked"] for output in binary_outputs.values()
@@ -479,11 +543,45 @@ def sample_docx_bytes(text: str = "Slice 0286 DOCX audit text") -> bytes:
     return buffer.getvalue()
 
 
+def sample_pptx_bytes(text: str = "Slice 0287 PPTX audit text") -> bytes:
+    from io import BytesIO
+
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    buffer = BytesIO()
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    text_box = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(5), Inches(1))
+    text_box.text = text
+    presentation.save(buffer)
+    return buffer.getvalue()
+
+
+def sample_xlsx_bytes(text: str = "Slice 0287 XLSX audit text") -> bytes:
+    from io import BytesIO
+
+    from openpyxl import Workbook
+
+    buffer = BytesIO()
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Evidence"
+    sheet.append(["Name", "Value"])
+    sheet.append(["Signal", text])
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
 def source_bytes_for_probe(source_format: str) -> bytes:
     if source_format == "pdf":
         return sample_pdf_bytes()
     if source_format == "docx":
         return sample_docx_bytes()
+    if source_format == "pptx":
+        return sample_pptx_bytes()
+    if source_format == "xlsx":
+        return sample_xlsx_bytes()
     return SECRET_SOURCE
 
 

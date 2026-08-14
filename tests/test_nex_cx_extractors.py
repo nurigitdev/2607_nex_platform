@@ -6,12 +6,15 @@ import pytest
 
 import pypdf
 from docx import Document
+from openpyxl import Workbook
+from pptx import Presentation
+from pptx.util import Inches
 from nex_cx.extractors import (
     BINARY_SOURCE_FORMATS,
     DOCX_EXTRACTION_MODE,
     PDF_EXTRACTION_MODE,
-    PLACEHOLDER_BINARY_MODE,
-    PLACEHOLDER_BINARY_WARNING_PREFIX,
+    PPTX_EXTRACTION_MODE,
+    XLSX_EXTRACTION_MODE,
     ExtractionAdapterError,
     ExtractorInput,
     LocalMockTextExtractor,
@@ -22,12 +25,17 @@ from nex_cx.extractors import (
     extensions_for_source_format,
     extract_docx_markdown,
     extract_pdf_markdown,
+    extract_pptx_markdown,
+    extract_xlsx_markdown,
+    extraction_mode_for_binary_source_format,
     extractor_backend_catalog,
     extractor_backend_gap_summary,
     markdown_table_cell,
     markdown_from_source_text,
     mock_binary_document_markdown,
     next_slice_for_binary_source_format,
+    rows_to_markdown_table,
+    spreadsheet_cell_text,
     _ensure_trailing_newline,
 )
 from nex_cx.ingestion import sha256_bytes
@@ -104,6 +112,64 @@ def sample_docx_bytes(
     table.cell(1, 0).text = "Value A"
     table.cell(1, 1).text = "Value B"
     document.save(buffer)
+    return buffer.getvalue()
+
+
+def sample_pptx_bytes(text: str = "Slice 0287 PPTX extraction text") -> bytes:
+    buffer = BytesIO()
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    text_box = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(5), Inches(1))
+    text_box.text = text
+    table = slide.shapes.add_table(
+        2,
+        2,
+        Inches(1),
+        Inches(2),
+        Inches(5),
+        Inches(1),
+    ).table
+    table.cell(0, 0).text = "Header A"
+    table.cell(0, 1).text = "Header B"
+    table.cell(1, 0).text = "Value A"
+    table.cell(1, 1).text = "Value B"
+    presentation.save(buffer)
+    return buffer.getvalue()
+
+
+def sample_pptx_with_ignored_empty_elements_bytes() -> bytes:
+    buffer = BytesIO()
+    presentation = Presentation()
+    empty_slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    empty_slide.shapes.add_textbox(Inches(1), Inches(1), Inches(5), Inches(1))
+    empty_slide.shapes.add_table(
+        1,
+        1,
+        Inches(1),
+        Inches(2),
+        Inches(3),
+        Inches(1),
+    )
+    content_slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    text_box = content_slide.shapes.add_textbox(
+        Inches(1),
+        Inches(1),
+        Inches(5),
+        Inches(1),
+    )
+    text_box.text = "Second slide survives empty first slide"
+    presentation.save(buffer)
+    return buffer.getvalue()
+
+
+def sample_xlsx_bytes(text: str = "Slice 0287 XLSX extraction text") -> bytes:
+    buffer = BytesIO()
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Evidence"
+    sheet.append(["Name", "Value"])
+    sheet.append(["Signal", text])
+    workbook.save(buffer)
     return buffer.getvalue()
 
 
@@ -195,21 +261,44 @@ def test_local_mock_extractor_extracts_docx_text_and_tables() -> None:
     assert "Mock extraction placeholder." not in output.markdown_text
 
 
-def test_local_mock_extractor_marks_remaining_binary_document_placeholder() -> None:
+def test_local_mock_extractor_extracts_pptx_text_and_tables() -> None:
     output = LocalMockTextExtractor().extract_markdown(
         source(
             filename="source.pptx",
             content_type=(
                 "application/vnd.openxmlformats-officedocument.presentationml.presentation"
             ),
-            body=b"private bytes",
+            body=sample_pptx_bytes(),
         )
     )
 
-    assert output.mode == "binary_document_placeholder_to_markdown"
-    assert output.warnings == ["mock_binary_extraction_placeholder:pptx"]
-    assert "private bytes" not in output.markdown_text
-    assert "Mock extraction placeholder." in output.markdown_text
+    assert output.mode == PPTX_EXTRACTION_MODE
+    assert output.source_format == "pptx"
+    assert output.warnings == []
+    assert "## Slide 1" in output.markdown_text
+    assert "Slice 0287 PPTX extraction text" in output.markdown_text
+    assert "| Header A | Header B |" in output.markdown_text
+    assert "Mock extraction placeholder." not in output.markdown_text
+
+
+def test_local_mock_extractor_extracts_xlsx_cells() -> None:
+    output = LocalMockTextExtractor().extract_markdown(
+        source(
+            filename="source.xlsx",
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+            body=sample_xlsx_bytes(),
+        )
+    )
+
+    assert output.mode == XLSX_EXTRACTION_MODE
+    assert output.source_format == "xlsx"
+    assert output.warnings == []
+    assert "## Sheet Evidence" in output.markdown_text
+    assert "| Name | Value |" in output.markdown_text
+    assert "| Signal | Slice 0287 XLSX extraction text |" in output.markdown_text
+    assert "Mock extraction placeholder." not in output.markdown_text
 
 
 def test_local_mock_extractor_rejects_unsupported_source_type() -> None:
@@ -341,6 +430,88 @@ def test_docx_extractor_ignores_empty_tables_when_paragraph_text_exists() -> Non
     assert "## Table" not in output.markdown_text
 
 
+def test_pptx_extractor_reports_parse_and_empty_text_failures() -> None:
+    with pytest.raises(ExtractionAdapterError) as parse_error:
+        extract_pptx_markdown(
+            source(
+                filename="broken.pptx",
+                content_type=(
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                ),
+                body=b"not a pptx",
+            ),
+            provider="local_mock",
+            version="test",
+        )
+    assert parse_error.value.error_code == "cx.extractor_pptx_parse_failed"
+
+    buffer = BytesIO()
+    Presentation().save(buffer)
+    with pytest.raises(ExtractionAdapterError) as empty_error:
+        extract_pptx_markdown(
+            source(
+                filename="empty.pptx",
+                content_type=(
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                ),
+                body=buffer.getvalue(),
+            ),
+            provider="local_mock",
+            version="test",
+        )
+    assert empty_error.value.error_code == "cx.extractor_pptx_text_unavailable"
+
+
+def test_pptx_extractor_ignores_empty_slide_elements() -> None:
+    output = extract_pptx_markdown(
+        source(
+            filename="empty-elements.pptx",
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            ),
+            body=sample_pptx_with_ignored_empty_elements_bytes(),
+        ),
+        provider="local_mock",
+        version="test",
+    )
+
+    assert "## Slide 1" not in output.markdown_text
+    assert "## Slide 2" in output.markdown_text
+    assert "Second slide survives empty first slide" in output.markdown_text
+
+
+def test_xlsx_extractor_reports_parse_and_empty_text_failures() -> None:
+    with pytest.raises(ExtractionAdapterError) as parse_error:
+        extract_xlsx_markdown(
+            source(
+                filename="broken.xlsx",
+                content_type=(
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ),
+                body=b"not an xlsx",
+            ),
+            provider="local_mock",
+            version="test",
+        )
+    assert parse_error.value.error_code == "cx.extractor_xlsx_parse_failed"
+
+    buffer = BytesIO()
+    Workbook().save(buffer)
+    with pytest.raises(ExtractionAdapterError) as empty_error:
+        extract_xlsx_markdown(
+            source(
+                filename="empty.xlsx",
+                content_type=(
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ),
+                body=buffer.getvalue(),
+            ),
+            provider="local_mock",
+            version="test",
+        )
+    assert empty_error.value.error_code == "cx.extractor_xlsx_text_unavailable"
+
+
 def test_markdown_helpers_are_deterministic() -> None:
     assert markdown_from_source_text("  ", filename="empty.md", content_type="text/markdown") == (
         "# empty.md\n\n"
@@ -362,6 +533,8 @@ def test_markdown_helpers_are_deterministic() -> None:
 
 def test_docx_table_markdown_helpers_are_deterministic() -> None:
     assert markdown_table_cell(" A | B \n C ") == "A \\| B <br> C"
+    assert spreadsheet_cell_text(None) == ""
+    assert spreadsheet_cell_text(" value ") == "value"
     assert docx_table_to_markdown([["", ""], ["", ""]], table_number=1) is None
     assert docx_table_to_markdown(
         [["Name"], ["A", "B"]],
@@ -371,6 +544,9 @@ def test_docx_table_markdown_helpers_are_deterministic() -> None:
         "| Name |  |\n"
         "| --- | --- |\n"
         "| A | B |"
+    )
+    assert rows_to_markdown_table([["H"], ["B"]], heading=None) == (
+        "| H |\n| --- |\n| B |"
     )
 
 
@@ -389,29 +565,21 @@ def test_extractor_backend_catalog_records_current_gaps() -> None:
     assert by_format["docx"].real_extraction is True
     assert by_format["docx"].current_mode == DOCX_EXTRACTION_MODE
     assert by_format["docx"].next_slice is None
-
-    for source_format in ("pptx", "xlsx"):
-        capability = by_format[source_format]
-        assert capability.status == "gap_placeholder"
-        assert capability.real_extraction is False
-        assert capability.current_mode == PLACEHOLDER_BINARY_MODE
-        assert capability.warning == (
-            f"{PLACEHOLDER_BINARY_WARNING_PREFIX}:{source_format}"
-        )
-        assert capability.next_slice == {
-            "docx": "Slice 0286",
-            "pptx": "Slice 0287",
-            "xlsx": "Slice 0287",
-        }[source_format]
+    assert by_format["pptx"].real_extraction is True
+    assert by_format["pptx"].current_mode == PPTX_EXTRACTION_MODE
+    assert by_format["pptx"].next_slice is None
+    assert by_format["xlsx"].real_extraction is True
+    assert by_format["xlsx"].current_mode == XLSX_EXTRACTION_MODE
+    assert by_format["xlsx"].next_slice is None
 
     summary = extractor_backend_gap_summary(catalog)
     assert summary == {
         "schema_version": "cx_extractor_backend_gap_summary.v1",
         "source_format_count": 6,
-        "implemented_real_extraction_count": 4,
-        "gap_placeholder_count": 2,
-        "gap_source_formats": ["pptx", "xlsx"],
-        "next_slices": ["Slice 0287", "Slice 0287"],
+        "implemented_real_extraction_count": 6,
+        "gap_placeholder_count": 0,
+        "gap_source_formats": [],
+        "next_slices": [],
     }
 
 
@@ -430,7 +598,9 @@ def test_extractor_backend_format_helpers_cover_text_and_unknown_formats() -> No
     assert extensions_for_source_format("markdown") == (".markdown", ".md")
     assert next_slice_for_binary_source_format("pdf") is None
     assert next_slice_for_binary_source_format("docx") is None
-    assert next_slice_for_binary_source_format("pptx") == "Slice 0287"
+    assert next_slice_for_binary_source_format("pptx") is None
+    assert extraction_mode_for_binary_source_format("pptx") == PPTX_EXTRACTION_MODE
+    assert extraction_mode_for_binary_source_format("xlsx") == XLSX_EXTRACTION_MODE
     assert extensions_for_source_format("plain_text") == (
         ".csv",
         ".json",

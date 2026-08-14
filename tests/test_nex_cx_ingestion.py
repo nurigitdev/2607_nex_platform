@@ -7,6 +7,9 @@ from pathlib import Path
 import pytest
 from docx import Document
 from fastapi.testclient import TestClient
+from openpyxl import Workbook
+from pptx import Presentation
+from pptx.util import Inches
 
 from nex_cx.ingestion import (
     ContentIngestionStore,
@@ -115,6 +118,27 @@ def sample_docx_bytes(
     document.add_paragraph(title)
     document.add_paragraph(body)
     document.save(buffer)
+    return buffer.getvalue()
+
+
+def sample_pptx_bytes(text: str = "Slice 0287 PPTX ingestion text") -> bytes:
+    buffer = BytesIO()
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    text_box = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(5), Inches(1))
+    text_box.text = text
+    presentation.save(buffer)
+    return buffer.getvalue()
+
+
+def sample_xlsx_bytes(text: str = "Slice 0287 XLSX ingestion text") -> bytes:
+    buffer = BytesIO()
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Evidence"
+    sheet.append(["Name", "Value"])
+    sheet.append(["Signal", text])
+    workbook.save(buffer)
     return buffer.getvalue()
 
 
@@ -1899,12 +1923,46 @@ def test_run_text_extraction_job_extracts_docx_text(tmp_path: Path) -> None:
     assert "Mock extraction placeholder." not in markdown
 
 
-def test_run_text_extraction_job_uses_remaining_binary_placeholder_adapter(
+def test_run_text_extraction_job_extracts_pptx_text(tmp_path: Path) -> None:
+    store = ContentIngestionStore()
+    config = storage_config(tmp_path)
+    source_bytes = sample_pptx_bytes()
+    document = build_upload_registration(
+        {
+            "filename": "source.pptx",
+            "content_type": (
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            ),
+            "content_base64": base64.b64encode(source_bytes).decode("ascii"),
+        },
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.save_upload_registration(document, source_bytes=source_bytes)
+
+    result = run_text_extraction_job(
+        document["extraction"]["job_id"],
+        store=store,
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    markdown = Path(result["extracted_markdown_path"]).read_text(encoding="utf-8")
+    assert result["extractor"]["mode"] == "pptx_to_markdown"
+    assert result["extractor"]["source_format"] == "pptx"
+    assert result["warnings"] == []
+    assert "Slice 0287 PPTX ingestion text" in markdown
+    assert "Mock extraction placeholder." not in markdown
+
+
+def test_run_text_extraction_job_extracts_xlsx_cells(
     tmp_path: Path,
 ) -> None:
     store = ContentIngestionStore()
     config = storage_config(tmp_path)
-    source_bytes = b"private bytes"
+    source_bytes = sample_xlsx_bytes()
     document = build_upload_registration(
         {
             "filename": "source.xlsx",
@@ -1928,11 +1986,12 @@ def test_run_text_extraction_job_uses_remaining_binary_placeholder_adapter(
     )
 
     markdown = Path(result["extracted_markdown_path"]).read_text(encoding="utf-8")
-    assert result["extractor"]["mode"] == "binary_document_placeholder_to_markdown"
+    assert result["extractor"]["mode"] == "xlsx_to_markdown"
     assert result["extractor"]["source_format"] == "xlsx"
-    assert result["warnings"] == ["mock_binary_extraction_placeholder:xlsx"]
-    assert "private bytes" not in markdown
-    assert "Mock extraction placeholder." in markdown
+    assert result["warnings"] == []
+    assert "## Sheet Evidence" in markdown
+    assert "Slice 0287 XLSX ingestion text" in markdown
+    assert "Mock extraction placeholder." not in markdown
 
 
 def test_run_text_extraction_job_reports_unsupported_adapter_source(

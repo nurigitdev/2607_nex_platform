@@ -32,6 +32,8 @@ BINARY_SOURCE_FORMATS = ("pdf", "docx", "pptx", "xlsx")
 SOURCE_FORMATS = (*TEXT_SOURCE_FORMATS, *BINARY_SOURCE_FORMATS)
 PDF_EXTRACTION_MODE = "pdf_to_markdown"
 DOCX_EXTRACTION_MODE = "docx_to_markdown"
+PPTX_EXTRACTION_MODE = "pptx_to_markdown"
+XLSX_EXTRACTION_MODE = "xlsx_to_markdown"
 PLACEHOLDER_BINARY_MODE = "binary_document_placeholder_to_markdown"
 PLACEHOLDER_BINARY_WARNING_PREFIX = "mock_binary_extraction_placeholder"
 
@@ -109,19 +111,10 @@ class LocalMockTextExtractor:
             return extract_pdf_markdown(source, provider=self.provider, version=self.version)
         if source_format == "docx":
             return extract_docx_markdown(source, provider=self.provider, version=self.version)
-        if source_format in BINARY_SOURCE_FORMATS:
-            return ExtractorOutput(
-                markdown_text=mock_binary_document_markdown(
-                    filename=source.filename,
-                    content_type=source.content_type,
-                    source_format=source_format,
-                ),
-                provider=self.provider,
-                mode=PLACEHOLDER_BINARY_MODE,
-                version=self.version,
-                source_format=source_format,
-                warnings=[f"{PLACEHOLDER_BINARY_WARNING_PREFIX}:{source_format}"],
-            )
+        if source_format == "pptx":
+            return extract_pptx_markdown(source, provider=self.provider, version=self.version)
+        if source_format == "xlsx":
+            return extract_xlsx_markdown(source, provider=self.provider, version=self.version)
         raise ExtractionAdapterError(
             status_code=415,
             error_code="cx.extractor_source_type_unsupported",
@@ -235,9 +228,7 @@ def extensions_for_source_format(source_format: str) -> tuple[str, ...]:
 
 
 def next_slice_for_binary_source_format(source_format: str) -> str | None:
-    if source_format in {"pdf", "docx"}:
-        return None
-    return "Slice 0287"
+    return None
 
 
 def binary_extractor_capability(
@@ -246,35 +237,27 @@ def binary_extractor_capability(
     provider: str,
     version: str,
 ) -> ExtractorBackendCapability:
-    if source_format in {"pdf", "docx"}:
-        return ExtractorBackendCapability(
-            source_format=source_format,
-            current_backend=provider,
-            current_version=version,
-            current_mode=(
-                PDF_EXTRACTION_MODE
-                if source_format == "pdf"
-                else DOCX_EXTRACTION_MODE
-            ),
-            status="implemented",
-            real_extraction=True,
-            content_types=content_types_for_source_format(source_format),
-            extensions=extensions_for_source_format(source_format),
-            warning=None,
-            next_slice=None,
-        )
     return ExtractorBackendCapability(
         source_format=source_format,
         current_backend=provider,
         current_version=version,
-        current_mode=PLACEHOLDER_BINARY_MODE,
-        status="gap_placeholder",
-        real_extraction=False,
+        current_mode=extraction_mode_for_binary_source_format(source_format),
+        status="implemented",
+        real_extraction=True,
         content_types=content_types_for_source_format(source_format),
         extensions=extensions_for_source_format(source_format),
-        warning=f"{PLACEHOLDER_BINARY_WARNING_PREFIX}:{source_format}",
-        next_slice=next_slice_for_binary_source_format(source_format),
+        warning=None,
+        next_slice=None,
     )
+
+
+def extraction_mode_for_binary_source_format(source_format: str) -> str:
+    return {
+        "pdf": PDF_EXTRACTION_MODE,
+        "docx": DOCX_EXTRACTION_MODE,
+        "pptx": PPTX_EXTRACTION_MODE,
+        "xlsx": XLSX_EXTRACTION_MODE,
+    }[source_format]
 
 
 def decode_utf8_source(source_bytes: bytes) -> str:
@@ -420,10 +403,123 @@ def extract_docx_markdown(
     )
 
 
+def extract_pptx_markdown(
+    source: ExtractorInput,
+    *,
+    provider: str,
+    version: str,
+) -> ExtractorOutput:
+    try:
+        from pptx import Presentation
+
+        presentation = Presentation(BytesIO(source.source_bytes))
+    except Exception as exc:
+        raise ExtractionAdapterError(
+            status_code=422,
+            error_code="cx.extractor_pptx_parse_failed",
+            detail="PPTX source could not be parsed.",
+        ) from exc
+
+    sections: list[str] = []
+    for slide_number, slide in enumerate(presentation.slides, start=1):
+        slide_parts: list[str] = []
+        for shape in slide.shapes:
+            if getattr(shape, "has_text_frame", False):
+                text = shape.text.strip()
+                if text:
+                    slide_parts.append(text)
+            if getattr(shape, "has_table", False):
+                table_markdown = rows_to_markdown_table(
+                    [
+                        [cell.text.strip() for cell in row.cells]
+                        for row in shape.table.rows
+                    ],
+                    heading=None,
+                )
+                if table_markdown is not None:
+                    slide_parts.append(table_markdown)
+        if slide_parts:
+            sections.append(f"## Slide {slide_number}\n\n" + "\n\n".join(slide_parts))
+    if not sections:
+        raise ExtractionAdapterError(
+            status_code=422,
+            error_code="cx.extractor_pptx_text_unavailable",
+            detail="PPTX source did not contain extractable text.",
+        )
+    return ExtractorOutput(
+        markdown_text=_ensure_trailing_newline(
+            f"# {source.filename}\n\n" + "\n\n".join(sections)
+        ),
+        provider=provider,
+        mode=PPTX_EXTRACTION_MODE,
+        version=version,
+        source_format="pptx",
+        warnings=[],
+    )
+
+
+def extract_xlsx_markdown(
+    source: ExtractorInput,
+    *,
+    provider: str,
+    version: str,
+) -> ExtractorOutput:
+    try:
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(
+            BytesIO(source.source_bytes),
+            data_only=True,
+            read_only=True,
+        )
+    except Exception as exc:
+        raise ExtractionAdapterError(
+            status_code=422,
+            error_code="cx.extractor_xlsx_parse_failed",
+            detail="XLSX source could not be parsed.",
+        ) from exc
+
+    sections: list[str] = []
+    for sheet in workbook.worksheets:
+        table_markdown = rows_to_markdown_table(
+            [
+                [spreadsheet_cell_text(cell.value) for cell in row]
+                for row in sheet.iter_rows()
+            ],
+            heading=f"## Sheet {sheet.title}",
+        )
+        if table_markdown is not None:
+            sections.append(table_markdown)
+    if not sections:
+        raise ExtractionAdapterError(
+            status_code=422,
+            error_code="cx.extractor_xlsx_text_unavailable",
+            detail="XLSX source did not contain extractable text.",
+        )
+    return ExtractorOutput(
+        markdown_text=_ensure_trailing_newline(
+            f"# {source.filename}\n\n" + "\n\n".join(sections)
+        ),
+        provider=provider,
+        mode=XLSX_EXTRACTION_MODE,
+        version=version,
+        source_format="xlsx",
+        warnings=[],
+    )
+
+
 def docx_table_to_markdown(
     rows: list[list[str]],
     *,
     table_number: int,
+) -> str | None:
+    return rows_to_markdown_table(rows, heading=f"## Table {table_number}")
+
+
+def rows_to_markdown_table(
+    rows: list[list[str]],
+    *,
+    heading: str | None,
 ) -> str | None:
     non_empty_rows = [row for row in rows if any(cell.strip() for cell in row)]
     if not non_empty_rows:
@@ -435,18 +531,23 @@ def docx_table_to_markdown(
     ]
     header = padded_rows[0]
     body = padded_rows[1:]
-    table_lines = [
-        f"## Table {table_number}",
-        "",
-        "| " + " | ".join(header) + " |",
-        "| " + " | ".join("---" for _ in header) + " |",
-    ]
+    table_lines = [] if heading is None else [heading, ""]
+    table_lines.extend(
+        [
+            "| " + " | ".join(header) + " |",
+            "| " + " | ".join("---" for _ in header) + " |",
+        ]
+    )
     table_lines.extend("| " + " | ".join(row) + " |" for row in body)
     return "\n".join(table_lines)
 
 
 def markdown_table_cell(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", "<br>").strip()
+
+
+def spreadsheet_cell_text(value: object) -> str:
+    return "" if value is None else str(value).strip()
 
 
 def _ensure_trailing_newline(value: str) -> str:

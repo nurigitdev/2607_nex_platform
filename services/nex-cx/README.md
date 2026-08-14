@@ -94,11 +94,15 @@ Internal persistence boundary:
   uploads now extract paragraphs and simple tables into Markdown through the
   same boundary, while PPTX and XLSX remain explicit placeholder gaps for Slice
   0287.
+- Slice 0287 closes the remaining PPTX/XLSX Office gaps with local
+  `python-pptx` and `openpyxl` adapters. The extractor backend catalog now
+  reports Markdown, plain text, PDF, DOCX, PPTX, and XLSX as real extraction
+  paths with zero placeholder gaps; Slice 0288 should prove those real document
+  adapters through PostgreSQL-backed smoke evidence.
 - Text extraction runs through the `nex_cx.extractors` adapter boundary. The
   local mock adapter performs real UTF-8 Markdown/plain-text conversion and
-  PDF page-text and DOCX paragraph/table extraction, and emits explicit
-  placeholders with warnings for PPTX and XLSX until real extractor backends are
-  wired.
+  PDF page-text, DOCX paragraph/table, PPTX slide/table, and XLSX sheet/table
+  extraction.
 - Document processing can be run as one idempotent pipeline: extraction,
   chunking, lexical index, embedding index, summary, and summary embedding.
   Existing outputs are recorded as `SKIPPED`; new outputs are recorded as

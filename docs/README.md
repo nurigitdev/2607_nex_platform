@@ -390,6 +390,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0284`](slices/0284_cx_extractor_backend_gap_audit.md) | `S29-004` CX extractor backend gap audit and refactoring checkpoint. |
 | [`Slice 0285`](slices/0285_cx_pdf_extraction_adapter_foundation.md) | `S29-005` CX PDF extraction adapter foundation. |
 | [`Slice 0286`](slices/0286_cx_docx_extraction_adapter_foundation.md) | `S29-006` CX DOCX extraction adapter foundation. |
+| [`Slice 0287`](slices/0287_cx_office_extraction_adapter_foundation.md) | `S29-007` CX PPTX/XLSX Office extraction adapter foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
