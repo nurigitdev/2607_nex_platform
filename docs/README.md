@@ -393,6 +393,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0287`](slices/0287_cx_office_extraction_adapter_foundation.md) | `S29-007` CX PPTX/XLSX Office extraction adapter foundation. |
 | [`Slice 0288`](slices/0288_cx_real_document_extraction_postgresql_smoke.md) | `S29-008` CX real document extraction PostgreSQL smoke evidence. |
 | [`Slice 0289`](slices/0289_cx_extracted_markdown_normalization_contract.md) | `S29-009` CX extracted Markdown normalization and contract hardening. |
+| [`Slice 0290`](slices/0290_cx_real_document_processing_pipeline_postgresql_smoke.md) | `S29-010` CX real document processing pipeline PostgreSQL smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

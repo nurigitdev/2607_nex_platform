@@ -110,6 +110,13 @@ Internal persistence boundary:
   `cx_extracted_markdown_normalization.v1` metadata with structure counts and
   validation flags only; raw Markdown body text remains in the private
   extracted Markdown file path.
+- Slice 0290 adds protected PostgreSQL smoke evidence for real-document
+  processing. With
+  `NEX_CX_REAL_DOCUMENT_PROCESSING_PIPELINE_POSTGRES_SMOKE=1` and the
+  `nex_cx_test` database URL, the smoke uploads PDF/DOCX/PPTX/XLSX files,
+  evicts runtime source bytes, runs the full processing pipeline, verifies
+  durable extraction/chunk/index/summary/processing/job rows, and cleans up
+  smoke rows.
 - Text extraction runs through the `nex_cx.extractors` adapter boundary. The
   local mock adapter performs real UTF-8 Markdown/plain-text conversion and
   PDF page-text, DOCX paragraph/table, PPTX slide/table, and XLSX sheet/table
