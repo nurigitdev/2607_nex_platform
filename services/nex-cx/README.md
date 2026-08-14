@@ -90,10 +90,15 @@ Internal persistence boundary:
   extract page text into Markdown through the same `TextExtractor` boundary,
   while DOCX, PPTX, and XLSX remain explicit placeholder gaps for Slice 0286 and
   Slice 0287.
+- Slice 0286 closes the DOCX gap with the local `python-docx` adapter. DOCX
+  uploads now extract paragraphs and simple tables into Markdown through the
+  same boundary, while PPTX and XLSX remain explicit placeholder gaps for Slice
+  0287.
 - Text extraction runs through the `nex_cx.extractors` adapter boundary. The
   local mock adapter performs real UTF-8 Markdown/plain-text conversion and
-  PDF page-text extraction, and emits explicit placeholders with warnings for
-  DOCX, PPTX, and XLSX until real extractor backends are wired.
+  PDF page-text and DOCX paragraph/table extraction, and emits explicit
+  placeholders with warnings for PPTX and XLSX until real extractor backends are
+  wired.
 - Document processing can be run as one idempotent pipeline: extraction,
   chunking, lexical index, embedding index, summary, and summary embedding.
   Existing outputs are recorded as `SKIPPED`; new outputs are recorded as

@@ -22,26 +22,27 @@ def test_extractor_backend_gap_audit_passes_current_repo() -> None:
 
     assert evidence["status"] == "PASS"
     assert evidence["audit_schema_version"] == audit.SCHEMA_VERSION
-    assert evidence["scope"]["slice"] == "Slice 0285"
+    assert evidence["scope"]["slice"] == "Slice 0286"
     assert all(item["present"] for item in evidence["paths"])
     assert all(item["present"] for item in evidence["source_tokens"])
-    assert evidence["gap_summary"]["implemented_real_extraction_count"] == 3
-    assert evidence["gap_summary"]["gap_placeholder_count"] == 3
+    assert evidence["gap_summary"]["implemented_real_extraction_count"] == 4
+    assert evidence["gap_summary"]["gap_placeholder_count"] == 2
     assert evidence["gap_summary"]["gap_source_formats"] == [
-        "docx",
         "pptx",
         "xlsx",
     ]
     assert evidence["runtime_probe"]["status"] == "PASS"
     assert evidence["runtime_probe"]["checks"]["pdf_real_extraction"]
+    assert evidence["runtime_probe"]["checks"]["docx_real_extraction"]
     assert evidence["runtime_probe"]["checks"]["remaining_binary_gaps_are_placeholders"]
     assert evidence["runtime_probe"]["checks"]["binary_raw_source_not_serialized"]
     assert evidence["checks"]["binary_gaps_explicit"] is True
     assert evidence["checks"]["pdf_extraction_backend_ready"] is True
+    assert evidence["checks"]["docx_extraction_backend_ready"] is True
     assert audit.summary_line(evidence).startswith(
         "cx_extractor_backend_gap_audit=pass "
     )
-    assert "implemented=3 gaps=3 next=Slice 0286" in audit.summary_line(evidence)
+    assert "implemented=4 gaps=2 next=Slice 0287" in audit.summary_line(evidence)
 
 
 def test_extractor_backend_gap_audit_does_not_leak_protected_values() -> None:
@@ -141,7 +142,7 @@ def test_extractor_backend_gap_probe_detects_placeholder_regression(
     class WrongBinaryExtractor(LeakyExtractor):
         def extract_markdown(self, source: audit.ExtractorInput) -> audit.Any:
             output = super().extract_markdown(source)
-            if source.filename.endswith(".pdf"):
+            if source.filename.endswith(".docx"):
                 return type(output)(
                     markdown_text=output.markdown_text,
                     provider=output.provider,
@@ -157,7 +158,8 @@ def test_extractor_backend_gap_probe_detects_placeholder_regression(
     probe = audit.run_extractor_backend_probe()
 
     assert probe["status"] == "FAIL"
-    assert probe["checks"]["pdf_real_extraction"] is False
+    assert probe["checks"]["pdf_real_extraction"] is True
+    assert probe["checks"]["docx_real_extraction"] is False
     assert probe["checks"]["remaining_binary_gaps_are_placeholders"] is True
 
 
@@ -194,9 +196,11 @@ def test_extractor_backend_gap_audit_helpers_and_cli(
     ) == {"ready": True, "blocked": False}
     assert audit.content_type_for_probe("pdf") == "application/pdf"
     assert audit.content_type_for_probe("unknown") == "application/octet-stream"
-    assert audit.next_slice_from_gap_summary({"next_slices": ["Slice 0286"]}) == (
-        "Slice 0286"
+    assert audit.next_slice_from_gap_summary({"next_slices": ["Slice 0287"]}) == (
+        "Slice 0287"
     )
+    assert audit.source_bytes_for_probe("docx") != audit.SECRET_SOURCE
+    assert audit.source_bytes_for_probe("pptx") == audit.SECRET_SOURCE
     assert audit.next_slice_from_gap_summary({"next_slices": []}) is None
     assert audit.next_slice_from_gap_summary({"next_slices": "Slice 0286"}) is None
 
@@ -225,9 +229,14 @@ def test_extractor_backend_gap_audit_quality_gate_docs_wired() -> None:
     slice_0285_doc = (
         root / "docs" / "slices" / "0285_cx_pdf_extraction_adapter_foundation.md"
     )
+    slice_0286_doc = (
+        root / "docs" / "slices" / "0286_cx_docx_extraction_adapter_foundation.md"
+    )
 
     assert "run_cx_extractor_backend_gap_audit.py --summary" in quality_gate
     assert "0284_cx_extractor_backend_gap_audit.md" in docs_index
     assert "0285_cx_pdf_extraction_adapter_foundation.md" in docs_index
+    assert "0286_cx_docx_extraction_adapter_foundation.md" in docs_index
     assert slice_doc.exists()
     assert slice_0285_doc.exists()
+    assert slice_0286_doc.exists()

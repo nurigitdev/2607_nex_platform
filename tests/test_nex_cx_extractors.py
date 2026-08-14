@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from io import BytesIO
+
 import pytest
 
 import pypdf
+from docx import Document
 from nex_cx.extractors import (
     BINARY_SOURCE_FORMATS,
+    DOCX_EXTRACTION_MODE,
     PDF_EXTRACTION_MODE,
     PLACEHOLDER_BINARY_MODE,
     PLACEHOLDER_BINARY_WARNING_PREFIX,
@@ -14,10 +18,13 @@ from nex_cx.extractors import (
     classify_source_format,
     content_types_for_source_format,
     decode_utf8_source,
+    docx_table_to_markdown,
     extensions_for_source_format,
+    extract_docx_markdown,
     extract_pdf_markdown,
     extractor_backend_catalog,
     extractor_backend_gap_summary,
+    markdown_table_cell,
     markdown_from_source_text,
     mock_binary_document_markdown,
     next_slice_for_binary_source_format,
@@ -80,6 +87,24 @@ def sample_pdf_bytes(text: str = "Slice 0285 PDF extraction text") -> bytes:
         + str(startxref).encode("ascii")
         + b"\n%%EOF\n"
     )
+
+
+def sample_docx_bytes(
+    *,
+    title: str = "Slice 0286 DOCX extraction title",
+    body: str = "Slice 0286 DOCX extraction body",
+) -> bytes:
+    buffer = BytesIO()
+    document = Document()
+    document.add_paragraph(title)
+    document.add_paragraph(body)
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Header A"
+    table.cell(0, 1).text = "Header B"
+    table.cell(1, 0).text = "Value A"
+    table.cell(1, 1).text = "Value B"
+    document.save(buffer)
+    return buffer.getvalue()
 
 
 @pytest.mark.parametrize(
@@ -149,19 +174,40 @@ def test_local_mock_extractor_extracts_pdf_text() -> None:
     assert output.warnings == []
 
 
-def test_local_mock_extractor_marks_remaining_binary_document_placeholder() -> None:
+def test_local_mock_extractor_extracts_docx_text_and_tables() -> None:
     output = LocalMockTextExtractor().extract_markdown(
         source(
             filename="source.docx",
             content_type=(
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             ),
+            body=sample_docx_bytes(),
+        )
+    )
+
+    assert output.mode == DOCX_EXTRACTION_MODE
+    assert output.source_format == "docx"
+    assert output.warnings == []
+    assert "Slice 0286 DOCX extraction title" in output.markdown_text
+    assert "Slice 0286 DOCX extraction body" in output.markdown_text
+    assert "## Table 1" in output.markdown_text
+    assert "| Header A | Header B |" in output.markdown_text
+    assert "Mock extraction placeholder." not in output.markdown_text
+
+
+def test_local_mock_extractor_marks_remaining_binary_document_placeholder() -> None:
+    output = LocalMockTextExtractor().extract_markdown(
+        source(
+            filename="source.pptx",
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            ),
             body=b"private bytes",
         )
     )
 
     assert output.mode == "binary_document_placeholder_to_markdown"
-    assert output.warnings == ["mock_binary_extraction_placeholder:docx"]
+    assert output.warnings == ["mock_binary_extraction_placeholder:pptx"]
     assert "private bytes" not in output.markdown_text
     assert "Mock extraction placeholder." in output.markdown_text
 
@@ -240,6 +286,61 @@ def test_pdf_extractor_reports_page_text_failure(
     assert page_error.value.detail.endswith("page 1.")
 
 
+def test_docx_extractor_reports_parse_and_empty_text_failures() -> None:
+    with pytest.raises(ExtractionAdapterError) as parse_error:
+        extract_docx_markdown(
+            source(
+                filename="broken.docx",
+                content_type=(
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                ),
+                body=b"not a docx",
+            ),
+            provider="local_mock",
+            version="test",
+        )
+    assert parse_error.value.error_code == "cx.extractor_docx_parse_failed"
+
+    buffer = BytesIO()
+    Document().save(buffer)
+    with pytest.raises(ExtractionAdapterError) as empty_error:
+        extract_docx_markdown(
+            source(
+                filename="empty.docx",
+                content_type=(
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                ),
+                body=buffer.getvalue(),
+            ),
+            provider="local_mock",
+            version="test",
+        )
+    assert empty_error.value.error_code == "cx.extractor_docx_text_unavailable"
+
+
+def test_docx_extractor_ignores_empty_tables_when_paragraph_text_exists() -> None:
+    buffer = BytesIO()
+    document = Document()
+    document.add_paragraph("Paragraph survives empty table")
+    document.add_table(rows=1, cols=2)
+    document.save(buffer)
+
+    output = extract_docx_markdown(
+        source(
+            filename="empty-table.docx",
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ),
+            body=buffer.getvalue(),
+        ),
+        provider="local_mock",
+        version="test",
+    )
+
+    assert "Paragraph survives empty table" in output.markdown_text
+    assert "## Table" not in output.markdown_text
+
+
 def test_markdown_helpers_are_deterministic() -> None:
     assert markdown_from_source_text("  ", filename="empty.md", content_type="text/markdown") == (
         "# empty.md\n\n"
@@ -259,6 +360,20 @@ def test_markdown_helpers_are_deterministic() -> None:
     assert _ensure_trailing_newline("already done\n") == "already done\n"
 
 
+def test_docx_table_markdown_helpers_are_deterministic() -> None:
+    assert markdown_table_cell(" A | B \n C ") == "A \\| B <br> C"
+    assert docx_table_to_markdown([["", ""], ["", ""]], table_number=1) is None
+    assert docx_table_to_markdown(
+        [["Name"], ["A", "B"]],
+        table_number=2,
+    ) == (
+        "## Table 2\n\n"
+        "| Name |  |\n"
+        "| --- | --- |\n"
+        "| A | B |"
+    )
+
+
 def test_extractor_backend_catalog_records_current_gaps() -> None:
     catalog = extractor_backend_catalog()
     by_format = {item.source_format: item for item in catalog}
@@ -271,8 +386,11 @@ def test_extractor_backend_catalog_records_current_gaps() -> None:
     assert by_format["pdf"].real_extraction is True
     assert by_format["pdf"].current_mode == PDF_EXTRACTION_MODE
     assert by_format["pdf"].next_slice is None
+    assert by_format["docx"].real_extraction is True
+    assert by_format["docx"].current_mode == DOCX_EXTRACTION_MODE
+    assert by_format["docx"].next_slice is None
 
-    for source_format in ("docx", "pptx", "xlsx"):
+    for source_format in ("pptx", "xlsx"):
         capability = by_format[source_format]
         assert capability.status == "gap_placeholder"
         assert capability.real_extraction is False
@@ -290,10 +408,10 @@ def test_extractor_backend_catalog_records_current_gaps() -> None:
     assert summary == {
         "schema_version": "cx_extractor_backend_gap_summary.v1",
         "source_format_count": 6,
-        "implemented_real_extraction_count": 3,
-        "gap_placeholder_count": 3,
-        "gap_source_formats": ["docx", "pptx", "xlsx"],
-        "next_slices": ["Slice 0286", "Slice 0287", "Slice 0287"],
+        "implemented_real_extraction_count": 4,
+        "gap_placeholder_count": 2,
+        "gap_source_formats": ["pptx", "xlsx"],
+        "next_slices": ["Slice 0287", "Slice 0287"],
     }
 
 
@@ -310,8 +428,8 @@ def test_extractor_backend_format_helpers_cover_text_and_unknown_formats() -> No
     )
     assert content_types_for_source_format("unknown") == ()
     assert extensions_for_source_format("markdown") == (".markdown", ".md")
-    assert next_slice_for_binary_source_format("pdf") == "Slice 0285"
-    assert next_slice_for_binary_source_format("docx") == "Slice 0286"
+    assert next_slice_for_binary_source_format("pdf") is None
+    assert next_slice_for_binary_source_format("docx") is None
     assert next_slice_for_binary_source_format("pptx") == "Slice 0287"
     assert extensions_for_source_format("plain_text") == (
         ".csv",

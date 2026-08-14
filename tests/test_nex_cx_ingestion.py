@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import base64
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+from docx import Document
 from fastapi.testclient import TestClient
 
 from nex_cx.ingestion import (
@@ -101,6 +103,19 @@ def sample_pdf_bytes(text: str = "Slice 0285 PDF ingestion text") -> bytes:
         + str(startxref).encode("ascii")
         + b"\n%%EOF\n"
     )
+
+
+def sample_docx_bytes(
+    *,
+    title: str = "Slice 0286 DOCX ingestion title",
+    body: str = "Slice 0286 DOCX ingestion body",
+) -> bytes:
+    buffer = BytesIO()
+    document = Document()
+    document.add_paragraph(title)
+    document.add_paragraph(body)
+    document.save(buffer)
+    return buffer.getvalue()
 
 
 class FakeOwnerResolver:
@@ -1849,12 +1864,10 @@ def test_run_text_extraction_job_extracts_pdf_text(tmp_path: Path) -> None:
     assert "Mock extraction placeholder." not in markdown
 
 
-def test_run_text_extraction_job_uses_remaining_binary_placeholder_adapter(
-    tmp_path: Path,
-) -> None:
+def test_run_text_extraction_job_extracts_docx_text(tmp_path: Path) -> None:
     store = ContentIngestionStore()
     config = storage_config(tmp_path)
-    source_bytes = b"private bytes"
+    source_bytes = sample_docx_bytes()
     document = build_upload_registration(
         {
             "filename": "source.docx",
@@ -1878,9 +1891,46 @@ def test_run_text_extraction_job_uses_remaining_binary_placeholder_adapter(
     )
 
     markdown = Path(result["extracted_markdown_path"]).read_text(encoding="utf-8")
-    assert result["extractor"]["mode"] == "binary_document_placeholder_to_markdown"
+    assert result["extractor"]["mode"] == "docx_to_markdown"
     assert result["extractor"]["source_format"] == "docx"
-    assert result["warnings"] == ["mock_binary_extraction_placeholder:docx"]
+    assert result["warnings"] == []
+    assert "Slice 0286 DOCX ingestion title" in markdown
+    assert "Slice 0286 DOCX ingestion body" in markdown
+    assert "Mock extraction placeholder." not in markdown
+
+
+def test_run_text_extraction_job_uses_remaining_binary_placeholder_adapter(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    config = storage_config(tmp_path)
+    source_bytes = b"private bytes"
+    document = build_upload_registration(
+        {
+            "filename": "source.xlsx",
+            "content_type": (
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+            "content_base64": base64.b64encode(source_bytes).decode("ascii"),
+        },
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.save_upload_registration(document, source_bytes=source_bytes)
+
+    result = run_text_extraction_job(
+        document["extraction"]["job_id"],
+        store=store,
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    markdown = Path(result["extracted_markdown_path"]).read_text(encoding="utf-8")
+    assert result["extractor"]["mode"] == "binary_document_placeholder_to_markdown"
+    assert result["extractor"]["source_format"] == "xlsx"
+    assert result["warnings"] == ["mock_binary_extraction_placeholder:xlsx"]
     assert "private bytes" not in markdown
     assert "Mock extraction placeholder." in markdown
 

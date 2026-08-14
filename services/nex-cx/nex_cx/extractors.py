@@ -31,6 +31,7 @@ TEXT_SOURCE_FORMATS = ("markdown", "plain_text")
 BINARY_SOURCE_FORMATS = ("pdf", "docx", "pptx", "xlsx")
 SOURCE_FORMATS = (*TEXT_SOURCE_FORMATS, *BINARY_SOURCE_FORMATS)
 PDF_EXTRACTION_MODE = "pdf_to_markdown"
+DOCX_EXTRACTION_MODE = "docx_to_markdown"
 PLACEHOLDER_BINARY_MODE = "binary_document_placeholder_to_markdown"
 PLACEHOLDER_BINARY_WARNING_PREFIX = "mock_binary_extraction_placeholder"
 
@@ -106,6 +107,8 @@ class LocalMockTextExtractor:
             )
         if source_format == "pdf":
             return extract_pdf_markdown(source, provider=self.provider, version=self.version)
+        if source_format == "docx":
+            return extract_docx_markdown(source, provider=self.provider, version=self.version)
         if source_format in BINARY_SOURCE_FORMATS:
             return ExtractorOutput(
                 markdown_text=mock_binary_document_markdown(
@@ -231,11 +234,9 @@ def extensions_for_source_format(source_format: str) -> tuple[str, ...]:
     )
 
 
-def next_slice_for_binary_source_format(source_format: str) -> str:
-    if source_format == "pdf":
-        return "Slice 0285"
-    if source_format == "docx":
-        return "Slice 0286"
+def next_slice_for_binary_source_format(source_format: str) -> str | None:
+    if source_format in {"pdf", "docx"}:
+        return None
     return "Slice 0287"
 
 
@@ -245,12 +246,16 @@ def binary_extractor_capability(
     provider: str,
     version: str,
 ) -> ExtractorBackendCapability:
-    if source_format == "pdf":
+    if source_format in {"pdf", "docx"}:
         return ExtractorBackendCapability(
             source_format=source_format,
             current_backend=provider,
             current_version=version,
-            current_mode=PDF_EXTRACTION_MODE,
+            current_mode=(
+                PDF_EXTRACTION_MODE
+                if source_format == "pdf"
+                else DOCX_EXTRACTION_MODE
+            ),
             status="implemented",
             real_extraction=True,
             content_types=content_types_for_source_format(source_format),
@@ -360,6 +365,88 @@ def extract_pdf_markdown(
         source_format="pdf",
         warnings=warnings,
     )
+
+
+def extract_docx_markdown(
+    source: ExtractorInput,
+    *,
+    provider: str,
+    version: str,
+) -> ExtractorOutput:
+    try:
+        from docx import Document
+
+        document = Document(BytesIO(source.source_bytes))
+    except Exception as exc:
+        raise ExtractionAdapterError(
+            status_code=422,
+            error_code="cx.extractor_docx_parse_failed",
+            detail="DOCX source could not be parsed.",
+        ) from exc
+
+    sections: list[str] = []
+    paragraphs = [
+        paragraph.text.strip()
+        for paragraph in document.paragraphs
+        if paragraph.text.strip()
+    ]
+    if paragraphs:
+        sections.append("\n\n".join(paragraphs))
+    for table_number, table in enumerate(document.tables, start=1):
+        table_markdown = docx_table_to_markdown(
+            [
+                [cell.text.strip() for cell in row.cells]
+                for row in table.rows
+            ],
+            table_number=table_number,
+        )
+        if table_markdown is not None:
+            sections.append(table_markdown)
+    if not sections:
+        raise ExtractionAdapterError(
+            status_code=422,
+            error_code="cx.extractor_docx_text_unavailable",
+            detail="DOCX source did not contain extractable text.",
+        )
+    return ExtractorOutput(
+        markdown_text=_ensure_trailing_newline(
+            f"# {source.filename}\n\n" + "\n\n".join(sections)
+        ),
+        provider=provider,
+        mode=DOCX_EXTRACTION_MODE,
+        version=version,
+        source_format="docx",
+        warnings=[],
+    )
+
+
+def docx_table_to_markdown(
+    rows: list[list[str]],
+    *,
+    table_number: int,
+) -> str | None:
+    non_empty_rows = [row for row in rows if any(cell.strip() for cell in row)]
+    if not non_empty_rows:
+        return None
+    width = max(len(row) for row in non_empty_rows)
+    padded_rows = [
+        [markdown_table_cell(cell) for cell in [*row, *[""] * (width - len(row))]]
+        for row in non_empty_rows
+    ]
+    header = padded_rows[0]
+    body = padded_rows[1:]
+    table_lines = [
+        f"## Table {table_number}",
+        "",
+        "| " + " | ".join(header) + " |",
+        "| " + " | ".join("---" for _ in header) + " |",
+    ]
+    table_lines.extend("| " + " | ".join(row) + " |" for row in body)
+    return "\n".join(table_lines)
+
+
+def markdown_table_cell(value: str) -> str:
+    return value.replace("|", "\\|").replace("\n", "<br>").strip()
 
 
 def _ensure_trailing_newline(value: str) -> str:
