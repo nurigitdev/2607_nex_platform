@@ -308,6 +308,13 @@ Grounded generation validation:
 - Protected live RAG smoke evidence is available through
   `scripts/smoke/run_protected_live_rag_smoke.py`. It is skipped by default and
   only calls live providers when `NEX_PROTECTED_LIVE_RAG_SMOKE=1` is set.
+- Protected live RAG PostgreSQL smoke evidence is available through
+  `scripts/smoke/run_protected_live_rag_postgres_smoke.py`. It is skipped by
+  default and only writes to the CX test database when
+  `NEX_PROTECTED_LIVE_RAG_POSTGRES_SMOKE=1` is set with the `test` profile. The
+  smoke runs the CX upload/extract/chunk/lexical/embedding/retrieval/generation
+  API flow, calls live DGX providers through MO, and directly reads CX content,
+  chunk, embedding, and retrieval tables before cleanup.
 - CX retrieval PostgreSQL smoke evidence is available through
   `scripts/smoke/run_cx_retrieval_postgres_smoke.py`. It is skipped by default
   and only writes to the CX test database when

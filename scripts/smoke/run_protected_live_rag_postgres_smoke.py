@@ -1,0 +1,696 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
+
+from fastapi.testclient import TestClient
+from sqlalchemy import text
+
+
+ROOT = Path(__file__).resolve().parents[2]
+SHARED_PATH = ROOT / "services" / "_shared"
+DB_SCRIPT_PATH = ROOT / "scripts" / "db"
+CX_PATH = ROOT / "services" / "nex-cx"
+MO_PATH = ROOT / "services" / "nex-mo"
+SMOKE_PATH = ROOT / "scripts" / "smoke"
+sys.path.insert(0, str(SHARED_PATH))
+sys.path.insert(0, str(DB_SCRIPT_PATH))
+sys.path.insert(0, str(CX_PATH))
+sys.path.insert(0, str(MO_PATH))
+sys.path.insert(0, str(SMOKE_PATH))
+
+import nex_mo.remote_provider as remote_provider  # noqa: E402
+from nex_cx.chunking import register_chunking_routes  # noqa: E402
+from nex_cx.embedding_index import (  # noqa: E402
+    DEFAULT_EMBEDDING_ALIAS,
+    register_embedding_index_routes,
+)
+from nex_cx.generation import (  # noqa: E402
+    GenerationExecutionStore,
+    register_generation_routes,
+)
+from nex_cx.ingestion import ContentIngestionStore, register_ingestion_routes  # noqa: E402
+from nex_cx.lexical_index import register_lexical_index_routes  # noqa: E402
+from nex_cx.repository import SqlAlchemyCxContentRepository  # noqa: E402
+from nex_cx.retrieval import DEFAULT_RERANKER_ALIAS, register_retrieval_routes  # noqa: E402
+from nex_mo.providers import register_mock_provider_routes  # noqa: E402
+from nex_runtime import (  # noqa: E402
+    SERVICE_SPECS,
+    build_engine,
+    build_service_app,
+    build_session_factory,
+    load_env_file,
+    redact_database_url,
+)
+from run_cx_document_library_postgres_smoke import _migration_evidence  # noqa: E402
+from run_cx_real_document_processing_pipeline_postgres_smoke import (  # noqa: E402
+    _delete_real_document_processing_rows,
+)
+from run_cx_retrieval_postgres_smoke import _delete_smoke_retrieval_rows  # noqa: E402
+from run_migrations import (  # noqa: E402
+    MigrationError,
+    run_service_migrations,
+    service_database_env,
+    service_database_url,
+)
+from run_protected_dgx_live_profile import protected_dgx_vllm_profile_defaults  # noqa: E402
+from run_protected_live_rag_smoke import (  # noqa: E402
+    REQUEST_ID,
+    SMOKE_TEXT,
+    TRACE_ID,
+    HttpRequester,
+    InProcessLiveMoClient,
+    assert_protected_live_rag_evidence_redacted,
+    build_rag_evidence_summary,
+    build_smoke_storage_config,
+    create_grounded_generation,
+    patched_environ,
+    patched_remote_request,
+    protected_live_rag_config_issues,
+    read_provider_telemetry,
+    register_smoke_document,
+    run_cx_post,
+    service_headers,
+)
+
+
+SMOKE_ENV = "NEX_PROTECTED_LIVE_RAG_POSTGRES_SMOKE"
+SMOKE_PROFILE_ENV = "NEX_PROTECTED_LIVE_RAG_POSTGRES_SMOKE_PROFILE"
+DEFAULT_PROFILE = "test"
+SERVICE_ID = "nex-cx"
+SERVICE_SPEC = SERVICE_SPECS[SERVICE_ID]
+SCHEMA_VERSION = "protected_live_rag_postgres_smoke.v1"
+DB_SECRET_ENV_KEYS = (
+    "NEX_CX_DATABASE_URL",
+    "NEX_CX_TEST_DATABASE_URL",
+)
+FORBIDDEN_EVIDENCE_FRAGMENTS = (
+    SMOKE_TEXT,
+    "source_storage_path",
+    "extracted_markdown_path",
+    "nex-live-rag-postgres-smoke-",
+    "/data/nex-platform",
+)
+
+
+def run_protected_live_rag_postgres_smoke(
+    environ: dict[str, str] | None = None,
+    *,
+    requester: HttpRequester | None = None,
+    trace_id: str = TRACE_ID,
+) -> dict[str, object]:
+    env = environ if environ is not None else os.environ
+    if env.get(SMOKE_ENV) != "1":
+        return {
+            "smoke_schema_version": SCHEMA_VERSION,
+            "status": "SKIPPED",
+            "skip_reason": f"{SMOKE_ENV} is not enabled.",
+        }
+
+    profile = env.get(SMOKE_PROFILE_ENV, DEFAULT_PROFILE)
+    if profile != "test":
+        return _failure(
+            "profile_not_allowed",
+            f"{SMOKE_PROFILE_ENV} must be test for write smoke execution.",
+            profile=profile,
+        )
+
+    effective_env = {
+        **protected_dgx_vllm_profile_defaults(),
+        **env,
+        "NEX_MO_PROVIDER_MODE": "live",
+    }
+    config_issues = protected_live_rag_config_issues(effective_env)
+    if config_issues:
+        return _failure(
+            "configuration_invalid",
+            ",".join(str(issue["error_code"]) for issue in config_issues),
+            profile=profile,
+            issues=config_issues,
+        )
+
+    try:
+        database_env = service_database_env(SERVICE_ID, profile=profile)
+        database_url = service_database_url(SERVICE_ID, profile=profile, environ=env)
+        migration_result = run_service_migrations(
+            SERVICE_ID,
+            database_url=database_url,
+            profile=profile,
+        )
+        execution = _execute_protected_live_rag_postgres_smoke(
+            database_env=database_env,
+            database_url=database_url,
+            runtime_environ={
+                **effective_env,
+                SERVICE_SPEC.database_env: database_url,
+                "NEX_CX_PERSISTENCE_MODE": "postgres",
+            },
+            requester=requester,
+            trace_id=trace_id,
+        )
+        evidence = {
+            "smoke_schema_version": SCHEMA_VERSION,
+            "status": "PASS",
+            "service_id": SERVICE_ID,
+            "profile": profile,
+            "database_env": database_env,
+            "redacted_database_url": redact_database_url(database_url),
+            "migration": _migration_evidence(migration_result),
+            **execution,
+        }
+        assert_protected_live_rag_postgres_evidence_redacted(evidence, env)
+        return evidence
+    except (MigrationError, ValueError) as exc:
+        return _failure("configuration_invalid", str(exc), profile=profile)
+    except Exception as exc:
+        return _failure("execution_failed", exc.__class__.__name__, profile=profile)
+
+
+def _execute_protected_live_rag_postgres_smoke(
+    *,
+    database_env: str,
+    database_url: str,
+    runtime_environ: dict[str, str],
+    requester: HttpRequester | None = None,
+    trace_id: str = TRACE_ID,
+) -> dict[str, object]:
+    request_id = REQUEST_ID
+    engine = build_engine(database_url)
+    document_id: str | None = None
+    source_file_id: str | None = None
+    retrieval_package_id: str | None = None
+    result: dict[str, object] = {}
+    with tempfile.TemporaryDirectory(prefix="nex-live-rag-postgres-smoke-") as temp_dir:
+        storage_config = build_smoke_storage_config(Path(temp_dir))
+        repository = SqlAlchemyCxContentRepository(
+            build_session_factory(engine),
+            local_source_root=storage_config.source_root,
+        )
+        cx_store = ContentIngestionStore(content_repository=repository)
+        generation_store = GenerationExecutionStore()
+        mo_app = build_service_app(SERVICE_SPECS["nex-mo"])
+        register_mock_provider_routes(mo_app)
+        mo_test_client = TestClient(mo_app)
+        mo_client = InProcessLiveMoClient(mo_test_client)
+
+        cx_app = build_service_app(SERVICE_SPEC)
+        register_ingestion_routes(
+            cx_app,
+            store=cx_store,
+            storage_config=storage_config,
+            database_env=database_env,
+            redacted_database_url=redact_database_url(database_url),
+            source_kind="postgres-read",
+        )
+        register_chunking_routes(
+            cx_app,
+            store=cx_store,
+            storage_config=storage_config,
+        )
+        register_lexical_index_routes(
+            cx_app,
+            store=cx_store,
+            storage_config=storage_config,
+        )
+        register_embedding_index_routes(
+            cx_app,
+            store=cx_store,
+            mo_client=mo_client,
+            embedding_alias=DEFAULT_EMBEDDING_ALIAS,
+        )
+        register_retrieval_routes(
+            cx_app,
+            store=cx_store,
+            rerank_client=mo_client,
+            reranker_alias=DEFAULT_RERANKER_ALIAS,
+        )
+        register_generation_routes(
+            cx_app,
+            store=generation_store,
+            mo_client=mo_client,
+            retrieval_store=cx_store,
+        )
+        cx_client = TestClient(cx_app)
+
+        try:
+            with patched_environ(runtime_environ):
+                with patched_remote_request(requester):
+                    remote_provider.reset_remote_provider_telemetry()
+                    upload = register_smoke_document(cx_client, trace_id, request_id)
+                    document_id = str(upload["document_id"])
+                    refs = cx_store.get_content_ref(document_id)
+                    source_file_id = (
+                        str(refs["source_file_id"]) if refs is not None else None
+                    )
+                    extraction = run_cx_post(
+                        cx_client,
+                        f"/api/v1/jobs/{upload['extraction']['job_id']}/run",
+                        trace_id,
+                        request_id,
+                    )
+                    chunk_set = run_cx_post(
+                        cx_client,
+                        f"/api/v1/documents/{document_id}/chunks/run",
+                        trace_id,
+                        request_id,
+                    )
+                    lexical_index = run_cx_post(
+                        cx_client,
+                        f"/api/v1/documents/{document_id}/lexical-index/run",
+                        trace_id,
+                        request_id,
+                    )
+                    embedding_index = run_cx_post(
+                        cx_client,
+                        f"/api/v1/documents/{document_id}/embeddings/run",
+                        trace_id,
+                        request_id,
+                    )
+                    retrieval = create_live_rag_postgres_retrieval_context(
+                        cx_client,
+                        document_id=document_id,
+                        trace_id=trace_id,
+                        request_id=request_id,
+                    )
+                    retrieval_package_id = str(retrieval["retrieval_package_id"])
+                    generation = create_grounded_generation(
+                        cx_client,
+                        retrieval_package=retrieval,
+                        trace_id=trace_id,
+                        request_id=request_id,
+                    )
+                    telemetry = read_provider_telemetry(
+                        mo_test_client,
+                        trace_id,
+                        request_id,
+                    )
+            rag_evidence = build_rag_evidence_summary(
+                trace_id=trace_id,
+                request_id=request_id,
+                upload=upload,
+                extraction=extraction,
+                chunk_set=chunk_set,
+                lexical_index=lexical_index,
+                embedding_index=embedding_index,
+                retrieval=retrieval,
+                generation=generation,
+                telemetry=telemetry,
+            )
+            db_observations = _read_live_rag_db_observations(
+                engine,
+                document_id=document_id,
+                source_file_id=source_file_id,
+                retrieval_package_id=retrieval_package_id,
+            )
+            checks = _checks(rag_evidence=rag_evidence, db_observations=db_observations)
+            if not all(checks.values()):
+                raise RuntimeError("Protected live RAG PostgreSQL smoke checks failed")
+            result = {
+                "rag_evidence": rag_evidence,
+                "db_observations": db_observations,
+                "checks": checks,
+            }
+            assert_protected_live_rag_postgres_evidence_redacted(
+                result,
+                runtime_environ,
+            )
+        finally:
+            _delete_smoke_retrieval_rows(
+                engine,
+                retrieval_package_id=retrieval_package_id,
+                document_id=None,
+                source_file_id=None,
+            )
+            result["cleanup_observations"] = _delete_real_document_processing_rows(
+                engine,
+                document_id=document_id,
+                source_file_id=source_file_id,
+                pipeline_run_id=None,
+                job_id=None,
+            )
+    return result
+
+
+def create_live_rag_postgres_retrieval_context(
+    client: TestClient,
+    *,
+    document_id: str,
+    trace_id: str,
+    request_id: str,
+) -> dict[str, Any]:
+    response = client.post(
+        "/api/v1/retrieval/context",
+        json={
+            "trace_id": trace_id,
+            "query_text": "protected live RAG smoke evidence",
+            "purpose": "grounded_answer",
+            "document_scope": {"document_ids": [document_id]},
+            "top_k": 1,
+            "include_source_preview": True,
+            "retrieval_policy": {
+                "rerank_candidate_limit": 5,
+                "low_confidence_threshold": 0.0,
+            },
+        },
+        headers=service_headers("nex-ae-api", "nex-cx", trace_id, request_id),
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def _read_live_rag_db_observations(
+    engine: object,
+    *,
+    document_id: str | None,
+    source_file_id: str | None,
+    retrieval_package_id: str | None,
+) -> dict[str, object]:
+    if document_id is None or source_file_id is None or retrieval_package_id is None:
+        raise RuntimeError("Protected live RAG PostgreSQL smoke lineage is incomplete")
+    with engine.begin() as connection:
+        content_count = _count_where(
+            connection,
+            "cx_content_objects",
+            "content_object_id = :document_id",
+            {"document_id": document_id},
+        )
+        source_file_count = _count_where(
+            connection,
+            "cx_source_files",
+            "source_file_id = :source_file_id",
+            {"source_file_id": source_file_id},
+        )
+        extraction_artifact_count = _count_where(
+            connection,
+            "cx_extraction_artifacts",
+            "content_object_id = :document_id",
+            {"document_id": document_id},
+        )
+        chunk_set_count = _count_where(
+            connection,
+            "cx_chunk_sets",
+            "content_object_id = :document_id",
+            {"document_id": document_id},
+        )
+        chunk_count = _count_where(
+            connection,
+            "cx_chunks",
+            "content_object_id = :document_id",
+            {"document_id": document_id},
+        )
+        lexical_term_count = int(
+            connection.execute(
+                text(
+                    """
+                    SELECT count(*)
+                    FROM cx_lexical_terms
+                    WHERE chunk_set_id IN (
+                        SELECT chunk_set_id
+                        FROM cx_chunk_sets
+                        WHERE content_object_id = :document_id
+                    )
+                    """
+                ),
+                {"document_id": document_id},
+            ).scalar_one()
+        )
+        lexical_posting_count = int(
+            connection.execute(
+                text(
+                    """
+                    SELECT count(*)
+                    FROM cx_lexical_postings
+                    WHERE lexical_term_id IN (
+                        SELECT lexical_term_id
+                        FROM cx_lexical_terms
+                        WHERE chunk_set_id IN (
+                            SELECT chunk_set_id
+                            FROM cx_chunk_sets
+                            WHERE content_object_id = :document_id
+                        )
+                    )
+                    """
+                ),
+                {"document_id": document_id},
+            ).scalar_one()
+        )
+        chunk_embedding_row = connection.execute(
+            text(
+                """
+                SELECT count(*) AS embedding_count,
+                       COALESCE(min(embedding.vector_dimension), 0) AS min_dimension,
+                       COALESCE(max(embedding.vector_dimension), 0) AS max_dimension
+                FROM cx_chunk_embeddings AS embedding
+                JOIN cx_chunks AS chunk ON chunk.chunk_id = embedding.chunk_id
+                WHERE chunk.content_object_id = :document_id
+                """
+            ),
+            {"document_id": document_id},
+        ).mappings().one()
+        retrieval_row = connection.execute(
+            text(
+                """
+                SELECT
+                    package.status,
+                    package.rerank_state,
+                    package.ranker_mix,
+                    package.evidence_count,
+                    count(evidence.evidence_id) AS stored_evidence_count,
+                    COALESCE(max(evidence.final_score), 0) AS max_final_score
+                FROM cx_retrieval_packages AS package
+                LEFT JOIN cx_retrieval_evidence_items AS evidence
+                  ON evidence.retrieval_package_id = package.retrieval_package_id
+                WHERE package.retrieval_package_id = :retrieval_package_id
+                GROUP BY
+                    package.retrieval_package_id,
+                    package.status,
+                    package.rerank_state,
+                    package.ranker_mix,
+                    package.evidence_count
+                """
+            ),
+            {"retrieval_package_id": retrieval_package_id},
+        ).mappings().first()
+    if retrieval_row is None:
+        raise RuntimeError("Protected live RAG retrieval package was not persisted")
+    return {
+        "content_object_count": content_count,
+        "source_file_count": source_file_count,
+        "extraction_artifact_count": extraction_artifact_count,
+        "chunk_set_count": chunk_set_count,
+        "chunk_count": chunk_count,
+        "lexical_term_count": lexical_term_count,
+        "lexical_posting_count": lexical_posting_count,
+        "chunk_embedding_count": int(chunk_embedding_row["embedding_count"]),
+        "chunk_embedding_min_dimension": int(chunk_embedding_row["min_dimension"]),
+        "chunk_embedding_max_dimension": int(chunk_embedding_row["max_dimension"]),
+        "retrieval_package_count": 1,
+        "retrieval_status": retrieval_row["status"],
+        "retrieval_rerank_state": retrieval_row["rerank_state"],
+        "retrieval_ranker_mix": retrieval_row["ranker_mix"],
+        "retrieval_evidence_count": int(retrieval_row["evidence_count"]),
+        "retrieval_stored_evidence_count": int(
+            retrieval_row["stored_evidence_count"]
+        ),
+        "retrieval_max_final_score": float(retrieval_row["max_final_score"] or 0.0),
+    }
+
+
+def _checks(
+    *,
+    rag_evidence: dict[str, Any],
+    db_observations: dict[str, object],
+) -> dict[str, bool]:
+    telemetry_by_capability = {
+        item["capability"]: item for item in rag_evidence["provider_telemetry"]["data"]
+    }
+    expected_embedding_dimension = int(
+        rag_evidence["document"]["embedding_dimension"]
+    )
+    expected_chunk_count = int(rag_evidence["document"]["chunk_count"])
+    expected_evidence_count = int(rag_evidence["retrieval"]["evidence_count"])
+    return {
+        "source_file_persisted": db_observations["source_file_count"] == 1,
+        "content_object_persisted": db_observations["content_object_count"] == 1,
+        "extraction_artifact_persisted": (
+            db_observations["extraction_artifact_count"] == 1
+        ),
+        "chunk_set_persisted": db_observations["chunk_set_count"] == 1,
+        "chunks_persisted": (
+            db_observations["chunk_count"] == expected_chunk_count
+            and expected_chunk_count > 0
+        ),
+        "lexical_index_persisted": (
+            int(db_observations["lexical_term_count"]) > 0
+            and int(db_observations["lexical_posting_count"]) > 0
+        ),
+        "chunk_embeddings_persisted": (
+            db_observations["chunk_embedding_count"] == expected_chunk_count
+        ),
+        "embedding_dimension_persisted": (
+            db_observations["chunk_embedding_min_dimension"]
+            == expected_embedding_dimension
+            == db_observations["chunk_embedding_max_dimension"]
+        ),
+        "retrieval_package_persisted": (
+            db_observations["retrieval_package_count"] == 1
+        ),
+        "retrieval_ready_persisted": db_observations["retrieval_status"] == "READY",
+        "retrieval_evidence_persisted": (
+            db_observations["retrieval_evidence_count"] == expected_evidence_count
+            and db_observations["retrieval_stored_evidence_count"]
+            == expected_evidence_count
+        ),
+        "rerank_applied_persisted": (
+            db_observations["retrieval_rerank_state"] == "APPLIED"
+        ),
+        "retrieval_score_persisted": (
+            float(db_observations["retrieval_max_final_score"]) > 0
+        ),
+        "grounded_generation_completed": (
+            rag_evidence["generation"]["status"] == "COMPLETED"
+        ),
+        "embedding_live_call_observed": (
+            telemetry_by_capability["embedding"]["success_count"] >= 1
+        ),
+        "rerank_live_call_observed": (
+            telemetry_by_capability["reranking"]["success_count"] >= 1
+        ),
+        "generation_live_call_observed": (
+            telemetry_by_capability["generation"]["success_count"] >= 1
+        ),
+    }
+
+
+def _count_where(
+    connection: Any,
+    table: str,
+    where_clause: str,
+    params: dict[str, object],
+) -> int:
+    return int(
+        connection.execute(
+            text(f"SELECT count(*) FROM {table} WHERE {where_clause}"),
+            params,
+        ).scalar_one()
+    )
+
+
+def assert_protected_live_rag_postgres_evidence_redacted(
+    evidence: object,
+    env: dict[str, str],
+) -> None:
+    serialized = json.dumps(evidence, default=str, ensure_ascii=False, sort_keys=True)
+    assert_protected_live_rag_evidence_redacted(serialized, env)
+    for key in DB_SECRET_ENV_KEYS:
+        value = env.get(key)
+        if _database_secret_leaked(serialized, value):
+            raise ValueError(
+                "Protected live RAG PostgreSQL smoke evidence contains an "
+                f"unredacted database secret: {key}"
+            )
+    for fragment in FORBIDDEN_EVIDENCE_FRAGMENTS:
+        if fragment in serialized:
+            raise ValueError(
+                "Protected live RAG PostgreSQL smoke evidence contains raw "
+                "source text or local storage paths."
+            )
+
+
+def _database_secret_leaked(
+    serialized_evidence: str,
+    database_url: str | None,
+) -> bool:
+    password = _database_password(database_url)
+    return bool(password) and len(password) >= 4 and password in serialized_evidence
+
+
+def _database_password(database_url: str | None) -> str | None:
+    if not database_url or "@" not in database_url:
+        return None
+    authority = database_url.split("@", maxsplit=1)[0]
+    if "://" in authority:
+        authority = authority.split("://", maxsplit=1)[1]
+    if ":" not in authority:
+        return None
+    password = authority.rsplit(":", maxsplit=1)[1]
+    return password or None
+
+
+def _failure(
+    failure_code: str,
+    detail: str,
+    *,
+    profile: str,
+    issues: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    failure = {
+        "smoke_schema_version": SCHEMA_VERSION,
+        "status": "FAIL",
+        "service_id": SERVICE_ID,
+        "profile": profile,
+        "failure_code": failure_code,
+        "detail": detail,
+    }
+    if issues is not None:
+        failure["issues"] = issues
+    return failure
+
+
+def summary_line(evidence: dict[str, object]) -> str:
+    if evidence["status"] == "SKIPPED":
+        return f"protected_live_rag_postgres_smoke=skipped reason={SMOKE_ENV}"
+    if evidence["status"] == "PASS":
+        rag = evidence["rag_evidence"]
+        db_observations = evidence["db_observations"]
+        return (
+            "protected_live_rag_postgres_smoke=pass "
+            f"service={evidence['service_id']} "
+            f"profile={evidence['profile']} "
+            f"db_env={evidence['database_env']} "
+            f"retrieval={rag['retrieval']['status']} "
+            f"rerank={rag['retrieval']['rerank_state']} "
+            f"generation={rag['generation']['status']} "
+            f"embedding_dim={db_observations['chunk_embedding_max_dimension']}"
+        )
+    return (
+        "protected_live_rag_postgres_smoke=fail "
+        f"service={evidence.get('service_id')} "
+        f"profile={evidence.get('profile')} "
+        f"reason={evidence.get('failure_code')}"
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run protected live RAG through CX PostgreSQL persistence."
+    )
+    parser.add_argument("--summary", action="store_true", help="Print a short result line.")
+    parser.add_argument("--output", type=Path, help="Optional JSON evidence output path.")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    load_env_file(ROOT / ".env")
+    args = build_parser().parse_args(argv)
+    evidence = run_protected_live_rag_postgres_smoke()
+    if args.output:
+        serialized = json.dumps(evidence, ensure_ascii=False, indent=2, default=str)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(f"{serialized}\n", encoding="utf-8")
+    print(
+        summary_line(evidence)
+        if args.summary
+        else json.dumps(evidence, ensure_ascii=False, indent=2, default=str)
+    )
+    return 0 if evidence["status"] in {"PASS", "SKIPPED"} else 1
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main(sys.argv[1:]))
