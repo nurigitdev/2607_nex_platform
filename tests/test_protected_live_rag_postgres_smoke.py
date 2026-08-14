@@ -369,15 +369,29 @@ def test_protected_live_rag_postgres_smoke_sqlite_route_path(tmp_path: Path) -> 
 
     assert all(result["checks"].values())
     assert result["stage_status"]["upload"] == "PASS"
+    assert result["stage_status"]["score_calibration"] == "PASS"
     assert result["stage_status"]["generation"] == "PASS"
     assert result["stage_status"]["cleanup"] == "PASS"
     assert result["rag_evidence"]["retrieval"]["status"] == "READY"
     assert result["rag_evidence"]["retrieval"]["rerank_state"] == "APPLIED"
     assert result["rag_evidence"]["generation"]["status"] == "COMPLETED"
+    assert result["score_calibration"]["checkpoint_schema_version"] == (
+        smoke.SCORE_CALIBRATION_SCHEMA_VERSION
+    )
+    assert result["score_calibration"]["best_score"] == 0.94
+    assert result["score_calibration"]["observed_low_confidence_threshold"] == 0.0
+    assert result["score_calibration"]["default_low_confidence_threshold"] == 0.2
+    assert result["score_calibration"]["threshold_override_used"] is True
+    assert result["score_calibration"]["threshold_override_direction"] == "lowered"
+    assert result["score_calibration"]["would_pass_default_threshold"] is True
+    assert result["score_calibration"]["calibration_action"] == (
+        "default_threshold_accepts_score"
+    )
     assert result["db_observations"]["content_object_count"] == 1
     assert result["db_observations"]["source_file_count"] == 1
     assert result["db_observations"]["chunk_embedding_max_dimension"] == 6
     assert result["db_observations"]["retrieval_evidence_count"] == 1
+    assert result["checks"]["score_calibration_recorded"] is True
     assert result["cleanup_observations"]["before"]["content_object_rows"] == 1
     assert result["cleanup_observations"]["after"]["content_object_rows"] == 0
     assert _count_rows(database_url, "cx_retrieval_packages") == 0
@@ -499,6 +513,71 @@ def test_protected_live_rag_postgres_smoke_check_failure_raises(
     assert _count_rows(database_url, "cx_source_files") == 0
 
 
+def test_protected_live_rag_score_calibration_checkpoint_boundaries() -> None:
+    checkpoint = smoke.build_score_calibration_checkpoint(
+        {
+            "status": "READY",
+            "evidence_items": [{"evidence_id": "evidence-1"}],
+            "score_summary": {
+                "best_score": 0.11,
+                "confidence_bucket": "READY",
+                "low_confidence_threshold": 0.0,
+                "quality_policy_id": "retrieval_quality_v1",
+                "ranker_mix": "bm25_embedding_with_rerank",
+                "rerank_state": "APPLIED",
+            },
+        }
+    )
+
+    assert checkpoint == {
+        "checkpoint_schema_version": smoke.SCORE_CALIBRATION_SCHEMA_VERSION,
+        "quality_policy_id": "retrieval_quality_v1",
+        "ranker_mix": "bm25_embedding_with_rerank",
+        "rerank_state": "APPLIED",
+        "observed_status": "READY",
+        "observed_confidence_bucket": "READY",
+        "default_confidence_bucket": "LOW_CONFIDENCE",
+        "best_score": 0.11,
+        "evidence_count": 1,
+        "observed_low_confidence_threshold": 0.0,
+        "default_low_confidence_threshold": 0.2,
+        "threshold_override_used": True,
+        "threshold_override_direction": "lowered",
+        "would_pass_default_threshold": False,
+        "score_margin_to_observed_threshold": 0.11,
+        "score_margin_to_default_threshold": -0.09,
+        "calibration_action": "review_live_threshold_before_canonical_policy",
+    }
+
+    no_answer = smoke.build_score_calibration_checkpoint(
+        {
+            "status": "NO_ANSWER",
+            "evidence_items": [],
+            "score_summary": {
+                "best_score": 0.0,
+                "low_confidence_threshold": 0.2,
+            },
+        }
+    )
+    assert no_answer["default_confidence_bucket"] == "NO_ANSWER"
+    assert no_answer["threshold_override_used"] is False
+    assert no_answer["threshold_override_direction"] == "none"
+    assert no_answer["calibration_action"] == "inspect_no_answer_retrieval"
+
+    strict = smoke.build_score_calibration_checkpoint(
+        {
+            "status": "LOW_CONFIDENCE",
+            "evidence_items": [{"evidence_id": "evidence-1"}],
+            "score_summary": {
+                "best_score": 0.3,
+                "low_confidence_threshold": 0.5,
+            },
+        }
+    )
+    assert strict["threshold_override_direction"] == "raised"
+    assert strict["calibration_action"] == "compare_observed_and_default_confidence"
+
+
 def test_protected_live_rag_postgres_smoke_helpers_cover_edges(
     tmp_path: Path,
 ) -> None:
@@ -558,6 +637,9 @@ def test_protected_live_rag_postgres_smoke_helpers_cover_edges(
         stage_status={"embedding_index": "FAIL"},
     )
     assert error.to_safe_diagnostics()["error_code"] == "http_status_503"
+    assert smoke._safe_float(True, default=0.2) == 0.2
+    assert smoke._safe_float("bad", default=0.3) == 0.3
+    assert smoke._safe_string("", default="fallback") == "fallback"
 
 
 def test_protected_live_rag_postgres_smoke_main_prints_summary_and_full_evidence(

@@ -39,7 +39,11 @@ from nex_cx.generation import (  # noqa: E402
 from nex_cx.ingestion import ContentIngestionStore, register_ingestion_routes  # noqa: E402
 from nex_cx.lexical_index import register_lexical_index_routes  # noqa: E402
 from nex_cx.repository import SqlAlchemyCxContentRepository  # noqa: E402
-from nex_cx.retrieval import DEFAULT_RERANKER_ALIAS, register_retrieval_routes  # noqa: E402
+from nex_cx.retrieval import (  # noqa: E402
+    DEFAULT_RERANKER_ALIAS,
+    DEFAULT_RETRIEVAL_QUALITY_POLICY,
+    register_retrieval_routes,
+)
 from nex_mo.providers import register_mock_provider_routes  # noqa: E402
 from nex_runtime import (  # noqa: E402
     SERVICE_SPECS,
@@ -87,6 +91,7 @@ DEFAULT_PROFILE = "test"
 SERVICE_ID = "nex-cx"
 SERVICE_SPEC = SERVICE_SPECS[SERVICE_ID]
 SCHEMA_VERSION = "protected_live_rag_postgres_smoke.v1"
+SCORE_CALIBRATION_SCHEMA_VERSION = "protected_live_rag_score_calibration.v1"
 DB_SECRET_ENV_KEYS = (
     "NEX_CX_DATABASE_URL",
     "NEX_CX_TEST_DATABASE_URL",
@@ -107,6 +112,7 @@ EXECUTION_STAGES = (
     "lexical_index",
     "embedding_index",
     "retrieval",
+    "score_calibration",
     "generation",
     "provider_telemetry",
     "rag_evidence_assertion",
@@ -376,6 +382,11 @@ def _execute_protected_live_rag_postgres_smoke(
                         ),
                     )
                     retrieval_package_id = str(retrieval["retrieval_package_id"])
+                    score_calibration = _run_stage(
+                        "score_calibration",
+                        stage_status,
+                        lambda: build_score_calibration_checkpoint(retrieval),
+                    )
                     generation = _run_stage(
                         "generation",
                         stage_status,
@@ -427,6 +438,7 @@ def _execute_protected_live_rag_postgres_smoke(
                 lambda: _checks(
                     rag_evidence=rag_evidence,
                     db_observations=db_observations,
+                    score_calibration=score_calibration,
                 ),
             )
             if not all(checks.values()):
@@ -440,6 +452,7 @@ def _execute_protected_live_rag_postgres_smoke(
             result = {
                 "stage_status": stage_status,
                 "rag_evidence": rag_evidence,
+                "score_calibration": score_calibration,
                 "db_observations": db_observations,
                 "checks": checks,
             }
@@ -589,6 +602,133 @@ def create_live_rag_postgres_retrieval_context(
     return response.json()
 
 
+def build_score_calibration_checkpoint(
+    retrieval: dict[str, Any],
+    *,
+    default_low_confidence_threshold: float | None = None,
+) -> dict[str, object]:
+    score_summary = retrieval.get("score_summary")
+    if not isinstance(score_summary, dict):
+        score_summary = {}
+    evidence_items = retrieval.get("evidence_items")
+    evidence_count = len(evidence_items) if isinstance(evidence_items, list) else 0
+    best_score = _safe_float(score_summary.get("best_score"), default=0.0)
+    observed_threshold = _safe_float(
+        score_summary.get("low_confidence_threshold"),
+        default=DEFAULT_RETRIEVAL_QUALITY_POLICY.low_confidence_threshold,
+    )
+    default_threshold = _safe_float(
+        default_low_confidence_threshold,
+        default=DEFAULT_RETRIEVAL_QUALITY_POLICY.low_confidence_threshold,
+    )
+    observed_bucket = _safe_string(
+        score_summary.get("confidence_bucket"),
+        default=_confidence_bucket(
+            evidence_count=evidence_count,
+            best_score=best_score,
+            threshold=observed_threshold,
+        ),
+    )
+    default_bucket = _confidence_bucket(
+        evidence_count=evidence_count,
+        best_score=best_score,
+        threshold=default_threshold,
+    )
+    override_used = not _float_values_match(observed_threshold, default_threshold)
+    override_direction = _threshold_override_direction(
+        observed_threshold,
+        default_threshold,
+    )
+    return {
+        "checkpoint_schema_version": SCORE_CALIBRATION_SCHEMA_VERSION,
+        "quality_policy_id": _safe_string(
+            score_summary.get("quality_policy_id"),
+            default=DEFAULT_RETRIEVAL_QUALITY_POLICY.policy_id,
+        ),
+        "ranker_mix": _safe_string(score_summary.get("ranker_mix")),
+        "rerank_state": _safe_string(score_summary.get("rerank_state")),
+        "observed_status": _safe_string(retrieval.get("status")),
+        "observed_confidence_bucket": observed_bucket,
+        "default_confidence_bucket": default_bucket,
+        "best_score": best_score,
+        "evidence_count": evidence_count,
+        "observed_low_confidence_threshold": observed_threshold,
+        "default_low_confidence_threshold": default_threshold,
+        "threshold_override_used": override_used,
+        "threshold_override_direction": override_direction,
+        "would_pass_default_threshold": default_bucket == "READY",
+        "score_margin_to_observed_threshold": round(best_score - observed_threshold, 6),
+        "score_margin_to_default_threshold": round(best_score - default_threshold, 6),
+        "calibration_action": _calibration_action(
+            observed_bucket=observed_bucket,
+            default_bucket=default_bucket,
+            override_used=override_used,
+            override_direction=override_direction,
+        ),
+    }
+
+
+def _confidence_bucket(
+    *,
+    evidence_count: int,
+    best_score: float,
+    threshold: float,
+) -> str:
+    if evidence_count <= 0:
+        return "NO_ANSWER"
+    if best_score < threshold:
+        return "LOW_CONFIDENCE"
+    return "READY"
+
+
+def _threshold_override_direction(
+    observed_threshold: float,
+    default_threshold: float,
+) -> str:
+    if _float_values_match(observed_threshold, default_threshold):
+        return "none"
+    if observed_threshold < default_threshold:
+        return "lowered"
+    return "raised"
+
+
+def _calibration_action(
+    *,
+    observed_bucket: str,
+    default_bucket: str,
+    override_used: bool,
+    override_direction: str,
+) -> str:
+    if default_bucket == "NO_ANSWER":
+        return "inspect_no_answer_retrieval"
+    if override_used and override_direction == "lowered" and default_bucket != "READY":
+        return "review_live_threshold_before_canonical_policy"
+    if observed_bucket != default_bucket:
+        return "compare_observed_and_default_confidence"
+    if default_bucket == "READY":
+        return "default_threshold_accepts_score"
+    return "review_low_confidence_boundary"
+
+
+def _safe_float(value: object, *, default: float) -> float:
+    if isinstance(value, bool):
+        return default
+    try:
+        return round(float(value), 6)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_string(value: object, *, default: str = "UNKNOWN") -> str:
+    if isinstance(value, str) and value:
+        return value
+    return default
+
+
+def _float_values_match(left: float, right: float) -> bool:
+    return abs(left - right) < 0.000001
+
+
 def _read_live_rag_db_observations(
     engine: object,
     *,
@@ -731,6 +871,7 @@ def _checks(
     *,
     rag_evidence: dict[str, Any],
     db_observations: dict[str, object],
+    score_calibration: dict[str, object],
 ) -> dict[str, bool]:
     telemetry_by_capability = {
         item["capability"]: item for item in rag_evidence["provider_telemetry"]["data"]
@@ -777,6 +918,12 @@ def _checks(
         ),
         "retrieval_score_persisted": (
             float(db_observations["retrieval_max_final_score"]) > 0
+        ),
+        "score_calibration_recorded": (
+            score_calibration.get("checkpoint_schema_version")
+            == SCORE_CALIBRATION_SCHEMA_VERSION
+            and score_calibration.get("observed_status")
+            == rag_evidence["retrieval"]["status"]
         ),
         "grounded_generation_completed": (
             rag_evidence["generation"]["status"] == "COMPLETED"

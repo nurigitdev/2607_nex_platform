@@ -317,7 +317,11 @@ Grounded generation validation:
   chunk, embedding, and retrieval tables before cleanup. Failure evidence
   includes the safe stage name, HTTP status, problem `error_code`, bounded
   detail, retryability, and per-stage status without exposing provider
-  endpoints, credentials, source text, or database passwords.
+  endpoints, credentials, source text, or database passwords. Successful
+  evidence also records a score calibration checkpoint showing the observed
+  live retrieval score, smoke override threshold, default low-confidence
+  threshold, default confidence bucket, and whether generation was allowed only
+  because the smoke threshold was lowered.
 - CX retrieval PostgreSQL smoke evidence is available through
   `scripts/smoke/run_cx_retrieval_postgres_smoke.py`. It is skipped by default
   and only writes to the CX test database when
