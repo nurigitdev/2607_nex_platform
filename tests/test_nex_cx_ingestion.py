@@ -61,6 +61,48 @@ OWNER_REF = {
 }
 
 
+def sample_pdf_bytes(text: str = "Slice 0285 PDF ingestion text") -> bytes:
+    text_bytes = text.encode("ascii")
+    stream = b"BT /F1 18 Tf 36 96 Td (" + text_bytes + b") Tj ET"
+    objects = (
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        (
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] "
+            b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"
+        ),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        (
+            b"<< /Length "
+            + str(len(stream)).encode("ascii")
+            + b" >>\nstream\n"
+            + stream
+            + b"\nendstream"
+        ),
+    )
+    pdf = b"%PDF-1.4\n"
+    offsets: list[int] = []
+    for object_number, body in enumerate(objects, start=1):
+        offsets.append(len(pdf))
+        pdf += (
+            f"{object_number} 0 obj\n".encode("ascii")
+            + body
+            + b"\nendobj\n"
+        )
+    startxref = len(pdf)
+    xref_entries = b"".join(
+        f"{offset:010d} 00000 n \n".encode("ascii") for offset in offsets
+    )
+    return (
+        pdf
+        + b"xref\n0 6\n0000000000 65535 f \n"
+        + xref_entries
+        + b"trailer\n<< /Root 1 0 R /Size 6 >>\nstartxref\n"
+        + str(startxref).encode("ascii")
+        + b"\n%%EOF\n"
+    )
+
+
 class FakeOwnerResolver:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
@@ -1775,10 +1817,10 @@ def test_source_bytes_for_extraction_falls_back_without_upload_id(
     assert reader["fallback_used"] is True
 
 
-def test_run_text_extraction_job_uses_binary_placeholder_adapter(tmp_path: Path) -> None:
+def test_run_text_extraction_job_extracts_pdf_text(tmp_path: Path) -> None:
     store = ContentIngestionStore()
     config = storage_config(tmp_path)
-    source_bytes = b"%PDF-1.7\nprivate bytes"
+    source_bytes = sample_pdf_bytes()
     document = build_upload_registration(
         {
             "filename": "source.pdf",
@@ -1800,9 +1842,45 @@ def test_run_text_extraction_job_uses_binary_placeholder_adapter(tmp_path: Path)
     )
 
     markdown = Path(result["extracted_markdown_path"]).read_text(encoding="utf-8")
-    assert result["extractor"]["mode"] == "binary_document_placeholder_to_markdown"
+    assert result["extractor"]["mode"] == "pdf_to_markdown"
     assert result["extractor"]["source_format"] == "pdf"
-    assert result["warnings"] == ["mock_binary_extraction_placeholder:pdf"]
+    assert result["warnings"] == []
+    assert "Slice 0285 PDF ingestion text" in markdown
+    assert "Mock extraction placeholder." not in markdown
+
+
+def test_run_text_extraction_job_uses_remaining_binary_placeholder_adapter(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    config = storage_config(tmp_path)
+    source_bytes = b"private bytes"
+    document = build_upload_registration(
+        {
+            "filename": "source.docx",
+            "content_type": (
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ),
+            "content_base64": base64.b64encode(source_bytes).decode("ascii"),
+        },
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.save_upload_registration(document, source_bytes=source_bytes)
+
+    result = run_text_extraction_job(
+        document["extraction"]["job_id"],
+        store=store,
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    markdown = Path(result["extracted_markdown_path"]).read_text(encoding="utf-8")
+    assert result["extractor"]["mode"] == "binary_document_placeholder_to_markdown"
+    assert result["extractor"]["source_format"] == "docx"
+    assert result["warnings"] == ["mock_binary_extraction_placeholder:docx"]
     assert "private bytes" not in markdown
     assert "Mock extraction placeholder." in markdown
 

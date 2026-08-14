@@ -18,6 +18,7 @@ sys.path.insert(0, str(CX_PATH))
 
 from nex_cx.extractors import (  # noqa: E402
     BINARY_SOURCE_FORMATS,
+    PDF_EXTRACTION_MODE,
     PLACEHOLDER_BINARY_MODE,
     PLACEHOLDER_BINARY_WARNING_PREFIX,
     ExtractionAdapterError,
@@ -128,6 +129,27 @@ REQUIRED_SOURCE_TOKENS = (
         "Binary placeholder warnings are stable for later migration checks.",
     ),
     TokenRequirement(
+        "pdf_extraction_backend",
+        CX_EXTRACTORS,
+        "pdf_extraction_mode",
+        "PDF_EXTRACTION_MODE",
+        "PDF real extraction has a named mode for runtime evidence.",
+    ),
+    TokenRequirement(
+        "pdf_extraction_backend",
+        CX_EXTRACTORS,
+        "pdf_extraction_function",
+        "extract_pdf_markdown",
+        "PDF extraction is implemented behind the extractor adapter boundary.",
+    ),
+    TokenRequirement(
+        "pdf_extraction_backend",
+        CX_EXTRACTORS,
+        "pdf_reader_backend",
+        "pypdf",
+        "The local PDF adapter uses the pinned parser dependency.",
+    ),
+    TokenRequirement(
         "ingestion_adapter_wiring",
         CX_INGESTION,
         "default_local_mock_extractor",
@@ -208,6 +230,9 @@ def run_cx_extractor_backend_gap_audit(
         "binary_placeholder_boundary_ready": (
             token_groups.get("binary_placeholder_boundary") is True
         ),
+        "pdf_extraction_backend_ready": (
+            token_groups.get("pdf_extraction_backend") is True
+        ),
         "ingestion_adapter_wiring_ready": (
             token_groups.get("ingestion_adapter_wiring") is True
         ),
@@ -216,7 +241,7 @@ def run_cx_extractor_backend_gap_audit(
         "service_docs_recorded": token_groups.get("service_docs") is True,
         "runtime_probe_passed": runtime_probe["status"] == "PASS",
         "binary_gaps_explicit": set(gap_summary["gap_source_formats"])
-        == set(BINARY_SOURCE_FORMATS),
+        == {"docx", "pptx", "xlsx"},
         "redacted_evidence_only": True,
     }
     status = "PASS" if not issues and all(checks.values()) else "FAIL"
@@ -224,10 +249,10 @@ def run_cx_extractor_backend_gap_audit(
         "audit_schema_version": SCHEMA_VERSION,
         "status": status,
         "scope": {
-            "slice": "Slice 0284",
-            "focus": "cx_extractor_backend_gap",
+            "slice": "Slice 0285",
+            "focus": "cx_pdf_extraction_adapter_foundation",
             "from": "uploaded_source_extraction_postgres_evidence",
-            "toward": "real_pdf_docx_office_extractor_backends",
+            "toward": "real_docx_office_extractor_backends",
         },
         "paths": paths,
         "source_tokens": source_tokens,
@@ -240,9 +265,9 @@ def run_cx_extractor_backend_gap_audit(
             "refactoring_checkpoint": (
                 "keep extractor selection behind nex_cx.extractors.TextExtractor"
             ),
-            "implemented_now": ["markdown", "plain_text"],
-            "placeholder_gaps": list(BINARY_SOURCE_FORMATS),
-            "next_slices": ["Slice 0285", "Slice 0286", "Slice 0287"],
+            "implemented_now": ["markdown", "plain_text", "pdf"],
+            "placeholder_gaps": ["docx", "pptx", "xlsx"],
+            "next_slices": ["Slice 0286", "Slice 0287"],
             "raw_source_in_evidence": False,
             "local_path_in_evidence": False,
         },
@@ -268,18 +293,20 @@ def run_extractor_backend_probe() -> dict[str, Any]:
     binary_outputs = {}
     for source_format in BINARY_SOURCE_FORMATS:
         filename = f"sample.{source_format}"
+        source_bytes = sample_pdf_bytes() if source_format == "pdf" else SECRET_SOURCE
         output = extractor.extract_markdown(
             ExtractorInput(
                 filename=filename,
                 content_type=content_type_for_probe(source_format),
-                source_bytes=SECRET_SOURCE,
-                source_sha256=sha256_bytes(SECRET_SOURCE),
+                source_bytes=source_bytes,
+                source_sha256=sha256_bytes(source_bytes),
             )
         )
         binary_outputs[source_format] = {
             "mode": output.mode,
             "warning": output.warnings[0] if output.warnings else None,
             "source_format": output.source_format,
+            "real_text_seen": "Slice 0285 PDF audit text" in output.markdown_text,
             "raw_source_leaked": SECRET_SOURCE.decode("utf-8") in output.markdown_text,
         }
 
@@ -321,12 +348,22 @@ def run_extractor_backend_probe() -> dict[str, Any]:
             plain_output.mode == "plain_text_to_markdown"
             and plain_output.warnings == []
         ),
-        "binary_documents_are_placeholders": all(
+        "pdf_real_extraction": (
+            binary_outputs["pdf"]["mode"] == PDF_EXTRACTION_MODE
+            and binary_outputs["pdf"]["warning"] is None
+            and binary_outputs["pdf"]["real_text_seen"] is True
+        ),
+        "remaining_binary_gaps_are_placeholders": all(
             output["mode"] == PLACEHOLDER_BINARY_MODE
-            for output in binary_outputs.values()
+            for source_format, output in binary_outputs.items()
+            if source_format != "pdf"
         ),
         "binary_warnings_are_stable": all(
-            output["warning"] == f"{PLACEHOLDER_BINARY_WARNING_PREFIX}:{source_format}"
+            output["warning"] == (
+                None
+                if source_format == "pdf"
+                else f"{PLACEHOLDER_BINARY_WARNING_PREFIX}:{source_format}"
+            )
             for source_format, output in binary_outputs.items()
         ),
         "binary_raw_source_not_serialized": not any(
@@ -355,6 +392,48 @@ def run_extractor_backend_probe() -> dict[str, Any]:
         },
         "checks": checks,
     }
+
+
+def sample_pdf_bytes(text: str = "Slice 0285 PDF audit text") -> bytes:
+    text_bytes = text.encode("ascii")
+    stream = b"BT /F1 18 Tf 36 96 Td (" + text_bytes + b") Tj ET"
+    objects = (
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        (
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] "
+            b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"
+        ),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        (
+            b"<< /Length "
+            + str(len(stream)).encode("ascii")
+            + b" >>\nstream\n"
+            + stream
+            + b"\nendstream"
+        ),
+    )
+    pdf = b"%PDF-1.4\n"
+    offsets: list[int] = []
+    for object_number, body in enumerate(objects, start=1):
+        offsets.append(len(pdf))
+        pdf += (
+            f"{object_number} 0 obj\n".encode("ascii")
+            + body
+            + b"\nendobj\n"
+        )
+    startxref = len(pdf)
+    xref_entries = b"".join(
+        f"{offset:010d} 00000 n \n".encode("ascii") for offset in offsets
+    )
+    return (
+        pdf
+        + b"xref\n0 6\n0000000000 65535 f \n"
+        + xref_entries
+        + b"trailer\n<< /Root 1 0 R /Size 6 >>\nstartxref\n"
+        + str(startxref).encode("ascii")
+        + b"\n%%EOF\n"
+    )
 
 
 def content_type_for_probe(source_format: str) -> str:
@@ -437,7 +516,7 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"token_groups={present_count_bool(token_groups)}/{len(token_groups)} "
             f"implemented={gap_summary['implemented_real_extraction_count']} "
             f"gaps={gap_summary['gap_placeholder_count']} "
-            "next=Slice_0285"
+            f"next={next_slice_from_gap_summary(gap_summary)}"
         )
     failed_checks = ",".join(
         key for key, value in evidence["checks"].items() if not value
@@ -451,6 +530,13 @@ def present_count(items: list[dict[str, object]]) -> int:
 
 def present_count_bool(items: Mapping[str, bool]) -> int:
     return sum(1 for value in items.values() if value)
+
+
+def next_slice_from_gap_summary(gap_summary: Mapping[str, object]) -> str | None:
+    next_slices = gap_summary.get("next_slices", [])
+    if not isinstance(next_slices, list) or not next_slices:
+        return None
+    return str(next_slices[0])
 
 
 def read_text(root_dir: Path, absolute_path: Path) -> str:

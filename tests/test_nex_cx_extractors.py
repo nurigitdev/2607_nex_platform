@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import pytest
 
+import pypdf
 from nex_cx.extractors import (
     BINARY_SOURCE_FORMATS,
+    PDF_EXTRACTION_MODE,
     PLACEHOLDER_BINARY_MODE,
     PLACEHOLDER_BINARY_WARNING_PREFIX,
     ExtractionAdapterError,
@@ -13,10 +15,13 @@ from nex_cx.extractors import (
     content_types_for_source_format,
     decode_utf8_source,
     extensions_for_source_format,
+    extract_pdf_markdown,
     extractor_backend_catalog,
     extractor_backend_gap_summary,
     markdown_from_source_text,
     mock_binary_document_markdown,
+    next_slice_for_binary_source_format,
+    _ensure_trailing_newline,
 )
 from nex_cx.ingestion import sha256_bytes
 
@@ -32,6 +37,48 @@ def source(
         content_type=content_type,
         source_bytes=body,
         source_sha256=sha256_bytes(body),
+    )
+
+
+def sample_pdf_bytes(text: str = "Slice 0285 PDF extraction text") -> bytes:
+    text_bytes = text.encode("ascii")
+    stream = b"BT /F1 18 Tf 36 96 Td (" + text_bytes + b") Tj ET"
+    objects = (
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        (
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] "
+            b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"
+        ),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        (
+            b"<< /Length "
+            + str(len(stream)).encode("ascii")
+            + b" >>\nstream\n"
+            + stream
+            + b"\nendstream"
+        ),
+    )
+    pdf = b"%PDF-1.4\n"
+    offsets: list[int] = []
+    for object_number, body in enumerate(objects, start=1):
+        offsets.append(len(pdf))
+        pdf += (
+            f"{object_number} 0 obj\n".encode("ascii")
+            + body
+            + b"\nendobj\n"
+        )
+    startxref = len(pdf)
+    xref_entries = b"".join(
+        f"{offset:010d} 00000 n \n".encode("ascii") for offset in offsets
+    )
+    return (
+        pdf
+        + b"xref\n0 6\n0000000000 65535 f \n"
+        + xref_entries
+        + b"trailer\n<< /Root 1 0 R /Size 6 >>\nstartxref\n"
+        + str(startxref).encode("ascii")
+        + b"\n%%EOF\n"
     )
 
 
@@ -85,24 +132,38 @@ def test_local_mock_extractor_wraps_plain_text() -> None:
     assert output.version == "slice-0072"
 
 
-def test_local_mock_extractor_marks_binary_document_placeholder() -> None:
+def test_local_mock_extractor_extracts_pdf_text() -> None:
     output = LocalMockTextExtractor().extract_markdown(
         source(
             filename="source.pdf",
             content_type="application/pdf",
-            body=b"%PDF-1.7\nprivate bytes",
+            body=sample_pdf_bytes(),
         )
     )
 
     assert output.markdown_text == (
-        "# source.pdf\n\n"
-        "Mock extraction placeholder.\n\n"
-        "- source_format: pdf\n"
-        "- content_type: application/pdf\n"
+        "# source.pdf\n\n## Page 1\n\nSlice 0285 PDF extraction text\n"
     )
+    assert output.mode == PDF_EXTRACTION_MODE
+    assert output.source_format == "pdf"
+    assert output.warnings == []
+
+
+def test_local_mock_extractor_marks_remaining_binary_document_placeholder() -> None:
+    output = LocalMockTextExtractor().extract_markdown(
+        source(
+            filename="source.docx",
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ),
+            body=b"private bytes",
+        )
+    )
+
     assert output.mode == "binary_document_placeholder_to_markdown"
-    assert output.warnings == ["mock_binary_extraction_placeholder:pdf"]
+    assert output.warnings == ["mock_binary_extraction_placeholder:docx"]
     assert "private bytes" not in output.markdown_text
+    assert "Mock extraction placeholder." in output.markdown_text
 
 
 def test_local_mock_extractor_rejects_unsupported_source_type() -> None:
@@ -126,6 +187,59 @@ def test_decode_utf8_source_rejects_non_utf8_text() -> None:
     assert exc.value.error_code == "cx.extractor_source_encoding_unsupported"
 
 
+def test_pdf_extractor_reports_parse_and_empty_text_failures() -> None:
+    with pytest.raises(ExtractionAdapterError) as parse_error:
+        extract_pdf_markdown(
+            source(
+                filename="broken.pdf",
+                content_type="application/pdf",
+                body=b"not a pdf",
+            ),
+            provider="local_mock",
+            version="test",
+        )
+    assert parse_error.value.error_code == "cx.extractor_pdf_parse_failed"
+
+    with pytest.raises(ExtractionAdapterError) as empty_error:
+        extract_pdf_markdown(
+            source(
+                filename="empty.pdf",
+                content_type="application/pdf",
+                body=sample_pdf_bytes(""),
+            ),
+            provider="local_mock",
+            version="test",
+        )
+    assert empty_error.value.error_code == "cx.extractor_pdf_text_unavailable"
+
+
+def test_pdf_extractor_reports_page_text_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class BrokenPage:
+        def extract_text(self) -> str:
+            raise RuntimeError("text extraction failed")
+
+    class BrokenReader:
+        pages = [BrokenPage()]
+
+    monkeypatch.setattr(pypdf, "PdfReader", lambda _: BrokenReader())
+
+    with pytest.raises(ExtractionAdapterError) as page_error:
+        extract_pdf_markdown(
+            source(
+                filename="broken-page.pdf",
+                content_type="application/pdf",
+                body=sample_pdf_bytes(),
+            ),
+            provider="local_mock",
+            version="test",
+        )
+
+    assert page_error.value.error_code == "cx.extractor_pdf_page_text_failed"
+    assert page_error.value.detail.endswith("page 1.")
+
+
 def test_markdown_helpers_are_deterministic() -> None:
     assert markdown_from_source_text("  ", filename="empty.md", content_type="text/markdown") == (
         "# empty.md\n\n"
@@ -142,6 +256,7 @@ def test_markdown_helpers_are_deterministic() -> None:
         ),
         source_format="pptx",
     ).startswith("# deck.pptx\n\nMock extraction placeholder.")
+    assert _ensure_trailing_newline("already done\n") == "already done\n"
 
 
 def test_extractor_backend_catalog_records_current_gaps() -> None:
@@ -153,8 +268,11 @@ def test_extractor_backend_catalog_records_current_gaps() -> None:
     assert by_format["markdown"].current_mode == "markdown_to_markdown"
     assert by_format["plain_text"].real_extraction is True
     assert by_format["plain_text"].current_mode == "plain_text_to_markdown"
+    assert by_format["pdf"].real_extraction is True
+    assert by_format["pdf"].current_mode == PDF_EXTRACTION_MODE
+    assert by_format["pdf"].next_slice is None
 
-    for source_format in BINARY_SOURCE_FORMATS:
+    for source_format in ("docx", "pptx", "xlsx"):
         capability = by_format[source_format]
         assert capability.status == "gap_placeholder"
         assert capability.real_extraction is False
@@ -162,16 +280,20 @@ def test_extractor_backend_catalog_records_current_gaps() -> None:
         assert capability.warning == (
             f"{PLACEHOLDER_BINARY_WARNING_PREFIX}:{source_format}"
         )
-        assert capability.next_slice in {"Slice 0285", "Slice 0286", "Slice 0287"}
+        assert capability.next_slice == {
+            "docx": "Slice 0286",
+            "pptx": "Slice 0287",
+            "xlsx": "Slice 0287",
+        }[source_format]
 
     summary = extractor_backend_gap_summary(catalog)
     assert summary == {
         "schema_version": "cx_extractor_backend_gap_summary.v1",
         "source_format_count": 6,
-        "implemented_real_extraction_count": 2,
-        "gap_placeholder_count": 4,
-        "gap_source_formats": ["pdf", "docx", "pptx", "xlsx"],
-        "next_slices": ["Slice 0285", "Slice 0286", "Slice 0287", "Slice 0287"],
+        "implemented_real_extraction_count": 3,
+        "gap_placeholder_count": 3,
+        "gap_source_formats": ["docx", "pptx", "xlsx"],
+        "next_slices": ["Slice 0286", "Slice 0287", "Slice 0287"],
     }
 
 
@@ -188,6 +310,9 @@ def test_extractor_backend_format_helpers_cover_text_and_unknown_formats() -> No
     )
     assert content_types_for_source_format("unknown") == ()
     assert extensions_for_source_format("markdown") == (".markdown", ".md")
+    assert next_slice_for_binary_source_format("pdf") == "Slice 0285"
+    assert next_slice_for_binary_source_format("docx") == "Slice 0286"
+    assert next_slice_for_binary_source_format("pptx") == "Slice 0287"
     assert extensions_for_source_format("plain_text") == (
         ".csv",
         ".json",

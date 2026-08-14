@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 from typing import Protocol
 
@@ -29,6 +30,7 @@ PLAIN_TEXT_EXTENSIONS = {".csv", ".json", ".log", ".txt", ".xml"}
 TEXT_SOURCE_FORMATS = ("markdown", "plain_text")
 BINARY_SOURCE_FORMATS = ("pdf", "docx", "pptx", "xlsx")
 SOURCE_FORMATS = (*TEXT_SOURCE_FORMATS, *BINARY_SOURCE_FORMATS)
+PDF_EXTRACTION_MODE = "pdf_to_markdown"
 PLACEHOLDER_BINARY_MODE = "binary_document_placeholder_to_markdown"
 PLACEHOLDER_BINARY_WARNING_PREFIX = "mock_binary_extraction_placeholder"
 
@@ -102,6 +104,8 @@ class LocalMockTextExtractor:
                 source_format=source_format,
                 warnings=[],
             )
+        if source_format == "pdf":
+            return extract_pdf_markdown(source, provider=self.provider, version=self.version)
         if source_format in BINARY_SOURCE_FORMATS:
             return ExtractorOutput(
                 markdown_text=mock_binary_document_markdown(
@@ -171,17 +175,10 @@ def extractor_backend_catalog(
             next_slice=None,
         ),
         *(
-            ExtractorBackendCapability(
-                source_format=source_format,
-                current_backend=provider,
-                current_version=version,
-                current_mode=PLACEHOLDER_BINARY_MODE,
-                status="gap_placeholder",
-                real_extraction=False,
-                content_types=content_types_for_source_format(source_format),
-                extensions=extensions_for_source_format(source_format),
-                warning=f"{PLACEHOLDER_BINARY_WARNING_PREFIX}:{source_format}",
-                next_slice=next_slice_for_binary_source_format(source_format),
+            binary_extractor_capability(
+                source_format,
+                provider=provider,
+                version=version,
             )
             for source_format in BINARY_SOURCE_FORMATS
         ),
@@ -242,6 +239,39 @@ def next_slice_for_binary_source_format(source_format: str) -> str:
     return "Slice 0287"
 
 
+def binary_extractor_capability(
+    source_format: str,
+    *,
+    provider: str,
+    version: str,
+) -> ExtractorBackendCapability:
+    if source_format == "pdf":
+        return ExtractorBackendCapability(
+            source_format=source_format,
+            current_backend=provider,
+            current_version=version,
+            current_mode=PDF_EXTRACTION_MODE,
+            status="implemented",
+            real_extraction=True,
+            content_types=content_types_for_source_format(source_format),
+            extensions=extensions_for_source_format(source_format),
+            warning=None,
+            next_slice=None,
+        )
+    return ExtractorBackendCapability(
+        source_format=source_format,
+        current_backend=provider,
+        current_version=version,
+        current_mode=PLACEHOLDER_BINARY_MODE,
+        status="gap_placeholder",
+        real_extraction=False,
+        content_types=content_types_for_source_format(source_format),
+        extensions=extensions_for_source_format(source_format),
+        warning=f"{PLACEHOLDER_BINARY_WARNING_PREFIX}:{source_format}",
+        next_slice=next_slice_for_binary_source_format(source_format),
+    )
+
+
 def decode_utf8_source(source_bytes: bytes) -> str:
     try:
         return source_bytes.decode("utf-8")
@@ -278,6 +308,57 @@ def mock_binary_document_markdown(
         "Mock extraction placeholder.\n\n"
         f"- source_format: {source_format}\n"
         f"- content_type: {content_type}\n"
+    )
+
+
+def extract_pdf_markdown(
+    source: ExtractorInput,
+    *,
+    provider: str,
+    version: str,
+) -> ExtractorOutput:
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(BytesIO(source.source_bytes))
+    except Exception as exc:
+        raise ExtractionAdapterError(
+            status_code=422,
+            error_code="cx.extractor_pdf_parse_failed",
+            detail="PDF source could not be parsed.",
+        ) from exc
+
+    page_sections: list[str] = []
+    warnings: list[str] = []
+    for page_number, page in enumerate(reader.pages, start=1):
+        try:
+            page_text = page.extract_text() or ""
+        except Exception as exc:
+            raise ExtractionAdapterError(
+                status_code=422,
+                error_code="cx.extractor_pdf_page_text_failed",
+                detail=f"PDF page text extraction failed: page {page_number}.",
+            ) from exc
+        normalized = page_text.strip()
+        if not normalized:
+            warnings.append(f"pdf_page_text_empty:{page_number}")
+            continue
+        page_sections.append(f"## Page {page_number}\n\n{normalized}")
+    if not page_sections:
+        raise ExtractionAdapterError(
+            status_code=422,
+            error_code="cx.extractor_pdf_text_unavailable",
+            detail="PDF source did not contain extractable text.",
+        )
+    return ExtractorOutput(
+        markdown_text=_ensure_trailing_newline(
+            f"# {source.filename}\n\n" + "\n\n".join(page_sections)
+        ),
+        provider=provider,
+        mode=PDF_EXTRACTION_MODE,
+        version=version,
+        source_format="pdf",
+        warnings=warnings,
     )
 
 

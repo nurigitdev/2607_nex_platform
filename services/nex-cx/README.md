@@ -86,10 +86,14 @@ Internal persistence boundary:
   `nex_cx.extractors` now exposes an explicit backend catalog: Markdown and
   plain text are implemented by the local adapter, while PDF, DOCX, PPTX, and
   XLSX remain recognized placeholder gaps for Slice 0285-0287.
+- Slice 0285 closes the PDF gap with the local `pypdf` adapter. PDF uploads now
+  extract page text into Markdown through the same `TextExtractor` boundary,
+  while DOCX, PPTX, and XLSX remain explicit placeholder gaps for Slice 0286 and
+  Slice 0287.
 - Text extraction runs through the `nex_cx.extractors` adapter boundary. The
   local mock adapter performs real UTF-8 Markdown/plain-text conversion and
-  emits explicit placeholders with warnings for PDF, DOCX, PPTX, and XLSX until
-  real extractor backends are wired.
+  PDF page-text extraction, and emits explicit placeholders with warnings for
+  DOCX, PPTX, and XLSX until real extractor backends are wired.
 - Document processing can be run as one idempotent pipeline: extraction,
   chunking, lexical index, embedding index, summary, and summary embedding.
   Existing outputs are recorded as `SKIPPED`; new outputs are recorded as
