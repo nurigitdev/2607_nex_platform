@@ -397,6 +397,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0291`](slices/0291_protected_remote_provider_live_smoke_evidence.md) | `S30-001` Protected remote provider live smoke evidence. |
 | [`Slice 0292`](slices/0292_openai_compatible_provider_config_profile_hardening.md) | `S30-002` OpenAI-compatible provider config/profile hardening. |
 | [`Slice 0293`](slices/0293_cx_processing_pipeline_remote_embedding_postgresql_smoke.md) | `S30-003` CX processing pipeline remote embedding PostgreSQL smoke evidence. |
+| [`Slice 0294`](slices/0294_cx_retrieval_remote_reranker_postgresql_smoke.md) | `S30-004` CX retrieval remote reranker PostgreSQL smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

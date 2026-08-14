@@ -312,6 +312,9 @@ Grounded generation validation:
   `scripts/smoke/run_cx_retrieval_postgres_smoke.py`. It is skipped by default
   and only writes to the CX test database when
   `NEX_CX_RETRIEVAL_POSTGRES_SMOKE=1` is set with the `test` profile.
+  Set `NEX_CX_RETRIEVAL_POSTGRES_REMOTE_RERANKER=1` with the canonical
+  `NEX_MO_REMOTE_RERANKER_*` settings to persist an `APPLIED` rerank state and
+  live reranker score through the same PostgreSQL smoke path.
 - CX upload ownership PostgreSQL smoke evidence is available through
   `scripts/smoke/run_cx_upload_ownership_postgres_smoke.py`. It is skipped by
   default and only writes to the CX test database when

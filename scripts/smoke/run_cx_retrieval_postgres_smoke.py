@@ -7,7 +7,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from sqlalchemy import text
@@ -17,10 +17,21 @@ ROOT = Path(__file__).resolve().parents[2]
 SHARED_PATH = ROOT / "services" / "_shared"
 DB_SCRIPT_PATH = ROOT / "scripts" / "db"
 CX_PATH = ROOT / "services" / "nex-cx"
+MO_PATH = ROOT / "services" / "nex-mo"
+SMOKE_PATH = ROOT / "scripts" / "smoke"
 sys.path.insert(0, str(SHARED_PATH))
 sys.path.insert(0, str(DB_SCRIPT_PATH))
 sys.path.insert(0, str(CX_PATH))
+sys.path.insert(0, str(MO_PATH))
+sys.path.insert(0, str(SMOKE_PATH))
 
+from nex_mo.providers import ProviderRouteError  # noqa: E402
+from nex_mo.remote_provider import (  # noqa: E402
+    GENERIC_RERANK_SHAPE,
+    build_remote_reranker_execution_config,
+    execute_remote_rerank_request,
+    expected_models_from_env,
+)
 from nex_cx.chunking import store_chunk_set  # noqa: E402
 from nex_cx.ingestion import (  # noqa: E402
     ContentIngestionStore,
@@ -41,6 +52,9 @@ from run_migrations import (  # noqa: E402
     service_database_env,
     service_database_url,
 )
+from run_protected_dgx_live_profile import (  # noqa: E402
+    protected_dgx_vllm_profile_defaults,
+)
 
 
 SMOKE_ENV = "NEX_CX_RETRIEVAL_POSTGRES_SMOKE"
@@ -48,6 +62,13 @@ SMOKE_PROFILE_ENV = "NEX_CX_RETRIEVAL_POSTGRES_SMOKE_PROFILE"
 DEFAULT_PROFILE = "test"
 SERVICE_ID = "nex-cx"
 SCHEMA_VERSION = "cx_retrieval_postgres_smoke.v1"
+REMOTE_RERANKER_ENV = "NEX_CX_RETRIEVAL_POSTGRES_REMOTE_RERANKER"
+REMOTE_RERANKER_ALIAS = "mock-reranker-default"
+PROTECTED_RERANKER_ENV_KEYS = (
+    "NEX_MO_REMOTE_RERANKER_URL",
+    "NEX_MO_REMOTE_RERANKER_API_KEY",
+    "NEX_MO_LIVE_RERANKER_HEALTH_URL",
+)
 
 
 def run_cx_retrieval_postgres_smoke(
@@ -73,8 +94,11 @@ def run_cx_retrieval_postgres_smoke(
         database_env = service_database_env(SERVICE_ID, profile=profile)
         database_url = service_database_url(SERVICE_ID, profile=profile, environ=env)
         run_service_migrations(SERVICE_ID, database_url=database_url, profile=profile)
-        execution = _execute_retrieval_repository_smoke(database_url=database_url)
-        return {
+        execution = _execute_retrieval_repository_smoke(
+            database_url=database_url,
+            runtime_environ=env,
+        )
+        evidence = {
             "smoke_schema_version": SCHEMA_VERSION,
             "status": "PASS",
             "service_id": SERVICE_ID,
@@ -83,13 +107,21 @@ def run_cx_retrieval_postgres_smoke(
             "redacted_database_url": redact_database_url(database_url),
             **execution,
         }
+        assert_retrieval_smoke_evidence_redacted(evidence, env)
+        return evidence
     except (MigrationError, ValueError) as exc:
         return _failure("configuration_invalid", str(exc), profile=profile)
     except Exception as exc:
         return _failure("execution_failed", exc.__class__.__name__, profile=profile)
 
 
-def _execute_retrieval_repository_smoke(*, database_url: str) -> dict[str, object]:
+def _execute_retrieval_repository_smoke(
+    *,
+    database_url: str,
+    runtime_environ: dict[str, str] | None = None,
+    rerank_requester: Callable[..., Any] | None = None,
+) -> dict[str, object]:
+    env = runtime_environ or {}
     request_id = str(uuid4())
     trace_id = uuid4().hex
     engine = build_engine(database_url)
@@ -142,6 +174,12 @@ def _execute_retrieval_repository_smoke(*, database_url: str) -> dict[str, objec
                 request_id=request_id,
                 trace_id=trace_id,
             )
+            reranker_observation = build_retrieval_reranker_observation(
+                env,
+                query_text=query_text,
+                documents=[evidence_text],
+                requester=rerank_requester,
+            )
             package = _retrieval_package(
                 document_id=document_id,
                 chunk=chunk_set["chunks"][0],
@@ -149,6 +187,7 @@ def _execute_retrieval_repository_smoke(*, database_url: str) -> dict[str, objec
                 trace_id=trace_id,
                 query_text=query_text,
                 evidence_text=evidence_text,
+                reranker_observation=reranker_observation,
             )
             store.save_retrieval_package(package)
             retrieval_package_id = str(package["retrieval_package_id"])
@@ -163,6 +202,11 @@ def _execute_retrieval_repository_smoke(*, database_url: str) -> dict[str, objec
                 engine,
                 retrieval_package_id=retrieval_package_id,
             )
+            expected_final_score = (
+                float(reranker_observation["top_score"])
+                if reranker_observation["state"] == "APPLIED"
+                else 0.9
+            )
             checks = {
                 "package_persisted": (
                     stored["retrieval_package_id"] == retrieval_package_id
@@ -175,7 +219,11 @@ def _execute_retrieval_repository_smoke(*, database_url: str) -> dict[str, objec
                 ),
                 "evidence_hash_persisted": stored["evidence_text_sha256"]
                 == _sha256_text(evidence_text),
-                "final_score_persisted": stored["final_score"] == 0.9,
+                "final_score_persisted": stored["final_score"] == expected_final_score,
+                "rerank_state_persisted": stored["rerank_state"]
+                == reranker_observation["state"],
+                "ranker_mix_persisted": stored["ranker_mix"]
+                == package["score_summary"]["ranker_mix"],
                 "repository_round_trip": repository_round_trip is not None
                 and repository_round_trip["evidence_count"] == 1,
                 "raw_payload_absent": (
@@ -184,12 +232,25 @@ def _execute_retrieval_repository_smoke(*, database_url: str) -> dict[str, objec
                     and source_text not in dump
                 ),
             }
+            if reranker_observation["state"] == "APPLIED":
+                checks["remote_rerank_score_persisted"] = (
+                    stored["final_score"] == reranker_observation["top_score"]
+                )
+                checks["remote_rerank_call_observed"] = (
+                    reranker_observation["result_count"] >= 1
+                )
             if not all(checks.values()):
                 raise RuntimeError("CX retrieval PostgreSQL smoke checks failed")
             return {
                 "retrieval_package_id": retrieval_package_id,
                 "document_id": document_id,
                 "evidence_count": stored["stored_evidence_count"],
+                "reranker": reranker_observation,
+                "score_summary": {
+                    "rerank_state": stored["rerank_state"],
+                    "ranker_mix": stored["ranker_mix"],
+                    "final_score": stored["final_score"],
+                },
                 "checks": checks,
             }
     finally:
@@ -209,7 +270,17 @@ def _retrieval_package(
     trace_id: str,
     query_text: str,
     evidence_text: str,
+    reranker_observation: dict[str, Any],
 ) -> dict[str, object]:
+    rerank_applied = reranker_observation["state"] == "APPLIED"
+    final_score = (
+        float(reranker_observation["top_score"]) if rerank_applied else 0.9
+    )
+    ranker_mix = (
+        "weighted_rrf_vector_bm25_with_rerank"
+        if rerank_applied
+        else "weighted_rrf_vector_bm25_v1"
+    )
     package_hash = _sha256_json(
         {
             "document_id": document_id,
@@ -238,8 +309,9 @@ def _retrieval_package(
                 "policy_version": "2026-08-09",
                 "policy_hash": _sha256_json({"policy": "weighted_rrf_v1"}),
                 "policy_source": "ag_registry_active",
-                "ranker_mix": "weighted_rrf_vector_bm25_v1",
-            }
+                "ranker_mix": ranker_mix,
+            },
+            "reranker_profile": reranker_observation["profile"],
         },
         "permission_snapshot": {
             "actor_type": "service",
@@ -266,7 +338,8 @@ def _retrieval_package(
                 "scores": {
                     "bm25_score": 1.0,
                     "vector_score": 0.8,
-                    "final_score": 0.9,
+                    "rerank_score": final_score if rerank_applied else None,
+                    "final_score": final_score,
                 },
                 "matched_terms": ["retrieval", "smoke"],
                 "permission_result": {
@@ -283,16 +356,138 @@ def _retrieval_package(
             "source_types": ["cx.document"],
         },
         "score_summary": {
-            "best_score": 0.9,
+            "best_score": final_score,
             "score_spread": 0.0,
-            "ranker_mix": "weighted_rrf_vector_bm25_v1",
-            "rerank_state": "NOT_APPLIED",
+            "ranker_mix": ranker_mix,
+            "rerank_state": reranker_observation["state"],
         },
         "warnings": [],
         "no_answer_reason": None,
         "created_at": "2026-08-09T00:00:00Z",
         "updated_at": "2026-08-09T00:00:00Z",
     }
+
+
+def build_retrieval_reranker_observation(
+    env: dict[str, str],
+    *,
+    query_text: str,
+    documents: list[str],
+    requester: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    if env.get(REMOTE_RERANKER_ENV) != "1":
+        return {
+            "mode": "static",
+            "state": "NOT_APPLIED",
+            "result_count": 0,
+            "top_index": None,
+            "top_score": None,
+            "profile": {
+                "status": "NOT_APPLIED",
+                "configured_alias": None,
+                "provider_alias": None,
+                "model_revision": None,
+                "deployment_id": None,
+            },
+        }
+
+    remote_env = {
+        **protected_dgx_vllm_profile_defaults(),
+        **env,
+        "NEX_MO_PROVIDER_MODE": "live",
+    }
+    issues = remote_reranker_config_issues(remote_env)
+    if issues:
+        issue_codes = ",".join(str(issue["error_code"]) for issue in issues)
+        raise ValueError(f"remote reranker config invalid: {issue_codes}")
+
+    config = build_remote_reranker_execution_config(remote_env)
+    try:
+        response = execute_remote_rerank_request(
+            {
+                "alias": REMOTE_RERANKER_ALIAS,
+                "query": query_text,
+                "documents": documents,
+                "top_n": 1,
+            },
+            environ=remote_env,
+            requester=requester,
+        )
+    except ProviderRouteError as exc:
+        raise RuntimeError("Remote reranker provider request failed.") from exc
+
+    results = response.get("results")
+    if not isinstance(results, list) or not results:
+        raise RuntimeError("Remote reranker provider returned no results.")
+    top = results[0]
+    if not isinstance(top, dict):
+        raise RuntimeError("Remote reranker top result was invalid.")
+    top_score = top.get("score")
+    if isinstance(top_score, bool) or not isinstance(top_score, int | float):
+        raise RuntimeError("Remote reranker top score was invalid.")
+    top_index = top.get("index")
+    return {
+        "mode": "remote_openai_compatible",
+        "state": "APPLIED",
+        "config": config.to_safe_summary(),
+        "result_count": len(results),
+        "top_index": top_index if isinstance(top_index, int) else None,
+        "top_score": float(top_score),
+        "profile": {
+            "status": "APPLIED",
+            "configured_alias": REMOTE_RERANKER_ALIAS,
+            "provider_alias": response["alias"],
+            "model_revision": response["model_revision"],
+            "deployment_id": response["deployment_id"],
+            "result_count": len(results),
+        },
+    }
+
+
+def remote_reranker_config_issues(env: dict[str, str]) -> list[dict[str, object]]:
+    try:
+        config = build_remote_reranker_execution_config(env)
+    except ValueError as exc:
+        return [
+            {
+                "capability": "reranking",
+                "error_code": "remote_reranker_timeout_invalid",
+                "detail": str(exc),
+            }
+        ]
+
+    issues: list[dict[str, object]] = []
+    if not config.configured:
+        issues.append(
+            {
+                "capability": "reranking",
+                "error_code": "remote_reranker_endpoint_not_configured",
+                "endpoint_env": config.endpoint_env,
+            }
+        )
+    if config.request_shape != GENERIC_RERANK_SHAPE:
+        issues.append(
+            {
+                "capability": "reranking",
+                "error_code": "remote_reranker_request_shape_mismatch",
+                "request_shape": config.request_shape,
+                "expected_shape": GENERIC_RERANK_SHAPE,
+            }
+        )
+    expected_models = expected_models_from_env(
+        env.get("NEX_MO_LIVE_EXPECTED_RERANKER_MODELS"),
+        ("Qwen3-Reranker-0.6B",),
+    )
+    if expected_models and config.model_name not in expected_models:
+        issues.append(
+            {
+                "capability": "reranking",
+                "error_code": "remote_reranker_expected_model_mismatch",
+                "model_name": config.model_name,
+                "expected_models": list(expected_models),
+            }
+        )
+    return issues
 
 
 def _read_stored_retrieval_package(
@@ -312,6 +507,9 @@ def _read_stored_retrieval_package(
                     evidence.evidence_text_sha256,
                     evidence.evidence_text_preview,
                     evidence.final_score,
+                    package.rerank_state,
+                    package.ranker_mix,
+                    package.score_summary,
                     count(evidence.evidence_id) OVER (
                         PARTITION BY package.retrieval_package_id
                     ) AS stored_evidence_count
@@ -334,6 +532,9 @@ def _read_stored_retrieval_package(
         "evidence_text_sha256": row["evidence_text_sha256"],
         "evidence_text_preview": row["evidence_text_preview"],
         "final_score": float(row["final_score"] or 0.0),
+        "rerank_state": row["rerank_state"],
+        "ranker_mix": row["ranker_mix"],
+        "score_summary": row["score_summary"],
         "stored_evidence_count": int(row["stored_evidence_count"] or 0),
     }
 
@@ -450,9 +651,16 @@ def summary_line(evidence: dict[str, object]) -> str:
     if evidence["status"] == "SKIPPED":
         return f"cx_retrieval_postgres_smoke=skipped reason={SMOKE_ENV}"
     if evidence["status"] == "PASS":
+        score_summary = evidence.get("score_summary", {})
+        rerank_state = (
+            score_summary.get("rerank_state", "UNKNOWN")
+            if isinstance(score_summary, dict)
+            else "UNKNOWN"
+        )
         return (
             "cx_retrieval_postgres_smoke=pass "
-            f"service={evidence['service_id']} db_env={evidence['database_env']}"
+            f"service={evidence['service_id']} db_env={evidence['database_env']} "
+            f"rerank={rerank_state}"
         )
     return (
         "cx_retrieval_postgres_smoke=fail "
@@ -475,6 +683,20 @@ def _sha256_json(value: object) -> str:
             separators=(",", ":"),
         )
     )
+
+
+def assert_retrieval_smoke_evidence_redacted(
+    evidence: object,
+    env: dict[str, str],
+) -> None:
+    serialized = json.dumps(evidence, ensure_ascii=False, sort_keys=True, default=str)
+    for key in PROTECTED_RERANKER_ENV_KEYS:
+        value = env.get(key)
+        if value and len(value) >= 8 and value in serialized:
+            raise ValueError(
+                "CX retrieval PostgreSQL smoke evidence contains unredacted "
+                f"environment value: {key}"
+            )
 
 
 def build_parser() -> argparse.ArgumentParser:

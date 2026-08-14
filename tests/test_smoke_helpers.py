@@ -3012,10 +3012,12 @@ def test_cx_retrieval_postgres_smoke_reports_pass_without_leaking_secret(
     monkeypatch.setattr(
         cx_retrieval_smoke,
         "_execute_retrieval_repository_smoke",
-        lambda database_url: {
+        lambda database_url, **kwargs: {
             "retrieval_package_id": "retrieval-001",
             "document_id": "document-001",
             "evidence_count": 1,
+            "score_summary": {"rerank_state": "NOT_APPLIED"},
+            "reranker": {"mode": "static", "state": "NOT_APPLIED"},
             "checks": {
                 "package_persisted": True,
                 "evidence_persisted": True,
@@ -3023,6 +3025,8 @@ def test_cx_retrieval_postgres_smoke_reports_pass_without_leaking_secret(
                 "query_preview_bounded": True,
                 "evidence_hash_persisted": True,
                 "final_score_persisted": True,
+                "rerank_state_persisted": True,
+                "ranker_mix_persisted": True,
                 "repository_round_trip": True,
                 "raw_payload_absent": True,
             },
@@ -3040,7 +3044,8 @@ def test_cx_retrieval_postgres_smoke_reports_pass_without_leaking_secret(
     assert "secret" not in str(evidence)
     assert migration_calls == [("nex-cx", "test")]
     assert cx_retrieval_smoke.summary_line(evidence) == (
-        "cx_retrieval_postgres_smoke=pass service=nex-cx db_env=nex-cx:test:env"
+        "cx_retrieval_postgres_smoke=pass service=nex-cx "
+        "db_env=nex-cx:test:env rerank=NOT_APPLIED"
     )
 
 
@@ -3108,10 +3113,14 @@ def test_cx_retrieval_postgres_smoke_execute_with_sqlite_fixture(tmp_path) -> No
         "query_preview_bounded": True,
         "evidence_hash_persisted": True,
         "final_score_persisted": True,
+        "rerank_state_persisted": True,
+        "ranker_mix_persisted": True,
         "repository_round_trip": True,
         "raw_payload_absent": True,
     }
     assert evidence["evidence_count"] == 1
+    assert evidence["reranker"]["state"] == "NOT_APPLIED"
+    assert evidence["score_summary"]["rerank_state"] == "NOT_APPLIED"
     with engine.begin() as connection:
         remaining_packages = connection.execute(
             text("SELECT count(*) FROM cx_retrieval_packages")
@@ -3131,7 +3140,105 @@ def test_cx_retrieval_postgres_smoke_execute_with_sqlite_fixture(tmp_path) -> No
     assert remaining_sources == 0
 
 
-def test_cx_retrieval_postgres_smoke_helpers_cover_error_edges(tmp_path) -> None:
+def test_cx_retrieval_postgres_smoke_remote_reranker_fake_route_path(
+    tmp_path: Path,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'cx-retrieval-remote.sqlite'}"
+    engine = cx_retrieval_smoke.build_engine(database_url)
+    _create_sqlite_cx_content_retrieval_tables(engine)
+    calls: list[dict[str, object]] = []
+
+    class FakeRerankerResponse:
+        status_code = 200
+        is_error = False
+
+        def json(self) -> dict[str, object]:
+            return {
+                "results": [
+                    {
+                        "index": 0,
+                        "relevance_score": 0.97,
+                    }
+                ],
+                "usage": {"prompt_tokens": 9, "total_tokens": 9},
+            }
+
+    def requester(method: str, url: str, **kwargs: object) -> object:
+        calls.append({"method": method, "url": url, **kwargs})
+        assert kwargs["json"]["model"] == "Qwen3-Reranker-0.6B"
+        assert kwargs["json"]["top_n"] == 1
+        return FakeRerankerResponse()
+
+    evidence = cx_retrieval_smoke._execute_retrieval_repository_smoke(
+        database_url=database_url,
+        runtime_environ={
+            cx_retrieval_smoke.REMOTE_RERANKER_ENV: "1",
+            "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9113/v1/rerank",
+            "NEX_MO_REMOTE_RERANKER_API_KEY": "reranker-secret",
+            "NEX_MO_REMOTE_RERANKER_MODEL": "Qwen3-Reranker-0.6B",
+            "NEX_MO_LIVE_EXPECTED_RERANKER_MODELS": "Qwen3-Reranker-0.6B",
+        },
+        rerank_requester=requester,
+    )
+    serialized = json.dumps(evidence, ensure_ascii=False)
+
+    assert all(evidence["checks"].values())
+    assert evidence["reranker"]["mode"] == "remote_openai_compatible"
+    assert evidence["reranker"]["state"] == "APPLIED"
+    assert evidence["reranker"]["top_score"] == 0.97
+    assert evidence["score_summary"]["rerank_state"] == "APPLIED"
+    assert evidence["score_summary"]["ranker_mix"] == (
+        "weighted_rrf_vector_bm25_with_rerank"
+    )
+    assert evidence["score_summary"]["final_score"] == 0.97
+    assert calls[0]["headers"]["Authorization"] == "Bearer reranker-secret"
+    assert "dgx.local" not in serialized
+    assert "reranker-secret" not in serialized
+
+
+def test_cx_retrieval_postgres_smoke_check_failure_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'cx-retrieval-check-fail.sqlite'}"
+    engine = cx_retrieval_smoke.build_engine(database_url)
+    _create_sqlite_cx_content_retrieval_tables(engine)
+
+    def mismatched_stored_package(
+        engine: object,
+        *,
+        retrieval_package_id: str,
+    ) -> dict[str, object]:
+        return {
+            "retrieval_package_id": retrieval_package_id,
+            "query_text_sha256": "wrong",
+            "query_text_preview": "preview",
+            "evidence_count": 1,
+            "evidence_text_sha256": "wrong",
+            "evidence_text_preview": "preview",
+            "final_score": 0.0,
+            "rerank_state": "NOT_APPLIED",
+            "ranker_mix": "weighted_rrf_vector_bm25_v1",
+            "score_summary": "{}",
+            "stored_evidence_count": 1,
+        }
+
+    monkeypatch.setattr(
+        cx_retrieval_smoke,
+        "_read_stored_retrieval_package",
+        mismatched_stored_package,
+    )
+
+    with pytest.raises(RuntimeError, match="checks failed"):
+        cx_retrieval_smoke._execute_retrieval_repository_smoke(
+            database_url=database_url,
+        )
+
+
+def test_cx_retrieval_postgres_smoke_helpers_cover_error_edges(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     assert cx_retrieval_smoke.summary_line(
         {
             "smoke_schema_version": "cx_retrieval_postgres_smoke.v1",
@@ -3164,6 +3271,79 @@ def test_cx_retrieval_postgres_smoke_helpers_cover_error_edges(tmp_path) -> None
         document_id=None,
         source_file_id=None,
     )
+    assert cx_retrieval_smoke.remote_reranker_config_issues(
+        {
+            "NEX_MO_REMOTE_RERANKER_URL": "http://reranker.local/v1/rerank",
+            "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE": "nex_pcx_rerank_v1",
+            "NEX_MO_REMOTE_RERANKER_MODEL": "Qwen3-Reranker-0.6B",
+        }
+    ) == [
+        {
+            "capability": "reranking",
+            "error_code": "remote_reranker_request_shape_mismatch",
+            "request_shape": "nex_pcx_rerank_v1",
+            "expected_shape": "rerank",
+        }
+    ]
+    assert cx_retrieval_smoke.remote_reranker_config_issues(
+        {"NEX_MO_LIVE_TIMEOUT_SECONDS": "0"}
+    )[0]["error_code"] == "remote_reranker_timeout_invalid"
+    assert cx_retrieval_smoke.remote_reranker_config_issues(
+        {
+            "NEX_MO_REMOTE_RERANKER_URL": "http://reranker.local/v1/rerank",
+            "NEX_MO_REMOTE_RERANKER_MODEL": "wrong-model",
+            "NEX_MO_LIVE_EXPECTED_RERANKER_MODELS": "Qwen3-Reranker-0.6B",
+        }
+    )[0]["error_code"] == "remote_reranker_expected_model_mismatch"
+    with pytest.raises(ValueError, match="remote_reranker_endpoint_not_configured"):
+        cx_retrieval_smoke.build_retrieval_reranker_observation(
+            {cx_retrieval_smoke.REMOTE_RERANKER_ENV: "1"},
+            query_text="query",
+            documents=["document"],
+        )
+    with pytest.raises(ValueError, match="unredacted"):
+        cx_retrieval_smoke.assert_retrieval_smoke_evidence_redacted(
+            {"leak": "http://reranker.local/v1/rerank"},
+            {"NEX_MO_REMOTE_RERANKER_URL": "http://reranker.local/v1/rerank"},
+        )
+
+    remote_env = {
+        cx_retrieval_smoke.REMOTE_RERANKER_ENV: "1",
+        "NEX_MO_REMOTE_RERANKER_URL": "http://reranker.local/v1/rerank",
+        "NEX_MO_REMOTE_RERANKER_MODEL": "Qwen3-Reranker-0.6B",
+    }
+
+    class FailingRerankerResponse:
+        status_code = 503
+        is_error = True
+
+        def json(self) -> dict[str, object]:
+            return {}
+
+    with pytest.raises(RuntimeError, match="provider request failed"):
+        cx_retrieval_smoke.build_retrieval_reranker_observation(
+            remote_env,
+            query_text="query",
+            documents=["document"],
+            requester=lambda *args, **kwargs: FailingRerankerResponse(),
+        )
+
+    for invalid_response, expected_detail in [
+        ({"results": []}, "returned no results"),
+        ({"results": ["bad"]}, "top result was invalid"),
+        ({"results": [{"score": "bad"}]}, "top score was invalid"),
+    ]:
+        monkeypatch.setattr(
+            cx_retrieval_smoke,
+            "execute_remote_rerank_request",
+            lambda *args, _response=invalid_response, **kwargs: _response,
+        )
+        with pytest.raises(RuntimeError, match=expected_detail):
+            cx_retrieval_smoke.build_retrieval_reranker_observation(
+                remote_env,
+                query_text="query",
+                documents=["document"],
+            )
 
 
 def test_cx_retrieval_postgres_smoke_main_prints_summary_and_full_evidence(
