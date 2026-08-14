@@ -30,6 +30,9 @@ PLAIN_TEXT_EXTENSIONS = {".csv", ".json", ".log", ".txt", ".xml"}
 TEXT_SOURCE_FORMATS = ("markdown", "plain_text")
 BINARY_SOURCE_FORMATS = ("pdf", "docx", "pptx", "xlsx")
 SOURCE_FORMATS = (*TEXT_SOURCE_FORMATS, *BINARY_SOURCE_FORMATS)
+EXTRACTED_MARKDOWN_NORMALIZATION_SCHEMA_VERSION = (
+    "cx_extracted_markdown_normalization.v1"
+)
 PDF_EXTRACTION_MODE = "pdf_to_markdown"
 DOCX_EXTRACTION_MODE = "docx_to_markdown"
 PPTX_EXTRACTION_MODE = "pptx_to_markdown"
@@ -258,6 +261,163 @@ def extraction_mode_for_binary_source_format(source_format: str) -> str:
         "pptx": PPTX_EXTRACTION_MODE,
         "xlsx": XLSX_EXTRACTION_MODE,
     }[source_format]
+
+
+def expected_extraction_mode_for_source_format(source_format: str) -> str | None:
+    if source_format == "markdown":
+        return "markdown_to_markdown"
+    if source_format == "plain_text":
+        return "plain_text_to_markdown"
+    if source_format in BINARY_SOURCE_FORMATS:
+        return extraction_mode_for_binary_source_format(source_format)
+    return None
+
+
+def normalize_extracted_markdown(markdown_text: str) -> str:
+    normalized = markdown_text.replace("\r\n", "\n").replace("\r", "\n")
+    normalized = "\n".join(line.rstrip(" \t") for line in normalized.split("\n"))
+    return _ensure_trailing_newline(normalized)
+
+
+def normalize_extractor_output(output: ExtractorOutput) -> ExtractorOutput:
+    normalized_markdown = normalize_extracted_markdown(output.markdown_text)
+    if normalized_markdown == output.markdown_text:
+        return output
+    return ExtractorOutput(
+        markdown_text=normalized_markdown,
+        provider=output.provider,
+        mode=output.mode,
+        version=output.version,
+        source_format=output.source_format,
+        warnings=list(output.warnings),
+    )
+
+
+def build_extracted_markdown_normalization_summary(
+    output: ExtractorOutput,
+) -> dict[str, object]:
+    lines = output.markdown_text.splitlines()
+    title_present = output.markdown_text.startswith("# ")
+    heading_count = sum(1 for line in lines if is_markdown_heading_line(line))
+    table_count = count_markdown_tables(lines)
+    required_heading = required_section_heading_for_source_format(output.source_format)
+    required_heading_present = (
+        any(line.startswith(required_heading) for line in lines)
+        if required_heading is not None
+        else False
+    )
+    summary: dict[str, object] = {
+        "normalization_schema_version": (
+            EXTRACTED_MARKDOWN_NORMALIZATION_SCHEMA_VERSION
+        ),
+        "source_format": output.source_format,
+        "line_endings": "lf" if "\r" not in output.markdown_text else "mixed",
+        "final_newline": output.markdown_text.endswith("\n"),
+        "trailing_whitespace_present": has_trailing_whitespace(lines),
+        "title_present": title_present,
+        "required_section_heading": required_heading_name(output.source_format),
+        "required_section_heading_present": required_heading_present,
+        "heading_count": heading_count,
+        "table_count": table_count,
+        "line_count": len(lines),
+        "char_count": len(output.markdown_text),
+        "warning_count": len(output.warnings),
+        "contract_status": "valid",
+    }
+    validate_extracted_markdown_contract(output, summary)
+    return summary
+
+
+def validate_extracted_markdown_contract(
+    output: ExtractorOutput,
+    summary: dict[str, object] | None = None,
+) -> None:
+    computed = (
+        summary
+        if summary is not None
+        else build_extracted_markdown_normalization_summary(output)
+    )
+    if output.source_format not in SOURCE_FORMATS:
+        raise_extracted_markdown_contract_error(
+            f"unsupported source_format: {output.source_format}"
+        )
+    expected_mode = expected_extraction_mode_for_source_format(output.source_format)
+    if expected_mode is not None and output.mode != expected_mode:
+        raise_extracted_markdown_contract_error(
+            f"mode {output.mode} does not match source_format {output.source_format}"
+        )
+    if not str(output.provider).strip():
+        raise_extracted_markdown_contract_error("provider must be a non-empty string")
+    if not str(output.version).strip():
+        raise_extracted_markdown_contract_error("version must be a non-empty string")
+    if not output.markdown_text.endswith("\n"):
+        raise_extracted_markdown_contract_error("final newline is required")
+    if "\r" in output.markdown_text:
+        raise_extracted_markdown_contract_error("line endings must be LF")
+    if computed["trailing_whitespace_present"] is True:
+        raise_extracted_markdown_contract_error(
+            "trailing spaces and tabs are not allowed"
+        )
+    if output.source_format in ("plain_text", *BINARY_SOURCE_FORMATS) and (
+        computed["title_present"] is not True
+    ):
+        raise_extracted_markdown_contract_error(
+            "plain text and binary extraction output must start with an H1 title"
+        )
+    required_heading = required_section_heading_for_source_format(output.source_format)
+    if required_heading is not None and (
+        computed["required_section_heading_present"] is not True
+    ):
+        raise_extracted_markdown_contract_error(
+            f"{output.source_format} output must include {required_heading.strip()}"
+        )
+    if any(not warning.strip() for warning in output.warnings):
+        raise_extracted_markdown_contract_error(
+            "warnings must be non-empty strings when present"
+        )
+
+
+def required_section_heading_for_source_format(source_format: str) -> str | None:
+    return {
+        "pdf": "## Page ",
+        "pptx": "## Slide ",
+        "xlsx": "## Sheet ",
+    }.get(source_format)
+
+
+def required_heading_name(source_format: str) -> str:
+    return {
+        "pdf": "page",
+        "pptx": "slide",
+        "xlsx": "sheet",
+    }.get(source_format, "none")
+
+
+def is_markdown_heading_line(line: str) -> bool:
+    marker_length = len(line) - len(line.lstrip("#"))
+    return 1 <= marker_length <= 6 and line[marker_length : marker_length + 1] == " "
+
+
+def count_markdown_tables(lines: list[str]) -> int:
+    return sum(
+        1
+        for index, line in enumerate(lines[:-1])
+        if line.startswith("| ")
+        and line.endswith(" |")
+        and lines[index + 1].startswith("| ---")
+    )
+
+
+def has_trailing_whitespace(lines: list[str]) -> bool:
+    return any(line.endswith((" ", "\t")) for line in lines)
+
+
+def raise_extracted_markdown_contract_error(detail: str) -> None:
+    raise ExtractionAdapterError(
+        status_code=500,
+        error_code="cx.extractor_markdown_contract_invalid",
+        detail=f"Extracted Markdown contract violation: {detail}.",
+    )
 
 
 def decode_utf8_source(source_bytes: bytes) -> str:

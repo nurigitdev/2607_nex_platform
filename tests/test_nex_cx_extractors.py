@@ -12,12 +12,15 @@ from pptx.util import Inches
 from nex_cx.extractors import (
     BINARY_SOURCE_FORMATS,
     DOCX_EXTRACTION_MODE,
+    EXTRACTED_MARKDOWN_NORMALIZATION_SCHEMA_VERSION,
     PDF_EXTRACTION_MODE,
     PPTX_EXTRACTION_MODE,
     XLSX_EXTRACTION_MODE,
     ExtractionAdapterError,
     ExtractorInput,
+    ExtractorOutput,
     LocalMockTextExtractor,
+    build_extracted_markdown_normalization_summary,
     classify_source_format,
     content_types_for_source_format,
     decode_utf8_source,
@@ -30,12 +33,16 @@ from nex_cx.extractors import (
     extraction_mode_for_binary_source_format,
     extractor_backend_catalog,
     extractor_backend_gap_summary,
+    expected_extraction_mode_for_source_format,
     markdown_table_cell,
     markdown_from_source_text,
     mock_binary_document_markdown,
     next_slice_for_binary_source_format,
+    normalize_extracted_markdown,
+    normalize_extractor_output,
     rows_to_markdown_table,
     spreadsheet_cell_text,
+    validate_extracted_markdown_contract,
     _ensure_trailing_newline,
 )
 from nex_cx.ingestion import sha256_bytes
@@ -550,6 +557,176 @@ def test_docx_table_markdown_helpers_are_deterministic() -> None:
     )
 
 
+def test_extracted_markdown_normalization_is_deterministic() -> None:
+    assert normalize_extracted_markdown("# Title\r\nBody  \r\n") == "# Title\nBody\n"
+
+    already_normalized = ExtractorOutput(
+        markdown_text="# Title\n\nBody\n",
+        provider="local_mock",
+        mode="plain_text_to_markdown",
+        version="test",
+        source_format="plain_text",
+        warnings=[],
+    )
+    assert normalize_extractor_output(already_normalized) is already_normalized
+
+    normalized = normalize_extractor_output(
+        ExtractorOutput(
+            markdown_text="# Title\r\n\nBody\t\r\n",
+            provider="local_mock",
+            mode="plain_text_to_markdown",
+            version="test",
+            source_format="plain_text",
+            warnings=[],
+        )
+    )
+    assert normalized.markdown_text == "# Title\n\nBody\n"
+
+
+def test_extracted_markdown_normalization_summary_records_structure() -> None:
+    output = LocalMockTextExtractor().extract_markdown(
+        source(
+            filename="source.pptx",
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            ),
+            body=sample_pptx_bytes(),
+        )
+    )
+
+    summary = build_extracted_markdown_normalization_summary(output)
+
+    assert summary == {
+        "normalization_schema_version": (
+            EXTRACTED_MARKDOWN_NORMALIZATION_SCHEMA_VERSION
+        ),
+        "source_format": "pptx",
+        "line_endings": "lf",
+        "final_newline": True,
+        "trailing_whitespace_present": False,
+        "title_present": True,
+        "required_section_heading": "slide",
+        "required_section_heading_present": True,
+        "heading_count": 2,
+        "table_count": 1,
+        "line_count": len(output.markdown_text.splitlines()),
+        "char_count": len(output.markdown_text),
+        "warning_count": 0,
+        "contract_status": "valid",
+    }
+
+
+def test_extracted_markdown_contract_allows_markdown_without_h1_title() -> None:
+    output = ExtractorOutput(
+        markdown_text="Body only\n",
+        provider="local_mock",
+        mode="markdown_to_markdown",
+        version="test",
+        source_format="markdown",
+        warnings=[],
+    )
+
+    summary = build_extracted_markdown_normalization_summary(output)
+
+    assert summary["title_present"] is False
+    assert summary["contract_status"] == "valid"
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        ExtractorOutput(
+            markdown_text="# source.pdf\n\n## Page 1\n\nBody\n",
+            provider="local_mock",
+            mode="plain_text_to_markdown",
+            version="test",
+            source_format="pdf",
+            warnings=[],
+        ),
+        ExtractorOutput(
+            markdown_text="Body\n",
+            provider="local_mock",
+            mode="plain_text_to_markdown",
+            version="test",
+            source_format="plain_text",
+            warnings=[],
+        ),
+        ExtractorOutput(
+            markdown_text="# source.pdf\n\nBody\n",
+            provider="local_mock",
+            mode=PDF_EXTRACTION_MODE,
+            version="test",
+            source_format="pdf",
+            warnings=[],
+        ),
+        ExtractorOutput(
+            markdown_text="# Title\nBody \n",
+            provider="local_mock",
+            mode="plain_text_to_markdown",
+            version="test",
+            source_format="plain_text",
+            warnings=[],
+        ),
+        ExtractorOutput(
+            markdown_text="# Title\nBody",
+            provider="local_mock",
+            mode="plain_text_to_markdown",
+            version="test",
+            source_format="plain_text",
+            warnings=[],
+        ),
+        ExtractorOutput(
+            markdown_text="# Title\r\nBody\r\n",
+            provider="local_mock",
+            mode="plain_text_to_markdown",
+            version="test",
+            source_format="plain_text",
+            warnings=[],
+        ),
+        ExtractorOutput(
+            markdown_text="# Title\nBody\n",
+            provider="local_mock",
+            mode="plain_text_to_markdown",
+            version="test",
+            source_format="plain_text",
+            warnings=[""],
+        ),
+        ExtractorOutput(
+            markdown_text="# Title\nBody\n",
+            provider="local_mock",
+            mode="unknown_to_markdown",
+            version="test",
+            source_format="unknown",
+            warnings=[],
+        ),
+        ExtractorOutput(
+            markdown_text="# Title\nBody\n",
+            provider=" ",
+            mode="plain_text_to_markdown",
+            version="test",
+            source_format="plain_text",
+            warnings=[],
+        ),
+        ExtractorOutput(
+            markdown_text="# Title\nBody\n",
+            provider="local_mock",
+            mode="plain_text_to_markdown",
+            version=" ",
+            source_format="plain_text",
+            warnings=[],
+        ),
+    ],
+)
+def test_extracted_markdown_contract_rejects_invalid_output(
+    output: ExtractorOutput,
+) -> None:
+    with pytest.raises(ExtractionAdapterError) as exc:
+        validate_extracted_markdown_contract(output)
+
+    assert exc.value.status_code == 500
+    assert exc.value.error_code == "cx.extractor_markdown_contract_invalid"
+
+
 def test_extractor_backend_catalog_records_current_gaps() -> None:
     catalog = extractor_backend_catalog()
     by_format = {item.source_format: item for item in catalog}
@@ -601,6 +778,12 @@ def test_extractor_backend_format_helpers_cover_text_and_unknown_formats() -> No
     assert next_slice_for_binary_source_format("pptx") is None
     assert extraction_mode_for_binary_source_format("pptx") == PPTX_EXTRACTION_MODE
     assert extraction_mode_for_binary_source_format("xlsx") == XLSX_EXTRACTION_MODE
+    assert expected_extraction_mode_for_source_format("markdown") == "markdown_to_markdown"
+    assert expected_extraction_mode_for_source_format("plain_text") == (
+        "plain_text_to_markdown"
+    )
+    assert expected_extraction_mode_for_source_format("xlsx") == XLSX_EXTRACTION_MODE
+    assert expected_extraction_mode_for_source_format("unknown") is None
     assert extensions_for_source_format("plain_text") == (
         ".csv",
         ".json",

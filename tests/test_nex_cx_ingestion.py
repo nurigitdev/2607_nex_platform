@@ -46,6 +46,7 @@ from nex_cx.ingestion import (
     write_extracted_markdown,
 )
 import nex_cx.ingestion as cx_ingestion
+from nex_cx.extractors import ExtractorOutput
 from nex_cx.repository import CxContentRepositoryError
 from nex_runtime import (
     SERVICE_SPECS,
@@ -1774,6 +1775,22 @@ def test_run_text_extraction_job_writes_markdown_and_updates_state(tmp_path: Pat
         "version": "slice-0072",
         "source_format": "plain_text",
     }
+    assert result["extracted_markdown_normalization"] == {
+        "normalization_schema_version": "cx_extracted_markdown_normalization.v1",
+        "source_format": "plain_text",
+        "line_endings": "lf",
+        "final_newline": True,
+        "trailing_whitespace_present": False,
+        "title_present": True,
+        "required_section_heading": "none",
+        "required_section_heading_present": False,
+        "heading_count": 1,
+        "table_count": 0,
+        "line_count": 3,
+        "char_count": result["markdown_char_count"],
+        "warning_count": 0,
+        "contract_status": "valid",
+    }
     assert result["source_reader"] == {
         "source_reader_schema_version": "cx_source_reader.v1",
         "source": SOURCE_READER_RUNTIME_MEMORY,
@@ -1788,6 +1805,92 @@ def test_run_text_extraction_job_writes_markdown_and_updates_state(tmp_path: Pat
     assert store.get_job(result["job_id"])["status"] == "SUCCEEDED"
     assert store.get_document(result["document_id"])["extraction"]["markdown_available"] is True
     assert store.get_extraction_result(result["document_id"]) == result
+
+
+def test_run_text_extraction_job_normalizes_custom_extractor_output(
+    tmp_path: Path,
+) -> None:
+    class CrLfExtractor:
+        def extract_markdown(self, _source: object) -> ExtractorOutput:
+            return ExtractorOutput(
+                markdown_text="# source.txt\r\n\r\nBody\t\r\n",
+                provider="custom",
+                mode="plain_text_to_markdown",
+                version="test",
+                source_format="plain_text",
+                warnings=[],
+            )
+
+    store = ContentIngestionStore()
+    config = storage_config(tmp_path)
+    document = build_upload_registration(
+        {
+            "filename": "source.txt",
+            "content_type": "text/plain",
+            "content_text": "ignored by custom extractor",
+        },
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.save_upload_registration(document, source_text="ignored by custom extractor")
+
+    result = run_text_extraction_job(
+        document["extraction"]["job_id"],
+        store=store,
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        extractor=CrLfExtractor(),
+    )
+
+    markdown = Path(result["extracted_markdown_path"]).read_text(encoding="utf-8")
+    assert markdown == "# source.txt\n\nBody\n"
+    assert result["extracted_markdown_normalization"]["line_endings"] == "lf"
+    assert result["extracted_markdown_normalization"]["trailing_whitespace_present"] is False
+    assert result["extracted_markdown_normalization"]["char_count"] == len(markdown)
+
+
+def test_run_text_extraction_job_reports_markdown_contract_violation(
+    tmp_path: Path,
+) -> None:
+    class MissingTitleExtractor:
+        def extract_markdown(self, _source: object) -> ExtractorOutput:
+            return ExtractorOutput(
+                markdown_text="Body without title\n",
+                provider="custom",
+                mode="plain_text_to_markdown",
+                version="test",
+                source_format="plain_text",
+                warnings=[],
+            )
+
+    store = ContentIngestionStore()
+    config = storage_config(tmp_path)
+    document = build_upload_registration(
+        {
+            "filename": "source.txt",
+            "content_type": "text/plain",
+            "content_text": "ignored by custom extractor",
+        },
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.save_upload_registration(document, source_text="ignored by custom extractor")
+
+    with pytest.raises(IngestionError) as exc:
+        run_text_extraction_job(
+            document["extraction"]["job_id"],
+            store=store,
+            storage_config=config,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            extractor=MissingTitleExtractor(),
+        )
+
+    assert exc.value.status_code == 500
+    assert exc.value.error_code == "cx.extractor_markdown_contract_invalid"
 
 
 def test_run_text_extraction_job_reads_materialized_source_after_memory_eviction(
@@ -1883,6 +1986,10 @@ def test_run_text_extraction_job_extracts_pdf_text(tmp_path: Path) -> None:
     markdown = Path(result["extracted_markdown_path"]).read_text(encoding="utf-8")
     assert result["extractor"]["mode"] == "pdf_to_markdown"
     assert result["extractor"]["source_format"] == "pdf"
+    assert result["extracted_markdown_normalization"]["required_section_heading"] == "page"
+    assert result["extracted_markdown_normalization"][
+        "required_section_heading_present"
+    ] is True
     assert result["warnings"] == []
     assert "Slice 0285 PDF ingestion text" in markdown
     assert "Mock extraction placeholder." not in markdown

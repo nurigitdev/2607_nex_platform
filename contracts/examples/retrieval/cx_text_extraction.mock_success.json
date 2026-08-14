@@ -10,11 +10,39 @@
   "extracted_markdown_path": "/data/nex-platform/cx/extracted-markdown/52/e7e4cf11-c38a-538e-bef8-9567a456b762.md",
   "markdown_char_count": 31,
   "markdown_preview": "# source.txt\n\nhello extraction\n",
+  "extracted_markdown_normalization": {
+    "normalization_schema_version": "cx_extracted_markdown_normalization.v1",
+    "source_format": "plain_text",
+    "line_endings": "lf",
+    "final_newline": true,
+    "trailing_whitespace_present": false,
+    "title_present": true,
+    "required_section_heading": "none",
+    "required_section_heading_present": false,
+    "heading_count": 1,
+    "table_count": 0,
+    "line_count": 3,
+    "char_count": 31,
+    "warning_count": 0,
+    "contract_status": "valid"
+  },
   "extractor": {
     "provider": "local_mock",
-    "mode": "content_text_to_markdown",
-    "version": "slice-0012"
+    "mode": "plain_text_to_markdown",
+    "version": "slice-0072",
+    "source_format": "plain_text"
   },
+  "source_reader": {
+    "source_reader_schema_version": "cx_source_reader.v1",
+    "source": "runtime_memory",
+    "runtime_source_bytes_used": true,
+    "fallback_used": false,
+    "checksum_algorithm": "sha256",
+    "storage_key_included": false,
+    "local_storage_path_included": false,
+    "raw_source_included": false
+  },
+  "warnings": [],
   "created_at": "2026-08-02T00:00:00Z",
   "updated_at": "2026-08-02T00:00:00Z"
 }

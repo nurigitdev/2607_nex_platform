@@ -16,7 +16,10 @@
     "extracted_markdown_path",
     "markdown_char_count",
     "markdown_preview",
+    "extracted_markdown_normalization",
     "extractor",
+    "source_reader",
+    "warnings",
     "created_at",
     "updated_at"
   ],
@@ -67,13 +70,97 @@
       "type": "string",
       "maxLength": 120
     },
+    "extracted_markdown_normalization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "normalization_schema_version",
+        "source_format",
+        "line_endings",
+        "final_newline",
+        "trailing_whitespace_present",
+        "title_present",
+        "required_section_heading",
+        "required_section_heading_present",
+        "heading_count",
+        "table_count",
+        "line_count",
+        "char_count",
+        "warning_count",
+        "contract_status"
+      ],
+      "properties": {
+        "normalization_schema_version": {
+          "const": "cx_extracted_markdown_normalization.v1"
+        },
+        "source_format": {
+          "type": "string",
+          "enum": [
+            "markdown",
+            "plain_text",
+            "pdf",
+            "docx",
+            "pptx",
+            "xlsx"
+          ]
+        },
+        "line_endings": {
+          "const": "lf"
+        },
+        "final_newline": {
+          "const": true
+        },
+        "trailing_whitespace_present": {
+          "const": false
+        },
+        "title_present": {
+          "type": "boolean"
+        },
+        "required_section_heading": {
+          "type": "string",
+          "enum": [
+            "none",
+            "page",
+            "slide",
+            "sheet"
+          ]
+        },
+        "required_section_heading_present": {
+          "type": "boolean"
+        },
+        "heading_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "table_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "line_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "char_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contract_status": {
+          "const": "valid"
+        }
+      }
+    },
     "extractor": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "provider",
         "mode",
-        "version"
+        "version",
+        "source_format"
       ],
       "properties": {
         "provider": {
@@ -87,7 +174,69 @@
         "version": {
           "type": "string",
           "minLength": 1
+        },
+        "source_format": {
+          "type": "string",
+          "enum": [
+            "markdown",
+            "plain_text",
+            "pdf",
+            "docx",
+            "pptx",
+            "xlsx"
+          ]
         }
+      }
+    },
+    "source_reader": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_reader_schema_version",
+        "source",
+        "runtime_source_bytes_used",
+        "fallback_used",
+        "checksum_algorithm",
+        "storage_key_included",
+        "local_storage_path_included",
+        "raw_source_included"
+      ],
+      "properties": {
+        "source_reader_schema_version": {
+          "const": "cx_source_reader.v1"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "runtime_memory",
+            "materialized_local_source_file"
+          ]
+        },
+        "runtime_source_bytes_used": {
+          "type": "boolean"
+        },
+        "fallback_used": {
+          "type": "boolean"
+        },
+        "checksum_algorithm": {
+          "const": "sha256"
+        },
+        "storage_key_included": {
+          "const": false
+        },
+        "local_storage_path_included": {
+          "const": false
+        },
+        "raw_source_included": {
+          "const": false
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
       }
     },
     "created_at": {

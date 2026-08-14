@@ -104,6 +104,12 @@ Internal persistence boundary:
   `nex_cx_test` database URL, the smoke migrates the test DB, uploads
   PDF/DOCX/PPTX/XLSX files, evicts runtime source bytes, runs extraction through
   the job API, verifies persisted `cx_extraction_artifacts`, and cleans up rows.
+- Slice 0289 hardens the extracted Markdown contract. Extraction output is
+  normalized to LF line endings, trimmed trailing spaces/tabs, and a final
+  newline before storage. `run_text_extraction_job(...)` now emits
+  `cx_extracted_markdown_normalization.v1` metadata with structure counts and
+  validation flags only; raw Markdown body text remains in the private
+  extracted Markdown file path.
 - Text extraction runs through the `nex_cx.extractors` adapter boundary. The
   local mock adapter performs real UTF-8 Markdown/plain-text conversion and
   PDF page-text, DOCX paragraph/table, PPTX slide/table, and XLSX sheet/table

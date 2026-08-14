@@ -55,7 +55,9 @@ from nex_cx.extractors import (
     ExtractorInput,
     LocalMockTextExtractor,
     TextExtractor,
+    build_extracted_markdown_normalization_summary,
     markdown_from_source_text,
+    normalize_extractor_output,
 )
 
 DEFAULT_DATA_ROOT = "/data/nex-platform"
@@ -1198,6 +1200,8 @@ def run_text_extraction_job(
                 source_sha256=document["source_sha256"],
             )
         )
+        extracted = normalize_extractor_output(extracted)
+        normalization = build_extracted_markdown_normalization_summary(extracted)
     except ExtractionAdapterError as exc:
         raise IngestionError(
             status_code=exc.status_code,
@@ -1223,6 +1227,7 @@ def run_text_extraction_job(
         "extracted_markdown_path": str(markdown_path),
         "markdown_char_count": len(markdown_text),
         "markdown_preview": markdown_text[:120],
+        "extracted_markdown_normalization": normalization,
         "extractor": {
             "provider": extracted.provider,
             "mode": extracted.mode,

@@ -379,6 +379,44 @@ def test_nex_cx_openapi_hardens_document_detail_contract() -> None:
     assert schema["properties"]["metadata"]["properties"]["owner_scoped"]["const"] is True
 
 
+def test_nex_cx_text_extraction_contract_hardens_normalized_markdown_metadata() -> None:
+    schema_path = (
+        Path(__file__).parents[1]
+        / "contracts"
+        / "schemas"
+        / "service"
+        / "nex_cx"
+        / "text_extraction.v1.schema.json"
+    )
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    normalization_schema = schema["properties"]["extracted_markdown_normalization"]
+    source_reader_schema = schema["properties"]["source_reader"]
+    extractor_schema = schema["properties"]["extractor"]
+
+    assert "extracted_markdown_normalization" in schema["required"]
+    assert "source_reader" in schema["required"]
+    assert "warnings" in schema["required"]
+    assert normalization_schema["additionalProperties"] is False
+    assert normalization_schema["properties"]["line_endings"]["const"] == "lf"
+    assert normalization_schema["properties"]["final_newline"]["const"] is True
+    assert normalization_schema["properties"]["trailing_whitespace_present"][
+        "const"
+    ] is False
+    assert normalization_schema["properties"]["contract_status"]["const"] == "valid"
+    assert extractor_schema["properties"]["source_format"]["enum"] == [
+        "markdown",
+        "plain_text",
+        "pdf",
+        "docx",
+        "pptx",
+        "xlsx",
+    ]
+    assert source_reader_schema["properties"]["raw_source_included"]["const"] is False
+    assert source_reader_schema["properties"]["local_storage_path_included"][
+        "const"
+    ] is False
+
+
 def test_nex_ae_openapi_hardens_document_detail_contract() -> None:
     openapi_path = (
         Path(__file__).parents[1]
