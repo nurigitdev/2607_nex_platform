@@ -60,6 +60,10 @@ Internal persistence boundary:
   browser-file facade, AE must not keep long-term source-file copies, and the
   future object storage adapter should preserve the same metadata/link-only
   database contract.
+- Slice 0276 hardens source byte materialization: CX rejects `source_sha256`
+  mismatches for provided `content_text` or `content_base64` and exposes the
+  owner-scoped `cx_source_file_materialization_receipt.v1` read model without
+  raw source bytes or local filesystem paths.
 - Text extraction runs through the `nex_cx.extractors` adapter boundary. The
   local mock adapter performs real UTF-8 Markdown/plain-text conversion and
   emits explicit placeholders with warnings for PDF, DOCX, PPTX, and XLSX until
@@ -152,6 +156,7 @@ Current endpoints:
 - `GET /internal/v1/auth/service-claim`
 - `POST /api/v1/documents/uploads`
 - `GET /api/v1/documents/{document_id}`
+- `GET /api/v1/documents/{document_id}/source-file/materialization`
 - `GET /api/v1/documents/{document_id}/extraction`
 - `GET /api/v1/documents/{document_id}/chunks`
 - `POST /api/v1/documents/{document_id}/chunks/run`

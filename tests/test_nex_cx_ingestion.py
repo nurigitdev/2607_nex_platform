@@ -8,11 +8,13 @@ from fastapi.testclient import TestClient
 
 from nex_cx.ingestion import (
     ContentIngestionStore,
+    CX_SOURCE_FILE_MATERIALIZATION_RECEIPT_SCHEMA_VERSION,
     CxStorageConfig,
     IngestionError,
     UPLOAD_OWNER_RESOLVER_DISABLED,
     UPLOAD_OWNER_RESOLVER_VERIFY,
     build_ingestion_job,
+    build_source_file_materialization_receipt,
     build_storage_config,
     build_upload_ownership_ref,
     build_upload_registration,
@@ -323,6 +325,37 @@ def test_build_upload_registration_accepts_base64_source_bytes_without_leak(
     assert "binary-ish" not in str(record)
 
 
+def test_build_upload_registration_accepts_matching_explicit_source_hash(
+    tmp_path: Path,
+) -> None:
+    source_bytes = b"explicit source hash bytes"
+    source_sha256 = sha256_bytes(source_bytes)
+
+    text_record = build_upload_registration(
+        {
+            "filename": "source.txt",
+            "content_text": "explicit source hash text",
+            "source_sha256": sha256_text("explicit source hash text").upper(),
+        },
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    binary_record = build_upload_registration(
+        {
+            "filename": "source.bin",
+            "content_base64": base64.b64encode(source_bytes).decode("ascii"),
+            "source_sha256": source_sha256,
+        },
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert text_record["source_sha256"] == sha256_text("explicit source hash text")
+    assert binary_record["source_sha256"] == source_sha256
+
+
 def test_source_content_from_payload_rejects_conflicts_and_bad_base64() -> None:
     assert source_content_from_payload({"content_text": "hello"}) == ("hello", None)
     assert source_content_from_payload(
@@ -397,6 +430,149 @@ def test_store_materializes_source_file_and_marks_checksum_verified(
     assert sha256_bytes(source_path.read_bytes()) == saved["source_sha256"]
     assert source_file["checksum_verified_at"] is not None
     assert saved["original_filename"] not in str(source_path.parent)
+
+
+def test_source_file_materialization_receipt_hides_local_path_and_source_bytes(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    source_bytes = b"\x00binary source materialization receipt"
+    record = build_upload_registration(
+        {
+            "filename": "source.bin",
+            "content_type": "application/octet-stream",
+            "content_base64": base64.b64encode(source_bytes).decode("ascii"),
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+        },
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    saved = store.save_upload_registration(record, source_bytes=source_bytes)
+
+    receipt = build_source_file_materialization_receipt(
+        store=store,
+        document_id=saved["document_id"],
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+        source_kind="memory",
+        database_env="NEX_CX_TEST_DATABASE_URL",
+        redacted_database_url="postgresql+psycopg://nex_cx_user:***@127.0.0.1/nex_cx_test",
+    )
+    wrong_owner = build_source_file_materialization_receipt(
+        store=store,
+        document_id=saved["document_id"],
+        tenant_id="tenant-a",
+        owner_user_id="other-user",
+    )
+
+    assert receipt is not None
+    assert receipt["receipt_schema_version"] == (
+        CX_SOURCE_FILE_MATERIALIZATION_RECEIPT_SCHEMA_VERSION
+    )
+    assert receipt["source"]["database_env"] == "NEX_CX_TEST_DATABASE_URL"
+    assert receipt["source_file"]["checksum_verified"] is True
+    assert receipt["source_file"]["checksum_verified_at"] is not None
+    assert receipt["materialization"] == {
+        "status": "VERIFIED",
+        "payload_source": "content_base64",
+        "source_bytes_captured": True,
+        "checksum_algorithm": "sha256",
+        "source_content_in_receipt": False,
+        "local_storage_path_included": False,
+    }
+    assert receipt["metadata"]["storage_path_redacted"] is True
+    assert "source_storage_path" not in str(receipt)
+    assert str(tmp_path) not in str(receipt)
+    assert "binary source materialization receipt" not in str(receipt)
+    assert wrong_owner is None
+
+
+def test_source_file_materialization_receipt_reports_metadata_only_pending(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    record = build_upload_registration(
+        {
+            "filename": "source.pdf",
+            "source_sha256": "a" * 64,
+            "size_bytes": 4096,
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+        },
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    saved = store.save_upload_registration(record)
+
+    receipt = build_source_file_materialization_receipt(
+        store=store,
+        document_id=saved["document_id"],
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )
+
+    assert receipt is not None
+    assert receipt["source_file"]["checksum_verified"] is False
+    assert receipt["source_file"]["checksum_verified_at"] is None
+    assert receipt["materialization"]["status"] == "PENDING"
+    assert receipt["materialization"]["payload_source"] == "precomputed_hash"
+    assert receipt["materialization"]["source_bytes_captured"] is False
+
+
+def test_source_file_materialization_receipt_collapses_missing_lineage_or_file(
+    tmp_path: Path,
+) -> None:
+    missing_lineage_store = ContentIngestionStore()
+    missing_file_store = ContentIngestionStore()
+    record = build_upload_registration(
+        {
+            "filename": "source.md",
+            "content_text": "lineage source",
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+        },
+        storage_config=storage_config(tmp_path),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    missing_lineage = missing_lineage_store.save_upload_registration(
+        record,
+        source_text="lineage source",
+    )
+    missing_file = missing_file_store.save_upload_registration(
+        record,
+        source_text="lineage source",
+    )
+    lineage_refs = missing_lineage_store.get_content_ref(missing_lineage["document_id"])
+    file_refs = missing_file_store.get_content_ref(missing_file["document_id"])
+    missing_lineage_store.content_repository.content_objects[
+        lineage_refs["content_object_id"]
+    ]["source_file_id"] = ""
+    missing_file_store.content_repository.content_objects[
+        file_refs["content_object_id"]
+    ]["source_file_id"] = "missing-source-file"
+
+    assert (
+        build_source_file_materialization_receipt(
+            store=missing_lineage_store,
+            document_id=missing_lineage["document_id"],
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+        )
+        is None
+    )
+    assert (
+        build_source_file_materialization_receipt(
+            store=missing_file_store,
+            document_id=missing_file["document_id"],
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
+        )
+        is None
+    )
 
 
 def test_store_derives_owner_scope_and_uploaded_by_from_upload_record(
@@ -858,6 +1034,10 @@ def test_duplicate_upload_with_bytes_materializes_existing_metadata_only_source(
             "cx.upload_hash_invalid",
         ),
         (
+            {"filename": "report.pdf", "content_text": "hello", "source_sha256": True},
+            "cx.upload_hash_invalid",
+        ),
+        (
             {"filename": "report.pdf", "source_sha256": "a" * 64},
             "cx.upload_size_required",
         ),
@@ -872,6 +1052,22 @@ def test_duplicate_upload_with_bytes_materializes_existing_metadata_only_source(
         (
             {"filename": "report.pdf", "content_text": ["hello"]},
             "cx.upload_content_text_invalid",
+        ),
+        (
+            {
+                "filename": "report.pdf",
+                "content_text": "hello",
+                "source_sha256": "a" * 64,
+            },
+            "cx.upload_hash_mismatch",
+        ),
+        (
+            {
+                "filename": "report.pdf",
+                "content_base64": base64.b64encode(b"hello").decode("ascii"),
+                "source_sha256": "a" * 64,
+            },
+            "cx.upload_hash_mismatch",
         ),
         (
             {"filename": "report.pdf", "content_text": "hello", "content_base64": "aGVsbG8="},
@@ -1303,6 +1499,83 @@ def test_upload_registration_endpoint_materializes_base64_source_bytes(
     assert Path(payload["storage"]["source_storage_path"]).read_bytes() == source_bytes
     assert store.get_source_bytes(payload["upload_id"]) == source_bytes
     assert store.get_source_text(payload["upload_id"]) is None
+
+
+def test_source_file_materialization_endpoint_is_owner_scoped_and_redacted(
+    tmp_path: Path,
+) -> None:
+    client, _ = build_test_client(tmp_path)
+    source_bytes = b"\x00endpoint receipt bytes"
+    created = client.post(
+        "/api/v1/documents/uploads",
+        json={
+            "filename": "source.bin",
+            "content_type": "application/octet-stream",
+            "content_base64": base64.b64encode(source_bytes).decode("ascii"),
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+        },
+        headers=auth_headers(),
+    ).json()
+
+    response = client.get(
+        f"/api/v1/documents/{created['document_id']}/source-file/materialization",
+        params={"tenant_id": "tenant-a", "owner_user_id": "user-a"},
+        headers=auth_headers(),
+    )
+    wrong_owner = client.get(
+        f"/api/v1/documents/{created['document_id']}/source-file/materialization",
+        params={"tenant_id": "tenant-a", "owner_user_id": "other-user"},
+        headers=auth_headers(),
+    )
+    missing_scope = client.get(
+        f"/api/v1/documents/{created['document_id']}/source-file/materialization",
+        headers=auth_headers(),
+    )
+    unauthorized = client.get(
+        f"/api/v1/documents/{created['document_id']}/source-file/materialization",
+        params={"tenant_id": "tenant-a", "owner_user_id": "user-a"},
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["source_file"]["checksum_verified"] is True
+    assert payload["materialization"]["source_bytes_captured"] is True
+    assert payload["materialization"]["local_storage_path_included"] is False
+    assert "source_storage_path" not in str(payload)
+    assert str(tmp_path) not in str(payload)
+    assert "endpoint receipt bytes" not in str(payload)
+    assert wrong_owner.status_code == 404
+    assert wrong_owner.json()["error_code"] == "cx.source_file_materialization_not_found"
+    assert missing_scope.status_code == 400
+    assert missing_scope.json()["error_code"] == (
+        "cx.source_file_materialization_query_invalid"
+    )
+    assert unauthorized.status_code == 401
+
+
+def test_source_file_materialization_endpoint_maps_repository_unavailable(
+    tmp_path: Path,
+) -> None:
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    register_ingestion_routes(
+        app,
+        store=ContentIngestionStore(
+            content_repository=FailingDocumentDetailRepository(),
+        ),
+        storage_config=storage_config(tmp_path),
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/v1/documents/doc-001/source-file/materialization",
+        params={"tenant_id": "tenant-a", "owner_user_id": "user-a"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == "cx.content_repository_unavailable"
+    assert response.json()["retryable"] is True
 
 
 def test_payload_source_kind_labels_upload_boundary_sources() -> None:

@@ -65,6 +65,9 @@ DEFAULT_CHUNK_OVERLAP = 100
 DEFAULT_BM25_TOKENIZER = "mecab_ko"
 DEFAULT_BM25_TOKENIZER_FALLBACK = "korean_mixed_v1"
 DEFAULT_MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
+CX_SOURCE_FILE_MATERIALIZATION_RECEIPT_SCHEMA_VERSION = (
+    "cx_source_file_materialization_receipt.v1"
+)
 OWNERSHIP_COMPATIBILITY_MODE = "legacy_owner_fields_mapped_to_oa_subject_refs"
 UPLOAD_OWNER_RESOLVER_DISABLED = "disabled"
 UPLOAD_OWNER_RESOLVER_VERIFY = "verify"
@@ -224,6 +227,9 @@ class ContentIngestionStore:
 
     def get_content_ref(self, document_id: str) -> dict[str, str] | None:
         return self.document_content_refs.get(document_id)
+
+    def source_bytes_available(self, upload_id: str | None) -> bool:
+        return isinstance(upload_id, str) and upload_id in self.source_bytes
 
     def save_extraction_result(self, result: dict[str, Any]) -> dict[str, Any]:
         document = self.documents.get(result["document_id"])
@@ -793,6 +799,73 @@ def register_ingestion_routes(
             )
         return projection
 
+    @app.get(
+        "/api/v1/documents/{document_id}/source-file/materialization",
+        response_model=None,
+    )
+    def get_source_file_materialization(
+        document_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        tenant_id: str | None = Query(default=None),
+        owner_user_id: str | None = Query(default=None),
+    ):
+        auth_problem = _authorize_cx_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            receipt = build_source_file_materialization_receipt(
+                store=ingestion_store,
+                document_id=document_id,
+                tenant_id=tenant_id,
+                owner_user_id=owner_user_id,
+                source_kind=source_kind,
+                database_env=database_env,
+                redacted_database_url=redacted_database_url,
+            )
+        except ValueError as exc:
+            return problem_response(
+                request,
+                status_code=400,
+                error_code="cx.source_file_materialization_query_invalid",
+                title="Source-file materialization query failed",
+                detail=str(exc),
+                type_uri=(
+                    "https://nex-platform.local/problems/"
+                    "source-file-materialization-query-failed"
+                ),
+            )
+        except CxContentRepositoryError as exc:
+            return problem_response(
+                request,
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                title="Source-file materialization repository unavailable",
+                detail=exc.detail,
+                retryable=True,
+                type_uri=(
+                    "https://nex-platform.local/problems/"
+                    "source-file-materialization-repository-unavailable"
+                ),
+            )
+        if receipt is None:
+            return problem_response(
+                request,
+                status_code=404,
+                error_code="cx.source_file_materialization_not_found",
+                title="Source-file materialization was not found",
+                detail=(
+                    "Source-file materialization was not found or is not visible "
+                    "for the requested owner scope."
+                ),
+                type_uri=(
+                    "https://nex-platform.local/problems/"
+                    "source-file-materialization-not-found"
+                ),
+            )
+        return receipt
+
     @app.get("/api/v1/jobs/{job_id}", response_model=None)
     def get_job(
         job_id: str,
@@ -970,6 +1043,91 @@ def align_upload_registration_to_source_file(
     if source_file.get("source_storage_path"):
         storage["source_storage_path"] = source_file["source_storage_path"]
     return {**record, "storage": storage}
+
+
+def build_source_file_materialization_receipt(
+    *,
+    store: ContentIngestionStore,
+    document_id: str | None,
+    tenant_id: str | None,
+    owner_user_id: str | None,
+    source_kind: str = "repository",
+    database_env: str | None = None,
+    redacted_database_url: str | None = None,
+) -> dict[str, Any] | None:
+    projection = build_document_detail_projection(
+        store=store,
+        document_id=document_id,
+        tenant_id=tenant_id,
+        owner_user_id=owner_user_id,
+        source_kind=source_kind,
+        database_env=database_env,
+        redacted_database_url=redacted_database_url,
+    )
+    if projection is None:
+        return None
+
+    document = projection["document"]
+    source_lineage = document["source_lineage"]
+    source_file_id = source_lineage.get("source_file_id")
+    if not isinstance(source_file_id, str) or not source_file_id:
+        return None
+    source_file = store.content_repository.get_source_file(source_file_id)
+    if source_file is None:
+        return None
+
+    upload = document["upload"]
+    upload_id = upload.get("upload_id")
+    checksum_verified_at = source_file.get("checksum_verified_at")
+    checksum_verified = isinstance(checksum_verified_at, str) and bool(
+        checksum_verified_at
+    )
+    return {
+        "receipt_schema_version": CX_SOURCE_FILE_MATERIALIZATION_RECEIPT_SCHEMA_VERSION,
+        "service_id": "nex-cx",
+        "source": {
+            "source_kind": source_kind,
+            "database_env": database_env,
+            "redacted_database_url": redacted_database_url,
+        },
+        "filters": projection["filters"],
+        "document": {
+            "document_id": document["document_id"],
+            "upload_id": upload_id,
+            "filename": document["filename"],
+            "content_type": document["content_type"],
+            "size_bytes": document["size_bytes"],
+            "source_sha256": document["source_sha256"],
+        },
+        "source_file": {
+            "source_file_id": source_file["source_file_id"],
+            "source_sha256": source_file["source_sha256"],
+            "size_bytes": source_file["size_bytes"],
+            "content_type": source_file["content_type"],
+            "storage_backend": source_file["storage_backend"],
+            "storage_key": source_file["storage_key"],
+            "storage_uri": source_file["storage_uri"],
+            "stored_filename": source_file["stored_filename"],
+            "stored_extension": source_file["stored_extension"],
+            "checksum_verified": checksum_verified,
+            "checksum_verified_at": checksum_verified_at,
+        },
+        "materialization": {
+            "status": "VERIFIED" if checksum_verified else "PENDING",
+            "payload_source": upload.get("payload_source"),
+            "source_bytes_captured": store.source_bytes_available(upload_id),
+            "checksum_algorithm": "sha256",
+            "source_content_in_receipt": False,
+            "local_storage_path_included": False,
+        },
+        "metadata": {
+            "owner_scoped": True,
+            "not_found_and_not_authorized_collapsed": True,
+            "raw_source_included": False,
+            "storage_path_redacted": True,
+            "database_blob_storage": False,
+        },
+    }
 
 
 def build_ingestion_job(
@@ -1582,13 +1740,38 @@ def _source_sha256_from_payload(
     content_text: str | None,
     source_bytes: bytes | None,
 ) -> str:
+    computed_sha256: str | None = None
     if content_text is not None:
-        return sha256_text(content_text)
+        computed_sha256 = sha256_text(content_text)
     if source_bytes is not None:
-        return sha256_bytes(source_bytes)
+        computed_sha256 = sha256_bytes(source_bytes)
 
-    source_sha256 = _required_string(payload, "source_sha256").lower()
-    if len(source_sha256) == 64 and all(char in "0123456789abcdef" for char in source_sha256):
+    if computed_sha256 is not None:
+        if "source_sha256" not in payload:
+            return computed_sha256
+        provided_sha256 = _normalized_source_sha256(payload["source_sha256"])
+        if provided_sha256 != computed_sha256:
+            raise IngestionError(
+                status_code=422,
+                error_code="cx.upload_hash_mismatch",
+                detail="source_sha256 must match the provided upload content.",
+            )
+        return computed_sha256
+
+    return _normalized_source_sha256(_required_string(payload, "source_sha256"))
+
+
+def _normalized_source_sha256(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise IngestionError(
+            status_code=422,
+            error_code="cx.upload_hash_invalid",
+            detail="source_sha256 must be a 64-character hex string.",
+        )
+    source_sha256 = value.strip().lower()
+    if len(source_sha256) == 64 and all(
+        char in "0123456789abcdef" for char in source_sha256
+    ):
         return source_sha256
 
     raise IngestionError(
