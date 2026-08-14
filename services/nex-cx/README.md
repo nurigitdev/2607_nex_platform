@@ -78,6 +78,10 @@ Internal persistence boundary:
 - Slice 0282 implements that fallback. `run_text_extraction_job(...)` now reads
   verified local source files after runtime source bytes are evicted and records
   redaction-safe `source_reader` metadata in extraction results.
+- Slice 0283 adds protected PostgreSQL smoke evidence for that path. The smoke
+  migrates `nex_cx_test`, uploads a source file, evicts runtime source bytes,
+  runs extraction through the job API, and verifies the persisted extraction
+  artifact row.
 - Text extraction runs through the `nex_cx.extractors` adapter boundary. The
   local mock adapter performs real UTF-8 Markdown/plain-text conversion and
   emits explicit placeholders with warnings for PDF, DOCX, PPTX, and XLSX until
