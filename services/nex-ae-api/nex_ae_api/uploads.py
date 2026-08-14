@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -9,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
 import httpx
-from fastapi import FastAPI, Header, Request
+from fastapi import FastAPI, File, Form, Header, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
 
 DEFAULT_TENANT_ID = "local-tenant"
 DEFAULT_OWNER_USER_ID = "local-user"
+AE_MULTIPART_UPLOAD_ROUTE = "/api/v1/uploads/files"
 OWNERSHIP_REF_SCHEMA_VERSION = "cx_source_ownership_ref.v1"
 OA_TENANT_REF_TYPE = "oa.tenant"
 OA_USER_SUBJECT_REF_TYPE = "oa.user"
@@ -228,6 +230,84 @@ def register_upload_routes(
         except UploadHandoffError as exc:
             return _upload_problem_response(request, exc)
 
+    @app.post(AE_MULTIPART_UPLOAD_ROUTE, response_model=None)
+    async def create_file_upload_handoff(
+        request: Request,
+        file: UploadFile = File(...),
+        workspace_id: str | None = Form(default=None),
+        tenant_id: str | None = Form(default=None),
+        owner_user_id: str | None = Form(default=None),
+        uploaded_by_user_id: str | None = Form(default=None),
+        source_sha256: str | None = Form(default=None),
+        size_bytes: str | None = Form(default=None),
+        filename: str | None = Form(default=None),
+        content_type: str | None = Form(default=None),
+        authorization: str | None = Header(default=None),
+    ):
+        from nex_ae_api.route_auth import authorize_ae_facade_route_request
+
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        from nex_ae_api.auth_guard import BrowserAuthError, browser_auth_problem_response
+
+        try:
+            auth_context = authorize_ae_facade_route_request(
+                request,
+                authorization,
+                oa_session_client=oa_session_client,
+                session_mode=resolved_session_mode,
+            )
+            if isinstance(auth_context, JSONResponse):
+                return auth_context
+            file_bytes = await file.read()
+            source_payload = build_multipart_upload_source_payload(
+                file_bytes=file_bytes,
+                file_filename=file.filename,
+                file_content_type=file.content_type,
+                workspace_id=workspace_id,
+                tenant_id=tenant_id,
+                owner_user_id=owner_user_id,
+                uploaded_by_user_id=uploaded_by_user_id,
+                source_sha256=source_sha256,
+                size_bytes=size_bytes,
+                filename=filename,
+                content_type=content_type,
+            )
+            source_payload = _browser_owner_scoped_payload(
+                source_payload,
+                auth_context.browser_context,
+            )
+            cx_payload = build_cx_upload_payload(source_payload, trace_id=trace_id)
+            resolve_upload_ownership(
+                cx_payload["ownership_ref"],
+                owner_resolver=resolver,
+                owner_resolver_mode=resolver_mode,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            cx_record = client.register_upload(
+                cx_payload,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            status_code = 200 if cx_record["dedupe"]["status"] == "ALREADY_EXISTS" else 202
+            return JSONResponse(
+                status_code=status_code,
+                content=upload_store.save(
+                    build_upload_handoff_record(
+                        source_payload=source_payload,
+                        cx_payload=cx_payload,
+                        cx_record=cx_record,
+                        request_id=request_id,
+                        trace_id=trace_id,
+                    )
+                ),
+            )
+        except BrowserAuthError as exc:
+            return browser_auth_problem_response(request, exc)
+        except UploadHandoffError as exc:
+            return _upload_problem_response(request, exc)
+
     @app.get("/api/v1/uploads/{upload_handoff_id}", response_model=None)
     def get_upload_handoff(
         upload_handoff_id: str,
@@ -286,12 +366,26 @@ def build_cx_upload_payload(
         "application/octet-stream",
     )
     content_text = source_payload.get("content_text")
+    content_base64 = source_payload.get("content_base64")
+    if content_text is not None and content_base64 is not None:
+        raise UploadHandoffError(
+            status_code=400,
+            error_code="ae.upload_content_source_conflict",
+            detail="Provide only one of content_text or content_base64.",
+        )
     if content_text is not None and not isinstance(content_text, str):
         raise UploadHandoffError(
             status_code=422,
             error_code="ae.upload_content_text_invalid",
             detail="content_text must be a string when supplied.",
         )
+    if content_base64 is not None:
+        if not isinstance(content_base64, str) or not content_base64.strip():
+            raise UploadHandoffError(
+                status_code=422,
+                error_code="ae.upload_content_base64_invalid",
+                detail="content_base64 must be a non-empty base64 string.",
+            )
 
     payload: dict[str, Any] = {
         "trace_id": trace_id,
@@ -303,10 +397,86 @@ def build_cx_upload_payload(
     }
     if isinstance(content_text, str):
         payload["content_text"] = content_text
+    if isinstance(content_base64, str):
+        payload["content_base64"] = content_base64
     if "source_sha256" in source_payload:
         payload["source_sha256"] = required_hash(source_payload["source_sha256"])
     if "size_bytes" in source_payload:
         payload["size_bytes"] = non_negative_int(source_payload["size_bytes"])
+    return payload
+
+
+def build_multipart_upload_source_payload(
+    *,
+    file_bytes: bytes,
+    file_filename: str | None,
+    file_content_type: str | None,
+    workspace_id: str | None = None,
+    tenant_id: str | None = None,
+    owner_user_id: str | None = None,
+    uploaded_by_user_id: str | None = None,
+    source_sha256: str | None = None,
+    size_bytes: str | int | None = None,
+    filename: str | None = None,
+    content_type: str | None = None,
+) -> dict[str, Any]:
+    if not isinstance(file_bytes, bytes) or not file_bytes:
+        raise UploadHandoffError(
+            status_code=400,
+            error_code="ae.upload_file_empty",
+            detail="file must contain at least one byte.",
+        )
+    normalized_filename = required_string(
+        {"filename": filename or file_filename},
+        "filename",
+        "ae.upload_filename_required",
+    )
+    normalized_content_type = optional_string(
+        {
+            "content_type": (
+                content_type or file_content_type or "application/octet-stream"
+            )
+        },
+        "content_type",
+        "application/octet-stream",
+    )
+    computed_size = len(file_bytes)
+    supplied_size = optional_non_negative_int(size_bytes, field_name="size_bytes")
+    if supplied_size is not None and supplied_size != computed_size:
+        raise UploadHandoffError(
+            status_code=400,
+            error_code="ae.upload_size_mismatch",
+            detail="size_bytes must match the multipart file size.",
+        )
+    computed_sha256 = sha256_bytes(file_bytes)
+    if source_sha256 is not None:
+        supplied_sha256 = required_hash(source_sha256)
+        if supplied_sha256 != computed_sha256:
+            raise UploadHandoffError(
+                status_code=400,
+                error_code="ae.upload_hash_mismatch",
+                detail="source_sha256 must match the multipart file bytes.",
+            )
+    payload: dict[str, Any] = {
+        "filename": normalized_filename,
+        "content_type": normalized_content_type,
+        "size_bytes": computed_size,
+        "source_sha256": computed_sha256,
+        "content_base64": base64.b64encode(file_bytes).decode("ascii"),
+    }
+    optional_fields = {
+        "workspace_id": workspace_id,
+        "tenant_id": tenant_id,
+        "owner_user_id": owner_user_id,
+        "uploaded_by_user_id": uploaded_by_user_id,
+    }
+    payload.update(
+        {
+            key: value.strip()
+            for key, value in optional_fields.items()
+            if isinstance(value, str) and value.strip()
+        }
+    )
     return payload
 
 
@@ -676,8 +846,27 @@ def non_negative_int(value: Any) -> int:
     return value
 
 
+def optional_non_negative_int(value: Any, *, field_name: str) -> int | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        try:
+            value = int(value)
+        except ValueError as exc:
+            raise UploadHandoffError(
+                status_code=400,
+                error_code="ae.upload_size_invalid",
+                detail=f"{field_name} must be a non-negative integer.",
+            ) from exc
+    return non_negative_int(value)
+
+
 def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
 
 
 def _upload_problem_response(

@@ -17,6 +17,7 @@ Current endpoints:
 - `GET /api/v1/workspaces/{workspace_id}`
 - `GET /api/v1/workspaces/{workspace_id}/activity`
 - `POST /api/v1/uploads`
+- `POST /api/v1/uploads/files`
 - `GET /api/v1/uploads/{upload_handoff_id}`
 - `GET /api/v1/workspaces/{workspace_id}/documents`
 - `GET /api/v1/documents/summary-search`
@@ -77,6 +78,11 @@ Upload handoff:
 - Upload handoff records keep the propagated stable subject refs for debugging,
   but do not store passwords, tokens, emails, raw identity profiles, source
   bytes, storage keys, or local filesystem paths.
+- Slice 0277 adds `POST /api/v1/uploads/files` as the multipart browser-file
+  facade. AE reads the request file only long enough to validate optional
+  `source_sha256` and `size_bytes`, forwards bytes to CX as `content_base64`,
+  and persists only the safe handoff metadata. CX remains the durable
+  source-file system of record.
 - Slice 0233 adds `nex_ae_api.auth_guard` as the reusable browser user-auth
   guard foundation. Browser user tokens are validated separately from
   service-to-service tokens, owner scope is claim-authoritative, and mismatched

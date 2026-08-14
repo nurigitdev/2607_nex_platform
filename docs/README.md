@@ -380,6 +380,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0274`](slices/0274_ae_web_authenticated_upload_playwright_postgresql_smoke.md) | `S28-004` AE Web authenticated upload Playwright PostgreSQL smoke. |
 | [`Slice 0275`](slices/0275_cx_source_file_materialization_boundary_audit.md) | `S28-005` CX source-file materialization boundary audit. |
 | [`Slice 0276`](slices/0276_cx_source_file_byte_materialization_api_hardening.md) | `S28-006` CX source-file byte materialization API hardening. |
+| [`Slice 0277`](slices/0277_ae_multipart_upload_facade_contract.md) | `S28-007` AE multipart upload facade contract. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

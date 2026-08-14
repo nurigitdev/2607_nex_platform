@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 import nex_ae_api.uploads as ae_uploads
 from nex_ae_api.auth_sessions import AUTH_SESSION_MODE_OA, SESSION_COOKIE_NAME
 from nex_ae_api.uploads import (
+    AE_MULTIPART_UPLOAD_ROUTE,
     HttpCxUploadClient,
     OWNERSHIP_COMPATIBILITY_MODE,
     OWNERSHIP_REF_SCHEMA_VERSION,
@@ -18,14 +19,17 @@ from nex_ae_api.uploads import (
     UploadHandoffError,
     UploadHandoffStore,
     build_cx_upload_payload,
+    build_multipart_upload_source_payload,
     build_upload_ownership_ref,
     build_upload_handoff_record,
     non_negative_int,
     normalize_upload_owner_resolver_mode,
+    optional_non_negative_int,
     owner_scope_from_payload,
     register_upload_routes,
     required_hash,
     resolve_upload_ownership,
+    sha256_bytes,
     upload_handoff_status,
 )
 from nex_runtime import (
@@ -64,14 +68,20 @@ class FakeCxUploadClient:
         trace_id: str,
     ) -> dict[str, Any]:
         self.calls.append({"payload": payload, "request_id": request_id, "trace_id": trace_id})
+        size_bytes = payload.get("size_bytes")
+        if not isinstance(size_bytes, int):
+            size_bytes = len(payload.get("content_text", ""))
+        source_sha256 = payload.get("source_sha256")
+        if not isinstance(source_sha256, str):
+            source_sha256 = SOURCE_HASH
         existing_document_id = "doc-001" if self.dedupe_status == "ALREADY_EXISTS" else None
         return {
             "document_id": "doc-001",
             "upload_id": "upload-001",
             "filename": payload["filename"],
             "content_type": payload["content_type"],
-            "size_bytes": len(payload.get("content_text", "")),
-            "source_sha256": SOURCE_HASH,
+            "size_bytes": size_bytes,
+            "source_sha256": source_sha256,
             "extraction": {
                 "status": "PENDING",
                 "job_id": "job-001",
@@ -221,6 +231,26 @@ def test_build_cx_upload_payload_forwards_owner_scope_and_mock_text() -> None:
     }
 
 
+def test_build_cx_upload_payload_accepts_base64_source_boundary() -> None:
+    payload = build_cx_upload_payload(
+        {
+            "filename": "source.bin",
+            "content_type": "application/octet-stream",
+            "content_base64": "AAFiaW5hcnk=",
+            "source_sha256": SOURCE_HASH,
+            "size_bytes": 8,
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+        },
+        trace_id=TRACE_ID,
+    )
+
+    assert payload["content_base64"] == "AAFiaW5hcnk="
+    assert payload["source_sha256"] == SOURCE_HASH
+    assert payload["size_bytes"] == 8
+    assert "content_text" not in payload
+
+
 def test_build_cx_upload_payload_accepts_canonical_ownership_ref() -> None:
     ownership_ref = {
         "tenant_ref": {"type": "oa.tenant", "id": "tenant-b"},
@@ -270,12 +300,17 @@ def test_upload_validation_rejects_invalid_inputs() -> None:
     ) == ("tenant-a", "user-a")
     assert required_hash(SOURCE_HASH) == SOURCE_HASH
     assert non_negative_int(0) == 0
+    assert optional_non_negative_int(3, field_name="size_bytes") == 3
+    assert optional_non_negative_int("0", field_name="size_bytes") == 0
+    assert optional_non_negative_int("", field_name="size_bytes") is None
 
     invalid_payloads = [
         {},
         {"filename": ""},
         {"filename": "x", "tenant_id": ""},
         {"filename": "x", "content_text": []},
+        {"filename": "x", "content_text": "hello", "content_base64": "aGVsbG8="},
+        {"filename": "x", "content_base64": ""},
         {"filename": "x", "source_sha256": "BAD"},
         {"filename": "x", "size_bytes": -1},
         {"filename": "x", "ownership_ref": "owner-a"},
@@ -322,7 +357,68 @@ def test_upload_validation_rejects_invalid_inputs() -> None:
     with pytest.raises(UploadHandoffError):
         non_negative_int("1")
     with pytest.raises(UploadHandoffError):
+        optional_non_negative_int("not-int", field_name="size_bytes")
+    with pytest.raises(UploadHandoffError):
         required_hash("")
+
+
+def test_build_multipart_upload_source_payload_computes_hash_and_base64() -> None:
+    file_bytes = b"\x00source file bytes"
+    payload = build_multipart_upload_source_payload(
+        file_bytes=file_bytes,
+        file_filename="source.bin",
+        file_content_type="application/octet-stream",
+        workspace_id="workspace-001",
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+        source_sha256=sha256_bytes(file_bytes),
+        size_bytes=str(len(file_bytes)),
+    )
+
+    assert payload == {
+        "filename": "source.bin",
+        "content_type": "application/octet-stream",
+        "size_bytes": len(file_bytes),
+        "source_sha256": sha256_bytes(file_bytes),
+        "content_base64": "AHNvdXJjZSBmaWxlIGJ5dGVz",
+        "workspace_id": "workspace-001",
+        "tenant_id": "tenant-a",
+        "owner_user_id": "user-a",
+    }
+
+    without_optional_hash = build_multipart_upload_source_payload(
+        file_bytes=file_bytes,
+        file_filename="source.bin",
+        file_content_type=None,
+    )
+    assert without_optional_hash["source_sha256"] == sha256_bytes(file_bytes)
+    assert without_optional_hash["content_type"] == "application/octet-stream"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error_code"),
+    [
+        ({"file_bytes": b""}, "ae.upload_file_empty"),
+        ({"source_sha256": SOURCE_HASH}, "ae.upload_hash_mismatch"),
+        ({"size_bytes": "999"}, "ae.upload_size_mismatch"),
+        ({"size_bytes": "bad"}, "ae.upload_size_invalid"),
+    ],
+)
+def test_build_multipart_upload_source_payload_rejects_bad_file_contract(
+    kwargs: dict[str, object],
+    error_code: str,
+) -> None:
+    base_kwargs = {
+        "file_bytes": b"file bytes",
+        "file_filename": "source.bin",
+        "file_content_type": "application/octet-stream",
+    }
+    base_kwargs.update(kwargs)
+
+    with pytest.raises(UploadHandoffError) as exc:
+        build_multipart_upload_source_payload(**base_kwargs)
+
+    assert exc.value.error_code == error_code
 
 
 def test_build_upload_handoff_record_redacts_source_and_storage_details() -> None:
@@ -360,6 +456,37 @@ def test_build_upload_handoff_record_redacts_source_and_storage_details() -> Non
     }
     assert "hello" not in str(handoff)
     assert "source_storage_path" not in str(handoff)
+
+
+def test_build_upload_handoff_record_redacts_base64_source_content() -> None:
+    cx_payload = build_cx_upload_payload(
+        {
+            "filename": "source.bin",
+            "content_type": "application/octet-stream",
+            "content_base64": "c2VjcmV0LWJ5dGVz",
+            "source_sha256": SOURCE_HASH,
+            "size_bytes": 12,
+        },
+        trace_id=TRACE_ID,
+    )
+    cx_record = FakeCxUploadClient().register_upload(
+        cx_payload,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    handoff = build_upload_handoff_record(
+        source_payload={"workspace_id": "workspace-001"},
+        cx_payload=cx_payload,
+        cx_record=cx_record,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert handoff["source"]["source_text_hash"] is None
+    assert handoff["source"]["source_sha256"] == SOURCE_HASH
+    assert handoff["metadata"]["raw_source_stored_in_ae"] is False
+    assert "c2VjcmV0LWJ5dGVz" not in str(handoff)
+    assert "secret-bytes" not in str(handoff)
 
 
 def test_upload_owner_resolver_mode_normalization_and_disabled_skip() -> None:
@@ -520,6 +647,79 @@ def test_upload_routes_accept_browser_user_and_scope_payload_to_claims() -> None
     assert isinstance(cx_client, FakeCxUploadClient)
     assert cx_client.calls[0]["payload"]["tenant_id"] == "tenant-a"
     assert cx_client.calls[0]["payload"]["owner_user_id"] == "user-a"
+
+
+def test_multipart_upload_route_forwards_file_bytes_to_cx_without_storing_in_ae() -> None:
+    client, store, cx_client = build_client()
+    file_bytes = b"\x00browser multipart bytes"
+
+    response = client.post(
+        AE_MULTIPART_UPLOAD_ROUTE,
+        data={
+            "workspace_id": "workspace-file",
+            "size_bytes": str(len(file_bytes)),
+            "source_sha256": sha256_bytes(file_bytes),
+        },
+        files={"file": ("source.bin", file_bytes, "application/octet-stream")},
+        headers=user_headers(),
+    )
+
+    payload = response.json()
+    cx_payload = cx_client.calls[0]["payload"]
+    assert response.status_code == 202
+    assert payload["workspace_id"] == "workspace-file"
+    assert payload["tenant_id"] == "tenant-a"
+    assert payload["owner_user_id"] == "user-a"
+    assert payload["source"]["size_bytes"] == len(file_bytes)
+    assert payload["source"]["source_sha256"] == sha256_bytes(file_bytes)
+    assert payload["metadata"] == {
+        "raw_source_stored_in_ae": False,
+        "cx_storage_redacted": True,
+    }
+    assert store.get(payload["upload_handoff_id"]) == payload
+    assert cx_payload["tenant_id"] == "tenant-a"
+    assert cx_payload["owner_user_id"] == "user-a"
+    assert cx_payload["content_base64"] == "AGJyb3dzZXIgbXVsdGlwYXJ0IGJ5dGVz"
+    assert cx_payload["source_sha256"] == sha256_bytes(file_bytes)
+    assert "content_base64" not in str(payload)
+    assert "browser multipart bytes" not in str(payload)
+
+
+def test_multipart_upload_route_rejects_unauthorized_and_owner_mismatch_before_cx_call() -> None:
+    unauthorized_client, _, unauthorized_cx = build_client()
+    mismatch_client, _, mismatch_cx = build_client()
+
+    unauthorized = unauthorized_client.post(
+        AE_MULTIPART_UPLOAD_ROUTE,
+        files={"file": ("source.bin", b"file bytes", "application/octet-stream")},
+    )
+    mismatch = mismatch_client.post(
+        AE_MULTIPART_UPLOAD_ROUTE,
+        data={"owner_user_id": "user-b"},
+        files={"file": ("source.bin", b"file bytes", "application/octet-stream")},
+        headers=user_headers(user_id="user-a"),
+    )
+
+    assert unauthorized.status_code == 401
+    assert mismatch.status_code == 403
+    assert mismatch.json()["error_code"] == "ae.browser_owner_scope_mismatch"
+    assert unauthorized_cx.calls == []
+    assert mismatch_cx.calls == []
+
+
+def test_multipart_upload_route_rejects_hash_mismatch_before_cx_call() -> None:
+    client, _, cx_client = build_client()
+
+    response = client.post(
+        AE_MULTIPART_UPLOAD_ROUTE,
+        data={"source_sha256": SOURCE_HASH},
+        files={"file": ("source.bin", b"actual bytes", "application/octet-stream")},
+        headers=user_headers(),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "ae.upload_hash_mismatch"
+    assert cx_client.calls == []
 
 
 def test_upload_routes_accept_oa_mode_browser_cookie_and_scope_payload_to_claims() -> None:
