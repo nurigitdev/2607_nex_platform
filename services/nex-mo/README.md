@@ -93,6 +93,8 @@ NEX_MO_PROTECTED_LIVE_PROFILE=dgx ./.venv/bin/python scripts/smoke/run_protected
 NEX_MO_PROVIDER_MODE=live ./.venv/bin/python scripts/smoke/check_local_live_provider_config.py --output reports/live/local-live-provider-config.json --summary
 NEX_MO_LIVE_PREFLIGHT=1 ./.venv/bin/python scripts/smoke/run_dgx_live_provider_preflight.py --summary
 NEX_MO_LIVE_PREFLIGHT=1 ./.venv/bin/python scripts/smoke/run_dgx_live_provider_preflight.py --evidence-output reports/live/dgx-provider-preflight.json --summary
+NEX_PROTECTED_REMOTE_PROVIDER_LIVE_SMOKE=1 ./.venv/bin/python scripts/smoke/run_protected_remote_provider_live_smoke.py --summary
+NEX_PROTECTED_REMOTE_PROVIDER_LIVE_SMOKE=1 ./.venv/bin/python scripts/smoke/run_protected_remote_provider_live_smoke.py --evidence-output reports/live/protected-remote-provider-live-smoke.json --summary
 NEX_COMPAT_LIVE_SMOKE=1 ./.venv/bin/python scripts/smoke/run_compatible_provider_live_smoke.py --summary
 NEX_COMPAT_LIVE_SMOKE=1 ./.venv/bin/python scripts/smoke/run_compatible_provider_live_smoke.py --evidence-output reports/live/compatible-vllm-provider-smoke.json --summary
 ```
@@ -104,9 +106,12 @@ environment copy, runs the local config guard first, and only then calls DGX.
 
 The config snapshot writer adds `local_live_provider_config_snapshot.v1`
 redaction metadata. The live preflight evidence writer adds
-`dgx_live_provider_preflight_evidence.v1` redaction metadata. Both refuse to
-write if configured endpoint or API-key environment values appear in the
-serialized output.
+`dgx_live_provider_preflight_evidence.v1` redaction metadata. The protected
+remote provider live smoke adds
+`protected_remote_provider_live_smoke_evidence.v1` and sends minimal live
+embedding, reranker, and generation requests through the MO remote-provider
+adapters. These evidence writers refuse to write if configured endpoint or
+API-key environment values appear in the serialized output.
 
 The older `NEX_MO_LIVE_EMBEDDING_HEALTH_URL`,
 `NEX_MO_LIVE_RERANKER_HEALTH_URL`, and `NEX_MO_LIVE_VLLM_MODELS_URL` names
