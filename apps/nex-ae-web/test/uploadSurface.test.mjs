@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  AE_MULTIPART_UPLOAD_ROUTE,
   AE_UPLOAD_ROUTE,
   AE_WEB_UPLOAD_FILE_METADATA_SCHEMA_VERSION,
   AE_WEB_UPLOAD_SURFACE_SCHEMA_VERSION,
   UploadSurfaceError,
   buildUploadFileMetadata,
+  buildUploadFormDataPayload,
   buildUploadHandoffPayload,
   buildUploadOwnershipRef,
   buildUploadSurfaceDraft,
@@ -15,6 +17,16 @@ import {
 } from "../src/uploadSurface.js";
 
 const sourceSha256 = "d12261539d27dcab69f873a5e1a30587919b8ce4802782151f1bc2ba5390b610";
+
+class FakeFormData {
+  constructor() {
+    this.entries = [];
+  }
+
+  append(name, value, filename) {
+    this.entries.push({ name, value, filename });
+  }
+}
 
 function ownerScope(overrides = {}) {
   return {
@@ -124,12 +136,55 @@ describe("upload surface", () => {
     assert.equal(fileMetadata.metadata.localPathIncluded, false);
     assert.equal(fileMetadata.metadata.lastModifiedIncluded, false);
     assert.equal(draft.fileMetadata.filename, "selected-report.md");
+    assert.equal(draft.uploadRoute, AE_MULTIPART_UPLOAD_ROUTE);
     assert.equal(payload.filename, "selected-report.md");
     assert.doesNotMatch(
       serialized,
       /content_text|content_base64|service_token|webkitRelativePath|private\//
     );
     assert.doesNotMatch(serialized, /1770000000000/);
+  });
+
+  it("builds multipart FormData without browser service or CX storage fields", () => {
+    const file = {
+      name: "selected-report.md",
+      type: "text/markdown",
+      size: 2048
+    };
+    const fileMetadata = buildUploadFileMetadata({ file, sourceSha256 });
+    const draft = buildUploadSurfaceDraftFromFileMetadata({
+      workspaceId: "workspace-local",
+      fileMetadata,
+      ownerScope: ownerScope()
+    });
+    const formData = buildUploadFormDataPayload(draft, {
+      file,
+      FormDataImpl: FakeFormData
+    });
+
+    assert.deepEqual(
+      formData.entries.map(entry => [entry.name, entry.filename || null]),
+      [
+        ["file", "selected-report.md"],
+        ["workspace_id", null],
+        ["tenant_id", null],
+        ["owner_user_id", null],
+        ["uploaded_by_user_id", null],
+        ["filename", null],
+        ["content_type", null],
+        ["size_bytes", null],
+        ["source_sha256", null]
+      ]
+    );
+    assert.equal(formData.entries[0].value, file);
+    assert.equal(
+      formData.entries.find(entry => entry.name === "source_sha256").value,
+      sourceSha256
+    );
+    assert.doesNotMatch(
+      JSON.stringify(formData.entries),
+      /service_token|storage_path|provider_url|webkitRelativePath/
+    );
   });
 
   it("normalizes upload handoff records back into a web surface", () => {
@@ -202,6 +257,28 @@ describe("upload surface", () => {
     assert.throws(
       () => buildUploadHandoffPayload({ upload_surface_schema_version: "wrong" }),
       error => error instanceof UploadSurfaceError && error.status === "UPLOAD_DRAFT_INVALID"
+    );
+    assert.throws(
+      () => buildUploadFormDataPayload(buildUploadSurfaceDraft({
+        workspaceId: "workspace-local",
+        filename: "safe.md",
+        sizeBytes: 1,
+        ownerScope: ownerScope()
+      })),
+      error => error instanceof UploadSurfaceError && error.status === "UPLOAD_FILE_REQUIRED"
+    );
+    assert.throws(
+      () =>
+        buildUploadFormDataPayload(
+          buildUploadSurfaceDraft({
+            workspaceId: "workspace-local",
+            filename: "safe.md",
+            sizeBytes: 1,
+            ownerScope: ownerScope()
+          }),
+          { file: { name: "safe.md" }, FormDataImpl: null }
+        ),
+      error => error instanceof UploadSurfaceError && error.status === "FORM_DATA_UNAVAILABLE"
     );
     assert.throws(
       () => buildUploadSurfaceFromHandoff({ upload_handoff_schema_version: "wrong" }),

@@ -414,5 +414,17 @@ Slice 0274 adds protected authenticated upload Playwright/PostgreSQL smoke:
 - The runner is skipped unless
   `NEX_AE_WEB_AUTHENTICATED_UPLOAD_PLAYWRIGHT_SMOKE=1` is set.
 
+Slice 0278 wires browser FormData upload:
+
+- `src/uploadSurface.js` exposes `/api/v1/uploads/files` and builds FormData
+  payloads from selected files while keeping service tokens, provider endpoints,
+  storage paths, and CX internal byte payload fields out of browser state.
+- `src/uploadClient.js` keeps metadata-only JSON upload on `/api/v1/uploads`
+  when no file object is supplied and switches to multipart FormData when
+  `submitUploadDraft(draft, { file })` is called.
+- The upload submit handler passes the selected file object from the file input
+  to the upload client; AE remains a transient facade and CX remains the
+  durable source-file owner.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

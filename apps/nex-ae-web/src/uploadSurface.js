@@ -4,6 +4,7 @@ export const AE_WEB_UPLOAD_FILE_METADATA_SCHEMA_VERSION =
 export const AE_UPLOAD_HANDOFF_SCHEMA_VERSION = "ae_upload_handoff.v1";
 export const CX_SOURCE_OWNERSHIP_REF_SCHEMA_VERSION = "cx_source_ownership_ref.v1";
 export const AE_UPLOAD_ROUTE = "/api/v1/uploads";
+export const AE_MULTIPART_UPLOAD_ROUTE = "/api/v1/uploads/files";
 
 export class UploadSurfaceError extends Error {
   constructor(message, { status = "UPLOAD_SURFACE_INVALID" } = {}) {
@@ -125,7 +126,7 @@ export function buildUploadSurfaceDraftFromFileMetadata({
     });
   }
 
-  return {
+  const draft = {
     ...buildUploadSurfaceDraft({
       workspaceId,
       filename: fileMetadata.filename,
@@ -135,6 +136,10 @@ export function buildUploadSurfaceDraftFromFileMetadata({
       ownerScope
     }),
     fileMetadata
+  };
+  return {
+    ...draft,
+    uploadRoute: fileMetadata.fileSelected ? AE_MULTIPART_UPLOAD_ROUTE : AE_UPLOAD_ROUTE
   };
 }
 
@@ -159,6 +164,43 @@ export function buildUploadHandoffPayload(draft) {
     payload.source_sha256 = draft.sourceSha256;
   }
   return payload;
+}
+
+export function buildUploadFormDataPayload(
+  draft,
+  {
+    file,
+    FormDataImpl = globalThis.FormData
+  } = {}
+) {
+  if (!draft || draft.upload_surface_schema_version !== AE_WEB_UPLOAD_SURFACE_SCHEMA_VERSION) {
+    throw new UploadSurfaceError("Upload draft is invalid.", {
+      status: "UPLOAD_DRAFT_INVALID"
+    });
+  }
+  if (!file) {
+    throw new UploadSurfaceError("Upload file is required.", {
+      status: "UPLOAD_FILE_REQUIRED"
+    });
+  }
+  if (typeof FormDataImpl !== "function") {
+    throw new UploadSurfaceError("FormData is not available.", {
+      status: "FORM_DATA_UNAVAILABLE"
+    });
+  }
+  const formData = new FormDataImpl();
+  formData.append("file", file, draft.filename);
+  appendTextField(formData, "workspace_id", draft.workspaceId);
+  appendTextField(formData, "tenant_id", draft.ownerScope.tenantId);
+  appendTextField(formData, "owner_user_id", draft.ownerScope.ownerUserId);
+  appendTextField(formData, "uploaded_by_user_id", draft.ownerScope.uploadedByUserId);
+  appendTextField(formData, "filename", draft.filename);
+  appendTextField(formData, "content_type", draft.contentType);
+  appendTextField(formData, "size_bytes", String(draft.sizeBytes));
+  if (draft.sourceSha256) {
+    appendTextField(formData, "source_sha256", draft.sourceSha256);
+  }
+  return formData;
 }
 
 export function buildUploadSurfaceFromHandoff(handoff) {
@@ -231,4 +273,10 @@ function optionalSha256(value) {
     });
   }
   return normalized;
+}
+
+function appendTextField(formData, name, value) {
+  if (typeof value === "string" && value.trim()) {
+    formData.append(name, value.trim());
+  }
 }

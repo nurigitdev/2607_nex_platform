@@ -252,6 +252,7 @@ def test_ae_web_upload_surface_tracks_owner_scope_contract() -> None:
         "ae_web_upload_surface.v1",
         "ae_upload_handoff.v1",
         "/api/v1/uploads",
+        "/api/v1/uploads/files",
         "cx_source_ownership_ref.v1",
         "legacy_owner_fields_mapped_to_oa_subject_refs",
         "buildUploadSurfaceFromHandoff",

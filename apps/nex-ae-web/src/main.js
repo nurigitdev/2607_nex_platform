@@ -1314,8 +1314,11 @@ async function submitUploadDraft() {
   });
 
   try {
+    const selectedFile = uploadFileInput.files?.[0] || null;
     workspaceState.uploadSubmission =
-      await workspaceState.uploadClient.submitUploadDraft(workspaceState.uploadDraft);
+      await workspaceState.uploadClient.submitUploadDraft(workspaceState.uploadDraft, {
+        file: selectedFile
+      });
     workspaceState.operations.upload = markOperationSucceeded(
       workspaceState.operations.upload,
       {

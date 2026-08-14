@@ -10,12 +10,23 @@ import {
 } from "../src/uploadClient.js";
 import {
   AE_UPLOAD_HANDOFF_SCHEMA_VERSION,
+  AE_MULTIPART_UPLOAD_ROUTE,
   AE_UPLOAD_ROUTE,
   buildUploadOwnershipRef,
   buildUploadSurfaceDraft
 } from "../src/uploadSurface.js";
 
 const sourceSha256 = "d12261539d27dcab69f873a5e1a30587919b8ce4802782151f1bc2ba5390b610";
+
+class FakeFormData {
+  constructor() {
+    this.entries = [];
+  }
+
+  append(name, value, filename) {
+    this.entries.push({ name, value, filename });
+  }
+}
 
 function uploadDraft() {
   return buildUploadSurfaceDraft({
@@ -145,6 +156,45 @@ describe("upload client adapters", () => {
     assert.equal(body.ownership_ref.owner_subject_ref.type, "oa.user");
     assert.equal(result.clientMode, "fetch");
     assert.equal(result.documentId, "doc-001");
+  });
+
+  it("posts selected browser files as multipart FormData through the AE facade", async () => {
+    const calls = [];
+    const selectedFile = {
+      name: "new-reference-pack.md",
+      type: "text/markdown",
+      size: 4096
+    };
+    const client = createFetchUploadClient({
+      baseUrl: "https://ae.local",
+      FormDataImpl: FakeFormData,
+      fetchImpl: async (url, options) => {
+        calls.push({ url, options });
+        return jsonResponse({ payload: handoff() });
+      }
+    });
+
+    const result = await client.submitUploadDraft(uploadDraft(), { file: selectedFile });
+    const body = calls[0].options.body;
+
+    assert.equal(calls[0].url, "https://ae.local/api/v1/uploads/files");
+    assert.equal(calls[0].options.method, "POST");
+    assert.equal(calls[0].options.credentials, "same-origin");
+    assert.equal(calls[0].options.headers.Accept, "application/json");
+    assert.equal("Content-Type" in calls[0].options.headers, false);
+    assert.equal(body.entries[0].name, "file");
+    assert.equal(body.entries[0].value, selectedFile);
+    assert.equal(body.entries[0].filename, "new-reference-pack.md");
+    assert.equal(
+      body.entries.find(entry => entry.name === "source_sha256").value,
+      sourceSha256
+    );
+    assert.equal(result.uploadRoute, AE_MULTIPART_UPLOAD_ROUTE);
+    assert.equal(result.metadata.sourceContentIncluded, true);
+    assert.doesNotMatch(
+      JSON.stringify(result),
+      /service_token|storage_path|provider_url/
+    );
   });
 
   it("maps HTTP, network, missing fetch, and invalid handoff failures to typed errors", async () => {

@@ -1,6 +1,8 @@
 import {
   AE_UPLOAD_HANDOFF_SCHEMA_VERSION,
+  AE_MULTIPART_UPLOAD_ROUTE,
   AE_UPLOAD_ROUTE,
+  buildUploadFormDataPayload,
   buildUploadHandoffPayload,
   buildUploadSurfaceFromHandoff
 } from "./uploadSurface.js";
@@ -19,20 +21,21 @@ export class UploadClientError extends Error {
 export function createMockUploadClient({ responseFactory } = {}) {
   return {
     clientMode: "mock",
-    async submitUploadDraft(draft) {
+    async submitUploadDraft(draft, { file } = {}) {
       const payload = buildUploadHandoffPayload(draft);
       const handoff = responseFactory
         ? responseFactory(payload)
         : buildMockUploadHandoff(payload);
       return buildUploadSubmissionResult(handoff, {
         clientMode: "mock",
-        uploadRoute: AE_UPLOAD_ROUTE
+        uploadRoute: file ? AE_MULTIPART_UPLOAD_ROUTE : AE_UPLOAD_ROUTE,
+        sourceContentIncluded: Boolean(file)
       });
     }
   };
 }
 
-export function createFetchUploadClient({ baseUrl = "", fetchImpl } = {}) {
+export function createFetchUploadClient({ baseUrl = "", fetchImpl, FormDataImpl } = {}) {
   const request = fetchImpl || globalThis.fetch;
   if (typeof request !== "function") {
     throw new UploadClientError("Fetch is not available.", {
@@ -42,18 +45,25 @@ export function createFetchUploadClient({ baseUrl = "", fetchImpl } = {}) {
 
   return {
     clientMode: "fetch",
-    async submitUploadDraft(draft) {
-      const payload = buildUploadHandoffPayload(draft);
-      let response;
-      try {
-        response = await request(`${baseUrl}${AE_UPLOAD_ROUTE}`, {
-          method: "POST",
-          credentials: "same-origin",
-          headers: {
+    async submitUploadDraft(draft, { file } = {}) {
+      const hasFile = Boolean(file);
+      const uploadRoute = hasFile ? AE_MULTIPART_UPLOAD_ROUTE : AE_UPLOAD_ROUTE;
+      const body = hasFile
+        ? buildUploadFormDataPayload(draft, { file, FormDataImpl })
+        : JSON.stringify(buildUploadHandoffPayload(draft));
+      const headers = hasFile
+        ? { Accept: "application/json" }
+        : {
             Accept: "application/json",
             "Content-Type": "application/json"
-          },
-          body: JSON.stringify(payload)
+          };
+      let response;
+      try {
+        response = await request(`${baseUrl}${uploadRoute}`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers,
+          body
         });
       } catch {
         throw new UploadClientError("Upload request failed.", {
@@ -75,7 +85,8 @@ export function createFetchUploadClient({ baseUrl = "", fetchImpl } = {}) {
 
       return buildUploadSubmissionResult(responsePayload, {
         clientMode: "fetch",
-        uploadRoute: AE_UPLOAD_ROUTE
+        uploadRoute,
+        sourceContentIncluded: hasFile
       });
     }
   };
@@ -83,7 +94,11 @@ export function createFetchUploadClient({ baseUrl = "", fetchImpl } = {}) {
 
 export function buildUploadSubmissionResult(
   handoff,
-  { clientMode = "mock", uploadRoute = AE_UPLOAD_ROUTE } = {}
+  {
+    clientMode = "mock",
+    uploadRoute = AE_UPLOAD_ROUTE,
+    sourceContentIncluded = false
+  } = {}
 ) {
   const surface = buildUploadSurfaceFromHandoff(handoff);
   const dedupeStatus = handoff.dedupe?.status || handoff.dedupe_status || "CREATED";
@@ -107,7 +122,7 @@ export function buildUploadSubmissionResult(
     ownerScope: surface.ownerScope,
     links: safeLinks(handoff.links),
     metadata: {
-      sourceContentIncluded: false,
+      sourceContentIncluded: Boolean(sourceContentIncluded),
       browserServiceTokenIncluded: false,
       cxStorageIncluded: false,
       providerUrlIncluded: false
