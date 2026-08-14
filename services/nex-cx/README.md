@@ -75,6 +75,9 @@ Internal persistence boundary:
 - Slice 0281 records the source-file reader fallback decision: extraction must
   keep runtime source bytes as the fast path, then fall back to the verified
   materialized local source file when the runtime memory copy is unavailable.
+- Slice 0282 implements that fallback. `run_text_extraction_job(...)` now reads
+  verified local source files after runtime source bytes are evicted and records
+  redaction-safe `source_reader` metadata in extraction results.
 - Text extraction runs through the `nex_cx.extractors` adapter boundary. The
   local mock adapter performs real UTF-8 Markdown/plain-text conversion and
   emits explicit placeholders with warnings for PDF, DOCX, PPTX, and XLSX until

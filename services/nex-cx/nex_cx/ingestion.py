@@ -68,6 +68,9 @@ DEFAULT_MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
 CX_SOURCE_FILE_MATERIALIZATION_RECEIPT_SCHEMA_VERSION = (
     "cx_source_file_materialization_receipt.v1"
 )
+CX_SOURCE_READER_SCHEMA_VERSION = "cx_source_reader.v1"
+SOURCE_READER_RUNTIME_MEMORY = "runtime_memory"
+SOURCE_READER_MATERIALIZED_LOCAL_FILE = "materialized_local_source_file"
 OWNERSHIP_COMPATIBILITY_MODE = "legacy_owner_fields_mapped_to_oa_subject_refs"
 UPLOAD_OWNER_RESOLVER_DISABLED = "disabled"
 UPLOAD_OWNER_RESOLVER_VERIFY = "verify"
@@ -1179,13 +1182,11 @@ def run_text_extraction_job(
             detail=f"Document registration was not found: {job['subject_ref']['id']}",
         )
 
-    source_bytes = store.get_source_bytes(document["upload_id"])
-    if source_bytes is None:
-        raise IngestionError(
-            status_code=409,
-            error_code="cx.source_content_unavailable",
-            detail="Extraction requires source bytes captured at upload registration.",
-        )
+    source_bytes, source_reader = source_bytes_for_extraction(
+        document,
+        store=store,
+        storage_config=storage_config,
+    )
 
     selected_extractor = extractor or LocalMockTextExtractor()
     try:
@@ -1228,11 +1229,159 @@ def run_text_extraction_job(
             "version": extracted.version,
             "source_format": extracted.source_format,
         },
+        "source_reader": source_reader,
         "warnings": extracted.warnings,
         "created_at": now,
         "updated_at": now,
     }
     return store.save_extraction_result(result)
+
+
+def source_bytes_for_extraction(
+    document: dict[str, Any],
+    *,
+    store: ContentIngestionStore,
+    storage_config: CxStorageConfig,
+) -> tuple[bytes, dict[str, Any]]:
+    upload_id = document.get("upload_id")
+    if isinstance(upload_id, str):
+        source_bytes = store.get_source_bytes(upload_id)
+        if source_bytes is not None:
+            return source_bytes, build_source_reader_metadata(
+                source=SOURCE_READER_RUNTIME_MEMORY,
+                runtime_source_bytes_used=True,
+                fallback_used=False,
+            )
+    try:
+        source_bytes = read_verified_materialized_source_bytes(
+            document,
+            store=store,
+            storage_config=storage_config,
+        )
+    except IngestionError as exc:
+        if exc.error_code in {
+            "cx.source_file_lineage_unavailable",
+            "cx.source_file_not_found",
+            "cx.source_file_not_verified",
+        }:
+            raise IngestionError(
+                status_code=409,
+                error_code="cx.source_content_unavailable",
+                detail=(
+                    "Extraction requires source bytes captured at upload registration "
+                    "or a verified materialized source file."
+                ),
+            ) from exc
+        raise
+    return source_bytes, build_source_reader_metadata(
+        source=SOURCE_READER_MATERIALIZED_LOCAL_FILE,
+        runtime_source_bytes_used=False,
+        fallback_used=True,
+    )
+
+
+def read_verified_materialized_source_bytes(
+    document: dict[str, Any],
+    *,
+    store: ContentIngestionStore,
+    storage_config: CxStorageConfig,
+) -> bytes:
+    refs = store.get_content_ref(document["document_id"])
+    if refs is None:
+        raise IngestionError(
+            status_code=409,
+            error_code="cx.source_file_lineage_unavailable",
+            detail="Document does not have source-file lineage for extraction fallback.",
+        )
+    source_file = store.content_repository.get_source_file(refs["source_file_id"])
+    if source_file is None:
+        raise IngestionError(
+            status_code=409,
+            error_code="cx.source_file_not_found",
+            detail="Source-file metadata was not found for extraction fallback.",
+        )
+    if source_file.get("storage_backend") != "local_filesystem":
+        raise IngestionError(
+            status_code=409,
+            error_code="cx.source_reader_backend_unsupported",
+            detail="Extraction source fallback only supports local_filesystem storage.",
+        )
+    if not isinstance(source_file.get("checksum_verified_at"), str):
+        raise IngestionError(
+            status_code=409,
+            error_code="cx.source_file_not_verified",
+            detail="Extraction source fallback requires checksum-verified source files.",
+        )
+    storage_key = source_file.get("storage_key")
+    if not isinstance(storage_key, str) or not storage_key.strip():
+        raise IngestionError(
+            status_code=422,
+            error_code="cx.source_storage_key_invalid",
+            detail="source storage key must be a non-empty relative key.",
+        )
+    if storage_key.startswith("/") or ".." in Path(storage_key).parts:
+        raise IngestionError(
+            status_code=422,
+            error_code="cx.source_storage_key_invalid",
+            detail="source storage key must be relative and safe.",
+        )
+    source_path = storage_config.source_root / storage_key
+    if not _is_relative_to(
+        source_path.resolve(strict=False),
+        storage_config.source_root.resolve(strict=False),
+    ):
+        raise IngestionError(
+            status_code=422,
+            error_code="cx.source_storage_key_invalid",
+            detail="source storage key must stay under the configured source root.",
+        )
+    if not source_path.exists():
+        raise IngestionError(
+            status_code=409,
+            error_code="cx.source_file_missing",
+            detail="Verified source file was not found on local storage.",
+        )
+    source_bytes = source_path.read_bytes()
+    expected_size = source_file.get("size_bytes")
+    if isinstance(expected_size, int) and len(source_bytes) != expected_size:
+        raise IngestionError(
+            status_code=409,
+            error_code="cx.source_size_mismatch",
+            detail="Verified source file size differs from source metadata.",
+        )
+    if sha256_bytes(source_bytes) != source_file["source_sha256"]:
+        raise IngestionError(
+            status_code=409,
+            error_code="cx.source_checksum_mismatch",
+            detail="Verified source file checksum differs from source metadata.",
+        )
+    return source_bytes
+
+
+def build_source_reader_metadata(
+    *,
+    source: str,
+    runtime_source_bytes_used: bool,
+    fallback_used: bool,
+) -> dict[str, Any]:
+    return {
+        "source_reader_schema_version": CX_SOURCE_READER_SCHEMA_VERSION,
+        "source": source,
+        "runtime_source_bytes_used": runtime_source_bytes_used,
+        "fallback_used": fallback_used,
+        "checksum_algorithm": "sha256",
+        "storage_key_included": False,
+        "local_storage_path_included": False,
+        "raw_source_included": False,
+    }
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
 
 
 def write_extracted_markdown(path: Path, markdown_text: str) -> None:

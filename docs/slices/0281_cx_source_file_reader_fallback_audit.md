@@ -29,6 +29,12 @@ Slice 0282 should add a verified local source-file reader fallback to
 read the materialized source file only when source metadata is local,
 checksum-verified, safely keyed, present on disk, and hash-matching.
 
+## Current Status
+
+Slice 0282 implements this fallback. The same audit now reports
+`fallback_state=implemented`, proving extraction succeeds after runtime source
+bytes are evicted while evidence remains redaction-safe.
+
 ## Evidence
 
 - Audit summary:

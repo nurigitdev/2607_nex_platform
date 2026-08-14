@@ -26,12 +26,14 @@ def test_source_file_reader_fallback_audit_passes_current_gap() -> None:
     assert all(item["present"] for item in evidence["paths"])
     assert all(item["present"] for item in evidence["source_tokens"])
     assert evidence["runtime_probe"]["status"] == "PASS"
-    assert evidence["runtime_probe"]["observations"]["fallback_state"] == "pending"
-    assert (
-        evidence["runtime_probe"]["observations"]["extraction_error_code_after_evict"]
-        == "cx.source_content_unavailable"
+    assert evidence["runtime_probe"]["observations"]["fallback_state"] == "implemented"
+    assert evidence["runtime_probe"]["observations"]["source_reader"] == (
+        "materialized_local_source_file"
     )
+    assert evidence["runtime_probe"]["observations"]["extraction_error_code_after_evict"] is None
     assert evidence["runtime_probe"]["checks"]["materialized_source_exists"] is True
+    assert evidence["runtime_probe"]["checks"]["fallback_extraction_succeeded"] is True
+    assert evidence["runtime_probe"]["checks"]["source_reader_redacted"] is True
     assert audit.summary_line(evidence).startswith(
         "cx_source_file_reader_fallback_audit=pass "
     )
@@ -115,6 +117,27 @@ def test_source_file_reader_fallback_audit_reports_probe_failures() -> None:
     assert explicit_failure["issues"][-1]["subject"] == "probe_bad"
     assert exception_failure["runtime_probe"]["failure_code"] == "RuntimeError"
     assert invalid_failure["runtime_probe"]["failure_code"] == "invalid_probe"
+
+
+def test_source_file_reader_fallback_gap_probe_records_extraction_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_extraction(*_args: object, **_kwargs: object) -> dict[str, object]:
+        raise audit.IngestionError(
+            status_code=409,
+            error_code="cx.source_content_unavailable",
+            detail="forced fallback failure",
+        )
+
+    monkeypatch.setattr(audit, "run_text_extraction_job", fail_extraction)
+
+    probe = audit.run_gap_probe()
+
+    assert probe["status"] == "FAIL"
+    assert probe["observations"]["extraction_error_code_after_evict"] == (
+        "cx.source_content_unavailable"
+    )
+    assert probe["checks"]["fallback_extraction_succeeded"] is False
 
 
 def test_source_file_reader_fallback_audit_helpers_and_cli(

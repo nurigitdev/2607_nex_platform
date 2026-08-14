@@ -86,6 +86,27 @@ REQUIRED_SOURCE_TOKENS = (
         "Current extraction reads source bytes from runtime memory first.",
     ),
     TokenRequirement(
+        "fallback_reader",
+        CX_INGESTION,
+        "source_bytes_for_extraction",
+        "source_bytes_for_extraction",
+        "Extraction resolves source bytes through the memory/fallback reader boundary.",
+    ),
+    TokenRequirement(
+        "fallback_reader",
+        CX_INGESTION,
+        "read_verified_materialized_source_bytes",
+        "read_verified_materialized_source_bytes",
+        "Extraction can read verified materialized local source files.",
+    ),
+    TokenRequirement(
+        "fallback_reader",
+        CX_INGESTION,
+        "materialized_reader_metadata",
+        "materialized_local_source_file",
+        "Extraction reports a redaction-safe materialized source reader.",
+    ),
+    TokenRequirement(
         "current_memory_reader",
         CX_INGESTION,
         "memory_missing_error",
@@ -204,7 +225,7 @@ def run_cx_source_file_reader_fallback_audit(
         "decision": {
             "risk": "memory_only_extraction_loses_uploaded_bytes_after_runtime_restart",
             "target": "read_verified_local_source_file_when_runtime_source_bytes_are_missing",
-            "next_slice": "Slice 0282",
+            "next_slice": "Slice 0283",
             "raw_source_in_evidence": False,
             "local_path_in_evidence": False,
         },
@@ -268,10 +289,10 @@ def run_gap_probe() -> dict[str, Any]:
         store.source_bytes.pop(upload_id, None)
         store.source_texts.pop(upload_id, None)
 
-        extraction_unavailable = False
         extraction_error_code = None
+        extraction_result = None
         try:
-            run_text_extraction_job(
+            extraction_result = run_text_extraction_job(
                 stored["extraction"]["job_id"],
                 store=store,
                 storage_config=storage_config,
@@ -280,7 +301,11 @@ def run_gap_probe() -> dict[str, Any]:
             )
         except IngestionError as exc:
             extraction_error_code = exc.error_code
-            extraction_unavailable = exc.error_code == "cx.source_content_unavailable"
+        source_reader = (
+            extraction_result.get("source_reader", {})
+            if isinstance(extraction_result, dict)
+            else {}
+        )
 
         checks = {
             "materialized_source_exists": source_path.exists(),
@@ -292,7 +317,19 @@ def run_gap_probe() -> dict[str, Any]:
                 and isinstance(source_file.get("checksum_verified_at"), str)
             ),
             "memory_source_bytes_evicted": not store.source_bytes_available(upload_id),
-            "current_extraction_reports_gap": extraction_unavailable,
+            "fallback_extraction_succeeded": (
+                isinstance(extraction_result, dict)
+                and extraction_result.get("status") == "SUCCEEDED"
+            ),
+            "materialized_source_reader_used": (
+                source_reader.get("source") == "materialized_local_source_file"
+                and source_reader.get("fallback_used") is True
+            ),
+            "source_reader_redacted": (
+                source_reader.get("storage_key_included") is False
+                and source_reader.get("local_storage_path_included") is False
+                and source_reader.get("raw_source_included") is False
+            ),
             "raw_source_not_serialized": True,
             "local_path_not_serialized": True,
         }
@@ -311,7 +348,8 @@ def run_gap_probe() -> dict[str, Any]:
                     upload_id
                 ),
                 "extraction_error_code_after_evict": extraction_error_code,
-                "fallback_state": "pending",
+                "fallback_state": "implemented",
+                "source_reader": source_reader.get("source"),
             },
             "checks": checks,
         }
@@ -387,7 +425,7 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"paths={present_count(evidence['paths'])}/{len(evidence['paths'])} "
             f"token_groups={present_count_bool(token_groups)}/{len(token_groups)} "
             f"fallback_state={observations.get('fallback_state')} "
-            "next=Slice_0282"
+            "next=Slice_0283"
         )
     failed_checks = ",".join(
         key for key, value in evidence["checks"].items() if not value

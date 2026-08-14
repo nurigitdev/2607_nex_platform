@@ -13,6 +13,8 @@ from nex_cx.ingestion import (
     IngestionError,
     UPLOAD_OWNER_RESOLVER_DISABLED,
     UPLOAD_OWNER_RESOLVER_VERIFY,
+    SOURCE_READER_MATERIALIZED_LOCAL_FILE,
+    SOURCE_READER_RUNTIME_MEMORY,
     build_ingestion_job,
     build_source_file_materialization_receipt,
     build_storage_config,
@@ -23,6 +25,7 @@ from nex_cx.ingestion import (
     materialize_local_source_file,
     normalize_upload_owner_resolver_mode,
     payload_source_kind,
+    read_verified_materialized_source_bytes,
     register_ingestion_routes,
     resolve_upload_ownership,
     run_text_extraction_job,
@@ -30,6 +33,7 @@ from nex_cx.ingestion import (
     sanitize_filename,
     sha256_text,
     source_content_from_payload,
+    source_bytes_for_extraction,
     storage_date_partition,
     storage_paths_for_document,
     stored_extension_for,
@@ -1689,10 +1693,86 @@ def test_run_text_extraction_job_writes_markdown_and_updates_state(tmp_path: Pat
         "version": "slice-0072",
         "source_format": "plain_text",
     }
+    assert result["source_reader"] == {
+        "source_reader_schema_version": "cx_source_reader.v1",
+        "source": SOURCE_READER_RUNTIME_MEMORY,
+        "runtime_source_bytes_used": True,
+        "fallback_used": False,
+        "checksum_algorithm": "sha256",
+        "storage_key_included": False,
+        "local_storage_path_included": False,
+        "raw_source_included": False,
+    }
     assert result["warnings"] == []
     assert store.get_job(result["job_id"])["status"] == "SUCCEEDED"
     assert store.get_document(result["document_id"])["extraction"]["markdown_available"] is True
     assert store.get_extraction_result(result["document_id"]) == result
+
+
+def test_run_text_extraction_job_reads_materialized_source_after_memory_eviction(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    config = storage_config(tmp_path)
+    document = build_upload_registration(
+        {
+            "filename": "source.txt",
+            "content_type": "text/plain",
+            "content_text": "fallback extraction",
+        },
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.save_upload_registration(document, source_text="fallback extraction")
+    store.source_bytes.pop(document["upload_id"])
+    store.source_texts.pop(document["upload_id"])
+
+    result = run_text_extraction_job(
+        document["extraction"]["job_id"],
+        store=store,
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert result["status"] == "SUCCEEDED"
+    assert result["source_reader"]["source"] == SOURCE_READER_MATERIALIZED_LOCAL_FILE
+    assert result["source_reader"]["runtime_source_bytes_used"] is False
+    assert result["source_reader"]["fallback_used"] is True
+    assert result["source_reader"]["storage_key_included"] is False
+    assert result["source_reader"]["local_storage_path_included"] is False
+    assert "fallback extraction" in Path(result["extracted_markdown_path"]).read_text(
+        encoding="utf-8"
+    )
+    assert str(tmp_path) not in str(result["source_reader"])
+
+
+def test_source_bytes_for_extraction_falls_back_without_upload_id(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    config = storage_config(tmp_path)
+    document = build_upload_registration(
+        {"filename": "source.txt", "content_text": "lineage fallback"},
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.save_upload_registration(document, source_text="lineage fallback")
+    document_without_upload_id = {
+        key: value for key, value in document.items() if key != "upload_id"
+    }
+
+    source_bytes, reader = source_bytes_for_extraction(
+        document_without_upload_id,
+        store=store,
+        storage_config=config,
+    )
+
+    assert source_bytes == b"lineage fallback"
+    assert reader["source"] == SOURCE_READER_MATERIALIZED_LOCAL_FILE
+    assert reader["fallback_used"] is True
 
 
 def test_run_text_extraction_job_uses_binary_placeholder_adapter(tmp_path: Path) -> None:
@@ -1816,6 +1896,159 @@ def test_run_text_extraction_job_reports_missing_source_text(tmp_path: Path) -> 
 
     assert exc.value.status_code == 409
     assert exc.value.error_code == "cx.source_content_unavailable"
+
+
+def test_source_bytes_for_extraction_collapses_unverified_metadata_only_source(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    config = storage_config(tmp_path)
+    document = build_upload_registration(
+        {"filename": "source.pdf", "source_sha256": "a" * 64, "size_bytes": 10},
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.save_upload_registration(document)
+
+    with pytest.raises(IngestionError) as direct_exc:
+        read_verified_materialized_source_bytes(
+            document,
+            store=store,
+            storage_config=config,
+        )
+    with pytest.raises(IngestionError) as public_exc:
+        source_bytes_for_extraction(document, store=store, storage_config=config)
+
+    assert direct_exc.value.error_code == "cx.source_file_not_verified"
+    assert public_exc.value.error_code == "cx.source_content_unavailable"
+
+
+def test_source_bytes_for_extraction_collapses_missing_source_file_metadata(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    config = storage_config(tmp_path)
+    document = build_upload_registration(
+        {"filename": "source.txt", "content_text": "metadata source"},
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.save_upload_registration(document, source_text="metadata source")
+    refs = store.get_content_ref(document["document_id"])
+    store.source_bytes.pop(document["upload_id"])
+    store.content_repository.source_files.pop(refs["source_file_id"])
+
+    with pytest.raises(IngestionError) as exc:
+        source_bytes_for_extraction(document, store=store, storage_config=config)
+
+    assert exc.value.error_code == "cx.source_content_unavailable"
+
+
+def test_read_verified_materialized_source_bytes_rejects_missing_and_corrupt_file(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    config = storage_config(tmp_path)
+    document = build_upload_registration(
+        {"filename": "source.txt", "content_text": "durable source"},
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.save_upload_registration(document, source_text="durable source")
+    source_path = Path(document["storage"]["source_storage_path"])
+    source_path.unlink()
+
+    with pytest.raises(IngestionError) as missing_exc:
+        read_verified_materialized_source_bytes(
+            document,
+            store=store,
+            storage_config=config,
+        )
+    source_path.write_text("durable sourcE", encoding="utf-8")
+    with pytest.raises(IngestionError) as checksum_exc:
+        read_verified_materialized_source_bytes(
+            document,
+            store=store,
+            storage_config=config,
+        )
+    source_path.write_text("x", encoding="utf-8")
+    source_file = store.content_repository.get_source_file(
+        store.get_content_ref(document["document_id"])["source_file_id"]
+    )
+    source_file["source_sha256"] = sha256_bytes(b"x")
+    with pytest.raises(IngestionError) as size_exc:
+        read_verified_materialized_source_bytes(
+            document,
+            store=store,
+            storage_config=config,
+        )
+
+    assert missing_exc.value.error_code == "cx.source_file_missing"
+    assert checksum_exc.value.error_code == "cx.source_checksum_mismatch"
+    assert size_exc.value.error_code == "cx.source_size_mismatch"
+
+
+def test_read_verified_materialized_source_bytes_rejects_unsafe_metadata(
+    tmp_path: Path,
+) -> None:
+    store = ContentIngestionStore()
+    config = storage_config(tmp_path)
+    document = build_upload_registration(
+        {"filename": "source.txt", "content_text": "safe source"},
+        storage_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.save_upload_registration(document, source_text="safe source")
+    refs = store.get_content_ref(document["document_id"])
+    source_file = store.content_repository.get_source_file(refs["source_file_id"])
+
+    source_file["storage_backend"] = "s3"
+    with pytest.raises(IngestionError) as backend_exc:
+        read_verified_materialized_source_bytes(
+            document,
+            store=store,
+            storage_config=config,
+        )
+    source_file["storage_backend"] = "local_filesystem"
+    source_file["storage_key"] = ""
+    with pytest.raises(IngestionError) as blank_key_exc:
+        read_verified_materialized_source_bytes(
+            document,
+            store=store,
+            storage_config=config,
+        )
+    source_file["storage_key"] = "../source.txt"
+    with pytest.raises(IngestionError) as key_exc:
+        read_verified_materialized_source_bytes(
+            document,
+            store=store,
+            storage_config=config,
+        )
+    source_file["storage_key"] = "escape/source.txt"
+    outside = tmp_path / "outside-source-root"
+    outside.mkdir()
+    escape = config.source_root / "escape"
+    escape.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(IngestionError) as escape_exc:
+        read_verified_materialized_source_bytes(
+            document,
+            store=store,
+            storage_config=config,
+        )
+    store.source_bytes.pop(document["upload_id"])
+    store.document_content_refs.pop(document["document_id"])
+    with pytest.raises(IngestionError) as lineage_exc:
+        source_bytes_for_extraction(document, store=store, storage_config=config)
+
+    assert backend_exc.value.error_code == "cx.source_reader_backend_unsupported"
+    assert blank_key_exc.value.error_code == "cx.source_storage_key_invalid"
+    assert key_exc.value.error_code == "cx.source_storage_key_invalid"
+    assert escape_exc.value.error_code == "cx.source_storage_key_invalid"
+    assert lineage_exc.value.error_code == "cx.source_content_unavailable"
 
 
 def test_store_save_extraction_result_requires_existing_state() -> None:

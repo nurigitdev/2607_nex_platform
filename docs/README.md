@@ -385,6 +385,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0279`](slices/0279_ae_web_source_file_upload_playwright_postgresql_smoke.md) | `S28-009` AE Web source-file upload Playwright PostgreSQL smoke. |
 | [`Slice 0280`](slices/0280_cx_uploaded_source_extraction_readiness_audit.md) | `S28-010` CX uploaded source extraction readiness audit. |
 | [`Slice 0281`](slices/0281_cx_source_file_reader_fallback_audit.md) | `S29-001` CX source-file reader fallback audit. |
+| [`Slice 0282`](slices/0282_cx_extraction_materialized_source_fallback.md) | `S29-002` CX extraction materialized-source fallback implementation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
