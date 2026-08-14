@@ -8,7 +8,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -19,17 +19,27 @@ ROOT = Path(__file__).resolve().parents[2]
 SHARED_PATH = ROOT / "services" / "_shared"
 DB_SCRIPT_PATH = ROOT / "scripts" / "db"
 CX_PATH = ROOT / "services" / "nex-cx"
+MO_PATH = ROOT / "services" / "nex-mo"
 SMOKE_PATH = ROOT / "scripts" / "smoke"
 sys.path.insert(0, str(SHARED_PATH))
 sys.path.insert(0, str(DB_SCRIPT_PATH))
 sys.path.insert(0, str(CX_PATH))
+sys.path.insert(0, str(MO_PATH))
 sys.path.insert(0, str(SMOKE_PATH))
 
+from nex_mo.providers import ProviderRouteError  # noqa: E402
+from nex_mo.remote_provider import (  # noqa: E402
+    OPENAI_EMBEDDINGS_SHAPE,
+    build_remote_embedding_execution_config,
+    execute_remote_embedding_request,
+    expected_models_from_env,
+)
 from nex_cx.ingestion import (  # noqa: E402
     UPLOAD_OWNER_RESOLVER_DISABLED,
     ContentIngestionStore,
     register_ingestion_routes,
 )
+from nex_cx.embedding_index import EmbeddingIndexError  # noqa: E402
 from nex_cx.processing import PIPELINE_STEPS, register_processing_routes  # noqa: E402
 from nex_cx.repository import SqlAlchemyCxContentRepository  # noqa: E402
 from nex_runtime import (  # noqa: E402
@@ -57,6 +67,9 @@ from run_cx_upload_ownership_postgres_smoke import (  # noqa: E402
 from run_cx_uploaded_source_extraction_postgres_smoke import (  # noqa: E402
     _read_source_file_observation,
 )
+from run_protected_dgx_live_profile import (  # noqa: E402
+    protected_dgx_vllm_profile_defaults,
+)
 from run_migrations import (  # noqa: E402
     MigrationError,
     run_service_migrations,
@@ -73,6 +86,12 @@ SERVICE_SPEC = SERVICE_SPECS[SERVICE_ID]
 SCHEMA_VERSION = "cx_real_document_processing_pipeline_postgres_smoke.v1"
 SECRET_MARKER_PREFIX = "CX real document processing pipeline PostgreSQL smoke marker"
 EMBEDDING_ALIAS = "smoke-real-document-processing"
+REMOTE_EMBEDDING_ENV = "NEX_CX_REAL_DOCUMENT_PROCESSING_PIPELINE_REMOTE_EMBEDDING"
+REMOTE_EMBEDDING_EXPECTED_DIMENSION_ENV = (
+    "NEX_CX_REAL_DOCUMENT_PROCESSING_PIPELINE_REMOTE_EMBEDDING_EXPECTED_DIMENSION"
+)
+STATIC_EMBEDDING_DIMENSION = 4
+REMOTE_EMBEDDING_DEFAULT_DIMENSION = 2560
 
 
 REAL_DOCUMENT_FORMATS: tuple[dict[str, object], ...] = (
@@ -114,6 +133,11 @@ REAL_DOCUMENT_FORMATS: tuple[dict[str, object], ...] = (
 
 
 class StaticMoEmbeddingClient:
+    def __init__(self) -> None:
+        self.request_count = 0
+        self.input_count = 0
+        self.last_vector_dimension = 0
+
     def create_embeddings(
         self,
         inputs: list[str],
@@ -122,6 +146,9 @@ class StaticMoEmbeddingClient:
         request_id: str,
         trace_id: str,
     ) -> dict[str, object]:
+        self.request_count += 1
+        self.input_count += len(inputs)
+        self.last_vector_dimension = STATIC_EMBEDDING_DIMENSION
         return {
             "object": "list",
             "alias": alias,
@@ -142,6 +169,71 @@ class StaticMoEmbeddingClient:
             },
         }
 
+    def safe_summary(self) -> dict[str, object]:
+        return {
+            "mode": "static",
+            "model_revision": "smoke-real-document-processing-embedding-v1",
+            "deployment_id": "cx-real-document-processing-pipeline-smoke",
+            "vector_dimension": STATIC_EMBEDDING_DIMENSION,
+            "request_count": self.request_count,
+            "input_count": self.input_count,
+            "last_vector_dimension": self.last_vector_dimension,
+        }
+
+
+class RemoteMoEmbeddingClient:
+    def __init__(
+        self,
+        *,
+        environ: dict[str, str],
+        requester: Callable[..., Any] | None = None,
+    ) -> None:
+        self.environ = dict(environ)
+        self.requester = requester
+        self.config = build_remote_embedding_execution_config(self.environ)
+        self.request_count = 0
+        self.input_count = 0
+        self.last_vector_dimension = 0
+
+    def create_embeddings(
+        self,
+        inputs: list[str],
+        *,
+        alias: str,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        try:
+            response = execute_remote_embedding_request(
+                {
+                    "alias": alias,
+                    "inputs": inputs,
+                },
+                environ=self.environ,
+                requester=self.requester,
+            )
+        except ProviderRouteError as exc:
+            raise EmbeddingIndexError(
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                detail="Remote embedding provider request failed.",
+                retryable=exc.retryable,
+            ) from exc
+
+        self.request_count += 1
+        self.input_count += len(inputs)
+        self.last_vector_dimension = _embedding_response_dimension(response)
+        return response
+
+    def safe_summary(self) -> dict[str, object]:
+        return {
+            "mode": "remote_openai_compatible",
+            "config": self.config.to_safe_summary(),
+            "request_count": self.request_count,
+            "input_count": self.input_count,
+            "last_vector_dimension": self.last_vector_dimension,
+        }
+
 
 class NoopOperationalEventEmitter:
     def safe_emit(self, **_: object) -> OperationalEventEmitResult:
@@ -151,6 +243,106 @@ class NoopOperationalEventEmitter:
 class NoopWorkerHeartbeatEmitter:
     def safe_emit(self, **_: object) -> WorkerHeartbeatEmitResult:
         return WorkerHeartbeatEmitResult(ok=True)
+
+
+def build_processing_embedding_client(
+    environ: dict[str, str],
+    *,
+    requester: Callable[..., Any] | None = None,
+) -> StaticMoEmbeddingClient | RemoteMoEmbeddingClient:
+    if environ.get(REMOTE_EMBEDDING_ENV) != "1":
+        return StaticMoEmbeddingClient()
+
+    remote_env = {
+        **protected_dgx_vllm_profile_defaults(),
+        **environ,
+        "NEX_MO_PROVIDER_MODE": "live",
+    }
+    issues = remote_embedding_config_issues(remote_env)
+    if issues:
+        issue_codes = ",".join(str(issue["error_code"]) for issue in issues)
+        raise ValueError(f"remote embedding config invalid: {issue_codes}")
+    return RemoteMoEmbeddingClient(environ=remote_env, requester=requester)
+
+
+def remote_embedding_config_issues(environ: dict[str, str]) -> list[dict[str, object]]:
+    try:
+        config = build_remote_embedding_execution_config(environ)
+    except ValueError as exc:
+        return [
+            {
+                "capability": "embedding",
+                "error_code": "remote_embedding_timeout_invalid",
+                "detail": str(exc),
+            }
+        ]
+
+    issues: list[dict[str, object]] = []
+    if not config.configured:
+        issues.append(
+            {
+                "capability": "embedding",
+                "error_code": "remote_embedding_endpoint_not_configured",
+                "endpoint_env": config.endpoint_env,
+            }
+        )
+    if config.request_shape != OPENAI_EMBEDDINGS_SHAPE:
+        issues.append(
+            {
+                "capability": "embedding",
+                "error_code": "remote_embedding_request_shape_mismatch",
+                "request_shape": config.request_shape,
+                "expected_shape": OPENAI_EMBEDDINGS_SHAPE,
+            }
+        )
+    expected_models = expected_models_from_env(
+        environ.get("NEX_MO_LIVE_EXPECTED_EMBEDDING_MODELS"),
+        ("Qwen3-Embedding-4B",),
+    )
+    if expected_models and config.model_name not in expected_models:
+        issues.append(
+            {
+                "capability": "embedding",
+                "error_code": "remote_embedding_expected_model_mismatch",
+                "model_name": config.model_name,
+                "expected_models": list(expected_models),
+            }
+        )
+    return issues
+
+
+def expected_processing_embedding_dimension(
+    environ: dict[str, str],
+    *,
+    mode: str,
+) -> int:
+    if mode != "remote_openai_compatible":
+        return STATIC_EMBEDDING_DIMENSION
+    value = environ.get(REMOTE_EMBEDDING_EXPECTED_DIMENSION_ENV)
+    if value is None or value == "":
+        return REMOTE_EMBEDDING_DEFAULT_DIMENSION
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ValueError(
+            f"{REMOTE_EMBEDDING_EXPECTED_DIMENSION_ENV} must be an integer."
+        ) from exc
+    if parsed <= 0:
+        raise ValueError(
+            f"{REMOTE_EMBEDDING_EXPECTED_DIMENSION_ENV} must be positive."
+        )
+    return parsed
+
+
+def _embedding_response_dimension(response: dict[str, Any]) -> int:
+    data = response.get("data")
+    if not isinstance(data, list) or not data:
+        return 0
+    first_item = data[0]
+    if not isinstance(first_item, dict):
+        return 0
+    vector = first_item.get("embedding")
+    return len(vector) if isinstance(vector, list) else 0
 
 
 def run_cx_real_document_processing_pipeline_postgres_smoke(
@@ -212,6 +404,7 @@ def _execute_real_document_processing_pipeline_smoke(
     database_env: str,
     database_url: str,
     runtime_environ: dict[str, str],
+    embedding_requester: Callable[..., Any] | None = None,
 ) -> dict[str, object]:
     request_id = str(uuid4())
     trace_id = uuid4().hex
@@ -221,6 +414,14 @@ def _execute_real_document_processing_pipeline_smoke(
     engine = build_engine(database_url)
     tracked_rows: list[dict[str, str | None]] = []
     result: dict[str, object] = {}
+    embedding_client = build_processing_embedding_client(
+        runtime_environ,
+        requester=embedding_requester,
+    )
+    expected_embedding_dimension = expected_processing_embedding_dimension(
+        runtime_environ,
+        mode=str(embedding_client.safe_summary()["mode"]),
+    )
     with tempfile.TemporaryDirectory(prefix="nex-cx-real-document-processing-smoke-") as temp_dir:
         storage_config = _storage_config(Path(temp_dir))
         app = build_service_app(SERVICE_SPEC)
@@ -252,7 +453,7 @@ def _execute_real_document_processing_pipeline_smoke(
             app,
             store=store,
             storage_config=storage_config,
-            mo_client=StaticMoEmbeddingClient(),
+            mo_client=embedding_client,
             embedding_alias=EMBEDDING_ALIAS,
             job_queue=persistence.job_queue,
             event_emitter=NoopOperationalEventEmitter(),
@@ -272,6 +473,7 @@ def _execute_real_document_processing_pipeline_smoke(
                     trace_id=trace_id,
                     request_id=request_id,
                     tracked_rows=tracked_rows,
+                    expected_embedding_dimension=expected_embedding_dimension,
                 )
                 for spec in REAL_DOCUMENT_FORMATS
             ]
@@ -316,6 +518,19 @@ def _execute_real_document_processing_pipeline_smoke(
                 "all_db_pipeline_records_persisted": all(
                     all(item["db_checks"].values()) for item in observations
                 ),
+                "all_embedding_dimensions_observed": all(
+                    item["db_checks"]["chunk_embedding_dimension_observed"] is True
+                    and item["db_checks"]["summary_embedding_dimension_observed"] is True
+                    for item in observations
+                ),
+                "all_embedding_dimensions_match_provider": all(
+                    item["db_checks"]["embedding_dimensions_match_expected"] is True
+                    for item in observations
+                ),
+                "embedding_requests_observed": int(
+                    embedding_client.safe_summary()["request_count"]
+                )
+                == len(observations) * 2,
                 "evidence_redacted": _redaction_safe(
                     evidence_payload,
                     forbidden_fragments=[
@@ -345,9 +560,17 @@ def _execute_real_document_processing_pipeline_smoke(
                         "summary_char_count": item["db_observations"][
                             "summary_char_count"
                         ],
+                        "chunk_embedding_dimension": item["db_observations"][
+                            "chunk_embedding_max_dimension"
+                        ],
+                        "summary_embedding_dimension": item["db_observations"][
+                            "summary_embedding_max_dimension"
+                        ],
                     }
                     for item in observations
                 ],
+                "embedding_provider": embedding_client.safe_summary(),
+                "expected_embedding_dimension": expected_embedding_dimension,
                 "db_observations": _aggregate_db_observations(observations),
                 "checks": checks,
             }
@@ -376,6 +599,7 @@ def _run_one_format_pipeline_smoke(
     trace_id: str,
     request_id: str,
     tracked_rows: list[dict[str, str | None]],
+    expected_embedding_dimension: int,
 ) -> dict[str, object]:
     source_format = str(spec["source_format"])
     marker = f"{SECRET_MARKER_PREFIX}: {source_format} request={request_id}"
@@ -447,8 +671,28 @@ def _run_one_format_pipeline_smoke(
         "lexical_postings_persisted": db_observation["lexical_posting_count"] >= 1,
         "chunk_embeddings_match_chunks": db_observation["chunk_embedding_count"]
         == db_observation["chunk_count"],
+        "chunk_embedding_dimension_observed": (
+            db_observation["chunk_embedding_min_dimension"]
+            == db_observation["chunk_embedding_max_dimension"]
+            and db_observation["chunk_embedding_max_dimension"] > 0
+        ),
         "document_summary_persisted": db_observation["document_summary_count"] == 1,
         "summary_embedding_persisted": db_observation["summary_embedding_count"] == 1,
+        "summary_embedding_dimension_observed": (
+            db_observation["summary_embedding_min_dimension"]
+            == db_observation["summary_embedding_max_dimension"]
+            and db_observation["summary_embedding_max_dimension"] > 0
+        ),
+        "embedding_dimensions_match_expected": (
+            db_observation["chunk_embedding_min_dimension"]
+            == expected_embedding_dimension
+            and db_observation["chunk_embedding_max_dimension"]
+            == expected_embedding_dimension
+            and db_observation["summary_embedding_min_dimension"]
+            == expected_embedding_dimension
+            and db_observation["summary_embedding_max_dimension"]
+            == expected_embedding_dimension
+        ),
         "processing_run_persisted": db_observation["processing_run_count"] == 1,
         "processing_steps_persisted": db_observation["processing_step_count"]
         == len(PIPELINE_STEPS),
@@ -559,20 +803,20 @@ def _read_pipeline_db_observation(
             ),
             {"document_id": document_id},
         ).mappings().one()
-        summary_embedding_count = int(
-            connection.execute(
-                text(
-                    """
-                    SELECT count(*)
-                    FROM cx_document_summary_embeddings AS embedding
-                    JOIN cx_document_summaries AS summary
-                      ON summary.document_summary_id = embedding.document_summary_id
-                    WHERE summary.content_object_id = :document_id
-                    """
-                ),
-                {"document_id": document_id},
-            ).scalar_one()
-        )
+        summary_embedding_row = connection.execute(
+            text(
+                """
+                SELECT count(*) AS embedding_count,
+                       COALESCE(min(embedding.vector_dimension), 0) AS min_dimension,
+                       COALESCE(max(embedding.vector_dimension), 0) AS max_dimension
+                FROM cx_document_summary_embeddings AS embedding
+                JOIN cx_document_summaries AS summary
+                  ON summary.document_summary_id = embedding.document_summary_id
+                WHERE summary.content_object_id = :document_id
+                """
+            ),
+            {"document_id": document_id},
+        ).mappings().one()
         processing_row = connection.execute(
             text(
                 """
@@ -628,7 +872,9 @@ def _read_pipeline_db_observation(
         "chunk_embedding_max_dimension": int(chunk_embedding_row["max_dimension"]),
         "document_summary_count": int(summary_row["summary_count"]),
         "summary_char_count": int(summary_row["summary_char_count"]),
-        "summary_embedding_count": summary_embedding_count,
+        "summary_embedding_count": int(summary_embedding_row["embedding_count"]),
+        "summary_embedding_min_dimension": int(summary_embedding_row["min_dimension"]),
+        "summary_embedding_max_dimension": int(summary_embedding_row["max_dimension"]),
         "processing_run_count": int(processing_row["run_count"]),
         "processing_run_status": processing_row["run_status"],
         "processing_job_status": processing_row["job_status"],
@@ -672,7 +918,7 @@ def _aggregate_db_observations(
         "processing_step_count",
         "service_job_count",
     )
-    return {
+    aggregate = {
         key: sum(
             int(item["db_observations"][key])
             for item in observations
@@ -680,6 +926,23 @@ def _aggregate_db_observations(
         )
         for key in aggregate_keys
     }
+    dimension_keys = (
+        "chunk_embedding_min_dimension",
+        "chunk_embedding_max_dimension",
+        "summary_embedding_min_dimension",
+        "summary_embedding_max_dimension",
+    )
+    for key in dimension_keys:
+        values = [
+            int(item["db_observations"][key])
+            for item in observations
+            if isinstance(item.get("db_observations"), dict)
+        ]
+        if key.endswith("_min_dimension"):
+            aggregate[key] = min(values) if values else 0
+        else:
+            aggregate[key] = max(values) if values else 0
+    return aggregate
 
 
 def _delete_real_document_processing_rows(
@@ -985,13 +1248,21 @@ def summary_line(evidence: dict[str, object]) -> str:
             f"reason={SMOKE_ENV}"
         )
     if evidence["status"] == "PASS":
+        embedding_provider = evidence.get("embedding_provider", {})
+        embedding_mode = (
+            embedding_provider.get("mode", "unknown")
+            if isinstance(embedding_provider, dict)
+            else "unknown"
+        )
         return (
             "cx_real_document_processing_pipeline_postgres_smoke=pass "
             f"profile={evidence['profile']} "
             f"db_env={evidence['database_env']} "
             f"formats={evidence['format_count']} "
+            f"embedding_mode={embedding_mode} "
             f"pipeline_runs={evidence['db_observations']['processing_run_count']} "
-            f"chunks={evidence['db_observations']['chunk_count']}"
+            f"chunks={evidence['db_observations']['chunk_count']} "
+            f"embedding_dim={evidence['db_observations'].get('chunk_embedding_max_dimension', 0)}"
         )
     return (
         "cx_real_document_processing_pipeline_postgres_smoke=fail "

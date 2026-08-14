@@ -117,6 +117,12 @@ Internal persistence boundary:
   evicts runtime source bytes, runs the full processing pipeline, verifies
   durable extraction/chunk/index/summary/processing/job rows, and cleans up
   smoke rows.
+- Slice 0293 can run that same PostgreSQL processing smoke with the
+  OpenAI-compatible DGX embedding endpoint by setting
+  `NEX_CX_REAL_DOCUMENT_PROCESSING_PIPELINE_REMOTE_EMBEDDING=1`. Default
+  regression still uses a deterministic static embedding client, while remote
+  mode verifies persisted chunk and summary embedding dimensions without
+  exposing provider URLs, API keys, raw vectors, or source text.
 - Text extraction runs through the `nex_cx.extractors` adapter boundary. The
   local mock adapter performs real UTF-8 Markdown/plain-text conversion and
   PDF page-text, DOCX paragraph/table, PPTX slide/table, and XLSX sheet/table
@@ -270,6 +276,13 @@ Grounded generation validation:
   `NEX_MO_PROVIDER_MODE=live`, fake only the remote provider HTTP hop, and prove
   that CX embedding, retrieval reranking, and generation calls still use MO's
   service API without seeing provider URLs or API keys.
+- CX real-document processing live smoke can bypass static embeddings only when
+  explicitly enabled. Set
+  `NEX_CX_REAL_DOCUMENT_PROCESSING_PIPELINE_REMOTE_EMBEDDING=1` with
+  `NEX_MO_REMOTE_EMBEDDING_URL`, `NEX_MO_REMOTE_EMBEDDING_API_KEY`, and
+  `NEX_CX_REAL_DOCUMENT_PROCESSING_PIPELINE_REMOTE_EMBEDDING_EXPECTED_DIMENSION`
+  to prove the same PostgreSQL processing path with a live OpenAI-compatible
+  embedding provider.
 - Retrieval reranking is disabled by default. Set `NEX_CX_RERANKER_ENABLED=1`
   and `NEX_CX_RERANKER_ALIAS` or inject a rerank client to let CX retrieval call
   MO `/api/v1/rerank`; otherwise retrieval packages keep `rerank_state` as

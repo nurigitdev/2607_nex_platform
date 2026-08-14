@@ -314,8 +314,8 @@ def test_real_document_processing_pipeline_postgres_smoke_high_level_success(
     assert evidence["migration"]["skipped_count"] == 3
     assert seen["database_env"] == "NEX_CX_TEST_DATABASE_URL"
     assert seen["runtime_environ"]["NEX_CX_PERSISTENCE_MODE"] == "postgres"
-    assert smoke.summary_line(evidence).endswith(
-        "formats=4 pipeline_runs=4 chunks=4"
+    assert "formats=4 embedding_mode=unknown pipeline_runs=4 chunks=4" in (
+        smoke.summary_line(evidence)
     )
 
 
@@ -408,6 +408,13 @@ def test_real_document_processing_pipeline_postgres_smoke_sqlite_route_path(
     assert result["db_observations"]["processing_step_count"] == 24
     assert result["db_observations"]["summary_embedding_count"] == 4
     assert result["db_observations"]["service_job_count"] == 4
+    assert result["embedding_provider"]["mode"] == "static"
+    assert result["embedding_provider"]["request_count"] == 8
+    assert result["expected_embedding_dimension"] == 4
+    assert result["db_observations"]["chunk_embedding_min_dimension"] == 4
+    assert result["db_observations"]["chunk_embedding_max_dimension"] == 4
+    assert result["db_observations"]["summary_embedding_min_dimension"] == 4
+    assert result["db_observations"]["summary_embedding_max_dimension"] == 4
     assert all(
         item["before"]["processing_run_rows"] == 1
         and item["before"]["processing_step_rows"] == 6
@@ -419,6 +426,147 @@ def test_real_document_processing_pipeline_postgres_smoke_sqlite_route_path(
     )
     smoke.assert_evidence_redacted(result)
     assert smoke.SECRET_MARKER_PREFIX not in json.dumps(result, ensure_ascii=False)
+
+
+def test_real_document_processing_pipeline_postgres_smoke_remote_embedding_fake_route_path(
+    tmp_path: Path,
+) -> None:
+    database_url = _sqlite_cx_processing_pipeline_url(tmp_path)
+    calls: list[dict[str, object]] = []
+
+    def fake_request(method: str, url: str, **kwargs: object) -> object:
+        calls.append({"method": method, "url": url, **kwargs})
+        request_json = kwargs["json"]
+        inputs = request_json["input"]
+        return _FakeProviderResponse(
+            {
+                "object": "list",
+                "data": [
+                    {
+                        "object": "embedding",
+                        "index": index,
+                        "embedding": [float(index + 1)] * 6,
+                    }
+                    for index, _ in enumerate(inputs)
+                ],
+                "usage": {
+                    "prompt_tokens": len(inputs),
+                    "total_tokens": len(inputs),
+                },
+            }
+        )
+
+    result = smoke._execute_real_document_processing_pipeline_smoke(
+        database_env="NEX_CX_TEST_DATABASE_URL",
+        database_url=database_url,
+        runtime_environ={
+            "NEX_CX_DATABASE_URL": database_url,
+            "NEX_CX_TEST_DATABASE_URL": database_url,
+            "NEX_CX_PERSISTENCE_MODE": "postgres",
+            smoke.REMOTE_EMBEDDING_ENV: "1",
+            smoke.REMOTE_EMBEDDING_EXPECTED_DIMENSION_ENV: "6",
+            "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.internal:9112/v1/embeddings",
+            "NEX_MO_REMOTE_EMBEDDING_API_KEY": "secret-key",
+            "NEX_MO_REMOTE_EMBEDDING_MODEL": "Qwen3-Embedding-4B",
+            "NEX_MO_LIVE_EXPECTED_EMBEDDING_MODELS": "Qwen3-Embedding-4B",
+        },
+        embedding_requester=fake_request,
+    )
+
+    assert all(result["checks"].values())
+    assert result["embedding_provider"]["mode"] == "remote_openai_compatible"
+    assert result["embedding_provider"]["request_count"] == 8
+    assert result["embedding_provider"]["input_count"] >= 8
+    assert result["embedding_provider"]["last_vector_dimension"] == 6
+    assert result["embedding_provider"]["config"]["configured"] is True
+    assert result["embedding_provider"]["config"]["authorization_configured"] is True
+    assert result["expected_embedding_dimension"] == 6
+    assert result["db_observations"]["chunk_embedding_min_dimension"] == 6
+    assert result["db_observations"]["summary_embedding_max_dimension"] == 6
+    assert len(calls) == 8
+    assert {call["method"] for call in calls} == {"POST"}
+    assert all(
+        call["headers"]["Authorization"] == "Bearer secret-key" for call in calls
+    )
+    serialized = json.dumps(result, ensure_ascii=False)
+    assert "dgx.internal" not in serialized
+    assert "secret-key" not in serialized
+    smoke.assert_evidence_redacted(result)
+
+
+def test_real_document_processing_pipeline_postgres_smoke_remote_embedding_config_guard(
+    tmp_path: Path,
+) -> None:
+    database_url = _sqlite_cx_processing_pipeline_url(tmp_path)
+
+    with pytest.raises(ValueError, match="remote_embedding_endpoint_not_configured"):
+        smoke._execute_real_document_processing_pipeline_smoke(
+            database_env="NEX_CX_TEST_DATABASE_URL",
+            database_url=database_url,
+            runtime_environ={
+                "NEX_CX_DATABASE_URL": database_url,
+                "NEX_CX_TEST_DATABASE_URL": database_url,
+                "NEX_CX_PERSISTENCE_MODE": "postgres",
+                smoke.REMOTE_EMBEDDING_ENV: "1",
+            },
+        )
+
+    assert smoke.remote_embedding_config_issues(
+        {
+            "NEX_MO_REMOTE_EMBEDDING_URL": "http://embedding.local/v1/embeddings",
+            "NEX_MO_REMOTE_EMBEDDING_MODEL": "wrong-model",
+            "NEX_MO_LIVE_EXPECTED_EMBEDDING_MODELS": "Qwen3-Embedding-4B",
+        }
+    ) == [
+        {
+            "capability": "embedding",
+            "error_code": "remote_embedding_expected_model_mismatch",
+            "model_name": "wrong-model",
+            "expected_models": ["Qwen3-Embedding-4B"],
+        }
+    ]
+    assert smoke.remote_embedding_config_issues(
+        {
+            "NEX_MO_REMOTE_EMBEDDING_URL": "http://embedding.local/v1/embeddings",
+            "NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE": "nex_pcx_embeddings_v1",
+            "NEX_MO_REMOTE_EMBEDDING_MODEL": "Qwen3-Embedding-4B",
+        }
+    ) == [
+        {
+            "capability": "embedding",
+            "error_code": "remote_embedding_request_shape_mismatch",
+            "request_shape": "nex_pcx_embeddings_v1",
+            "expected_shape": "openai_embeddings",
+        }
+    ]
+    assert smoke.remote_embedding_config_issues(
+        {"NEX_MO_LIVE_TIMEOUT_SECONDS": "0"}
+    )[0]["error_code"] == "remote_embedding_timeout_invalid"
+
+
+def test_remote_mo_embedding_client_maps_provider_errors() -> None:
+    def failing_request(*args: object, **kwargs: object) -> object:
+        return _FakeProviderResponse({}, status_code=503)
+
+    client = smoke.RemoteMoEmbeddingClient(
+        environ={
+            "NEX_MO_REMOTE_EMBEDDING_URL": "http://embedding.local/v1/embeddings",
+            "NEX_MO_REMOTE_EMBEDDING_MODEL": "Qwen3-Embedding-4B",
+        },
+        requester=failing_request,
+    )
+
+    with pytest.raises(smoke.EmbeddingIndexError) as exc_info:
+        client.create_embeddings(
+            ["hello"],
+            alias="alias",
+            request_id="request",
+            trace_id="trace",
+        )
+
+    assert exc_info.value.error_code == "mo.remote_embedding_http_error"
+    assert exc_info.value.detail == "Remote embedding provider request failed."
+    assert client.request_count == 0
 
 
 def test_real_document_processing_pipeline_postgres_smoke_check_failure_cleans_up(
@@ -449,12 +597,42 @@ def test_real_document_processing_pipeline_postgres_smoke_check_failure_cleans_u
 def test_real_document_processing_pipeline_postgres_smoke_helpers_cover_edges(
     tmp_path: Path,
 ) -> None:
-    assert smoke.StaticMoEmbeddingClient().create_embeddings(
+    static_client = smoke.StaticMoEmbeddingClient()
+    assert static_client.create_embeddings(
         ["one", "two"],
         alias="alias",
         request_id="request",
         trace_id="trace",
     )["usage"]["total_tokens"] == 2
+    assert static_client.safe_summary()["request_count"] == 1
+    assert smoke.expected_processing_embedding_dimension({}, mode="static") == 4
+    assert (
+        smoke.expected_processing_embedding_dimension(
+            {},
+            mode="remote_openai_compatible",
+        )
+        == 2560
+    )
+    assert (
+        smoke.expected_processing_embedding_dimension(
+            {smoke.REMOTE_EMBEDDING_EXPECTED_DIMENSION_ENV: "6"},
+            mode="remote_openai_compatible",
+        )
+        == 6
+    )
+    with pytest.raises(ValueError, match="must be an integer"):
+        smoke.expected_processing_embedding_dimension(
+            {smoke.REMOTE_EMBEDDING_EXPECTED_DIMENSION_ENV: "six"},
+            mode="remote_openai_compatible",
+        )
+    with pytest.raises(ValueError, match="must be positive"):
+        smoke.expected_processing_embedding_dimension(
+            {smoke.REMOTE_EMBEDDING_EXPECTED_DIMENSION_ENV: "0"},
+            mode="remote_openai_compatible",
+        )
+    assert smoke._embedding_response_dimension({}) == 0
+    assert smoke._embedding_response_dimension({"data": ["bad"]}) == 0
+    assert smoke._embedding_response_dimension({"data": [{"embedding": "bad"}]}) == 0
     assert smoke.NoopOperationalEventEmitter().safe_emit().ok is True
     assert smoke.NoopWorkerHeartbeatEmitter().safe_emit().ok is True
 
@@ -478,8 +656,12 @@ def test_real_document_processing_pipeline_postgres_smoke_helpers_cover_edges(
                         "lexical_term_count": 3,
                         "lexical_posting_count": 4,
                         "chunk_embedding_count": 2,
+                        "chunk_embedding_min_dimension": 4,
+                        "chunk_embedding_max_dimension": 4,
                         "document_summary_count": 1,
                         "summary_embedding_count": 1,
+                        "summary_embedding_min_dimension": 4,
+                        "summary_embedding_max_dimension": 4,
                         "processing_run_count": 1,
                         "processing_step_count": 6,
                         "service_job_count": 1,
@@ -487,6 +669,36 @@ def test_real_document_processing_pipeline_postgres_smoke_helpers_cover_edges(
                 }
             ]
         )["processing_step_count"] == 6
+    assert smoke._delete_real_document_processing_rows(
+        engine,
+        document_id=None,
+        source_file_id=None,
+        pipeline_run_id=None,
+        job_id=None,
+    ) == {
+        "before": {
+            "processing_run_rows": 0,
+            "processing_step_rows": 0,
+            "service_job_rows": 0,
+            "extraction_artifact_rows": 0,
+            "chunk_set_rows": 0,
+            "chunk_rows": 0,
+            "summary_rows": 0,
+            "content_object_rows": 0,
+            "source_file_rows": 0,
+        },
+        "after": {
+            "processing_run_rows": 0,
+            "processing_step_rows": 0,
+            "service_job_rows": 0,
+            "extraction_artifact_rows": 0,
+            "chunk_set_rows": 0,
+            "chunk_rows": 0,
+            "summary_rows": 0,
+            "content_object_rows": 0,
+            "source_file_rows": 0,
+        },
+    }
 
 
 def test_real_document_processing_pipeline_postgres_smoke_redaction_guard() -> None:
@@ -558,10 +770,36 @@ def test_real_document_processing_pipeline_postgres_smoke_quality_gate_docs_wire
         / "slices"
         / "0290_cx_real_document_processing_pipeline_postgresql_smoke.md"
     )
+    remote_embedding_slice_doc = (
+        root
+        / "docs"
+        / "slices"
+        / "0293_cx_processing_pipeline_remote_embedding_postgresql_smoke.md"
+    )
 
     assert (
         "run_cx_real_document_processing_pipeline_postgres_smoke.py --summary"
         in quality_gate
     )
     assert "0290_cx_real_document_processing_pipeline_postgresql_smoke.md" in docs_index
+    assert (
+        "0293_cx_processing_pipeline_remote_embedding_postgresql_smoke.md"
+        in docs_index
+    )
     assert slice_doc.exists()
+    assert remote_embedding_slice_doc.exists()
+
+
+class _FakeProviderResponse:
+    def __init__(
+        self,
+        payload: dict[str, object],
+        *,
+        status_code: int = 200,
+    ) -> None:
+        self._payload = payload
+        self.status_code = status_code
+        self.is_error = status_code >= 400
+
+    def json(self) -> dict[str, object]:
+        return self._payload
