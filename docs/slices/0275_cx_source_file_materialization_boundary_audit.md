@@ -14,8 +14,8 @@ PostgreSQL while DB rows keep metadata, hashes, and storage links only.
   checksum verification, safe relative storage keys, absolute local paths,
   collision detection, checksum verification timestamps, date partitioning, and
   hash sharding.
-- The audit verifies AE and AE Web still operate as metadata-only upload
-  surfaces until the multipart/source-byte slices are added.
+- The audit recorded AE and AE Web as metadata-only upload surfaces at the
+  Slice 0275 checkpoint, before the multipart/source-byte slices were added.
 - Evidence is redaction-safe: no raw source bytes, protected environment values,
   database URLs, passwords, provider endpoints, or local source paths are
   serialized.
@@ -39,6 +39,14 @@ PostgreSQL while DB rows keep metadata, hashes, and storage links only.
 - Slice 0277: AE multipart upload facade contract.
 - Slice 0278: AE Web FormData upload wiring.
 - Slice 0279: AE Web source-file upload Playwright PostgreSQL smoke.
+- Slice 0280: CX uploaded source extraction readiness audit.
+
+## Current Status
+
+Slice 0279 has since upgraded the authenticated browser upload path from
+metadata-only JSON to multipart source-file upload and verified CX checksum
+materialization against the real `nex_cx_test` database. Slice 0280 follows that
+with a redaction-safe extraction readiness checkpoint.
 
 ## Evidence
 

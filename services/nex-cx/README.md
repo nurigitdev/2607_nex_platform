@@ -64,6 +64,14 @@ Internal persistence boundary:
   mismatches for provided `content_text` or `content_base64` and exposes the
   owner-scoped `cx_source_file_materialization_receipt.v1` read model without
   raw source bytes or local filesystem paths.
+- Slice 0277 through Slice 0279 connect that CX byte-materialization boundary to
+  the AE multipart upload facade and AE Web `FormData` path. The protected
+  Playwright/PostgreSQL smoke verifies browser-selected bytes reach
+  `cx_source_files` with checksum materialization confirmed.
+- Slice 0280 freezes uploaded-source extraction readiness: verified uploaded
+  bytes can feed the local extraction job, write extracted Markdown, and persist
+  one extraction artifact through redaction-safe evidence without remote
+  provider access.
 - Text extraction runs through the `nex_cx.extractors` adapter boundary. The
   local mock adapter performs real UTF-8 Markdown/plain-text conversion and
   emits explicit placeholders with warnings for PDF, DOCX, PPTX, and XLSX until

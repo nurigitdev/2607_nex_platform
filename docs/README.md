@@ -383,6 +383,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0277`](slices/0277_ae_multipart_upload_facade_contract.md) | `S28-007` AE multipart upload facade contract. |
 | [`Slice 0278`](slices/0278_ae_web_formdata_upload_wiring.md) | `S28-008` AE Web FormData upload wiring. |
 | [`Slice 0279`](slices/0279_ae_web_source_file_upload_playwright_postgresql_smoke.md) | `S28-009` AE Web source-file upload Playwright PostgreSQL smoke. |
+| [`Slice 0280`](slices/0280_cx_uploaded_source_extraction_readiness_audit.md) | `S28-010` CX uploaded source extraction readiness audit. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
