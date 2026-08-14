@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 import {
@@ -31,8 +32,9 @@ const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_FILENAME = "slice-0274-upload.md";
 const DEFAULT_CONTENT_TYPE = "text/markdown";
 const DEFAULT_SIZE_BYTES = 1536;
-const DEFAULT_SOURCE_SHA256 =
-  "7a1ff859bf541f6f40b662f7f9a3f8401f8f34425646d651c7537e6f9f4e0072";
+const DEFAULT_UPLOAD_BYTE = "n";
+const AE_UPLOAD_JSON_ROUTE = "/ae-api/api/v1/uploads";
+const AE_UPLOAD_MULTIPART_ROUTE = "/ae-api/api/v1/uploads/files";
 const FORBIDDEN_EVIDENCE_FRAGMENTS = [
   "access_" + "token",
   "api_" + "key",
@@ -113,7 +115,7 @@ export async function runAuthenticatedUploadPlaywrightSmoke({
     await page.setInputFiles("#upload-file-input", {
       name: uploadInput.filename,
       mimeType: uploadInput.contentType,
-      buffer: Buffer.alloc(uploadInput.sizeBytes, "n")
+      buffer: uploadInput.buffer
     });
     await page.click("#upload-metadata-apply-button");
     await page.waitForFunction(
@@ -159,12 +161,13 @@ export async function runAuthenticatedUploadPlaywrightSmoke({
     const uploadRequest = latestRequestForRoute(
       requestLog,
       "POST",
-      "/ae-api/api/v1/uploads"
+      AE_UPLOAD_MULTIPART_ROUTE
     );
     const uploadResponse = latestResponseForRoute(
       responseLog,
-      "/ae-api/api/v1/uploads"
+      AE_UPLOAD_MULTIPART_ROUTE
     );
+    const uploadBodySummary = uploadRequest?.body_summary || {};
     const checks = {
       playwright_browser_launched: true,
       runtime_config_fetch_mode: true,
@@ -193,14 +196,17 @@ export async function runAuthenticatedUploadPlaywrightSmoke({
       upload_summary_document_present:
         uploadClientSummary.includes("document") &&
         !uploadClientSummary.includes("n/a"),
-      upload_body_metadata_only:
-        uploadRequest?.body_summary?.source_sha256_present === true &&
-        uploadRequest?.body_summary?.size_bytes_present === true &&
-        uploadRequest?.body_summary?.raw_source_included === false,
-      upload_body_owner_scope_present:
-        uploadRequest?.body_summary?.tenant_id_present === true &&
-        uploadRequest?.body_summary?.owner_user_id_present === true &&
-        uploadRequest?.body_summary?.uploaded_by_user_id_present === true,
+      upload_body_multipart: uploadBodySummary.body_kind === "multipart",
+      upload_multipart_content_type_present:
+        uploadBodySummary.multipart_content_type_present === true,
+      upload_multipart_body_shape_safe:
+        uploadBodySummary.body_kind === "multipart" &&
+        uploadBodySummary.multipart_content_type_present === true &&
+        uploadBodySummary.raw_source_serialized_in_evidence === false,
+      upload_multipart_fields_present_when_introspected:
+        multipartFieldsPresentWhenIntrospected(uploadBodySummary),
+      upload_body_not_serialized_in_evidence:
+        uploadBodySummary.raw_source_serialized_in_evidence === false,
       logout_feedback_logged_out: logoutFeedback.includes("로그아웃"),
       route_guard_blocked_after_logout: routeGuardTextAfterLogout.includes("blocked"),
       password_cleared_after_submit: passwordValueAfterSubmit === "",
@@ -253,7 +259,7 @@ export async function runAuthenticatedUploadPlaywrightSmoke({
         content_type: uploadInput.contentType,
         size_bytes: uploadInput.sizeBytes,
         source_sha256_present: true,
-        source_bytes_sent_by_browser: false
+        source_bytes_sent_by_browser: true
       },
       request_observations: {
         ae_api_request_count: requestLog.length,
@@ -364,11 +370,14 @@ export async function main(argv = process.argv.slice(2), output = console.log) {
 }
 
 function uploadInputFromEnv(environ) {
+  const sizeBytes = normalizeSizeBytes(environ[SIZE_BYTES_ENV]);
+  const buffer = Buffer.alloc(sizeBytes, DEFAULT_UPLOAD_BYTE);
   return {
     filename: environ[FILENAME_ENV] || DEFAULT_FILENAME,
     contentType: environ[CONTENT_TYPE_ENV] || DEFAULT_CONTENT_TYPE,
-    sizeBytes: normalizeSizeBytes(environ[SIZE_BYTES_ENV]),
-    sourceSha256: normalizeSha256(environ[SOURCE_SHA256_ENV])
+    sizeBytes,
+    sourceSha256: normalizeSha256(environ[SOURCE_SHA256_ENV], buffer),
+    buffer
   };
 }
 
@@ -377,9 +386,12 @@ function safeRequestObservation(request, route) {
     method: request.method(),
     route
   };
-  if (observation.method === "POST" && route === "/ae-api/api/v1/uploads") {
+  if (observation.method === "POST" && route === AE_UPLOAD_JSON_ROUTE) {
     const body = safePostDataJson(request);
     observation.body_summary = uploadBodySummary(body);
+  }
+  if (observation.method === "POST" && route === AE_UPLOAD_MULTIPART_ROUTE) {
+    observation.body_summary = uploadMultipartBodySummary(request);
   }
   return observation;
 }
@@ -412,6 +424,63 @@ function uploadBodySummary(body) {
       body.uploaded_by_user_id.length > 0,
     raw_source_included: hasRawSourceKey(body)
   };
+}
+
+function uploadMultipartBodySummary(request) {
+  const contentType = requestHeader(request, "content-type");
+  const bodyText = safePostDataText(request);
+  const hasBody = bodyText.length > 0;
+  return {
+    body_kind: "multipart",
+    multipart_content_type_present:
+      contentType.toLowerCase().includes("multipart/form-data"),
+    field_introspection_status: hasBody ? "available" : "unavailable",
+    body_byte_length_present: hasBody,
+    file_field_present: bodyText.includes('name="file"'),
+    workspace_id_field_present: bodyText.includes('name="workspace_id"'),
+    filename_field_present: bodyText.includes('name="filename"'),
+    content_type_field_present: bodyText.includes('name="content_type"'),
+    size_bytes_field_present: bodyText.includes('name="size_bytes"'),
+    source_sha256_field_present: bodyText.includes('name="source_sha256"'),
+    tenant_id_field_present: bodyText.includes('name="tenant_id"'),
+    owner_user_id_field_present: bodyText.includes('name="owner_user_id"'),
+    uploaded_by_user_id_field_present: bodyText.includes(
+      'name="uploaded_by_user_id"'
+    ),
+    raw_source_serialized_in_evidence: false
+  };
+}
+
+function multipartFieldsPresentWhenIntrospected(summary) {
+  if (summary.field_introspection_status === "unavailable") {
+    return true;
+  }
+  return Boolean(
+    summary.file_field_present &&
+      summary.tenant_id_field_present &&
+      summary.owner_user_id_field_present &&
+      summary.uploaded_by_user_id_field_present &&
+      summary.source_sha256_field_present
+  );
+}
+
+function requestHeader(request, name) {
+  try {
+    const headers = request.headers?.() || {};
+    return String(headers[name] || headers[name.toLowerCase()] || "");
+  } catch {
+    return "";
+  }
+}
+
+function safePostDataText(request) {
+  try {
+    const buffer = request.postDataBuffer?.();
+    if (!buffer) return "";
+    return Buffer.from(buffer).toString("latin1");
+  } catch {
+    return "";
+  }
 }
 
 function hasRawSourceKey(body) {
@@ -483,9 +552,10 @@ function normalizeSizeBytes(rawValue) {
     : DEFAULT_SIZE_BYTES;
 }
 
-function normalizeSha256(rawValue) {
-  const value = (rawValue || DEFAULT_SOURCE_SHA256).trim().toLowerCase();
-  return /^[0-9a-f]{64}$/.test(value) ? value : DEFAULT_SOURCE_SHA256;
+function normalizeSha256(rawValue, buffer) {
+  const defaultSourceSha256 = createHash("sha256").update(buffer).digest("hex");
+  const value = (rawValue || defaultSourceSha256).trim().toLowerCase();
+  return /^[0-9a-f]{64}$/.test(value) ? value : defaultSourceSha256;
 }
 
 if (

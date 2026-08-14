@@ -71,6 +71,7 @@ DEFAULT_PROFILE = "test"
 DEFAULT_PASSWORD = "Nuri1004!"
 DEFAULT_CONTENT_TYPE = "text/markdown"
 DEFAULT_SIZE_BYTES = 1536
+DEFAULT_UPLOAD_BYTE = b"n"
 CX_SERVICE_ID = "nex-cx"
 CX_SERVICE_SPEC = base_auth.SERVICE_SPECS[CX_SERVICE_ID]
 WEB_ROOT = ROOT / "apps" / "nex-ae-web"
@@ -392,10 +393,10 @@ def prepare_playwright_upload_postgres_smoke(
     filename = env.get(FILENAME_ENV) or f"slice-0274-upload-{suffix}.md"
     content_type = env.get(CONTENT_TYPE_ENV) or DEFAULT_CONTENT_TYPE
     size_bytes = _bounded_size_bytes(env.get(SIZE_BYTES_ENV))
-    source_sha256 = env.get(SOURCE_SHA256_ENV) or hashlib.sha256(
-        f"ae-web-upload-playwright:{request_id}".encode("utf-8")
-    ).hexdigest()
-    source_sha256 = _valid_sha256(source_sha256)
+    source_sha256 = _source_sha256_for_upload_bytes(
+        size_bytes,
+        explicit_value=env.get(SOURCE_SHA256_ENV),
+    )
     storage_tempdir = tempfile.TemporaryDirectory(
         prefix="nex-ae-web-upload-playwright-smoke-"
     )
@@ -713,11 +714,21 @@ def _pass_or_fail_evidence(
         "browser_upload_feedback_accepted": (
             node_checks.get("upload_feedback_accepted") is True
         ),
-        "browser_upload_body_metadata_only": (
-            node_checks.get("upload_body_metadata_only") is True
+        "browser_upload_body_multipart": (
+            node_checks.get("upload_body_multipart") is True
         ),
-        "browser_upload_body_owner_scope_present": (
-            node_checks.get("upload_body_owner_scope_present") is True
+        "browser_upload_multipart_content_type_present": (
+            node_checks.get("upload_multipart_content_type_present") is True
+        ),
+        "browser_upload_multipart_body_shape_safe": (
+            node_checks.get("upload_multipart_body_shape_safe") is True
+        ),
+        "browser_upload_multipart_fields_present_when_introspected": (
+            node_checks.get("upload_multipart_fields_present_when_introspected")
+            is True
+        ),
+        "browser_upload_body_not_serialized_in_evidence": (
+            node_checks.get("upload_body_not_serialized_in_evidence") is True
         ),
         "ae_test_database_connected": (
             base_auth._count_ae_marker_rows(
@@ -742,8 +753,8 @@ def _pass_or_fail_evidence(
         "cx_source_sha256_persisted": (
             cx_observations.get("source_sha256_present") is True
         ),
-        "cx_metadata_only_checksum_deferred": (
-            cx_observations.get("checksum_verified_at_present") is False
+        "cx_source_checksum_verified": (
+            cx_observations.get("checksum_verified_at_present") is True
         ),
         "cx_storage_backend_local": (
             cx_observations.get("storage_backend") == "local_filesystem"
@@ -805,7 +816,7 @@ def _pass_or_fail_evidence(
             "content_type": prepared.content_type,
             "size_bytes": prepared.size_bytes,
             "source_sha256_present": True,
-            "browser_source_bytes_sent": False,
+            "browser_source_bytes_sent": True,
             "cx_adapter_status_code": prepared.cx_upload_client.calls[0]["status_code"]
             if prepared.cx_upload_client.calls
             else None,
@@ -1076,6 +1087,26 @@ def _bounded_size_bytes(raw_value: str | None) -> int:
     return value
 
 
+def _deterministic_upload_source_sha256(size_bytes: int) -> str:
+    return hashlib.sha256(DEFAULT_UPLOAD_BYTE * size_bytes).hexdigest()
+
+
+def _source_sha256_for_upload_bytes(
+    size_bytes: int,
+    *,
+    explicit_value: str | None,
+) -> str:
+    computed = _deterministic_upload_source_sha256(size_bytes)
+    if explicit_value is None:
+        return computed
+    supplied = _valid_sha256(explicit_value)
+    if supplied != computed:
+        raise ValueError(
+            f"{SOURCE_SHA256_ENV} must match the deterministic smoke file bytes."
+        )
+    return supplied
+
+
 def _valid_sha256(value: str) -> str:
     normalized = value.strip().lower()
     if len(normalized) == 64 and all(char in "0123456789abcdef" for char in normalized):
@@ -1150,6 +1181,7 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"profile={evidence['profile']} "
             f"upload={browser.get('upload_feedback_status')} "
             f"cx_content={cx.get('content_object_count')} "
+            f"cx_checksum={'verified' if cx.get('checksum_verified_at_present') else 'pending'} "
             f"oa_session_status={db.get('oa_session_status')} "
             "live_db=true browser=playwright"
         )

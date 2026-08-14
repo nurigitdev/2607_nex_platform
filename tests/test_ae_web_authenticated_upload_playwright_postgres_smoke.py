@@ -22,7 +22,7 @@ class FakePrepared:
     filename = "slice-0274-upload.md"
     content_type = "text/markdown"
     size_bytes = 1536
-    source_sha256 = "7a1ff859bf541f6f40b662f7f9a3f8401f8f34425646d651c7537e6f9f4e0072"
+    source_sha256 = smoke._deterministic_upload_source_sha256(size_bytes)
     database_envs = {
         "ae": "NEX_AE_TEST_DATABASE_URL",
         "oa": "NEX_OA_TEST_DATABASE_URL",
@@ -123,14 +123,17 @@ def node_pass(_env: dict[str, str]) -> dict[str, Any]:
                 {"method": "POST", "route": "/ae-api/api/v1/auth/session/login"},
                 {
                     "method": "POST",
-                    "route": "/ae-api/api/v1/uploads",
+                    "route": "/ae-api/api/v1/uploads/files",
                     "body_summary": {
-                        "source_sha256_present": True,
-                        "size_bytes_present": True,
-                        "raw_source_included": False,
-                        "tenant_id_present": True,
-                        "owner_user_id_present": True,
-                        "uploaded_by_user_id_present": True,
+                        "body_kind": "multipart",
+                        "multipart_content_type_present": True,
+                        "field_introspection_status": "available",
+                        "file_field_present": True,
+                        "source_sha256_field_present": True,
+                        "tenant_id_field_present": True,
+                        "owner_user_id_field_present": True,
+                        "uploaded_by_user_id_field_present": True,
+                        "raw_source_serialized_in_evidence": False,
                     },
                 },
                 {"method": "POST", "route": "/ae-api/api/v1/auth/session/logout"},
@@ -138,7 +141,7 @@ def node_pass(_env: dict[str, str]) -> dict[str, Any]:
             "response_routes": [
                 {"status": 401, "route": "/ae-api/api/v1/auth/session"},
                 {"status": 200, "route": "/ae-api/api/v1/auth/session/login"},
-                {"status": 202, "route": "/ae-api/api/v1/uploads"},
+                {"status": 202, "route": "/ae-api/api/v1/uploads/files"},
                 {"status": 200, "route": "/ae-api/api/v1/auth/session/logout"},
             ],
         },
@@ -149,8 +152,11 @@ def node_pass(_env: dict[str, str]) -> dict[str, Any]:
             "same_origin_logout_called": True,
             "upload_response_accepted": True,
             "upload_feedback_accepted": True,
-            "upload_body_metadata_only": True,
-            "upload_body_owner_scope_present": True,
+            "upload_body_multipart": True,
+            "upload_multipart_content_type_present": True,
+            "upload_multipart_body_shape_safe": True,
+            "upload_multipart_fields_present_when_introspected": True,
+            "upload_body_not_serialized_in_evidence": True,
         },
     }
 
@@ -175,7 +181,7 @@ def cx_observations(_engine: object, **_kwargs: object) -> dict[str, Any]:
         "source_file_count": 1,
         "owner_refs_match": True,
         "source_sha256_present": True,
-        "checksum_verified_at_present": False,
+        "checksum_verified_at_present": True,
         "storage_backend": "local_filesystem",
         "lifecycle_status": "ACTIVE",
     }
@@ -217,9 +223,9 @@ def test_upload_playwright_postgres_smoke_passes_with_injected_runtime(
 
     assert evidence["status"] == "PASS"
     assert evidence["checks"]["cx_content_object_persisted"] is True
-    assert evidence["checks"]["cx_metadata_only_checksum_deferred"] is True
+    assert evidence["checks"]["cx_source_checksum_verified"] is True
     assert evidence["db_observations"]["cx"]["content_object_count"] == 1
-    assert evidence["upload_observations"]["browser_source_bytes_sent"] is False
+    assert evidence["upload_observations"]["browser_source_bytes_sent"] is True
     assert evidence["cleanup_observations"]["cx_rows"]["deleted_source_files"] == 1
     assert prepared.cleanup_session_id == "session-0274"
     assert enabled_env()[smoke.PASSWORD_ENV] not in serialized
@@ -227,7 +233,8 @@ def test_upload_playwright_postgres_smoke_passes_with_injected_runtime(
     assert "secret@127.0.0.1" not in serialized
     assert smoke.summary_line(evidence) == (
         "ae_web_authenticated_upload_playwright_postgres_smoke=pass "
-        "profile=test upload=accepted cx_content=1 oa_session_status=REVOKED "
+        "profile=test upload=accepted cx_content=1 cx_checksum=verified "
+        "oa_session_status=REVOKED "
         "live_db=true browser=playwright"
     )
 
@@ -719,6 +726,23 @@ def test_helpers_redaction_node_env_and_main(
         smoke._bounded_size_bytes("bad")
     with pytest.raises(ValueError, match=smoke.SIZE_BYTES_ENV):
         smoke._bounded_size_bytes("-1")
+    deterministic_sha256 = smoke._deterministic_upload_source_sha256(12)
+    assert (
+        smoke._source_sha256_for_upload_bytes(12, explicit_value=None)
+        == deterministic_sha256
+    )
+    assert (
+        smoke._source_sha256_for_upload_bytes(
+            12,
+            explicit_value=deterministic_sha256.upper(),
+        )
+        == deterministic_sha256
+    )
+    with pytest.raises(ValueError, match="deterministic smoke file bytes"):
+        smoke._source_sha256_for_upload_bytes(
+            12,
+            explicit_value=FakePrepared.source_sha256,
+        )
     assert smoke._valid_sha256(FakePrepared.source_sha256.upper()) == FakePrepared.source_sha256
     with pytest.raises(ValueError, match=smoke.SOURCE_SHA256_ENV):
         smoke._valid_sha256("not-a-hash")

@@ -16,7 +16,7 @@ import {
 } from "../scripts/runAuthenticatedUploadPlaywrightSmoke.mjs";
 
 const uploadSha256 =
-  "7a1ff859bf541f6f40b662f7f9a3f8401f8f34425646d651c7537e6f9f4e0072";
+  "03b55759c826505d6db2b0ab73745f2e9126e66e5772baa9d1b9708f357020fe";
 
 function smokeEnv() {
   return {
@@ -91,29 +91,12 @@ function fakePage() {
         const file = selectedFile["#upload-file-input"];
         emitRequest(handlers, {
           method: "POST",
-          url: "http://127.0.0.1:5228/ae-api/api/v1/uploads",
+          url: "http://127.0.0.1:5228/ae-api/api/v1/uploads/files",
           status: 202,
-          body: {
-            workspace_id: "workspace-nex-alpha",
-            filename: file.name,
-            content_type: file.mimeType,
-            size_bytes: file.buffer.length,
-            source_sha256: fields["#upload-source-sha256"],
-            tenant_id: fields["#credential-tenant-id"],
-            owner_user_id: "user-upload-playwright-0274",
-            uploaded_by_user_id: "user-upload-playwright-0274",
-            ownership_ref: {
-              tenant_ref: { type: "oa.tenant", id: fields["#credential-tenant-id"] },
-              owner_subject_ref: {
-                type: "oa.user",
-                id: "user-upload-playwright-0274"
-              },
-              uploaded_by_subject_ref: {
-                type: "oa.user",
-                id: "user-upload-playwright-0274"
-              }
-            }
-          }
+          headers: {
+            "content-type": "multipart/form-data; boundary=----slice0279"
+          },
+          bodyBuffer: multipartUploadBody({ file, fields })
         });
       }
       if (selector === "#credential-logout-button") {
@@ -158,12 +141,45 @@ function fakePage() {
   };
 }
 
-function emitRequest(handlers, { method, url, status, body = null }) {
+function multipartUploadBody({ file, fields }) {
+  return Buffer.from(
+    [
+      '------slice0279\r\nContent-Disposition: form-data; name="file"; filename="',
+      file.name,
+      '"\r\nContent-Type: ',
+      file.mimeType,
+      "\r\n\r\n",
+      file.buffer.toString("latin1"),
+      '\r\n------slice0279\r\nContent-Disposition: form-data; name="workspace_id"\r\n\r\nworkspace-nex-alpha',
+      '\r\n------slice0279\r\nContent-Disposition: form-data; name="tenant_id"\r\n\r\n',
+      fields["#credential-tenant-id"],
+      '\r\n------slice0279\r\nContent-Disposition: form-data; name="owner_user_id"\r\n\r\nuser-upload-playwright-0274',
+      '\r\n------slice0279\r\nContent-Disposition: form-data; name="uploaded_by_user_id"\r\n\r\nuser-upload-playwright-0274',
+      '\r\n------slice0279\r\nContent-Disposition: form-data; name="filename"\r\n\r\n',
+      file.name,
+      '\r\n------slice0279\r\nContent-Disposition: form-data; name="content_type"\r\n\r\n',
+      file.mimeType,
+      '\r\n------slice0279\r\nContent-Disposition: form-data; name="size_bytes"\r\n\r\n',
+      String(file.buffer.length),
+      '\r\n------slice0279\r\nContent-Disposition: form-data; name="source_sha256"\r\n\r\n',
+      fields["#upload-source-sha256"],
+      "\r\n------slice0279--\r\n"
+    ].join(""),
+    "latin1"
+  );
+}
+
+function emitRequest(
+  handlers,
+  { method, url, status, body = null, bodyBuffer = null, headers = {} }
+) {
   handlers.request.forEach(handler =>
     handler({
       method: () => method,
       url: () => url,
-      postDataJSON: () => body
+      headers: () => headers,
+      postDataJSON: () => body,
+      postDataBuffer: () => bodyBuffer
     })
   );
   handlers.response.forEach(handler =>
@@ -175,7 +191,7 @@ function emitRequest(handlers, { method, url, status, body = null }) {
 }
 
 describe("AE Web authenticated upload Playwright smoke", () => {
-  it("drives login, metadata-only upload, and logout through same-origin routes", async () => {
+  it("drives login, multipart source-file upload, and logout through same-origin routes", async () => {
     const env = smokeEnv();
     const evidence = await runAuthenticatedUploadPlaywrightSmoke({
       environ: env,
@@ -192,8 +208,22 @@ describe("AE Web authenticated upload Playwright smoke", () => {
     assert.equal(evidence.request_observations.ae_api_request_count, 4);
     assert.equal(evidence.request_observations.upload_response_status, 202);
     assert.equal(evidence.browser_observations.upload_feedback_status, "accepted");
-    assert.equal(evidence.checks.upload_body_metadata_only, true);
-    assert.equal(evidence.checks.upload_body_owner_scope_present, true);
+    assert.equal(evidence.checks.upload_body_multipart, true);
+    assert.equal(evidence.checks.upload_multipart_content_type_present, true);
+    assert.equal(evidence.checks.upload_multipart_body_shape_safe, true);
+    assert.equal(
+      evidence.checks.upload_multipart_fields_present_when_introspected,
+      true
+    );
+    const uploadRoute = evidence.request_observations.request_routes.find(
+      route => route.route === "/ae-api/api/v1/uploads/files"
+    );
+    assert.equal(uploadRoute.body_summary.field_introspection_status, "available");
+    assert.equal(uploadRoute.body_summary.file_field_present, true);
+    assert.equal(uploadRoute.body_summary.tenant_id_field_present, true);
+    assert.equal(uploadRoute.body_summary.source_sha256_field_present, true);
+    assert.equal(evidence.checks.upload_body_not_serialized_in_evidence, true);
+    assert.equal(evidence.upload_input.source_bytes_sent_by_browser, true);
     assert.equal(evidence.checks.password_cleared_after_submit, true);
     assert.equal(serialized.includes(env[PASSWORD_ENV]), false);
     assert.equal(serialized.includes(env[SOURCE_SHA256_ENV]), false);

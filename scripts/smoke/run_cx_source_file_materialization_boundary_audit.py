@@ -63,6 +63,18 @@ AE_WEB_UPLOAD_SURFACE = ROOT / "apps" / "nex-ae-web" / "src" / "uploadSurface.js
 SLICE_0274_DOC = (
     ROOT / "docs" / "slices" / "0274_ae_web_authenticated_upload_playwright_postgresql_smoke.md"
 )
+SLICE_0279_DOC = (
+    ROOT
+    / "docs"
+    / "slices"
+    / "0279_ae_web_source_file_upload_playwright_postgresql_smoke.md"
+)
+AE_WEB_UPLOAD_PLAYWRIGHT_SMOKE = (
+    ROOT
+    / "scripts"
+    / "smoke"
+    / "run_ae_web_authenticated_upload_playwright_postgres_smoke.py"
+)
 
 REQUIRED_PATHS = (
     RequiredPath("cx_ingestion", CX_INGESTION, "CX upload intake and materialization."),
@@ -83,6 +95,11 @@ REQUIRED_PATHS = (
         "slice_0274_doc",
         SLICE_0274_DOC,
         "Previous protected upload smoke decision record.",
+    ),
+    RequiredPath(
+        "slice_0279_doc",
+        SLICE_0279_DOC,
+        "Current source-file upload smoke decision record.",
     ),
 )
 
@@ -209,16 +226,23 @@ REQUIRED_SOURCE_TOKENS = (
     TokenRequirement(
         "ae_web_boundary",
         AE_WEB_UPLOAD_SURFACE,
-        "browser_metadata_only",
-        "sourceContentIncluded: false",
-        "Current browser upload surface remains metadata-only.",
+        "browser_multipart_route",
+        "AE_MULTIPART_UPLOAD_ROUTE",
+        "Browser upload surface exposes the AE multipart facade route.",
     ),
     TokenRequirement(
         "slice_0274_boundary",
         SLICE_0274_DOC,
-        "bytes_deferred",
-        "future explicit source-file storage boundary",
-        "Slice 0274 explicitly deferred raw bytes to this boundary.",
+        "source_file_upgrade_documented",
+        "Slice 0279 upgrades the same runner",
+        "Slice 0274 documents that the protected smoke was upgraded later.",
+    ),
+    TokenRequirement(
+        "slice_0279_boundary",
+        SLICE_0279_DOC,
+        "verified_source_file_smoke_documented",
+        "cx_checksum=verified",
+        "Slice 0279 documents verified CX source-file materialization evidence.",
     ),
 )
 
@@ -239,11 +263,8 @@ PLANNED_GAPS = (
     ),
     PlannedGap(
         "source_file_playwright_postgres_smoke",
-        ROOT
-        / "scripts"
-        / "smoke"
-        / "run_ae_web_source_file_upload_playwright_postgres_smoke.py",
-        "checksum_verified_at_present",
+        AE_WEB_UPLOAD_PLAYWRIGHT_SMOKE,
+        "cx_checksum=verified",
         "Slice 0279",
         "Protected browser smoke should verify materialized source bytes in CX.",
     ),
@@ -291,11 +312,9 @@ def run_cx_source_file_materialization_boundary_audit(
         is True,
         "ae_facade_delegates_persistence_to_cx": groups.get("ae_facade_boundary")
         is True,
-        "browser_stays_metadata_only_until_source_bytes_slice": groups.get(
-            "ae_web_boundary"
-        )
-        is True,
-        "previous_slice_deferred_raw_bytes": groups.get("slice_0274_boundary") is True,
+        "browser_source_file_route_available": groups.get("ae_web_boundary") is True,
+        "previous_slice_upgrade_documented": groups.get("slice_0274_boundary") is True,
+        "source_file_smoke_documented": groups.get("slice_0279_boundary") is True,
         "planned_gaps_are_non_blocking": all(item["blocking"] is False for item in gaps),
         "cx_is_source_file_system_of_record": decisions["source_file_system_of_record"]
         == "nex-cx",
@@ -398,9 +417,9 @@ def build_decisions() -> dict[str, object]:
         "source_file_key_shape": "YYYYMMDD/sha2/sha2/source_file_id_extension",
         "dedupe_boundary": "global_source_sha256_metadata_plus_owner_scoped_content",
         "checksum_policy": "cx_verifies_bytes_against_source_sha256_before_marking_verified",
-        "metadata_only_policy": "allowed_until_bytes_are_available",
+        "metadata_only_policy": "supported_for_no_file_uploads_but_verified_when_bytes_are_available",
         "raw_evidence_policy": "never_include_raw_source_bytes_or_local_paths",
-        "next_slices": ["Slice 0276", "Slice 0277", "Slice 0278", "Slice 0279"],
+        "next_slices": ["Slice 0280"],
     }
 
 
@@ -438,7 +457,7 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"paths={present_count(evidence['paths'])}/{len(evidence['paths'])} "
             f"token_groups={present_count_bool(token_groups)}/{len(token_groups)} "
             f"gaps_ready={ready_gaps}/{len(evidence['planned_gaps'])} "
-            "next=Slice_0276"
+            "next=Slice_0280"
         )
     failed_checks = ",".join(
         key for key, value in evidence["checks"].items() if not value

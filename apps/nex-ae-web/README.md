@@ -426,5 +426,16 @@ Slice 0278 wires browser FormData upload:
   to the upload client; AE remains a transient facade and CX remains the
   durable source-file owner.
 
+Slice 0279 hardens the protected Playwright/PostgreSQL upload smoke:
+
+- `scripts/runAuthenticatedUploadPlaywrightSmoke.mjs` now treats
+  `/ae-api/api/v1/uploads/files` as the expected browser source-file route.
+- Smoke evidence records multipart route/field booleans only; raw multipart
+  bytes, credential material, service tokens, local paths, and provider
+  endpoints stay out of evidence.
+- `scripts/smoke/run_ae_web_authenticated_upload_playwright_postgres_smoke.py`
+  requires real `test` profile DB URLs when enabled and verifies CX source-file
+  checksum materialization before reporting `cx_checksum=verified`.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

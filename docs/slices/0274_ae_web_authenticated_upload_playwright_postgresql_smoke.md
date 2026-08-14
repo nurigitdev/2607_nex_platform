@@ -51,6 +51,7 @@ NEX_AE_WEB_PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome \
 
 ## Notes
 
-The browser still sends upload metadata only: filename, content type, size, and
-SHA-256. Raw source bytes stay out of browser evidence and are deferred to a
-future explicit source-file storage boundary.
+This slice originally established the protected Playwright/PostgreSQL smoke
+boundary for metadata-oriented upload flow. Slice 0279 upgrades the same runner
+to the browser source-file multipart route while keeping raw source bytes out of
+serialized evidence.
