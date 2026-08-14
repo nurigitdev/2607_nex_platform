@@ -387,6 +387,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0281`](slices/0281_cx_source_file_reader_fallback_audit.md) | `S29-001` CX source-file reader fallback audit. |
 | [`Slice 0282`](slices/0282_cx_extraction_materialized_source_fallback.md) | `S29-002` CX extraction materialized-source fallback implementation. |
 | [`Slice 0283`](slices/0283_cx_uploaded_source_extraction_postgresql_smoke.md) | `S29-003` CX uploaded source extraction PostgreSQL smoke evidence. |
+| [`Slice 0284`](slices/0284_cx_extractor_backend_gap_audit.md) | `S29-004` CX extractor backend gap audit and refactoring checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

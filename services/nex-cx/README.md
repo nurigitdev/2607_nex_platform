@@ -82,6 +82,10 @@ Internal persistence boundary:
   migrates `nex_cx_test`, uploads a source file, evicts runtime source bytes,
   runs extraction through the job API, and verifies the persisted extraction
   artifact row.
+- Slice 0284 freezes the extractor backend gap before real document adapters.
+  `nex_cx.extractors` now exposes an explicit backend catalog: Markdown and
+  plain text are implemented by the local adapter, while PDF, DOCX, PPTX, and
+  XLSX remain recognized placeholder gaps for Slice 0285-0287.
 - Text extraction runs through the `nex_cx.extractors` adapter boundary. The
   local mock adapter performs real UTF-8 Markdown/plain-text conversion and
   emits explicit placeholders with warnings for PDF, DOCX, PPTX, and XLSX until

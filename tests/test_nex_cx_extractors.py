@@ -3,11 +3,18 @@ from __future__ import annotations
 import pytest
 
 from nex_cx.extractors import (
+    BINARY_SOURCE_FORMATS,
+    PLACEHOLDER_BINARY_MODE,
+    PLACEHOLDER_BINARY_WARNING_PREFIX,
     ExtractionAdapterError,
     ExtractorInput,
     LocalMockTextExtractor,
     classify_source_format,
+    content_types_for_source_format,
     decode_utf8_source,
+    extensions_for_source_format,
+    extractor_backend_catalog,
+    extractor_backend_gap_summary,
     markdown_from_source_text,
     mock_binary_document_markdown,
 )
@@ -123,6 +130,11 @@ def test_markdown_helpers_are_deterministic() -> None:
     assert markdown_from_source_text("  ", filename="empty.md", content_type="text/markdown") == (
         "# empty.md\n\n"
     )
+    assert markdown_from_source_text(
+        "# Already\n",
+        filename="already.md",
+        content_type="text/markdown",
+    ) == "# Already\n"
     assert mock_binary_document_markdown(
         filename="deck.pptx",
         content_type=(
@@ -130,3 +142,57 @@ def test_markdown_helpers_are_deterministic() -> None:
         ),
         source_format="pptx",
     ).startswith("# deck.pptx\n\nMock extraction placeholder.")
+
+
+def test_extractor_backend_catalog_records_current_gaps() -> None:
+    catalog = extractor_backend_catalog()
+    by_format = {item.source_format: item for item in catalog}
+
+    assert set(by_format) == {"markdown", "plain_text", *BINARY_SOURCE_FORMATS}
+    assert by_format["markdown"].real_extraction is True
+    assert by_format["markdown"].current_mode == "markdown_to_markdown"
+    assert by_format["plain_text"].real_extraction is True
+    assert by_format["plain_text"].current_mode == "plain_text_to_markdown"
+
+    for source_format in BINARY_SOURCE_FORMATS:
+        capability = by_format[source_format]
+        assert capability.status == "gap_placeholder"
+        assert capability.real_extraction is False
+        assert capability.current_mode == PLACEHOLDER_BINARY_MODE
+        assert capability.warning == (
+            f"{PLACEHOLDER_BINARY_WARNING_PREFIX}:{source_format}"
+        )
+        assert capability.next_slice in {"Slice 0285", "Slice 0286", "Slice 0287"}
+
+    summary = extractor_backend_gap_summary(catalog)
+    assert summary == {
+        "schema_version": "cx_extractor_backend_gap_summary.v1",
+        "source_format_count": 6,
+        "implemented_real_extraction_count": 2,
+        "gap_placeholder_count": 4,
+        "gap_source_formats": ["pdf", "docx", "pptx", "xlsx"],
+        "next_slices": ["Slice 0285", "Slice 0286", "Slice 0287", "Slice 0287"],
+    }
+
+
+def test_extractor_backend_format_helpers_cover_text_and_unknown_formats() -> None:
+    assert content_types_for_source_format("markdown") == (
+        "text/markdown",
+        "text/x-markdown",
+    )
+    assert content_types_for_source_format("plain_text") == (
+        "application/json",
+        "application/xml",
+        "text/csv",
+        "text/plain",
+    )
+    assert content_types_for_source_format("unknown") == ()
+    assert extensions_for_source_format("markdown") == (".markdown", ".md")
+    assert extensions_for_source_format("plain_text") == (
+        ".csv",
+        ".json",
+        ".log",
+        ".txt",
+        ".xml",
+    )
+    assert extensions_for_source_format("unknown") == ()
