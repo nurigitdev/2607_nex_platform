@@ -99,6 +99,11 @@ Internal persistence boundary:
   reports Markdown, plain text, PDF, DOCX, PPTX, and XLSX as real extraction
   paths with zero placeholder gaps; Slice 0288 should prove those real document
   adapters through PostgreSQL-backed smoke evidence.
+- Slice 0288 adds protected PostgreSQL smoke evidence for the real document
+  adapters. With `NEX_CX_REAL_DOCUMENT_EXTRACTION_POSTGRES_SMOKE=1` and the
+  `nex_cx_test` database URL, the smoke migrates the test DB, uploads
+  PDF/DOCX/PPTX/XLSX files, evicts runtime source bytes, runs extraction through
+  the job API, verifies persisted `cx_extraction_artifacts`, and cleans up rows.
 - Text extraction runs through the `nex_cx.extractors` adapter boundary. The
   local mock adapter performs real UTF-8 Markdown/plain-text conversion and
   PDF page-text, DOCX paragraph/table, PPTX slide/table, and XLSX sheet/table
