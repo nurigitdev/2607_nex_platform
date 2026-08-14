@@ -198,7 +198,7 @@ def test_protected_live_rag_postgres_smoke_rejects_non_test_profile() -> None:
     assert evidence["failure_code"] == "profile_not_allowed"
     assert smoke.summary_line(evidence) == (
         "protected_live_rag_postgres_smoke=fail "
-        "service=nex-cx profile=dev reason=profile_not_allowed"
+        "service=nex-cx profile=dev reason=profile_not_allowed stage=unknown"
     )
 
 
@@ -318,6 +318,39 @@ def test_protected_live_rag_postgres_smoke_reports_migration_and_execution_failu
     assert execution_failure["status"] == "FAIL"
     assert execution_failure["failure_code"] == "execution_failed"
 
+    def raise_stage_error(**kwargs: object) -> None:
+        raise smoke.LiveRagSmokeStageError(
+            stage="generation",
+            error_code="cx.retrieval_package_not_ready",
+            detail="Retrieval package status is LOW_CONFIDENCE.",
+            status_code=409,
+            retryable=False,
+            stage_status={"generation": "FAIL"},
+        )
+
+    monkeypatch.setattr(
+        smoke,
+        "_execute_protected_live_rag_postgres_smoke",
+        raise_stage_error,
+    )
+    stage_failure = smoke.run_protected_live_rag_postgres_smoke(_live_env())
+
+    assert stage_failure["status"] == "FAIL"
+    assert stage_failure["failure_code"] == "execution_failed"
+    assert stage_failure["detail"] == "cx.retrieval_package_not_ready"
+    assert stage_failure["diagnostics"] == {
+        "stage": "generation",
+        "error_code": "cx.retrieval_package_not_ready",
+        "detail": "Retrieval package status is LOW_CONFIDENCE.",
+        "stage_status": {"generation": "FAIL"},
+        "status_code": 409,
+        "retryable": False,
+    }
+    assert smoke.summary_line(stage_failure) == (
+        "protected_live_rag_postgres_smoke=fail "
+        "service=nex-cx profile=test reason=execution_failed stage=generation"
+    )
+
 
 def test_protected_live_rag_postgres_smoke_sqlite_route_path(tmp_path: Path) -> None:
     database_url = _sqlite_live_rag_url(tmp_path)
@@ -335,6 +368,9 @@ def test_protected_live_rag_postgres_smoke_sqlite_route_path(tmp_path: Path) -> 
     serialized = json.dumps(result, ensure_ascii=False, default=str)
 
     assert all(result["checks"].values())
+    assert result["stage_status"]["upload"] == "PASS"
+    assert result["stage_status"]["generation"] == "PASS"
+    assert result["stage_status"]["cleanup"] == "PASS"
     assert result["rag_evidence"]["retrieval"]["status"] == "READY"
     assert result["rag_evidence"]["retrieval"]["rerank_state"] == "APPLIED"
     assert result["rag_evidence"]["generation"]["status"] == "COMPLETED"
@@ -367,6 +403,56 @@ def test_protected_live_rag_postgres_smoke_sqlite_route_path(tmp_path: Path) -> 
     )
 
 
+def test_protected_live_rag_postgres_smoke_generation_http_failure_diagnostics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = _sqlite_live_rag_url(tmp_path)
+
+    def fail_generation(*args: object, **kwargs: object) -> None:
+        request = httpx.Request("POST", "http://testserver/api/v1/generations")
+        response = httpx.Response(
+            409,
+            request=request,
+            json={
+                "error_code": "cx.retrieval_package_not_ready",
+                "detail": "Retrieval package status is LOW_CONFIDENCE.",
+                "retryable": False,
+            },
+        )
+        raise httpx.HTTPStatusError(
+            "Client error '409 Conflict'",
+            request=request,
+            response=response,
+        )
+
+    monkeypatch.setattr(smoke, "create_grounded_generation", fail_generation)
+
+    with pytest.raises(smoke.LiveRagSmokeStageError) as exc_info:
+        smoke._execute_protected_live_rag_postgres_smoke(
+            database_env="NEX_CX_TEST_DATABASE_URL",
+            database_url=database_url,
+            runtime_environ={
+                **_live_env(database_url),
+                "NEX_CX_TEST_DATABASE_URL": database_url,
+            },
+            requester=_fake_remote_request([]),
+        )
+
+    diagnostics = exc_info.value.to_safe_diagnostics()
+    assert diagnostics["stage"] == "generation"
+    assert diagnostics["error_code"] == "cx.retrieval_package_not_ready"
+    assert diagnostics["status_code"] == 409
+    assert diagnostics["retryable"] is False
+    assert diagnostics["detail"] == "Retrieval package status is LOW_CONFIDENCE."
+    assert diagnostics["stage_status"]["upload"] == "PASS"
+    assert diagnostics["stage_status"]["generation"] == "FAIL"
+    assert diagnostics["stage_status"]["cleanup"] == "PASS"
+    assert _count_rows(database_url, "cx_retrieval_packages") == 0
+    assert _count_rows(database_url, "cx_content_objects") == 0
+    assert "dgx.local" not in json.dumps(diagnostics, ensure_ascii=False)
+
+
 def test_protected_live_rag_postgres_smoke_check_failure_raises(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -396,7 +482,7 @@ def test_protected_live_rag_postgres_smoke_check_failure_raises(
         },
     )
 
-    with pytest.raises(RuntimeError, match="checks failed"):
+    with pytest.raises(smoke.LiveRagSmokeStageError) as exc_info:
         smoke._execute_protected_live_rag_postgres_smoke(
             database_env="NEX_CX_TEST_DATABASE_URL",
             database_url=database_url,
@@ -407,6 +493,8 @@ def test_protected_live_rag_postgres_smoke_check_failure_raises(
             requester=_fake_remote_request([]),
         )
 
+    assert exc_info.value.stage == "checks"
+    assert exc_info.value.error_code == "protected_live_rag_postgres_checks_failed"
     assert _count_rows(database_url, "cx_content_objects") == 0
     assert _count_rows(database_url, "cx_source_files") == 0
 
@@ -459,6 +547,17 @@ def test_protected_live_rag_postgres_smoke_helpers_cover_edges(
             {"source": smoke.SMOKE_TEXT},
             {},
         )
+
+    assert smoke._summary_failure_stage({"status": "FAIL"}) == "unknown"
+    assert smoke._bounded_detail("x" * 300).endswith("...")
+    request = httpx.Request("POST", "http://testserver/api/v1/embedding")
+    response = httpx.Response(503, request=request, content=b"not-json")
+    error = smoke._stage_failure_from_exception(
+        "embedding_index",
+        httpx.HTTPStatusError("failed", request=request, response=response),
+        stage_status={"embedding_index": "FAIL"},
+    )
+    assert error.to_safe_diagnostics()["error_code"] == "http_status_503"
 
 
 def test_protected_live_rag_postgres_smoke_main_prints_summary_and_full_evidence(

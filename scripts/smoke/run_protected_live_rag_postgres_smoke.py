@@ -7,8 +7,9 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
+import httpx
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
@@ -97,6 +98,56 @@ FORBIDDEN_EVIDENCE_FRAGMENTS = (
     "nex-live-rag-postgres-smoke-",
     "/data/nex-platform",
 )
+EXECUTION_STAGES = (
+    "database_engine",
+    "service_apps",
+    "upload",
+    "extraction",
+    "chunking",
+    "lexical_index",
+    "embedding_index",
+    "retrieval",
+    "generation",
+    "provider_telemetry",
+    "rag_evidence_assertion",
+    "db_observation",
+    "checks",
+    "redaction",
+    "cleanup",
+)
+
+
+class LiveRagSmokeStageError(RuntimeError):
+    def __init__(
+        self,
+        *,
+        stage: str,
+        error_code: str,
+        detail: str,
+        status_code: int | None = None,
+        retryable: bool | None = None,
+        stage_status: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(error_code)
+        self.stage = stage
+        self.error_code = error_code
+        self.detail = detail
+        self.status_code = status_code
+        self.retryable = retryable
+        self.stage_status = stage_status or {}
+
+    def to_safe_diagnostics(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "stage": self.stage,
+            "error_code": self.error_code,
+            "detail": _bounded_detail(self.detail),
+            "stage_status": dict(self.stage_status),
+        }
+        if self.status_code is not None:
+            payload["status_code"] = self.status_code
+        if self.retryable is not None:
+            payload["retryable"] = self.retryable
+        return payload
 
 
 def run_protected_live_rag_postgres_smoke(
@@ -168,6 +219,15 @@ def run_protected_live_rag_postgres_smoke(
         return evidence
     except (MigrationError, ValueError) as exc:
         return _failure("configuration_invalid", str(exc), profile=profile)
+    except LiveRagSmokeStageError as exc:
+        failure = _failure(
+            "execution_failed",
+            exc.error_code,
+            profile=profile,
+            diagnostics=exc.to_safe_diagnostics(),
+        )
+        assert_protected_live_rag_postgres_evidence_redacted(failure, env)
+        return failure
     except Exception as exc:
         return _failure("execution_failed", exc.__class__.__name__, profile=profile)
 
@@ -181,13 +241,22 @@ def _execute_protected_live_rag_postgres_smoke(
     trace_id: str = TRACE_ID,
 ) -> dict[str, object]:
     request_id = REQUEST_ID
-    engine = build_engine(database_url)
+    stage_status = _initial_stage_status()
+    engine = _run_stage(
+        "database_engine",
+        stage_status,
+        lambda: build_engine(database_url),
+    )
     document_id: str | None = None
     source_file_id: str | None = None
     retrieval_package_id: str | None = None
     result: dict[str, object] = {}
     with tempfile.TemporaryDirectory(prefix="nex-live-rag-postgres-smoke-") as temp_dir:
-        storage_config = build_smoke_storage_config(Path(temp_dir))
+        storage_config = _run_stage(
+            "service_apps",
+            stage_status,
+            lambda: build_smoke_storage_config(Path(temp_dir)),
+        )
         repository = SqlAlchemyCxContentRepository(
             build_session_factory(engine),
             local_source_root=storage_config.source_root,
@@ -242,99 +311,255 @@ def _execute_protected_live_rag_postgres_smoke(
             with patched_environ(runtime_environ):
                 with patched_remote_request(requester):
                     remote_provider.reset_remote_provider_telemetry()
-                    upload = register_smoke_document(cx_client, trace_id, request_id)
+                    upload = _run_stage(
+                        "upload",
+                        stage_status,
+                        lambda: register_smoke_document(
+                            cx_client,
+                            trace_id,
+                            request_id,
+                        ),
+                    )
                     document_id = str(upload["document_id"])
                     refs = cx_store.get_content_ref(document_id)
                     source_file_id = (
                         str(refs["source_file_id"]) if refs is not None else None
                     )
-                    extraction = run_cx_post(
-                        cx_client,
-                        f"/api/v1/jobs/{upload['extraction']['job_id']}/run",
-                        trace_id,
-                        request_id,
+                    extraction = _run_stage(
+                        "extraction",
+                        stage_status,
+                        lambda: run_cx_post(
+                            cx_client,
+                            f"/api/v1/jobs/{upload['extraction']['job_id']}/run",
+                            trace_id,
+                            request_id,
+                        ),
                     )
-                    chunk_set = run_cx_post(
-                        cx_client,
-                        f"/api/v1/documents/{document_id}/chunks/run",
-                        trace_id,
-                        request_id,
+                    chunk_set = _run_stage(
+                        "chunking",
+                        stage_status,
+                        lambda: run_cx_post(
+                            cx_client,
+                            f"/api/v1/documents/{document_id}/chunks/run",
+                            trace_id,
+                            request_id,
+                        ),
                     )
-                    lexical_index = run_cx_post(
-                        cx_client,
-                        f"/api/v1/documents/{document_id}/lexical-index/run",
-                        trace_id,
-                        request_id,
+                    lexical_index = _run_stage(
+                        "lexical_index",
+                        stage_status,
+                        lambda: run_cx_post(
+                            cx_client,
+                            f"/api/v1/documents/{document_id}/lexical-index/run",
+                            trace_id,
+                            request_id,
+                        ),
                     )
-                    embedding_index = run_cx_post(
-                        cx_client,
-                        f"/api/v1/documents/{document_id}/embeddings/run",
-                        trace_id,
-                        request_id,
+                    embedding_index = _run_stage(
+                        "embedding_index",
+                        stage_status,
+                        lambda: run_cx_post(
+                            cx_client,
+                            f"/api/v1/documents/{document_id}/embeddings/run",
+                            trace_id,
+                            request_id,
+                        ),
                     )
-                    retrieval = create_live_rag_postgres_retrieval_context(
-                        cx_client,
-                        document_id=document_id,
-                        trace_id=trace_id,
-                        request_id=request_id,
+                    retrieval = _run_stage(
+                        "retrieval",
+                        stage_status,
+                        lambda: create_live_rag_postgres_retrieval_context(
+                            cx_client,
+                            document_id=document_id,
+                            trace_id=trace_id,
+                            request_id=request_id,
+                        ),
                     )
                     retrieval_package_id = str(retrieval["retrieval_package_id"])
-                    generation = create_grounded_generation(
-                        cx_client,
-                        retrieval_package=retrieval,
-                        trace_id=trace_id,
-                        request_id=request_id,
+                    generation = _run_stage(
+                        "generation",
+                        stage_status,
+                        lambda: create_grounded_generation(
+                            cx_client,
+                            retrieval_package=retrieval,
+                            trace_id=trace_id,
+                            request_id=request_id,
+                        ),
                     )
-                    telemetry = read_provider_telemetry(
-                        mo_test_client,
-                        trace_id,
-                        request_id,
+                    telemetry = _run_stage(
+                        "provider_telemetry",
+                        stage_status,
+                        lambda: read_provider_telemetry(
+                            mo_test_client,
+                            trace_id,
+                            request_id,
+                        ),
                     )
-            rag_evidence = build_rag_evidence_summary(
-                trace_id=trace_id,
-                request_id=request_id,
-                upload=upload,
-                extraction=extraction,
-                chunk_set=chunk_set,
-                lexical_index=lexical_index,
-                embedding_index=embedding_index,
-                retrieval=retrieval,
-                generation=generation,
-                telemetry=telemetry,
+            rag_evidence = _run_stage(
+                "rag_evidence_assertion",
+                stage_status,
+                lambda: build_rag_evidence_summary(
+                    trace_id=trace_id,
+                    request_id=request_id,
+                    upload=upload,
+                    extraction=extraction,
+                    chunk_set=chunk_set,
+                    lexical_index=lexical_index,
+                    embedding_index=embedding_index,
+                    retrieval=retrieval,
+                    generation=generation,
+                    telemetry=telemetry,
+                ),
             )
-            db_observations = _read_live_rag_db_observations(
-                engine,
-                document_id=document_id,
-                source_file_id=source_file_id,
-                retrieval_package_id=retrieval_package_id,
+            db_observations = _run_stage(
+                "db_observation",
+                stage_status,
+                lambda: _read_live_rag_db_observations(
+                    engine,
+                    document_id=document_id,
+                    source_file_id=source_file_id,
+                    retrieval_package_id=retrieval_package_id,
+                ),
             )
-            checks = _checks(rag_evidence=rag_evidence, db_observations=db_observations)
+            checks = _run_stage(
+                "checks",
+                stage_status,
+                lambda: _checks(
+                    rag_evidence=rag_evidence,
+                    db_observations=db_observations,
+                ),
+            )
             if not all(checks.values()):
-                raise RuntimeError("Protected live RAG PostgreSQL smoke checks failed")
+                stage_status["checks"] = "FAIL"
+                raise LiveRagSmokeStageError(
+                    stage="checks",
+                    error_code="protected_live_rag_postgres_checks_failed",
+                    detail="Protected live RAG PostgreSQL smoke checks failed.",
+                    stage_status=stage_status,
+                )
             result = {
+                "stage_status": stage_status,
                 "rag_evidence": rag_evidence,
                 "db_observations": db_observations,
                 "checks": checks,
             }
-            assert_protected_live_rag_postgres_evidence_redacted(
-                result,
-                runtime_environ,
+            _run_stage(
+                "redaction",
+                stage_status,
+                lambda: assert_protected_live_rag_postgres_evidence_redacted(
+                    result,
+                    runtime_environ,
+                ),
             )
         finally:
-            _delete_smoke_retrieval_rows(
-                engine,
-                retrieval_package_id=retrieval_package_id,
-                document_id=None,
-                source_file_id=None,
-            )
-            result["cleanup_observations"] = _delete_real_document_processing_rows(
-                engine,
-                document_id=document_id,
-                source_file_id=source_file_id,
-                pipeline_run_id=None,
-                job_id=None,
+            result["cleanup_observations"] = _run_stage(
+                "cleanup",
+                stage_status,
+                lambda: _cleanup_live_rag_rows(
+                    engine=engine,
+                    retrieval_package_id=retrieval_package_id,
+                    document_id=document_id,
+                    source_file_id=source_file_id,
+                ),
             )
     return result
+
+
+def _cleanup_live_rag_rows(
+    *,
+    engine: object,
+    retrieval_package_id: str | None,
+    document_id: str | None,
+    source_file_id: str | None,
+) -> dict[str, object]:
+    _delete_smoke_retrieval_rows(
+        engine,
+        retrieval_package_id=retrieval_package_id,
+        document_id=None,
+        source_file_id=None,
+    )
+    return _delete_real_document_processing_rows(
+        engine,
+        document_id=document_id,
+        source_file_id=source_file_id,
+        pipeline_run_id=None,
+        job_id=None,
+    )
+
+
+def _initial_stage_status() -> dict[str, str]:
+    return {stage: "NOT_RUN" for stage in EXECUTION_STAGES}
+
+
+def _run_stage(
+    stage: str,
+    stage_status: dict[str, str],
+    operation: Callable[[], Any],
+) -> Any:
+    try:
+        result = operation()
+    except LiveRagSmokeStageError:
+        stage_status[stage] = "FAIL"
+        raise
+    except Exception as exc:
+        stage_status[stage] = "FAIL"
+        raise _stage_failure_from_exception(
+            stage,
+            exc,
+            stage_status=stage_status,
+        ) from exc
+    stage_status[stage] = "PASS"
+    return result
+
+
+def _stage_failure_from_exception(
+    stage: str,
+    exc: Exception,
+    *,
+    stage_status: dict[str, str],
+) -> LiveRagSmokeStageError:
+    if isinstance(exc, httpx.HTTPStatusError):
+        response = exc.response
+        problem = _safe_problem_payload(response)
+        return LiveRagSmokeStageError(
+            stage=stage,
+            error_code=str(problem.get("error_code") or f"http_status_{response.status_code}"),
+            detail=str(problem.get("detail") or exc.__class__.__name__),
+            status_code=response.status_code,
+            retryable=_optional_bool(problem.get("retryable")),
+            stage_status=stage_status,
+        )
+    error_code = getattr(exc, "error_code", None)
+    detail = getattr(exc, "detail", None)
+    status_code = getattr(exc, "status_code", None)
+    retryable = getattr(exc, "retryable", None)
+    return LiveRagSmokeStageError(
+        stage=stage,
+        error_code=str(error_code or exc.__class__.__name__),
+        detail=str(detail or exc.__class__.__name__),
+        status_code=status_code if isinstance(status_code, int) else None,
+        retryable=retryable if isinstance(retryable, bool) else None,
+        stage_status=stage_status,
+    )
+
+
+def _safe_problem_payload(response: httpx.Response) -> dict[str, object]:
+    try:
+        payload = response.json()
+    except ValueError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _optional_bool(value: object) -> bool | None:
+    return value if isinstance(value, bool) else None
+
+
+def _bounded_detail(value: object, *, limit: int = 240) -> str:
+    detail = " ".join(str(value).split())
+    if len(detail) <= limit:
+        return detail
+    return detail[: limit - 3] + "..."
 
 
 def create_live_rag_postgres_retrieval_context(
@@ -629,6 +854,7 @@ def _failure(
     *,
     profile: str,
     issues: list[dict[str, object]] | None = None,
+    diagnostics: dict[str, object] | None = None,
 ) -> dict[str, object]:
     failure = {
         "smoke_schema_version": SCHEMA_VERSION,
@@ -640,6 +866,8 @@ def _failure(
     }
     if issues is not None:
         failure["issues"] = issues
+    if diagnostics is not None:
+        failure["diagnostics"] = diagnostics
     return failure
 
 
@@ -663,8 +891,18 @@ def summary_line(evidence: dict[str, object]) -> str:
         "protected_live_rag_postgres_smoke=fail "
         f"service={evidence.get('service_id')} "
         f"profile={evidence.get('profile')} "
-        f"reason={evidence.get('failure_code')}"
+        f"reason={evidence.get('failure_code')} "
+        f"stage={_summary_failure_stage(evidence)}"
     )
+
+
+def _summary_failure_stage(evidence: dict[str, object]) -> str:
+    diagnostics = evidence.get("diagnostics")
+    if isinstance(diagnostics, dict):
+        stage = diagnostics.get("stage")
+        if isinstance(stage, str) and stage:
+            return stage
+    return "unknown"
 
 
 def build_parser() -> argparse.ArgumentParser:

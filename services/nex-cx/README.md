@@ -314,7 +314,10 @@ Grounded generation validation:
   `NEX_PROTECTED_LIVE_RAG_POSTGRES_SMOKE=1` is set with the `test` profile. The
   smoke runs the CX upload/extract/chunk/lexical/embedding/retrieval/generation
   API flow, calls live DGX providers through MO, and directly reads CX content,
-  chunk, embedding, and retrieval tables before cleanup.
+  chunk, embedding, and retrieval tables before cleanup. Failure evidence
+  includes the safe stage name, HTTP status, problem `error_code`, bounded
+  detail, retryability, and per-stage status without exposing provider
+  endpoints, credentials, source text, or database passwords.
 - CX retrieval PostgreSQL smoke evidence is available through
   `scripts/smoke/run_cx_retrieval_postgres_smoke.py`. It is skipped by default
   and only writes to the CX test database when

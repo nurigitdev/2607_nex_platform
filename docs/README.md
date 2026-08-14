@@ -399,6 +399,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0293`](slices/0293_cx_processing_pipeline_remote_embedding_postgresql_smoke.md) | `S30-003` CX processing pipeline remote embedding PostgreSQL smoke evidence. |
 | [`Slice 0294`](slices/0294_cx_retrieval_remote_reranker_postgresql_smoke.md) | `S30-004` CX retrieval remote reranker PostgreSQL smoke evidence. |
 | [`Slice 0295`](slices/0295_protected_live_rag_postgresql_smoke.md) | `S30-005` Protected live RAG PostgreSQL smoke evidence. |
+| [`Slice 0296`](slices/0296_protected_live_rag_failure_diagnostics.md) | `S30-006` Protected live RAG failure diagnostics hardening. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
