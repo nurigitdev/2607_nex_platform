@@ -302,7 +302,7 @@ def build_remote_provider_preflight_configs(
     environ: dict[str, str] | None = None,
 ) -> tuple[RemoteProviderPreflightConfig, ...]:
     env = environ if environ is not None else os.environ
-    timeout_seconds = float(env.get("NEX_MO_LIVE_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS))
+    timeout_seconds = _timeout_seconds(env)
 
     return (
         RemoteProviderPreflightConfig(
@@ -441,7 +441,7 @@ def build_remote_embedding_execution_config(
         deployment_id=env.get("NEX_MO_REMOTE_EMBEDDING_DEPLOYMENT_ID", "remote-embedding-http"),
         api_key_env="NEX_MO_REMOTE_EMBEDDING_API_KEY",
         api_key=_empty_to_none(env.get("NEX_MO_REMOTE_EMBEDDING_API_KEY")),
-        timeout_seconds=float(env.get("NEX_MO_LIVE_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)),
+        timeout_seconds=_timeout_seconds(env),
         request_options=_embedding_request_options(env),
     )
 
@@ -467,7 +467,7 @@ def build_remote_reranker_execution_config(
         deployment_id=env.get("NEX_MO_REMOTE_RERANKER_DEPLOYMENT_ID", "remote-reranker-http"),
         api_key_env="NEX_MO_REMOTE_RERANKER_API_KEY",
         api_key=_empty_to_none(env.get("NEX_MO_REMOTE_RERANKER_API_KEY")),
-        timeout_seconds=float(env.get("NEX_MO_LIVE_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)),
+        timeout_seconds=_timeout_seconds(env),
         request_options=_reranker_request_options(env),
     )
 
@@ -489,7 +489,7 @@ def build_remote_generation_execution_config(
         deployment_id=env.get("NEX_MO_VLLM_DEPLOYMENT_ID", "vllm-generation-http"),
         api_key_env="NEX_MO_VLLM_API_KEY",
         api_key=_empty_to_none(env.get("NEX_MO_VLLM_API_KEY")),
-        timeout_seconds=float(env.get("NEX_MO_LIVE_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)),
+        timeout_seconds=_timeout_seconds(env),
     )
 
 
@@ -1637,6 +1637,28 @@ def _int_usage_value(
 
 def _token_count(text: str) -> int:
     return max(1, len(text.split()))
+
+
+def _timeout_seconds(env: dict[str, str]) -> float:
+    return _positive_float_env(
+        env,
+        "NEX_MO_LIVE_TIMEOUT_SECONDS",
+        DEFAULT_TIMEOUT_SECONDS,
+    )
+
+
+def _positive_float_env(
+    env: dict[str, str],
+    key: str,
+    default: float,
+) -> float:
+    raw_value = env.get(key)
+    if raw_value is None or raw_value == "":
+        return default
+    value = float(raw_value)
+    if value <= 0:
+        raise ValueError(f"{key} must be positive.")
+    return value
 
 
 def _env_first(env: dict[str, str], primary: str, legacy: str) -> str:

@@ -81,6 +81,7 @@ def run_protected_dgx_live_profile(
     effective_env = {
         **protected_profile_defaults(resolved_profile),
         **env,
+        PROFILE_ENV: resolved_profile,
         "NEX_MO_PROVIDER_MODE": "live",
         "NEX_MO_LIVE_PREFLIGHT": "1",
     }

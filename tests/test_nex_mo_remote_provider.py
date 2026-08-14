@@ -67,6 +67,20 @@ def test_remote_provider_configs_use_current_env_contract() -> None:
     assert "request_options" not in configs[1].to_safe_summary()
 
 
+def test_remote_provider_configs_reject_non_positive_timeout() -> None:
+    with pytest.raises(ValueError) as exc_info:
+        build_remote_provider_preflight_configs(
+            {"NEX_MO_LIVE_TIMEOUT_SECONDS": "0"}
+        )
+
+    assert str(exc_info.value) == "NEX_MO_LIVE_TIMEOUT_SECONDS must be positive."
+
+    with pytest.raises(ValueError):
+        build_remote_embedding_execution_config(
+            {"NEX_MO_LIVE_TIMEOUT_SECONDS": "-0.5"}
+        )
+
+
 def test_remote_provider_configs_support_nex_pcx_request_shapes() -> None:
     configs = build_remote_provider_preflight_configs(
         {

@@ -201,6 +201,40 @@ def test_protected_dgx_live_profile_keeps_legacy_pcx_defaults_separate() -> None
     assert protected_live.resolve_profile_name("dgx") == protected_live.DGX_PROFILE_NAME
 
 
+def test_protected_dgx_live_profile_profile_arg_marks_effective_legacy_profile() -> None:
+    calls: list[dict[str, object]] = []
+
+    def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
+        calls.append({"method": method, "url": url, **kwargs})
+        if url.endswith("/v1/embeddings"):
+            return httpx.Response(200, json={"embeddings": [[0.1, 0.2]]})
+        if url.endswith("/v1/rerank"):
+            return httpx.Response(200, json={"results": [{"index": 0, "score": 0.9}]})
+        return httpx.Response(
+            200,
+            json={"data": [{"id": "Qwen3.5-122B-A10B-NVFP4"}]},
+        )
+
+    evidence = protected_live.run_protected_dgx_live_profile(
+        {
+            "NEX_MO_REMOTE_EMBEDDING_URL": "http://legacy.local:9103/v1/embeddings",
+            "NEX_MO_REMOTE_RERANKER_URL": "http://legacy.local:9104/v1/rerank",
+            "NEX_MO_VLLM_BASE_URL": "http://legacy.local:12000",
+        },
+        requester=requester,
+        profile_name=protected_live.DGX_PCX_LEGACY_PROFILE_NAME,
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["config_snapshot"]["profile_policy"]["resolved_profile"] == (
+        protected_live.DGX_PCX_LEGACY_PROFILE_NAME
+    )
+    assert evidence["config_snapshot"]["profile_policy"]["legacy_pcx_shapes_allowed"] is True
+    assert calls[0]["json"]["texts"] == ["nex live provider preflight"]
+    assert calls[1]["json"]["candidates"][0]["candidate_key"] == "doc-1"
+    assert "legacy.local" not in json.dumps(evidence)
+
+
 def test_protected_dgx_live_profile_marks_disabled_migration_policy() -> None:
     policy = protected_live.profile_migration_policy(None)
 

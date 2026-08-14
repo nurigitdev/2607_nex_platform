@@ -70,6 +70,10 @@ Model profile defaults:
   hides NeX-PCX request options unless a PCX request shape is explicitly active.
   The `dgx_pcx_legacy` profile remains available, but it is not the default for
   new work.
+- Local live config hardening treats `dgx_vllm` as the default protected
+  profile. Legacy NeX-PCX embedding/reranker request shapes fail unless
+  `NEX_MO_PROTECTED_LIVE_PROFILE=dgx_pcx_legacy`, and live timeout values must
+  be positive.
 
 Current endpoints:
 
@@ -88,6 +92,7 @@ Manual live preflight:
 
 ```bash
 ./.venv/bin/python scripts/smoke/check_local_live_provider_config.py --summary
+NEX_MO_PROVIDER_MODE=live ./.venv/bin/python scripts/smoke/check_local_live_provider_config.py --summary
 NEX_MO_PROTECTED_LIVE_PROFILE=dgx ./.venv/bin/python scripts/smoke/run_protected_dgx_live_profile.py --summary
 NEX_MO_PROTECTED_LIVE_PROFILE=dgx ./.venv/bin/python scripts/smoke/run_protected_dgx_live_profile.py --output reports/live/protected-dgx-live-profile.json --summary
 NEX_MO_PROVIDER_MODE=live ./.venv/bin/python scripts/smoke/check_local_live_provider_config.py --output reports/live/local-live-provider-config.json --summary

@@ -60,6 +60,26 @@ def test_protected_remote_provider_live_smoke_reports_config_issues_without_call
         "provider_endpoint_missing",
         "embedding_request_shape_not_compatible",
         "reranker_request_shape_not_compatible",
+        "legacy_pcx_shape_requires_legacy_profile",
+    }
+
+
+def test_protected_remote_provider_live_smoke_uses_local_config_guard_for_mismatch() -> None:
+    evidence = smoke.run_protected_remote_provider_live_smoke(
+        {
+            **live_env(),
+            "NEX_MO_LIVE_EXPECTED_EMBEDDING_MODELS": "OtherEmbedding",
+        },
+        requester=lambda method, url, **kwargs: httpx.Response(200, json={}),
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["stage_status"] == {
+        "activation": "PASS",
+        "configuration": "FAIL",
+    }
+    assert "expected_model_mismatch" in {
+        issue["error_code"] for issue in evidence["issues"]
     }
 
 

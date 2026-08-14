@@ -13,6 +13,8 @@ def test_local_live_provider_config_skips_without_live_mode() -> None:
     assert snapshot["status"] == "SKIPPED"
     assert snapshot["provider_mode"] == "mock"
     assert snapshot["skip_reason"] == "NEX_MO_PROVIDER_MODE is not live."
+    assert snapshot["profile_policy"]["resolved_profile"] == "dgx_vllm"
+    assert snapshot["profile_policy"]["legacy_pcx_shapes_allowed"] is False
 
     reranker_profile = next(
         profile
@@ -63,6 +65,11 @@ def test_local_live_provider_config_passes_with_current_dgx_reranker_model() -> 
     )
     assert reranker_config["model_name"] == "Qwen3-Reranker-0.6B"
     assert reranker_config["model_revision"] == "Qwen3-Reranker-0.6B"
+    assert snapshot["profile_policy"]["request_shapes"] == {
+        "embedding": "openai_embeddings",
+        "reranking": "rerank",
+        "generation": "openai_chat_completions",
+    }
 
 
 def test_local_live_provider_config_reports_missing_endpoint_and_mismatch() -> None:
@@ -104,6 +111,88 @@ def test_local_live_provider_config_reports_invalid_timeout() -> None:
             "capability": "all",
             "error_code": "live_timeout_invalid",
             "detail": "could not convert string to float: 'slow'",
+        }
+    ]
+
+    negative = live_config.build_local_live_provider_config_snapshot(
+        {
+            "NEX_MO_PROVIDER_MODE": "live",
+            "NEX_MO_LIVE_TIMEOUT_SECONDS": "-1",
+        }
+    )
+    assert negative["status"] == "FAIL"
+    assert negative["issues"][0]["error_code"] == "live_timeout_invalid"
+    assert negative["issues"][0]["detail"] == "NEX_MO_LIVE_TIMEOUT_SECONDS must be positive."
+
+
+def test_local_live_provider_config_rejects_legacy_shapes_without_legacy_profile() -> None:
+    snapshot = live_config.build_local_live_provider_config_snapshot(
+        {
+            "NEX_MO_PROVIDER_MODE": "live",
+            "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local:9112/v1/embeddings",
+            "NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE": "nex_pcx_embeddings_v1",
+            "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9113/v1/rerank",
+            "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE": "nex_pcx_rerank_v1",
+            "NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000",
+        }
+    )
+
+    assert snapshot["status"] == "FAIL"
+    assert {
+        issue["error_code"] for issue in snapshot["issues"]
+    } == {
+        "legacy_pcx_shape_requires_legacy_profile",
+    }
+    assert snapshot["profile_policy"]["resolved_profile"] == "dgx_vllm"
+    assert "dgx.local" not in json.dumps(snapshot)
+
+
+def test_local_live_provider_config_accepts_explicit_legacy_profile_shapes() -> None:
+    snapshot = live_config.build_local_live_provider_config_snapshot(
+        {
+            "NEX_MO_PROVIDER_MODE": "live",
+            "NEX_MO_PROTECTED_LIVE_PROFILE": "dgx_pcx_legacy",
+            "NEX_MO_REMOTE_EMBEDDING_URL": "http://legacy.local:9103/v1/embeddings",
+            "NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE": "nex_pcx_embeddings_v1",
+            "NEX_MO_REMOTE_RERANKER_URL": "http://legacy.local:9104/v1/rerank",
+            "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE": "nex_pcx_rerank_v1",
+            "NEX_MO_VLLM_BASE_URL": "http://legacy.local:12000",
+            "NEX_MO_REMOTE_RERANKER_MODEL": "Qwen3-Reranker-0.6B",
+            "NEX_MO_LIVE_EXPECTED_RERANKER_MODELS": "Qwen3-Reranker-0.6B",
+        }
+    )
+
+    assert snapshot["status"] == "PASS"
+    assert snapshot["issues"] == []
+    assert snapshot["profile_policy"]["resolved_profile"] == "dgx_pcx_legacy"
+    assert snapshot["profile_policy"]["legacy_pcx_shapes_allowed"] is True
+    assert snapshot["profile_policy"]["request_shapes"] == {
+        "embedding": "nex_pcx_embeddings_v1",
+        "reranking": "nex_pcx_rerank_v1",
+        "generation": "openai_chat_completions",
+    }
+    assert "legacy.local" not in json.dumps(snapshot)
+
+
+def test_local_live_provider_config_rejects_unsupported_profile() -> None:
+    snapshot = live_config.build_local_live_provider_config_snapshot(
+        {
+            "NEX_MO_PROVIDER_MODE": "live",
+            "NEX_MO_PROTECTED_LIVE_PROFILE": "staging",
+            "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local:9112/v1/embeddings",
+            "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9113/v1/rerank",
+            "NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000",
+        }
+    )
+
+    assert snapshot["status"] == "FAIL"
+    assert snapshot["issues"] == [
+        {
+            "capability": "all",
+            "error_code": "protected_profile_unsupported",
+            "profile_env": "NEX_MO_PROTECTED_LIVE_PROFILE",
+            "requested_profile": "staging",
+            "supported_profiles": ["dgx_vllm", "dgx", "dgx_pcx_legacy"],
         }
     ]
 

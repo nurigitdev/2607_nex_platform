@@ -38,6 +38,7 @@ mkdir -p "$REPORT_DIR"
 "$PYTHON_BIN" scripts/smoke/run_ag_job_control_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_service_log_retention_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_service_log_retention_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/check_local_live_provider_config.py --summary
 "$PYTHON_BIN" scripts/smoke/run_protected_remote_provider_live_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_protected_live_rag_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_postgres_jobqueue_smoke.py --summary

@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT_DIR / "services" / "nex-mo"))
 sys.path.insert(0, str(ROOT_DIR / "scripts" / "smoke"))
 
 import nex_mo.remote_provider as remote_provider
+import check_local_live_provider_config as local_config
 from nex_mo.providers import ProviderRouteError
 from run_protected_dgx_live_profile import protected_dgx_vllm_profile_defaults
 
@@ -189,7 +190,38 @@ def configuration_issues(env: dict[str, str]) -> list[dict[str, str]]:
                 "detail": "Reranker request shape must be rerank.",
             }
         )
-    return issues
+    local_snapshot = local_config.build_local_live_provider_config_snapshot(env)
+    issues.extend(local_config_issues(local_snapshot))
+    return unique_issues(issues)
+
+
+def local_config_issues(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "stage": "configuration",
+            "error_code": issue.get("error_code", "local_live_config_failed"),
+            "capability": issue.get("capability"),
+            "detail": "Local live provider configuration guard failed.",
+        }
+        for issue in snapshot.get("issues", [])
+    ]
+
+
+def unique_issues(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[Any, ...]] = set()
+    unique: list[dict[str, Any]] = []
+    for issue in issues:
+        key = (
+            issue.get("stage"),
+            issue.get("error_code"),
+            issue.get("capability"),
+            issue.get("detail"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(issue)
+    return unique
 
 
 def run_embedding_check(
