@@ -59,6 +59,12 @@ Model profile defaults:
   as retryable degraded failures; upstream `4xx` responses are safe non-retryable
   `502` failures. Problem responses expose `details.degraded=true` only for
   degraded failures and never include endpoint URLs or API keys.
+- Live remote provider timeouts are capability-specific. Defaults are
+  embedding `15s`, reranking `15s`, and vLLM generation `60s`. Override them
+  with `NEX_MO_REMOTE_EMBEDDING_TIMEOUT_SECONDS`,
+  `NEX_MO_REMOTE_RERANKER_TIMEOUT_SECONDS`, and `NEX_MO_VLLM_TIMEOUT_SECONDS`.
+  The older `NEX_MO_LIVE_TIMEOUT_SECONDS` remains a shared fallback when a
+  capability-specific value is not set.
 - Provider runtime telemetry is available at `GET /api/v1/provider-telemetry`.
   The snapshot is in-memory, process-local, and read-only. It reports configured
   capability rows plus success/failure counters and last safe failure metadata;

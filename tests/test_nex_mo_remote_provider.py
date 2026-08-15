@@ -4,6 +4,9 @@ import httpx
 import pytest
 
 from nex_mo.remote_provider import (
+    DEFAULT_REMOTE_EMBEDDING_TIMEOUT_SECONDS,
+    DEFAULT_REMOTE_GENERATION_TIMEOUT_SECONDS,
+    DEFAULT_REMOTE_RERANKER_TIMEOUT_SECONDS,
     RemoteProviderFailureDecision,
     RemoteProviderPreflightConfig,
     build_remote_embedding_execution_config,
@@ -61,10 +64,49 @@ def test_remote_provider_configs_use_current_env_contract() -> None:
     assert configs[1].expected_models == ("Qwen3-Reranker-0.6B",)
     assert configs[2].url == "http://dgx.local:12000/v1/models"
     assert configs[2].headers()["Authorization"] == "Bearer secret"
+    assert [config.timeout_seconds for config in configs] == [8.5, 8.5, 8.5]
     assert configs[2].timeout_seconds == 8.5
+    assert configs[2].to_safe_summary()["timeout_env"] == "NEX_MO_VLLM_TIMEOUT_SECONDS"
+    assert configs[2].to_safe_summary()["timeout_fallback_env"] == (
+        "NEX_MO_LIVE_TIMEOUT_SECONDS"
+    )
     assert "secret" not in str(configs[2].to_safe_summary())
     assert "request_options" not in configs[0].to_safe_summary()
     assert "request_options" not in configs[1].to_safe_summary()
+
+
+def test_remote_provider_configs_use_capability_timeout_profile() -> None:
+    defaults = build_remote_provider_preflight_configs({})
+
+    assert [config.timeout_seconds for config in defaults] == [
+        DEFAULT_REMOTE_EMBEDDING_TIMEOUT_SECONDS,
+        DEFAULT_REMOTE_RERANKER_TIMEOUT_SECONDS,
+        DEFAULT_REMOTE_GENERATION_TIMEOUT_SECONDS,
+    ]
+    assert [
+        config.to_safe_summary()["timeout_env"] for config in defaults
+    ] == [
+        "NEX_MO_REMOTE_EMBEDDING_TIMEOUT_SECONDS",
+        "NEX_MO_REMOTE_RERANKER_TIMEOUT_SECONDS",
+        "NEX_MO_VLLM_TIMEOUT_SECONDS",
+    ]
+
+    env = {
+        "NEX_MO_LIVE_TIMEOUT_SECONDS": "12.5",
+        "NEX_MO_REMOTE_EMBEDDING_TIMEOUT_SECONDS": "16.5",
+        "NEX_MO_REMOTE_RERANKER_TIMEOUT_SECONDS": "17.5",
+        "NEX_MO_VLLM_TIMEOUT_SECONDS": "65",
+    }
+    preflight_configs = build_remote_provider_preflight_configs(env)
+
+    assert [config.timeout_seconds for config in preflight_configs] == [
+        16.5,
+        17.5,
+        65.0,
+    ]
+    assert build_remote_embedding_execution_config(env).timeout_seconds == 16.5
+    assert build_remote_reranker_execution_config(env).timeout_seconds == 17.5
+    assert build_remote_generation_execution_config(env).timeout_seconds == 65.0
 
 
 def test_remote_provider_configs_reject_non_positive_timeout() -> None:
@@ -79,6 +121,12 @@ def test_remote_provider_configs_reject_non_positive_timeout() -> None:
         build_remote_embedding_execution_config(
             {"NEX_MO_LIVE_TIMEOUT_SECONDS": "-0.5"}
         )
+    with pytest.raises(ValueError) as specific_exc_info:
+        build_remote_generation_execution_config(
+            {"NEX_MO_VLLM_TIMEOUT_SECONDS": "0"}
+        )
+
+    assert str(specific_exc_info.value) == "NEX_MO_VLLM_TIMEOUT_SECONDS must be positive."
 
 
 def test_remote_provider_configs_support_nex_pcx_request_shapes() -> None:
@@ -322,7 +370,7 @@ def test_execute_remote_embedding_request_posts_openai_shape_and_normalizes() ->
                 "Authorization": "Bearer secret",
             },
             "json": {"model": "EmbeddingA", "input": ["alpha", "beta"]},
-            "timeout": 5.0,
+            "timeout": DEFAULT_REMOTE_EMBEDDING_TIMEOUT_SECONDS,
         }
     ]
     assert response == {
@@ -746,7 +794,7 @@ def test_execute_remote_rerank_request_posts_shape_and_normalizes_sorted_results
                 "documents": ["doc-a", "doc-b"],
                 "top_n": 2,
             },
-            "timeout": 5.0,
+            "timeout": DEFAULT_REMOTE_RERANKER_TIMEOUT_SECONDS,
         }
     ]
     assert response == {
@@ -772,6 +820,9 @@ def test_direct_vllm_profile_executes_three_providers_and_records_safe_telemetry
         "NEX_MO_REMOTE_RERANKER_API_KEY": "secret",
         "NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000",
         "NEX_MO_VLLM_API_KEY": "secret",
+        "NEX_MO_REMOTE_EMBEDDING_TIMEOUT_SECONDS": "16",
+        "NEX_MO_REMOTE_RERANKER_TIMEOUT_SECONDS": "17",
+        "NEX_MO_VLLM_TIMEOUT_SECONDS": "65",
     }
 
     def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
@@ -872,6 +923,7 @@ def test_direct_vllm_profile_executes_three_providers_and_records_safe_telemetry
         "http://dgx.local:9113/v1/rerank",
         "http://dgx.local:12000/v1/chat/completions",
     ]
+    assert [call["timeout"] for call in calls] == [16.0, 17.0, 65.0]
     assert calls[0]["json"] == {
         "model": "Qwen3-Embedding-4B",
         "input": ["alpha", "beta"],
@@ -1155,7 +1207,7 @@ def test_execute_remote_generation_request_posts_chat_completion_and_normalizes(
                 "stream": False,
                 "response_format": {"type": "json_object"},
             },
-            "timeout": 5.0,
+            "timeout": DEFAULT_REMOTE_GENERATION_TIMEOUT_SECONDS,
         }
     ]
     assert response["mo_generation_id"] == "cmpl-001"

@@ -18,7 +18,14 @@ from nex_mo.providers import (
     resolve_provider_route,
 )
 
-DEFAULT_TIMEOUT_SECONDS = 5.0
+LEGACY_LIVE_TIMEOUT_ENV = "NEX_MO_LIVE_TIMEOUT_SECONDS"
+REMOTE_EMBEDDING_TIMEOUT_ENV = "NEX_MO_REMOTE_EMBEDDING_TIMEOUT_SECONDS"
+REMOTE_RERANKER_TIMEOUT_ENV = "NEX_MO_REMOTE_RERANKER_TIMEOUT_SECONDS"
+VLLM_TIMEOUT_ENV = "NEX_MO_VLLM_TIMEOUT_SECONDS"
+DEFAULT_REMOTE_EMBEDDING_TIMEOUT_SECONDS = 15.0
+DEFAULT_REMOTE_RERANKER_TIMEOUT_SECONDS = 15.0
+DEFAULT_REMOTE_GENERATION_TIMEOUT_SECONDS = 60.0
+DEFAULT_TIMEOUT_SECONDS = DEFAULT_REMOTE_EMBEDDING_TIMEOUT_SECONDS
 PREFLIGHT_TEXT = "nex live provider preflight"
 OPENAI_EMBEDDINGS_SHAPE = "openai_embeddings"
 NEX_PCX_EMBEDDINGS_SHAPE = "nex_pcx_embeddings_v1"
@@ -38,6 +45,8 @@ class RemoteProviderPreflightConfig:
     api_key_env: str | None = None
     api_key: str | None = None
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
+    timeout_env: str = LEGACY_LIVE_TIMEOUT_ENV
+    timeout_fallback_env: str = LEGACY_LIVE_TIMEOUT_ENV
     legacy_endpoint_env: str | None = None
     request_options: dict[str, Any] = field(default_factory=dict)
 
@@ -97,6 +106,9 @@ class RemoteProviderPreflightConfig:
             "expected_models": list(self.expected_models),
             "authorization_env": self.api_key_env,
             "authorization_configured": self.authorization_configured,
+            "timeout_seconds": self.timeout_seconds,
+            "timeout_env": self.timeout_env,
+            "timeout_fallback_env": self.timeout_fallback_env,
         }
         if self.legacy_endpoint_env is not None:
             payload["legacy_endpoint_env"] = self.legacy_endpoint_env
@@ -120,6 +132,8 @@ class RemoteProviderExecutionConfig:
     api_key_env: str | None = None
     api_key: str | None = None
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
+    timeout_env: str = LEGACY_LIVE_TIMEOUT_ENV
+    timeout_fallback_env: str = LEGACY_LIVE_TIMEOUT_ENV
     request_options: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -146,6 +160,9 @@ class RemoteProviderExecutionConfig:
             "deployment_id": self.deployment_id,
             "authorization_env": self.api_key_env,
             "authorization_configured": bool(self.api_key),
+            "timeout_seconds": self.timeout_seconds,
+            "timeout_env": self.timeout_env,
+            "timeout_fallback_env": self.timeout_fallback_env,
         }
         if _request_shape_uses_pcx_options(self.request_shape):
             safe_options = _safe_request_options(self.request_options)
@@ -302,7 +319,9 @@ def build_remote_provider_preflight_configs(
     environ: dict[str, str] | None = None,
 ) -> tuple[RemoteProviderPreflightConfig, ...]:
     env = environ if environ is not None else os.environ
-    timeout_seconds = _timeout_seconds(env)
+    embedding_timeout = _timeout_seconds(env, "embedding")
+    reranker_timeout = _timeout_seconds(env, "reranking")
+    generation_timeout = _timeout_seconds(env, "generation")
 
     return (
         RemoteProviderPreflightConfig(
@@ -322,7 +341,9 @@ def build_remote_provider_preflight_configs(
             ),
             api_key_env="NEX_MO_REMOTE_EMBEDDING_API_KEY",
             api_key=_empty_to_none(env.get("NEX_MO_REMOTE_EMBEDDING_API_KEY")),
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=embedding_timeout,
+            timeout_env=REMOTE_EMBEDDING_TIMEOUT_ENV,
+            timeout_fallback_env=LEGACY_LIVE_TIMEOUT_ENV,
             request_options=_embedding_request_options(env),
         ),
         RemoteProviderPreflightConfig(
@@ -342,7 +363,9 @@ def build_remote_provider_preflight_configs(
             ),
             api_key_env="NEX_MO_REMOTE_RERANKER_API_KEY",
             api_key=_empty_to_none(env.get("NEX_MO_REMOTE_RERANKER_API_KEY")),
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=reranker_timeout,
+            timeout_env=REMOTE_RERANKER_TIMEOUT_ENV,
+            timeout_fallback_env=LEGACY_LIVE_TIMEOUT_ENV,
             request_options=_reranker_request_options(env),
         ),
         RemoteProviderPreflightConfig(
@@ -358,7 +381,9 @@ def build_remote_provider_preflight_configs(
             ),
             api_key_env="NEX_MO_VLLM_API_KEY",
             api_key=_empty_to_none(env.get("NEX_MO_VLLM_API_KEY")),
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=generation_timeout,
+            timeout_env=VLLM_TIMEOUT_ENV,
+            timeout_fallback_env=LEGACY_LIVE_TIMEOUT_ENV,
         ),
     )
 
@@ -441,7 +466,9 @@ def build_remote_embedding_execution_config(
         deployment_id=env.get("NEX_MO_REMOTE_EMBEDDING_DEPLOYMENT_ID", "remote-embedding-http"),
         api_key_env="NEX_MO_REMOTE_EMBEDDING_API_KEY",
         api_key=_empty_to_none(env.get("NEX_MO_REMOTE_EMBEDDING_API_KEY")),
-        timeout_seconds=_timeout_seconds(env),
+        timeout_seconds=_timeout_seconds(env, "embedding"),
+        timeout_env=REMOTE_EMBEDDING_TIMEOUT_ENV,
+        timeout_fallback_env=LEGACY_LIVE_TIMEOUT_ENV,
         request_options=_embedding_request_options(env),
     )
 
@@ -467,7 +494,9 @@ def build_remote_reranker_execution_config(
         deployment_id=env.get("NEX_MO_REMOTE_RERANKER_DEPLOYMENT_ID", "remote-reranker-http"),
         api_key_env="NEX_MO_REMOTE_RERANKER_API_KEY",
         api_key=_empty_to_none(env.get("NEX_MO_REMOTE_RERANKER_API_KEY")),
-        timeout_seconds=_timeout_seconds(env),
+        timeout_seconds=_timeout_seconds(env, "reranking"),
+        timeout_env=REMOTE_RERANKER_TIMEOUT_ENV,
+        timeout_fallback_env=LEGACY_LIVE_TIMEOUT_ENV,
         request_options=_reranker_request_options(env),
     )
 
@@ -489,7 +518,9 @@ def build_remote_generation_execution_config(
         deployment_id=env.get("NEX_MO_VLLM_DEPLOYMENT_ID", "vllm-generation-http"),
         api_key_env="NEX_MO_VLLM_API_KEY",
         api_key=_empty_to_none(env.get("NEX_MO_VLLM_API_KEY")),
-        timeout_seconds=_timeout_seconds(env),
+        timeout_seconds=_timeout_seconds(env, "generation"),
+        timeout_env=VLLM_TIMEOUT_ENV,
+        timeout_fallback_env=LEGACY_LIVE_TIMEOUT_ENV,
     )
 
 
@@ -1639,12 +1670,32 @@ def _token_count(text: str) -> int:
     return max(1, len(text.split()))
 
 
-def _timeout_seconds(env: dict[str, str]) -> float:
-    return _positive_float_env(
-        env,
-        "NEX_MO_LIVE_TIMEOUT_SECONDS",
-        DEFAULT_TIMEOUT_SECONDS,
-    )
+def _timeout_seconds(env: dict[str, str], capability: str) -> float:
+    timeout_env = _timeout_env_for_capability(capability)
+    default = _default_timeout_for_capability(capability)
+    if env.get(timeout_env) not in {None, ""}:
+        return _positive_float_env(env, timeout_env, default)
+    return _positive_float_env(env, LEGACY_LIVE_TIMEOUT_ENV, default)
+
+
+def _timeout_env_for_capability(capability: str) -> str:
+    if capability == "embedding":
+        return REMOTE_EMBEDDING_TIMEOUT_ENV
+    if capability == "reranking":
+        return REMOTE_RERANKER_TIMEOUT_ENV
+    if capability == "generation":
+        return VLLM_TIMEOUT_ENV
+    raise ValueError(f"Unsupported remote provider capability: {capability}")
+
+
+def _default_timeout_for_capability(capability: str) -> float:
+    if capability == "embedding":
+        return DEFAULT_REMOTE_EMBEDDING_TIMEOUT_SECONDS
+    if capability == "reranking":
+        return DEFAULT_REMOTE_RERANKER_TIMEOUT_SECONDS
+    if capability == "generation":
+        return DEFAULT_REMOTE_GENERATION_TIMEOUT_SECONDS
+    raise ValueError(f"Unsupported remote provider capability: {capability}")
 
 
 def _positive_float_env(

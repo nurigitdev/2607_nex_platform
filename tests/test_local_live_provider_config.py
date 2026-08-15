@@ -30,6 +30,10 @@ def test_local_live_provider_config_skips_without_live_mode() -> None:
         if config["capability"] == "reranking"
     )
     assert reranker_preflight["expected_models"] == ["Qwen3-Reranker-0.6B"]
+    assert reranker_preflight["timeout_seconds"] == 15.0
+    assert reranker_preflight["timeout_env"] == (
+        "NEX_MO_REMOTE_RERANKER_TIMEOUT_SECONDS"
+    )
     assert "model_path" not in json.dumps(snapshot)
     assert "qwen3_4b_2560" not in json.dumps(snapshot)
 
@@ -65,6 +69,7 @@ def test_local_live_provider_config_passes_with_current_dgx_reranker_model() -> 
     )
     assert reranker_config["model_name"] == "Qwen3-Reranker-0.6B"
     assert reranker_config["model_revision"] == "Qwen3-Reranker-0.6B"
+    assert reranker_config["timeout_seconds"] == 15.0
     assert snapshot["profile_policy"]["request_shapes"] == {
         "embedding": "openai_embeddings",
         "reranking": "rerank",
@@ -122,7 +127,21 @@ def test_local_live_provider_config_reports_invalid_timeout() -> None:
     )
     assert negative["status"] == "FAIL"
     assert negative["issues"][0]["error_code"] == "live_timeout_invalid"
-    assert negative["issues"][0]["detail"] == "NEX_MO_LIVE_TIMEOUT_SECONDS must be positive."
+    assert negative["issues"][0]["detail"] == (
+        "NEX_MO_LIVE_TIMEOUT_SECONDS must be positive."
+    )
+
+    specific = live_config.build_local_live_provider_config_snapshot(
+        {
+            "NEX_MO_PROVIDER_MODE": "live",
+            "NEX_MO_REMOTE_RERANKER_TIMEOUT_SECONDS": "0",
+        }
+    )
+    assert specific["status"] == "FAIL"
+    assert specific["issues"][0]["error_code"] == "live_timeout_invalid"
+    assert specific["issues"][0]["detail"] == (
+        "NEX_MO_REMOTE_RERANKER_TIMEOUT_SECONDS must be positive."
+    )
 
 
 def test_local_live_provider_config_rejects_legacy_shapes_without_legacy_profile() -> None:
