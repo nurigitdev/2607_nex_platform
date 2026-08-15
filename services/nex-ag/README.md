@@ -56,6 +56,10 @@ Retrieval policy registry:
   `weighted_rrf_vector_bm25_v1`.
 - Policy projections include versions, hashes, ranker weights, candidate limits,
   tokenizer profile metadata, confidence thresholds, and provider aliases.
+- Policy projections also include `retrieval_threshold_decision.v1` checkpoint
+  metadata. The current decision status is `OBSERVE`, so the canonical
+  low-confidence threshold stays at `0.2` while additional live RAG score
+  samples are collected.
 - Policy mutation, publish, rollback, and audit are intentionally deferred.
 
 Generation audit:

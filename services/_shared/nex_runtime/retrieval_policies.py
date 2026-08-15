@@ -16,6 +16,33 @@ class RetrievalPolicyError(Exception):
 
 CURRENT_POLICY_ID = "retrieval_quality_v1"
 WEIGHTED_RRF_POLICY_ID = "weighted_rrf_vector_bm25_v1"
+THRESHOLD_DECISION_SCHEMA_VERSION = "retrieval_threshold_decision.v1"
+
+
+def threshold_decision_checkpoint(
+    *,
+    decision_id: str,
+    canonical_low_confidence_threshold: float,
+) -> dict[str, Any]:
+    return {
+        "decision_schema_version": THRESHOLD_DECISION_SCHEMA_VERSION,
+        "decision_id": decision_id,
+        "decision_status": "OBSERVE",
+        "canonical_low_confidence_threshold": canonical_low_confidence_threshold,
+        "candidate_low_confidence_threshold": None,
+        "live_smoke_override_threshold": 0.0,
+        "minimum_live_samples_before_change": 20,
+        "review_owner_service": "nex-ag",
+        "operator_action": "collect_live_score_samples",
+        "evidence_sources": [
+            "Slice 0297 protected_live_rag_score_calibration.v1",
+            "Slice 0299 ag_retrieval_score_calibration.v1",
+        ],
+        "decision_note": (
+            "Keep the canonical low-confidence threshold unchanged until "
+            "additional live RAG score samples justify a policy update."
+        ),
+    }
 
 
 DEFAULT_RETRIEVAL_POLICIES: tuple[dict[str, Any], ...] = (
@@ -46,6 +73,10 @@ DEFAULT_RETRIEVAL_POLICIES: tuple[dict[str, Any], ...] = (
         "confidence": {
             "low_confidence_threshold": 0.2,
         },
+        "threshold_decision": threshold_decision_checkpoint(
+            decision_id="retrieval_quality_v1_threshold_0001",
+            canonical_low_confidence_threshold=0.2,
+        ),
         "tokenizer_profile": {
             "bm25_tokenizer": "mecab_ko",
             "bm25_tokenizer_fallback": "korean_mixed_v1",
@@ -89,6 +120,10 @@ DEFAULT_RETRIEVAL_POLICIES: tuple[dict[str, Any], ...] = (
         "confidence": {
             "low_confidence_threshold": 0.2,
         },
+        "threshold_decision": threshold_decision_checkpoint(
+            decision_id="weighted_rrf_vector_bm25_v1_threshold_0001",
+            canonical_low_confidence_threshold=0.2,
+        ),
         "tokenizer_profile": {
             "bm25_tokenizer": "mecab_ko",
             "bm25_tokenizer_fallback": "korean_mixed_v1",
@@ -211,6 +246,40 @@ def validate_retrieval_policy(policy: dict[str, Any]) -> None:
     aliases = _required_mapping(policy, "provider_aliases")
     _required_string(aliases, "embedding_alias")
     _required_string(aliases, "reranker_alias")
+    _validate_threshold_decision(policy)
+
+
+def _validate_threshold_decision(policy: dict[str, Any]) -> None:
+    decision = policy.get("threshold_decision")
+    if decision is None:
+        return
+    if not isinstance(decision, dict):
+        raise RetrievalPolicyError(
+            status_code=422,
+            error_code="retrieval_policy.field_invalid",
+            detail="threshold_decision must be an object.",
+        )
+    _required_string(
+        decision,
+        "decision_schema_version",
+        expected=THRESHOLD_DECISION_SCHEMA_VERSION,
+    )
+    _required_string(decision, "decision_id")
+    status = _required_string(decision, "decision_status")
+    if status not in {"OBSERVE", "ADOPT", "REJECT"}:
+        raise RetrievalPolicyError(
+            status_code=422,
+            error_code="retrieval_policy.field_invalid",
+            detail="decision_status must be OBSERVE, ADOPT, or REJECT.",
+        )
+    _bounded_float(decision, "canonical_low_confidence_threshold")
+    _optional_bounded_float(decision, "candidate_low_confidence_threshold")
+    _optional_bounded_float(decision, "live_smoke_override_threshold")
+    _positive_int(decision, "minimum_live_samples_before_change")
+    _required_string(decision, "review_owner_service")
+    _required_string(decision, "operator_action")
+    _required_string(decision, "decision_note")
+    _required_string_list(decision, "evidence_sources")
 
 
 def _required_string(
@@ -265,6 +334,15 @@ def _bounded_float(payload: dict[str, Any], field_name: str) -> float:
     return numeric
 
 
+def _optional_bounded_float(
+    payload: dict[str, Any],
+    field_name: str,
+) -> float | None:
+    if payload.get(field_name) is None:
+        return None
+    return _bounded_float(payload, field_name)
+
+
 def _positive_int(payload: dict[str, Any], field_name: str) -> int:
     value = payload.get(field_name)
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
@@ -285,6 +363,19 @@ def _non_negative_int(payload: dict[str, Any], field_name: str) -> int:
             detail=f"{field_name} must be a non-negative integer.",
         )
     return value
+
+
+def _required_string_list(payload: dict[str, Any], field_name: str) -> list[str]:
+    value = payload.get(field_name)
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item.strip() for item in value
+    ):
+        raise RetrievalPolicyError(
+            status_code=422,
+            error_code="retrieval_policy.field_invalid",
+            detail=f"{field_name} must be a list of non-empty strings.",
+        )
+    return [item.strip() for item in value]
 
 
 def _utc_now() -> str:

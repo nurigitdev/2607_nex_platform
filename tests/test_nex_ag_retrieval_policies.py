@@ -14,13 +14,15 @@ from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_tok
 from nex_runtime.retrieval_policies import (
     CURRENT_POLICY_ID,
     DEFAULT_RETRIEVAL_POLICIES,
-    WEIGHTED_RRF_POLICY_ID,
     RetrievalPolicyError,
+    THRESHOLD_DECISION_SCHEMA_VERSION,
+    WEIGHTED_RRF_POLICY_ID,
     active_retrieval_policy_record,
     finalize_retrieval_policy,
     list_retrieval_policy_records,
     retrieval_policy_by_id,
     retrieval_policy_hash,
+    threshold_decision_checkpoint,
 )
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
@@ -68,6 +70,42 @@ def test_active_retrieval_policy_record_returns_current_runtime_policy() -> None
     assert policy["policy_id"] == CURRENT_POLICY_ID
     assert policy["candidate_limits"]["rerank_candidate_limit"] == 50
     assert policy["request_override_policy"]["allowed"] is True
+    assert policy["threshold_decision"]["decision_status"] == "OBSERVE"
+    assert policy["threshold_decision"]["canonical_low_confidence_threshold"] == (
+        policy["confidence"]["low_confidence_threshold"]
+    )
+
+
+def test_retrieval_policy_threshold_decision_checkpoint_is_visible() -> None:
+    records = list_retrieval_policy_records()
+    decisions = {
+        record["policy_id"]: record["threshold_decision"]
+        for record in records
+    }
+
+    assert decisions[CURRENT_POLICY_ID]["decision_schema_version"] == (
+        THRESHOLD_DECISION_SCHEMA_VERSION
+    )
+    assert decisions[CURRENT_POLICY_ID]["candidate_low_confidence_threshold"] is None
+    assert decisions[CURRENT_POLICY_ID]["live_smoke_override_threshold"] == 0.0
+    assert decisions[CURRENT_POLICY_ID]["operator_action"] == (
+        "collect_live_score_samples"
+    )
+    assert "Slice 0297 protected_live_rag_score_calibration.v1" in (
+        decisions[WEIGHTED_RRF_POLICY_ID]["evidence_sources"]
+    )
+
+
+def test_threshold_decision_checkpoint_helper_builds_review_gate() -> None:
+    checkpoint = threshold_decision_checkpoint(
+        decision_id="custom_threshold_0001",
+        canonical_low_confidence_threshold=0.35,
+    )
+
+    assert checkpoint["decision_schema_version"] == THRESHOLD_DECISION_SCHEMA_VERSION
+    assert checkpoint["decision_status"] == "OBSERVE"
+    assert checkpoint["canonical_low_confidence_threshold"] == 0.35
+    assert checkpoint["minimum_live_samples_before_change"] == 20
 
 
 def test_retrieval_policy_hash_ignores_hash_and_updated_at() -> None:
@@ -107,6 +145,15 @@ def test_validate_retrieval_policy_rejects_bad_edges() -> None:
     for policy in (bad_status, bad_ranker, bad_limits):
         with pytest.raises(RetrievalPolicyError):
             finalize_retrieval_policy(policy)
+
+
+def test_validate_retrieval_policy_accepts_legacy_record_without_threshold_decision() -> None:
+    policy = copied_default_policy()
+    policy.pop("threshold_decision")
+
+    finalized = finalize_retrieval_policy(policy)
+
+    assert "threshold_decision" not in finalized
 
 
 @pytest.mark.parametrize(
@@ -150,6 +197,40 @@ def test_validate_retrieval_policy_rejects_bad_edges() -> None:
             lambda policy: policy["provider_aliases"].update({"embedding_alias": ""}),
             "embedding_alias must be a non-empty string.",
         ),
+        (
+            lambda policy: policy.update({"threshold_decision": []}),
+            "threshold_decision must be an object.",
+        ),
+        (
+            lambda policy: policy["threshold_decision"].update(
+                {"decision_schema_version": "retrieval_threshold_decision.v2"}
+            ),
+            "decision_schema_version must be retrieval_threshold_decision.v1.",
+        ),
+        (
+            lambda policy: policy["threshold_decision"].update(
+                {"decision_status": "BROKEN"}
+            ),
+            "decision_status must be OBSERVE, ADOPT, or REJECT.",
+        ),
+        (
+            lambda policy: policy["threshold_decision"].update(
+                {"candidate_low_confidence_threshold": True}
+            ),
+            "candidate_low_confidence_threshold must be numeric.",
+        ),
+        (
+            lambda policy: policy["threshold_decision"].update(
+                {"minimum_live_samples_before_change": 0}
+            ),
+            "minimum_live_samples_before_change must be a positive integer.",
+        ),
+        (
+            lambda policy: policy["threshold_decision"].update(
+                {"evidence_sources": ["Slice 0297", " "]}
+            ),
+            "evidence_sources must be a list of non-empty strings.",
+        ),
     ],
 )
 def test_validate_retrieval_policy_reports_specific_field_errors(
@@ -181,7 +262,7 @@ def test_active_retrieval_policy_record_requires_exactly_one_active() -> None:
 def test_summarize_retrieval_policies_counts_statuses() -> None:
     assert summarize_retrieval_policies(
         [
-            {"status": "ACTIVE"},
+            {"status": "ACTIVE", "threshold_decision": {"decision_status": None}},
             {"status": "CANDIDATE"},
             {"status": "RETIRED"},
         ]
@@ -190,6 +271,7 @@ def test_summarize_retrieval_policies_counts_statuses() -> None:
         "active": 1,
         "candidate": 1,
         "retired": 1,
+        "threshold_decision_observe": 0,
     }
 
 
@@ -216,7 +298,9 @@ def test_retrieval_policy_list_endpoint_returns_registry_projection() -> None:
         "active": 1,
         "candidate": 1,
         "retired": 0,
+        "threshold_decision_observe": 2,
     }
+    assert payload["policies"][0]["threshold_decision"]["decision_status"] == "OBSERVE"
     assert "api_key" not in str(payload).lower()
 
 

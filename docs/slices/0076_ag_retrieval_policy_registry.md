@@ -21,10 +21,16 @@ The registry exposes:
 
 - current active policy: `retrieval_quality_v1`
 - planned candidate policy: `weighted_rrf_vector_bm25_v1`
+- threshold decision checkpoint metadata:
+  `retrieval_threshold_decision.v1`
 
 The current active policy matches Slice 0074 runtime behavior. The candidate
 policy records the intended weighted RRF defaults: vector weight `0.7`, BM25
 weight `0.3`, RRF `k=60`, and rerank candidate limit `50`.
+
+Slice 0300 adds an `OBSERVE` threshold decision checkpoint to both registry
+records. The canonical low-confidence threshold remains `0.2` while live RAG
+score samples are collected.
 
 ## Safety
 

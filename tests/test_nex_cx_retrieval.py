@@ -56,6 +56,7 @@ from nex_cx.retrieval import (
 from nex_runtime.retrieval_policies import (
     DEFAULT_RETRIEVAL_POLICIES,
     WEIGHTED_RRF_POLICY_ID,
+    active_retrieval_policy_record,
     finalize_retrieval_policy,
 )
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
@@ -728,6 +729,7 @@ def test_build_retrieval_quality_policy_defaults_and_snapshot() -> None:
 def test_active_retrieval_quality_policy_maps_registry_defaults() -> None:
     policy = active_retrieval_quality_policy()
     snapshot = retrieval_quality_policy_snapshot(policy)
+    registry_policy = active_retrieval_policy_record()
 
     assert policy == build_retrieval_quality_policy()
     assert snapshot["policy_id"] == "retrieval_quality_v1"
@@ -737,6 +739,8 @@ def test_active_retrieval_quality_policy_maps_registry_defaults() -> None:
     assert snapshot["vector_weight"] == 0.0
     assert snapshot["vector_candidate_limit"] == 0
     assert snapshot["bm25_candidate_limit"] == 50
+    assert registry_policy["threshold_decision"]["decision_status"] == "OBSERVE"
+    assert "threshold_decision" not in snapshot
 
 
 def test_registry_candidate_policy_maps_to_weighted_rrf_policy() -> None:

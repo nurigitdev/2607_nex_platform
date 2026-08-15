@@ -95,7 +95,20 @@ def summarize_retrieval_policies(records: list[dict[str, Any]]) -> dict[str, int
         "active": sum(1 for record in records if record["status"] == "ACTIVE"),
         "candidate": sum(1 for record in records if record["status"] == "CANDIDATE"),
         "retired": sum(1 for record in records if record["status"] == "RETIRED"),
+        "threshold_decision_observe": sum(
+            1
+            for record in records
+            if _threshold_decision_status(record) == "OBSERVE"
+        ),
     }
+
+
+def _threshold_decision_status(record: dict[str, Any]) -> str | None:
+    decision = record.get("threshold_decision")
+    if not isinstance(decision, dict):
+        return None
+    status = decision.get("decision_status")
+    return status if isinstance(status, str) else None
 
 
 def _list_policy_records(
