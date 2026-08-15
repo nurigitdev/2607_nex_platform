@@ -30,6 +30,23 @@
     "warning_count": 0,
     "no_answer_reason": null,
     "best_score": 0.91,
+    "score_calibration": {
+      "calibration_schema_version": "ag_retrieval_score_calibration.v1",
+      "quality_policy_id": "retrieval_quality_v1",
+      "observed_status": "READY",
+      "observed_confidence_bucket": "READY",
+      "default_confidence_bucket": "READY",
+      "best_score": 0.91,
+      "evidence_count": 1,
+      "observed_low_confidence_threshold": 0.2,
+      "default_low_confidence_threshold": 0.2,
+      "threshold_override_used": false,
+      "threshold_override_direction": "none",
+      "would_pass_default_threshold": true,
+      "score_margin_to_observed_threshold": 0.71,
+      "score_margin_to_default_threshold": 0.71,
+      "calibration_action": "default_threshold_accepts_score"
+    },
     "source_count": 1,
     "document_count": 1,
     "chunk_count": 1,
@@ -96,6 +113,23 @@
     "score_range": {
       "min": 0.91,
       "max": 0.91
+    },
+    "score_calibration": {
+      "calibration_schema_version": "ag_retrieval_score_calibration.v1",
+      "quality_policy_id": "retrieval_quality_v1",
+      "observed_status": "READY",
+      "observed_confidence_bucket": "READY",
+      "default_confidence_bucket": "READY",
+      "best_score": 0.91,
+      "evidence_count": 1,
+      "observed_low_confidence_threshold": 0.2,
+      "default_low_confidence_threshold": 0.2,
+      "threshold_override_used": false,
+      "threshold_override_direction": "none",
+      "would_pass_default_threshold": true,
+      "score_margin_to_observed_threshold": 0.71,
+      "score_margin_to_default_threshold": 0.71,
+      "calibration_action": "default_threshold_accepts_score"
     },
     "evidence_text_preview_redacted": true
   },

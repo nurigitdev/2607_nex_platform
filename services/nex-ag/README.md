@@ -153,11 +153,14 @@ Unified operations:
   `ag_retrieval_package_operations_projection.v1`, a CX-sourced read-only
   projection of persisted retrieval packages for debugging grounded retrieval
   status, policy use, trace/request correlation, and low-confidence/no-answer
-  outcomes without exposing raw source text or vector payloads.
+  outcomes without exposing raw source text or vector payloads. The projection
+  includes a safe score-calibration summary comparing the persisted package
+  score bucket with the active default retrieval threshold.
 - `GET /admin/v1/operations/retrieval-packages/{retrieval_package_id}` returns
   `ag_retrieval_package_detail_projection.v1`, including safe evidence metadata
   such as ranks, hashes, score summaries, permission outcomes, and quality flags
-  while redacting evidence text previews and principal ids.
+  while redacting evidence text previews and principal ids. Detail responses
+  include the same score-calibration record for threshold/debug review.
 - The AG operations contract family also reserves
   `ag_cx_processing_run_operations_projection.v1` and
   `ag_cx_processing_run_detail_projection.v1` for CX processing run

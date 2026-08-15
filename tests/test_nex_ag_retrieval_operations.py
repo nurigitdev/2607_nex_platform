@@ -15,9 +15,11 @@ from nex_ag.operations import (
 from nex_ag.retrieval_operations import (
     AG_RETRIEVAL_PACKAGE_DETAIL_PROJECTION_SCHEMA_VERSION,
     AG_RETRIEVAL_PACKAGE_OPERATIONS_PROJECTION_SCHEMA_VERSION,
+    AG_RETRIEVAL_SCORE_CALIBRATION_SCHEMA_VERSION,
     InMemoryRetrievalPackageOperationsStore,
     RetrievalPackageOperationsError,
     SqlAlchemyRetrievalPackageOperationsStore,
+    build_retrieval_score_calibration_projection,
     build_retrieval_package_detail_projection,
     build_retrieval_package_operation_stores,
     build_retrieval_package_operations_projection,
@@ -53,7 +55,16 @@ def retrieval_record(
     evidence_count: int = 2,
     created_at: str = "2026-08-09T00:00:00Z",
     no_answer_reason: str | None = None,
+    score_summary: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    resolved_score_summary = score_summary or {
+        "best_score": 0.92,
+        "ranker_mix": "weighted_rrf_vector_bm25_v1",
+        "rerank_state": "NOT_APPLIED",
+        "confidence_bucket": "READY",
+        "quality_policy_id": "retrieval_quality_v1",
+        "low_confidence_threshold": 0.2,
+    }
     return {
         "retrieval_package_id": retrieval_package_id,
         "package_hash": "a" * 64,
@@ -78,10 +89,7 @@ def retrieval_record(
             "document_count": 1,
             "chunk_count": 2,
         },
-        "score_summary": {
-            "best_score": 0.92,
-            "ranker_mix": "weighted_rrf_vector_bm25_v1",
-        },
+        "score_summary": resolved_score_summary,
         "warning_count": 0,
         "evidence_count": evidence_count,
         "no_answer_reason": no_answer_reason,
@@ -145,6 +153,14 @@ def test_retrieval_package_operations_projection_filters_and_summarizes() -> Non
                 evidence_count=0,
                 created_at="2026-08-09T00:01:00Z",
                 no_answer_reason="no_terms_matched",
+                score_summary={
+                    "best_score": 0.0,
+                    "ranker_mix": "weighted_rrf_vector_bm25_v1",
+                    "rerank_state": "NOT_APPLIED",
+                    "confidence_bucket": "NO_ANSWER",
+                    "quality_policy_id": "retrieval_quality_v1",
+                    "low_confidence_threshold": 0.2,
+                },
             ),
             retrieval_record(
                 retrieval_package_id="cccccccc-cccc-4ccc-8ccc-cccccccccccc",
@@ -182,12 +198,24 @@ def test_retrieval_package_operations_projection_filters_and_summarizes() -> Non
         "low_confidence": 0,
         "no_answer": 1,
         "evidence_count": 0,
+        "score_calibration": {
+            "threshold_override_count": 0,
+            "would_pass_default_threshold": 0,
+            "default_ready": 0,
+            "default_low_confidence": 0,
+            "default_no_answer": 1,
+            "action_counts": {"inspect_no_answer_retrieval": 1},
+        },
     }
     package = projection["retrieval_packages"][0]
     assert package["operation_type"] == "retrieval_package"
     assert package["query_text_sha256"] == "b" * 64
     assert package["query_text_preview"] == "bounded retrieval query preview"
-    assert package["best_score"] == 0.92
+    assert package["best_score"] == 0.0
+    assert package["score_calibration"]["calibration_schema_version"] == (
+        AG_RETRIEVAL_SCORE_CALIBRATION_SCHEMA_VERSION
+    )
+    assert package["score_calibration"]["default_confidence_bucket"] == "NO_ANSWER"
     assert "evidence text" not in str(projection).lower()
 
 
@@ -227,6 +255,14 @@ def test_summarize_retrieval_package_operations_counts_empty_list() -> None:
         "low_confidence": 0,
         "no_answer": 0,
         "evidence_count": 0,
+        "score_calibration": {
+            "threshold_override_count": 0,
+            "would_pass_default_threshold": 0,
+            "default_ready": 0,
+            "default_low_confidence": 0,
+            "default_no_answer": 0,
+            "action_counts": {},
+        },
     }
 
 
@@ -261,6 +297,15 @@ def test_retrieval_package_detail_projection_redacts_evidence_text() -> None:
     assert projection["summary"]["score_range"] == {"min": 0.57, "max": 0.92}
     assert projection["summary"]["permission_denied_count"] == 1
     assert projection["summary"]["quality_flag_count"] == 1
+    assert projection["summary"]["score_calibration"]["calibration_action"] == (
+        "default_threshold_accepts_score"
+    )
+    assert (
+        projection["retrieval_package"]["score_calibration"][
+            "would_pass_default_threshold"
+        ]
+        is True
+    )
     first_evidence = projection["evidence_items"][0]
     assert first_evidence["evidence_text_preview_redacted"] is True
     assert first_evidence["evidence_text_sha256"] == "f" * 64
@@ -281,7 +326,62 @@ def test_summarize_retrieval_package_detail_handles_missing_evidence() -> None:
 
     assert summary["returned_evidence_items"] == 0
     assert summary["score_range"] is None
+    assert summary["score_calibration"]["default_confidence_bucket"] == "READY"
     assert summary["evidence_text_preview_redacted"] is True
+
+
+def test_retrieval_score_calibration_projection_reports_threshold_boundaries() -> None:
+    lowered = build_retrieval_score_calibration_projection(
+        retrieval_record(
+            score_summary={
+                "best_score": 0.159322,
+                "ranker_mix": "weighted_rrf_vector_bm25_v1",
+                "rerank_state": "APPLIED",
+                "confidence_bucket": "READY",
+                "quality_policy_id": "retrieval_quality_v1",
+                "low_confidence_threshold": 0.0,
+            }
+        ),
+        default_low_confidence_threshold=0.2,
+    )
+    raised = build_retrieval_score_calibration_projection(
+        retrieval_record(
+            status="LOW_CONFIDENCE",
+            score_summary={
+                "best_score": 0.3,
+                "confidence_bucket": "LOW_CONFIDENCE",
+                "quality_policy_id": "retrieval_quality_v1",
+                "low_confidence_threshold": 0.5,
+            },
+        ),
+        default_low_confidence_threshold=0.2,
+    )
+    incomplete = build_retrieval_score_calibration_projection(
+        retrieval_record(
+            score_summary={
+                "confidence_bucket": "not-supported",
+                "quality_policy_id": "retrieval_quality_v1",
+            }
+        ),
+        default_low_confidence_threshold=0.2,
+    )
+
+    assert lowered["observed_confidence_bucket"] == "READY"
+    assert lowered["default_confidence_bucket"] == "LOW_CONFIDENCE"
+    assert lowered["threshold_override_used"] is True
+    assert lowered["threshold_override_direction"] == "lowered"
+    assert lowered["score_margin_to_default_threshold"] == -0.040678
+    assert lowered["calibration_action"] == (
+        "review_live_threshold_before_canonical_policy"
+    )
+    assert raised["default_confidence_bucket"] == "READY"
+    assert raised["threshold_override_direction"] == "raised"
+    assert raised["calibration_action"] == (
+        "compare_observed_and_default_confidence"
+    )
+    assert incomplete["observed_confidence_bucket"] == "UNKNOWN"
+    assert incomplete["default_confidence_bucket"] == "UNKNOWN"
+    assert incomplete["calibration_action"] == "calibration_data_incomplete"
 
 
 def test_retrieval_package_operations_route_requires_auth_and_validates_filters() -> None:

@@ -2539,6 +2539,9 @@
           ],
           "minimum": 0
         },
+        "score_calibration": {
+          "$ref": "#/$defs/retrieval_score_calibration"
+        },
         "source_count": {
           "type": [
             "integer",
@@ -2567,6 +2570,126 @@
         "updated_at": {
           "type": "string",
           "format": "date-time"
+        }
+      }
+    },
+    "retrieval_score_calibration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "calibration_schema_version",
+        "quality_policy_id",
+        "observed_status",
+        "observed_confidence_bucket",
+        "default_confidence_bucket",
+        "best_score",
+        "evidence_count",
+        "observed_low_confidence_threshold",
+        "default_low_confidence_threshold",
+        "threshold_override_used",
+        "threshold_override_direction",
+        "would_pass_default_threshold",
+        "score_margin_to_observed_threshold",
+        "score_margin_to_default_threshold",
+        "calibration_action"
+      ],
+      "properties": {
+        "calibration_schema_version": {
+          "const": "ag_retrieval_score_calibration.v1"
+        },
+        "quality_policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observed_status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "LOW_CONFIDENCE",
+            "NO_ANSWER",
+            "UNKNOWN"
+          ]
+        },
+        "observed_confidence_bucket": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "LOW_CONFIDENCE",
+            "NO_ANSWER",
+            "UNKNOWN"
+          ]
+        },
+        "default_confidence_bucket": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "LOW_CONFIDENCE",
+            "NO_ANSWER",
+            "UNKNOWN"
+          ]
+        },
+        "best_score": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "evidence_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observed_low_confidence_threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "default_low_confidence_threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "threshold_override_used": {
+          "type": "boolean"
+        },
+        "threshold_override_direction": {
+          "type": "string",
+          "enum": [
+            "none",
+            "lowered",
+            "raised",
+            "unknown"
+          ]
+        },
+        "would_pass_default_threshold": {
+          "type": "boolean"
+        },
+        "score_margin_to_observed_threshold": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "score_margin_to_default_threshold": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "calibration_action": {
+          "type": "string",
+          "enum": [
+            "default_threshold_accepts_score",
+            "review_low_confidence_boundary",
+            "inspect_no_answer_retrieval",
+            "review_live_threshold_before_canonical_policy",
+            "compare_observed_and_default_confidence",
+            "calibration_data_incomplete"
+          ]
         }
       }
     },

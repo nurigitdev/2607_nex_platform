@@ -37,6 +37,7 @@ from nex_runtime import (
     trace_id_from_headers,
     validate_authorization_header,
 )
+from nex_runtime.retrieval_policies import active_retrieval_policy_record
 
 
 AG_RETRIEVAL_PACKAGE_OPERATIONS_PROJECTION_SCHEMA_VERSION = (
@@ -45,10 +46,14 @@ AG_RETRIEVAL_PACKAGE_OPERATIONS_PROJECTION_SCHEMA_VERSION = (
 AG_RETRIEVAL_PACKAGE_DETAIL_PROJECTION_SCHEMA_VERSION = (
     "ag_retrieval_package_detail_projection.v1"
 )
+AG_RETRIEVAL_SCORE_CALIBRATION_SCHEMA_VERSION = (
+    "ag_retrieval_score_calibration.v1"
+)
 RETRIEVAL_PACKAGE_SOURCE_SERVICE_ID = "nex-cx"
 RETRIEVAL_PACKAGE_STATUSES = ("READY", "LOW_CONFIDENCE", "NO_ANSWER")
 DEFAULT_RETRIEVAL_PACKAGE_LIMIT = 50
 MAX_RETRIEVAL_PACKAGE_SCAN_LIMIT = 500
+DEFAULT_LOW_CONFIDENCE_THRESHOLD = 0.2
 
 
 class RetrievalPackageOperationsStore(Protocol):
@@ -572,11 +577,21 @@ def summarize_retrieval_package_operations(
 ) -> dict[str, Any]:
     by_status: dict[str, int] = {}
     by_policy: dict[str, int] = {}
+    calibration_action_counts: dict[str, int] = {}
+    calibration_records = [
+        _mapping_value(package.get("score_calibration"))
+        for package in packages
+    ]
     for package in packages:
         status = str(package["status"])
         policy_id = str(package["retrieval_policy_id"])
         by_status[status] = by_status.get(status, 0) + 1
         by_policy[policy_id] = by_policy.get(policy_id, 0) + 1
+    for calibration in calibration_records:
+        action = str(calibration.get("calibration_action", "UNKNOWN"))
+        calibration_action_counts[action] = (
+            calibration_action_counts.get(action, 0) + 1
+        )
     return {
         "total": len(packages),
         "by_status": by_status,
@@ -584,6 +599,34 @@ def summarize_retrieval_package_operations(
         "low_confidence": by_status.get("LOW_CONFIDENCE", 0),
         "no_answer": by_status.get("NO_ANSWER", 0),
         "evidence_count": sum(int(package["evidence_count"]) for package in packages),
+        "score_calibration": {
+            "threshold_override_count": sum(
+                1
+                for calibration in calibration_records
+                if calibration.get("threshold_override_used") is True
+            ),
+            "would_pass_default_threshold": sum(
+                1
+                for calibration in calibration_records
+                if calibration.get("would_pass_default_threshold") is True
+            ),
+            "default_ready": sum(
+                1
+                for calibration in calibration_records
+                if calibration.get("default_confidence_bucket") == "READY"
+            ),
+            "default_low_confidence": sum(
+                1
+                for calibration in calibration_records
+                if calibration.get("default_confidence_bucket") == "LOW_CONFIDENCE"
+            ),
+            "default_no_answer": sum(
+                1
+                for calibration in calibration_records
+                if calibration.get("default_confidence_bucket") == "NO_ANSWER"
+            ),
+            "action_counts": calibration_action_counts,
+        },
     }
 
 
@@ -654,6 +697,7 @@ def summarize_retrieval_package_detail(
         "permission_denied_count": permission_denied_count,
         "quality_flag_count": len(quality_flags),
         "score_range": score_range,
+        "score_calibration": build_retrieval_score_calibration_projection(package),
         "evidence_text_preview_redacted": True,
     }
 
@@ -734,6 +778,7 @@ def _project_retrieval_package(
 ) -> dict[str, Any]:
     score_summary = _mapping_value(record.get("score_summary"))
     source_summary = _mapping_value(record.get("source_summary"))
+    score_calibration = build_retrieval_score_calibration_projection(record)
     return {
         "service_id": service_id,
         "operation_type": "retrieval_package",
@@ -759,12 +804,167 @@ def _project_retrieval_package(
         "warning_count": int(record["warning_count"]),
         "no_answer_reason": record.get("no_answer_reason"),
         "best_score": _number_or_none(score_summary.get("best_score")),
+        "score_calibration": score_calibration,
         "source_count": _integer_or_none(source_summary.get("source_count")),
         "document_count": _integer_or_none(source_summary.get("document_count")),
         "chunk_count": _integer_or_none(source_summary.get("chunk_count")),
         "created_at": record["created_at"],
         "updated_at": record["updated_at"],
     }
+
+
+def build_retrieval_score_calibration_projection(
+    record: Mapping[str, Any],
+    *,
+    default_low_confidence_threshold: float | None = None,
+) -> dict[str, Any]:
+    score_summary = _mapping_value(record.get("score_summary"))
+    evidence_count = _integer_or_none(record.get("evidence_count")) or 0
+    best_score = _number_or_none(score_summary.get("best_score"))
+    observed_threshold = _number_or_none(
+        score_summary.get("low_confidence_threshold")
+    )
+    default_threshold = (
+        default_low_confidence_threshold
+        if default_low_confidence_threshold is not None
+        else _active_low_confidence_threshold()
+    )
+    if observed_threshold is None:
+        observed_threshold = default_threshold
+    observed_bucket = _safe_confidence_bucket(
+        score_summary.get("confidence_bucket"),
+        fallback=_confidence_bucket(
+            evidence_count=evidence_count,
+            best_score=best_score,
+            threshold=observed_threshold,
+        ),
+    )
+    default_bucket = _confidence_bucket(
+        evidence_count=evidence_count,
+        best_score=best_score,
+        threshold=default_threshold,
+    )
+    override_used = not _float_values_match(observed_threshold, default_threshold)
+    override_direction = _threshold_override_direction(
+        observed_threshold,
+        default_threshold,
+    )
+    return {
+        "calibration_schema_version": AG_RETRIEVAL_SCORE_CALIBRATION_SCHEMA_VERSION,
+        "quality_policy_id": str(
+            score_summary.get("quality_policy_id")
+            or record.get("retrieval_policy_id")
+            or "UNKNOWN"
+        ),
+        "observed_status": str(record.get("status") or "UNKNOWN"),
+        "observed_confidence_bucket": observed_bucket,
+        "default_confidence_bucket": default_bucket,
+        "best_score": best_score,
+        "evidence_count": evidence_count,
+        "observed_low_confidence_threshold": observed_threshold,
+        "default_low_confidence_threshold": default_threshold,
+        "threshold_override_used": override_used,
+        "threshold_override_direction": override_direction,
+        "would_pass_default_threshold": (
+            True if default_bucket == "READY" else False
+        ),
+        "score_margin_to_observed_threshold": _score_margin(
+            best_score,
+            observed_threshold,
+        ),
+        "score_margin_to_default_threshold": _score_margin(
+            best_score,
+            default_threshold,
+        ),
+        "calibration_action": _calibration_action(
+            observed_bucket=observed_bucket,
+            default_bucket=default_bucket,
+            override_used=override_used,
+            override_direction=override_direction,
+        ),
+    }
+
+
+def _active_low_confidence_threshold() -> float:
+    confidence = _mapping_value(active_retrieval_policy_record().get("confidence"))
+    threshold = _number_or_none(confidence.get("low_confidence_threshold"))
+    return (
+        threshold
+        if threshold is not None
+        else DEFAULT_LOW_CONFIDENCE_THRESHOLD
+    )
+
+
+def _confidence_bucket(
+    *,
+    evidence_count: int,
+    best_score: float | None,
+    threshold: float | None,
+) -> str:
+    if evidence_count <= 0:
+        return "NO_ANSWER"
+    if best_score is None or threshold is None:
+        return "UNKNOWN"
+    if best_score < threshold:
+        return "LOW_CONFIDENCE"
+    return "READY"
+
+
+def _safe_confidence_bucket(value: Any, *, fallback: str) -> str:
+    if isinstance(value, str) and value in {
+        "READY",
+        "LOW_CONFIDENCE",
+        "NO_ANSWER",
+        "UNKNOWN",
+    }:
+        return value
+    return fallback
+
+
+def _threshold_override_direction(
+    observed_threshold: float | None,
+    default_threshold: float | None,
+) -> str:
+    if observed_threshold is None or default_threshold is None:
+        return "unknown"
+    if _float_values_match(observed_threshold, default_threshold):
+        return "none"
+    if observed_threshold < default_threshold:
+        return "lowered"
+    return "raised"
+
+
+def _float_values_match(left: float, right: float) -> bool:
+    return abs(left - right) < 0.000001
+
+
+def _score_margin(
+    best_score: float | None,
+    threshold: float | None,
+) -> float | None:
+    if best_score is None or threshold is None:
+        return None
+    return round(best_score - threshold, 6)
+
+
+def _calibration_action(
+    *,
+    observed_bucket: str,
+    default_bucket: str,
+    override_used: bool,
+    override_direction: str,
+) -> str:
+    if default_bucket == "NO_ANSWER":
+        return "inspect_no_answer_retrieval"
+    if override_used and override_direction == "lowered" and default_bucket != "READY":
+        return "review_live_threshold_before_canonical_policy"
+    if observed_bucket != default_bucket:
+        return "compare_observed_and_default_confidence"
+    if default_bucket == "READY":
+        return "default_threshold_accepts_score"
+    if default_bucket == "LOW_CONFIDENCE":
+        return "review_low_confidence_boundary"
+    return "calibration_data_incomplete"
 
 
 def _project_retrieval_evidence_item(
