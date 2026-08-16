@@ -39,6 +39,11 @@ from run_ag_retrieval_package_postgres_smoke import (  # noqa: E402
     SMOKE_PROFILE_ENV as AG_RETRIEVAL_PACKAGE_POSTGRES_PROFILE_ENV,
     run_ag_retrieval_package_postgres_smoke,
 )
+from run_ag_retrieval_threshold_decision_postgres_smoke import (  # noqa: E402
+    SMOKE_ENV as AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_SMOKE_ENV,
+    SMOKE_PROFILE_ENV as AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_PROFILE_ENV,
+    run_ag_retrieval_threshold_decision_postgres_smoke,
+)
 from run_ag_cx_processing_run_postgres_smoke import (  # noqa: E402
     SMOKE_ENV as AG_CX_PROCESSING_RUN_POSTGRES_SMOKE_ENV,
     SMOKE_PROFILE_ENV as AG_CX_PROCESSING_RUN_POSTGRES_PROFILE_ENV,
@@ -182,6 +187,7 @@ SUITE_STAGE_ORDER = (
     "ae_credential_login",
     "ae_web_credential_login",
     "ag_retrieval_package_postgres",
+    "ag_retrieval_threshold_decision_postgres",
     "cx_processing_jobqueue",
     "cx_processing_events",
     "cx_processing_persistence",
@@ -286,6 +292,8 @@ def run_postgres_test_smoke_suite(
         AE_WEB_CREDENTIAL_LOGIN_PROFILE_ENV: profile,
         AG_RETRIEVAL_PACKAGE_POSTGRES_SMOKE_ENV: "1",
         AG_RETRIEVAL_PACKAGE_POSTGRES_PROFILE_ENV: profile,
+        AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_SMOKE_ENV: "1",
+        AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_PROFILE_ENV: profile,
         CX_PROCESSING_JOBQUEUE_SMOKE_ENV: "1",
         CX_PROCESSING_JOBQUEUE_PROFILE_ENV: profile,
         CX_PROCESSING_EVENT_SMOKE_ENV: "1",
@@ -349,6 +357,9 @@ def run_postgres_test_smoke_suite(
     )
     stages["ag_retrieval_package_postgres"] = _stage_from_child_smoke(
         run_ag_retrieval_package_postgres_smoke(environ=smoke_env)
+    )
+    stages["ag_retrieval_threshold_decision_postgres"] = _stage_from_child_smoke(
+        run_ag_retrieval_threshold_decision_postgres_smoke(environ=smoke_env)
     )
     stages["cx_processing_jobqueue"] = _stage_from_child_smoke(
         run_cx_processing_postgres_jobqueue_smoke(environ=smoke_env)

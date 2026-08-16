@@ -81,6 +81,7 @@ mkdir -p "$REPORT_DIR"
 "$PYTHON_BIN" scripts/smoke/run_ae_web_credential_login_browser_smoke_boundary.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_credential_login_browser_harness_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_retrieval_package_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ag_retrieval_threshold_decision_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_processing_postgres_jobqueue_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_processing_postgres_event_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_processing_postgres_persistence_smoke.py --summary

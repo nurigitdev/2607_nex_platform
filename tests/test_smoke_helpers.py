@@ -16,6 +16,7 @@ import run_ag_operations_dashboard_smoke as ag_operations_dashboard_smoke
 import run_ag_cross_service_observability_smoke as ag_observability_smoke
 import run_ag_cx_processing_run_postgres_smoke as ag_cx_processing_smoke
 import run_ag_retrieval_package_postgres_smoke as ag_retrieval_postgres_smoke
+import run_ag_retrieval_threshold_decision_postgres_smoke as ag_threshold_smoke
 import run_ag_service_log_retention_smoke as ag_log_retention_smoke
 import run_ag_service_log_retention_postgres_smoke as ag_log_retention_postgres_smoke
 import run_protected_live_rag_score_sample_smoke as live_rag_score_sample_smoke
@@ -2756,6 +2757,11 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
     )
     monkeypatch.setattr(
         postgres_suite_smoke,
+        "run_ag_retrieval_threshold_decision_postgres_smoke",
+        child_pass("ag_retrieval_threshold_decision_postgres_smoke"),
+    )
+    monkeypatch.setattr(
+        postgres_suite_smoke,
         "run_cx_processing_postgres_jobqueue_smoke",
         child_pass("cx_processing_postgres_jobqueue_smoke"),
     )
@@ -2820,6 +2826,7 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("ae_credential_login_postgres_smoke", "test"),
         ("ae_web_credential_login_postgres_smoke", "test"),
         ("ag_retrieval_package_postgres_smoke", "test"),
+        ("ag_retrieval_threshold_decision_postgres_smoke", "test"),
         ("cx_processing_postgres_jobqueue_smoke", "test"),
         ("cx_processing_postgres_event_smoke", "test"),
         ("cx_processing_postgres_persistence_smoke", "test"),
@@ -2828,7 +2835,7 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("ag_cross_service_observability_smoke", "test"),
     ]
     assert postgres_suite_smoke.summary_line(evidence) == (
-        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=25"
+        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=26"
     )
 
 
@@ -3692,6 +3699,378 @@ def test_ag_retrieval_package_postgres_smoke_main_prints_summary_and_full_eviden
     assert "ag_retrieval_package_postgres_smoke=skipped" in capsys.readouterr().out
 
     assert ag_retrieval_postgres_smoke.main([]) == 0
+    assert '"status": "SKIPPED"' in capsys.readouterr().out
+
+
+def test_ag_threshold_postgres_smoke_skips_by_default() -> None:
+    evidence = ag_threshold_smoke.run_ag_retrieval_threshold_decision_postgres_smoke(
+        environ={}
+    )
+
+    assert evidence["status"] == "SKIPPED"
+    assert ag_threshold_smoke.summary_line(evidence) == (
+        "ag_retrieval_threshold_decision_postgres_smoke=skipped "
+        "reason=NEX_AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_SMOKE"
+    )
+
+
+def test_ag_threshold_postgres_smoke_rejects_non_test_profile() -> None:
+    evidence = ag_threshold_smoke.run_ag_retrieval_threshold_decision_postgres_smoke(
+        environ={
+            "NEX_AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_SMOKE": "1",
+            "NEX_AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_SMOKE_PROFILE": "dev",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "profile_not_allowed"
+
+
+def test_ag_threshold_postgres_smoke_reports_pass_without_leaking_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration_calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        ag_threshold_smoke,
+        "service_database_env",
+        lambda service_id, profile: f"{service_id}:{profile}:env",
+    )
+    monkeypatch.setattr(
+        ag_threshold_smoke,
+        "service_database_url",
+        lambda service_id, profile, environ: "postgresql://user:secret@localhost/db",
+    )
+
+    def fake_migrations(service_id: str, *, database_url: str, profile: str):
+        migration_calls.append((service_id, profile))
+        return SimpleNamespace(
+            planned=("0172_cx_retrieval_package_persistence",),
+            applied=(),
+            skipped=("0172_cx_retrieval_package_persistence",),
+        )
+
+    monkeypatch.setattr(
+        ag_threshold_smoke,
+        "run_service_migrations",
+        fake_migrations,
+    )
+    monkeypatch.setattr(
+        ag_threshold_smoke,
+        "_execute_ag_retrieval_threshold_decision_postgres_smoke",
+        lambda database_url, database_env, environ: {
+            "trace_id": "0" * 32,
+            "request_id_prefix": "request-prefix",
+            "projection_versions": {
+                "threshold_decisions": (
+                    "ag_retrieval_threshold_decision_projection.v1"
+                ),
+                "dashboard": "ag_operations_dashboard_snapshot_projection.v1",
+                "issue_candidates": "ag_operations_issue_candidate_projection.v1",
+            },
+            "http_statuses": {
+                "threshold_decisions": 200,
+                "dashboard": 200,
+                "issue_candidates": 200,
+            },
+            "counts": {
+                "seeded_package_rows": 21,
+                "seeded_policy_count": 2,
+                "threshold_decisions": 2,
+                "observed_sample_count": 21,
+                "ready_for_review": 1,
+                "insufficient_samples": 1,
+                "dashboard_observed_sample_count": 21,
+                "issue_candidates": 2,
+            },
+            "checks": {"ok": True},
+            "raw_values": ["raw query", "raw evidence", "raw principal"],
+        },
+    )
+
+    evidence = ag_threshold_smoke.run_ag_retrieval_threshold_decision_postgres_smoke(
+        environ={"NEX_AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_SMOKE": "1"}
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["database_env"] == "nex-cx:test:env"
+    assert evidence["redacted_database_url"] == "postgresql://user:***@localhost/db"
+    assert evidence["migrations"]["skipped"] == [
+        "0172_cx_retrieval_package_persistence"
+    ]
+    assert evidence["counts"]["observed_sample_count"] == 21
+    assert "secret" not in str(evidence)
+    assert "raw_values" not in evidence
+    assert migration_calls == [("nex-cx", "test")]
+    assert ag_threshold_smoke.summary_line(evidence) == (
+        "ag_retrieval_threshold_decision_postgres_smoke=pass "
+        "service=nex-cx db_env=nex-cx:test:env "
+        "decisions=2 samples=21 ready=1 insufficient=1 issues=2"
+    )
+
+
+def test_ag_threshold_postgres_smoke_reports_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ag_threshold_smoke,
+        "service_database_env",
+        lambda *args, **kwargs: "NEX_CX_TEST_DATABASE_URL",
+    )
+
+    def raise_migration_error(*args: object, **kwargs: object) -> None:
+        raise ag_threshold_smoke.MigrationError("missing database URL env")
+
+    monkeypatch.setattr(
+        ag_threshold_smoke,
+        "service_database_url",
+        raise_migration_error,
+    )
+    config_failure = (
+        ag_threshold_smoke.run_ag_retrieval_threshold_decision_postgres_smoke(
+            environ={"NEX_AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_SMOKE": "1"}
+        )
+    )
+
+    assert config_failure["status"] == "FAIL"
+    assert config_failure["failure_code"] == "configuration_invalid"
+
+    monkeypatch.setattr(
+        ag_threshold_smoke,
+        "service_database_url",
+        lambda *args, **kwargs: "postgresql://user:secret@localhost/db",
+    )
+    monkeypatch.setattr(
+        ag_threshold_smoke,
+        "run_service_migrations",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        ag_threshold_smoke,
+        "_execute_ag_retrieval_threshold_decision_postgres_smoke",
+        lambda *args, **kwargs: {
+            "failure_code": "checks_failed",
+            "detail": "checks failed",
+            "checks": {"ok": False},
+            "raw_values": ["raw"],
+        },
+    )
+    checks_failure = (
+        ag_threshold_smoke.run_ag_retrieval_threshold_decision_postgres_smoke(
+            environ={"NEX_AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_SMOKE": "1"}
+        )
+    )
+
+    assert checks_failure["status"] == "FAIL"
+    assert checks_failure["failure_code"] == "checks_failed"
+    assert checks_failure["checks"] == {"ok": False}
+
+    monkeypatch.setattr(
+        ag_threshold_smoke,
+        "_execute_ag_retrieval_threshold_decision_postgres_smoke",
+        lambda *args, **kwargs: {
+            "counts": {"leak": "raw"},
+            "checks": {"ok": True},
+            "raw_values": ["raw"],
+        },
+    )
+    redaction_failure = (
+        ag_threshold_smoke.run_ag_retrieval_threshold_decision_postgres_smoke(
+            environ={"NEX_AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_SMOKE": "1"}
+        )
+    )
+    assert redaction_failure["failure_code"] == "evidence_redaction_failed"
+
+    def raise_runtime_error(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        ag_threshold_smoke,
+        "_execute_ag_retrieval_threshold_decision_postgres_smoke",
+        raise_runtime_error,
+    )
+    execution_failure = (
+        ag_threshold_smoke.run_ag_retrieval_threshold_decision_postgres_smoke(
+            environ={"NEX_AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_SMOKE": "1"}
+        )
+    )
+
+    assert execution_failure["status"] == "FAIL"
+    assert execution_failure["failure_code"] == "execution_failed"
+    assert ag_threshold_smoke.summary_line(execution_failure) == (
+        "ag_retrieval_threshold_decision_postgres_smoke=fail "
+        "service=nex-cx reason=execution_failed"
+    )
+
+
+def test_ag_threshold_postgres_smoke_execute_with_sqlite_fixture(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'ag-threshold-smoke.sqlite'}"
+    engine = ag_threshold_smoke.build_engine(database_url)
+    _create_sqlite_cx_content_retrieval_tables(engine)
+
+    evidence = (
+        ag_threshold_smoke._execute_ag_retrieval_threshold_decision_postgres_smoke(
+            database_url=database_url,
+            database_env="NEX_CX_TEST_DATABASE_URL",
+            environ={},
+        )
+    )
+
+    assert evidence["http_statuses"] == {
+        "threshold_decisions": 200,
+        "dashboard": 200,
+        "issue_candidates": 200,
+    }
+    assert evidence["counts"] == {
+        "seeded_package_rows": 21,
+        "seeded_policy_count": 2,
+        "threshold_decisions": 2,
+        "observed_sample_count": 21,
+        "ready_for_review": 1,
+        "insufficient_samples": 1,
+        "dashboard_observed_sample_count": 21,
+        "issue_candidates": 2,
+    }
+    assert all(evidence["checks"].values())
+    with engine.begin() as connection:
+        remaining = {
+            "packages": connection.execute(
+                text("SELECT count(*) FROM cx_retrieval_packages")
+            ).scalar_one(),
+            "evidence": connection.execute(
+                text("SELECT count(*) FROM cx_retrieval_evidence_items")
+            ).scalar_one(),
+            "chunks": connection.execute(
+                text("SELECT count(*) FROM cx_chunks")
+            ).scalar_one(),
+            "chunk_sets": connection.execute(
+                text("SELECT count(*) FROM cx_chunk_sets")
+            ).scalar_one(),
+            "extractions": connection.execute(
+                text("SELECT count(*) FROM cx_extraction_artifacts")
+            ).scalar_one(),
+            "content": connection.execute(
+                text("SELECT count(*) FROM cx_content_objects")
+            ).scalar_one(),
+            "sources": connection.execute(
+                text("SELECT count(*) FROM cx_source_files")
+            ).scalar_one(),
+        }
+    assert remaining == {
+        "packages": 0,
+        "evidence": 0,
+        "chunks": 0,
+        "chunk_sets": 0,
+        "extractions": 0,
+        "content": 0,
+        "sources": 0,
+    }
+
+
+def test_ag_threshold_postgres_smoke_helpers_cover_edges() -> None:
+    bad_checks = ag_threshold_smoke._checks(
+        projections={
+            "threshold_decisions": {
+                "_http_status": 503,
+                "projection_schema_version": "wrong",
+                "projection_status": "DEGRADED",
+                "source_statuses": {},
+                "summary": {},
+                "threshold_decisions": [],
+            },
+            "dashboard": {
+                "_http_status": 503,
+                "projection_schema_version": "wrong",
+                "retrieval_threshold_decisions": {
+                    "summary": {},
+                    "source_statuses": {},
+                    "threshold_decisions": [],
+                },
+            },
+            "issue_candidates": {
+                "_http_status": 503,
+                "projection_schema_version": "wrong",
+                "summary": {"total": 0},
+                "issue_candidates": [],
+            },
+        },
+        db_counts={
+            "package_count": 0,
+            "policy_count": 0,
+            "current_policy_count": 0,
+            "weighted_policy_count": 0,
+        },
+        database_env="NEX_CX_TEST_DATABASE_URL",
+        raw_values=["raw"],
+    )
+
+    assert bad_checks == {
+        "postgres_seed_select_confirms_samples": False,
+        "threshold_projection_reads_postgres": False,
+        "threshold_decision_counts_match_seed": False,
+        "current_policy_ready_for_review": False,
+        "weighted_policy_remains_insufficient": False,
+        "dashboard_reuses_postgres_threshold_section": False,
+        "issue_candidates_include_threshold_rules": False,
+        "raw_values_absent_from_ag_evidence": True,
+    }
+    assert ag_threshold_smoke._decisions_by_policy([]) == {}
+    assert ag_threshold_smoke._decisions_by_policy({"threshold_decisions": "bad"}) == {}
+    assert ag_threshold_smoke._migration_summary(None) == {
+        "planned": [],
+        "applied": [],
+        "skipped": [],
+    }
+    assert ag_threshold_smoke._execution_failure(
+        "checks_failed",
+        "bad",
+        checks={"ok": False},
+        raw_values=["raw"],
+    )["failure_code"] == "checks_failed"
+    assert ag_threshold_smoke.summary_line(
+        {
+            "smoke_schema_version": (
+                "ag_retrieval_threshold_decision_postgres_smoke.v1"
+            ),
+            "status": "FAIL",
+            "service_id": "nex-cx",
+            "failure_code": "checks_failed",
+        }
+    ) == (
+        "ag_retrieval_threshold_decision_postgres_smoke=fail "
+        "service=nex-cx reason=checks_failed"
+    )
+
+
+def test_ag_threshold_postgres_smoke_main_prints_summary_and_full_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        ag_threshold_smoke,
+        "load_env_file",
+        lambda path: None,
+    )
+    monkeypatch.setattr(
+        ag_threshold_smoke,
+        "run_ag_retrieval_threshold_decision_postgres_smoke",
+        lambda: {
+            "smoke_schema_version": (
+                "ag_retrieval_threshold_decision_postgres_smoke.v1"
+            ),
+            "status": "SKIPPED",
+            "skip_reason": (
+                "NEX_AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_SMOKE is not enabled."
+            ),
+        },
+    )
+
+    assert ag_threshold_smoke.main(["--summary"]) == 0
+    assert "ag_retrieval_threshold_decision_postgres_smoke=skipped" in (
+        capsys.readouterr().out
+    )
+
+    assert ag_threshold_smoke.main([]) == 0
     assert '"status": "SKIPPED"' in capsys.readouterr().out
 
 

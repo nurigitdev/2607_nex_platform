@@ -410,6 +410,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0304`](slices/0304_ag_retrieval_operations_refactoring_checkpoint.md) | `S31-004` AG retrieval operations refactoring checkpoint. |
 | [`Slice 0305`](slices/0305_threshold_decision_ag_dashboard_integration.md) | `S31-005` Threshold decision AG dashboard integration. |
 | [`Slice 0306`](slices/0306_threshold_decision_issue_candidate_rules.md) | `S31-006` Threshold decision issue-candidate rules. |
+| [`Slice 0307`](slices/0307_retrieval_threshold_decision_postgresql_smoke.md) | `S31-007` Retrieval threshold decision PostgreSQL smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

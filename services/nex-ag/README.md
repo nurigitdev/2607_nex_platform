@@ -198,6 +198,13 @@ Unified operations:
   APIs and trace timeline correlation. It is skipped unless
   `NEX_AG_RETRIEVAL_PACKAGE_POSTGRES_SMOKE=1` and is included in the optional
   `run_postgres_test_smoke_suite.py` as `ag_retrieval_package_postgres`.
+- `scripts/smoke/run_ag_retrieval_threshold_decision_postgres_smoke.py` is the
+  guarded PostgreSQL test-profile evidence path for AG threshold-decision,
+  dashboard, and issue-candidate reads over persisted CX retrieval package
+  score samples. It is skipped unless
+  `NEX_AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_SMOKE=1` and is included in the
+  optional `run_postgres_test_smoke_suite.py` as
+  `ag_retrieval_threshold_decision_postgres`.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
