@@ -18,6 +18,7 @@ import run_ag_cx_processing_run_postgres_smoke as ag_cx_processing_smoke
 import run_ag_retrieval_package_postgres_smoke as ag_retrieval_postgres_smoke
 import run_ag_service_log_retention_smoke as ag_log_retention_smoke
 import run_ag_service_log_retention_postgres_smoke as ag_log_retention_postgres_smoke
+import run_protected_live_rag_score_sample_smoke as live_rag_score_sample_smoke
 import check_backend_service_endpoints as endpoint_smoke
 import check_db_readiness as db_smoke
 import run_cx_processing_postgres_event_smoke as cx_processing_event_smoke
@@ -3689,6 +3690,319 @@ def test_ag_retrieval_package_postgres_smoke_main_prints_summary_and_full_eviden
     assert "ag_retrieval_package_postgres_smoke=skipped" in capsys.readouterr().out
 
     assert ag_retrieval_postgres_smoke.main([]) == 0
+    assert '"status": "SKIPPED"' in capsys.readouterr().out
+
+
+def _protected_live_rag_score_sample_inner_evidence(
+    *,
+    index: int,
+    trace_id: str,
+    override_used: bool = False,
+    checkpoint_schema_version: str | None = None,
+) -> dict[str, object]:
+    threshold = 0.2 if not override_used else 0.1
+    best_score = round(0.71 + index / 100, 6)
+    return {
+        "status": "PASS",
+        "rag_evidence": {
+            "trace_id": trace_id,
+            "request_id": f"request-{index}",
+            "retrieval": {
+                "retrieval_package_id": f"retrieval-{index}",
+                "status": "READY",
+                "rerank_state": "APPLIED",
+                "ranker_mix": "rrf:vector=0.7,bm25=0.3",
+            },
+        },
+        "score_calibration": {
+            "checkpoint_schema_version": (
+                checkpoint_schema_version
+                or live_rag_score_sample_smoke.SCORE_CALIBRATION_SCHEMA_VERSION
+            ),
+            "quality_policy_id": "retrieval-quality-default-v1",
+            "observed_status": "READY",
+            "observed_confidence_bucket": "READY",
+            "default_confidence_bucket": "READY",
+            "best_score": best_score,
+            "evidence_count": 1,
+            "observed_low_confidence_threshold": threshold,
+            "default_low_confidence_threshold": 0.2,
+            "threshold_override_used": override_used,
+            "threshold_override_direction": "lowered" if override_used else "none",
+            "would_pass_default_threshold": True,
+            "score_margin_to_observed_threshold": round(best_score - threshold, 6),
+            "score_margin_to_default_threshold": round(best_score - 0.2, 6),
+            "calibration_action": "default_threshold_accepts_score",
+        },
+        "db_observations": {
+            "retrieval_status": "READY",
+            "retrieval_evidence_count": 1,
+        },
+    }
+
+
+def test_protected_live_rag_score_sample_smoke_skips_by_default() -> None:
+    evidence = live_rag_score_sample_smoke.run_protected_live_rag_score_sample_smoke(
+        environ={}
+    )
+
+    assert evidence["status"] == "SKIPPED"
+    assert live_rag_score_sample_smoke.summary_line(evidence) == (
+        "protected_live_rag_score_sample_smoke=skipped "
+        "reason=NEX_PROTECTED_LIVE_RAG_SCORE_SAMPLE_SMOKE"
+    )
+
+
+def test_protected_live_rag_score_sample_smoke_rejects_bad_configuration() -> None:
+    profile_failure = (
+        live_rag_score_sample_smoke.run_protected_live_rag_score_sample_smoke(
+            environ={
+                "NEX_PROTECTED_LIVE_RAG_SCORE_SAMPLE_SMOKE": "1",
+                "NEX_PROTECTED_LIVE_RAG_SCORE_SAMPLE_SMOKE_PROFILE": "dev",
+            }
+        )
+    )
+    assert profile_failure["status"] == "FAIL"
+    assert profile_failure["failure_code"] == "profile_not_allowed"
+
+    for sample_count in ("0", "11", "not-an-int"):
+        evidence = live_rag_score_sample_smoke.run_protected_live_rag_score_sample_smoke(
+            environ={
+                "NEX_PROTECTED_LIVE_RAG_SCORE_SAMPLE_SMOKE": "1",
+                "NEX_PROTECTED_LIVE_RAG_SCORE_SAMPLE_COUNT": sample_count,
+            }
+        )
+        assert evidence["status"] == "FAIL"
+        assert evidence["failure_code"] == "configuration_invalid"
+        assert live_rag_score_sample_smoke.summary_line(evidence) == (
+            "protected_live_rag_score_sample_smoke=fail "
+            "service=nex-cx profile=test reason=configuration_invalid"
+        )
+
+
+def test_protected_live_rag_score_sample_smoke_collects_mocked_samples() -> None:
+    calls: list[tuple[str, str, str]] = []
+
+    def fake_runner(
+        *,
+        environ: dict[str, str],
+        requester: object,
+        trace_id: str,
+    ) -> dict[str, object]:
+        index = len(calls)
+        calls.append(
+            (
+                environ["NEX_PROTECTED_LIVE_RAG_POSTGRES_SMOKE"],
+                environ["NEX_PROTECTED_LIVE_RAG_POSTGRES_SMOKE_PROFILE"],
+                trace_id,
+            )
+        )
+        return _protected_live_rag_score_sample_inner_evidence(
+            index=index,
+            trace_id=trace_id,
+            override_used=index == 1,
+        )
+
+    evidence = live_rag_score_sample_smoke.run_protected_live_rag_score_sample_smoke(
+        environ={
+            "NEX_PROTECTED_LIVE_RAG_SCORE_SAMPLE_SMOKE": "1",
+            "NEX_PROTECTED_LIVE_RAG_SCORE_SAMPLE_COUNT": "2",
+            "NEX_CX_TEST_DATABASE_URL": "postgresql://user:super-secret@localhost/db",
+            "NEX_MO_VLLM_API_KEY": "provider-secret-token",
+        },
+        runner=fake_runner,
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["sample_count_collected"] == 2
+    assert evidence["summary"]["threshold_override_count"] == 1
+    assert evidence["summary"]["would_pass_default_threshold"] == 2
+    assert evidence["checks"]["trace_ids_unique"] is True
+    assert calls == [
+        ("1", "test", "30200000000000000000000000000000"),
+        ("1", "test", "30200000000000000000000000000001"),
+    ]
+    assert "super-secret" not in json.dumps(evidence, ensure_ascii=False)
+    assert "provider-secret-token" not in json.dumps(evidence, ensure_ascii=False)
+    assert live_rag_score_sample_smoke.summary_line(evidence) == (
+        "protected_live_rag_score_sample_smoke=pass "
+        "service=nex-cx profile=test samples=2 override_count=1 default_pass=2"
+    )
+
+
+def test_protected_live_rag_score_sample_smoke_reports_inner_failures() -> None:
+    def failing_inner_runner(
+        *,
+        environ: dict[str, str],
+        requester: object,
+        trace_id: str,
+    ) -> dict[str, object]:
+        return {
+            "status": "FAIL",
+            "failure_code": "execution_failed",
+            "diagnostics": {"stage": "reranking", "detail": "provider-secret-token"},
+        }
+
+    evidence = live_rag_score_sample_smoke.run_protected_live_rag_score_sample_smoke(
+        environ={
+            "NEX_PROTECTED_LIVE_RAG_SCORE_SAMPLE_SMOKE": "1",
+            "NEX_MO_VLLM_API_KEY": "provider-secret-token",
+        },
+        runner=failing_inner_runner,
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "sample_collection_failed"
+    assert evidence["sample_summaries"] == [
+        {
+            "sample_index": 0,
+            "trace_id": "30200000000000000000000000000000",
+            "status": "FAIL",
+            "failure_code": "execution_failed",
+            "stage": "reranking",
+        }
+    ]
+    assert "provider-secret-token" not in json.dumps(evidence, ensure_ascii=False)
+
+
+def test_protected_live_rag_score_sample_smoke_reports_runner_exception() -> None:
+    def raising_runner(*, environ: dict[str, str], requester: object, trace_id: str):
+        raise RuntimeError("provider-secret-token")
+
+    evidence = live_rag_score_sample_smoke.run_protected_live_rag_score_sample_smoke(
+        environ={
+            "NEX_PROTECTED_LIVE_RAG_SCORE_SAMPLE_SMOKE": "1",
+            "NEX_MO_VLLM_API_KEY": "provider-secret-token",
+        },
+        runner=raising_runner,
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "execution_failed"
+    assert evidence["sample_summaries"][0]["failure_code"] == "RuntimeError"
+    assert "provider-secret-token" not in json.dumps(evidence, ensure_ascii=False)
+
+
+def test_protected_live_rag_score_sample_smoke_reports_check_failures() -> None:
+    def bad_checkpoint_runner(
+        *,
+        environ: dict[str, str],
+        requester: object,
+        trace_id: str,
+    ) -> dict[str, object]:
+        return _protected_live_rag_score_sample_inner_evidence(
+            index=0,
+            trace_id=trace_id,
+            checkpoint_schema_version="wrong",
+        )
+
+    evidence = live_rag_score_sample_smoke.run_protected_live_rag_score_sample_smoke(
+        environ={
+            "NEX_PROTECTED_LIVE_RAG_SCORE_SAMPLE_SMOKE": "1",
+            "NEX_PROTECTED_LIVE_RAG_SCORE_SAMPLE_COUNT": "1",
+        },
+        runner=bad_checkpoint_runner,
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "sample_checks_failed"
+    assert evidence["checks"]["score_calibration_checkpoint_recorded"] is False
+    assert evidence["summary"]["total"] == 1
+
+
+def test_protected_live_rag_score_sample_smoke_helpers_cover_edges() -> None:
+    assert live_rag_score_sample_smoke._sample_count_from_env({}) == 3
+    assert live_rag_score_sample_smoke._sample_count_from_env(
+        {"NEX_PROTECTED_LIVE_RAG_SCORE_SAMPLE_COUNT": " 2 "}
+    ) == 2
+    assert live_rag_score_sample_smoke.summarize_score_samples([]) == {
+        "total": 0,
+        "by_observed_status": {},
+        "by_default_confidence_bucket": {},
+        "by_calibration_action": {},
+        "by_policy": {},
+        "threshold_override_count": 0,
+        "would_pass_default_threshold": 0,
+        "score_margin_to_default_threshold": {"min": None, "max": None},
+    }
+    assert live_rag_score_sample_smoke._safe_float(True) == 0.0
+    assert live_rag_score_sample_smoke._safe_float("bad") == 0.0
+    assert live_rag_score_sample_smoke._safe_int(False) == 0
+    assert live_rag_score_sample_smoke._safe_int("bad") == 0
+    assert live_rag_score_sample_smoke._safe_string("") == "UNKNOWN"
+    assert live_rag_score_sample_smoke._inner_status_summary(
+        3,
+        "30200000000000000000000000000003",
+        {"status": "", "diagnostics": {"stage": ""}},
+    ) == {
+        "sample_index": 3,
+        "trace_id": "30200000000000000000000000000003",
+        "status": "UNKNOWN",
+    }
+    assert live_rag_score_sample_smoke.summary_line(
+        {
+            "status": "PASS",
+            "service_id": "nex-cx",
+            "profile": "test",
+            "sample_count_collected": 1,
+            "summary": None,
+        }
+    ) == (
+        "protected_live_rag_score_sample_smoke=pass "
+        "service=nex-cx profile=test samples=1 override_count=0 default_pass=0"
+    )
+    with pytest.raises(ValueError, match="32-character"):
+        live_rag_score_sample_smoke._sample_trace_id(
+            0,
+            trace_id_factory=lambda index: "short",
+        )
+    with pytest.raises(ValueError, match="hexadecimal"):
+        live_rag_score_sample_smoke._sample_trace_id(
+            0,
+            trace_id_factory=lambda index: "z" * 32,
+        )
+    with pytest.raises(ValueError, match="unredacted"):
+        live_rag_score_sample_smoke.assert_protected_live_rag_score_sample_evidence_redacted(
+            {"leak": "provider-secret-token"},
+            {"NEX_MO_VLLM_API_KEY": "provider-secret-token"},
+        )
+
+
+def test_protected_live_rag_score_sample_smoke_main_prints_summary_and_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(
+        live_rag_score_sample_smoke,
+        "load_env_file",
+        lambda path: None,
+    )
+    monkeypatch.setattr(
+        live_rag_score_sample_smoke,
+        "run_protected_live_rag_score_sample_smoke",
+        lambda: {
+            "smoke_schema_version": "protected_live_rag_score_sample_smoke.v1",
+            "status": "SKIPPED",
+            "service_id": "nex-cx",
+            "profile": "test",
+            "skip_reason": (
+                "NEX_PROTECTED_LIVE_RAG_SCORE_SAMPLE_SMOKE is not enabled."
+            ),
+        },
+    )
+
+    output_path = tmp_path / "score-sample-evidence.json"
+    assert (
+        live_rag_score_sample_smoke.main(
+            ["--summary", "--output", str(output_path)]
+        )
+        == 0
+    )
+    assert "protected_live_rag_score_sample_smoke=skipped" in capsys.readouterr().out
+    assert '"status": "SKIPPED"' in output_path.read_text(encoding="utf-8")
+
+    assert live_rag_score_sample_smoke.main([]) == 0
     assert '"status": "SKIPPED"' in capsys.readouterr().out
 
 

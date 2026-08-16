@@ -405,6 +405,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0299`](slices/0299_live_rag_score_calibration_ag_observability.md) | `S30-009` Live RAG score calibration AG observability surface. |
 | [`Slice 0300`](slices/0300_retrieval_threshold_decision_checkpoint.md) | `S30-010` Retrieval threshold decision checkpoint. |
 | [`Slice 0301`](slices/0301_retrieval_calibration_sample_rollup_query.md) | `S31-001` Retrieval calibration sample rollup/query foundation. |
+| [`Slice 0302`](slices/0302_protected_live_rag_score_sample_collection_smoke.md) | `S31-002` Protected live RAG score sample collection smoke. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
