@@ -49,8 +49,25 @@ AG_RETRIEVAL_PACKAGE_DETAIL_PROJECTION_SCHEMA_VERSION = (
 AG_RETRIEVAL_SCORE_CALIBRATION_SCHEMA_VERSION = (
     "ag_retrieval_score_calibration.v1"
 )
+AG_RETRIEVAL_SCORE_CALIBRATION_ROLLUP_PROJECTION_SCHEMA_VERSION = (
+    "ag_retrieval_score_calibration_rollup_projection.v1"
+)
 RETRIEVAL_PACKAGE_SOURCE_SERVICE_ID = "nex-cx"
 RETRIEVAL_PACKAGE_STATUSES = ("READY", "LOW_CONFIDENCE", "NO_ANSWER")
+RETRIEVAL_SCORE_CALIBRATION_BUCKETS = (
+    "READY",
+    "LOW_CONFIDENCE",
+    "NO_ANSWER",
+    "UNKNOWN",
+)
+RETRIEVAL_SCORE_CALIBRATION_ACTIONS = (
+    "default_threshold_accepts_score",
+    "review_low_confidence_boundary",
+    "inspect_no_answer_retrieval",
+    "review_live_threshold_before_canonical_policy",
+    "compare_observed_and_default_confidence",
+    "calibration_data_incomplete",
+)
 DEFAULT_RETRIEVAL_PACKAGE_LIMIT = 50
 MAX_RETRIEVAL_PACKAGE_SCAN_LIMIT = 500
 DEFAULT_LOW_CONFIDENCE_THRESHOLD = 0.2
@@ -401,6 +418,74 @@ def register_retrieval_package_operation_routes(
             request_trace_id=trace_id_from_headers(request),
         )
 
+    @app.get("/admin/v1/operations/retrieval-score-calibration", response_model=None)
+    def list_retrieval_score_calibration_rollup(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        status: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        retrieval_policy_id: str | None = None,
+        calibration_action: str | None = None,
+        default_confidence_bucket: str | None = None,
+        threshold_override: bool | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        sort: str | None = None,
+        cursor: str | None = None,
+        limit: int = Query(default=DEFAULT_RETRIEVAL_PACKAGE_LIMIT, ge=1),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        filter_problem = _validate_retrieval_score_calibration_filters(
+            request,
+            service_id=service_id,
+            status=status,
+            calibration_action=calibration_action,
+            default_confidence_bucket=default_confidence_bucket,
+        )
+        if filter_problem is not None:
+            return filter_problem
+        query_options = _build_query_options_or_problem(
+            request,
+            limit=limit,
+            since=since,
+            until=until,
+            sort=sort,
+            cursor=cursor,
+        )
+        if isinstance(query_options, JSONResponse):
+            return query_options
+        selected_stores = configured_stores
+        if selected_stores is None:
+            selected_runtime = runtime or getattr(
+                request.app.state,
+                "nex_ag_operations_source_runtime",
+                None,
+            )
+            selected_stores = build_retrieval_package_operation_stores(
+                runtime=selected_runtime
+            )
+        return build_retrieval_score_calibration_rollup_projection(
+            stores=selected_stores,
+            service_id=service_id,
+            status=status.upper() if status is not None else None,
+            trace_id=trace_id,
+            request_id=request_id,
+            retrieval_policy_id=retrieval_policy_id,
+            calibration_action=calibration_action,
+            default_confidence_bucket=(
+                default_confidence_bucket.upper()
+                if default_confidence_bucket is not None
+                else None
+            ),
+            threshold_override=threshold_override,
+            query_options=query_options,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
     @app.get(
         "/admin/v1/operations/retrieval-packages/{retrieval_package_id}",
         response_model=None,
@@ -572,6 +657,106 @@ def build_retrieval_package_operations_projection(
     return projection
 
 
+def build_retrieval_score_calibration_rollup_projection(
+    *,
+    stores: Mapping[str, RetrievalPackageOperationsStore],
+    service_id: str | None = None,
+    status: str | None = None,
+    trace_id: str | None = None,
+    request_id: str | None = None,
+    retrieval_policy_id: str | None = None,
+    calibration_action: str | None = None,
+    default_confidence_bucket: str | None = None,
+    threshold_override: bool | None = None,
+    query_options: OperationQueryOptions | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    options = query_options or build_operation_query_options(
+        limit=DEFAULT_RETRIEVAL_PACKAGE_LIMIT
+    )
+    selected_service_ids = (
+        [service_id] if service_id is not None else [RETRIEVAL_PACKAGE_SOURCE_SERVICE_ID]
+    )
+    samples: list[dict[str, Any]] = []
+    source_statuses: dict[str, dict[str, Any]] = {}
+    for selected_service_id in selected_service_ids:
+        store = stores.get(selected_service_id)
+        if store is None:
+            source_statuses[selected_service_id] = _retrieval_source_status(
+                service_id=selected_service_id,
+                store=None,
+                package_count=0,
+            )
+            continue
+        try:
+            records = store.list_retrieval_packages(
+                status=status,
+                trace_id=trace_id,
+                request_id=request_id,
+                retrieval_policy_id=retrieval_policy_id,
+                limit=MAX_RETRIEVAL_PACKAGE_SCAN_LIMIT,
+            )
+        except RetrievalPackageOperationsError as exc:
+            source_statuses[selected_service_id] = _retrieval_source_status(
+                service_id=selected_service_id,
+                store=store,
+                package_count=0,
+                error=exc,
+            )
+            continue
+        records = _filter_packages_by_time(records, options)
+        source_statuses[selected_service_id] = _retrieval_source_status(
+            service_id=selected_service_id,
+            store=store,
+            package_count=len(records),
+        )
+        samples.extend(
+            _project_retrieval_score_calibration_sample(selected_service_id, record)
+            for record in records
+        )
+
+    samples = _filter_retrieval_score_calibration_samples(
+        samples,
+        calibration_action=calibration_action,
+        default_confidence_bucket=default_confidence_bucket,
+        threshold_override=threshold_override,
+    )
+    page = _apply_retrieval_package_query_options(samples, options)
+    projection_status = (
+        "DEGRADED"
+        if any(
+            source["status"] in {"NOT_CONFIGURED", "UNAVAILABLE"}
+            for source in source_statuses.values()
+        )
+        else "READY"
+    )
+    projection = {
+        "projection_schema_version": (
+            AG_RETRIEVAL_SCORE_CALIBRATION_ROLLUP_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": projection_status,
+        "checked_at": _utc_now(),
+        "filters": {
+            "service_id": service_id,
+            "status": status,
+            "trace_id": trace_id,
+            "request_id": request_id,
+            "retrieval_policy_id": retrieval_policy_id,
+            "calibration_action": calibration_action,
+            "default_confidence_bucket": default_confidence_bucket,
+            "threshold_override": threshold_override,
+            **options.to_filter_dict(),
+        },
+        "calibration_samples": page["items"],
+        "summary": summarize_retrieval_score_calibration_samples(page["items"]),
+        "source_statuses": source_statuses,
+        "pagination": page["pagination"],
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
 def summarize_retrieval_package_operations(
     packages: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -627,6 +812,65 @@ def summarize_retrieval_package_operations(
             ),
             "action_counts": calibration_action_counts,
         },
+    }
+
+
+def summarize_retrieval_score_calibration_samples(
+    samples: list[dict[str, Any]],
+) -> dict[str, Any]:
+    by_policy: dict[str, int] = {}
+    by_observed_status: dict[str, int] = {}
+    by_default_bucket: dict[str, int] = {}
+    by_action: dict[str, int] = {}
+    margins = [
+        margin
+        for sample in samples
+        if (
+            margin := _number_or_none(
+                _mapping_value(sample.get("score_calibration")).get(
+                    "score_margin_to_default_threshold"
+                )
+            )
+        )
+        is not None
+    ]
+    for sample in samples:
+        calibration = _mapping_value(sample.get("score_calibration"))
+        policy_id = str(sample["retrieval_policy_id"])
+        observed_status = str(sample["status"])
+        default_bucket = str(calibration.get("default_confidence_bucket", "UNKNOWN"))
+        action = str(calibration.get("calibration_action", "UNKNOWN"))
+        by_policy[policy_id] = by_policy.get(policy_id, 0) + 1
+        by_observed_status[observed_status] = (
+            by_observed_status.get(observed_status, 0) + 1
+        )
+        by_default_bucket[default_bucket] = by_default_bucket.get(default_bucket, 0) + 1
+        by_action[action] = by_action.get(action, 0) + 1
+    return {
+        "total_samples": len(samples),
+        "by_policy": by_policy,
+        "by_observed_status": by_observed_status,
+        "by_default_confidence_bucket": by_default_bucket,
+        "by_calibration_action": by_action,
+        "threshold_override_count": sum(
+            1
+            for sample in samples
+            if _mapping_value(sample.get("score_calibration")).get(
+                "threshold_override_used"
+            )
+            is True
+        ),
+        "would_pass_default_threshold": sum(
+            1
+            for sample in samples
+            if _mapping_value(sample.get("score_calibration")).get(
+                "would_pass_default_threshold"
+            )
+            is True
+        ),
+        "score_margin_to_default_threshold": (
+            {"min": min(margins), "max": max(margins)} if margins else None
+        ),
     }
 
 
@@ -808,6 +1052,34 @@ def _project_retrieval_package(
         "source_count": _integer_or_none(source_summary.get("source_count")),
         "document_count": _integer_or_none(source_summary.get("document_count")),
         "chunk_count": _integer_or_none(source_summary.get("chunk_count")),
+        "created_at": record["created_at"],
+        "updated_at": record["updated_at"],
+    }
+
+
+def _project_retrieval_score_calibration_sample(
+    service_id: str,
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    calibration = build_retrieval_score_calibration_projection(record)
+    return {
+        "service_id": service_id,
+        "operation_type": "retrieval_score_calibration",
+        "operation_timestamp": record["created_at"],
+        "retrieval_package_id": record["retrieval_package_id"],
+        "package_hash": record["package_hash"],
+        "status": record["status"],
+        "trace_id": record["trace_id"],
+        "request_id": record["request_id"],
+        "retrieval_policy_id": record["retrieval_policy_id"],
+        "retrieval_policy_version": record.get("retrieval_policy_version"),
+        "ranker_mix": record["ranker_mix"],
+        "rerank_state": record["rerank_state"],
+        "evidence_count": int(record["evidence_count"]),
+        "warning_count": int(record["warning_count"]),
+        "no_answer_reason": record.get("no_answer_reason"),
+        "best_score": calibration["best_score"],
+        "score_calibration": calibration,
         "created_at": record["created_at"],
         "updated_at": record["updated_at"],
     }
@@ -1071,6 +1343,58 @@ def _validate_retrieval_package_filters(
     return None
 
 
+def _validate_retrieval_score_calibration_filters(
+    request: Request,
+    *,
+    service_id: str | None,
+    status: str | None,
+    calibration_action: str | None,
+    default_confidence_bucket: str | None,
+) -> JSONResponse | None:
+    package_problem = _validate_retrieval_package_filters(
+        request,
+        service_id=service_id,
+        status=status,
+    )
+    if package_problem is not None:
+        return package_problem
+    if (
+        calibration_action is not None
+        and calibration_action not in RETRIEVAL_SCORE_CALIBRATION_ACTIONS
+    ):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.retrieval_score_calibration_action_invalid",
+            title="Invalid retrieval score calibration action filter",
+            detail=f"Unsupported retrieval score calibration action: {calibration_action}",
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "retrieval-score-calibration-action-invalid"
+            ),
+        )
+    if (
+        default_confidence_bucket is not None
+        and default_confidence_bucket.upper()
+        not in RETRIEVAL_SCORE_CALIBRATION_BUCKETS
+    ):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.retrieval_score_calibration_bucket_invalid",
+            title="Invalid retrieval score calibration bucket filter",
+            detail=(
+                "Unsupported retrieval score calibration default bucket: "
+                f"{default_confidence_bucket}"
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "retrieval-score-calibration-bucket-invalid"
+            ),
+        )
+    return None
+
+
 def _build_query_options_or_problem(
     request: Request,
     *,
@@ -1161,6 +1485,36 @@ def _apply_retrieval_package_query_options(
             returned=len(page_items),
         ),
     }
+
+
+def _filter_retrieval_score_calibration_samples(
+    samples: list[dict[str, Any]],
+    *,
+    calibration_action: str | None,
+    default_confidence_bucket: str | None,
+    threshold_override: bool | None,
+) -> list[dict[str, Any]]:
+    filtered: list[dict[str, Any]] = []
+    for sample in samples:
+        calibration = _mapping_value(sample.get("score_calibration"))
+        if (
+            calibration_action is not None
+            and calibration.get("calibration_action") != calibration_action
+        ):
+            continue
+        if (
+            default_confidence_bucket is not None
+            and calibration.get("default_confidence_bucket")
+            != default_confidence_bucket
+        ):
+            continue
+        if (
+            threshold_override is not None
+            and calibration.get("threshold_override_used") is not threshold_override
+        ):
+            continue
+        filtered.append(sample)
+    return filtered
 
 
 def _timestamp_to_wire(value: Any) -> str:

@@ -25,6 +25,7 @@
         "ag_job_operation_detail_projection.v1",
         "ag_retrieval_package_operations_projection.v1",
         "ag_retrieval_package_detail_projection.v1",
+        "ag_retrieval_score_calibration_rollup_projection.v1",
         "ag_cx_processing_run_operations_projection.v1",
         "ag_cx_processing_run_detail_projection.v1",
         "ag_unified_operations_projection.v1",
@@ -145,6 +146,12 @@
     },
     "retrieval_package": {
       "$ref": "#/$defs/retrieval_package_operation"
+    },
+    "calibration_samples": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/retrieval_score_calibration_sample"
+      }
     },
     "evidence_items": {
       "type": "array",
@@ -2690,6 +2697,126 @@
             "compare_observed_and_default_confidence",
             "calibration_data_incomplete"
           ]
+        }
+      }
+    },
+    "retrieval_score_calibration_sample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service_id",
+        "operation_type",
+        "operation_timestamp",
+        "retrieval_package_id",
+        "package_hash",
+        "status",
+        "trace_id",
+        "request_id",
+        "retrieval_policy_id",
+        "retrieval_policy_version",
+        "ranker_mix",
+        "rerank_state",
+        "evidence_count",
+        "warning_count",
+        "no_answer_reason",
+        "best_score",
+        "score_calibration",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        },
+        "operation_type": {
+          "const": "retrieval_score_calibration"
+        },
+        "operation_timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "retrieval_package_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "LOW_CONFIDENCE",
+            "NO_ANSWER"
+          ]
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/trace_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retrieval_policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retrieval_policy_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ranker_mix": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rerank_state": {
+          "type": "string",
+          "enum": [
+            "APPLIED",
+            "NOT_APPLIED",
+            "FAILED"
+          ]
+        },
+        "evidence_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "no_answer_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "best_score": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "score_calibration": {
+          "$ref": "#/$defs/retrieval_score_calibration"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
         }
       }
     },

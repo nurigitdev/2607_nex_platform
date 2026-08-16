@@ -1,0 +1,98 @@
+{
+  "projection_schema_version": "ag_retrieval_score_calibration_rollup_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-16T00:00:00Z",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "filters": {
+    "service_id": "nex-cx",
+    "status": null,
+    "trace_id": null,
+    "request_id": null,
+    "retrieval_policy_id": "retrieval_quality_v1",
+    "calibration_action": "review_live_threshold_before_canonical_policy",
+    "default_confidence_bucket": "LOW_CONFIDENCE",
+    "threshold_override": true,
+    "limit": 50,
+    "since": null,
+    "until": null,
+    "sort": "desc",
+    "cursor": null
+  },
+  "calibration_samples": [
+    {
+      "service_id": "nex-cx",
+      "operation_type": "retrieval_score_calibration",
+      "operation_timestamp": "2026-08-16T00:00:00Z",
+      "retrieval_package_id": "7ffcf694-7f86-528b-b1b3-f6a54c7ecbda",
+      "package_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "READY",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+      "retrieval_policy_id": "retrieval_quality_v1",
+      "retrieval_policy_version": "0001",
+      "ranker_mix": "weighted_rrf_vector_bm25_v1",
+      "rerank_state": "APPLIED",
+      "evidence_count": 1,
+      "warning_count": 0,
+      "no_answer_reason": null,
+      "best_score": 0.159322,
+      "score_calibration": {
+        "calibration_schema_version": "ag_retrieval_score_calibration.v1",
+        "quality_policy_id": "retrieval_quality_v1",
+        "observed_status": "READY",
+        "observed_confidence_bucket": "READY",
+        "default_confidence_bucket": "LOW_CONFIDENCE",
+        "best_score": 0.159322,
+        "evidence_count": 1,
+        "observed_low_confidence_threshold": 0.0,
+        "default_low_confidence_threshold": 0.2,
+        "threshold_override_used": true,
+        "threshold_override_direction": "lowered",
+        "would_pass_default_threshold": false,
+        "score_margin_to_observed_threshold": 0.159322,
+        "score_margin_to_default_threshold": -0.040678,
+        "calibration_action": "review_live_threshold_before_canonical_policy"
+      },
+      "created_at": "2026-08-16T00:00:00Z",
+      "updated_at": "2026-08-16T00:00:00Z"
+    }
+  ],
+  "summary": {
+    "total_samples": 1,
+    "by_policy": {
+      "retrieval_quality_v1": 1
+    },
+    "by_observed_status": {
+      "READY": 1
+    },
+    "by_default_confidence_bucket": {
+      "LOW_CONFIDENCE": 1
+    },
+    "by_calibration_action": {
+      "review_live_threshold_before_canonical_policy": 1
+    },
+    "threshold_override_count": 1,
+    "would_pass_default_threshold": 0,
+    "score_margin_to_default_threshold": {
+      "min": -0.040678,
+      "max": -0.040678
+    }
+  },
+  "source_statuses": {
+    "nex-cx": {
+      "status": "READY",
+      "service_id": "nex-cx",
+      "source_kind": "postgres-read",
+      "package_count": 1,
+      "database_env": "NEX_CX_TEST_DATABASE_URL",
+      "redacted_database_url": "postgresql://nex_cx_user:***@localhost/nex_cx_test"
+    }
+  },
+  "pagination": {
+    "limit": 50,
+    "cursor": null,
+    "returned": 1,
+    "total_after_filters": 1,
+    "next_cursor": null
+  }
+}

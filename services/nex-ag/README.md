@@ -26,6 +26,7 @@ Current endpoints:
 - `GET /admin/v1/operations/cx-processing-runs/{pipeline_run_id}`
 - `GET /admin/v1/operations/retrieval-packages`
 - `GET /admin/v1/operations/retrieval-packages/{retrieval_package_id}`
+- `GET /admin/v1/operations/retrieval-score-calibration`
 - `POST /admin/v1/operations/jobs/{service_id}/{job_id}/cancel`
 - `POST /admin/v1/operations/jobs/{service_id}/{job_id}/retry`
 - `GET /admin/v1/operations/sources`
@@ -165,6 +166,12 @@ Unified operations:
   such as ranks, hashes, score summaries, permission outcomes, and quality flags
   while redacting evidence text previews and principal ids. Detail responses
   include the same score-calibration record for threshold/debug review.
+- `GET /admin/v1/operations/retrieval-score-calibration` returns
+  `ag_retrieval_score_calibration_rollup_projection.v1`, a safe rollup/query
+  surface over persisted CX retrieval package score-calibration records. It
+  supports policy, status, action, default-bucket, threshold-override, trace,
+  request, time-window, sort, cursor, and limit filters without live provider
+  calls.
 - The AG operations contract family also reserves
   `ag_cx_processing_run_operations_projection.v1` and
   `ag_cx_processing_run_detail_projection.v1` for CX processing run

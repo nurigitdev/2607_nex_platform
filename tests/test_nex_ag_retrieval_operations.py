@@ -15,17 +15,20 @@ from nex_ag.operations import (
 from nex_ag.retrieval_operations import (
     AG_RETRIEVAL_PACKAGE_DETAIL_PROJECTION_SCHEMA_VERSION,
     AG_RETRIEVAL_PACKAGE_OPERATIONS_PROJECTION_SCHEMA_VERSION,
+    AG_RETRIEVAL_SCORE_CALIBRATION_ROLLUP_PROJECTION_SCHEMA_VERSION,
     AG_RETRIEVAL_SCORE_CALIBRATION_SCHEMA_VERSION,
     InMemoryRetrievalPackageOperationsStore,
     RetrievalPackageOperationsError,
     SqlAlchemyRetrievalPackageOperationsStore,
     build_retrieval_score_calibration_projection,
+    build_retrieval_score_calibration_rollup_projection,
     build_retrieval_package_detail_projection,
     build_retrieval_package_operation_stores,
     build_retrieval_package_operations_projection,
     register_retrieval_package_operation_routes,
     summarize_retrieval_package_detail,
     summarize_retrieval_package_operations,
+    summarize_retrieval_score_calibration_samples,
 )
 from nex_runtime import (
     build_engine,
@@ -382,6 +385,266 @@ def test_retrieval_score_calibration_projection_reports_threshold_boundaries() -
     assert incomplete["observed_confidence_bucket"] == "UNKNOWN"
     assert incomplete["default_confidence_bucket"] == "UNKNOWN"
     assert incomplete["calibration_action"] == "calibration_data_incomplete"
+
+
+def test_retrieval_score_calibration_rollup_filters_and_summarizes() -> None:
+    store = InMemoryRetrievalPackageOperationsStore(
+        records=[
+            retrieval_record(
+                policy_id="retrieval_quality_v1",
+                score_summary={
+                    "best_score": 0.159322,
+                    "ranker_mix": "weighted_rrf_vector_bm25_v1",
+                    "rerank_state": "APPLIED",
+                    "confidence_bucket": "READY",
+                    "quality_policy_id": "retrieval_quality_v1",
+                    "low_confidence_threshold": 0.0,
+                },
+            ),
+            retrieval_record(
+                retrieval_package_id="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                policy_id="retrieval_quality_v1",
+                score_summary={
+                    "best_score": 0.91,
+                    "confidence_bucket": "READY",
+                    "quality_policy_id": "retrieval_quality_v1",
+                    "low_confidence_threshold": 0.2,
+                },
+                created_at="2026-08-09T00:01:00Z",
+            ),
+            retrieval_record(
+                retrieval_package_id="cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                policy_id="retrieval_quality_v1",
+                status="NO_ANSWER",
+                evidence_count=0,
+                no_answer_reason="no_terms_matched",
+                score_summary={
+                    "best_score": 0.0,
+                    "confidence_bucket": "NO_ANSWER",
+                    "quality_policy_id": "retrieval_quality_v1",
+                    "low_confidence_threshold": 0.2,
+                },
+                created_at="2026-08-09T00:02:00Z",
+            ),
+        ]
+    )
+
+    projection = build_retrieval_score_calibration_rollup_projection(
+        stores={"nex-cx": store},
+        retrieval_policy_id="retrieval_quality_v1",
+        calibration_action="review_live_threshold_before_canonical_policy",
+        default_confidence_bucket="LOW_CONFIDENCE",
+        threshold_override=True,
+        query_options=build_operation_query_options(limit=10, sort="asc"),
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == (
+        AG_RETRIEVAL_SCORE_CALIBRATION_ROLLUP_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["projection_status"] == "READY"
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["filters"]["calibration_action"] == (
+        "review_live_threshold_before_canonical_policy"
+    )
+    assert projection["filters"]["threshold_override"] is True
+    assert projection["summary"] == {
+        "total_samples": 1,
+        "by_policy": {"retrieval_quality_v1": 1},
+        "by_observed_status": {"READY": 1},
+        "by_default_confidence_bucket": {"LOW_CONFIDENCE": 1},
+        "by_calibration_action": {
+            "review_live_threshold_before_canonical_policy": 1
+        },
+        "threshold_override_count": 1,
+        "would_pass_default_threshold": 0,
+        "score_margin_to_default_threshold": {
+            "min": -0.040678,
+            "max": -0.040678,
+        },
+    }
+    sample = projection["calibration_samples"][0]
+    assert sample["operation_type"] == "retrieval_score_calibration"
+    assert sample["best_score"] == 0.159322
+    assert sample["score_calibration"]["threshold_override_direction"] == "lowered"
+    assert "bounded retrieval query preview" not in str(projection)
+
+
+def test_retrieval_score_calibration_rollup_handles_empty_and_degraded_sources() -> None:
+    class BrokenStore(InMemoryRetrievalPackageOperationsStore):
+        def list_retrieval_packages(self, **kwargs: object) -> list[dict[str, object]]:
+            raise RetrievalPackageOperationsError(
+                error_code="ag.retrieval_package_source_unavailable",
+                detail="source unavailable",
+            )
+
+    empty_summary = summarize_retrieval_score_calibration_samples([])
+    missing_projection = build_retrieval_score_calibration_rollup_projection(
+        stores={},
+        service_id="nex-cx",
+    )
+    broken_projection = build_retrieval_score_calibration_rollup_projection(
+        stores={"nex-cx": BrokenStore()},
+        service_id="nex-cx",
+    )
+
+    assert empty_summary == {
+        "total_samples": 0,
+        "by_policy": {},
+        "by_observed_status": {},
+        "by_default_confidence_bucket": {},
+        "by_calibration_action": {},
+        "threshold_override_count": 0,
+        "would_pass_default_threshold": 0,
+        "score_margin_to_default_threshold": None,
+    }
+    assert missing_projection["projection_status"] == "DEGRADED"
+    assert missing_projection["calibration_samples"] == []
+    assert missing_projection["source_statuses"]["nex-cx"]["status"] == (
+        "NOT_CONFIGURED"
+    )
+    assert broken_projection["projection_status"] == "DEGRADED"
+    assert broken_projection["source_statuses"]["nex-cx"]["status"] == "UNAVAILABLE"
+    assert broken_projection["source_statuses"]["nex-cx"]["error_code"] == (
+        "ag.retrieval_package_source_unavailable"
+    )
+
+
+def test_retrieval_score_calibration_rollup_filter_misses_and_time_window() -> None:
+    store = InMemoryRetrievalPackageOperationsStore(
+        records=[
+            retrieval_record(
+                retrieval_package_id="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                created_at="2026-08-09T00:00:00Z",
+                score_summary={
+                    "best_score": 0.9,
+                    "confidence_bucket": "READY",
+                    "quality_policy_id": "retrieval_quality_v1",
+                    "low_confidence_threshold": 0.2,
+                },
+            ),
+            retrieval_record(
+                retrieval_package_id="cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                created_at="2026-08-10T00:00:00Z",
+                score_summary={
+                    "best_score": 0.159322,
+                    "confidence_bucket": "READY",
+                    "quality_policy_id": "retrieval_quality_v1",
+                    "low_confidence_threshold": 0.0,
+                },
+            ),
+        ]
+    )
+
+    no_match = build_retrieval_score_calibration_rollup_projection(
+        stores={"nex-cx": store},
+        default_confidence_bucket="NO_ANSWER",
+        threshold_override=False,
+        query_options=build_operation_query_options(
+            limit=5,
+            since="2026-08-09T12:00:00Z",
+            until="2026-08-10T12:00:00Z",
+        ),
+    )
+    default_ready = build_retrieval_score_calibration_rollup_projection(
+        stores={"nex-cx": store},
+        default_confidence_bucket="READY",
+        threshold_override=False,
+        query_options=build_operation_query_options(limit=5, sort="asc"),
+    )
+
+    assert no_match["summary"]["total_samples"] == 0
+    assert no_match["source_statuses"]["nex-cx"]["package_count"] == 1
+    assert default_ready["summary"]["total_samples"] == 1
+    assert default_ready["calibration_samples"][0]["retrieval_package_id"] == (
+        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    )
+
+
+def test_retrieval_score_calibration_rollup_route_filters_and_validates() -> None:
+    client = build_app(
+        {
+            "nex-cx": InMemoryRetrievalPackageOperationsStore(
+                records=[
+                    retrieval_record(
+                        policy_id="retrieval_quality_v1",
+                        score_summary={
+                            "best_score": 0.159322,
+                            "confidence_bucket": "READY",
+                            "quality_policy_id": "retrieval_quality_v1",
+                            "low_confidence_threshold": 0.0,
+                        },
+                    )
+                ]
+            )
+        }
+    )
+
+    unauthorized = client.get("/admin/v1/operations/retrieval-score-calibration")
+    bad_action = client.get(
+        "/admin/v1/operations/retrieval-score-calibration",
+        params={"calibration_action": "not_supported"},
+        headers=auth_headers(),
+    )
+    bad_bucket = client.get(
+        "/admin/v1/operations/retrieval-score-calibration",
+        params={"default_confidence_bucket": "not_supported"},
+        headers=auth_headers(),
+    )
+    bad_cursor = client.get(
+        "/admin/v1/operations/retrieval-score-calibration",
+        params={"cursor": "-1"},
+        headers=auth_headers(),
+    )
+    ok = client.get(
+        "/admin/v1/operations/retrieval-score-calibration",
+        params={
+            "calibration_action": (
+                "review_live_threshold_before_canonical_policy"
+            ),
+            "default_confidence_bucket": "low_confidence",
+            "threshold_override": "true",
+        },
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert bad_action.status_code == 400
+    assert bad_action.json()["error_code"] == (
+        "ag.retrieval_score_calibration_action_invalid"
+    )
+    assert bad_bucket.status_code == 400
+    assert bad_bucket.json()["error_code"] == (
+        "ag.retrieval_score_calibration_bucket_invalid"
+    )
+    assert bad_cursor.status_code == 400
+    assert bad_cursor.json()["error_code"] == "ag.operation_cursor_invalid"
+    assert ok.status_code == 200
+    payload = ok.json()
+    assert payload["summary"]["total_samples"] == 1
+    assert payload["filters"]["default_confidence_bucket"] == "LOW_CONFIDENCE"
+
+
+def test_retrieval_score_calibration_rollup_route_reads_runtime_from_app_state() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    app.state.nex_ag_operations_source_runtime = AgOperationsSourceRuntime(
+        mode="memory",
+        profile="dev",
+        selected_service_ids=("nex-cx",),
+        registry=None,
+    )
+    register_retrieval_package_operation_routes(app)
+    client = TestClient(app)
+
+    response = client.get(
+        "/admin/v1/operations/retrieval-score-calibration",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["projection_status"] == "READY"
+    assert payload["source_statuses"]["nex-cx"]["source_kind"] == "memory"
 
 
 def test_retrieval_package_operations_route_requires_auth_and_validates_filters() -> None:
