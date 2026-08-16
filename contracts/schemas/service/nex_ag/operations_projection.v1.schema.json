@@ -26,6 +26,7 @@
         "ag_retrieval_package_operations_projection.v1",
         "ag_retrieval_package_detail_projection.v1",
         "ag_retrieval_score_calibration_rollup_projection.v1",
+        "ag_retrieval_threshold_decision_projection.v1",
         "ag_cx_processing_run_operations_projection.v1",
         "ag_cx_processing_run_detail_projection.v1",
         "ag_unified_operations_projection.v1",
@@ -151,6 +152,12 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/retrieval_score_calibration_sample"
+      }
+    },
+    "threshold_decisions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/retrieval_threshold_decision_operation"
       }
     },
     "evidence_items": {
@@ -2817,6 +2824,177 @@
         "updated_at": {
           "type": "string",
           "format": "date-time"
+        }
+      }
+    },
+    "retrieval_threshold_decision_operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service_id",
+        "operation_type",
+        "policy_id",
+        "policy_version",
+        "policy_status",
+        "decision_id",
+        "decision_status",
+        "canonical_low_confidence_threshold",
+        "candidate_low_confidence_threshold",
+        "live_smoke_override_threshold",
+        "minimum_live_samples_before_change",
+        "observed_sample_count",
+        "observed_threshold_override_count",
+        "observed_default_pass_count",
+        "observed_default_confidence_buckets",
+        "observed_calibration_actions",
+        "observed_score_margin_to_default_threshold",
+        "sample_readiness",
+        "recommended_operator_action",
+        "review_owner_service",
+        "policy_hash",
+        "evidence_sources",
+        "decision_note"
+      ],
+      "properties": {
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        },
+        "operation_type": {
+          "const": "retrieval_threshold_decision"
+        },
+        "policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "policy_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decision_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "decision_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonical_low_confidence_threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "candidate_low_confidence_threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "live_smoke_override_threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_live_samples_before_change": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observed_sample_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observed_threshold_override_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observed_default_pass_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observed_default_confidence_buckets": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "observed_calibration_actions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "observed_score_margin_to_default_threshold": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "min",
+                "max"
+              ],
+              "properties": {
+                "min": {
+                  "type": "number"
+                },
+                "max": {
+                  "type": "number"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sample_readiness": {
+          "type": "string",
+          "enum": [
+            "SOURCE_DEGRADED",
+            "NO_DECISION_CHECKPOINT",
+            "INSUFFICIENT_SAMPLES",
+            "NEEDS_OPERATOR_REVIEW",
+            "READY_FOR_REVIEW"
+          ]
+        },
+        "recommended_operator_action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "review_owner_service": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "policy_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "evidence_sources": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "decision_note": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     },

@@ -17,6 +17,7 @@ from nex_ag.retrieval_operations import (
     AG_RETRIEVAL_PACKAGE_OPERATIONS_PROJECTION_SCHEMA_VERSION,
     AG_RETRIEVAL_SCORE_CALIBRATION_ROLLUP_PROJECTION_SCHEMA_VERSION,
     AG_RETRIEVAL_SCORE_CALIBRATION_SCHEMA_VERSION,
+    AG_RETRIEVAL_THRESHOLD_DECISION_PROJECTION_SCHEMA_VERSION,
     InMemoryRetrievalPackageOperationsStore,
     RetrievalPackageOperationsError,
     SqlAlchemyRetrievalPackageOperationsStore,
@@ -25,10 +26,12 @@ from nex_ag.retrieval_operations import (
     build_retrieval_package_detail_projection,
     build_retrieval_package_operation_stores,
     build_retrieval_package_operations_projection,
+    build_retrieval_threshold_decision_projection,
     register_retrieval_package_operation_routes,
     summarize_retrieval_package_detail,
     summarize_retrieval_package_operations,
     summarize_retrieval_score_calibration_samples,
+    summarize_retrieval_threshold_decisions,
 )
 from nex_runtime import (
     build_engine,
@@ -638,6 +641,271 @@ def test_retrieval_score_calibration_rollup_route_reads_runtime_from_app_state()
 
     response = client.get(
         "/admin/v1/operations/retrieval-score-calibration",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["projection_status"] == "READY"
+    assert payload["source_statuses"]["nex-cx"]["source_kind"] == "memory"
+
+
+def test_retrieval_threshold_decision_projection_evaluates_sample_readiness() -> None:
+    ready_records = [
+        retrieval_record(
+            retrieval_package_id=f"{index:032x}",
+            policy_id="retrieval_quality_v1",
+            created_at=f"2026-08-09T00:{index:02d}:00Z",
+            score_summary={
+                "best_score": 0.91,
+                "confidence_bucket": "READY",
+                "quality_policy_id": "retrieval_quality_v1",
+                "low_confidence_threshold": 0.2,
+            },
+        )
+        for index in range(20)
+    ]
+    override_record = retrieval_record(
+        retrieval_package_id="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        policy_id="weighted_rrf_vector_bm25_v1",
+        created_at="2026-08-09T00:20:00Z",
+        score_summary={
+            "best_score": 0.159322,
+            "confidence_bucket": "READY",
+            "quality_policy_id": "weighted_rrf_vector_bm25_v1",
+            "low_confidence_threshold": 0.0,
+        },
+    )
+    projection = build_retrieval_threshold_decision_projection(
+        stores={
+            "nex-cx": InMemoryRetrievalPackageOperationsStore(
+                records=[*ready_records, override_record]
+            )
+        },
+        query_options=build_operation_query_options(limit=50, sort="asc"),
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == (
+        AG_RETRIEVAL_THRESHOLD_DECISION_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["projection_status"] == "READY"
+    assert projection["request_trace_id"] == TRACE_ID
+    assert projection["summary"]["total_decisions"] == 2
+    assert projection["summary"]["ready_for_review"] == 1
+    assert projection["summary"]["insufficient_samples"] == 1
+    by_policy = {
+        decision["policy_id"]: decision
+        for decision in projection["threshold_decisions"]
+    }
+    assert by_policy["retrieval_quality_v1"]["sample_readiness"] == (
+        "READY_FOR_REVIEW"
+    )
+    assert by_policy["retrieval_quality_v1"]["recommended_operator_action"] == (
+        "prepare_threshold_policy_review"
+    )
+    assert by_policy["retrieval_quality_v1"]["observed_sample_count"] == 20
+    assert by_policy["weighted_rrf_vector_bm25_v1"]["sample_readiness"] == (
+        "INSUFFICIENT_SAMPLES"
+    )
+    assert by_policy["weighted_rrf_vector_bm25_v1"][
+        "observed_threshold_override_count"
+    ] == 1
+    assert "bounded retrieval query preview" not in str(projection)
+
+
+def test_retrieval_threshold_decision_projection_reports_review_and_gaps() -> None:
+    override_records = [
+        retrieval_record(
+            retrieval_package_id=f"{index + 100:032x}",
+            policy_id="retrieval_quality_v1",
+            created_at=f"2026-08-09T01:{index:02d}:00Z",
+            score_summary={
+                "best_score": 0.159322,
+                "confidence_bucket": "READY",
+                "quality_policy_id": "retrieval_quality_v1",
+                "low_confidence_threshold": 0.0,
+            },
+        )
+        for index in range(20)
+    ]
+    legacy_policy = {
+        "policy_schema_version": "retrieval_policy.v1",
+        "policy_id": "legacy_threshold_policy",
+        "version": "0001",
+        "status": "CANDIDATE",
+        "lifecycle": "planned_runtime",
+        "owner_service": "nex-ag",
+        "applies_to_service": "nex-cx",
+        "description": "Legacy policy without threshold decision metadata.",
+        "ranker": {
+            "method": "bm25_with_embedding_presence",
+            "bm25_weight": 0.85,
+            "embedding_presence_weight": 0.15,
+            "embedding_presence_score": 0.5,
+            "vector_weight": 0.0,
+            "rrf_k": None,
+        },
+        "candidate_limits": {
+            "default_top_k": 5,
+            "max_top_k": 20,
+            "vector_candidate_limit": 0,
+            "bm25_candidate_limit": 50,
+            "rerank_candidate_limit": 50,
+        },
+        "confidence": {"low_confidence_threshold": 0.2},
+        "tokenizer_profile": {
+            "bm25_tokenizer": "mecab_ko",
+            "bm25_tokenizer_fallback": "korean_mixed_v1",
+            "query_tokenizer_policy": "fallback_safe_current_slice",
+            "dictionary_profile": "runtime_default",
+            "dictionary_path_env": "MECAB_DICDIR",
+        },
+        "provider_aliases": {
+            "embedding_alias": "mock-embedding-default",
+            "reranker_alias": "mock-reranker-default",
+        },
+        "request_override_policy": {
+            "allowed": True,
+            "scope": "test_and_smoke_only_until_policy_publish",
+        },
+    }
+    current_policy = {
+        **legacy_policy,
+        "policy_id": "retrieval_quality_v1",
+        "status": "ACTIVE",
+        "threshold_decision": {
+            "decision_schema_version": "retrieval_threshold_decision.v1",
+            "decision_id": "retrieval_quality_v1_threshold_0001",
+            "decision_status": "OBSERVE",
+            "canonical_low_confidence_threshold": 0.2,
+            "candidate_low_confidence_threshold": None,
+            "live_smoke_override_threshold": 0.0,
+            "minimum_live_samples_before_change": 20,
+            "review_owner_service": "nex-ag",
+            "operator_action": "collect_live_score_samples",
+            "evidence_sources": [
+                "Slice 0297 protected_live_rag_score_calibration.v1"
+            ],
+            "decision_note": "Collect samples first.",
+        },
+    }
+
+    projection = build_retrieval_threshold_decision_projection(
+        stores={
+            "nex-cx": InMemoryRetrievalPackageOperationsStore(
+                records=override_records
+            )
+        },
+        policies=(current_policy, legacy_policy),
+        query_options=build_operation_query_options(limit=50),
+    )
+
+    by_policy = {
+        decision["policy_id"]: decision
+        for decision in projection["threshold_decisions"]
+    }
+    assert by_policy["retrieval_quality_v1"]["sample_readiness"] == (
+        "NEEDS_OPERATOR_REVIEW"
+    )
+    assert by_policy["retrieval_quality_v1"]["recommended_operator_action"] == (
+        "review_threshold_override_samples"
+    )
+    assert by_policy["legacy_threshold_policy"]["sample_readiness"] == (
+        "NO_DECISION_CHECKPOINT"
+    )
+    assert by_policy["legacy_threshold_policy"]["recommended_operator_action"] == (
+        "register_threshold_decision"
+    )
+    assert summarize_retrieval_threshold_decisions([]) == {
+        "total_decisions": 0,
+        "by_sample_readiness": {},
+        "by_decision_status": {},
+        "observed_sample_count": 0,
+        "threshold_override_count": 0,
+        "ready_for_review": 0,
+        "needs_operator_review": 0,
+        "insufficient_samples": 0,
+        "source_degraded": 0,
+    }
+
+
+def test_retrieval_threshold_decision_projection_handles_degraded_sources() -> None:
+    class BrokenStore(InMemoryRetrievalPackageOperationsStore):
+        def list_retrieval_packages(self, **kwargs: object) -> list[dict[str, object]]:
+            raise RetrievalPackageOperationsError(
+                error_code="ag.retrieval_package_source_unavailable",
+                detail="source unavailable",
+            )
+
+    projection = build_retrieval_threshold_decision_projection(
+        stores={"nex-cx": BrokenStore()},
+        retrieval_policy_id="retrieval_quality_v1",
+    )
+
+    assert projection["projection_status"] == "DEGRADED"
+    assert projection["threshold_decisions"][0]["sample_readiness"] == (
+        "SOURCE_DEGRADED"
+    )
+    assert projection["threshold_decisions"][0]["recommended_operator_action"] == (
+        "repair_retrieval_operations_source"
+    )
+    assert projection["summary"]["source_degraded"] == 1
+
+
+def test_retrieval_threshold_decision_route_filters_and_validates() -> None:
+    client = build_app(
+        {
+            "nex-cx": InMemoryRetrievalPackageOperationsStore(
+                records=[retrieval_record(policy_id="retrieval_quality_v1")]
+            )
+        }
+    )
+
+    unauthorized = client.get("/admin/v1/operations/retrieval-threshold-decisions")
+    bad_service = client.get(
+        "/admin/v1/operations/retrieval-threshold-decisions",
+        params={"service_id": "nex-mo"},
+        headers=auth_headers(),
+    )
+    bad_cursor = client.get(
+        "/admin/v1/operations/retrieval-threshold-decisions",
+        params={"cursor": "-1"},
+        headers=auth_headers(),
+    )
+    ok = client.get(
+        "/admin/v1/operations/retrieval-threshold-decisions",
+        params={"retrieval_policy_id": "retrieval_quality_v1"},
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert bad_service.status_code == 400
+    assert bad_service.json()["error_code"] == "ag.retrieval_package_service_invalid"
+    assert bad_cursor.status_code == 400
+    assert bad_cursor.json()["error_code"] == "ag.operation_cursor_invalid"
+    assert ok.status_code == 200
+    payload = ok.json()
+    assert payload["projection_schema_version"] == (
+        AG_RETRIEVAL_THRESHOLD_DECISION_PROJECTION_SCHEMA_VERSION
+    )
+    assert payload["filters"]["retrieval_policy_id"] == "retrieval_quality_v1"
+    assert payload["summary"]["total_decisions"] == 1
+
+
+def test_retrieval_threshold_decision_route_reads_runtime_from_app_state() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    app.state.nex_ag_operations_source_runtime = AgOperationsSourceRuntime(
+        mode="memory",
+        profile="dev",
+        selected_service_ids=("nex-cx",),
+        registry=None,
+    )
+    register_retrieval_package_operation_routes(app)
+    client = TestClient(app)
+
+    response = client.get(
+        "/admin/v1/operations/retrieval-threshold-decisions",
         headers=auth_headers(),
     )
 

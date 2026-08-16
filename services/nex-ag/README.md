@@ -172,6 +172,11 @@ Unified operations:
   supports policy, status, action, default-bucket, threshold-override, trace,
   request, time-window, sort, cursor, and limit filters without live provider
   calls.
+- `GET /admin/v1/operations/retrieval-threshold-decisions` returns
+  `ag_retrieval_threshold_decision_projection.v1`, combining the retrieval
+  policy registry threshold-decision checkpoint with persisted calibration
+  samples so operators can see whether more live samples are required before
+  reviewing canonical low-confidence threshold changes.
 - The AG operations contract family also reserves
   `ag_cx_processing_run_operations_projection.v1` and
   `ag_cx_processing_run_detail_projection.v1` for CX processing run
