@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from nex_ag.retrieval_threshold_decisions import (
+    AG_RETRIEVAL_THRESHOLD_CALIBRATION_CLOSURE_SCHEMA_VERSION,
     AG_RETRIEVAL_THRESHOLD_DECISION_PROJECTION_SCHEMA_VERSION,
     AG_RETRIEVAL_THRESHOLD_OPERATOR_REVIEW_SCHEMA_VERSION,
+    RETRIEVAL_THRESHOLD_CALIBRATION_CLOSURE_STATUSES,
     RETRIEVAL_THRESHOLD_SAMPLE_READINESS,
     build_retrieval_threshold_operator_review,
     project_retrieval_threshold_decision,
+    summarize_retrieval_threshold_calibration_closure,
     summarize_retrieval_threshold_decisions,
     threshold_decision_readiness,
 )
@@ -264,3 +267,84 @@ def test_summarize_threshold_decisions_handles_bad_count_values() -> None:
         "insufficient_samples": 0,
         "source_degraded": 1,
     }
+
+
+def test_summarize_threshold_calibration_closure_prioritizes_open_states() -> None:
+    assert RETRIEVAL_THRESHOLD_CALIBRATION_CLOSURE_STATUSES == (
+        "NO_DECISIONS",
+        "BLOCKED",
+        "COLLECTING_SAMPLES",
+        "OPERATOR_REVIEW_REQUIRED",
+        "READY_FOR_POLICY_REVIEW",
+    )
+    empty = summarize_retrieval_threshold_calibration_closure([])
+    blocked = summarize_retrieval_threshold_calibration_closure(
+        [
+            {
+                "policy_id": "policy-degraded",
+                "sample_readiness": "SOURCE_DEGRADED",
+                "recommended_operator_action": "repair_retrieval_operations_source",
+            },
+            {
+                "policy_id": "policy-missing",
+                "sample_readiness": "NO_DECISION_CHECKPOINT",
+                "recommended_operator_action": "register_threshold_decision",
+            },
+        ]
+    )
+    collecting = summarize_retrieval_threshold_calibration_closure(
+        [
+            {
+                "policy_id": "policy-collecting",
+                "sample_readiness": "INSUFFICIENT_SAMPLES",
+                "recommended_operator_action": "collect_live_score_samples",
+            }
+        ]
+    )
+    review_required = summarize_retrieval_threshold_calibration_closure(
+        [
+            {
+                "policy_id": "policy-review",
+                "sample_readiness": "NEEDS_OPERATOR_REVIEW",
+                "recommended_operator_action": "review_low_confidence_samples",
+            }
+        ]
+    )
+    ready = summarize_retrieval_threshold_calibration_closure(
+        [
+            {
+                "policy_id": "policy-ready",
+                "sample_readiness": "READY_FOR_REVIEW",
+                "recommended_operator_action": "prepare_threshold_policy_review",
+            }
+        ]
+    )
+    no_action = summarize_retrieval_threshold_calibration_closure(
+        [{"policy_id": "policy-no-action", "sample_readiness": "READY_FOR_REVIEW"}]
+    )
+
+    assert empty["closure_schema_version"] == (
+        AG_RETRIEVAL_THRESHOLD_CALIBRATION_CLOSURE_SCHEMA_VERSION
+    )
+    assert empty["closure_status"] == "NO_DECISIONS"
+    assert empty["minimum_live_samples_satisfied"] is False
+    assert blocked["closure_status"] == "BLOCKED"
+    assert blocked["blocking_readiness"] == [
+        "SOURCE_DEGRADED",
+        "NO_DECISION_CHECKPOINT",
+    ]
+    assert blocked["blocked_policy_ids"] == ["policy-degraded", "policy-missing"]
+    assert blocked["recommended_next_actions"] == [
+        "register_threshold_decision",
+        "repair_retrieval_operations_source",
+    ]
+    assert collecting["closure_status"] == "COLLECTING_SAMPLES"
+    assert collecting["minimum_live_samples_satisfied"] is False
+    assert review_required["closure_status"] == "OPERATOR_REVIEW_REQUIRED"
+    assert review_required["minimum_live_samples_satisfied"] is True
+    assert ready["closure_status"] == "READY_FOR_POLICY_REVIEW"
+    assert ready["ready_policy_ids"] == ["policy-ready"]
+    assert ready["open_decision_count"] == 0
+    assert ready["policy_review_ready"] is True
+    assert no_action["closure_status"] == "READY_FOR_POLICY_REVIEW"
+    assert no_action["recommended_next_actions"] == []

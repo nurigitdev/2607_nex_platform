@@ -694,6 +694,10 @@ def test_retrieval_threshold_decision_projection_evaluates_sample_readiness() ->
     assert projection["summary"]["total_decisions"] == 2
     assert projection["summary"]["ready_for_review"] == 1
     assert projection["summary"]["insufficient_samples"] == 1
+    assert projection["closure"]["closure_status"] == "COLLECTING_SAMPLES"
+    assert projection["closure"]["blocked_policy_ids"] == [
+        "weighted_rrf_vector_bm25_v1"
+    ]
     by_policy = {
         decision["policy_id"]: decision
         for decision in projection["threshold_decisions"]
@@ -906,6 +910,7 @@ def test_retrieval_threshold_decision_route_filters_and_validates() -> None:
     )
     assert payload["filters"]["retrieval_policy_id"] == "retrieval_quality_v1"
     assert payload["summary"]["total_decisions"] == 1
+    assert payload["closure"]["closure_status"] == "COLLECTING_SAMPLES"
     assert payload["threshold_decisions"][0]["operator_review"][
         "threshold_decision_path"
     ].startswith("/admin/v1/operations/retrieval-threshold-decisions?")

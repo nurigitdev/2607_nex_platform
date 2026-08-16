@@ -244,6 +244,7 @@ def test_nex_ag_operations_contract_hardens_retrieval_threshold_decisions() -> N
     decision_def = schema["$defs"]["retrieval_threshold_decision_operation"]
     decision_properties = decision_def["properties"]
     operator_review_def = schema["$defs"]["retrieval_threshold_operator_review"]
+    closure_def = schema["$defs"]["retrieval_threshold_calibration_closure"]
 
     assert "ag_retrieval_score_calibration_rollup_projection.v1" in projection_versions
     assert "ag_retrieval_threshold_decision_projection.v1" in projection_versions
@@ -264,6 +265,7 @@ def test_nex_ag_operations_contract_hardens_retrieval_threshold_decisions() -> N
         "filters",
         "threshold_decisions",
         "summary",
+        "closure",
         "source_statuses",
     }
     assert schema["$defs"]["dashboard_retrieval_threshold_decisions"]["properties"][
@@ -307,6 +309,23 @@ def test_nex_ag_operations_contract_hardens_retrieval_threshold_decisions() -> N
         "READY_FOR_POLICY_REVIEW",
         "UNKNOWN_ACTION",
     ]
+    assert schema["properties"]["closure"]["$ref"] == (
+        "#/$defs/retrieval_threshold_calibration_closure"
+    )
+    assert closure_def["additionalProperties"] is False
+    assert closure_def["properties"]["closure_schema_version"]["const"] == (
+        "ag_retrieval_threshold_calibration_closure.v1"
+    )
+    assert closure_def["properties"]["closure_status"]["enum"] == [
+        "NO_DECISIONS",
+        "BLOCKED",
+        "COLLECTING_SAMPLES",
+        "OPERATOR_REVIEW_REQUIRED",
+        "READY_FOR_POLICY_REVIEW",
+    ]
+    assert schema["$defs"]["dashboard_retrieval_threshold_decisions"]["properties"][
+        "closure"
+    ]["$ref"] == "#/$defs/retrieval_threshold_calibration_closure"
 
 
 def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:

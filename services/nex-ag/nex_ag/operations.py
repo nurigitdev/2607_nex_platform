@@ -89,6 +89,7 @@ from nex_ag.retrieval_score_calibration import (
 )
 from nex_ag.retrieval_threshold_decisions import (
     project_retrieval_threshold_decision,
+    summarize_retrieval_threshold_calibration_closure,
     summarize_retrieval_threshold_decisions,
 )
 from nex_runtime.retrieval_policies import list_retrieval_policy_records
@@ -5483,6 +5484,7 @@ def _dashboard_retrieval_threshold_decision_section(
     ]
     return {
         "summary": summarize_retrieval_threshold_decisions(decisions),
+        "closure": summarize_retrieval_threshold_calibration_closure(decisions),
         "threshold_decisions": decisions,
         "source_statuses": source_statuses,
     }
@@ -5503,6 +5505,7 @@ def _empty_dashboard_retrieval_threshold_decision_section(
 ) -> dict[str, Any]:
     return {
         "summary": summarize_retrieval_threshold_decisions([]),
+        "closure": summarize_retrieval_threshold_calibration_closure([]),
         "threshold_decisions": [],
         "source_statuses": source_statuses,
     }

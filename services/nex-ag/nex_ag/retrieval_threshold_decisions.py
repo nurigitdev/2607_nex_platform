@@ -12,12 +12,22 @@ AG_RETRIEVAL_THRESHOLD_DECISION_PROJECTION_SCHEMA_VERSION = (
 AG_RETRIEVAL_THRESHOLD_OPERATOR_REVIEW_SCHEMA_VERSION = (
     "ag_retrieval_threshold_operator_review.v1"
 )
+AG_RETRIEVAL_THRESHOLD_CALIBRATION_CLOSURE_SCHEMA_VERSION = (
+    "ag_retrieval_threshold_calibration_closure.v1"
+)
 RETRIEVAL_THRESHOLD_SAMPLE_READINESS = (
     "SOURCE_DEGRADED",
     "NO_DECISION_CHECKPOINT",
     "INSUFFICIENT_SAMPLES",
     "NEEDS_OPERATOR_REVIEW",
     "READY_FOR_REVIEW",
+)
+RETRIEVAL_THRESHOLD_CALIBRATION_CLOSURE_STATUSES = (
+    "NO_DECISIONS",
+    "BLOCKED",
+    "COLLECTING_SAMPLES",
+    "OPERATOR_REVIEW_REQUIRED",
+    "READY_FOR_POLICY_REVIEW",
 )
 RETRIEVAL_THRESHOLD_OPERATOR_REVIEW_RUNBOOKS: Mapping[str, Mapping[str, Any]] = {
     "repair_retrieval_operations_source": {
@@ -213,6 +223,55 @@ def summarize_retrieval_threshold_decisions(
     }
 
 
+def summarize_retrieval_threshold_calibration_closure(
+    decisions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    readiness_counts: dict[str, int] = {}
+    ready_policy_ids: list[str] = []
+    blocked_policy_ids: list[str] = []
+    recommended_next_actions: set[str] = set()
+    for decision in decisions:
+        readiness = str(decision.get("sample_readiness", "UNKNOWN"))
+        readiness_counts[readiness] = readiness_counts.get(readiness, 0) + 1
+        policy_id = str(decision.get("policy_id") or "UNKNOWN")
+        if readiness == "READY_FOR_REVIEW":
+            ready_policy_ids.append(policy_id)
+        else:
+            blocked_policy_ids.append(policy_id)
+        action = decision.get("recommended_operator_action")
+        if action:
+            recommended_next_actions.add(str(action))
+
+    closure_status = _calibration_closure_status(readiness_counts, len(decisions))
+    blocking_readiness = [
+        readiness
+        for readiness in RETRIEVAL_THRESHOLD_SAMPLE_READINESS
+        if readiness != "READY_FOR_REVIEW" and readiness_counts.get(readiness, 0) > 0
+    ]
+    return {
+        "closure_schema_version": (
+            AG_RETRIEVAL_THRESHOLD_CALIBRATION_CLOSURE_SCHEMA_VERSION
+        ),
+        "closure_status": closure_status,
+        "total_decisions": len(decisions),
+        "closed_decision_count": readiness_counts.get("READY_FOR_REVIEW", 0),
+        "open_decision_count": len(decisions)
+        - readiness_counts.get("READY_FOR_REVIEW", 0),
+        "readiness_counts": readiness_counts,
+        "blocking_readiness": blocking_readiness,
+        "ready_policy_ids": sorted(ready_policy_ids),
+        "blocked_policy_ids": sorted(blocked_policy_ids),
+        "recommended_next_actions": sorted(recommended_next_actions),
+        "minimum_live_samples_satisfied": (
+            len(decisions) > 0
+            and readiness_counts.get("SOURCE_DEGRADED", 0) == 0
+            and readiness_counts.get("NO_DECISION_CHECKPOINT", 0) == 0
+            and readiness_counts.get("INSUFFICIENT_SAMPLES", 0) == 0
+        ),
+        "policy_review_ready": closure_status == "READY_FOR_POLICY_REVIEW",
+    }
+
+
 def threshold_decision_readiness(
     *,
     decision: Mapping[str, Any],
@@ -237,6 +296,24 @@ def threshold_decision_readiness(
     ):
         return "NEEDS_OPERATOR_REVIEW", "review_low_confidence_samples"
     return "READY_FOR_REVIEW", "prepare_threshold_policy_review"
+
+
+def _calibration_closure_status(
+    readiness_counts: Mapping[str, int],
+    total_decisions: int,
+) -> str:
+    if total_decisions == 0:
+        return "NO_DECISIONS"
+    if (
+        readiness_counts.get("SOURCE_DEGRADED", 0) > 0
+        or readiness_counts.get("NO_DECISION_CHECKPOINT", 0) > 0
+    ):
+        return "BLOCKED"
+    if readiness_counts.get("INSUFFICIENT_SAMPLES", 0) > 0:
+        return "COLLECTING_SAMPLES"
+    if readiness_counts.get("NEEDS_OPERATOR_REVIEW", 0) > 0:
+        return "OPERATOR_REVIEW_REQUIRED"
+    return "READY_FOR_POLICY_REVIEW"
 
 
 def build_retrieval_threshold_operator_review(

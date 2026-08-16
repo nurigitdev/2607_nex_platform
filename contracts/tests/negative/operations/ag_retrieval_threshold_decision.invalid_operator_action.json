@@ -85,6 +85,26 @@
     "insufficient_samples": 0,
     "source_degraded": 0
   },
+  "closure": {
+    "closure_schema_version": "ag_retrieval_threshold_calibration_closure.v1",
+    "closure_status": "READY_FOR_POLICY_REVIEW",
+    "total_decisions": 1,
+    "closed_decision_count": 1,
+    "open_decision_count": 0,
+    "readiness_counts": {
+      "READY_FOR_REVIEW": 1
+    },
+    "blocking_readiness": [],
+    "ready_policy_ids": [
+      "retrieval_quality_v1"
+    ],
+    "blocked_policy_ids": [],
+    "recommended_next_actions": [
+      "prepare_threshold_policy_review"
+    ],
+    "minimum_live_samples_satisfied": true,
+    "policy_review_ready": true
+  },
   "source_statuses": {
     "nex-cx": {
       "status": "READY",

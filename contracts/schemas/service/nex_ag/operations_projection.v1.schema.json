@@ -160,6 +160,9 @@
         "$ref": "#/$defs/retrieval_threshold_decision_operation"
       }
     },
+    "closure": {
+      "$ref": "#/$defs/retrieval_threshold_calibration_closure"
+    },
     "evidence_items": {
       "type": "array",
       "items": {
@@ -608,11 +611,15 @@
           "filters",
           "threshold_decisions",
           "summary",
+          "closure",
           "source_statuses"
         ],
         "properties": {
           "summary": {
             "$ref": "#/$defs/retrieval_threshold_decision_summary"
+          },
+          "closure": {
+            "$ref": "#/$defs/retrieval_threshold_calibration_closure"
           }
         }
       }
@@ -1547,6 +1554,97 @@
         }
       }
     },
+    "retrieval_threshold_calibration_closure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "closure_schema_version",
+        "closure_status",
+        "total_decisions",
+        "closed_decision_count",
+        "open_decision_count",
+        "readiness_counts",
+        "blocking_readiness",
+        "ready_policy_ids",
+        "blocked_policy_ids",
+        "recommended_next_actions",
+        "minimum_live_samples_satisfied",
+        "policy_review_ready"
+      ],
+      "properties": {
+        "closure_schema_version": {
+          "const": "ag_retrieval_threshold_calibration_closure.v1"
+        },
+        "closure_status": {
+          "type": "string",
+          "enum": [
+            "NO_DECISIONS",
+            "BLOCKED",
+            "COLLECTING_SAMPLES",
+            "OPERATOR_REVIEW_REQUIRED",
+            "READY_FOR_POLICY_REVIEW"
+          ]
+        },
+        "total_decisions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "closed_decision_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_decision_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readiness_counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "blocking_readiness": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "SOURCE_DEGRADED",
+              "NO_DECISION_CHECKPOINT",
+              "INSUFFICIENT_SAMPLES",
+              "NEEDS_OPERATOR_REVIEW"
+            ]
+          }
+        },
+        "ready_policy_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "blocked_policy_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "recommended_next_actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "minimum_live_samples_satisfied": {
+          "type": "boolean"
+        },
+        "policy_review_ready": {
+          "type": "boolean"
+        }
+      }
+    },
     "retrieval_score_calibration_summary": {
       "type": "object",
       "additionalProperties": true,
@@ -1670,12 +1768,16 @@
       "additionalProperties": false,
       "required": [
         "summary",
+        "closure",
         "threshold_decisions",
         "source_statuses"
       ],
       "properties": {
         "summary": {
           "$ref": "#/$defs/retrieval_threshold_decision_summary"
+        },
+        "closure": {
+          "$ref": "#/$defs/retrieval_threshold_calibration_closure"
         },
         "threshold_decisions": {
           "type": "array",

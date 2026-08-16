@@ -84,6 +84,28 @@
     "insufficient_samples": 1,
     "source_degraded": 0
   },
+  "closure": {
+    "closure_schema_version": "ag_retrieval_threshold_calibration_closure.v1",
+    "closure_status": "COLLECTING_SAMPLES",
+    "total_decisions": 1,
+    "closed_decision_count": 0,
+    "open_decision_count": 1,
+    "readiness_counts": {
+      "INSUFFICIENT_SAMPLES": 1
+    },
+    "blocking_readiness": [
+      "INSUFFICIENT_SAMPLES"
+    ],
+    "ready_policy_ids": [],
+    "blocked_policy_ids": [
+      "retrieval_quality_v1"
+    ],
+    "recommended_next_actions": [
+      "collect_live_score_samples"
+    ],
+    "minimum_live_samples_satisfied": false,
+    "policy_review_ready": false
+  },
   "source_statuses": {
     "nex-cx": {
       "status": "READY",

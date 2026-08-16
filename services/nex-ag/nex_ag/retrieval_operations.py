@@ -38,6 +38,7 @@ from nex_ag.retrieval_threshold_decisions import (
     AG_RETRIEVAL_THRESHOLD_DECISION_PROJECTION_SCHEMA_VERSION,
     RETRIEVAL_THRESHOLD_SAMPLE_READINESS,
     project_retrieval_threshold_decision,
+    summarize_retrieval_threshold_calibration_closure,
     summarize_retrieval_threshold_decisions,
 )
 from nex_runtime import (
@@ -865,6 +866,7 @@ def build_retrieval_threshold_decision_projection(
         },
         "threshold_decisions": decisions,
         "summary": summarize_retrieval_threshold_decisions(decisions),
+        "closure": summarize_retrieval_threshold_calibration_closure(decisions),
         "source_statuses": deepcopy(source_statuses),
     }
     if request_trace_id is not None:

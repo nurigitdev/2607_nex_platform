@@ -2399,6 +2399,9 @@ def test_build_operations_dashboard_snapshot_projection_combines_sections() -> N
         "insufficient_samples": 2,
         "source_degraded": 0,
     }
+    assert projection["retrieval_threshold_decisions"]["closure"][
+        "closure_status"
+    ] == "COLLECTING_SAMPLES"
     assert {
         decision["policy_id"]: decision["observed_sample_count"]
         for decision in projection["retrieval_threshold_decisions"][
@@ -2434,6 +2437,9 @@ def test_operations_dashboard_snapshot_reports_retrieval_threshold_source_unavai
 
     assert projection["projection_status"] == "DEGRADED"
     assert projection["retrieval_threshold_decisions"]["summary"]["source_degraded"] == 2
+    assert projection["retrieval_threshold_decisions"]["closure"][
+        "closure_status"
+    ] == "BLOCKED"
     assert {
         decision["sample_readiness"]
         for decision in projection["retrieval_threshold_decisions"][
@@ -2481,6 +2487,9 @@ def test_operations_dashboard_snapshot_retrieval_threshold_handles_missing_and_o
         "redacted_database_url": None,
     }
     assert missing["retrieval_threshold_decisions"]["summary"]["source_degraded"] == 2
+    assert missing["retrieval_threshold_decisions"]["closure"][
+        "closure_status"
+    ] == "BLOCKED"
     assert {
         (source["source_type"], source["service_id"], source["status"])
         for source in missing["degraded_sources"]
@@ -2496,6 +2505,22 @@ def test_operations_dashboard_snapshot_retrieval_threshold_handles_missing_and_o
             "needs_operator_review": 0,
             "insufficient_samples": 0,
             "source_degraded": 0,
+        },
+        "closure": {
+            "closure_schema_version": (
+                "ag_retrieval_threshold_calibration_closure.v1"
+            ),
+            "closure_status": "NO_DECISIONS",
+            "total_decisions": 0,
+            "closed_decision_count": 0,
+            "open_decision_count": 0,
+            "readiness_counts": {},
+            "blocking_readiness": [],
+            "ready_policy_ids": [],
+            "blocked_policy_ids": [],
+            "recommended_next_actions": [],
+            "minimum_live_samples_satisfied": False,
+            "policy_review_ready": False,
         },
         "threshold_decisions": [],
         "source_statuses": {},

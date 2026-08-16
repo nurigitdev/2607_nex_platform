@@ -180,7 +180,10 @@ Unified operations:
   reviewing canonical low-confidence threshold changes. Each decision includes
   `ag_retrieval_threshold_operator_review.v1` metadata with the canonical
   runbook id, remaining sample count, review paths, evidence requirements, and
-  whether live-provider or policy-registry work is needed.
+  whether live-provider or policy-registry work is needed. The projection and
+  dashboard section also include `ag_retrieval_threshold_calibration_closure.v1`
+  so operators can see whether calibration is blocked, still collecting
+  samples, waiting for review, or ready for policy review.
 - The AG operations contract family also reserves
   `ag_cx_processing_run_operations_projection.v1` and
   `ag_cx_processing_run_detail_projection.v1` for CX processing run
