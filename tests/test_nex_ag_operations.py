@@ -2799,6 +2799,10 @@ def test_build_operations_issue_candidate_projection_flags_service_scope() -> No
         "active_jobs_review.v1",
         "stale_worker_heartbeat.v1",
         "active_job_without_fresh_worker.v1",
+        "retrieval_threshold_decision_checkpoint_missing.v1",
+        "retrieval_threshold_live_samples_insufficient.v1",
+        "retrieval_threshold_operator_review_required.v1",
+        "retrieval_threshold_policy_review_ready.v1",
     ]
     assert [
         (candidate["rule_id"], candidate["service_id"], candidate["severity"])
@@ -2844,6 +2848,138 @@ def test_build_operations_issue_candidate_projection_flags_service_scope() -> No
         "log_count": 0,
     }
     assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_issue_candidate_projection_flags_retrieval_threshold_decisions() -> None:
+    registry = build_operations_source_registry(
+        job_queues={"nex-cx": InMemoryJobQueue()},
+        event_stores={"nex-cx": InMemoryOperationalEventStore()},
+    )
+
+    projection = build_operations_issue_candidate_projection(
+        registry=registry,
+        retrieval_package_stores={
+            "nex-cx": InMemoryRetrievalPackageOperationsStore(
+                records=[retrieval_package_record()]
+            )
+        },
+        service_id="nex-cx",
+    )
+
+    assert projection["projection_status"] == "READY"
+    assert [
+        candidate["rule_id"] for candidate in projection["issue_candidates"]
+    ] == ["retrieval_threshold_live_samples_insufficient.v1"]
+    candidate = projection["issue_candidates"][0]
+    assert candidate["candidate_id"] == (
+        "nex-cx:INSUFFICIENT_SAMPLES:"
+        "retrieval_threshold_live_samples_insufficient.v1"
+    )
+    assert candidate["severity"] == "INFO"
+    assert candidate["signal"] == {
+        "status": "INSUFFICIENT_SAMPLES",
+        "count": 2,
+        "threshold": 1,
+        "policy_ids": [
+            "retrieval_quality_v1",
+            "weighted_rrf_vector_bm25_v1",
+        ],
+        "decision_statuses": ["OBSERVE"],
+        "recommended_actions": ["collect_live_score_samples"],
+        "observed_sample_count": 1,
+        "minimum_live_samples_before_change": 20,
+    }
+    assert projection["summary"]["by_rule"] == {
+        "retrieval_threshold_live_samples_insufficient.v1": 1
+    }
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_issue_candidates_group_threshold_decision_readiness() -> None:
+    base_dashboard = {
+        "degraded_sources": [],
+        "rollups": [],
+        "recent_failures": {"logs": []},
+        "replay_candidates": [],
+        "active_jobs": [],
+    }
+    decisions = [
+        {
+            "service_id": "nex-cx",
+            "policy_id": "policy-missing",
+            "sample_readiness": "NO_DECISION_CHECKPOINT",
+            "decision_status": "UNSPECIFIED",
+            "recommended_operator_action": "register_threshold_decision",
+            "observed_sample_count": 0,
+            "minimum_live_samples_before_change": 0,
+        },
+        {
+            "service_id": "nex-cx",
+            "policy_id": "policy-review",
+            "sample_readiness": "NEEDS_OPERATOR_REVIEW",
+            "decision_status": "OBSERVE",
+            "recommended_operator_action": "review_low_confidence_samples",
+            "observed_sample_count": 21,
+            "minimum_live_samples_before_change": 20,
+        },
+        {
+            "service_id": "nex-cx",
+            "policy_id": "policy-ready",
+            "sample_readiness": "READY_FOR_REVIEW",
+            "decision_status": "OBSERVE",
+            "recommended_operator_action": "prepare_threshold_policy_review",
+            "observed_sample_count": 20,
+            "minimum_live_samples_before_change": 20,
+        },
+        {
+            "service_id": "nex-cx",
+            "policy_id": "policy-degraded",
+            "sample_readiness": "SOURCE_DEGRADED",
+        },
+        {
+            "service_id": "nex-unknown",
+            "policy_id": "policy-invalid-service",
+            "sample_readiness": "READY_FOR_REVIEW",
+        },
+        "malformed",
+    ]
+
+    candidates = build_operations_issue_candidates(
+        {
+            **base_dashboard,
+            "retrieval_threshold_decisions": {"threshold_decisions": decisions},
+        }
+    )
+
+    assert [
+        (candidate["rule_id"], candidate["severity"], candidate["signal"]["status"])
+        for candidate in candidates
+    ] == [
+        (
+            "retrieval_threshold_decision_checkpoint_missing.v1",
+            "WARNING",
+            "NO_DECISION_CHECKPOINT",
+        ),
+        (
+            "retrieval_threshold_operator_review_required.v1",
+            "WARNING",
+            "NEEDS_OPERATOR_REVIEW",
+        ),
+        (
+            "retrieval_threshold_policy_review_ready.v1",
+            "INFO",
+            "READY_FOR_REVIEW",
+        ),
+    ]
+    assert build_operations_issue_candidates(
+        {**base_dashboard, "retrieval_threshold_decisions": "bad"}
+    ) == []
+    assert build_operations_issue_candidates(
+        {
+            **base_dashboard,
+            "retrieval_threshold_decisions": {"threshold_decisions": "bad"},
+        }
+    ) == []
 
 
 def test_operations_issue_candidate_projection_flags_error_and_critical_service_logs() -> None:

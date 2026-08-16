@@ -759,6 +759,7 @@ def _ag_operations_dashboard_smoke_checks(
             "failed_jobs_present.v1",
             "dead_letter_replay_available.v1",
             "active_jobs_review.v1",
+            "retrieval_threshold_live_samples_insufficient.v1",
         },
     }
 

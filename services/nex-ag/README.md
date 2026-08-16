@@ -152,8 +152,9 @@ Unified operations:
   for the first AG operations dashboard screen.
 - `GET /admin/v1/operations/issue-candidates` returns
   `ag_operations_issue_candidate_projection.v1`, applying deterministic
-  read-only rules to operations dashboard signals. Notification delivery,
-  acknowledgements, and incident mutation are intentionally deferred.
+  read-only rules to operations dashboard signals, including retrieval
+  threshold decision readiness. Notification delivery, acknowledgements, and
+  incident mutation are intentionally deferred.
 - `GET /admin/v1/operations/retrieval-packages` returns
   `ag_retrieval_package_operations_projection.v1`, a CX-sourced read-only
   projection of persisted retrieval packages for debugging grounded retrieval

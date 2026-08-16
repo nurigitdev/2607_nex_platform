@@ -97,6 +97,38 @@
       "description": "One or more RUNNING jobs have no fresh BUSY worker heartbeat.",
       "enabled": true,
       "signal_type": "job_worker_reconciliation"
+    },
+    {
+      "rule_id": "retrieval_threshold_decision_checkpoint_missing.v1",
+      "severity": "WARNING",
+      "title": "Retrieval threshold checkpoint missing",
+      "description": "A retrieval policy is missing its threshold decision checkpoint.",
+      "enabled": true,
+      "signal_type": "retrieval_threshold_decision"
+    },
+    {
+      "rule_id": "retrieval_threshold_live_samples_insufficient.v1",
+      "severity": "INFO",
+      "title": "Retrieval threshold samples insufficient",
+      "description": "A retrieval threshold decision needs more live score samples.",
+      "enabled": true,
+      "signal_type": "retrieval_threshold_decision"
+    },
+    {
+      "rule_id": "retrieval_threshold_operator_review_required.v1",
+      "severity": "WARNING",
+      "title": "Retrieval threshold operator review required",
+      "description": "A retrieval threshold decision has samples that need operator review.",
+      "enabled": true,
+      "signal_type": "retrieval_threshold_decision"
+    },
+    {
+      "rule_id": "retrieval_threshold_policy_review_ready.v1",
+      "severity": "INFO",
+      "title": "Retrieval threshold policy review ready",
+      "description": "A retrieval threshold decision has enough samples for policy review.",
+      "enabled": true,
+      "signal_type": "retrieval_threshold_decision"
     }
   ],
   "issue_candidates": [
@@ -149,24 +181,50 @@
         "count": 1,
         "threshold": 1
       }
+    },
+    {
+      "candidate_id": "nex-cx:INSUFFICIENT_SAMPLES:retrieval_threshold_live_samples_insufficient.v1",
+      "rule_id": "retrieval_threshold_live_samples_insufficient.v1",
+      "service_id": "nex-cx",
+      "severity": "INFO",
+      "title": "Retrieval threshold samples insufficient",
+      "detail": "2 retrieval threshold decision(s) are INSUFFICIENT_SAMPLES for nex-cx.",
+      "signal": {
+        "status": "INSUFFICIENT_SAMPLES",
+        "count": 2,
+        "threshold": 1,
+        "policy_ids": [
+          "retrieval_quality_v1",
+          "weighted_rrf_vector_bm25_v1"
+        ],
+        "decision_statuses": [
+          "OBSERVE"
+        ],
+        "recommended_actions": [
+          "collect_live_score_samples"
+        ],
+        "observed_sample_count": 1,
+        "minimum_live_samples_before_change": 20
+      }
     }
   ],
   "summary": {
-    "total": 3,
+    "total": 4,
     "by_severity": {
       "DEBUG": 0,
-      "INFO": 1,
+      "INFO": 2,
       "WARNING": 1,
       "ERROR": 1,
       "CRITICAL": 0
     },
     "by_service": {
-      "nex-cx": 3
+      "nex-cx": 4
     },
     "by_rule": {
       "failed_jobs_present.v1": 1,
       "dead_letter_replay_available.v1": 1,
-      "active_jobs_review.v1": 1
+      "active_jobs_review.v1": 1,
+      "retrieval_threshold_live_samples_insufficient.v1": 1
     }
   },
   "job_source_statuses": {

@@ -279,6 +279,66 @@ OPERATIONS_ISSUE_CANDIDATE_RULES = (
         "enabled": True,
         "signal_type": "job_worker_reconciliation",
     },
+    {
+        "rule_id": "retrieval_threshold_decision_checkpoint_missing.v1",
+        "severity": "WARNING",
+        "title": "Retrieval threshold checkpoint missing",
+        "description": "A retrieval policy is missing its threshold decision checkpoint.",
+        "enabled": True,
+        "signal_type": "retrieval_threshold_decision",
+    },
+    {
+        "rule_id": "retrieval_threshold_live_samples_insufficient.v1",
+        "severity": "INFO",
+        "title": "Retrieval threshold samples insufficient",
+        "description": "A retrieval threshold decision needs more live score samples.",
+        "enabled": True,
+        "signal_type": "retrieval_threshold_decision",
+    },
+    {
+        "rule_id": "retrieval_threshold_operator_review_required.v1",
+        "severity": "WARNING",
+        "title": "Retrieval threshold operator review required",
+        "description": "A retrieval threshold decision has samples that need operator review.",
+        "enabled": True,
+        "signal_type": "retrieval_threshold_decision",
+    },
+    {
+        "rule_id": "retrieval_threshold_policy_review_ready.v1",
+        "severity": "INFO",
+        "title": "Retrieval threshold policy review ready",
+        "description": "A retrieval threshold decision has enough samples for policy review.",
+        "enabled": True,
+        "signal_type": "retrieval_threshold_decision",
+    },
+)
+RETRIEVAL_THRESHOLD_ISSUE_RULES_BY_READINESS = {
+    "NO_DECISION_CHECKPOINT": {
+        "rule_id": "retrieval_threshold_decision_checkpoint_missing.v1",
+        "severity": "WARNING",
+        "title": "Retrieval threshold checkpoint missing",
+    },
+    "INSUFFICIENT_SAMPLES": {
+        "rule_id": "retrieval_threshold_live_samples_insufficient.v1",
+        "severity": "INFO",
+        "title": "Retrieval threshold samples insufficient",
+    },
+    "NEEDS_OPERATOR_REVIEW": {
+        "rule_id": "retrieval_threshold_operator_review_required.v1",
+        "severity": "WARNING",
+        "title": "Retrieval threshold operator review required",
+    },
+    "READY_FOR_REVIEW": {
+        "rule_id": "retrieval_threshold_policy_review_ready.v1",
+        "severity": "INFO",
+        "title": "Retrieval threshold policy review ready",
+    },
+}
+RETRIEVAL_THRESHOLD_ISSUE_READINESS_ORDER = (
+    "NO_DECISION_CHECKPOINT",
+    "INSUFFICIENT_SAMPLES",
+    "NEEDS_OPERATOR_REVIEW",
+    "READY_FOR_REVIEW",
 )
 
 _AG_OPERATIONS_SOURCE_MODE_ALIASES = {
@@ -2004,6 +2064,7 @@ def register_unified_operation_routes(
             job_queues=job_queues,
             event_store=event_store,
             service_log_stores=service_log_stores,
+            retrieval_package_stores=retrieval_package_stores,
             worker_heartbeat_stores=worker_heartbeat_stores,
             registry=registry,
             runtime=selected_runtime,
@@ -2860,6 +2921,7 @@ def build_operations_issue_candidate_projection(
     job_queues: Mapping[str, JobQueue] | None = None,
     event_store: OperationalEventStore | None = None,
     service_log_stores: Mapping[str, ServiceLogStore] | None = None,
+    retrieval_package_stores: Mapping[str, RetrievalPackageTraceStore] | None = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -2870,6 +2932,7 @@ def build_operations_issue_candidate_projection(
     query_options: OperationQueryOptions | None = None,
     checked_at: str | None = None,
     request_trace_id: str | None = None,
+    retrieval_policies: tuple[dict[str, Any], ...] | None = None,
 ) -> dict[str, Any]:
     options = query_options or build_operation_query_options(limit=limit)
     observed_at = checked_at or _utc_now()
@@ -2877,11 +2940,13 @@ def build_operations_issue_candidate_projection(
         job_queues=job_queues,
         event_store=event_store,
         service_log_stores=service_log_stores,
+        retrieval_package_stores=retrieval_package_stores,
         registry=registry,
         runtime=runtime,
         service_id=service_id,
         recent_limit=recent_limit,
         query_options=options,
+        retrieval_policies=retrieval_policies,
     )
     worker_projection = None
     if _worker_reconciliation_enabled(
@@ -3909,6 +3974,11 @@ def build_operations_issue_candidates(
     )
     candidates.extend(
         _issue_candidates_from_active_jobs(dashboard_snapshot["active_jobs"])
+    )
+    candidates.extend(
+        _issue_candidates_from_retrieval_threshold_decisions(
+            dashboard_snapshot.get("retrieval_threshold_decisions")
+        )
     )
     if worker_runtime_projection is not None:
         candidates.extend(
@@ -5869,6 +5939,97 @@ def _issue_candidates_from_active_jobs(
         for service_id, count in sorted(active_counts.items())
         if count > 0
     ]
+
+
+def _issue_candidates_from_retrieval_threshold_decisions(
+    section: object,
+) -> list[dict[str, Any]]:
+    if not isinstance(section, Mapping):
+        return []
+    decisions = section.get("threshold_decisions")
+    if not isinstance(decisions, list):
+        return []
+
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for decision in decisions:
+        if not isinstance(decision, Mapping):
+            continue
+        service_id = str(decision.get("service_id", ""))
+        readiness = str(decision.get("sample_readiness", ""))
+        policy_id = str(decision.get("policy_id", ""))
+        if (
+            service_id not in SERVICE_SPECS
+            or readiness not in RETRIEVAL_THRESHOLD_ISSUE_RULES_BY_READINESS
+            or not policy_id
+        ):
+            continue
+        grouped.setdefault((service_id, readiness), []).append(dict(decision))
+
+    candidates: list[dict[str, Any]] = []
+    for service_id in sorted({key[0] for key in grouped}):
+        for readiness in RETRIEVAL_THRESHOLD_ISSUE_READINESS_ORDER:
+            grouped_decisions = grouped.get((service_id, readiness))
+            if not grouped_decisions:
+                continue
+            candidates.append(
+                _retrieval_threshold_issue_candidate(
+                    service_id=service_id,
+                    readiness=readiness,
+                    grouped_decisions=grouped_decisions,
+                )
+            )
+    return candidates
+
+
+def _retrieval_threshold_issue_candidate(
+    *,
+    service_id: str,
+    readiness: str,
+    grouped_decisions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    rule = RETRIEVAL_THRESHOLD_ISSUE_RULES_BY_READINESS[readiness]
+    policy_ids = sorted(
+        {str(decision["policy_id"]) for decision in grouped_decisions}
+    )
+    recommended_actions = sorted(
+        {
+            str(decision.get("recommended_operator_action"))
+            for decision in grouped_decisions
+            if decision.get("recommended_operator_action")
+        }
+    )
+    decision_statuses = sorted(
+        {
+            str(decision.get("decision_status", "UNKNOWN"))
+            for decision in grouped_decisions
+        }
+    )
+    return _operations_issue_candidate(
+        rule_id=str(rule["rule_id"]),
+        service_id=service_id,
+        severity=str(rule["severity"]),
+        title=str(rule["title"]),
+        detail=(
+            f"{len(grouped_decisions)} retrieval threshold decision(s) "
+            f"are {readiness} for {service_id}."
+        ),
+        signal={
+            "status": readiness,
+            "count": len(grouped_decisions),
+            "threshold": 1,
+            "policy_ids": policy_ids,
+            "decision_statuses": decision_statuses,
+            "recommended_actions": recommended_actions,
+            "observed_sample_count": sum(
+                _safe_int(decision.get("observed_sample_count"))
+                for decision in grouped_decisions
+            ),
+            "minimum_live_samples_before_change": max(
+                _safe_int(decision.get("minimum_live_samples_before_change"))
+                for decision in grouped_decisions
+            ),
+        },
+    )
 
 
 def _job_dead_lettered(job: Mapping[str, Any]) -> bool:
