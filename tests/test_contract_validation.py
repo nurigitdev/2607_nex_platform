@@ -220,6 +220,78 @@ def test_nex_ag_operations_contract_includes_cx_processing_projections() -> None
     ]
 
 
+def test_nex_ag_operations_contract_hardens_retrieval_threshold_decisions() -> None:
+    schema_path = (
+        Path(__file__).parents[1]
+        / "contracts"
+        / "schemas"
+        / "service"
+        / "nex_ag"
+        / "operations_projection.v1.schema.json"
+    )
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    projection_versions = schema["properties"]["projection_schema_version"]["enum"]
+    required_by_projection = {
+        clause["if"]["properties"]["projection_schema_version"]["const"]: set(
+            clause["then"]["required"]
+        )
+        for clause in schema["allOf"]
+        if "const" in clause.get("if", {})
+        .get("properties", {})
+        .get("projection_schema_version", {})
+    }
+    decision_def = schema["$defs"]["retrieval_threshold_decision_operation"]
+    decision_properties = decision_def["properties"]
+
+    assert "ag_retrieval_score_calibration_rollup_projection.v1" in projection_versions
+    assert "ag_retrieval_threshold_decision_projection.v1" in projection_versions
+    assert required_by_projection[
+        "ag_retrieval_score_calibration_rollup_projection.v1"
+    ] == {
+        "projection_status",
+        "filters",
+        "calibration_samples",
+        "summary",
+        "source_statuses",
+        "pagination",
+    }
+    assert required_by_projection[
+        "ag_retrieval_threshold_decision_projection.v1"
+    ] == {
+        "projection_status",
+        "filters",
+        "threshold_decisions",
+        "summary",
+        "source_statuses",
+    }
+    assert schema["$defs"]["dashboard_retrieval_threshold_decisions"]["properties"][
+        "summary"
+    ]["$ref"] == "#/$defs/retrieval_threshold_decision_summary"
+    assert schema["$defs"]["retrieval_score_calibration_summary"]["properties"][
+        "score_margin_to_default_threshold"
+    ]["$ref"] == "#/$defs/score_margin_range"
+    assert decision_properties["policy_status"]["enum"] == [
+        "ACTIVE",
+        "CANDIDATE",
+        "RETIRED",
+    ]
+    assert decision_properties["decision_status"]["enum"] == [
+        "UNSPECIFIED",
+        "OBSERVE",
+        "ADOPT",
+        "REJECT",
+    ]
+    assert decision_properties["recommended_operator_action"]["enum"] == [
+        "repair_retrieval_operations_source",
+        "register_threshold_decision",
+        "collect_live_score_samples",
+        "review_threshold_override_samples",
+        "review_low_confidence_samples",
+        "prepare_threshold_policy_review",
+    ]
+
+
 def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:
     openapi_path = (
         Path(__file__).parents[1] / "contracts" / "openapi" / "nex-ag.openapi.yaml"
@@ -326,6 +398,71 @@ def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:
     } == processing_run_query_names
     assert "ag_cx_processing_run_operations_projection.v1" in projection_versions
     assert "ag_cx_processing_run_detail_projection.v1" in projection_versions
+
+
+def test_nex_ag_openapi_includes_retrieval_calibration_and_decision_contracts() -> None:
+    openapi_path = (
+        Path(__file__).parents[1] / "contracts" / "openapi" / "nex-ag.openapi.yaml"
+    )
+    spec = yaml.safe_load(openapi_path.read_text(encoding="utf-8"))
+    parameters = spec["components"]["parameters"]
+
+    score_calibration = spec["paths"][
+        "/admin/v1/operations/retrieval-score-calibration"
+    ]["get"]
+    threshold_decisions = spec["paths"][
+        "/admin/v1/operations/retrieval-threshold-decisions"
+    ]["get"]
+    calibration_query_names = {
+        parameters[parameter["$ref"].rsplit("/", 1)[-1]]["name"]
+        if "$ref" in parameter
+        else parameter["name"]
+        for parameter in score_calibration["parameters"]
+    }
+    threshold_query_names = {
+        parameters[parameter["$ref"].rsplit("/", 1)[-1]]["name"]
+        if "$ref" in parameter
+        else parameter["name"]
+        for parameter in threshold_decisions["parameters"]
+    }
+    projection_versions = spec["components"]["schemas"]["AgOperationsProjection"][
+        "properties"
+    ]["projection_schema_version"]["enum"]
+
+    assert (
+        score_calibration["operationId"]
+        == "getAgRetrievalScoreCalibrationRollupProjection"
+    )
+    assert (
+        threshold_decisions["operationId"]
+        == "getAgRetrievalThresholdDecisionProjection"
+    )
+    assert calibration_query_names == {
+        "service_id",
+        "status",
+        "trace_id",
+        "request_id",
+        "retrieval_policy_id",
+        "calibration_action",
+        "default_confidence_bucket",
+        "threshold_override",
+        "since",
+        "until",
+        "sort",
+        "cursor",
+        "limit",
+    }
+    assert threshold_query_names == {
+        "service_id",
+        "retrieval_policy_id",
+        "since",
+        "until",
+        "sort",
+        "cursor",
+        "limit",
+    }
+    assert "ag_retrieval_score_calibration_rollup_projection.v1" in projection_versions
+    assert "ag_retrieval_threshold_decision_projection.v1" in projection_versions
 
 
 def test_nex_cx_openapi_includes_service_log_retention_control() -> None:

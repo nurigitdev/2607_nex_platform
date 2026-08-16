@@ -1,0 +1,78 @@
+{
+  "projection_schema_version": "ag_retrieval_threshold_decision_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-16T00:00:00Z",
+  "filters": {
+    "service_id": "nex-cx",
+    "retrieval_policy_id": "retrieval_quality_v1",
+    "limit": 50,
+    "since": null,
+    "until": null,
+    "sort": "desc",
+    "cursor": null
+  },
+  "threshold_decisions": [
+    {
+      "service_id": "nex-cx",
+      "operation_type": "retrieval_threshold_decision",
+      "policy_id": "retrieval_quality_v1",
+      "policy_version": "0001",
+      "policy_status": "ACTIVE",
+      "decision_id": "retrieval_quality_v1_threshold_0001",
+      "decision_status": "OBSERVE",
+      "canonical_low_confidence_threshold": 0.2,
+      "candidate_low_confidence_threshold": null,
+      "live_smoke_override_threshold": 0.0,
+      "minimum_live_samples_before_change": 20,
+      "observed_sample_count": 21,
+      "observed_threshold_override_count": 1,
+      "observed_default_pass_count": 20,
+      "observed_default_confidence_buckets": {
+        "READY": 20,
+        "LOW_CONFIDENCE": 1
+      },
+      "observed_calibration_actions": {
+        "review_live_threshold_before_canonical_policy": 1,
+        "default_threshold_accepts_score": 20
+      },
+      "observed_score_margin_to_default_threshold": {
+        "min": -0.040678,
+        "max": 0.72
+      },
+      "sample_readiness": "READY_FOR_REVIEW",
+      "recommended_operator_action": "auto_update_threshold",
+      "review_owner_service": "nex-ag",
+      "policy_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "evidence_sources": [
+        "Slice 0297 protected_live_rag_score_calibration.v1",
+        "Slice 0299 ag_retrieval_score_calibration.v1"
+      ],
+      "decision_note": "Invalid fixture: operator action must be one of the canonical AG review actions."
+    }
+  ],
+  "summary": {
+    "total_decisions": 1,
+    "by_sample_readiness": {
+      "READY_FOR_REVIEW": 1
+    },
+    "by_decision_status": {
+      "OBSERVE": 1
+    },
+    "observed_sample_count": 21,
+    "threshold_override_count": 1,
+    "ready_for_review": 1,
+    "needs_operator_review": 0,
+    "insufficient_samples": 0,
+    "source_degraded": 0
+  },
+  "source_statuses": {
+    "nex-cx": {
+      "status": "READY",
+      "service_id": "nex-cx",
+      "source_kind": "postgres-read",
+      "package_count": 21,
+      "database_env": "NEX_CX_TEST_DATABASE_URL",
+      "redacted_database_url": "postgresql://nex_cx_user:***@localhost/nex_cx_test"
+    }
+  }
+}

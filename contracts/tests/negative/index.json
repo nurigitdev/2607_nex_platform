@@ -176,6 +176,11 @@
       "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
     },
     {
+      "name": "ag_retrieval_threshold_decision_invalid_operator_action",
+      "path": "tests/negative/operations/ag_retrieval_threshold_decision.invalid_operator_action.json",
+      "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
+    },
+    {
       "name": "ag_cx_processing_run_detail_raw_error_detail",
       "path": "tests/negative/operations/ag_cx_processing_run_detail.raw_error_detail.json",
       "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"

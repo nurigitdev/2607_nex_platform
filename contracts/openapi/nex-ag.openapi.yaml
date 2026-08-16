@@ -696,6 +696,111 @@ paths:
           description: Retrieval package source or package was not found.
         "503":
           description: Retrieval package source is unavailable.
+  /admin/v1/operations/retrieval-score-calibration:
+    get:
+      operationId: getAgRetrievalScoreCalibrationRollupProjection
+      tags:
+        - Operations
+      parameters:
+        - $ref: "#/components/parameters/serviceId"
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - READY
+              - LOW_CONFIDENCE
+              - NO_ANSWER
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TraceId"
+        - name: request_id
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+        - name: retrieval_policy_id
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+        - name: calibration_action
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - default_threshold_accepts_score
+              - review_low_confidence_boundary
+              - inspect_no_answer_retrieval
+              - review_live_threshold_before_canonical_policy
+              - compare_observed_and_default_confidence
+              - calibration_data_incomplete
+        - name: default_confidence_bucket
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - READY
+              - LOW_CONFIDENCE
+              - NO_ANSWER
+              - UNKNOWN
+        - name: threshold_override
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - $ref: "#/components/parameters/since"
+        - $ref: "#/components/parameters/until"
+        - $ref: "#/components/parameters/sort"
+        - $ref: "#/components/parameters/cursor"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only retrieval score calibration sample rollup projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "400":
+          description: Invalid retrieval score calibration query or filter.
+        "401":
+          description: Service claim is missing or invalid.
+  /admin/v1/operations/retrieval-threshold-decisions:
+    get:
+      operationId: getAgRetrievalThresholdDecisionProjection
+      tags:
+        - Operations
+      parameters:
+        - $ref: "#/components/parameters/serviceId"
+        - name: retrieval_policy_id
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+        - $ref: "#/components/parameters/since"
+        - $ref: "#/components/parameters/until"
+        - $ref: "#/components/parameters/sort"
+        - $ref: "#/components/parameters/cursor"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only retrieval threshold decision projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "400":
+          description: Invalid retrieval threshold decision query or filter.
+        "401":
+          description: Service claim is missing or invalid.
   /admin/v1/operations/cx-processing-runs:
     get:
       operationId: getAgCxProcessingRunOperationsProjection
@@ -1067,6 +1172,8 @@ components:
             - ag_job_operation_detail_projection.v1
             - ag_retrieval_package_operations_projection.v1
             - ag_retrieval_package_detail_projection.v1
+            - ag_retrieval_score_calibration_rollup_projection.v1
+            - ag_retrieval_threshold_decision_projection.v1
             - ag_cx_processing_run_operations_projection.v1
             - ag_cx_processing_run_detail_projection.v1
             - ag_unified_operations_projection.v1

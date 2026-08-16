@@ -574,6 +574,53 @@
       "if": {
         "properties": {
           "projection_schema_version": {
+            "const": "ag_retrieval_score_calibration_rollup_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "filters",
+          "calibration_samples",
+          "summary",
+          "source_statuses",
+          "pagination"
+        ],
+        "properties": {
+          "summary": {
+            "$ref": "#/$defs/retrieval_score_calibration_summary"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
+            "const": "ag_retrieval_threshold_decision_projection.v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_status",
+          "filters",
+          "threshold_decisions",
+          "summary",
+          "source_statuses"
+        ],
+        "properties": {
+          "summary": {
+            "$ref": "#/$defs/retrieval_threshold_decision_summary"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projection_schema_version": {
             "const": "ag_cx_processing_run_operations_projection.v1"
           }
         }
@@ -1366,6 +1413,147 @@
         }
       }
     },
+    "score_margin_range": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "min",
+            "max"
+          ],
+          "properties": {
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "retrieval_score_calibration_summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "total_samples",
+        "by_policy",
+        "by_observed_status",
+        "by_default_confidence_bucket",
+        "by_calibration_action",
+        "threshold_override_count",
+        "would_pass_default_threshold",
+        "score_margin_to_default_threshold"
+      ],
+      "properties": {
+        "total_samples": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_policy": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_observed_status": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_default_confidence_bucket": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_calibration_action": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "threshold_override_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "would_pass_default_threshold": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "score_margin_to_default_threshold": {
+          "$ref": "#/$defs/score_margin_range"
+        }
+      }
+    },
+    "retrieval_threshold_decision_summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "total_decisions",
+        "by_sample_readiness",
+        "by_decision_status",
+        "observed_sample_count",
+        "threshold_override_count",
+        "ready_for_review",
+        "needs_operator_review",
+        "insufficient_samples",
+        "source_degraded"
+      ],
+      "properties": {
+        "total_decisions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_sample_readiness": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_decision_status": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "observed_sample_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "threshold_override_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ready_for_review": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "needs_operator_review": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "insufficient_samples": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source_degraded": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
     "dashboard_retrieval_threshold_decisions": {
       "type": "object",
       "additionalProperties": false,
@@ -1376,63 +1564,7 @@
       ],
       "properties": {
         "summary": {
-          "type": "object",
-          "additionalProperties": true,
-          "required": [
-            "total_decisions",
-            "by_sample_readiness",
-            "by_decision_status",
-            "observed_sample_count",
-            "threshold_override_count",
-            "ready_for_review",
-            "needs_operator_review",
-            "insufficient_samples",
-            "source_degraded"
-          ],
-          "properties": {
-            "total_decisions": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "by_sample_readiness": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "integer",
-                "minimum": 0
-              }
-            },
-            "by_decision_status": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "integer",
-                "minimum": 0
-              }
-            },
-            "observed_sample_count": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "threshold_override_count": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "ready_for_review": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "needs_operator_review": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "insufficient_samples": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "source_degraded": {
-              "type": "integer",
-              "minimum": 0
-            }
-          }
+          "$ref": "#/$defs/retrieval_threshold_decision_summary"
         },
         "threshold_decisions": {
           "type": "array",
@@ -2961,7 +3093,11 @@
         },
         "policy_status": {
           "type": "string",
-          "minLength": 1
+          "enum": [
+            "ACTIVE",
+            "CANDIDATE",
+            "RETIRED"
+          ]
         },
         "decision_id": {
           "type": [
@@ -2971,7 +3107,12 @@
         },
         "decision_status": {
           "type": "string",
-          "minLength": 1
+          "enum": [
+            "UNSPECIFIED",
+            "OBSERVE",
+            "ADOPT",
+            "REJECT"
+          ]
         },
         "canonical_low_confidence_threshold": {
           "type": [
@@ -3059,7 +3200,14 @@
         },
         "recommended_operator_action": {
           "type": "string",
-          "minLength": 1
+          "enum": [
+            "repair_retrieval_operations_source",
+            "register_threshold_decision",
+            "collect_live_score_samples",
+            "review_threshold_override_samples",
+            "review_low_confidence_samples",
+            "prepare_threshold_policy_review"
+          ]
         },
         "review_owner_service": {
           "type": [
