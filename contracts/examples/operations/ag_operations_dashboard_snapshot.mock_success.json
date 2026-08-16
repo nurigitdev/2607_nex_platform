@@ -346,6 +346,70 @@
       }
     }
   },
+  "retrieval_threshold_decisions": {
+    "summary": {
+      "total_decisions": 1,
+      "by_sample_readiness": {
+        "INSUFFICIENT_SAMPLES": 1
+      },
+      "by_decision_status": {
+        "OBSERVE": 1
+      },
+      "observed_sample_count": 1,
+      "threshold_override_count": 1,
+      "ready_for_review": 0,
+      "needs_operator_review": 0,
+      "insufficient_samples": 1,
+      "source_degraded": 0
+    },
+    "threshold_decisions": [
+      {
+        "service_id": "nex-cx",
+        "operation_type": "retrieval_threshold_decision",
+        "policy_id": "retrieval_quality_v1",
+        "policy_version": "0001",
+        "policy_status": "ACTIVE",
+        "decision_id": "retrieval_quality_v1_threshold_0001",
+        "decision_status": "OBSERVE",
+        "canonical_low_confidence_threshold": 0.2,
+        "candidate_low_confidence_threshold": null,
+        "live_smoke_override_threshold": 0.0,
+        "minimum_live_samples_before_change": 20,
+        "observed_sample_count": 1,
+        "observed_threshold_override_count": 1,
+        "observed_default_pass_count": 0,
+        "observed_default_confidence_buckets": {
+          "LOW_CONFIDENCE": 1
+        },
+        "observed_calibration_actions": {
+          "review_live_threshold_before_canonical_policy": 1
+        },
+        "observed_score_margin_to_default_threshold": {
+          "min": -0.040678,
+          "max": -0.040678
+        },
+        "sample_readiness": "INSUFFICIENT_SAMPLES",
+        "recommended_operator_action": "collect_live_score_samples",
+        "review_owner_service": "nex-ag",
+        "policy_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidence_sources": [
+          "Slice 0297 protected_live_rag_score_calibration.v1",
+          "Slice 0299 ag_retrieval_score_calibration.v1"
+        ],
+        "decision_note": "Keep the canonical low-confidence threshold unchanged until additional live RAG score samples justify a policy update."
+      }
+    ],
+    "source_statuses": {
+      "nex-cx": {
+        "status": "READY",
+        "service_id": "nex-cx",
+        "source_kind": "postgres-read",
+        "package_count": 1,
+        "database_env": "NEX_CX_TEST_DATABASE_URL",
+        "redacted_database_url": "postgresql://nex_cx_user:***@localhost/nex_cx_test"
+      }
+    }
+  },
   "degraded_sources": [],
   "job_source_statuses": {
     "nex-cx": {

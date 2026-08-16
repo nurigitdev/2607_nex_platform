@@ -33,6 +33,9 @@ from nex_ag.processing_operations import (  # noqa: E402
     InMemoryCxProcessingRunOperationsStore,
     register_cx_processing_run_operation_routes,
 )
+from nex_ag.retrieval_operations import (  # noqa: E402
+    InMemoryRetrievalPackageOperationsStore,
+)
 from nex_runtime import (  # noqa: E402
     InMemoryJobQueue,
     InMemoryOperationalEventStore,
@@ -57,6 +60,7 @@ SCHEMA_VERSION = "ag_operations_dashboard_smoke.v1"
 
 def run_ag_operations_dashboard_smoke() -> dict[str, Any]:
     cx_processing_run_stores = _build_cx_processing_run_stores()
+    retrieval_package_stores = _build_retrieval_package_stores()
     registry = build_operations_source_registry(
         job_queues=_build_job_queues(),
         event_stores=_build_event_stores(),
@@ -80,6 +84,7 @@ def run_ag_operations_dashboard_smoke() -> dict[str, Any]:
         app,
         registry=registry,
         runtime=runtime,
+        retrieval_package_stores=retrieval_package_stores,
         cx_processing_run_stores=cx_processing_run_stores,
     )
     register_operational_event_taxonomy_routes(app)
@@ -125,6 +130,19 @@ def _build_cx_processing_run_stores() -> dict[str, InMemoryCxProcessingRunOperat
                     step_failed=1,
                     job_retryable=False,
                 ),
+            ]
+        )
+    }
+
+
+def _build_retrieval_package_stores() -> dict[str, InMemoryRetrievalPackageOperationsStore]:
+    return {
+        "nex-cx": InMemoryRetrievalPackageOperationsStore(
+            records=[
+                _sample_retrieval_package(
+                    retrieval_package_id="smoke-retrieval-package-cx-001",
+                    created_at="2026-08-05T00:00:06Z",
+                )
             ]
         )
     }
@@ -409,6 +427,46 @@ def _sample_processing_run(**overrides: Any) -> dict[str, Any]:
     }
 
 
+def _sample_retrieval_package(**overrides: Any) -> dict[str, Any]:
+    retrieval_package_id = overrides.pop(
+        "retrieval_package_id",
+        "smoke-retrieval-package-cx-001",
+    )
+    created_at = overrides.pop("created_at", "2026-08-05T00:00:06Z")
+    return {
+        "retrieval_package_id": retrieval_package_id,
+        "package_hash": "d" * 64,
+        "status": "READY",
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "query_text_sha256": "e" * 64,
+        "query_text_preview": "smoke retrieval query",
+        "query_embedding_provided": True,
+        "query_embedding_sha256": "f" * 64,
+        "query_embedding_dimension": 3,
+        "purpose": "grounded_answer",
+        "retrieval_policy_id": "weighted_rrf_vector_bm25_v1",
+        "retrieval_policy_version": "0001",
+        "retrieval_policy_hash": "a" * 64,
+        "retrieval_policy_source": "ag_registry_active",
+        "ranker_mix": "weighted_rrf_vector_bm25_v1",
+        "rerank_state": "NOT_APPLIED",
+        "permission_snapshot_hash": "b" * 64,
+        "source_summary": {"source_count": 1, "document_count": 1, "chunk_count": 1},
+        "score_summary": {
+            "best_score": 0.92,
+            "confidence_bucket": "READY",
+            "low_confidence_threshold": 0.2,
+        },
+        "warning_count": 0,
+        "evidence_count": 1,
+        "no_answer_reason": None,
+        "created_at": created_at,
+        "updated_at": created_at,
+        **overrides,
+    }
+
+
 def _read_operations_projections(client: TestClient) -> dict[str, dict[str, Any]]:
     return {
         "sources": _get_json(
@@ -648,8 +706,10 @@ def _ag_operations_dashboard_smoke_checks(
         "trace_timeline_mixes_jobs_events_logs": {
             item["timeline_item_type"]
             for item in trace_timeline["timeline"]
-        } == {"job", "event", "log"}
-        and trace_timeline["log_source_statuses"]["nex-cx"]["status"] == "READY",
+        } == {"job", "event", "log", "retrieval_package"}
+        and trace_timeline["log_source_statuses"]["nex-cx"]["status"] == "READY"
+        and trace_timeline["retrieval_package_source_statuses"]["nex-cx"]["status"]
+        == "READY",
         "rollup_counts": (
             projections["rollups"]["rollups"][0]["jobs"]["total"] == 2
             and projections["rollups"]["rollups"][0]["events"]["total"] == 2
@@ -676,6 +736,20 @@ def _ag_operations_dashboard_smoke_checks(
             and dashboard["cx_processing_runs"]["source_statuses"]["nex-cx"][
                 "status"
             ]
+            == "READY"
+        ),
+        "dashboard_retrieval_threshold_decisions_visible": (
+            dashboard["retrieval_threshold_decisions"]["summary"][
+                "total_decisions"
+            ]
+            == 2
+            and dashboard["retrieval_threshold_decisions"]["summary"][
+                "observed_sample_count"
+            ]
+            == 1
+            and dashboard["retrieval_threshold_decisions"]["source_statuses"][
+                "nex-cx"
+            ]["status"]
             == "READY"
         ),
         "issue_candidates_include_failed_and_active": {
@@ -714,6 +788,11 @@ def _projection_counts(projections: dict[str, dict[str, Any]]) -> dict[str, int]
         "dashboard_replay_candidates": len(
             projections["dashboard"]["replay_candidates"]
         ),
+        "threshold_decisions": len(
+            projections["dashboard"]["retrieval_threshold_decisions"][
+                "threshold_decisions"
+            ]
+        ),
         "issue_candidates": len(projections["issue_candidates"]["issue_candidates"]),
     }
 
@@ -726,6 +805,7 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"endpoints={evidence['endpoint_count']} "
             f"jobs={counts['jobs']} workers={counts['workers']} "
             f"processing_runs={counts['cx_processing_runs']} "
+            f"threshold_decisions={counts['threshold_decisions']} "
             f"events={counts['events']} "
             f"logs={counts['logs']} "
             f"history={counts['retention_history']} "

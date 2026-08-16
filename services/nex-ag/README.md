@@ -148,8 +148,8 @@ Unified operations:
 - `GET /admin/v1/operations/dashboard` returns
   `ag_operations_dashboard_snapshot_projection.v1`, combining source readiness,
   rollups, recent failed jobs/events, active jobs, CX processing run status
-  summary, and degraded source signals for the first AG operations dashboard
-  screen.
+  summary, retrieval threshold decision readiness, and degraded source signals
+  for the first AG operations dashboard screen.
 - `GET /admin/v1/operations/issue-candidates` returns
   `ag_operations_issue_candidate_projection.v1`, applying deterministic
   read-only rules to operations dashboard signals. Notification delivery,

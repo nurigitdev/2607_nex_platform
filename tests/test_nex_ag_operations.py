@@ -2306,6 +2306,11 @@ def test_build_operations_dashboard_snapshot_projection_combines_sections() -> N
     projection = build_operations_dashboard_snapshot_projection(
         registry=registry,
         runtime=runtime,
+        retrieval_package_stores={
+            "nex-cx": InMemoryRetrievalPackageOperationsStore(
+                records=[retrieval_package_record()]
+            )
+        },
         cx_processing_run_stores={"nex-cx": cx_processing_store},
         service_id="nex-cx",
         recent_limit=2,
@@ -2383,12 +2388,120 @@ def test_build_operations_dashboard_snapshot_projection_combines_sections() -> N
         "database_env": None,
         "redacted_database_url": None,
     }
+    assert projection["retrieval_threshold_decisions"]["summary"] == {
+        "total_decisions": 2,
+        "by_sample_readiness": {"INSUFFICIENT_SAMPLES": 2},
+        "by_decision_status": {"OBSERVE": 2},
+        "observed_sample_count": 1,
+        "threshold_override_count": 0,
+        "ready_for_review": 0,
+        "needs_operator_review": 0,
+        "insufficient_samples": 2,
+        "source_degraded": 0,
+    }
+    assert {
+        decision["policy_id"]: decision["observed_sample_count"]
+        for decision in projection["retrieval_threshold_decisions"][
+            "threshold_decisions"
+        ]
+    } == {
+        "retrieval_quality_v1": 0,
+        "weighted_rrf_vector_bm25_v1": 1,
+    }
+    assert projection["retrieval_threshold_decisions"]["source_statuses"][
+        "nex-cx"
+    ] == {
+        "status": "READY",
+        "service_id": "nex-cx",
+        "source_kind": "memory",
+        "package_count": 1,
+        "database_env": None,
+        "redacted_database_url": None,
+    }
     assert projection["degraded_sources"] == []
     assert projection["log_source_statuses"]["nex-cx"] == {
         "status": "NOT_CONFIGURED",
         "log_count": 0,
     }
     assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_dashboard_snapshot_reports_retrieval_threshold_source_unavailable() -> None:
+    projection = build_operations_dashboard_snapshot_projection(
+        retrieval_package_stores={"nex-cx": BrokenRetrievalPackageStore()},
+        service_id="nex-cx",
+    )
+
+    assert projection["projection_status"] == "DEGRADED"
+    assert projection["retrieval_threshold_decisions"]["summary"]["source_degraded"] == 2
+    assert {
+        decision["sample_readiness"]
+        for decision in projection["retrieval_threshold_decisions"][
+            "threshold_decisions"
+        ]
+    } == {"SOURCE_DEGRADED"}
+    assert projection["retrieval_threshold_decisions"]["source_statuses"]["nex-cx"] == {
+        "status": "UNAVAILABLE",
+        "service_id": "nex-cx",
+        "source_kind": "postgres-read",
+        "package_count": 0,
+        "database_env": "NEX_CX_TEST_DATABASE_URL",
+        "redacted_database_url": "postgresql://nex_cx_user:***@localhost/nex_cx_test",
+        "error_code": "ag.retrieval_package_source_unavailable",
+        "detail": "retrieval package source is unavailable",
+    }
+    assert {
+        (source["source_type"], source["service_id"], source["status"])
+        for source in projection["degraded_sources"]
+    } == {("retrieval_threshold_decisions", "nex-cx", "UNAVAILABLE")}
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_dashboard_snapshot_retrieval_threshold_handles_missing_and_other_scope() -> None:
+    missing = build_operations_dashboard_snapshot_projection(
+        retrieval_package_stores={},
+        service_id="nex-cx",
+    )
+    other_scope = build_operations_dashboard_snapshot_projection(
+        retrieval_package_stores={
+            "nex-cx": InMemoryRetrievalPackageOperationsStore(
+                records=[retrieval_package_record()]
+            )
+        },
+        service_id="nex-mo",
+    )
+
+    assert missing["projection_status"] == "DEGRADED"
+    assert missing["retrieval_threshold_decisions"]["source_statuses"]["nex-cx"] == {
+        "status": "NOT_CONFIGURED",
+        "service_id": "nex-cx",
+        "source_kind": "none",
+        "package_count": 0,
+        "database_env": None,
+        "redacted_database_url": None,
+    }
+    assert missing["retrieval_threshold_decisions"]["summary"]["source_degraded"] == 2
+    assert {
+        (source["source_type"], source["service_id"], source["status"])
+        for source in missing["degraded_sources"]
+    } == {("retrieval_threshold_decisions", "nex-cx", "NOT_CONFIGURED")}
+    assert other_scope["retrieval_threshold_decisions"] == {
+        "summary": {
+            "total_decisions": 0,
+            "by_sample_readiness": {},
+            "by_decision_status": {},
+            "observed_sample_count": 0,
+            "threshold_override_count": 0,
+            "ready_for_review": 0,
+            "needs_operator_review": 0,
+            "insufficient_samples": 0,
+            "source_degraded": 0,
+        },
+        "threshold_decisions": [],
+        "source_statuses": {},
+    }
+    assert_ag_operations_projection_contract(missing)
+    assert_ag_operations_projection_contract(other_scope)
 
 
 def test_operations_dashboard_snapshot_reports_cx_processing_source_unavailable() -> None:
@@ -2593,6 +2706,11 @@ def test_operations_dashboard_snapshot_route_requires_auth_returns_projection() 
         app,
         registry=registry,
         runtime=runtime,
+        retrieval_package_stores={
+            "nex-cx": InMemoryRetrievalPackageOperationsStore(
+                records=[retrieval_package_record()]
+            )
+        },
         cx_processing_run_stores={"nex-cx": cx_processing_store},
     )
     client = TestClient(app)
@@ -2618,6 +2736,9 @@ def test_operations_dashboard_snapshot_route_requires_auth_returns_projection() 
     assert payload["cx_processing_runs"]["recent_failures"][0]["pipeline_run_id"] == (
         "processing-run-001"
     )
+    assert payload["retrieval_threshold_decisions"]["summary"][
+        "total_decisions"
+    ] == 2
     assert payload["replay_candidates"][0]["control_path"] == (
         "/admin/v1/operations/jobs/nex-cx/job-cx-002/replay"
     )

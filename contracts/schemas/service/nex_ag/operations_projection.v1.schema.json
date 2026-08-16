@@ -245,6 +245,9 @@
     "cx_processing_runs": {
       "$ref": "#/$defs/dashboard_cx_processing_runs"
     },
+    "retrieval_threshold_decisions": {
+      "$ref": "#/$defs/dashboard_retrieval_threshold_decisions"
+    },
     "replay_candidates": {
       "type": "array",
       "items": {
@@ -663,6 +666,7 @@
           "replay_candidates",
           "active_jobs",
           "cx_processing_runs",
+          "retrieval_threshold_decisions",
           "degraded_sources",
           "job_source_statuses",
           "event_source_statuses",
@@ -1362,6 +1366,88 @@
         }
       }
     },
+    "dashboard_retrieval_threshold_decisions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "threshold_decisions",
+        "source_statuses"
+      ],
+      "properties": {
+        "summary": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "total_decisions",
+            "by_sample_readiness",
+            "by_decision_status",
+            "observed_sample_count",
+            "threshold_override_count",
+            "ready_for_review",
+            "needs_operator_review",
+            "insufficient_samples",
+            "source_degraded"
+          ],
+          "properties": {
+            "total_decisions": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "by_sample_readiness": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "by_decision_status": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "observed_sample_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "threshold_override_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "ready_for_review": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "needs_operator_review": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "insufficient_samples": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "source_degraded": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "threshold_decisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/retrieval_threshold_decision_operation"
+          }
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/source_status"
+          }
+        }
+      }
+    },
     "dashboard_degraded_source": {
       "type": "object",
       "additionalProperties": false,
@@ -1379,7 +1465,8 @@
             "jobs",
             "events",
             "logs",
-            "cx_processing_runs"
+            "cx_processing_runs",
+            "retrieval_threshold_decisions"
           ]
         },
         "service_id": {

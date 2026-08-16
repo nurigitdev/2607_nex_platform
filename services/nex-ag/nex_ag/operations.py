@@ -83,6 +83,15 @@ from nex_ag.service_log_retention import (
     AgServiceLogRetentionError,
     build_default_ag_service_log_retention_client,
 )
+from nex_ag.retrieval_score_calibration import (
+    build_retrieval_score_calibration_projection,
+    summarize_retrieval_score_calibration_samples,
+)
+from nex_ag.retrieval_threshold_decisions import (
+    project_retrieval_threshold_decision,
+    summarize_retrieval_threshold_decisions,
+)
+from nex_runtime.retrieval_policies import list_retrieval_policy_records
 
 DEFAULT_OPERATIONAL_EVENT_STORE = InMemoryOperationalEventStore()
 DEFAULT_JOB_QUEUE_STORES = {
@@ -138,6 +147,7 @@ SERVICE_LOG_QUERY_SUPPORTED_FILTERS = (
     "limit",
 )
 DEFAULT_SERVICE_LOG_RETENTION_DAYS = 30
+RETRIEVAL_THRESHOLD_SOURCE_SERVICE_ID = "nex-cx"
 
 
 class RetrievalPackageTraceStore(Protocol):
@@ -1943,6 +1953,7 @@ def register_unified_operation_routes(
             job_queues=job_queues,
             event_store=event_store,
             service_log_stores=service_log_stores,
+            retrieval_package_stores=retrieval_package_stores,
             registry=registry,
             runtime=selected_runtime,
             cx_processing_run_stores=cx_processing_run_stores,
@@ -3203,6 +3214,7 @@ def build_operations_dashboard_snapshot_projection(
     job_queues: Mapping[str, JobQueue] | None = None,
     event_store: OperationalEventStore | None = None,
     service_log_stores: Mapping[str, ServiceLogStore] | None = None,
+    retrieval_package_stores: Mapping[str, RetrievalPackageTraceStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
     cx_processing_run_stores: Mapping[str, CxProcessingRunDashboardStore] | None = None,
@@ -3211,6 +3223,7 @@ def build_operations_dashboard_snapshot_projection(
     limit: int = 500,
     query_options: OperationQueryOptions | None = None,
     request_trace_id: str | None = None,
+    retrieval_policies: tuple[dict[str, Any], ...] | None = None,
 ) -> dict[str, Any]:
     options = query_options or build_operation_query_options(limit=limit)
     normalized_recent_limit = normalize_dashboard_recent_limit(recent_limit)
@@ -3280,12 +3293,21 @@ def build_operations_dashboard_snapshot_projection(
         options=options,
         limit=normalized_recent_limit,
     )
+    retrieval_threshold_decisions = _dashboard_retrieval_threshold_decision_section(
+        retrieval_package_stores,
+        service_id=service_id,
+        options=options,
+        policies=retrieval_policies,
+    )
     degraded_sources = _dashboard_degraded_sources(
         operation_sources=readiness_projection["sources"],
         job_source_statuses=rollup_projection["job_source_statuses"],
         event_source_statuses=rollup_projection["event_source_statuses"],
         log_source_statuses=log_source_statuses,
         cx_processing_run_source_statuses=cx_processing_runs["source_statuses"],
+        retrieval_threshold_decision_source_statuses=(
+            retrieval_threshold_decisions["source_statuses"]
+        ),
     )
     projection = {
         "projection_schema_version": "ag_operations_dashboard_snapshot_projection.v1",
@@ -3305,6 +3327,7 @@ def build_operations_dashboard_snapshot_projection(
         "replay_candidates": replay_candidates,
         "active_jobs": active_jobs,
         "cx_processing_runs": cx_processing_runs,
+        "retrieval_threshold_decisions": retrieval_threshold_decisions,
         "degraded_sources": degraded_sources,
         "job_source_statuses": rollup_projection["job_source_statuses"],
         "event_source_statuses": rollup_projection["event_source_statuses"],
@@ -5311,6 +5334,188 @@ def _dashboard_cx_processing_run_source_status(
     return source
 
 
+def _dashboard_retrieval_threshold_decision_section(
+    stores: Mapping[str, RetrievalPackageTraceStore] | None,
+    *,
+    service_id: str | None,
+    options: OperationQueryOptions,
+    policies: tuple[dict[str, Any], ...] | None,
+) -> dict[str, Any]:
+    source_statuses: dict[str, dict[str, Any]] = {}
+    selected_service_ids = _dashboard_retrieval_threshold_service_ids(service_id)
+    if not selected_service_ids or stores is None:
+        return _empty_dashboard_retrieval_threshold_decision_section(source_statuses)
+
+    samples: list[dict[str, Any]] = []
+    for selected_service_id in selected_service_ids:
+        store = stores.get(selected_service_id)
+        if store is None:
+            source_statuses[selected_service_id] = (
+                _dashboard_retrieval_threshold_source_status(
+                    service_id=selected_service_id,
+                    store=None,
+                    package_count=0,
+                )
+            )
+            continue
+        try:
+            records = store.list_retrieval_packages(limit=500)
+        except Exception as exc:
+            source_statuses[selected_service_id] = (
+                _dashboard_retrieval_threshold_source_status(
+                    service_id=selected_service_id,
+                    store=store,
+                    package_count=0,
+                    error=exc,
+                )
+            )
+            continue
+        visible_records = _filter_records_by_operation_time(
+            [dict(record) for record in records],
+            options,
+            timestamp_field="created_at",
+        )
+        source_statuses[selected_service_id] = (
+            _dashboard_retrieval_threshold_source_status(
+                service_id=selected_service_id,
+                store=store,
+                package_count=len(visible_records),
+            )
+        )
+        samples.extend(
+            _dashboard_retrieval_threshold_calibration_sample(
+                selected_service_id,
+                record,
+            )
+            for record in visible_records
+        )
+
+    policy_records = list_retrieval_policy_records() if policies is None else (
+        list_retrieval_policy_records(policies)
+    )
+    source_degraded = any(
+        source["status"] in {"NOT_CONFIGURED", "UNAVAILABLE"}
+        for source in source_statuses.values()
+    )
+    decisions = [
+        project_retrieval_threshold_decision(
+            policy,
+            sample_summary=summarize_retrieval_score_calibration_samples(
+                _dashboard_retrieval_threshold_samples_for_policy(
+                    samples,
+                    policy.get("policy_id"),
+                )
+            ),
+            source_degraded=source_degraded,
+            service_id=RETRIEVAL_THRESHOLD_SOURCE_SERVICE_ID,
+        )
+        for policy in policy_records
+    ]
+    return {
+        "summary": summarize_retrieval_threshold_decisions(decisions),
+        "threshold_decisions": decisions,
+        "source_statuses": source_statuses,
+    }
+
+
+def _dashboard_retrieval_threshold_service_ids(
+    service_id: str | None,
+) -> list[str]:
+    if service_id is None:
+        return [RETRIEVAL_THRESHOLD_SOURCE_SERVICE_ID]
+    if service_id == RETRIEVAL_THRESHOLD_SOURCE_SERVICE_ID:
+        return [RETRIEVAL_THRESHOLD_SOURCE_SERVICE_ID]
+    return []
+
+
+def _empty_dashboard_retrieval_threshold_decision_section(
+    source_statuses: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "summary": summarize_retrieval_threshold_decisions([]),
+        "threshold_decisions": [],
+        "source_statuses": source_statuses,
+    }
+
+
+def _dashboard_retrieval_threshold_calibration_sample(
+    service_id: str,
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    calibration = build_retrieval_score_calibration_projection(record)
+    created_at = _dashboard_timestamp(record.get("created_at"))
+    return {
+        "service_id": service_id,
+        "operation_type": "retrieval_score_calibration",
+        "operation_timestamp": created_at,
+        "retrieval_package_id": str(record.get("retrieval_package_id", "")),
+        "package_hash": record.get("package_hash"),
+        "status": str(record.get("status") or "UNKNOWN"),
+        "trace_id": record.get("trace_id"),
+        "request_id": record.get("request_id"),
+        "retrieval_policy_id": str(record.get("retrieval_policy_id") or "UNKNOWN"),
+        "retrieval_policy_version": record.get("retrieval_policy_version"),
+        "ranker_mix": record.get("ranker_mix"),
+        "rerank_state": record.get("rerank_state"),
+        "evidence_count": _safe_int(record.get("evidence_count")),
+        "warning_count": _safe_int(record.get("warning_count")),
+        "no_answer_reason": record.get("no_answer_reason"),
+        "best_score": calibration["best_score"],
+        "score_calibration": calibration,
+        "created_at": created_at,
+        "updated_at": _dashboard_timestamp(record.get("updated_at")),
+    }
+
+
+def _dashboard_retrieval_threshold_samples_for_policy(
+    samples: list[dict[str, Any]],
+    policy_id: object,
+) -> list[dict[str, Any]]:
+    return [
+        sample
+        for sample in samples
+        if sample.get("retrieval_policy_id") == policy_id
+    ]
+
+
+def _dashboard_retrieval_threshold_source_status(
+    *,
+    service_id: str,
+    store: RetrievalPackageTraceStore | None,
+    package_count: int,
+    error: Exception | None = None,
+) -> dict[str, Any]:
+    if store is None:
+        return {
+            "status": "NOT_CONFIGURED",
+            "service_id": service_id,
+            "source_kind": "none",
+            "package_count": 0,
+            "database_env": None,
+            "redacted_database_url": None,
+        }
+    source = {
+        "status": "UNAVAILABLE" if error is not None else "READY",
+        "service_id": service_id,
+        "source_kind": store.source_kind,
+        "package_count": package_count,
+        "database_env": store.database_env,
+        "redacted_database_url": store.redacted_database_url,
+    }
+    if error is not None:
+        source["error_code"] = getattr(
+            error,
+            "error_code",
+            "ag.retrieval_threshold_decision_source_unavailable",
+        )
+        source["detail"] = getattr(
+            error,
+            "detail",
+            "Retrieval threshold decision source could not be read.",
+        )
+    return source
+
+
 def _summarize_dashboard_cx_processing_runs(
     processing_runs: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -5405,6 +5610,9 @@ def _dashboard_degraded_sources(
     event_source_statuses: Mapping[str, dict[str, Any]],
     log_source_statuses: Mapping[str, dict[str, Any]] | None = None,
     cx_processing_run_source_statuses: Mapping[str, dict[str, Any]] | None = None,
+    retrieval_threshold_decision_source_statuses: (
+        Mapping[str, dict[str, Any]] | None
+    ) = None,
 ) -> list[dict[str, Any]]:
     degraded: list[dict[str, Any]] = []
     for source in operation_sources:
@@ -5423,6 +5631,10 @@ def _dashboard_degraded_sources(
         ("events", event_source_statuses),
         ("logs", log_source_statuses or {}),
         ("cx_processing_runs", cx_processing_run_source_statuses or {}),
+        (
+            "retrieval_threshold_decisions",
+            retrieval_threshold_decision_source_statuses or {},
+        ),
     ):
         for service_id, source_status in statuses.items():
             status = str(source_status["status"])
