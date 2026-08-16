@@ -1436,6 +1436,117 @@
         }
       ]
     },
+    "retrieval_threshold_operator_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "review_schema_version",
+        "review_status",
+        "runbook_id",
+        "operator_action",
+        "action_label",
+        "severity",
+        "sample_readiness",
+        "remaining_sample_count",
+        "requires_live_provider_access",
+        "requires_policy_registry_update",
+        "blocking_reason",
+        "threshold_decision_path",
+        "calibration_samples_path",
+        "policy_detail_path",
+        "evidence_requirements"
+      ],
+      "properties": {
+        "review_schema_version": {
+          "const": "ag_retrieval_threshold_operator_review.v1"
+        },
+        "review_status": {
+          "type": "string",
+          "enum": [
+            "BLOCKED_SOURCE",
+            "MISSING_CHECKPOINT",
+            "COLLECTING_SAMPLES",
+            "REVIEW_REQUIRED",
+            "READY_FOR_POLICY_REVIEW",
+            "UNKNOWN_ACTION"
+          ]
+        },
+        "runbook_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operator_action": {
+          "type": "string",
+          "enum": [
+            "repair_retrieval_operations_source",
+            "register_threshold_decision",
+            "collect_live_score_samples",
+            "review_threshold_override_samples",
+            "review_low_confidence_samples",
+            "prepare_threshold_policy_review",
+            "unknown_operator_action"
+          ]
+        },
+        "action_label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "INFO",
+            "WARNING",
+            "ERROR"
+          ]
+        },
+        "sample_readiness": {
+          "type": "string",
+          "enum": [
+            "SOURCE_DEGRADED",
+            "NO_DECISION_CHECKPOINT",
+            "INSUFFICIENT_SAMPLES",
+            "NEEDS_OPERATOR_REVIEW",
+            "READY_FOR_REVIEW",
+            "UNKNOWN"
+          ]
+        },
+        "remaining_sample_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requires_live_provider_access": {
+          "type": "boolean"
+        },
+        "requires_policy_registry_update": {
+          "type": "boolean"
+        },
+        "blocking_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threshold_decision_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "calibration_samples_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy_detail_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_requirements": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
     "retrieval_score_calibration_summary": {
       "type": "object",
       "additionalProperties": true,
@@ -3069,6 +3180,7 @@
         "observed_score_margin_to_default_threshold",
         "sample_readiness",
         "recommended_operator_action",
+        "operator_review",
         "review_owner_service",
         "policy_hash",
         "evidence_sources",
@@ -3208,6 +3320,9 @@
             "review_low_confidence_samples",
             "prepare_threshold_policy_review"
           ]
+        },
+        "operator_review": {
+          "$ref": "#/$defs/retrieval_threshold_operator_review"
         },
         "review_owner_service": {
           "type": [

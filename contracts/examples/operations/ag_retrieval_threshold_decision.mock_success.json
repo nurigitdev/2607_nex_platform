@@ -40,6 +40,26 @@
       },
       "sample_readiness": "INSUFFICIENT_SAMPLES",
       "recommended_operator_action": "collect_live_score_samples",
+      "operator_review": {
+        "review_schema_version": "ag_retrieval_threshold_operator_review.v1",
+        "review_status": "COLLECTING_SAMPLES",
+        "runbook_id": "retrieval_threshold.collect_live_score_samples.v1",
+        "operator_action": "collect_live_score_samples",
+        "action_label": "Collect live score samples",
+        "severity": "INFO",
+        "sample_readiness": "INSUFFICIENT_SAMPLES",
+        "remaining_sample_count": 19,
+        "requires_live_provider_access": true,
+        "requires_policy_registry_update": false,
+        "blocking_reason": "insufficient_live_score_samples",
+        "threshold_decision_path": "/admin/v1/operations/retrieval-threshold-decisions?service_id=nex-cx&retrieval_policy_id=retrieval_quality_v1",
+        "calibration_samples_path": "/admin/v1/operations/retrieval-score-calibration?service_id=nex-cx&retrieval_policy_id=retrieval_quality_v1",
+        "policy_detail_path": "/admin/v1/policies/retrieval/retrieval_quality_v1",
+        "evidence_requirements": [
+          "collect_minimum_live_rag_score_samples",
+          "review_score_margin_distribution"
+        ]
+      },
       "review_owner_service": "nex-ag",
       "policy_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "evidence_sources": [

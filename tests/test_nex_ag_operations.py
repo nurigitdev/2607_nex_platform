@@ -2888,6 +2888,25 @@ def test_operations_issue_candidate_projection_flags_retrieval_threshold_decisio
         "recommended_actions": ["collect_live_score_samples"],
         "observed_sample_count": 1,
         "minimum_live_samples_before_change": 20,
+        "runbook_ids": [
+            "retrieval_threshold.collect_live_score_samples.v1",
+        ],
+        "threshold_decision_paths": [
+            "/admin/v1/operations/retrieval-threshold-decisions?"
+            "service_id=nex-cx&retrieval_policy_id=retrieval_quality_v1",
+            "/admin/v1/operations/retrieval-threshold-decisions?"
+            "service_id=nex-cx&retrieval_policy_id=weighted_rrf_vector_bm25_v1",
+        ],
+        "calibration_samples_paths": [
+            "/admin/v1/operations/retrieval-score-calibration?"
+            "service_id=nex-cx&retrieval_policy_id=retrieval_quality_v1",
+            "/admin/v1/operations/retrieval-score-calibration?"
+            "service_id=nex-cx&retrieval_policy_id=weighted_rrf_vector_bm25_v1",
+        ],
+        "policy_detail_paths": [
+            "/admin/v1/policies/retrieval/retrieval_quality_v1",
+            "/admin/v1/policies/retrieval/weighted_rrf_vector_bm25_v1",
+        ],
     }
     assert projection["summary"]["by_rule"] == {
         "retrieval_threshold_live_samples_insufficient.v1": 1
@@ -2971,6 +2990,11 @@ def test_operations_issue_candidates_group_threshold_decision_readiness() -> Non
             "READY_FOR_REVIEW",
         ),
     ]
+    assert all(candidate["signal"]["runbook_ids"] == [] for candidate in candidates)
+    assert all(
+        candidate["signal"]["threshold_decision_paths"] == []
+        for candidate in candidates
+    )
     assert build_operations_issue_candidates(
         {**base_dashboard, "retrieval_threshold_decisions": "bad"}
     ) == []

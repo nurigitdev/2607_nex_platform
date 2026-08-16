@@ -243,6 +243,7 @@ def test_nex_ag_operations_contract_hardens_retrieval_threshold_decisions() -> N
     }
     decision_def = schema["$defs"]["retrieval_threshold_decision_operation"]
     decision_properties = decision_def["properties"]
+    operator_review_def = schema["$defs"]["retrieval_threshold_operator_review"]
 
     assert "ag_retrieval_score_calibration_rollup_projection.v1" in projection_versions
     assert "ag_retrieval_threshold_decision_projection.v1" in projection_versions
@@ -289,6 +290,22 @@ def test_nex_ag_operations_contract_hardens_retrieval_threshold_decisions() -> N
         "review_threshold_override_samples",
         "review_low_confidence_samples",
         "prepare_threshold_policy_review",
+    ]
+    assert "operator_review" in decision_def["required"]
+    assert decision_properties["operator_review"]["$ref"] == (
+        "#/$defs/retrieval_threshold_operator_review"
+    )
+    assert operator_review_def["additionalProperties"] is False
+    assert operator_review_def["properties"]["review_schema_version"]["const"] == (
+        "ag_retrieval_threshold_operator_review.v1"
+    )
+    assert operator_review_def["properties"]["review_status"]["enum"] == [
+        "BLOCKED_SOURCE",
+        "MISSING_CHECKPOINT",
+        "COLLECTING_SAMPLES",
+        "REVIEW_REQUIRED",
+        "READY_FOR_POLICY_REVIEW",
+        "UNKNOWN_ACTION",
     ]
 
 

@@ -177,7 +177,10 @@ Unified operations:
   `ag_retrieval_threshold_decision_projection.v1`, combining the retrieval
   policy registry threshold-decision checkpoint with persisted calibration
   samples so operators can see whether more live samples are required before
-  reviewing canonical low-confidence threshold changes.
+  reviewing canonical low-confidence threshold changes. Each decision includes
+  `ag_retrieval_threshold_operator_review.v1` metadata with the canonical
+  runbook id, remaining sample count, review paths, evidence requirements, and
+  whether live-provider or policy-registry work is needed.
 - The AG operations contract family also reserves
   `ag_cx_processing_run_operations_projection.v1` and
   `ag_cx_processing_run_detail_projection.v1` for CX processing run

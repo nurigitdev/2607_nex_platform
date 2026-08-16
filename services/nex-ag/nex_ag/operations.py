@@ -6004,6 +6004,11 @@ def _retrieval_threshold_issue_candidate(
             for decision in grouped_decisions
         }
     )
+    operator_reviews = [
+        review
+        for decision in grouped_decisions
+        if isinstance((review := decision.get("operator_review")), Mapping)
+    ]
     return _operations_issue_candidate(
         rule_id=str(rule["rule_id"]),
         service_id=service_id,
@@ -6027,6 +6032,34 @@ def _retrieval_threshold_issue_candidate(
             "minimum_live_samples_before_change": max(
                 _safe_int(decision.get("minimum_live_samples_before_change"))
                 for decision in grouped_decisions
+            ),
+            "runbook_ids": sorted(
+                {
+                    str(review.get("runbook_id"))
+                    for review in operator_reviews
+                    if review.get("runbook_id")
+                }
+            ),
+            "threshold_decision_paths": sorted(
+                {
+                    str(review.get("threshold_decision_path"))
+                    for review in operator_reviews
+                    if review.get("threshold_decision_path")
+                }
+            ),
+            "calibration_samples_paths": sorted(
+                {
+                    str(review.get("calibration_samples_path"))
+                    for review in operator_reviews
+                    if review.get("calibration_samples_path")
+                }
+            ),
+            "policy_detail_paths": sorted(
+                {
+                    str(review.get("policy_detail_path"))
+                    for review in operator_reviews
+                    if review.get("policy_detail_path")
+                }
             ),
         },
     )

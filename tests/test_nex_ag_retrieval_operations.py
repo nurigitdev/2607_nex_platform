@@ -704,10 +704,19 @@ def test_retrieval_threshold_decision_projection_evaluates_sample_readiness() ->
     assert by_policy["retrieval_quality_v1"]["recommended_operator_action"] == (
         "prepare_threshold_policy_review"
     )
+    assert by_policy["retrieval_quality_v1"]["operator_review"][
+        "runbook_id"
+    ] == "retrieval_threshold.prepare_policy_review.v1"
+    assert by_policy["retrieval_quality_v1"]["operator_review"][
+        "remaining_sample_count"
+    ] == 0
     assert by_policy["retrieval_quality_v1"]["observed_sample_count"] == 20
     assert by_policy["weighted_rrf_vector_bm25_v1"]["sample_readiness"] == (
         "INSUFFICIENT_SAMPLES"
     )
+    assert by_policy["weighted_rrf_vector_bm25_v1"]["operator_review"][
+        "runbook_id"
+    ] == "retrieval_threshold.collect_live_score_samples.v1"
     assert by_policy["weighted_rrf_vector_bm25_v1"][
         "observed_threshold_override_count"
     ] == 1
@@ -811,12 +820,18 @@ def test_retrieval_threshold_decision_projection_reports_review_and_gaps() -> No
     assert by_policy["retrieval_quality_v1"]["recommended_operator_action"] == (
         "review_threshold_override_samples"
     )
+    assert by_policy["retrieval_quality_v1"]["operator_review"][
+        "blocking_reason"
+    ] == "threshold_override_samples_present"
     assert by_policy["legacy_threshold_policy"]["sample_readiness"] == (
         "NO_DECISION_CHECKPOINT"
     )
     assert by_policy["legacy_threshold_policy"]["recommended_operator_action"] == (
         "register_threshold_decision"
     )
+    assert by_policy["legacy_threshold_policy"]["operator_review"][
+        "requires_policy_registry_update"
+    ] is True
     assert summarize_retrieval_threshold_decisions([]) == {
         "total_decisions": 0,
         "by_sample_readiness": {},
@@ -891,6 +906,9 @@ def test_retrieval_threshold_decision_route_filters_and_validates() -> None:
     )
     assert payload["filters"]["retrieval_policy_id"] == "retrieval_quality_v1"
     assert payload["summary"]["total_decisions"] == 1
+    assert payload["threshold_decisions"][0]["operator_review"][
+        "threshold_decision_path"
+    ].startswith("/admin/v1/operations/retrieval-threshold-decisions?")
 
 
 def test_retrieval_threshold_decision_route_reads_runtime_from_app_state() -> None:

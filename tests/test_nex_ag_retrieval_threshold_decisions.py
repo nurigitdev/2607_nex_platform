@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from nex_ag.retrieval_threshold_decisions import (
     AG_RETRIEVAL_THRESHOLD_DECISION_PROJECTION_SCHEMA_VERSION,
+    AG_RETRIEVAL_THRESHOLD_OPERATOR_REVIEW_SCHEMA_VERSION,
     RETRIEVAL_THRESHOLD_SAMPLE_READINESS,
+    build_retrieval_threshold_operator_review,
     project_retrieval_threshold_decision,
     summarize_retrieval_threshold_decisions,
     threshold_decision_readiness,
@@ -97,6 +99,115 @@ def test_threshold_decision_readiness_reports_all_operator_states() -> None:
     ) == ("READY_FOR_REVIEW", "prepare_threshold_policy_review")
 
 
+def test_threshold_operator_review_runbooks_cover_operator_states() -> None:
+    cases = [
+        (
+            "SOURCE_DEGRADED",
+            "repair_retrieval_operations_source",
+            0,
+            20,
+            "BLOCKED_SOURCE",
+            "retrieval_threshold.repair_operations_source.v1",
+        ),
+        (
+            "NO_DECISION_CHECKPOINT",
+            "register_threshold_decision",
+            0,
+            20,
+            "MISSING_CHECKPOINT",
+            "retrieval_threshold.register_decision_checkpoint.v1",
+        ),
+        (
+            "INSUFFICIENT_SAMPLES",
+            "collect_live_score_samples",
+            19,
+            20,
+            "COLLECTING_SAMPLES",
+            "retrieval_threshold.collect_live_score_samples.v1",
+        ),
+        (
+            "NEEDS_OPERATOR_REVIEW",
+            "review_threshold_override_samples",
+            20,
+            20,
+            "REVIEW_REQUIRED",
+            "retrieval_threshold.review_override_samples.v1",
+        ),
+        (
+            "NEEDS_OPERATOR_REVIEW",
+            "review_low_confidence_samples",
+            20,
+            20,
+            "REVIEW_REQUIRED",
+            "retrieval_threshold.review_low_confidence_samples.v1",
+        ),
+        (
+            "READY_FOR_REVIEW",
+            "prepare_threshold_policy_review",
+            21,
+            20,
+            "READY_FOR_POLICY_REVIEW",
+            "retrieval_threshold.prepare_policy_review.v1",
+        ),
+    ]
+
+    reviews = [
+        build_retrieval_threshold_operator_review(
+            service_id="nex-cx",
+            policy_id="retrieval_quality_v1",
+            sample_readiness=readiness,
+            recommended_operator_action=action,
+            observed_sample_count=observed,
+            minimum_live_samples_before_change=minimum,
+        )
+        for readiness, action, observed, minimum, _status, _runbook_id in cases
+    ]
+
+    assert {
+        (review["review_status"], review["runbook_id"])
+        for review in reviews
+    } == {(status, runbook_id) for *_prefix, status, runbook_id in cases}
+    assert all(
+        review["review_schema_version"]
+        == AG_RETRIEVAL_THRESHOLD_OPERATOR_REVIEW_SCHEMA_VERSION
+        for review in reviews
+    )
+    assert reviews[2]["remaining_sample_count"] == 1
+    assert reviews[-1]["remaining_sample_count"] == 0
+    assert reviews[-1]["blocking_reason"] is None
+    assert reviews[0]["threshold_decision_path"] == (
+        "/admin/v1/operations/retrieval-threshold-decisions?"
+        "service_id=nex-cx&retrieval_policy_id=retrieval_quality_v1"
+    )
+    assert reviews[0]["calibration_samples_path"] == (
+        "/admin/v1/operations/retrieval-score-calibration?"
+        "service_id=nex-cx&retrieval_policy_id=retrieval_quality_v1"
+    )
+    assert reviews[0]["policy_detail_path"] == (
+        "/admin/v1/policies/retrieval/retrieval_quality_v1"
+    )
+
+
+def test_threshold_operator_review_normalizes_unknown_action() -> None:
+    review = build_retrieval_threshold_operator_review(
+        service_id="nex-cx",
+        policy_id="policy/with space",
+        sample_readiness="UNKNOWN",
+        recommended_operator_action="unexpected",
+        observed_sample_count=100,
+        minimum_live_samples_before_change=20,
+    )
+
+    assert review["review_status"] == "UNKNOWN_ACTION"
+    assert review["operator_action"] == "unknown_operator_action"
+    assert review["runbook_id"] == "retrieval_threshold.unknown_operator_action.v1"
+    assert review["remaining_sample_count"] == 0
+    assert review["policy_detail_path"] == (
+        "/admin/v1/policies/retrieval/policy%2Fwith%20space"
+    )
+    assert "policy%2Fwith+space" in review["threshold_decision_path"]
+
+
 def test_project_threshold_decision_sanitizes_unexpected_count_shapes() -> None:
     projection = project_retrieval_threshold_decision(
         policy_record(minimum_live_samples_before_change=True),
@@ -119,6 +230,9 @@ def test_project_threshold_decision_sanitizes_unexpected_count_shapes() -> None:
     assert projection["observed_default_confidence_buckets"] == {}
     assert projection["observed_calibration_actions"] == {}
     assert projection["sample_readiness"] == "READY_FOR_REVIEW"
+    assert projection["operator_review"]["review_status"] == (
+        "READY_FOR_POLICY_REVIEW"
+    )
 
 
 def test_summarize_threshold_decisions_handles_bad_count_values() -> None:
