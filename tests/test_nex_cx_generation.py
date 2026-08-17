@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 import httpx
@@ -15,6 +16,7 @@ from nex_cx.generation import (
     build_generation_execution_record,
     build_generation_failure_record,
     build_grounded_generation_boundary_audit,
+    build_retrieval_package_quality_guard,
     build_mo_generation_payload,
     compatibility_payload_from_generation_request,
     evaluate_grounded_generation_boundary,
@@ -23,6 +25,7 @@ from nex_cx.generation import (
     retrieval_package_ref_from_payload,
     selected_evidence_ids_from_payload,
     validate_generation_request,
+    validate_retrieval_package_quality,
     validate_selected_evidence_ids,
 )
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
@@ -157,6 +160,9 @@ def grounded_package(*, status: str = "READY", package_hash: str = "d" * 64) -> 
             "rerank_state": "APPLIED",
             "quality_policy_id": "retrieval_quality_v1",
         },
+        "retrieval_profile": {
+            "confidence_policy": {"low_confidence_threshold": 0.2},
+        },
         "source_summary": {
             "source_count": 1,
             "document_count": 1,
@@ -164,6 +170,12 @@ def grounded_package(*, status: str = "READY", package_hash: str = "d" * 64) -> 
         },
         "warnings": ["tokenizer_fallback_used:doc-secret"],
     }
+
+
+def quality_package(**overrides: Any) -> dict[str, Any]:
+    package = deepcopy(grounded_package())
+    package.update(overrides)
+    return package
 
 
 def grounded_payload(
@@ -332,6 +344,7 @@ def test_grounded_generation_boundary_audit_admits_ready_package_and_stays_raw_s
         "package_hash": "PASS",
         "package_status": "PASS",
         "selected_evidence": "PASS",
+        "retrieval_package_quality": "PASS",
     }
     assert decision.audit["compatibility_rule"] == {
         "compatibility_rule_id": "compat-grounded-answer-v1",
@@ -352,6 +365,25 @@ def test_grounded_generation_boundary_audit_admits_ready_package_and_stays_raw_s
     assert decision.audit["retrieval_package"]["warning_kinds"] == [
         "tokenizer_fallback_used"
     ]
+    assert decision.audit["quality_guard"] == {
+        "guard_schema_version": "cx_retrieval_package_quality_guard.v1",
+        "status": "PASS",
+        "blocking_reason": None,
+        "failed_checks": [],
+        "best_score": 0.87,
+        "low_confidence_threshold": 0.2,
+        "low_confidence_threshold_source": "score_summary",
+        "confidence_bucket": "READY",
+        "evidence_item_count": 2,
+        "source_summary": {
+            "source_count": 1.0,
+            "document_count": 1.0,
+            "chunk_count": 2.0,
+        },
+        "no_answer_reason_present": False,
+        "blocking_quality_flags": [],
+        "warning_kinds": ["tokenizer_fallback_used"],
+    }
     serialized = str(decision.audit)
     assert "Private grounded prompt" not in serialized
     assert "Private retrieval query" not in serialized
@@ -373,14 +405,16 @@ def test_grounded_generation_boundary_audit_reports_general_generation_not_requi
     assert audit["admitted"] is True
     assert audit["stage_status"]["compatibility_rule"] == "PASS"
     assert audit["stage_status"]["retrieval_package_ref"] == "NOT_REQUIRED"
+    assert audit["stage_status"]["retrieval_package_quality"] == "NOT_REQUIRED"
     assert audit["compatibility_rule"]["compatibility_rule_id"] == (
         "compat-general-answer-v1"
     )
     assert audit["retrieval_package"] is None
+    assert audit["quality_guard"]["status"] == "NOT_APPLICABLE"
     assert "Private general prompt." not in str(audit)
 
 
-def test_grounded_generation_boundary_audit_handles_minimal_ready_package() -> None:
+def test_grounded_generation_boundary_audit_blocks_minimal_ready_package() -> None:
     minimal_package = {
         "retrieval_package_id": "cx-ret-001",
         "package_hash": "d" * 64,
@@ -395,7 +429,11 @@ def test_grounded_generation_boundary_audit_handles_minimal_ready_package() -> N
         retrieval_store=FakeRetrievalPackageStore(minimal_package),
     )
 
-    assert decision.admitted is True
+    assert decision.admitted is False
+    assert decision.boundary_status == "GROUNDED_BLOCKED"
+    assert decision.error is not None
+    assert decision.error.error_code == "cx.retrieval_package_quality_blocked"
+    assert decision.audit["stage_status"]["retrieval_package_quality"] == "FAIL"
     assert decision.audit["retrieval_package"]["evidence_item_count"] == 0
     assert decision.audit["retrieval_package"]["score_summary"] == {
         "best_score": None,
@@ -406,6 +444,199 @@ def test_grounded_generation_boundary_audit_handles_minimal_ready_package() -> N
         "quality_policy_id": None,
     }
     assert decision.audit["retrieval_package"]["warning_count"] == 0
+    assert decision.audit["quality_guard"]["status"] == "BLOCKED"
+    assert decision.audit["quality_guard"]["blocking_reason"] == (
+        "score_summary_missing"
+    )
+    assert decision.audit["quality_guard"]["failed_checks"] == [
+        "score_summary_missing",
+        "evidence_items_missing",
+        "source_summary_missing",
+    ]
+
+
+def package_with_quality_flag(flag: str) -> dict[str, Any]:
+    package = quality_package()
+    package["evidence_items"][0]["quality_flags"] = [flag]
+    return package
+
+
+@pytest.mark.parametrize(
+    ("package", "expected_failed_check"),
+    [
+        (quality_package(evidence_items=[]), "evidence_items_missing"),
+        (
+            quality_package(
+                score_summary={
+                    "best_score": "bad-score",
+                    "confidence_bucket": "READY",
+                    "low_confidence_threshold": 0.2,
+                    "ranker_mix": "weighted_rrf_vector_bm25_with_rerank",
+                    "rerank_state": "APPLIED",
+                    "quality_policy_id": "retrieval_quality_v1",
+                }
+            ),
+            "best_score_missing",
+        ),
+        (
+            quality_package(
+                score_summary={
+                    "best_score": True,
+                    "confidence_bucket": "READY",
+                    "low_confidence_threshold": 0.2,
+                    "ranker_mix": "weighted_rrf_vector_bm25_with_rerank",
+                    "rerank_state": "APPLIED",
+                    "quality_policy_id": "retrieval_quality_v1",
+                }
+            ),
+            "best_score_missing",
+        ),
+        (
+            quality_package(
+                score_summary={
+                    "best_score": 0.19,
+                    "confidence_bucket": "READY",
+                    "low_confidence_threshold": 0.2,
+                    "ranker_mix": "weighted_rrf_vector_bm25_with_rerank",
+                    "rerank_state": "APPLIED",
+                    "quality_policy_id": "retrieval_quality_v1",
+                }
+            ),
+            "best_score_below_threshold",
+        ),
+        (
+            quality_package(
+                score_summary={
+                    "best_score": 0.87,
+                    "confidence_bucket": "LOW_CONFIDENCE",
+                    "low_confidence_threshold": 0.2,
+                    "ranker_mix": "weighted_rrf_vector_bm25_with_rerank",
+                    "rerank_state": "APPLIED",
+                    "quality_policy_id": "retrieval_quality_v1",
+                }
+            ),
+            "confidence_bucket_blocked",
+        ),
+        (
+            quality_package(no_answer_reason="no_terms_matched"),
+            "no_answer_reason_present",
+        ),
+        (
+            package_with_quality_flag("source_unavailable:private-document-id"),
+            "blocking_quality_flags_present",
+        ),
+        (
+            quality_package(
+                source_summary={
+                    "source_count": 0,
+                    "document_count": 1,
+                    "chunk_count": 2,
+                }
+            ),
+            "source_summary_empty",
+        ),
+        (
+            quality_package(
+                source_summary={
+                    "source_count": 1,
+                    "document_count": "unknown",
+                    "chunk_count": 2,
+                }
+            ),
+            "source_summary_counts_missing",
+        ),
+    ],
+)
+def test_retrieval_package_quality_guard_blocks_ready_package_inconsistencies(
+    package: dict[str, Any],
+    expected_failed_check: str,
+) -> None:
+    guard = build_retrieval_package_quality_guard(package)
+
+    assert guard["status"] == "BLOCKED"
+    assert expected_failed_check in guard["failed_checks"]
+    assert "private-document-id" not in str(guard)
+
+    with pytest.raises(GenerationFacadeError) as exc:
+        validate_retrieval_package_quality(package)
+    assert exc.value.error_code == "cx.retrieval_package_quality_blocked"
+
+    decision = evaluate_grounded_generation_boundary(
+        grounded_payload(),
+        retrieval_store=FakeRetrievalPackageStore(package),
+    )
+    assert decision.admitted is False
+    assert decision.audit["issues"] == [
+        {
+            "stage": "retrieval_package_quality",
+            "error_code": "cx.retrieval_package_quality_blocked",
+            "status_code": 409,
+            "retryable": False,
+        }
+    ]
+    assert expected_failed_check in decision.audit["quality_guard"]["failed_checks"]
+
+
+def test_retrieval_package_quality_guard_resolves_threshold_sources() -> None:
+    profile_threshold_package = quality_package()
+    profile_threshold_package["score_summary"].pop("low_confidence_threshold")
+    profile_threshold_package["retrieval_profile"]["confidence_policy"][
+        "low_confidence_threshold"
+    ] = 0.9
+
+    profile_guard = build_retrieval_package_quality_guard(profile_threshold_package)
+
+    assert profile_guard["status"] == "BLOCKED"
+    assert profile_guard["low_confidence_threshold"] == 0.9
+    assert profile_guard["low_confidence_threshold_source"] == "retrieval_profile"
+    assert "best_score_below_threshold" in profile_guard["failed_checks"]
+
+    default_threshold_package = quality_package()
+    default_threshold_package["score_summary"].pop("low_confidence_threshold")
+    default_threshold_package.pop("retrieval_profile")
+
+    default_guard = build_retrieval_package_quality_guard(default_threshold_package)
+
+    assert default_guard["status"] == "PASS"
+    assert default_guard["low_confidence_threshold"] == 0.2
+    assert default_guard["low_confidence_threshold_source"] == "default"
+    validate_retrieval_package_quality(default_threshold_package)
+
+
+def test_retrieval_package_quality_guard_ignores_nonblocking_flags_and_non_objects() -> None:
+    package = quality_package()
+    package["evidence_items"].append("not-an-evidence-object")
+    package["evidence_items"][0]["quality_flags"] = ["debug_checked"]
+
+    guard = build_retrieval_package_quality_guard(package)
+
+    assert guard["status"] == "PASS"
+    assert guard["blocking_quality_flags"] == []
+    validate_retrieval_package_quality(package)
+
+
+def test_grounded_generation_endpoint_blocks_quality_failure_before_mo_call() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    store = GenerationExecutionStore()
+    mo_client = FakeMoClient()
+    package = quality_package(evidence_items=[])
+    register_generation_routes(
+        app,
+        store=store,
+        mo_client=mo_client,
+        retrieval_store=FakeRetrievalPackageStore(package),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/generations",
+        json=grounded_payload(),
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error_code"] == "cx.retrieval_package_quality_blocked"
+    assert mo_client.calls == []
 
 
 @pytest.mark.parametrize(

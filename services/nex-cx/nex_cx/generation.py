@@ -44,6 +44,19 @@ FAILED_STAGE_BY_ERROR_CODE = {
 CX_GROUNDED_GENERATION_BOUNDARY_AUDIT_SCHEMA_VERSION = (
     "cx_grounded_generation_boundary_audit.v1"
 )
+CX_RETRIEVAL_PACKAGE_QUALITY_GUARD_SCHEMA_VERSION = (
+    "cx_retrieval_package_quality_guard.v1"
+)
+DEFAULT_GENERATION_LOW_CONFIDENCE_THRESHOLD = 0.2
+BLOCKED_RETRIEVAL_CONFIDENCE_BUCKETS = {"LOW_CONFIDENCE", "NO_ANSWER"}
+BLOCKING_RETRIEVAL_QUALITY_FLAGS = {
+    "low_confidence",
+    "low_source_confidence",
+    "permission_denied",
+    "source_unavailable",
+    "stale_bm25",
+    "stale_embedding",
+}
 GROUNDING_BOUNDARY_STAGES = (
     "compatibility_rule",
     "retrieval_package_ref",
@@ -52,6 +65,7 @@ GROUNDING_BOUNDARY_STAGES = (
     "package_hash",
     "package_status",
     "selected_evidence",
+    "retrieval_package_quality",
 )
 FORBIDDEN_AUDIT_RAW_KEYS = {
     "prompt",
@@ -582,6 +596,88 @@ def validate_generation_request(
     return decision.compatibility_rule, decision.retrieval_package
 
 
+def validate_retrieval_package_quality(retrieval_package: dict[str, Any]) -> None:
+    guard = build_retrieval_package_quality_guard(retrieval_package)
+    if guard["status"] == "PASS":
+        return
+    raise GenerationFacadeError(
+        status_code=409,
+        error_code="cx.retrieval_package_quality_blocked",
+        detail=(
+            "Retrieval package quality guard blocked grounded generation: "
+            f"{guard['blocking_reason']}."
+        ),
+    )
+
+
+def build_retrieval_package_quality_guard(
+    retrieval_package: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if retrieval_package is None:
+        return _retrieval_package_quality_guard_record(
+            status="BLOCKED",
+            blocking_reason="retrieval_package_missing",
+            failed_checks=["retrieval_package_missing"],
+        )
+
+    raw_score_summary = retrieval_package.get("score_summary")
+    raw_source_summary = retrieval_package.get("source_summary")
+    score_summary = _mapping_value(raw_score_summary)
+    source_summary = _mapping_value(raw_source_summary)
+    evidence_items = _list_value(retrieval_package.get("evidence_items"))
+    best_score = _number_or_none(score_summary.get("best_score"))
+    low_confidence_threshold, threshold_source = _low_confidence_threshold(
+        retrieval_package
+    )
+    confidence_bucket = _optional_string(score_summary.get("confidence_bucket"))
+    source_count = _number_or_none(source_summary.get("source_count"))
+    document_count = _number_or_none(source_summary.get("document_count"))
+    chunk_count = _number_or_none(source_summary.get("chunk_count"))
+    blocking_quality_flags = _blocking_quality_flags(evidence_items)
+
+    failed_checks: list[str] = []
+    if not isinstance(raw_score_summary, dict):
+        failed_checks.append("score_summary_missing")
+    elif best_score is None:
+        failed_checks.append("best_score_missing")
+    if not evidence_items:
+        failed_checks.append("evidence_items_missing")
+    if confidence_bucket in BLOCKED_RETRIEVAL_CONFIDENCE_BUCKETS:
+        failed_checks.append("confidence_bucket_blocked")
+    if _has_non_empty_string(retrieval_package.get("no_answer_reason")):
+        failed_checks.append("no_answer_reason_present")
+    if blocking_quality_flags:
+        failed_checks.append("blocking_quality_flags_present")
+    if best_score is not None and best_score < low_confidence_threshold:
+        failed_checks.append("best_score_below_threshold")
+    if not isinstance(raw_source_summary, dict):
+        failed_checks.append("source_summary_missing")
+    elif any(count is None for count in (source_count, document_count, chunk_count)):
+        failed_checks.append("source_summary_counts_missing")
+    elif min(source_count, document_count, chunk_count) <= 0:
+        failed_checks.append("source_summary_empty")
+
+    status = "BLOCKED" if failed_checks else "PASS"
+    return _retrieval_package_quality_guard_record(
+        status=status,
+        blocking_reason=failed_checks[0] if failed_checks else None,
+        failed_checks=failed_checks,
+        best_score=best_score,
+        low_confidence_threshold=low_confidence_threshold,
+        low_confidence_threshold_source=threshold_source,
+        confidence_bucket=confidence_bucket,
+        evidence_item_count=len(evidence_items),
+        source_count=source_count,
+        document_count=document_count,
+        chunk_count=chunk_count,
+        no_answer_reason_present=_has_non_empty_string(
+            retrieval_package.get("no_answer_reason")
+        ),
+        blocking_quality_flags=blocking_quality_flags,
+        warning_kinds=_warning_kinds(retrieval_package.get("warnings")),
+    )
+
+
 def evaluate_grounded_generation_boundary(
     source_payload: dict[str, Any],
     *,
@@ -764,6 +860,23 @@ def evaluate_grounded_generation_boundary(
         )
     stage_status["selected_evidence"] = "PASS"
 
+    try:
+        validate_retrieval_package_quality(retrieval_package)
+    except GenerationFacadeError as exc:
+        stage_status["retrieval_package_quality"] = "FAIL"
+        return _grounded_generation_boundary_decision(
+            source_payload=source_payload,
+            stage_status=stage_status,
+            boundary_status="GROUNDED_BLOCKED",
+            admitted=False,
+            compatibility_rule=compatibility_rule,
+            retrieval_package_ref=retrieval_ref,
+            retrieval_package=retrieval_package,
+            error=exc,
+            failed_stage="retrieval_package_quality",
+        )
+    stage_status["retrieval_package_quality"] = "PASS"
+
     return _grounded_generation_boundary_decision(
         source_payload=source_payload,
         stage_status=stage_status,
@@ -854,12 +967,17 @@ def _build_grounded_generation_boundary_audit(
             retrieval_package,
             source_payload=source_payload,
         ),
+        "quality_guard": _safe_retrieval_package_quality_guard_summary(
+            retrieval_package,
+            stage_status=stage_status,
+        ),
         "stage_status": dict(stage_status),
         "issues": _boundary_issues(error, failed_stage=failed_stage),
         "refactoring_checkpoint": {
             "validation_entrypoint": "evaluate_grounded_generation_boundary",
             "legacy_entrypoint": "validate_generation_request",
-            "next_guard_slot": "retrieval_package_quality",
+            "active_guard_slot": "retrieval_package_quality",
+            "next_guard_slot": "grounded_response_citation_validation",
             "external_api_changed": False,
             "database_schema_changed": False,
         },
@@ -940,9 +1058,7 @@ def _safe_retrieval_package_summary(
     evidence_items = _list_value(retrieval_package.get("evidence_items"))
     score_summary = _mapping_value(retrieval_package.get("score_summary"))
     source_summary = _mapping_value(retrieval_package.get("source_summary"))
-    warnings = [
-        item for item in retrieval_package.get("warnings", []) if isinstance(item, str)
-    ]
+    warnings = _string_list_value(retrieval_package.get("warnings"))
     return {
         "retrieval_package_id": retrieval_package.get("retrieval_package_id"),
         "package_hash": retrieval_package.get("package_hash"),
@@ -963,10 +1079,104 @@ def _safe_retrieval_package_summary(
             "document_count": source_summary.get("document_count"),
             "chunk_count": source_summary.get("chunk_count"),
         },
-        "no_answer_reason": retrieval_package.get("no_answer_reason"),
+        "no_answer_reason_present": _has_non_empty_string(
+            retrieval_package.get("no_answer_reason")
+        ),
         "warning_count": len(warnings),
-        "warning_kinds": sorted({item.split(":", 1)[0] for item in warnings}),
+        "warning_kinds": _warning_kinds(warnings),
     }
+
+
+def _safe_retrieval_package_quality_guard_summary(
+    retrieval_package: dict[str, Any] | None,
+    *,
+    stage_status: dict[str, str],
+) -> dict[str, Any]:
+    quality_stage = stage_status.get("retrieval_package_quality", "NOT_RUN")
+    if quality_stage == "NOT_REQUIRED":
+        return _retrieval_package_quality_guard_record(
+            status="NOT_APPLICABLE",
+            blocking_reason=None,
+            failed_checks=[],
+        )
+    if quality_stage == "NOT_RUN":
+        return _retrieval_package_quality_guard_record(
+            status="NOT_RUN",
+            blocking_reason=None,
+            failed_checks=[],
+        )
+    return build_retrieval_package_quality_guard(retrieval_package)
+
+
+def _retrieval_package_quality_guard_record(
+    *,
+    status: str,
+    blocking_reason: str | None,
+    failed_checks: list[str],
+    best_score: float | None = None,
+    low_confidence_threshold: float | None = None,
+    low_confidence_threshold_source: str | None = None,
+    confidence_bucket: str | None = None,
+    evidence_item_count: int | None = None,
+    source_count: float | None = None,
+    document_count: float | None = None,
+    chunk_count: float | None = None,
+    no_answer_reason_present: bool = False,
+    blocking_quality_flags: list[str] | None = None,
+    warning_kinds: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "guard_schema_version": CX_RETRIEVAL_PACKAGE_QUALITY_GUARD_SCHEMA_VERSION,
+        "status": status,
+        "blocking_reason": blocking_reason,
+        "failed_checks": list(failed_checks),
+        "best_score": best_score,
+        "low_confidence_threshold": low_confidence_threshold,
+        "low_confidence_threshold_source": low_confidence_threshold_source,
+        "confidence_bucket": confidence_bucket,
+        "evidence_item_count": evidence_item_count,
+        "source_summary": {
+            "source_count": source_count,
+            "document_count": document_count,
+            "chunk_count": chunk_count,
+        },
+        "no_answer_reason_present": no_answer_reason_present,
+        "blocking_quality_flags": sorted(blocking_quality_flags or []),
+        "warning_kinds": sorted(warning_kinds or []),
+    }
+
+
+def _low_confidence_threshold(retrieval_package: dict[str, Any]) -> tuple[float, str]:
+    score_summary = _mapping_value(retrieval_package.get("score_summary"))
+    score_threshold = _number_or_none(score_summary.get("low_confidence_threshold"))
+    if score_threshold is not None:
+        return score_threshold, "score_summary"
+
+    retrieval_profile = _mapping_value(retrieval_package.get("retrieval_profile"))
+    confidence_policy = _mapping_value(retrieval_profile.get("confidence_policy"))
+    profile_threshold = _number_or_none(
+        confidence_policy.get("low_confidence_threshold")
+    )
+    if profile_threshold is not None:
+        return profile_threshold, "retrieval_profile"
+
+    return DEFAULT_GENERATION_LOW_CONFIDENCE_THRESHOLD, "default"
+
+
+def _blocking_quality_flags(evidence_items: list[Any]) -> list[str]:
+    flags: set[str] = set()
+    for item in evidence_items:
+        if not isinstance(item, dict):
+            continue
+        for flag in _string_list_value(item.get("quality_flags")):
+            flag_kind = flag.split(":", 1)[0].strip()
+            if flag_kind in BLOCKING_RETRIEVAL_QUALITY_FLAGS:
+                flags.add(flag_kind)
+    return sorted(flags)
+
+
+def _warning_kinds(value: Any) -> list[str]:
+    return sorted({item.split(":", 1)[0] for item in _string_list_value(value)})
 
 
 def _boundary_issues(
@@ -1059,6 +1269,22 @@ def _mapping_value(value: Any) -> dict[str, Any]:
 
 def _list_value(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
+
+
+def _string_list_value(value: Any) -> list[str]:
+    return [item for item in _list_value(value) if isinstance(item, str)]
+
+
+def _number_or_none(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    return None
+
+
+def _has_non_empty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
 
 
 def compatibility_payload_from_generation_request(payload: dict[str, Any]) -> dict[str, Any]:

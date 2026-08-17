@@ -76,12 +76,28 @@ def retrieval_package() -> dict[str, Any]:
             {
                 "evidence_id": "evidence-001",
                 "citation_label": "[1]",
+                "scores": {"final_score": 0.87},
+                "quality_flags": [],
             },
             {
                 "evidence_id": "evidence-002",
                 "citation_label": "[2]",
+                "scores": {"final_score": 0.42},
+                "quality_flags": [],
             },
         ],
+        "score_summary": {
+            "best_score": 0.87,
+            "confidence_bucket": "READY",
+            "low_confidence_threshold": 0.2,
+            "ranker_mix": "weighted_rrf_vector_bm25_with_rerank",
+            "rerank_state": "APPLIED",
+        },
+        "source_summary": {
+            "source_count": 1,
+            "document_count": 1,
+            "chunk_count": 2,
+        },
     }
 
 
