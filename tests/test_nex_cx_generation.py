@@ -11,10 +11,13 @@ from nex_cx.generation import (
     GenerationExecutionStore,
     GenerationFacadeError,
     HttpMoGenerationClient,
+    assert_grounded_generation_boundary_audit_redacted,
     build_generation_execution_record,
     build_generation_failure_record,
+    build_grounded_generation_boundary_audit,
     build_mo_generation_payload,
     compatibility_payload_from_generation_request,
+    evaluate_grounded_generation_boundary,
     prompt_text_from_payload,
     register_generation_routes,
     retrieval_package_ref_from_payload,
@@ -131,10 +134,35 @@ def grounded_package(*, status: str = "READY", package_hash: str = "d" * 64) -> 
         "retrieval_package_id": "cx-ret-001",
         "package_hash": package_hash,
         "status": status,
+        "query_text": "Private retrieval query that must stay outside audit.",
         "evidence_items": [
-            {"evidence_id": "evidence-001"},
-            {"evidence_id": "evidence-002"},
+            {
+                "evidence_id": "evidence-001",
+                "citation_label": "[1]",
+                "text": "Private source evidence that must stay outside audit.",
+                "scores": {"final_score": 0.87},
+            },
+            {
+                "evidence_id": "evidence-002",
+                "citation_label": "[2]",
+                "text": "Second private source evidence that must stay outside audit.",
+                "scores": {"final_score": 0.42},
+            },
         ],
+        "score_summary": {
+            "best_score": 0.87,
+            "confidence_bucket": "READY",
+            "low_confidence_threshold": 0.2,
+            "ranker_mix": "weighted_rrf_vector_bm25_with_rerank",
+            "rerank_state": "APPLIED",
+            "quality_policy_id": "retrieval_quality_v1",
+        },
+        "source_summary": {
+            "source_count": 1,
+            "document_count": 1,
+            "chunk_count": 2,
+        },
+        "warnings": ["tokenizer_fallback_used:doc-secret"],
     }
 
 
@@ -184,6 +212,9 @@ def test_compatibility_payload_defaults_legacy_generation_to_general_answer() ->
     assert compatibility_payload_from_generation_request(
         {"execution_mode": "GROUNDED_ANSWER"}
     ) == {"execution_mode": "GROUNDED_ANSWER"}
+    assert compatibility_payload_from_generation_request(
+        {"retrieval_package_ref": {"retrieval_package_id": "cx-ret-001"}}
+    ) == {"retrieval_package_ref": {"retrieval_package_id": "cx-ret-001"}}
 
 
 def test_prompt_text_from_payload_accepts_messages() -> None:
@@ -193,6 +224,13 @@ def test_prompt_text_from_payload_accepts_messages() -> None:
         )
         == "hello\nworld"
     )
+
+
+def test_prompt_text_from_payload_rejects_empty_message_content() -> None:
+    with pytest.raises(GenerationFacadeError) as exc:
+        prompt_text_from_payload({"messages": [{"role": "user"}, {"content": ""}]})
+
+    assert exc.value.error_code == "cx.generation_request_invalid"
 
 
 def test_generation_endpoint_requires_service_claim() -> None:
@@ -267,6 +305,215 @@ def test_grounded_generation_endpoint_validates_retrieval_package_and_lineage() 
     assert payload["request_metadata"]["retrieval_package_id"] == "cx-ret-001"
     assert payload["request_metadata"]["selected_evidence_count"] == 1
     assert store.get(payload["cx_generation_id"]) == payload
+
+
+def test_grounded_generation_boundary_audit_admits_ready_package_and_stays_raw_safe() -> None:
+    payload = grounded_payload(selected_evidence_ids=["evidence-001"])
+    payload["messages"] = [
+        {"role": "user", "content": "Private grounded prompt must stay outside audit."}
+    ]
+
+    decision = evaluate_grounded_generation_boundary(
+        payload,
+        retrieval_store=FakeRetrievalPackageStore(grounded_package()),
+    )
+
+    assert decision.admitted is True
+    assert decision.boundary_status == "GROUNDED_ADMITTED"
+    assert decision.error is None
+    assert decision.audit["audit_schema_version"] == (
+        "cx_grounded_generation_boundary_audit.v1"
+    )
+    assert decision.audit["stage_status"] == {
+        "compatibility_rule": "PASS",
+        "retrieval_package_ref": "PASS",
+        "retrieval_package_store": "PASS",
+        "retrieval_package_lookup": "PASS",
+        "package_hash": "PASS",
+        "package_status": "PASS",
+        "selected_evidence": "PASS",
+    }
+    assert decision.audit["compatibility_rule"] == {
+        "compatibility_rule_id": "compat-grounded-answer-v1",
+        "execution_mode": "GROUNDED_ANSWER",
+        "generation_profile": "grounded-answer",
+        "grounding_required": True,
+        "citations_required": True,
+        "source_trace_required": True,
+    }
+    assert decision.audit["retrieval_package"]["score_summary"] == {
+        "best_score": 0.87,
+        "confidence_bucket": "READY",
+        "low_confidence_threshold": 0.2,
+        "ranker_mix": "weighted_rrf_vector_bm25_with_rerank",
+        "rerank_state": "APPLIED",
+        "quality_policy_id": "retrieval_quality_v1",
+    }
+    assert decision.audit["retrieval_package"]["warning_kinds"] == [
+        "tokenizer_fallback_used"
+    ]
+    serialized = str(decision.audit)
+    assert "Private grounded prompt" not in serialized
+    assert "Private retrieval query" not in serialized
+    assert "Private source evidence" not in serialized
+    assert "doc-secret" not in serialized
+
+
+def test_grounded_generation_boundary_audit_reports_general_generation_not_required() -> None:
+    audit = build_grounded_generation_boundary_audit(
+        {
+            "prompt": "Private general prompt.",
+            "execution_mode": "GENERAL_ANSWER",
+            "generation_profile": "general-answer",
+        },
+        retrieval_store=None,
+    )
+
+    assert audit["boundary_status"] == "GROUNDING_NOT_REQUIRED"
+    assert audit["admitted"] is True
+    assert audit["stage_status"]["compatibility_rule"] == "PASS"
+    assert audit["stage_status"]["retrieval_package_ref"] == "NOT_REQUIRED"
+    assert audit["compatibility_rule"]["compatibility_rule_id"] == (
+        "compat-general-answer-v1"
+    )
+    assert audit["retrieval_package"] is None
+    assert "Private general prompt." not in str(audit)
+
+
+def test_grounded_generation_boundary_audit_handles_minimal_ready_package() -> None:
+    minimal_package = {
+        "retrieval_package_id": "cx-ret-001",
+        "package_hash": "d" * 64,
+        "status": "READY",
+        "score_summary": "not-a-dict",
+        "source_summary": "not-a-dict",
+        "warnings": [None, 42],
+    }
+
+    decision = evaluate_grounded_generation_boundary(
+        grounded_payload(),
+        retrieval_store=FakeRetrievalPackageStore(minimal_package),
+    )
+
+    assert decision.admitted is True
+    assert decision.audit["retrieval_package"]["evidence_item_count"] == 0
+    assert decision.audit["retrieval_package"]["score_summary"] == {
+        "best_score": None,
+        "confidence_bucket": None,
+        "low_confidence_threshold": None,
+        "ranker_mix": None,
+        "rerank_state": None,
+        "quality_policy_id": None,
+    }
+    assert decision.audit["retrieval_package"]["warning_count"] == 0
+
+
+@pytest.mark.parametrize(
+    ("payload", "retrieval_store", "failed_stage", "error_code"),
+    [
+        (
+            grounded_payload(),
+            None,
+            "retrieval_package_store",
+            "cx.retrieval_package_store_unavailable",
+        ),
+        (
+            grounded_payload(package_hash="e" * 64),
+            FakeRetrievalPackageStore(grounded_package()),
+            "package_hash",
+            "cx.retrieval_package_hash_mismatch",
+        ),
+        (
+            grounded_payload(),
+            FakeRetrievalPackageStore(grounded_package(status="LOW_CONFIDENCE")),
+            "package_status",
+            "cx.retrieval_package_not_ready",
+        ),
+        (
+            grounded_payload(selected_evidence_ids=["missing"]),
+            FakeRetrievalPackageStore(grounded_package()),
+            "selected_evidence",
+            "cx.selected_evidence_not_in_package",
+        ),
+    ],
+)
+def test_grounded_generation_boundary_audit_reports_blocked_stages(
+    payload: dict[str, Any],
+    retrieval_store: FakeRetrievalPackageStore | None,
+    failed_stage: str,
+    error_code: str,
+) -> None:
+    decision = evaluate_grounded_generation_boundary(
+        payload,
+        retrieval_store=retrieval_store,
+    )
+
+    assert decision.admitted is False
+    assert decision.boundary_status == "GROUNDED_BLOCKED"
+    assert decision.error is not None
+    assert decision.audit["stage_status"][failed_stage] == "FAIL"
+    assert len(decision.audit["issues"]) == 1
+    assert decision.audit["issues"][0]["stage"] == failed_stage
+    assert decision.audit["issues"][0]["error_code"] == error_code
+
+
+def test_grounded_generation_boundary_audit_reports_ref_and_compatibility_failures() -> None:
+    missing_ref = evaluate_grounded_generation_boundary(
+        {
+            "prompt": "private grounded prompt",
+            "execution_mode": "GROUNDED_ANSWER",
+            "generation_profile": "grounded-answer",
+        },
+        retrieval_store=FakeRetrievalPackageStore(grounded_package()),
+    )
+    bad_compatibility = evaluate_grounded_generation_boundary(
+        {"prompt": "private prompt", "generation_profile": "missing-profile"},
+        retrieval_store=None,
+    )
+
+    assert missing_ref.audit["issues"][0]["stage"] == "retrieval_package_ref"
+    assert missing_ref.audit["issues"][0]["error_code"] == (
+        "cx.retrieval_package_ref_required"
+    )
+    assert bad_compatibility.audit["issues"][0]["stage"] == "compatibility_rule"
+    assert bad_compatibility.audit["issues"][0]["error_code"] == (
+        "generation.compatibility_rule_not_found"
+    )
+
+
+def test_grounded_generation_boundary_audit_reports_invalid_ref_shape() -> None:
+    decision = evaluate_grounded_generation_boundary(
+        {
+            "prompt": "private grounded prompt",
+            "execution_mode": "GROUNDED_ANSWER",
+            "generation_profile": "grounded-answer",
+            "retrieval_package_ref": [],
+        },
+        retrieval_store=FakeRetrievalPackageStore(grounded_package()),
+    )
+
+    assert decision.admitted is False
+    assert decision.audit["issues"][0]["stage"] == "retrieval_package_ref"
+    assert decision.audit["issues"][0]["error_code"] == "cx.retrieval_package_ref_invalid"
+
+
+def test_grounded_generation_boundary_redaction_assertion_catches_request_and_retrieval_leaks() -> None:
+    with pytest.raises(ValueError, match="request payload"):
+        assert_grounded_generation_boundary_audit_redacted(
+            {"leak": "Private request prompt leak."},
+            source_payload={"prompt": "Private request prompt leak."},
+            retrieval_package=None,
+        )
+
+    with pytest.raises(ValueError, match="retrieval payload"):
+        assert_grounded_generation_boundary_audit_redacted(
+            {"leak": "Private retrieval evidence leak."},
+            source_payload={},
+            retrieval_package={
+                "retrieval_package_id": "cx-ret-001",
+                "text": "Private retrieval evidence leak.",
+            },
+        )
 
 
 def test_generation_endpoint_stores_failed_record_and_lineage_for_mo_timeout() -> None:

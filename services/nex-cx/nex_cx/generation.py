@@ -41,6 +41,33 @@ FAILED_STAGE_BY_ERROR_CODE = {
     "mo.request_failed": "MO_ADMISSION_WAITING",
     "cx.citation_validation_failed": "CITATION_VALIDATING",
 }
+CX_GROUNDED_GENERATION_BOUNDARY_AUDIT_SCHEMA_VERSION = (
+    "cx_grounded_generation_boundary_audit.v1"
+)
+GROUNDING_BOUNDARY_STAGES = (
+    "compatibility_rule",
+    "retrieval_package_ref",
+    "retrieval_package_store",
+    "retrieval_package_lookup",
+    "package_hash",
+    "package_status",
+    "selected_evidence",
+)
+FORBIDDEN_AUDIT_RAW_KEYS = {
+    "prompt",
+    "messages",
+    "content",
+    "query_text",
+    "text",
+    "chunk_text",
+    "source_text",
+    "raw_prompt",
+    "raw_output",
+    "provider_url",
+    "provider_endpoint",
+    "model_path",
+    "api_key",
+}
 
 
 class MoGenerationClient(Protocol):
@@ -137,6 +164,17 @@ class GenerationFacadeError(Exception):
     error_code: str
     detail: str
     retryable: bool = False
+
+
+@dataclass(frozen=True)
+class GroundedGenerationBoundaryDecision:
+    admitted: bool
+    boundary_status: str
+    compatibility_rule: dict[str, Any] | None
+    retrieval_package_ref: dict[str, str] | None
+    retrieval_package: dict[str, Any] | None
+    error: Exception | None
+    audit: dict[str, Any]
 
 
 DEFAULT_GENERATION_STORE = GenerationExecutionStore()
@@ -529,32 +567,125 @@ def validate_generation_request(
     *,
     retrieval_store: RetrievalPackageStore | None,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    compatibility_rule = select_generation_compatibility_rule(
-        compatibility_payload_from_generation_request(source_payload)
+    decision = evaluate_grounded_generation_boundary(
+        source_payload,
+        retrieval_store=retrieval_store,
     )
-    if not compatibility_rule["grounding_required"]:
-        return compatibility_rule, None
-
-    retrieval_ref = retrieval_package_ref_from_payload(source_payload)
-    if retrieval_ref is None:
+    if decision.error is not None:
+        raise decision.error
+    if decision.compatibility_rule is None:
         raise GenerationFacadeError(
+            status_code=500,
+            error_code="cx.generation_boundary_invalid",
+            detail="Generation boundary decision did not include a compatibility rule.",
+        )
+    return decision.compatibility_rule, decision.retrieval_package
+
+
+def evaluate_grounded_generation_boundary(
+    source_payload: dict[str, Any],
+    *,
+    retrieval_store: RetrievalPackageStore | None,
+) -> GroundedGenerationBoundaryDecision:
+    stage_status = {stage: "NOT_RUN" for stage in GROUNDING_BOUNDARY_STAGES}
+    compatibility_rule: dict[str, Any] | None = None
+    retrieval_ref: dict[str, str] | None = None
+    retrieval_package: dict[str, Any] | None = None
+
+    try:
+        compatibility_rule = select_generation_compatibility_rule(
+            compatibility_payload_from_generation_request(source_payload)
+        )
+    except GenerationCompatibilityError as exc:
+        stage_status["compatibility_rule"] = "FAIL"
+        return _grounded_generation_boundary_decision(
+            source_payload=source_payload,
+            stage_status=stage_status,
+            boundary_status="GROUNDED_BLOCKED",
+            admitted=False,
+            compatibility_rule=None,
+            retrieval_package_ref=None,
+            retrieval_package=None,
+            error=exc,
+            failed_stage="compatibility_rule",
+        )
+
+    stage_status["compatibility_rule"] = "PASS"
+    if not compatibility_rule["grounding_required"]:
+        for stage in GROUNDING_BOUNDARY_STAGES[1:]:
+            stage_status[stage] = "NOT_REQUIRED"
+        return _grounded_generation_boundary_decision(
+            source_payload=source_payload,
+            stage_status=stage_status,
+            boundary_status="GROUNDING_NOT_REQUIRED",
+            admitted=True,
+            compatibility_rule=compatibility_rule,
+            retrieval_package_ref=None,
+            retrieval_package=None,
+            error=None,
+        )
+
+    try:
+        retrieval_ref = retrieval_package_ref_from_payload(source_payload)
+    except GenerationFacadeError as exc:
+        stage_status["retrieval_package_ref"] = "FAIL"
+        return _grounded_generation_boundary_decision(
+            source_payload=source_payload,
+            stage_status=stage_status,
+            boundary_status="GROUNDED_BLOCKED",
+            admitted=False,
+            compatibility_rule=compatibility_rule,
+            retrieval_package_ref=None,
+            retrieval_package=None,
+            error=exc,
+            failed_stage="retrieval_package_ref",
+        )
+    if retrieval_ref is None:
+        error = GenerationFacadeError(
             status_code=422,
             error_code="cx.retrieval_package_ref_required",
             detail="Grounded generation requires retrieval_package_ref.",
         )
+        stage_status["retrieval_package_ref"] = "FAIL"
+        return _grounded_generation_boundary_decision(
+            source_payload=source_payload,
+            stage_status=stage_status,
+            boundary_status="GROUNDED_BLOCKED",
+            admitted=False,
+            compatibility_rule=compatibility_rule,
+            retrieval_package_ref=None,
+            retrieval_package=None,
+            error=error,
+            failed_stage="retrieval_package_ref",
+        )
+    stage_status["retrieval_package_ref"] = "PASS"
+
     if retrieval_store is None:
-        raise GenerationFacadeError(
+        error = GenerationFacadeError(
             status_code=503,
             error_code="cx.retrieval_package_store_unavailable",
             detail="Grounded generation requires CX retrieval package state.",
             retryable=True,
         )
+        stage_status["retrieval_package_store"] = "FAIL"
+        return _grounded_generation_boundary_decision(
+            source_payload=source_payload,
+            stage_status=stage_status,
+            boundary_status="GROUNDED_BLOCKED",
+            admitted=False,
+            compatibility_rule=compatibility_rule,
+            retrieval_package_ref=retrieval_ref,
+            retrieval_package=None,
+            error=error,
+            failed_stage="retrieval_package_store",
+        )
+    stage_status["retrieval_package_store"] = "PASS"
 
     retrieval_package = retrieval_store.get_retrieval_package(
         retrieval_ref["retrieval_package_id"]
     )
     if retrieval_package is None:
-        raise GenerationFacadeError(
+        error = GenerationFacadeError(
             status_code=404,
             error_code="cx.retrieval_package_not_found",
             detail=(
@@ -562,20 +693,372 @@ def validate_generation_request(
                 f"{retrieval_ref['retrieval_package_id']}"
             ),
         )
+        stage_status["retrieval_package_lookup"] = "FAIL"
+        return _grounded_generation_boundary_decision(
+            source_payload=source_payload,
+            stage_status=stage_status,
+            boundary_status="GROUNDED_BLOCKED",
+            admitted=False,
+            compatibility_rule=compatibility_rule,
+            retrieval_package_ref=retrieval_ref,
+            retrieval_package=None,
+            error=error,
+            failed_stage="retrieval_package_lookup",
+        )
+    stage_status["retrieval_package_lookup"] = "PASS"
+
     if retrieval_package["package_hash"] != retrieval_ref["package_hash"]:
-        raise GenerationFacadeError(
+        error = GenerationFacadeError(
             status_code=409,
             error_code="cx.retrieval_package_hash_mismatch",
             detail="Retrieval package hash does not match CX state.",
         )
+        stage_status["package_hash"] = "FAIL"
+        return _grounded_generation_boundary_decision(
+            source_payload=source_payload,
+            stage_status=stage_status,
+            boundary_status="GROUNDED_BLOCKED",
+            admitted=False,
+            compatibility_rule=compatibility_rule,
+            retrieval_package_ref=retrieval_ref,
+            retrieval_package=retrieval_package,
+            error=error,
+            failed_stage="package_hash",
+        )
+    stage_status["package_hash"] = "PASS"
+
     if retrieval_package["status"] != "READY":
-        raise GenerationFacadeError(
+        error = GenerationFacadeError(
             status_code=409,
             error_code="cx.retrieval_package_not_ready",
             detail=f"Retrieval package status is {retrieval_package['status']}.",
         )
-    validate_selected_evidence_ids(source_payload, retrieval_package)
-    return compatibility_rule, retrieval_package
+        stage_status["package_status"] = "FAIL"
+        return _grounded_generation_boundary_decision(
+            source_payload=source_payload,
+            stage_status=stage_status,
+            boundary_status="GROUNDED_BLOCKED",
+            admitted=False,
+            compatibility_rule=compatibility_rule,
+            retrieval_package_ref=retrieval_ref,
+            retrieval_package=retrieval_package,
+            error=error,
+            failed_stage="package_status",
+        )
+    stage_status["package_status"] = "PASS"
+
+    try:
+        validate_selected_evidence_ids(source_payload, retrieval_package)
+    except GenerationFacadeError as exc:
+        stage_status["selected_evidence"] = "FAIL"
+        return _grounded_generation_boundary_decision(
+            source_payload=source_payload,
+            stage_status=stage_status,
+            boundary_status="GROUNDED_BLOCKED",
+            admitted=False,
+            compatibility_rule=compatibility_rule,
+            retrieval_package_ref=retrieval_ref,
+            retrieval_package=retrieval_package,
+            error=exc,
+            failed_stage="selected_evidence",
+        )
+    stage_status["selected_evidence"] = "PASS"
+
+    return _grounded_generation_boundary_decision(
+        source_payload=source_payload,
+        stage_status=stage_status,
+        boundary_status="GROUNDED_ADMITTED",
+        admitted=True,
+        compatibility_rule=compatibility_rule,
+        retrieval_package_ref=retrieval_ref,
+        retrieval_package=retrieval_package,
+        error=None,
+    )
+
+
+def build_grounded_generation_boundary_audit(
+    source_payload: dict[str, Any],
+    *,
+    retrieval_store: RetrievalPackageStore | None,
+) -> dict[str, Any]:
+    return evaluate_grounded_generation_boundary(
+        source_payload,
+        retrieval_store=retrieval_store,
+    ).audit
+
+
+def _grounded_generation_boundary_decision(
+    *,
+    source_payload: dict[str, Any],
+    stage_status: dict[str, str],
+    boundary_status: str,
+    admitted: bool,
+    compatibility_rule: dict[str, Any] | None,
+    retrieval_package_ref: dict[str, str] | None,
+    retrieval_package: dict[str, Any] | None,
+    error: Exception | None,
+    failed_stage: str | None = None,
+) -> GroundedGenerationBoundaryDecision:
+    audit = _build_grounded_generation_boundary_audit(
+        source_payload=source_payload,
+        stage_status=stage_status,
+        boundary_status=boundary_status,
+        admitted=admitted,
+        compatibility_rule=compatibility_rule,
+        retrieval_package_ref=retrieval_package_ref,
+        retrieval_package=retrieval_package,
+        error=error,
+        failed_stage=failed_stage,
+    )
+    assert_grounded_generation_boundary_audit_redacted(
+        audit,
+        source_payload=source_payload,
+        retrieval_package=retrieval_package,
+    )
+    return GroundedGenerationBoundaryDecision(
+        admitted=admitted,
+        boundary_status=boundary_status,
+        compatibility_rule=compatibility_rule,
+        retrieval_package_ref=retrieval_package_ref,
+        retrieval_package=retrieval_package,
+        error=error,
+        audit=audit,
+    )
+
+
+def _build_grounded_generation_boundary_audit(
+    *,
+    source_payload: dict[str, Any],
+    stage_status: dict[str, str],
+    boundary_status: str,
+    admitted: bool,
+    compatibility_rule: dict[str, Any] | None,
+    retrieval_package_ref: dict[str, str] | None,
+    retrieval_package: dict[str, Any] | None,
+    error: Exception | None,
+    failed_stage: str | None,
+) -> dict[str, Any]:
+    return {
+        "audit_schema_version": CX_GROUNDED_GENERATION_BOUNDARY_AUDIT_SCHEMA_VERSION,
+        "boundary_id": "cx.grounded_generation.admission",
+        "service_id": "nex-cx",
+        "route": "POST /api/v1/generations",
+        "boundary_status": boundary_status,
+        "admitted": admitted,
+        "request_summary": _safe_generation_request_summary(source_payload),
+        "compatibility_rule": _safe_compatibility_rule_summary(compatibility_rule),
+        "retrieval_package_ref": _safe_retrieval_package_ref_summary(
+            retrieval_package_ref
+        ),
+        "retrieval_package": _safe_retrieval_package_summary(
+            retrieval_package,
+            source_payload=source_payload,
+        ),
+        "stage_status": dict(stage_status),
+        "issues": _boundary_issues(error, failed_stage=failed_stage),
+        "refactoring_checkpoint": {
+            "validation_entrypoint": "evaluate_grounded_generation_boundary",
+            "legacy_entrypoint": "validate_generation_request",
+            "next_guard_slot": "retrieval_package_quality",
+            "external_api_changed": False,
+            "database_schema_changed": False,
+        },
+        "redaction": {
+            "status": "PASS",
+            "raw_prompt_included": False,
+            "raw_messages_included": False,
+            "raw_source_text_included": False,
+            "evidence_text_included": False,
+            "embedding_vector_included": False,
+            "provider_endpoint_included": False,
+            "storage_path_included": False,
+        },
+    }
+
+
+def _safe_generation_request_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    response_format = payload.get("response_format", {"type": "text"})
+    response_format_type = (
+        response_format.get("type", "text")
+        if isinstance(response_format, dict)
+        else "text"
+    )
+    return {
+        "source_has_messages": bool(payload.get("messages")),
+        "source_has_prompt": bool(payload.get("prompt")),
+        "provider_prompt_package_hash_configured": bool(
+            payload.get("provider_prompt_package_hash")
+        ),
+        "selected_evidence_count": _safe_selected_evidence_count(payload),
+        "response_format_type": response_format_type,
+        "execution_mode": _optional_string(payload.get("execution_mode")),
+        "generation_profile": _optional_string(payload.get("generation_profile")),
+        "provider_capability": _optional_string(payload.get("provider_capability")),
+        "raw_prompt_in_public_record": False,
+    }
+
+
+def _safe_compatibility_rule_summary(
+    compatibility_rule: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if compatibility_rule is None:
+        return None
+    citation_policy = compatibility_rule.get("citation_policy", {})
+    return {
+        "compatibility_rule_id": compatibility_rule["compatibility_rule_id"],
+        "execution_mode": compatibility_rule["execution_mode"],
+        "generation_profile": compatibility_rule["generation_profile"],
+        "grounding_required": compatibility_rule["grounding_required"],
+        "citations_required": bool(citation_policy.get("citations_required")),
+        "source_trace_required": bool(citation_policy.get("source_trace_required")),
+    }
+
+
+def _safe_retrieval_package_ref_summary(
+    retrieval_package_ref: dict[str, str] | None,
+) -> dict[str, Any]:
+    if retrieval_package_ref is None:
+        return {
+            "provided": False,
+            "retrieval_package_id": None,
+            "package_hash": None,
+        }
+    return {
+        "provided": True,
+        "retrieval_package_id": retrieval_package_ref["retrieval_package_id"],
+        "package_hash": retrieval_package_ref["package_hash"],
+    }
+
+
+def _safe_retrieval_package_summary(
+    retrieval_package: dict[str, Any] | None,
+    *,
+    source_payload: dict[str, Any],
+) -> dict[str, Any] | None:
+    if retrieval_package is None:
+        return None
+    evidence_items = _list_value(retrieval_package.get("evidence_items"))
+    score_summary = _mapping_value(retrieval_package.get("score_summary"))
+    source_summary = _mapping_value(retrieval_package.get("source_summary"))
+    warnings = [
+        item for item in retrieval_package.get("warnings", []) if isinstance(item, str)
+    ]
+    return {
+        "retrieval_package_id": retrieval_package.get("retrieval_package_id"),
+        "package_hash": retrieval_package.get("package_hash"),
+        "status": retrieval_package.get("status"),
+        "ready_for_generation": retrieval_package.get("status") == "READY",
+        "evidence_item_count": len(evidence_items),
+        "selected_evidence_count": _safe_selected_evidence_count(source_payload),
+        "score_summary": {
+            "best_score": score_summary.get("best_score"),
+            "confidence_bucket": score_summary.get("confidence_bucket"),
+            "low_confidence_threshold": score_summary.get("low_confidence_threshold"),
+            "ranker_mix": score_summary.get("ranker_mix"),
+            "rerank_state": score_summary.get("rerank_state"),
+            "quality_policy_id": score_summary.get("quality_policy_id"),
+        },
+        "source_summary": {
+            "source_count": source_summary.get("source_count"),
+            "document_count": source_summary.get("document_count"),
+            "chunk_count": source_summary.get("chunk_count"),
+        },
+        "no_answer_reason": retrieval_package.get("no_answer_reason"),
+        "warning_count": len(warnings),
+        "warning_kinds": sorted({item.split(":", 1)[0] for item in warnings}),
+    }
+
+
+def _boundary_issues(
+    error: Exception | None,
+    *,
+    failed_stage: str | None,
+) -> list[dict[str, Any]]:
+    if error is None:
+        return []
+    issue: dict[str, Any] = {
+        "stage": failed_stage or "unknown",
+        "error_code": getattr(error, "error_code", error.__class__.__name__),
+        "status_code": getattr(error, "status_code", 500),
+        "retryable": bool(getattr(error, "retryable", False)),
+    }
+    return [issue]
+
+
+def assert_grounded_generation_boundary_audit_redacted(
+    audit: dict[str, Any],
+    *,
+    source_payload: dict[str, Any],
+    retrieval_package: dict[str, Any] | None,
+) -> None:
+    serialized = json.dumps(audit, ensure_ascii=False, sort_keys=True)
+    for value in _forbidden_audit_values(source_payload):
+        if _protected_value_leaked(serialized, value):
+            raise ValueError("grounded generation boundary audit leaked request payload")
+    if retrieval_package is not None:
+        for value in _forbidden_audit_values(retrieval_package):
+            if _protected_value_leaked(serialized, value):
+                raise ValueError(
+                    "grounded generation boundary audit leaked retrieval payload"
+                )
+
+
+def _forbidden_audit_values(value: Any, *, parent_key: str | None = None) -> list[str]:
+    if isinstance(value, dict):
+        collected: list[str] = []
+        for key, item in value.items():
+            key_string = str(key)
+            if key_string in FORBIDDEN_AUDIT_RAW_KEYS or _secretish_key(key_string):
+                collected.extend(_string_values(item))
+                continue
+            collected.extend(_forbidden_audit_values(item, parent_key=key_string))
+        return collected
+    if isinstance(value, list):
+        collected = []
+        for item in value:
+            collected.extend(_forbidden_audit_values(item, parent_key=parent_key))
+        return collected
+    return []
+
+
+def _string_values(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        collected: list[str] = []
+        for item in value.values():
+            collected.extend(_string_values(item))
+        return collected
+    if isinstance(value, list):
+        collected = []
+        for item in value:
+            collected.extend(_string_values(item))
+        return collected
+    return []
+
+
+def _protected_value_leaked(serialized: str, value: str) -> bool:
+    return len(value) >= 8 and value in serialized
+
+
+def _secretish_key(key: str) -> bool:
+    lowered = key.lower()
+    return any(fragment in lowered for fragment in ("secret", "password", "token"))
+
+
+def _safe_selected_evidence_count(payload: dict[str, Any]) -> int:
+    selected = payload.get("selected_evidence_ids")
+    if not isinstance(selected, list):
+        return 0
+    return len([item for item in selected if isinstance(item, str) and item.strip()])
+
+
+def _mapping_value(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _list_value(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
 
 
 def compatibility_payload_from_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
