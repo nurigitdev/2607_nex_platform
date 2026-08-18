@@ -16,8 +16,11 @@ from nex_ae_api.chat import (
     build_chat_artifact_ref,
     build_chat_interaction_record,
     build_cx_generation_payload,
+    build_generation_quality_rejected_chat_interaction_record,
     build_grounded_user_message,
     build_no_answer_chat_interaction_record,
+    generation_quality_rejection_failure_summary,
+    generation_quality_rejection_stage,
     register_chat_routes,
     retrieval_quality_warning_contract,
     retrieval_summary,
@@ -58,6 +61,41 @@ class FakeCxClient:
             },
             "usage": {"input_tokens": 2, "output_tokens": 3, "total_tokens": 5},
         }
+
+
+class RejectingCxClient:
+    def __init__(
+        self,
+        *,
+        error_code: str = "cx.retrieval_package_quality_blocked",
+        detail: str = "Retrieval package quality guard blocked private-doc-id.",
+        retryable: bool = False,
+    ) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.error_code = error_code
+        self.detail = detail
+        self.retryable = retryable
+
+    def create_generation(
+        self,
+        payload: dict[str, Any],
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            {
+                "payload": payload,
+                "request_id": request_id,
+                "trace_id": trace_id,
+            }
+        )
+        raise ChatInteractionError(
+            status_code=409,
+            error_code=self.error_code,
+            detail=self.detail,
+            retryable=self.retryable,
+        )
 
 
 class FakeRetrievalClient:
@@ -764,6 +802,91 @@ def test_build_no_answer_chat_interaction_record_skips_generation() -> None:
     assert record["retrieval"]["no_answer_reason"] == "no_terms_matched"
 
 
+def test_build_generation_quality_rejected_chat_interaction_record_is_redacted() -> None:
+    cx_payload = build_cx_generation_payload(
+        {
+            "interaction_id": "interaction-001",
+            "chat_document_id": "chat-001",
+            "user_message": "Summarize private evidence.",
+            "retrieval": {"enabled": True},
+        },
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    )
+    retrieval_package = {
+        "retrieval_package_id": "cx-ret-001",
+        "package_hash": "b" * 64,
+        "status": "READY",
+        "evidence_items": [
+            {
+                "evidence_id": "ev-1",
+                "quality_flags": ["low_source_confidence:private-doc-id"],
+            }
+        ],
+        "score_summary": {"best_score": 0.8, "confidence_bucket": "READY"},
+        "warnings": ["source_summary_missing:private-doc-id"],
+    }
+    failure = ChatInteractionError(
+        status_code=409,
+        error_code="cx.retrieval_package_quality_blocked",
+        detail="Blocked because private-doc-id had weak source metadata.",
+    )
+
+    record = build_generation_quality_rejected_chat_interaction_record(
+        source_payload={"user_message": "Summarize private evidence."},
+        cx_payload=cx_payload,
+        retrieval_package=retrieval_package,
+        failure=failure,
+        request_id="req",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    )
+
+    assert record["status"] == "FAILED"
+    assert record["cx_status"] == "FAILED"
+    assert record["cx_generation_id"] is None
+    assert record["generation"] is None
+    assert record["failure"] == {
+        "failure_schema_version": "ae_chat_generation_quality_rejection.v1",
+        "error_code": "cx.retrieval_package_quality_blocked",
+        "failed_stage": "retrieval_package_quality",
+        "owner_service": "nex-cx",
+        "retryable": False,
+        "retrieval_quality_recommended_action": "proceed_with_caveat",
+        "recommended_action": "show_error",
+        "raw_error_detail_included": False,
+    }
+    assert record["retrieval"]["warnings"] == ["source_summary_missing"]
+    assert record["retrieval"]["quality_warnings"]["quality_flag_kinds"] == [
+        "low_source_confidence"
+    ]
+    assert "private-doc-id" not in str(record)
+
+
+def test_generation_quality_rejection_failure_summary_maps_not_ready_action() -> None:
+    summary = generation_quality_rejection_failure_summary(
+        ChatInteractionError(
+            status_code=409,
+            error_code="cx.retrieval_package_not_ready",
+            detail="Retrieval package status is LOW_CONFIDENCE.",
+        ),
+        {
+            "status": "LOW_CONFIDENCE",
+            "evidence_items": [],
+            "score_summary": {
+                "best_score": 0.1,
+                "confidence_bucket": "LOW_CONFIDENCE",
+            },
+            "warnings": [],
+        },
+    )
+
+    assert summary["failed_stage"] == "retrieval_package_status"
+    assert summary["retrieval_quality_recommended_action"] == "ask_confirmation"
+    assert summary["recommended_action"] == "ask_confirmation"
+    assert generation_quality_rejection_stage("cx.other") == (
+        "generation_quality_rejection"
+    )
+
+
 def test_chat_interaction_with_retrieval_calls_cx_retrieval_then_generation() -> None:
     client, cx_client, retrieval_client, store = build_grounded_test_client()
 
@@ -827,6 +950,85 @@ def test_chat_interaction_wires_retrieval_quality_warnings_to_record_and_generat
     )
     assert "private-doc-id" not in str(retrieval)
     assert "private-doc-id" not in str(generation_metadata)
+
+
+def test_chat_interaction_maps_quality_rejection_to_failed_record() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    store = ChatInteractionStore()
+    cx_client = RejectingCxClient(
+        error_code="cx.retrieval_package_quality_blocked",
+        detail="Retrieval package quality guard blocked private-doc-id.",
+    )
+    retrieval_client = FakeRetrievalClient(
+        warnings=["source_summary_missing:private-doc-id"],
+        quality_flags=["low_source_confidence:private-doc-id"],
+    )
+    register_chat_routes(
+        app,
+        store=store,
+        cx_client=cx_client,
+        retrieval_client=retrieval_client,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/chat/interactions",
+        json={
+            "interaction_id": "interaction-001",
+            "chat_document_id": "chat-001",
+            "user_message": "Summarize trace evidence.",
+            "retrieval": {"purpose": "grounded_answer", "top_k": 1},
+        },
+        headers=auth_headers(),
+    )
+
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["status"] == "FAILED"
+    assert payload["cx_status"] == "FAILED"
+    assert payload["generation"] is None
+    assert payload["failure"]["error_code"] == "cx.retrieval_package_quality_blocked"
+    assert payload["failure"]["failed_stage"] == "retrieval_package_quality"
+    assert payload["failure"]["recommended_action"] == "show_error"
+    assert payload["failure"]["raw_error_detail_included"] is False
+    assert payload["retrieval"]["warnings"] == ["source_summary_missing"]
+    assert payload["retrieval"]["quality_warnings"]["quality_flag_kinds"] == [
+        "low_source_confidence"
+    ]
+    assert store.get("interaction-001") == payload
+    assert len(cx_client.calls) == 1
+    assert "private-doc-id" not in str(payload)
+
+
+def test_chat_interaction_keeps_non_quality_generation_failure_as_problem() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    store = ChatInteractionStore()
+    register_chat_routes(
+        app,
+        store=store,
+        cx_client=RejectingCxClient(
+            error_code="mo.provider_timeout",
+            detail="MO provider timeout.",
+            retryable=True,
+        ),
+        retrieval_client=FakeRetrievalClient(),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/chat/interactions",
+        json={
+            "interaction_id": "interaction-001",
+            "user_message": "Summarize trace evidence.",
+            "retrieval": {"purpose": "grounded_answer"},
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error_code"] == "mo.provider_timeout"
+    assert store.get("interaction-001") is None
 
 
 def test_chat_interaction_with_retrieval_disabled_skips_retrieval() -> None:

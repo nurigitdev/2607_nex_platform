@@ -118,6 +118,9 @@
         }
       ]
     },
+    "failure": {
+      "$ref": "#/$defs/generationQualityRejectionFailure"
+    },
     "retrieval": {
       "anyOf": [
         {
@@ -336,6 +339,65 @@
           "const": false
         }
       }
+    },
+    "generationQualityRejectionFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "failure_schema_version",
+        "error_code",
+        "failed_stage",
+        "owner_service",
+        "retryable",
+        "retrieval_quality_recommended_action",
+        "recommended_action",
+        "raw_error_detail_included"
+      ],
+      "properties": {
+        "failure_schema_version": {
+          "const": "ae_chat_generation_quality_rejection.v1"
+        },
+        "error_code": {
+          "type": "string",
+          "enum": [
+            "cx.retrieval_package_not_ready",
+            "cx.retrieval_package_quality_blocked"
+          ]
+        },
+        "failed_stage": {
+          "type": "string",
+          "enum": [
+            "retrieval_package_status",
+            "retrieval_package_quality",
+            "generation_quality_rejection"
+          ]
+        },
+        "owner_service": {
+          "const": "nex-cx"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "retrieval_quality_recommended_action": {
+          "$ref": "#/$defs/retrievalQualityRecommendedAction"
+        },
+        "recommended_action": {
+          "$ref": "#/$defs/retrievalQualityRecommendedAction"
+        },
+        "raw_error_detail_included": {
+          "const": false
+        }
+      }
+    },
+    "retrievalQualityRecommendedAction": {
+      "type": "string",
+      "enum": [
+        "proceed",
+        "proceed_with_caveat",
+        "ask_confirmation",
+        "show_no_answer",
+        "show_error"
+      ]
     },
     "artifactRef": {
       "type": "object",

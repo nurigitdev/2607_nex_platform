@@ -702,11 +702,13 @@ paths:
         - Chat
       responses:
         "200":
-          description: AE chat interaction created, optionally grounded by CX retrieval, and linked to CX generation when evidence is available.
+          description: AE chat interaction created, optionally grounded by CX retrieval, linked to CX generation when evidence is available, or safely recorded as failed when CX blocks generation on retrieval quality.
         "400":
           description: Chat interaction request is invalid.
         "401":
           description: Service claim is missing or invalid.
+        "409":
+          description: CX generation rejected a non-quality interaction or retrieval state conflict.
         "503":
           description: CX retrieval or generation is unavailable.
   /api/v1/chat/interactions/{interaction_id}:

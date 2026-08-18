@@ -414,6 +414,10 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0308`](slices/0308_retrieval_threshold_decision_contract_schema_hardening.md) | `S31-008` Retrieval threshold decision contract/schema hardening. |
 | [`Slice 0309`](slices/0309_retrieval_threshold_operator_review_surface.md) | `S31-009` Retrieval threshold operator review/runbook surface. |
 | [`Slice 0310`](slices/0310_retrieval_threshold_calibration_closure_checkpoint.md) | `S31-010` Retrieval threshold calibration closure checkpoint. |
+| [`Slice 0311`](slices/0311_cx_grounded_generation_boundary_audit_refactoring_checkpoint.md) | `S32-001` CX grounded generation boundary audit and refactoring checkpoint. |
+| [`Slice 0312`](slices/0312_cx_retrieval_package_quality_guard_generation_requests.md) | `S32-002` CX retrieval package quality guard for generation requests. |
+| [`Slice 0313`](slices/0313_ae_chat_retrieval_quality_warning_contract_wiring.md) | `S32-003` AE chat retrieval-quality warning contract wiring. |
+| [`Slice 0314`](slices/0314_ae_chat_generation_quality_rejection_handling.md) | `S32-004` AE chat generation quality rejection handling. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

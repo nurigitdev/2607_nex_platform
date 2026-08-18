@@ -1,0 +1,54 @@
+{
+  "interaction_schema_version": "ae_chat_interaction.v1",
+  "interaction_id": "interaction-quality-rejected-001",
+  "chat_document_id": "chat-001",
+  "status": "FAILED",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "user_message_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "user_message_preview": "Summarize trace evidence.",
+  "cx_generation_id": null,
+  "cx_status": "FAILED",
+  "generation": null,
+  "failure": {
+    "failure_schema_version": "ae_chat_generation_quality_rejection.v1",
+    "error_code": "cx.retrieval_package_quality_blocked",
+    "failed_stage": "retrieval_package_quality",
+    "owner_service": "nex-cx",
+    "retryable": false,
+    "retrieval_quality_recommended_action": "proceed_with_caveat",
+    "recommended_action": "show_error",
+    "raw_error_detail_included": false
+  },
+  "retrieval": {
+    "cx_retrieval_package_id": "cx-ret-quality-001",
+    "cx_package_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "cx_status": "READY",
+    "evidence_count": 1,
+    "best_score": 0.82,
+    "confidence_bucket": "READY",
+    "no_answer_reason": null,
+    "warnings": [
+      "source_summary_missing"
+    ],
+    "quality_warnings": {
+      "contract_schema_version": "ae_chat_retrieval_quality_warning.v1",
+      "warning_count": 1,
+      "warning_kinds": [
+        "source_summary_missing"
+      ],
+      "quality_flag_count": 1,
+      "quality_flag_kinds": [
+        "low_source_confidence"
+      ],
+      "low_confidence_threshold": 0.2,
+      "best_score_below_threshold": false,
+      "status_caveat_required": true,
+      "recommended_action": "proceed_with_caveat",
+      "raw_warning_details_included": false
+    }
+  },
+  "artifact_refs": [],
+  "created_at": "2026-08-18T00:00:00Z",
+  "updated_at": "2026-08-18T00:00:00Z"
+}

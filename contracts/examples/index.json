@@ -186,6 +186,11 @@
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
     },
     {
+      "name": "ae_chat_interaction_quality_rejected",
+      "path": "examples/generation/ae_chat_interaction.quality_rejected.json",
+      "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
+    },
+    {
       "name": "ae_chat_interaction_artifact_linked",
       "path": "examples/generation/ae_chat_interaction.artifact_linked.json",
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"

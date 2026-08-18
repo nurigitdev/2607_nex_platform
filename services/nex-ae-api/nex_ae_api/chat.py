@@ -36,7 +36,14 @@ from nex_ae_api.analytics import (
 AE_CHAT_RETRIEVAL_QUALITY_WARNING_CONTRACT_VERSION = (
     "ae_chat_retrieval_quality_warning.v1"
 )
+AE_CHAT_GENERATION_QUALITY_REJECTION_CONTRACT_VERSION = (
+    "ae_chat_generation_quality_rejection.v1"
+)
 DEFAULT_LOW_CONFIDENCE_THRESHOLD = 0.2
+GENERATION_QUALITY_REJECTION_ERROR_CODES = {
+    "cx.retrieval_package_not_ready",
+    "cx.retrieval_package_quality_blocked",
+}
 
 
 class CxGenerationClient(Protocol):
@@ -206,11 +213,32 @@ def register_chat_routes(
                     cx_payload,
                     retrieval_package,
                 )
-            cx_record = client.create_generation(
-                cx_payload,
-                request_id=request_id,
-                trace_id=trace_id,
-            )
+            try:
+                cx_record = client.create_generation(
+                    cx_payload,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+            except ChatInteractionError as exc:
+                if is_generation_quality_rejection(exc) and retrieval_package is not None:
+                    saved_quality_rejection = chat_store.save(
+                        build_generation_quality_rejected_chat_interaction_record(
+                            source_payload=payload,
+                            cx_payload=cx_payload,
+                            retrieval_package=retrieval_package,
+                            failure=exc,
+                            request_id=request_id,
+                            trace_id=trace_id,
+                        )
+                    )
+                    record_chat_prompt_analytics(
+                        analytics_store,
+                        source_payload=payload,
+                        chat_record=saved_quality_rejection,
+                        retrieval_used=True,
+                    )
+                    return saved_quality_rejection
+                raise
             saved_record = chat_store.save(
                 build_chat_interaction_record(
                     source_payload=payload,
@@ -464,6 +492,84 @@ def build_no_answer_chat_interaction_record(
         "created_at": now,
         "updated_at": now,
     }
+
+
+def build_generation_quality_rejected_chat_interaction_record(
+    *,
+    source_payload: dict[str, Any],
+    cx_payload: dict[str, Any],
+    retrieval_package: dict[str, Any],
+    failure: ChatInteractionError,
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    user_message = user_message_from_payload(source_payload)
+    now = _utc_now()
+    return {
+        "interaction_schema_version": "ae_chat_interaction.v1",
+        "interaction_id": cx_payload["client_request_id"],
+        "chat_document_id": cx_payload["metadata"]["chat_document_id"],
+        "status": "FAILED",
+        "trace_id": trace_id,
+        "request_id": request_id,
+        "user_message_hash": cx_payload["metadata"]["user_message_hash"],
+        "user_message_preview": user_message[:120],
+        "cx_generation_id": None,
+        "cx_status": "FAILED",
+        "generation": None,
+        "failure": generation_quality_rejection_failure_summary(
+            failure,
+            retrieval_package,
+        ),
+        "retrieval": retrieval_summary(retrieval_package),
+        "artifact_refs": [],
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def generation_quality_rejection_failure_summary(
+    failure: ChatInteractionError,
+    retrieval_package: dict[str, Any],
+) -> dict[str, Any]:
+    quality_warnings = retrieval_quality_warning_contract(retrieval_package)
+    return {
+        "failure_schema_version": AE_CHAT_GENERATION_QUALITY_REJECTION_CONTRACT_VERSION,
+        "error_code": failure.error_code,
+        "failed_stage": generation_quality_rejection_stage(failure.error_code),
+        "owner_service": "nex-cx",
+        "retryable": failure.retryable,
+        "retrieval_quality_recommended_action": quality_warnings[
+            "recommended_action"
+        ],
+        "recommended_action": generation_quality_rejection_action(
+            failure.error_code,
+            quality_warnings,
+        ),
+        "raw_error_detail_included": False,
+    }
+
+
+def generation_quality_rejection_stage(error_code: str) -> str:
+    if error_code == "cx.retrieval_package_not_ready":
+        return "retrieval_package_status"
+    if error_code == "cx.retrieval_package_quality_blocked":
+        return "retrieval_package_quality"
+    return "generation_quality_rejection"
+
+
+def generation_quality_rejection_action(
+    error_code: str,
+    quality_warnings: dict[str, Any],
+) -> str:
+    if error_code == "cx.retrieval_package_not_ready":
+        action = quality_warnings.get("recommended_action")
+        return action if isinstance(action, str) else "show_error"
+    return "show_error"
+
+
+def is_generation_quality_rejection(failure: ChatInteractionError) -> bool:
+    return failure.error_code in GENERATION_QUALITY_REJECTION_ERROR_CODES
 
 
 def artifact_record_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
