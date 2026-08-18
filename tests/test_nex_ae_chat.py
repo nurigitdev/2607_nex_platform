@@ -19,6 +19,7 @@ from nex_ae_api.chat import (
     build_grounded_user_message,
     build_no_answer_chat_interaction_record,
     register_chat_routes,
+    retrieval_quality_warning_contract,
     retrieval_summary,
     should_use_retrieval,
     user_message_from_payload,
@@ -60,9 +61,19 @@ class FakeCxClient:
 
 
 class FakeRetrievalClient:
-    def __init__(self, *, status: str = "READY") -> None:
+    def __init__(
+        self,
+        *,
+        status: str = "READY",
+        warnings: list[str] | None = None,
+        quality_flags: list[str] | None = None,
+        best_score: float | None = None,
+    ) -> None:
         self.calls: list[dict[str, Any]] = []
         self.status = status
+        self.warnings = warnings or []
+        self.quality_flags = quality_flags or []
+        self.best_score = best_score
 
     def create_retrieval_context(
         self,
@@ -78,6 +89,9 @@ class FakeRetrievalClient:
                 "trace_id": trace_id,
             }
         )
+        best_score = self.best_score
+        if best_score is None:
+            best_score = 0.9 if self.status == "READY" else 0.0
         return {
             "retrieval_package_id": "cx-ret-001",
             "package_hash": "b" * 64,
@@ -85,18 +99,24 @@ class FakeRetrievalClient:
             "purpose": payload["purpose"],
             "evidence_items": [
                 {
+                    "evidence_id": "evidence-001",
                     "citation_label": "[1]",
                     "text": "Trace evidence from CX.",
+                    "quality_flags": self.quality_flags,
                 }
             ]
             if self.status == "READY"
             else [],
             "score_summary": {
-                "best_score": 0.9 if self.status == "READY" else 0.0,
+                "best_score": best_score,
                 "confidence_bucket": self.status,
+                "low_confidence_threshold": 0.2,
+            },
+            "retrieval_profile": {
+                "confidence_policy": {"low_confidence_threshold": 0.2},
             },
             "no_answer_reason": None if self.status == "READY" else "no_terms_matched",
-            "warnings": [],
+            "warnings": self.warnings,
         }
 
 
@@ -549,13 +569,35 @@ def test_attach_retrieval_package_to_generation_payload_adds_metadata() -> None:
             "retrieval_package_id": "cx-ret-001",
             "package_hash": "b" * 64,
             "status": "READY",
-            "evidence_items": [{"citation_label": "[1]", "text": "Evidence."}],
+            "evidence_items": [
+                {
+                    "evidence_id": "evidence-001",
+                    "citation_label": "[1]",
+                    "text": "Evidence.",
+                    "quality_flags": ["debug_checked:private-doc"],
+                }
+            ],
+            "score_summary": {
+                "best_score": 0.9,
+                "confidence_bucket": "READY",
+                "low_confidence_threshold": 0.2,
+            },
+            "warnings": ["tokenizer_fallback_used:private-doc"],
         },
     )
 
     assert updated["metadata"]["retrieval_package_id"] == "cx-ret-001"
     assert updated["metadata"]["retrieval_evidence_count"] == 1
+    assert updated["metadata"]["retrieval_warning_count"] == 1
+    assert updated["metadata"]["retrieval_warning_kinds"] == [
+        "tokenizer_fallback_used"
+    ]
+    assert updated["metadata"]["retrieval_quality_flag_kinds"] == ["debug_checked"]
+    assert updated["metadata"]["retrieval_quality_recommended_action"] == (
+        "proceed_with_caveat"
+    )
     assert "Supporting evidence" in updated["messages"][0]["content"]
+    assert "private-doc" not in str(updated["metadata"])
 
 
 def test_retrieval_summary_maps_package() -> None:
@@ -564,15 +606,133 @@ def test_retrieval_summary_maps_package() -> None:
             "retrieval_package_id": "cx-ret-001",
             "package_hash": "b" * 64,
             "status": "READY",
-            "evidence_items": [{"evidence_id": "ev-1"}],
-            "score_summary": {"best_score": 0.9, "confidence_bucket": "READY"},
-            "warnings": ["w"],
+            "evidence_items": [
+                {
+                    "evidence_id": "ev-1",
+                    "quality_flags": ["debug_checked:private-doc"],
+                }
+            ],
+            "score_summary": {
+                "best_score": 0.9,
+                "confidence_bucket": "READY",
+                "low_confidence_threshold": 0.2,
+            },
+            "warnings": ["tokenizer_fallback_used:private-doc"],
         }
     )
 
     assert summary["cx_retrieval_package_id"] == "cx-ret-001"
     assert summary["evidence_count"] == 1
-    assert summary["warnings"] == ["w"]
+    assert summary["warnings"] == ["tokenizer_fallback_used"]
+    assert summary["quality_warnings"] == {
+        "contract_schema_version": "ae_chat_retrieval_quality_warning.v1",
+        "warning_count": 1,
+        "warning_kinds": ["tokenizer_fallback_used"],
+        "quality_flag_count": 1,
+        "quality_flag_kinds": ["debug_checked"],
+        "low_confidence_threshold": 0.2,
+        "best_score_below_threshold": False,
+        "status_caveat_required": True,
+        "recommended_action": "proceed_with_caveat",
+        "raw_warning_details_included": False,
+    }
+    assert "private-doc" not in str(summary)
+
+
+def test_retrieval_quality_warning_contract_maps_actions_and_thresholds() -> None:
+    clear = retrieval_quality_warning_contract(
+        {
+            "status": "READY",
+            "evidence_items": [],
+            "score_summary": {"best_score": 0.9, "confidence_bucket": "READY"},
+            "warnings": [],
+        }
+    )
+    low_score = retrieval_quality_warning_contract(
+        {
+            "status": "READY",
+            "evidence_items": [],
+            "retrieval_profile": {
+                "confidence_policy": {"low_confidence_threshold": 0.8}
+            },
+            "score_summary": {"best_score": 0.3, "confidence_bucket": "READY"},
+            "warnings": [],
+        }
+    )
+    no_answer = retrieval_quality_warning_contract(
+        {
+            "status": "NO_ANSWER",
+            "evidence_items": [],
+            "score_summary": {"best_score": 0.0, "confidence_bucket": "NO_ANSWER"},
+            "warnings": [],
+        }
+    )
+    failed = retrieval_quality_warning_contract(
+        {
+            "status": "FAILED",
+            "evidence_items": [],
+            "score_summary": {"best_score": 0.0, "confidence_bucket": "FAILED"},
+            "warnings": [],
+        }
+    )
+
+    assert clear["recommended_action"] == "proceed"
+    assert clear["status_caveat_required"] is False
+    assert clear["low_confidence_threshold"] == 0.2
+    assert low_score["recommended_action"] == "ask_confirmation"
+    assert low_score["best_score_below_threshold"] is True
+    assert low_score["low_confidence_threshold"] == 0.8
+    assert no_answer["recommended_action"] == "show_no_answer"
+    assert failed["recommended_action"] == "show_error"
+
+
+def test_retrieval_quality_warning_contract_handles_sparse_and_mixed_inputs() -> None:
+    contract = retrieval_quality_warning_contract(
+        {
+            "status": " ",
+            "evidence_items": [
+                "not-an-evidence-object",
+                {"quality_flags": ["low_source_confidence:private-doc", 42]},
+            ],
+            "score_summary": {
+                "best_score": True,
+                "confidence_bucket": " ",
+                "low_confidence_threshold": True,
+            },
+            "warnings": ["permission_filtered:private-doc", 7],
+        }
+    )
+    low_bucket = retrieval_quality_warning_contract(
+        {
+            "status": "READY",
+            "evidence_items": [],
+            "score_summary": {
+                "best_score": 0.9,
+                "confidence_bucket": "LOW_CONFIDENCE",
+            },
+            "warnings": [],
+        }
+    )
+    partial = retrieval_quality_warning_contract(
+        {
+            "status": "PARTIAL",
+            "evidence_items": [],
+            "score_summary": {"best_score": 0.9, "confidence_bucket": "READY"},
+            "warnings": [],
+        }
+    )
+
+    assert contract["warning_count"] == 1
+    assert contract["warning_kinds"] == ["permission_filtered"]
+    assert contract["quality_flag_count"] == 1
+    assert contract["quality_flag_kinds"] == ["low_source_confidence"]
+    assert contract["low_confidence_threshold"] == 0.2
+    assert contract["best_score_below_threshold"] is False
+    assert contract["recommended_action"] == "proceed_with_caveat"
+    assert contract["raw_warning_details_included"] is False
+    assert "private-doc" not in str(contract)
+    assert low_bucket["recommended_action"] == "ask_confirmation"
+    assert partial["recommended_action"] == "proceed_with_caveat"
 
 
 def test_build_no_answer_chat_interaction_record_skips_generation() -> None:
@@ -624,6 +784,49 @@ def test_chat_interaction_with_retrieval_calls_cx_retrieval_then_generation() ->
     assert cx_client.calls[0]["payload"]["metadata"]["retrieval_package_id"] == "cx-ret-001"
     assert "Trace evidence from CX." in cx_client.calls[0]["payload"]["messages"][0]["content"]
     assert store.get(payload["interaction_id"]) == payload
+
+
+def test_chat_interaction_wires_retrieval_quality_warnings_to_record_and_generation() -> None:
+    client, cx_client, _, _ = build_grounded_test_client(
+        FakeRetrievalClient(
+            warnings=["tokenizer_fallback_used:private-doc-id"],
+            quality_flags=["debug_checked:private-doc-id"],
+        )
+    )
+
+    response = client.post(
+        "/api/v1/chat/interactions",
+        json={
+            "user_message": "Summarize trace evidence.",
+            "retrieval": {"purpose": "grounded_answer", "top_k": 1},
+        },
+        headers=auth_headers(),
+    )
+
+    payload = response.json()
+    retrieval = payload["retrieval"]
+    generation_metadata = cx_client.calls[0]["payload"]["metadata"]
+
+    assert response.status_code == 200
+    assert retrieval["warnings"] == ["tokenizer_fallback_used"]
+    assert retrieval["quality_warnings"]["warning_count"] == 1
+    assert retrieval["quality_warnings"]["warning_kinds"] == [
+        "tokenizer_fallback_used"
+    ]
+    assert retrieval["quality_warnings"]["quality_flag_kinds"] == ["debug_checked"]
+    assert retrieval["quality_warnings"]["recommended_action"] == (
+        "proceed_with_caveat"
+    )
+    assert generation_metadata["retrieval_warning_count"] == 1
+    assert generation_metadata["retrieval_warning_kinds"] == [
+        "tokenizer_fallback_used"
+    ]
+    assert generation_metadata["retrieval_quality_flag_kinds"] == ["debug_checked"]
+    assert generation_metadata["retrieval_quality_recommended_action"] == (
+        "proceed_with_caveat"
+    )
+    assert "private-doc-id" not in str(retrieval)
+    assert "private-doc-id" not in str(generation_metadata)
 
 
 def test_chat_interaction_with_retrieval_disabled_skips_retrieval() -> None:

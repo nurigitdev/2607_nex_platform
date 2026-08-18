@@ -131,7 +131,8 @@
             "best_score",
             "confidence_bucket",
             "no_answer_reason",
-            "warnings"
+            "warnings",
+            "quality_warnings"
           ],
           "properties": {
             "cx_retrieval_package_id": {
@@ -174,6 +175,9 @@
               "items": {
                 "type": "string"
               }
+            },
+            "quality_warnings": {
+              "$ref": "#/$defs/retrievalQualityWarnings"
             }
           }
         },
@@ -259,6 +263,77 @@
         "evidence_ref_count": {
           "type": "integer",
           "minimum": 0
+        }
+      }
+    },
+    "retrievalQualityWarnings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_schema_version",
+        "warning_count",
+        "warning_kinds",
+        "quality_flag_count",
+        "quality_flag_kinds",
+        "low_confidence_threshold",
+        "best_score_below_threshold",
+        "status_caveat_required",
+        "recommended_action",
+        "raw_warning_details_included"
+      ],
+      "properties": {
+        "contract_schema_version": {
+          "const": "ae_chat_retrieval_quality_warning.v1"
+        },
+        "warning_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning_kinds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "quality_flag_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quality_flag_kinds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "low_confidence_threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "best_score_below_threshold": {
+          "type": "boolean"
+        },
+        "status_caveat_required": {
+          "type": "boolean"
+        },
+        "recommended_action": {
+          "type": "string",
+          "enum": [
+            "proceed",
+            "proceed_with_caveat",
+            "ask_confirmation",
+            "show_no_answer",
+            "show_error"
+          ]
+        },
+        "raw_warning_details_included": {
+          "const": false
         }
       }
     },

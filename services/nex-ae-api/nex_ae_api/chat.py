@@ -33,6 +33,11 @@ from nex_ae_api.analytics import (
     record_chat_prompt_analytics,
 )
 
+AE_CHAT_RETRIEVAL_QUALITY_WARNING_CONTRACT_VERSION = (
+    "ae_chat_retrieval_quality_warning.v1"
+)
+DEFAULT_LOW_CONFIDENCE_THRESHOLD = 0.2
+
 
 class CxGenerationClient(Protocol):
     def create_generation(
@@ -609,6 +614,7 @@ def attach_retrieval_package_to_generation_payload(
     cx_payload: dict[str, Any],
     retrieval_package: dict[str, Any],
 ) -> dict[str, Any]:
+    quality_warnings = retrieval_quality_warning_contract(retrieval_package)
     grounded_message = build_grounded_user_message(
         cx_payload["messages"][0]["content"],
         retrieval_package,
@@ -632,6 +638,12 @@ def attach_retrieval_package_to_generation_payload(
             "retrieval_package_hash": retrieval_package["package_hash"],
             "retrieval_status": retrieval_package["status"],
             "retrieval_evidence_count": len(retrieval_package["evidence_items"]),
+            "retrieval_warning_count": quality_warnings["warning_count"],
+            "retrieval_warning_kinds": quality_warnings["warning_kinds"],
+            "retrieval_quality_flag_kinds": quality_warnings["quality_flag_kinds"],
+            "retrieval_quality_recommended_action": quality_warnings[
+                "recommended_action"
+            ],
         },
     }
 
@@ -662,6 +674,7 @@ def build_grounded_user_message(
 def retrieval_summary(retrieval_package: dict[str, Any] | None) -> dict[str, Any] | None:
     if retrieval_package is None:
         return None
+    quality_warnings = retrieval_quality_warning_contract(retrieval_package)
     return {
         "cx_retrieval_package_id": retrieval_package["retrieval_package_id"],
         "cx_package_hash": retrieval_package["package_hash"],
@@ -670,8 +683,135 @@ def retrieval_summary(retrieval_package: dict[str, Any] | None) -> dict[str, Any
         "best_score": retrieval_package["score_summary"]["best_score"],
         "confidence_bucket": retrieval_package["score_summary"]["confidence_bucket"],
         "no_answer_reason": retrieval_package.get("no_answer_reason"),
-        "warnings": retrieval_package.get("warnings", []),
+        "warnings": quality_warnings["warning_kinds"],
+        "quality_warnings": quality_warnings,
     }
+
+
+def retrieval_quality_warning_contract(retrieval_package: dict[str, Any]) -> dict[str, Any]:
+    score_summary = _mapping_value(retrieval_package.get("score_summary"))
+    status = _optional_text(retrieval_package.get("status")) or "UNKNOWN"
+    confidence_bucket = _optional_text(score_summary.get("confidence_bucket"))
+    best_score = _number_or_none(score_summary.get("best_score"))
+    low_confidence_threshold = _low_confidence_threshold(retrieval_package)
+    warning_kinds = _warning_kinds(retrieval_package.get("warnings"))
+    quality_flag_kinds = _quality_flag_kinds(retrieval_package.get("evidence_items"))
+    best_score_below_threshold = (
+        best_score is not None
+        and low_confidence_threshold is not None
+        and best_score < low_confidence_threshold
+    )
+    recommended_action = _retrieval_quality_recommended_action(
+        status=status,
+        confidence_bucket=confidence_bucket,
+        best_score_below_threshold=best_score_below_threshold,
+        warning_kinds=warning_kinds,
+        quality_flag_kinds=quality_flag_kinds,
+    )
+    return {
+        "contract_schema_version": AE_CHAT_RETRIEVAL_QUALITY_WARNING_CONTRACT_VERSION,
+        "warning_count": len(_string_list_value(retrieval_package.get("warnings"))),
+        "warning_kinds": warning_kinds,
+        "quality_flag_count": _quality_flag_count(retrieval_package.get("evidence_items")),
+        "quality_flag_kinds": quality_flag_kinds,
+        "low_confidence_threshold": low_confidence_threshold,
+        "best_score_below_threshold": best_score_below_threshold,
+        "status_caveat_required": recommended_action != "proceed",
+        "recommended_action": recommended_action,
+        "raw_warning_details_included": False,
+    }
+
+
+def _retrieval_quality_recommended_action(
+    *,
+    status: str,
+    confidence_bucket: str | None,
+    best_score_below_threshold: bool,
+    warning_kinds: list[str],
+    quality_flag_kinds: list[str],
+) -> str:
+    if status == "FAILED":
+        return "show_error"
+    if status == "NO_ANSWER":
+        return "show_no_answer"
+    if (
+        status == "LOW_CONFIDENCE"
+        or confidence_bucket == "LOW_CONFIDENCE"
+        or best_score_below_threshold
+    ):
+        return "ask_confirmation"
+    if status == "PARTIAL" or warning_kinds or quality_flag_kinds:
+        return "proceed_with_caveat"
+    return "proceed"
+
+
+def _low_confidence_threshold(retrieval_package: dict[str, Any]) -> float | None:
+    score_summary = _mapping_value(retrieval_package.get("score_summary"))
+    score_threshold = _number_or_none(score_summary.get("low_confidence_threshold"))
+    if score_threshold is not None:
+        return score_threshold
+    retrieval_profile = _mapping_value(retrieval_package.get("retrieval_profile"))
+    confidence_policy = _mapping_value(retrieval_profile.get("confidence_policy"))
+    profile_threshold = _number_or_none(
+        confidence_policy.get("low_confidence_threshold")
+    )
+    if profile_threshold is not None:
+        return profile_threshold
+    return DEFAULT_LOW_CONFIDENCE_THRESHOLD
+
+
+def _warning_kinds(value: Any) -> list[str]:
+    return sorted({_warning_kind(item) for item in _string_list_value(value)})
+
+
+def _quality_flag_kinds(value: Any) -> list[str]:
+    kinds: set[str] = set()
+    for item in _list_value(value):
+        if not isinstance(item, dict):
+            continue
+        kinds.update(
+            _warning_kind(flag)
+            for flag in _string_list_value(item.get("quality_flags"))
+        )
+    return sorted(kinds)
+
+
+def _quality_flag_count(value: Any) -> int:
+    count = 0
+    for item in _list_value(value):
+        if isinstance(item, dict):
+            count += len(_string_list_value(item.get("quality_flags")))
+    return count
+
+
+def _warning_kind(value: str) -> str:
+    return value.split(":", 1)[0].strip()
+
+
+def _mapping_value(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _list_value(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _string_list_value(value: Any) -> list[str]:
+    return [item for item in _list_value(value) if isinstance(item, str)]
+
+
+def _number_or_none(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    return None
+
+
+def _optional_text(value: Any) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip()
 
 
 def user_message_from_payload(payload: dict[str, Any]) -> str:
