@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from nex_cx.drafts import (
+    assert_grounded_response_citation_quality_audit_redacted,
     build_citation_claims,
+    build_grounded_response_citation_quality_audit,
     build_structured_draft,
     citation_labels,
     evidence_index_by_label,
@@ -144,13 +147,26 @@ def test_structured_draft_validates_citations_and_redacts_full_output() -> None:
         output_text="Grounded answer [1]",
         compatibility_rule=DEFAULT_GENERATION_COMPATIBILITY_RULES[0],
         retrieval_package=retrieval_package(),
+        selected_evidence_ids=["evidence-001"],
     )
 
     assert draft["status"] == "VALIDATED"
     assert draft["citations"][0]["evidence_id"] == "evidence-001"
     assert draft["validation"]["errors"] == []
+    assert draft["validation"]["quality_audit"]["boundary_status"] == "PASS"
+    assert draft["validation"]["quality_audit"]["stage_status"] == {
+        "grounding_requirement": "PASS",
+        "citation_presence": "PASS",
+        "citation_evidence_membership": "PASS",
+        "selected_evidence_coverage": "PASS",
+        "raw_output_redaction": "PASS",
+    }
+    assert draft["validation"]["quality_audit"]["retrieval_summary"][
+        "selected_evidence_cited_count"
+    ] == 1
     assert draft["metadata"]["raw_output_stored_in_public_record"] is False
     assert "Grounded answer [1]" not in draft["content_hash"]
+    assert "Grounded answer [1]" not in str(draft["validation"]["quality_audit"])
 
 
 def test_structured_draft_records_missing_required_and_mismatch_errors() -> None:
@@ -170,6 +186,14 @@ def test_structured_draft_records_missing_required_and_mismatch_errors() -> None
         compatibility_rule=DEFAULT_GENERATION_COMPATIBILITY_RULES[0],
         retrieval_package=retrieval_package(),
     )
+    missing_package = build_structured_draft(
+        cx_generation_id="cx-gen-003",
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        output_text="Grounded answer [1]",
+        compatibility_rule=DEFAULT_GENERATION_COMPATIBILITY_RULES[0],
+        retrieval_package=None,
+    )
     no_package_errors = validate_citation_claims(
         citations=[
             {
@@ -188,10 +212,134 @@ def test_structured_draft_records_missing_required_and_mismatch_errors() -> None
     assert missing_required["validation"]["errors"][0]["code"] == (
         "cx.citation_required_missing"
     )
+    assert missing_required["validation"]["quality_audit"]["boundary_status"] == "FAIL"
+    assert missing_required["validation"]["quality_audit"]["issues"] == [
+        {
+            "stage": "citation_presence",
+            "error_code": "cx.citation_required_missing",
+            "retryable": False,
+        }
+    ]
     assert mismatch["validation"]["errors"][0]["code"] == "cx.citation_evidence_mismatch"
+    assert mismatch["validation"]["quality_audit"]["citation_summary"][
+        "invalid_citation_count"
+    ] == 1
+    assert missing_package["validation"]["warnings"] == [
+        "grounding_required_without_retrieval_package"
+    ]
+    assert missing_package["validation"]["quality_audit"]["warnings"] == [
+        "grounding_required_without_retrieval_package"
+    ]
     assert [error["code"] for error in no_package_errors] == [
         "cx.citation_retrieval_package_missing",
         "cx.citation_evidence_mismatch",
+    ]
+
+
+def test_grounded_response_citation_quality_audit_handles_not_required_and_partial() -> None:
+    not_required = build_structured_draft(
+        cx_generation_id="cx-gen-general",
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        output_text="General answer without source trace.",
+        compatibility_rule=DEFAULT_GENERATION_COMPATIBILITY_RULES[1],
+        retrieval_package=None,
+    )["validation"]["quality_audit"]
+    partial = build_structured_draft(
+        cx_generation_id="cx-gen-partial",
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        output_text="Grounded answer [1]",
+        compatibility_rule=DEFAULT_GENERATION_COMPATIBILITY_RULES[0],
+        retrieval_package=retrieval_package(),
+        selected_evidence_ids=["evidence-001", "evidence-002"],
+    )["validation"]["quality_audit"]
+
+    assert not_required["boundary_status"] == "NOT_REQUIRED"
+    assert not_required["stage_status"]["citation_presence"] == "NOT_REQUIRED"
+    assert not_required["recommended_action"] == "proceed"
+    assert partial["boundary_status"] == "PASS"
+    assert partial["stage_status"]["selected_evidence_coverage"] == "PARTIAL"
+    assert partial["recommended_action"] == "proceed_with_caveat"
+    assert partial["retrieval_summary"]["selected_evidence_count"] == 2
+    assert partial["retrieval_summary"]["selected_evidence_cited_count"] == 1
+
+
+def test_grounded_response_citation_quality_audit_redaction_assertion_catches_leaks() -> None:
+    with pytest.raises(ValueError, match="raw output"):
+        assert_grounded_response_citation_quality_audit_redacted(
+            {"leak": "Private generated output leak."},
+            output_text="Private generated output leak.",
+            retrieval_package=None,
+        )
+
+    with pytest.raises(ValueError, match="retrieval payload"):
+        assert_grounded_response_citation_quality_audit_redacted(
+            {"leak": "Private evidence text leak."},
+            output_text="Safe response.",
+            retrieval_package={"text": ["Private evidence text leak."]},
+        )
+
+
+def test_grounded_response_citation_quality_audit_builds_safe_warning_kinds() -> None:
+    audit = build_grounded_response_citation_quality_audit(
+        output_text="Grounded answer [1]",
+        citations=[
+            {
+                "citation_label": "[1]",
+                "evidence_id": "evidence-001",
+                "retrieval_package_id": "cx-ret-001",
+                "valid": True,
+                "validation_error": None,
+            }
+        ],
+        validation_errors=[],
+        validation_warnings=["grounding_required_without_retrieval_package:secret"],
+        compatibility_rule=DEFAULT_GENERATION_COMPATIBILITY_RULES[0],
+        retrieval_package=retrieval_package(),
+        selected_evidence_ids=["evidence-001"],
+    )
+
+    assert audit["warnings"] == ["grounding_required_without_retrieval_package"]
+    assert "secret" not in str(audit)
+
+
+def test_grounded_response_citation_quality_audit_covers_edge_statuses() -> None:
+    invalid_without_error = build_grounded_response_citation_quality_audit(
+        output_text="Grounded answer [1]",
+        citations=[
+            {
+                "citation_label": "[1]",
+                "evidence_id": None,
+                "retrieval_package_id": "cx-ret-001",
+                "valid": False,
+                "validation_error": "citation_evidence_not_found",
+            }
+        ],
+        validation_errors=[],
+        validation_warnings=[],
+        compatibility_rule=DEFAULT_GENERATION_COMPATIBILITY_RULES[0],
+        retrieval_package=retrieval_package(),
+    )
+    unknown_error = build_grounded_response_citation_quality_audit(
+        output_text="Grounded answer [1]",
+        citations=[],
+        validation_errors=[{"code": "cx.citation_quality_unknown"}],
+        validation_warnings=[],
+        compatibility_rule=DEFAULT_GENERATION_COMPATIBILITY_RULES[0],
+        retrieval_package=retrieval_package(),
+    )
+
+    assert invalid_without_error["boundary_status"] == "FAIL"
+    assert invalid_without_error["stage_status"]["citation_evidence_membership"] == (
+        "FAIL"
+    )
+    assert unknown_error["issues"] == [
+        {
+            "stage": "grounded_response_citation_validation",
+            "error_code": "cx.citation_quality_unknown",
+            "retryable": False,
+        }
     ]
 
 
@@ -219,10 +367,16 @@ def test_generation_route_saves_structured_draft_and_allows_readback() -> None:
 
     assert created.status_code == 200
     assert payload["request_metadata"]["draft_validation_status"] == "VALIDATED"
+    assert payload["request_metadata"]["grounded_response_quality_status"] == "PASS"
+    assert payload["request_metadata"]["grounded_response_quality_issue_count"] == 0
+    assert payload["request_metadata"][
+        "grounded_response_quality_audit_schema_version"
+    ] == "cx_grounded_response_citation_quality_audit.v1"
     assert draft.status_code == 200
     assert draft.json()["structured_draft_id"] == payload["request_metadata"][
         "structured_draft_id"
     ]
+    assert draft.json()["validation"]["quality_audit"]["boundary_status"] == "PASS"
     assert store.get_structured_draft(payload["cx_generation_id"]) == draft.json()
 
 

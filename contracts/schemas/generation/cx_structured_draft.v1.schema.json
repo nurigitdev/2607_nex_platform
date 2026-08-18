@@ -211,6 +211,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "quality_audit": {
+          "$ref": "#/$defs/groundedResponseCitationQualityAudit"
         }
       }
     },
@@ -247,6 +250,311 @@
     "updated_at": {
       "type": "string",
       "format": "date-time"
+    }
+  },
+  "$defs": {
+    "groundedResponseCitationQualityAudit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "audit_schema_version",
+        "boundary_id",
+        "service_id",
+        "boundary_status",
+        "grounding_required",
+        "citations_required",
+        "source_trace_required",
+        "output_summary",
+        "citation_summary",
+        "retrieval_summary",
+        "stage_status",
+        "issues",
+        "warnings",
+        "recommended_action",
+        "refactoring_checkpoint",
+        "redaction"
+      ],
+      "properties": {
+        "audit_schema_version": {
+          "const": "cx_grounded_response_citation_quality_audit.v1"
+        },
+        "boundary_id": {
+          "const": "cx.grounded_response.citation_quality"
+        },
+        "service_id": {
+          "const": "nex-cx"
+        },
+        "boundary_status": {
+          "type": "string",
+          "enum": [
+            "PASS",
+            "FAIL",
+            "NOT_REQUIRED"
+          ]
+        },
+        "grounding_required": {
+          "type": "boolean"
+        },
+        "citations_required": {
+          "type": "boolean"
+        },
+        "source_trace_required": {
+          "type": "boolean"
+        },
+        "output_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "output_hash",
+            "output_char_count",
+            "raw_output_included"
+          ],
+          "properties": {
+            "output_hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "output_char_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "raw_output_included": {
+              "const": false
+            }
+          }
+        },
+        "citation_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "citation_count",
+            "valid_citation_count",
+            "invalid_citation_count",
+            "missing_required_citation",
+            "citation_labels",
+            "validation_error_codes"
+          ],
+          "properties": {
+            "citation_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "valid_citation_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "invalid_citation_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "missing_required_citation": {
+              "type": "boolean"
+            },
+            "citation_labels": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^\\[[0-9]+\\]$"
+              }
+            },
+            "validation_error_codes": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "retrieval_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "retrieval_package_id",
+            "package_hash",
+            "evidence_item_count",
+            "selected_evidence_count",
+            "selected_evidence_cited_count",
+            "source_trace_required"
+          ],
+          "properties": {
+            "retrieval_package_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1
+            },
+            "package_hash": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "evidence_item_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "selected_evidence_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "selected_evidence_cited_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "source_trace_required": {
+              "type": "boolean"
+            }
+          }
+        },
+        "stage_status": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "grounding_requirement",
+            "citation_presence",
+            "citation_evidence_membership",
+            "selected_evidence_coverage",
+            "raw_output_redaction"
+          ],
+          "properties": {
+            "grounding_requirement": {
+              "$ref": "#/$defs/citationQualityStageStatus"
+            },
+            "citation_presence": {
+              "$ref": "#/$defs/citationQualityStageStatus"
+            },
+            "citation_evidence_membership": {
+              "$ref": "#/$defs/citationQualityStageStatus"
+            },
+            "selected_evidence_coverage": {
+              "$ref": "#/$defs/citationQualityStageStatus"
+            },
+            "raw_output_redaction": {
+              "$ref": "#/$defs/citationQualityStageStatus"
+            }
+          }
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "stage",
+              "error_code",
+              "retryable"
+            ],
+            "properties": {
+              "stage": {
+                "type": "string",
+                "minLength": 1
+              },
+              "error_code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "retryable": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "recommended_action": {
+          "type": "string",
+          "enum": [
+            "proceed",
+            "proceed_with_caveat",
+            "repair_or_retry"
+          ]
+        },
+        "refactoring_checkpoint": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "validation_entrypoint",
+            "legacy_entrypoint",
+            "previous_guard_slot",
+            "active_guard_slot",
+            "next_guard_slot",
+            "external_api_changed",
+            "database_schema_changed"
+          ],
+          "properties": {
+            "validation_entrypoint": {
+              "const": "build_grounded_response_citation_quality_audit"
+            },
+            "legacy_entrypoint": {
+              "const": "validate_citation_claims"
+            },
+            "previous_guard_slot": {
+              "const": "retrieval_package_quality"
+            },
+            "active_guard_slot": {
+              "const": "grounded_response_citation_validation"
+            },
+            "next_guard_slot": {
+              "type": "string",
+              "minLength": 1
+            },
+            "external_api_changed": {
+              "type": "boolean"
+            },
+            "database_schema_changed": {
+              "const": false
+            }
+          }
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "raw_output_included",
+            "evidence_text_included",
+            "prompt_text_included",
+            "provider_detail_included"
+          ],
+          "properties": {
+            "status": {
+              "const": "PASS"
+            },
+            "raw_output_included": {
+              "const": false
+            },
+            "evidence_text_included": {
+              "const": false
+            },
+            "prompt_text_included": {
+              "const": false
+            },
+            "provider_detail_included": {
+              "const": false
+            }
+          }
+        }
+      }
+    },
+    "citationQualityStageStatus": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "FAIL",
+        "PARTIAL",
+        "NOT_REQUIRED"
+      ]
     }
   }
 }

@@ -138,6 +138,35 @@
             "FAILED",
             null
           ]
+        },
+        "grounded_response_quality_audit_schema_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "cx_grounded_response_citation_quality_audit.v1",
+            null
+          ]
+        },
+        "grounded_response_quality_status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "PASS",
+            "FAIL",
+            "NOT_REQUIRED",
+            null
+          ]
+        },
+        "grounded_response_quality_issue_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
         }
       }
     },

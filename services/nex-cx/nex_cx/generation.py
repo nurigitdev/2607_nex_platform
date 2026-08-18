@@ -265,6 +265,7 @@ def register_generation_routes(
                 output_text=output_text_from_mo_response(mo_response),
                 compatibility_rule=compatibility_rule,
                 retrieval_package=retrieval_package,
+                selected_evidence_ids=selected_evidence_ids_from_payload(payload),
             )
             progress_events = build_cx_generation_progress_events(
                 source_payload=payload,
@@ -451,6 +452,7 @@ def build_generation_execution_record(
     now = _utc_now()
     output = mo_response.get("output", {})
     output_text = output.get("text", "") if isinstance(output, dict) else ""
+    quality_audit = _structured_draft_quality_audit(structured_draft)
     return {
         "record_schema_version": "cx_generation_execution_record.v1",
         "cx_generation_id": mo_payload["cx_generation_id"],
@@ -484,6 +486,17 @@ def build_generation_execution_record(
             else None,
             "draft_validation_status": structured_draft["validation"]["citation_status"]
             if structured_draft
+            else None,
+            "grounded_response_quality_audit_schema_version": quality_audit[
+                "audit_schema_version"
+            ]
+            if quality_audit
+            else None,
+            "grounded_response_quality_status": quality_audit["boundary_status"]
+            if quality_audit
+            else None,
+            "grounded_response_quality_issue_count": len(quality_audit["issues"])
+            if quality_audit
             else None,
         },
         "response_metadata": {
@@ -574,6 +587,18 @@ def output_text_from_mo_response(mo_response: dict[str, Any]) -> str:
     if isinstance(output, dict) and isinstance(output.get("text"), str):
         return output["text"]
     return ""
+
+
+def _structured_draft_quality_audit(
+    structured_draft: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not structured_draft:
+        return None
+    validation = structured_draft.get("validation")
+    if not isinstance(validation, dict):
+        return None
+    audit = validation.get("quality_audit")
+    return audit if isinstance(audit, dict) else None
 
 
 def validate_generation_request(

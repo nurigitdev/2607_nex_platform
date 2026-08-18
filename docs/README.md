@@ -418,6 +418,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0312`](slices/0312_cx_retrieval_package_quality_guard_generation_requests.md) | `S32-002` CX retrieval package quality guard for generation requests. |
 | [`Slice 0313`](slices/0313_ae_chat_retrieval_quality_warning_contract_wiring.md) | `S32-003` AE chat retrieval-quality warning contract wiring. |
 | [`Slice 0314`](slices/0314_ae_chat_generation_quality_rejection_handling.md) | `S32-004` AE chat generation quality rejection handling. |
+| [`Slice 0315`](slices/0315_cx_grounded_response_citation_quality_boundary_audit.md) | `S32-005` CX grounded response citation-quality boundary audit. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

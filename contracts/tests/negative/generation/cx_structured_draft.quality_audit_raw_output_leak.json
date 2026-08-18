@@ -48,7 +48,8 @@
       "output_summary": {
         "output_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "output_char_count": 19,
-        "raw_output_included": false
+        "raw_output_included": true,
+        "raw_output": "Grounded answer [1]"
       },
       "citation_summary": {
         "citation_count": 1,
