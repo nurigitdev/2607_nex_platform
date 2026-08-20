@@ -46,6 +46,10 @@ import {
   buildOperationFeedback
 } from "./operationFeedback.js";
 import {
+  buildRetrievalQualityWarningSurface,
+  buildRetrievalQualityWarningSummary
+} from "./retrievalQualityWarnings.js";
+import {
   buildUploadFileMetadata,
   buildUploadHandoffPayload,
   buildUploadSurfaceDraftFromFileMetadata
@@ -261,6 +265,7 @@ const uploadClientSummary = document.querySelector("#upload-client-summary");
 const uploadPayloadPreview = document.querySelector("#upload-payload-preview");
 const retrievalScopeStatus = document.querySelector("#retrieval-scope-status");
 const retrievalFeedback = document.querySelector("#retrieval-feedback");
+const retrievalQualityWarnings = document.querySelector("#retrieval-quality-warnings");
 const retrievalRetryButton = document.querySelector("#retrieval-retry-button");
 const retrievalScopeSummary = document.querySelector("#retrieval-scope-summary");
 const retrievalClientSummary = document.querySelector("#retrieval-client-summary");
@@ -818,6 +823,7 @@ function renderRetrievalScope() {
     succeededMessage: "검색 컨텍스트가 준비되었습니다.",
     failedMessage: "검색 요청을 완료하지 못했습니다."
   });
+  renderRetrievalQualityWarningSurface(retrievalQualityWarnings, retrievalResult);
   renderRuntimeDiagnostics();
   retrievalScopeSummary.innerHTML = `
     <div>
@@ -885,10 +891,19 @@ function renderMessages() {
       <span>${escapeHtml(message.label)}</span>
       <p>${escapeHtml(message.text)}</p>
       ${renderMessageRetrievalScope(message.retrievalScope)}
+      ${renderMessageRetrievalQualityWarning(message.retrievalQualityWarning)}
       ${renderArtifactRefs(message.artifactRefs || [])}
     `;
     messageList.appendChild(article);
   }
+}
+
+function renderRetrievalQualityWarningSurface(container, source) {
+  const surface = buildRetrievalQualityWarningSurface(source || {});
+  container.hidden = !surface.visible;
+  container.dataset.severity = surface.severity;
+  container.dataset.action = surface.recommended_action;
+  container.innerHTML = surface.visible ? renderRetrievalQualityWarning(surface) : "";
 }
 
 function renderMessageRetrievalScope(retrievalScope) {
@@ -898,6 +913,42 @@ function renderMessageRetrievalScope(retrievalScope) {
       <div>
         <dt>scope</dt>
         <dd>${escapeHtml(documentScopeLabel(retrievalScope))}</dd>
+      </div>
+    </dl>
+  `;
+}
+
+function renderMessageRetrievalQualityWarning(surface) {
+  if (!surface?.visible) return "";
+  return renderRetrievalQualityWarning(surface, {
+    className: "inline-meta slim retrieval-quality-warning-chip"
+  });
+}
+
+function renderRetrievalQualityWarning(
+  surface,
+  { className = "inline-meta slim" } = {}
+) {
+  const summary = buildRetrievalQualityWarningSummary(surface);
+  const warningKinds = summary.warning_kinds.join(", ") || "none";
+  const qualityFlagKinds = summary.quality_flag_kinds.join(", ") || "none";
+  return `
+    <dl class="${className}" aria-label="검색 품질 경고">
+      <div>
+        <dt>action</dt>
+        <dd>${escapeHtml(summary.recommended_action)}</dd>
+      </div>
+      <div>
+        <dt>message</dt>
+        <dd>${escapeHtml(surface.message)}</dd>
+      </div>
+      <div>
+        <dt>warnings</dt>
+        <dd>${escapeHtml(summary.warning_count)} · ${escapeHtml(warningKinds)}</dd>
+      </div>
+      <div>
+        <dt>flags</dt>
+        <dd>${escapeHtml(summary.quality_flag_count)} · ${escapeHtml(qualityFlagKinds)}</dd>
       </div>
     </dl>
   `;
@@ -1218,7 +1269,10 @@ async function appendPromptInteraction() {
       : `${format} 생성 요청을 일반 답변 흐름으로 연결했습니다.`,
     artifactRefs: [buildMockArtifactRef(format, grounded)],
     retrievalScope: grounded ? workspaceState.documentScope : null,
-    retrievalResult: grounded ? retrievalResult : null
+    retrievalResult: grounded ? retrievalResult : null,
+    retrievalQualityWarning: grounded
+      ? buildRetrievalQualityWarningSurface(retrievalResult)
+      : null
   });
   workspaceState.lastRetrievalRequest = retrievalRequest;
   workspaceState.lastRetrievalResult = retrievalResult;
@@ -1277,6 +1331,18 @@ async function submitRetrievalRequest(retrievalRequest) {
       confidenceBucket: "UNKNOWN",
       noAnswerReason: null,
       warnings: [],
+      qualityWarnings: {
+        contract_schema_version: "ae_chat_retrieval_quality_warning.v1",
+        warning_count: 0,
+        warning_kinds: [],
+        quality_flag_count: 0,
+        quality_flag_kinds: [],
+        low_confidence_threshold: null,
+        best_score_below_threshold: false,
+        status_caveat_required: false,
+        recommended_action: "show_error",
+        raw_warning_details_included: false
+      },
       retryable: Boolean(error.retryable),
       metadata: {
         userMessageIncluded: false,
@@ -1505,6 +1571,9 @@ function safeRetrievalPreview(retrievalRequest, currentScope, retrievalResult) {
       best_score: retrievalResult.bestScore,
       confidence_bucket: retrievalResult.confidenceBucket,
       no_answer_reason: retrievalResult.noAnswerReason,
+      quality_warning: buildRetrievalQualityWarningSummary(
+        buildRetrievalQualityWarningSurface(retrievalResult)
+      ),
       retryable: retrievalResult.retryable,
       operation: buildOperationStateSummary(workspaceState.operations.retrieval),
       metadata: retrievalResult.metadata

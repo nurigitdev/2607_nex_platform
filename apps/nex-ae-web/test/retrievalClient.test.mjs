@@ -60,7 +60,19 @@ function interactionRecord(overrides = {}) {
       best_score: 0.91,
       confidence_bucket: "READY",
       no_answer_reason: null,
-      warnings: ["tokenizer_fallback_used"]
+      warnings: ["tokenizer_fallback_used:private-doc"],
+      quality_warnings: {
+        contract_schema_version: "ae_chat_retrieval_quality_warning.v1",
+        warning_count: 1,
+        warning_kinds: ["tokenizer_fallback_used"],
+        quality_flag_count: 1,
+        quality_flag_kinds: ["debug_checked"],
+        low_confidence_threshold: 0.2,
+        best_score_below_threshold: false,
+        status_caveat_required: true,
+        recommended_action: "proceed_with_caveat",
+        raw_warning_details_included: false
+      }
     },
     created_at: "2026-08-11T00:00:00Z",
     updated_at: "2026-08-11T00:00:00Z",
@@ -156,6 +168,12 @@ describe("retrieval client adapters", () => {
     assert.deepEqual(body.retrieval.document_scope, { document_ids: ["doc-001"] });
     assert.equal(result.clientMode, "fetch");
     assert.equal(result.retrievalInteractionId, "ret-001");
+    assert.deepEqual(result.warnings, ["tokenizer_fallback_used"]);
+    assert.equal(
+      result.qualityWarnings.recommended_action,
+      "proceed_with_caveat"
+    );
+    assert.doesNotMatch(JSON.stringify(result), /private-doc|source_text|raw_prompt/);
   });
 
   it("maps HTTP, network, unavailable fetch, and invalid record failures", async () => {

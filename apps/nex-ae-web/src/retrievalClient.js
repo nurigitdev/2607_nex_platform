@@ -111,7 +111,10 @@ export function buildRetrievalClientResult(
     bestScore: retrieval.best_score ?? null,
     confidenceBucket: retrieval.confidence_bucket || "UNKNOWN",
     noAnswerReason: retrieval.no_answer_reason || null,
-    warnings: Array.isArray(retrieval.warnings) ? retrieval.warnings : [],
+    warnings: normalizeWarningKinds(retrieval.warnings),
+    qualityWarnings: isObject(retrieval.quality_warnings)
+      ? retrieval.quality_warnings
+      : null,
     retryable: false,
     metadata: {
       userMessageIncluded: false,
@@ -120,6 +123,19 @@ export function buildRetrievalClientResult(
       providerUrlIncluded: false
     }
   };
+}
+
+function normalizeWarningKinds(warnings) {
+  if (!Array.isArray(warnings)) return [];
+  const normalized = [];
+  for (const warning of warnings) {
+    if (typeof warning !== "string") continue;
+    const kind = warning.split(":", 1)[0].trim();
+    if (kind && !normalized.includes(kind)) {
+      normalized.push(kind);
+    }
+  }
+  return normalized;
 }
 
 function buildMockRetrievalInteractionRecord(requestPayload) {

@@ -258,6 +258,23 @@ h2 {
   color: var(--nex-danger);
 }
 
+.quality-warning-surface {
+  border-bottom: 1px solid var(--nex-border);
+  padding: 4px 14px 10px;
+}
+
+.quality-warning-surface[hidden] {
+  display: none;
+}
+
+.quality-warning-surface[data-severity="warning"] {
+  color: var(--nex-warning);
+}
+
+.quality-warning-surface[data-severity="danger"] {
+  color: var(--nex-danger);
+}
+
 .message-list {
   display: grid;
   align-content: start;
@@ -621,6 +638,11 @@ code {
 
 .retrieval-scope-chip {
   margin-top: 10px;
+}
+
+.retrieval-quality-warning-chip {
+  margin-top: 10px;
+  color: var(--nex-warning);
 }
 
 .inline-meta div,

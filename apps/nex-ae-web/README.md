@@ -437,5 +437,15 @@ Slice 0279 hardens the protected Playwright/PostgreSQL upload smoke:
   requires real `test` profile DB URLs when enabled and verifies CX source-file
   checksum materialization before reporting `cx_checksum=verified`.
 
+Slice 0316 adds the retrieval-quality warning surface:
+
+- `src/retrievalQualityWarnings.js` maps
+  `ae_chat_retrieval_quality_warning.v1` into a browser-safe
+  `ae_web_retrieval_quality_warning_surface.v1` state.
+- The retrieval panel and assistant messages can now show warning actions,
+  warning kinds, and quality flag kinds without raw detail suffixes.
+- Legacy retrieval `warnings`, `NO_ANSWER`, and unavailable states produce
+  safe fallback warning surfaces while the chat runtime is being wired.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

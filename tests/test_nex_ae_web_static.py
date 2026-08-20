@@ -50,6 +50,7 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "retrieval-scope-status",
         "retrieval-retry-button",
         "retrieval-feedback",
+        "retrieval-quality-warnings",
         "retrieval-scope-summary",
         "retrieval-client-summary",
         "retrieval-scope-preview",
@@ -357,6 +358,7 @@ def test_ae_web_document_scope_propagates_to_retrieval_surface() -> None:
         "retrievalClient",
         "lastRetrievalResult",
         "lastRetrievalRequest",
+        "renderRetrievalQualityWarningSurface",
         "safeRetrievalPreview",
         "document_scope",
         "selected_count",
@@ -387,6 +389,7 @@ def test_ae_web_document_scope_propagates_to_retrieval_surface() -> None:
         "RETRIEVAL_RECORD_INVALID",
         "NO_ANSWER",
         "NOT_REQUESTED",
+        "qualityWarnings",
     ]:
         assert expected in retrieval_client
 
@@ -401,6 +404,80 @@ def test_ae_web_document_scope_propagates_to_retrieval_surface() -> None:
         assert forbidden not in document_scope
         assert forbidden not in retrieval_client
         assert forbidden not in client_registry
+
+
+def test_ae_web_retrieval_quality_warning_surface_wires_chat_contract() -> None:
+    html = read_web_file("index.html")
+    javascript = read_web_file("src/main.js")
+    retrieval_client = read_web_file("src/retrievalClient.js")
+    warning_surface = read_web_file("src/retrievalQualityWarnings.js")
+    styles = read_web_file("src/styles.css")
+
+    assert "retrieval-quality-warnings" in html
+    for expected in [
+        "buildRetrievalQualityWarningSurface",
+        "buildRetrievalQualityWarningSummary",
+        "renderRetrievalQualityWarningSurface",
+        "renderMessageRetrievalQualityWarning",
+        "retrievalQualityWarning",
+        "quality_warning",
+        "show_error",
+    ]:
+        assert expected in javascript
+
+    for expected in [
+        "qualityWarnings",
+        "quality_warnings",
+        "normalizeWarningKinds",
+    ]:
+        assert expected in retrieval_client
+
+    for expected in [
+        "ae_web_retrieval_quality_warning_surface.v1",
+        "ae_chat_retrieval_quality_warning.v1",
+        "RETRIEVAL_QUALITY_WARNING_SURFACE_INVALID",
+        "RETRIEVAL_QUALITY_WARNING_SUMMARY_INVALID",
+        "buildRetrievalQualityWarningSurface",
+        "buildRetrievalQualityWarningSummary",
+        "extractRetrievalQualityWarnings",
+        "proceed_with_caveat",
+        "ask_confirmation",
+        "show_no_answer",
+        "show_error",
+        "raw_warning_details_included",
+        "rawWarningDetailsIncluded: false",
+        "rawPromptRendered: false",
+        "rawSourceIncluded: false",
+        "browserServiceTokenIncluded: false",
+        "providerEndpointIncluded: false",
+        "databaseEndpointIncluded: false",
+        "storageLocationIncluded: false",
+    ]:
+        assert expected in warning_surface
+
+    for expected in [
+        ".quality-warning-surface",
+        ".retrieval-quality-warning-chip",
+        "[data-severity=\"warning\"]",
+        "[data-severity=\"danger\"]",
+    ]:
+        assert expected in styles
+
+    for forbidden in [
+        "raw_prompt",
+        "source_text",
+        "source_preview_text",
+        "chunk_text",
+        "content_text",
+        "service_token",
+        "api_key",
+        "database_url",
+        "provider_url",
+        "/data/nex-platform",
+    ]:
+        assert forbidden not in javascript
+        assert forbidden not in retrieval_client
+        assert forbidden not in warning_surface
 
 
 def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
@@ -712,6 +789,8 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert ".client-summary" in styles
     assert ".operation-feedback" in styles
     assert ".operation-feedback[data-severity=\"danger\"]" in styles
+    assert ".quality-warning-surface" in styles
+    assert ".retrieval-quality-warning-chip" in styles
     assert ".retrieval-scope-chip" in styles
     assert ".document-row.is-selected" in styles
     assert ".document-action-row" in styles
