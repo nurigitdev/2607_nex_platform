@@ -447,5 +447,13 @@ Slice 0316 adds the retrieval-quality warning surface:
 - Legacy retrieval `warnings`, `NO_ANSWER`, and unavailable states produce
   safe fallback warning surfaces while the chat runtime is being wired.
 
+Slice 0317 adds default smoke evidence for that surface:
+
+- `scripts/smoke/run_ae_web_retrieval_quality_warning_smoke.py` starts the AE
+  Web dev server, checks the warning HTML anchors, checks production JS/CSS
+  anchors, and rejects raw-detail leak fragments.
+- The runner is part of the default quality gate and does not require live
+  providers or PostgreSQL test DB access.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

@@ -420,6 +420,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0314`](slices/0314_ae_chat_generation_quality_rejection_handling.md) | `S32-004` AE chat generation quality rejection handling. |
 | [`Slice 0315`](slices/0315_cx_grounded_response_citation_quality_boundary_audit.md) | `S32-005` CX grounded response citation-quality boundary audit. |
 | [`Slice 0316`](slices/0316_ae_web_retrieval_quality_warning_surface.md) | `S32-006` AE Web retrieval-quality warning surface. |
+| [`Slice 0317`](slices/0317_ae_web_retrieval_quality_warning_smoke_evidence.md) | `S32-007` AE Web retrieval-quality warning smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
