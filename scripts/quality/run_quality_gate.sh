@@ -31,6 +31,7 @@ mkdir -p "$REPORT_DIR"
 
 "$PYTHON_BIN" scripts/smoke/run_ae_web_static_browser_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_retrieval_quality_warning_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_web_grounded_response_quality_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_fetch_mode_protected_smoke_boundary.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_fetch_mode_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_traceable_mock_flow.py --summary

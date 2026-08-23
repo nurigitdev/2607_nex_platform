@@ -465,5 +465,13 @@ Slice 0319 adds the grounded response citation-quality surface:
 - Raw output, evidence text, prompt text, provider details, local storage paths,
   and credential material stay out of browser summaries.
 
+Slice 0320 adds default smoke evidence for that surface:
+
+- `scripts/smoke/run_ae_web_grounded_response_quality_smoke.py` starts the AE
+  Web dev server, checks grounded response quality HTML anchors, checks
+  production JS/CSS anchors, and rejects raw-detail leak fragments.
+- The runner is part of the default quality gate and does not require live
+  providers or PostgreSQL test DB access.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
