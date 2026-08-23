@@ -480,6 +480,73 @@ def test_ae_web_retrieval_quality_warning_surface_wires_chat_contract() -> None:
         assert forbidden not in warning_surface
 
 
+def test_ae_web_grounded_response_quality_surface_wires_chat_contract() -> None:
+    html = read_web_file("index.html")
+    javascript = read_web_file("src/main.js")
+    grounded_quality = read_web_file("src/groundedResponseQuality.js")
+    styles = read_web_file("src/styles.css")
+
+    assert "grounded-response-quality" in html
+    for expected in [
+        "buildGroundedResponseQualitySurface",
+        "buildGroundedResponseQualitySummary",
+        "renderGroundedResponseQualitySurface",
+        "renderMessageGroundedResponseQuality",
+        "groundedResponseQuality",
+        "grounded_response_quality",
+        "buildMockGroundedResponseQualityContract",
+    ]:
+        assert expected in javascript
+
+    for expected in [
+        "ae_web_grounded_response_quality_surface.v1",
+        "ae_chat_grounded_response_quality.v1",
+        "GROUNDED_RESPONSE_QUALITY_SURFACE_INVALID",
+        "GROUNDED_RESPONSE_QUALITY_SUMMARY_INVALID",
+        "buildGroundedResponseQualitySurface",
+        "buildGroundedResponseQualitySummary",
+        "extractGroundedResponseQuality",
+        "PASS",
+        "WARN",
+        "FAIL",
+        "NOT_REQUIRED",
+        "UNKNOWN",
+        "raw_output_included",
+        "rawOutputIncluded: false",
+        "evidenceTextIncluded: false",
+        "promptTextIncluded: false",
+        "providerDetailIncluded: false",
+        "browserServiceTokenIncluded: false",
+        "databaseEndpointIncluded: false",
+        "storageLocationIncluded: false",
+    ]:
+        assert expected in grounded_quality
+
+    for expected in [
+        ".grounded-response-quality-surface",
+        ".grounded-response-quality-chip",
+        "[data-severity=\"success\"]",
+        "[data-severity=\"warning\"]",
+        "[data-severity=\"danger\"]",
+    ]:
+        assert expected in styles
+
+    for forbidden in [
+        "raw_prompt",
+        "source_text",
+        "chunk_text",
+        "content_text",
+        "service_token",
+        "api_key",
+        "database_url",
+        "provider_url",
+        "/data/nex-platform",
+        "private generated output",
+    ]:
+        assert forbidden not in javascript
+        assert forbidden not in grounded_quality
+
+
 def test_ae_web_client_registry_composes_runtime_clients_safely() -> None:
     javascript = read_web_file("src/main.js")
     authenticated_runtime = read_web_file("src/authenticatedRuntime.js")

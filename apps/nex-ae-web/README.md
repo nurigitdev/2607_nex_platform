@@ -455,5 +455,15 @@ Slice 0317 adds default smoke evidence for that surface:
 - The runner is part of the default quality gate and does not require live
   providers or PostgreSQL test DB access.
 
+Slice 0319 adds the grounded response citation-quality surface:
+
+- `src/groundedResponseQuality.js` maps
+  `ae_chat_grounded_response_quality.v1` into a browser-safe
+  `ae_web_grounded_response_quality_surface.v1` state.
+- The chat pane and assistant messages can now show grounded citation boundary,
+  citation status, issue count, and lineage-presence booleans.
+- Raw output, evidence text, prompt text, provider details, local storage paths,
+  and credential material stay out of browser summaries.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

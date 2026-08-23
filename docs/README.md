@@ -422,6 +422,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0316`](slices/0316_ae_web_retrieval_quality_warning_surface.md) | `S32-006` AE Web retrieval-quality warning surface. |
 | [`Slice 0317`](slices/0317_ae_web_retrieval_quality_warning_smoke_evidence.md) | `S32-007` AE Web retrieval-quality warning smoke evidence. |
 | [`Slice 0318`](slices/0318_ae_chat_grounded_response_citation_quality_contract_wiring.md) | `S32-008` AE chat grounded response citation-quality contract wiring. |
+| [`Slice 0319`](slices/0319_ae_web_grounded_response_citation_quality_surface.md) | `S32-009` AE Web grounded response citation-quality surface. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

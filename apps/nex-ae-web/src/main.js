@@ -50,6 +50,10 @@ import {
   buildRetrievalQualityWarningSummary
 } from "./retrievalQualityWarnings.js";
 import {
+  buildGroundedResponseQualitySurface,
+  buildGroundedResponseQualitySummary
+} from "./groundedResponseQuality.js";
+import {
   buildUploadFileMetadata,
   buildUploadHandoffPayload,
   buildUploadSurfaceDraftFromFileMetadata
@@ -193,7 +197,12 @@ const workspaceState = {
       role: "assistant",
       label: "assistant",
       text: "CX retrieval package와 structured draft 검증 결과를 기준으로 답변을 준비했습니다.",
-      artifactRefs: []
+      artifactRefs: [],
+      groundedResponseQuality: buildGroundedResponseQualitySurface({
+        generation: {
+          grounded_response_quality: buildMockGroundedResponseQualityContract(true)
+        }
+      })
     }
   ],
   progressEvents: buildProgressEvents(true),
@@ -266,6 +275,7 @@ const uploadPayloadPreview = document.querySelector("#upload-payload-preview");
 const retrievalScopeStatus = document.querySelector("#retrieval-scope-status");
 const retrievalFeedback = document.querySelector("#retrieval-feedback");
 const retrievalQualityWarnings = document.querySelector("#retrieval-quality-warnings");
+const groundedResponseQuality = document.querySelector("#grounded-response-quality");
 const retrievalRetryButton = document.querySelector("#retrieval-retry-button");
 const retrievalScopeSummary = document.querySelector("#retrieval-scope-summary");
 const retrievalClientSummary = document.querySelector("#retrieval-client-summary");
@@ -333,6 +343,10 @@ documentList.addEventListener("click", event => {
   workspaceState.documentScope = buildCurrentDocumentScope();
   renderDocuments();
   renderRetrievalScope();
+  renderGroundedResponseQualitySurface(
+    groundedResponseQuality,
+    currentGroundedResponseQualitySurface()
+  );
   void renderDocumentDetail();
 });
 
@@ -892,6 +906,7 @@ function renderMessages() {
       <p>${escapeHtml(message.text)}</p>
       ${renderMessageRetrievalScope(message.retrievalScope)}
       ${renderMessageRetrievalQualityWarning(message.retrievalQualityWarning)}
+      ${renderMessageGroundedResponseQuality(message.groundedResponseQuality)}
       ${renderArtifactRefs(message.artifactRefs || [])}
     `;
     messageList.appendChild(article);
@@ -925,6 +940,13 @@ function renderMessageRetrievalQualityWarning(surface) {
   });
 }
 
+function renderMessageGroundedResponseQuality(surface) {
+  if (!surface?.visible) return "";
+  return renderGroundedResponseQuality(surface, {
+    className: "inline-meta slim grounded-response-quality-chip"
+  });
+}
+
 function renderRetrievalQualityWarning(
   surface,
   { className = "inline-meta slim" } = {}
@@ -949,6 +971,50 @@ function renderRetrievalQualityWarning(
       <div>
         <dt>flags</dt>
         <dd>${escapeHtml(summary.quality_flag_count)} · ${escapeHtml(qualityFlagKinds)}</dd>
+      </div>
+    </dl>
+  `;
+}
+
+function currentGroundedResponseQualitySurface() {
+  return [...workspaceState.messages]
+    .reverse()
+    .find(message => message.groundedResponseQuality)?.groundedResponseQuality;
+}
+
+function renderGroundedResponseQualitySurface(container, surface) {
+  const qualitySurface = surface || buildGroundedResponseQualitySurface({});
+  container.hidden = !qualitySurface.visible;
+  container.dataset.severity = qualitySurface.severity;
+  container.dataset.action = qualitySurface.recommended_action;
+  container.dataset.boundaryStatus = qualitySurface.boundary_status;
+  container.innerHTML = qualitySurface.visible
+    ? renderGroundedResponseQuality(qualitySurface)
+    : "";
+}
+
+function renderGroundedResponseQuality(
+  surface,
+  { className = "inline-meta slim" } = {}
+) {
+  const summary = buildGroundedResponseQualitySummary(surface);
+  return `
+    <dl class="${className}" aria-label="응답 인용 품질">
+      <div>
+        <dt>action</dt>
+        <dd>${escapeHtml(summary.recommended_action)}</dd>
+      </div>
+      <div>
+        <dt>boundary</dt>
+        <dd>${escapeHtml(summary.boundary_status)} · ${escapeHtml(summary.citation_status)}</dd>
+      </div>
+      <div>
+        <dt>issues</dt>
+        <dd>${escapeHtml(summary.issue_count)}</dd>
+      </div>
+      <div>
+        <dt>lineage</dt>
+        <dd>${escapeHtml(summary.retrieval_package_id_present)} · ${escapeHtml(summary.structured_draft_id_present)}</dd>
       </div>
     </dl>
   `;
@@ -1272,7 +1338,24 @@ async function appendPromptInteraction() {
     retrievalResult: grounded ? retrievalResult : null,
     retrievalQualityWarning: grounded
       ? buildRetrievalQualityWarningSurface(retrievalResult)
-      : null
+      : null,
+    groundedResponseQuality: buildGroundedResponseQualitySurface({
+      generation: {
+        grounded_response_quality: grounded
+          ? buildMockGroundedResponseQualityContract(true, {
+              boundary_status:
+                retrievalResult.cxStatus === "READY" ? "PASS" : "UNKNOWN",
+              citation_status:
+                retrievalResult.cxStatus === "READY" ? "VALIDATED" : "UNKNOWN",
+              issue_count: retrievalResult.cxStatus === "READY" ? 0 : 1,
+              recommended_action:
+                retrievalResult.cxStatus === "READY"
+                  ? "proceed"
+                  : "proceed_with_caveat"
+            })
+          : buildMockGroundedResponseQualityContract(false)
+      }
+    })
   });
   workspaceState.lastRetrievalRequest = retrievalRequest;
   workspaceState.lastRetrievalResult = retrievalResult;
@@ -1574,6 +1657,15 @@ function safeRetrievalPreview(retrievalRequest, currentScope, retrievalResult) {
       quality_warning: buildRetrievalQualityWarningSummary(
         buildRetrievalQualityWarningSurface(retrievalResult)
       ),
+      grounded_response_quality: buildGroundedResponseQualitySummary(
+        buildGroundedResponseQualitySurface({
+          generation: {
+            grounded_response_quality: buildMockGroundedResponseQualityContract(
+              retrievalResult.cxStatus !== "NOT_REQUESTED"
+            )
+          }
+        })
+      ),
       retryable: retrievalResult.retryable,
       operation: buildOperationStateSummary(workspaceState.operations.retrieval),
       metadata: retrievalResult.metadata
@@ -1601,6 +1693,28 @@ function buildMockArtifactRef(format, grounded) {
   };
   workspaceState.artifactRef = artifactRef;
   return artifactRef;
+}
+
+function buildMockGroundedResponseQualityContract(grounded, overrides = {}) {
+  return {
+    contract_schema_version: "ae_chat_grounded_response_quality.v1",
+    source_audit_schema_version: grounded
+      ? "cx_grounded_response_citation_quality_audit.v1"
+      : null,
+    boundary_status: grounded ? "PASS" : "NOT_REQUIRED",
+    citation_status: grounded ? "VALIDATED" : "NOT_REQUIRED",
+    issue_count: 0,
+    recommended_action: "proceed",
+    grounding_required: grounded,
+    retrieval_package_id: grounded ? "cx-ret-local" : null,
+    retrieval_package_hash: grounded ? "d".repeat(64) : null,
+    structured_draft_id: grounded ? "draft-local-001" : null,
+    raw_output_included: false,
+    evidence_text_included: false,
+    prompt_text_included: false,
+    provider_detail_included: false,
+    ...overrides
+  };
 }
 
 function buildProgressEvents(grounded) {

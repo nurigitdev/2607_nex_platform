@@ -258,20 +258,29 @@ h2 {
   color: var(--nex-danger);
 }
 
-.quality-warning-surface {
+.quality-warning-surface,
+.grounded-response-quality-surface {
   border-bottom: 1px solid var(--nex-border);
   padding: 4px 14px 10px;
 }
 
-.quality-warning-surface[hidden] {
+.quality-warning-surface[hidden],
+.grounded-response-quality-surface[hidden] {
   display: none;
 }
 
-.quality-warning-surface[data-severity="warning"] {
+.quality-warning-surface[data-severity="success"],
+.grounded-response-quality-surface[data-severity="success"] {
+  color: var(--nex-success);
+}
+
+.quality-warning-surface[data-severity="warning"],
+.grounded-response-quality-surface[data-severity="warning"] {
   color: var(--nex-warning);
 }
 
-.quality-warning-surface[data-severity="danger"] {
+.quality-warning-surface[data-severity="danger"],
+.grounded-response-quality-surface[data-severity="danger"] {
   color: var(--nex-danger);
 }
 
@@ -643,6 +652,11 @@ code {
 .retrieval-quality-warning-chip {
   margin-top: 10px;
   color: var(--nex-warning);
+}
+
+.grounded-response-quality-chip {
+  margin-top: 10px;
+  color: var(--nex-info);
 }
 
 .inline-meta div,
