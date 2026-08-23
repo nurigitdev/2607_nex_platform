@@ -21,6 +21,7 @@ from nex_ae_api.chat import (
     build_no_answer_chat_interaction_record,
     generation_quality_rejection_failure_summary,
     generation_quality_rejection_stage,
+    grounded_response_quality_contract,
     register_chat_routes,
     retrieval_quality_warning_contract,
     retrieval_summary,
@@ -49,12 +50,33 @@ class FakeCxClient:
                 "trace_id": trace_id,
             }
         )
+        retrieval_ref = payload.get("retrieval_package_ref")
+        grounded = isinstance(retrieval_ref, dict)
         return {
             "cx_generation_id": "cx-gen-001",
             "status": "COMPLETED",
             "alias": payload["alias"],
             "provider_capability": payload["provider_capability"],
             "mo_generation_id": "mo-gen-001",
+            "request_metadata": {
+                "grounding_required": grounded,
+                "retrieval_package_id": retrieval_ref.get("retrieval_package_id")
+                if grounded
+                else None,
+                "retrieval_package_hash": retrieval_ref.get("package_hash")
+                if grounded
+                else None,
+                "selected_evidence_count": len(payload.get("selected_evidence_ids", [])),
+                "structured_draft_id": "draft-001" if grounded else None,
+                "draft_validation_status": "VALIDATED" if grounded else None,
+                "grounded_response_quality_audit_schema_version": (
+                    "cx_grounded_response_citation_quality_audit.v1"
+                    if grounded
+                    else None
+                ),
+                "grounded_response_quality_status": "PASS" if grounded else None,
+                "grounded_response_quality_issue_count": 0 if grounded else None,
+            },
             "response_metadata": {
                 "finish_reason": "STOP",
                 "output_preview": "Mock answer.",
@@ -493,8 +515,106 @@ def test_build_chat_interaction_record_maps_cx_metadata() -> None:
 
     assert record["interaction_id"] == "interaction-001"
     assert record["generation"]["mo_generation_id"] == "mo-gen-001"
+    assert record["generation"]["grounded_response_quality"] == {
+        "contract_schema_version": "ae_chat_grounded_response_quality.v1",
+        "source_audit_schema_version": None,
+        "boundary_status": "NOT_REQUIRED",
+        "citation_status": "NOT_REQUIRED",
+        "issue_count": 0,
+        "recommended_action": "proceed",
+        "grounding_required": False,
+        "retrieval_package_id": None,
+        "retrieval_package_hash": None,
+        "structured_draft_id": None,
+        "raw_output_included": False,
+        "evidence_text_included": False,
+        "prompt_text_included": False,
+        "provider_detail_included": False,
+    }
     assert record["retrieval"] is None
     assert record["artifact_refs"] == []
+
+
+def test_grounded_response_quality_contract_maps_cx_request_metadata() -> None:
+    contract = grounded_response_quality_contract(
+        {
+            "request_metadata": {
+                "grounding_required": True,
+                "retrieval_package_id": "cx-ret-001",
+                "retrieval_package_hash": "b" * 64,
+                "structured_draft_id": "draft-001",
+                "draft_validation_status": "VALIDATED",
+                "grounded_response_quality_audit_schema_version": (
+                    "cx_grounded_response_citation_quality_audit.v1"
+                ),
+                "grounded_response_quality_status": "PASS",
+                "grounded_response_quality_issue_count": 0,
+                "raw_output": "private generated output",
+            }
+        }
+    )
+
+    assert contract == {
+        "contract_schema_version": "ae_chat_grounded_response_quality.v1",
+        "source_audit_schema_version": (
+            "cx_grounded_response_citation_quality_audit.v1"
+        ),
+        "boundary_status": "PASS",
+        "citation_status": "VALIDATED",
+        "issue_count": 0,
+        "recommended_action": "proceed",
+        "grounding_required": True,
+        "retrieval_package_id": "cx-ret-001",
+        "retrieval_package_hash": "b" * 64,
+        "structured_draft_id": "draft-001",
+        "raw_output_included": False,
+        "evidence_text_included": False,
+        "prompt_text_included": False,
+        "provider_detail_included": False,
+    }
+    assert "private generated output" not in str(contract)
+
+
+def test_grounded_response_quality_contract_handles_sparse_statuses() -> None:
+    warn = grounded_response_quality_contract(
+        {
+            "request_metadata": {
+                "grounding_required": True,
+                "draft_validation_status": "VALIDATED",
+                "grounded_response_quality_status": "WARN",
+                "grounded_response_quality_issue_count": 1,
+            }
+        }
+    )
+    failed = grounded_response_quality_contract(
+        {
+            "request_metadata": {
+                "grounding_required": True,
+                "draft_validation_status": "INVALID",
+                "grounded_response_quality_status": "FAIL",
+                "grounded_response_quality_issue_count": -3,
+            }
+        }
+    )
+    unknown = grounded_response_quality_contract(
+        {
+            "request_metadata": {
+                "grounding_required": True,
+                "draft_validation_status": " ",
+                "grounded_response_quality_status": " ",
+                "grounded_response_quality_issue_count": True,
+            }
+        }
+    )
+
+    assert warn["recommended_action"] == "proceed_with_caveat"
+    assert warn["issue_count"] == 1
+    assert failed["recommended_action"] == "show_error"
+    assert failed["boundary_status"] == "FAIL"
+    assert failed["issue_count"] == 0
+    assert unknown["boundary_status"] == "UNKNOWN"
+    assert unknown["citation_status"] == "UNKNOWN"
+    assert unknown["recommended_action"] == "proceed_with_caveat"
 
 
 def test_build_chat_artifact_ref_maps_artifact_routes_and_actions() -> None:
@@ -903,6 +1023,12 @@ def test_chat_interaction_with_retrieval_calls_cx_retrieval_then_generation() ->
     payload = response.json()
     assert payload["status"] == "COMPLETED"
     assert payload["retrieval"]["cx_retrieval_package_id"] == "cx-ret-001"
+    assert payload["generation"]["grounded_response_quality"]["boundary_status"] == (
+        "PASS"
+    )
+    assert payload["generation"]["grounded_response_quality"][
+        "retrieval_package_id"
+    ] == "cx-ret-001"
     assert retrieval_client.calls[0]["payload"]["purpose"] == "grounded_answer"
     assert cx_client.calls[0]["payload"]["metadata"]["retrieval_package_id"] == "cx-ret-001"
     assert "Trace evidence from CX." in cx_client.calls[0]["payload"]["messages"][0]["content"]
@@ -940,6 +1066,24 @@ def test_chat_interaction_wires_retrieval_quality_warnings_to_record_and_generat
     assert retrieval["quality_warnings"]["recommended_action"] == (
         "proceed_with_caveat"
     )
+    assert payload["generation"]["grounded_response_quality"] == {
+        "contract_schema_version": "ae_chat_grounded_response_quality.v1",
+        "source_audit_schema_version": (
+            "cx_grounded_response_citation_quality_audit.v1"
+        ),
+        "boundary_status": "PASS",
+        "citation_status": "VALIDATED",
+        "issue_count": 0,
+        "recommended_action": "proceed",
+        "grounding_required": True,
+        "retrieval_package_id": "cx-ret-001",
+        "retrieval_package_hash": "b" * 64,
+        "structured_draft_id": "draft-001",
+        "raw_output_included": False,
+        "evidence_text_included": False,
+        "prompt_text_included": False,
+        "provider_detail_included": False,
+    }
     assert generation_metadata["retrieval_warning_count"] == 1
     assert generation_metadata["retrieval_warning_kinds"] == [
         "tokenizer_fallback_used"

@@ -39,6 +39,9 @@ AE_CHAT_RETRIEVAL_QUALITY_WARNING_CONTRACT_VERSION = (
 AE_CHAT_GENERATION_QUALITY_REJECTION_CONTRACT_VERSION = (
     "ae_chat_generation_quality_rejection.v1"
 )
+AE_CHAT_GROUNDED_RESPONSE_QUALITY_CONTRACT_VERSION = (
+    "ae_chat_grounded_response_quality.v1"
+)
 DEFAULT_LOW_CONFIDENCE_THRESHOLD = 0.2
 GENERATION_QUALITY_REJECTION_ERROR_CODES = {
     "cx.retrieval_package_not_ready",
@@ -457,6 +460,7 @@ def build_chat_interaction_record(
             "finish_reason": cx_record["response_metadata"]["finish_reason"],
             "output_preview": cx_record["response_metadata"]["output_preview"],
             "usage": cx_record["usage"],
+            "grounded_response_quality": grounded_response_quality_contract(cx_record),
         },
         "retrieval": retrieval_summary(retrieval_package),
         "artifact_refs": [],
@@ -828,6 +832,89 @@ def retrieval_quality_warning_contract(retrieval_package: dict[str, Any]) -> dic
     }
 
 
+def grounded_response_quality_contract(cx_record: dict[str, Any]) -> dict[str, Any]:
+    request_metadata = _mapping_value(cx_record.get("request_metadata"))
+    grounding_required = bool(request_metadata.get("grounding_required"))
+    audit_schema_version = _optional_text(
+        request_metadata.get("grounded_response_quality_audit_schema_version")
+    )
+    boundary_status = _grounded_response_quality_boundary_status(
+        request_metadata.get("grounded_response_quality_status"),
+        grounding_required=grounding_required,
+    )
+    issue_count = _non_negative_int(
+        request_metadata.get("grounded_response_quality_issue_count")
+    )
+    citation_status = _grounded_response_quality_citation_status(
+        request_metadata.get("draft_validation_status"),
+        boundary_status=boundary_status,
+    )
+    recommended_action = _grounded_response_quality_recommended_action(
+        boundary_status=boundary_status,
+        issue_count=issue_count,
+    )
+    return {
+        "contract_schema_version": AE_CHAT_GROUNDED_RESPONSE_QUALITY_CONTRACT_VERSION,
+        "source_audit_schema_version": audit_schema_version,
+        "boundary_status": boundary_status,
+        "citation_status": citation_status,
+        "issue_count": issue_count,
+        "recommended_action": recommended_action,
+        "grounding_required": grounding_required,
+        "retrieval_package_id": _optional_text(
+            request_metadata.get("retrieval_package_id")
+        ),
+        "retrieval_package_hash": _optional_text(
+            request_metadata.get("retrieval_package_hash")
+        ),
+        "structured_draft_id": _optional_text(
+            request_metadata.get("structured_draft_id")
+        ),
+        "raw_output_included": False,
+        "evidence_text_included": False,
+        "prompt_text_included": False,
+        "provider_detail_included": False,
+    }
+
+
+def _grounded_response_quality_boundary_status(
+    value: Any,
+    *,
+    grounding_required: bool,
+) -> str:
+    status = _optional_text(value)
+    if status in {"PASS", "WARN", "FAIL", "NOT_REQUIRED"}:
+        return status
+    if not grounding_required:
+        return "NOT_REQUIRED"
+    return "UNKNOWN"
+
+
+def _grounded_response_quality_citation_status(
+    value: Any,
+    *,
+    boundary_status: str,
+) -> str:
+    status = _optional_text(value)
+    if status in {"VALIDATED", "INVALID", "NOT_REQUIRED", "UNKNOWN"}:
+        return status
+    if boundary_status == "NOT_REQUIRED":
+        return "NOT_REQUIRED"
+    return "UNKNOWN"
+
+
+def _grounded_response_quality_recommended_action(
+    *,
+    boundary_status: str,
+    issue_count: int,
+) -> str:
+    if boundary_status == "FAIL":
+        return "show_error"
+    if boundary_status == "WARN" or boundary_status == "UNKNOWN" or issue_count > 0:
+        return "proceed_with_caveat"
+    return "proceed"
+
+
 def _retrieval_quality_recommended_action(
     *,
     status: str,
@@ -912,6 +999,12 @@ def _number_or_none(value: Any) -> float | None:
     if isinstance(value, int | float):
         return float(value)
     return None
+
+
+def _non_negative_int(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return max(value, 0)
 
 
 def _optional_text(value: Any) -> str | None:

@@ -19,6 +19,22 @@
       "input_tokens": 28,
       "output_tokens": 10,
       "total_tokens": 38
+    },
+    "grounded_response_quality": {
+      "contract_schema_version": "ae_chat_grounded_response_quality.v1",
+      "source_audit_schema_version": "cx_grounded_response_citation_quality_audit.v1",
+      "boundary_status": "PASS",
+      "citation_status": "VALIDATED",
+      "issue_count": 0,
+      "recommended_action": "proceed",
+      "grounding_required": true,
+      "retrieval_package_id": "cx-ret-001",
+      "retrieval_package_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "structured_draft_id": "draft-001",
+      "raw_output_included": false,
+      "evidence_text_included": false,
+      "prompt_text_included": false,
+      "provider_detail_included": false
     }
   },
   "retrieval": {

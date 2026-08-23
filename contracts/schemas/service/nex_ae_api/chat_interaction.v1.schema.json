@@ -85,7 +85,8 @@
             "mo_generation_id",
             "finish_reason",
             "output_preview",
-            "usage"
+            "usage",
+            "grounded_response_quality"
           ],
           "properties": {
             "alias": {
@@ -110,6 +111,9 @@
             "usage": {
               "type": "object",
               "additionalProperties": true
+            },
+            "grounded_response_quality": {
+              "$ref": "#/$defs/groundedResponseQuality"
             }
           }
         },
@@ -266,6 +270,108 @@
         "evidence_ref_count": {
           "type": "integer",
           "minimum": 0
+        }
+      }
+    },
+    "groundedResponseQuality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_schema_version",
+        "source_audit_schema_version",
+        "boundary_status",
+        "citation_status",
+        "issue_count",
+        "recommended_action",
+        "grounding_required",
+        "retrieval_package_id",
+        "retrieval_package_hash",
+        "structured_draft_id",
+        "raw_output_included",
+        "evidence_text_included",
+        "prompt_text_included",
+        "provider_detail_included"
+      ],
+      "properties": {
+        "contract_schema_version": {
+          "const": "ae_chat_grounded_response_quality.v1"
+        },
+        "source_audit_schema_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "cx_grounded_response_citation_quality_audit.v1",
+            null
+          ]
+        },
+        "boundary_status": {
+          "type": "string",
+          "enum": [
+            "PASS",
+            "WARN",
+            "FAIL",
+            "NOT_REQUIRED",
+            "UNKNOWN"
+          ]
+        },
+        "citation_status": {
+          "type": "string",
+          "enum": [
+            "VALIDATED",
+            "INVALID",
+            "NOT_REQUIRED",
+            "UNKNOWN"
+          ]
+        },
+        "issue_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "recommended_action": {
+          "type": "string",
+          "enum": [
+            "proceed",
+            "proceed_with_caveat",
+            "show_error"
+          ]
+        },
+        "grounding_required": {
+          "type": "boolean"
+        },
+        "retrieval_package_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "retrieval_package_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "structured_draft_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "raw_output_included": {
+          "const": false
+        },
+        "evidence_text_included": {
+          "const": false
+        },
+        "prompt_text_included": {
+          "const": false
+        },
+        "provider_detail_included": {
+          "const": false
         }
       }
     },

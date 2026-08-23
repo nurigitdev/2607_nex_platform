@@ -19,6 +19,22 @@
       "input_tokens": 2,
       "output_tokens": 3,
       "total_tokens": 5
+    },
+    "grounded_response_quality": {
+      "contract_schema_version": "ae_chat_grounded_response_quality.v1",
+      "source_audit_schema_version": null,
+      "boundary_status": "NOT_REQUIRED",
+      "citation_status": "NOT_REQUIRED",
+      "issue_count": 0,
+      "recommended_action": "proceed",
+      "grounding_required": false,
+      "retrieval_package_id": null,
+      "retrieval_package_hash": null,
+      "structured_draft_id": null,
+      "raw_output_included": false,
+      "evidence_text_included": false,
+      "prompt_text_included": false,
+      "provider_detail_included": false
     }
   },
   "retrieval": null,

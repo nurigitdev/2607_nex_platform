@@ -15,7 +15,23 @@
     "mo_generation_id": "mo-gen-001",
     "finish_reason": "STOP",
     "output_preview": "Mock answer.",
-    "usage": {}
+    "usage": {},
+    "grounded_response_quality": {
+      "contract_schema_version": "ae_chat_grounded_response_quality.v1",
+      "source_audit_schema_version": null,
+      "boundary_status": "NOT_REQUIRED",
+      "citation_status": "NOT_REQUIRED",
+      "issue_count": 0,
+      "recommended_action": "proceed",
+      "grounding_required": false,
+      "retrieval_package_id": null,
+      "retrieval_package_hash": null,
+      "structured_draft_id": null,
+      "raw_output_included": false,
+      "evidence_text_included": false,
+      "prompt_text_included": false,
+      "provider_detail_included": false
+    }
   },
   "retrieval": null,
   "artifact_refs": [
