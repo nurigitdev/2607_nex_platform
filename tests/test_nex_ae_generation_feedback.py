@@ -2,21 +2,27 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 
 from nex_ae_api.generation_feedback import (
     GenerationFeedbackError,
     GenerationFeedbackStore,
+    SqlAlchemyGenerationFeedbackStore,
     build_generation_feedback_record,
+    default_generation_feedback_store,
     feedback_reason_list,
     payload_with_path_interaction_id,
     quality_issue_refs,
     register_generation_feedback_routes,
 )
+import nex_ae_api.generation_feedback as feedback_module
 from nex_ae_api.generation_feedback_boundary import (
     AE_FEEDBACK_OWNER_SERVICE,
     AG_OPERATOR_DISPOSITION_OWNER_SERVICE,
@@ -249,6 +255,23 @@ def test_generation_feedback_record_allows_empty_optional_links() -> None:
     assert record["metadata"]["submitted_via"] == "document_detail"
 
 
+def test_generation_feedback_record_ignores_non_string_optional_values() -> None:
+    record = build_generation_feedback_record(
+        feedback_payload(
+            chat_document_id=123,
+            cx_generation_id=object(),
+            submitted_via=object(),
+        ),
+        request_id="req-001",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+        created_at="2026-08-24T00:00:00Z",
+    )
+
+    assert record["chat_document_id"] is None
+    assert record["cx_generation_id"] is None
+    assert record["metadata"]["submitted_via"] == "chat"
+
+
 @pytest.mark.parametrize(
     ("override", "error_code"),
     [
@@ -294,6 +317,16 @@ def test_generation_feedback_record_rejects_invalid_payloads(
     assert exc_info.value.error_code == error_code
 
 
+def test_generation_feedback_error_string_is_detail() -> None:
+    error = GenerationFeedbackError(
+        status_code=422,
+        error_code="ae.generation_feedback_test",
+        detail="feedback detail",
+    )
+
+    assert str(error) == "feedback detail"
+
+
 def test_feedback_reason_list_accepts_missing_and_rejects_bad_items() -> None:
     assert feedback_reason_list(None) == []
 
@@ -327,6 +360,100 @@ def test_generation_feedback_store_indexes_unique_feedback_ids() -> None:
     assert store.list_for_interaction("missing") == []
 
 
+def sqlite_feedback_session_factory():
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ae_generation_feedback (
+                    feedback_id TEXT PRIMARY KEY,
+                    feedback_schema_version TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    interaction_id TEXT NOT NULL,
+                    chat_document_id TEXT,
+                    cx_generation_id TEXT,
+                    trace_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    feedback_value TEXT NOT NULL,
+                    feedback_reasons TEXT NOT NULL,
+                    feedback_comment_hash TEXT,
+                    feedback_comment_preview TEXT,
+                    quality_issue_refs TEXT NOT NULL,
+                    metadata TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+    return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+
+def test_sqlalchemy_generation_feedback_store_round_trips_with_sqlite() -> None:
+    store = SqlAlchemyGenerationFeedbackStore(sqlite_feedback_session_factory())
+    record = build_generation_feedback_record(
+        feedback_payload(),
+        request_id="req-001",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+        created_at="2026-08-24T00:00:00Z",
+    )
+
+    saved = store.save(record)
+    loaded = store.get(record["feedback_id"])
+    listed = store.list_for_interaction(record["interaction_id"])
+    deleted_rows = store.delete(record["feedback_id"])
+
+    assert saved == record
+    assert loaded == record
+    assert listed == [record]
+    assert deleted_rows == 1
+    assert store.get(record["feedback_id"]) is None
+
+
+@pytest.mark.parametrize(
+    "operation",
+    ["save", "get", "list", "delete"],
+)
+def test_sqlalchemy_generation_feedback_store_maps_database_errors(
+    operation: str,
+) -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    store = SqlAlchemyGenerationFeedbackStore(
+        sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    )
+    record = build_generation_feedback_record(
+        feedback_payload(),
+        request_id="req-001",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+        created_at="2026-08-24T00:00:00Z",
+    )
+
+    with pytest.raises(GenerationFeedbackError) as exc_info:
+        if operation == "save":
+            store.save(record)
+        elif operation == "get":
+            store.get(record["feedback_id"])
+        elif operation == "list":
+            store.list_for_interaction(record["interaction_id"])
+        else:
+            store.delete(record["feedback_id"])
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.error_code == "ae.generation_feedback_store_unavailable"
+
+
+def test_default_generation_feedback_store_uses_persistence_session_factory() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    session_factory = sqlite_feedback_session_factory()
+    app.state.nex_persistence = SimpleNamespace(api_session_factory=session_factory)
+
+    store = default_generation_feedback_store(app)
+
+    assert isinstance(store, SqlAlchemyGenerationFeedbackStore)
+
+
 def test_payload_with_path_interaction_id_rejects_mismatch() -> None:
     with pytest.raises(GenerationFeedbackError) as exc_info:
         payload_with_path_interaction_id(
@@ -336,6 +463,27 @@ def test_payload_with_path_interaction_id_rejects_mismatch() -> None:
 
     assert exc_info.value.status_code == 409
     assert exc_info.value.error_code == "ae.generation_feedback_interaction_mismatch"
+
+
+def test_payload_with_path_interaction_id_rejects_blank_path() -> None:
+    with pytest.raises(GenerationFeedbackError) as exc_info:
+        payload_with_path_interaction_id({}, "   ")
+
+    assert exc_info.value.error_code == "ae.generation_feedback_interaction_id_required"
+
+
+def test_generation_feedback_storage_helpers_cover_postgres_and_null_values() -> None:
+    assert feedback_module._json_param_expr("metadata", "postgresql") == (
+        "CAST(:metadata AS jsonb)"
+    )
+    assert feedback_module._json_value(None, []) == []
+    assert feedback_module._json_value({"ok": True}, {}) == {"ok": True}
+    assert feedback_module._datetime_value(
+        feedback_module.datetime(2026, 8, 24, 0, 0, tzinfo=feedback_module.UTC)
+    ) == "2026-08-24T00:00:00Z"
+    assert feedback_module._datetime_value(
+        SimpleNamespace(isoformat=lambda: "2026-08-24T00:00:00+00:00")
+    ) == "2026-08-24T00:00:00Z"
 
 
 def test_generation_feedback_route_records_lists_and_reads_feedback() -> None:
@@ -410,6 +558,13 @@ def test_generation_feedback_route_maps_auth_and_validation_errors() -> None:
     assert sensitive.status_code == 422
     assert sensitive.json()["error_code"] == "ae.generation_feedback_sensitive_payload"
     assert store.list_for_interaction("ae-chat-001") == []
+
+    unauthorized_list = client.get("/api/v1/chat/interactions/ae-chat-001/feedback")
+    unauthorized_detail = client.get(
+        "/api/v1/chat/interactions/ae-chat-001/feedback/feedback-id"
+    )
+    assert unauthorized_list.status_code == 401
+    assert unauthorized_detail.status_code == 401
 
 
 def test_generation_feedback_detail_route_returns_not_found_for_wrong_scope() -> None:

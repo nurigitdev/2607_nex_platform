@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -8,6 +9,9 @@ from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
@@ -68,6 +72,89 @@ class GenerationFeedbackStore:
         ]
 
 
+class SqlAlchemyGenerationFeedbackStore:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    text(_feedback_upsert_sql(_dialect_name(session))),
+                    _feedback_record_params(record),
+                )
+                session.commit()
+            return record
+        except SQLAlchemyError as exc:
+            raise GenerationFeedbackError(
+                status_code=503,
+                error_code="ae.generation_feedback_store_unavailable",
+                detail="Generation feedback store is unavailable.",
+            ) from exc
+
+    def get(self, feedback_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(_feedback_select_sql("feedback_id = :feedback_id")),
+                        {"feedback_id": feedback_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+            return _feedback_record_from_row(row) if row is not None else None
+        except SQLAlchemyError as exc:
+            raise GenerationFeedbackError(
+                status_code=503,
+                error_code="ae.generation_feedback_store_unavailable",
+                detail="Generation feedback store is unavailable.",
+            ) from exc
+
+    def list_for_interaction(self, interaction_id: str) -> list[dict[str, Any]]:
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            _feedback_select_sql(
+                                "interaction_id = :interaction_id "
+                                "ORDER BY created_at DESC, feedback_id ASC"
+                            )
+                        ),
+                        {"interaction_id": interaction_id},
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [_feedback_record_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise GenerationFeedbackError(
+                status_code=503,
+                error_code="ae.generation_feedback_store_unavailable",
+                detail="Generation feedback store is unavailable.",
+            ) from exc
+
+    def delete(self, feedback_id: str) -> int:
+        try:
+            with self._session_factory() as session:
+                result = session.execute(
+                    text(
+                        "DELETE FROM ae_generation_feedback "
+                        "WHERE feedback_id = :feedback_id"
+                    ),
+                    {"feedback_id": feedback_id},
+                )
+                session.commit()
+                return int(result.rowcount or 0)
+        except SQLAlchemyError as exc:
+            raise GenerationFeedbackError(
+                status_code=503,
+                error_code="ae.generation_feedback_store_unavailable",
+                detail="Generation feedback store is unavailable.",
+            ) from exc
+
+
 @dataclass(frozen=True)
 class GenerationFeedbackError(Exception):
     status_code: int
@@ -81,12 +168,20 @@ class GenerationFeedbackError(Exception):
 DEFAULT_GENERATION_FEEDBACK_STORE = GenerationFeedbackStore()
 
 
+def default_generation_feedback_store(app: Any) -> Any:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is not None:
+        return SqlAlchemyGenerationFeedbackStore(session_factory)
+    return DEFAULT_GENERATION_FEEDBACK_STORE
+
+
 def register_generation_feedback_routes(
     app: FastAPI,
     *,
-    store: GenerationFeedbackStore | None = None,
+    store: Any | None = None,
 ) -> None:
-    feedback_store = store or DEFAULT_GENERATION_FEEDBACK_STORE
+    feedback_store = store or default_generation_feedback_store(app)
 
     @app.post(
         "/api/v1/chat/interactions/{interaction_id}/feedback",
@@ -362,6 +457,143 @@ def optional_string(value: Any) -> str | None:
 
 def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _feedback_upsert_sql(dialect_name: str) -> str:
+    feedback_reasons_expr = _json_param_expr("feedback_reasons", dialect_name)
+    quality_issue_refs_expr = _json_param_expr("quality_issue_refs", dialect_name)
+    metadata_expr = _json_param_expr("metadata", dialect_name)
+    return f"""
+        INSERT INTO ae_generation_feedback (
+            feedback_id,
+            feedback_schema_version,
+            status,
+            tenant_id,
+            user_id,
+            interaction_id,
+            chat_document_id,
+            cx_generation_id,
+            trace_id,
+            request_id,
+            feedback_value,
+            feedback_reasons,
+            feedback_comment_hash,
+            feedback_comment_preview,
+            quality_issue_refs,
+            metadata,
+            created_at
+        )
+        VALUES (
+            :feedback_id,
+            :feedback_schema_version,
+            :status,
+            :tenant_id,
+            :user_id,
+            :interaction_id,
+            :chat_document_id,
+            :cx_generation_id,
+            :trace_id,
+            :request_id,
+            :feedback_value,
+            {feedback_reasons_expr},
+            :feedback_comment_hash,
+            :feedback_comment_preview,
+            {quality_issue_refs_expr},
+            {metadata_expr},
+            :created_at
+        )
+        ON CONFLICT (feedback_id) DO UPDATE SET
+            status = excluded.status,
+            feedback_value = excluded.feedback_value,
+            feedback_reasons = excluded.feedback_reasons,
+            feedback_comment_hash = excluded.feedback_comment_hash,
+            feedback_comment_preview = excluded.feedback_comment_preview,
+            quality_issue_refs = excluded.quality_issue_refs,
+            metadata = excluded.metadata
+    """
+
+
+def _feedback_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            feedback_schema_version,
+            feedback_id,
+            status,
+            tenant_id,
+            user_id,
+            interaction_id,
+            chat_document_id,
+            cx_generation_id,
+            trace_id,
+            request_id,
+            feedback_value,
+            feedback_reasons,
+            feedback_comment_hash,
+            feedback_comment_preview,
+            quality_issue_refs,
+            metadata,
+            created_at
+        FROM ae_generation_feedback
+        WHERE {where_clause}
+    """
+
+
+def _feedback_record_params(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **record,
+        "feedback_reasons": json.dumps(record["feedback_reasons"]),
+        "quality_issue_refs": json.dumps(record["quality_issue_refs"]),
+        "metadata": json.dumps(record["metadata"]),
+    }
+
+
+def _feedback_record_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return {
+        "feedback_schema_version": data["feedback_schema_version"],
+        "feedback_id": data["feedback_id"],
+        "status": data["status"],
+        "tenant_id": data["tenant_id"],
+        "user_id": data["user_id"],
+        "interaction_id": data["interaction_id"],
+        "chat_document_id": data["chat_document_id"],
+        "cx_generation_id": data["cx_generation_id"],
+        "trace_id": data["trace_id"],
+        "request_id": data["request_id"],
+        "feedback_value": data["feedback_value"],
+        "feedback_reasons": _json_value(data["feedback_reasons"], []),
+        "feedback_comment_hash": data["feedback_comment_hash"],
+        "feedback_comment_preview": data["feedback_comment_preview"],
+        "quality_issue_refs": _json_value(data["quality_issue_refs"], []),
+        "metadata": _json_value(data["metadata"], {}),
+        "created_at": _datetime_value(data["created_at"]),
+    }
+
+
+def _json_param_expr(name: str, dialect_name: str) -> str:
+    if dialect_name == "postgresql":
+        return f"CAST(:{name} AS jsonb)"
+    return f":{name}"
+
+
+def _dialect_name(session: Session) -> str:
+    return session.get_bind().dialect.name
+
+
+def _json_value(value: Any, default: Any) -> Any:
+    if isinstance(value, str):
+        return json.loads(value)
+    if value is None:
+        return default
+    return value
+
+
+def _datetime_value(value: Any) -> str:
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    if hasattr(value, "isoformat"):
+        return value.isoformat().replace("+00:00", "Z")
+    return str(value)
 
 
 def _authorize_ae_request(

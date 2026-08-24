@@ -63,6 +63,7 @@ mkdir -p "$REPORT_DIR"
 "$PYTHON_BIN" scripts/smoke/run_oa_user_login_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_oa_auth_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_credential_login_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_generation_feedback_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_credential_login_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_credential_login_browser_operator_profile.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_same_origin_runtime_boundary.py --summary
