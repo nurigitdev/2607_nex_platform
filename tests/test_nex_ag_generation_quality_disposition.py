@@ -26,6 +26,9 @@ from nex_ag.generation_quality_disposition import (
     operator_note_preview,
     register_generation_quality_disposition_routes,
     sha256_text,
+    _datetime_value,
+    _json_param_expr,
+    _json_value,
 )
 from nex_runtime import (
     InMemoryOperationalEventStore,
@@ -239,6 +242,10 @@ def test_in_memory_store_saves_gets_and_lists_by_generation() -> None:
     assert store.list_for_generation("cx-gen-001") == [first]
     assert store.list_for_generation("cx-gen-002") == [second]
     assert store.list_for_generation("cx-gen-missing") == []
+    assert store.delete("missing") == 0
+    assert store.delete("disp-001") == 1
+    assert store.get("disp-001") is None
+    assert store.list_for_generation("cx-gen-001") == []
 
 
 def test_disposition_list_response_sorts_and_summarizes_records() -> None:
@@ -399,6 +406,13 @@ def test_generation_quality_disposition_routes_require_auth_and_hide_cross_gener
     unauthorized = client.get(
         "/admin/v1/generation-audit/generations/cx-gen-001/quality-dispositions",
     )
+    unauthorized_create = client.post(
+        "/admin/v1/generation-audit/generations/cx-gen-001/quality-dispositions",
+        json=sample_payload(disposition_id="disp-unauthorized"),
+    )
+    unauthorized_get = client.get(
+        "/admin/v1/generation-audit/generations/cx-gen-001/quality-dispositions/disp-private",
+    )
     missing = client.get(
         (
             "/admin/v1/generation-audit/generations/cx-gen-other"
@@ -408,6 +422,8 @@ def test_generation_quality_disposition_routes_require_auth_and_hide_cross_gener
     )
 
     assert unauthorized.status_code == 401
+    assert unauthorized_create.status_code == 401
+    assert unauthorized_get.status_code == 401
     assert missing.status_code == 404
     assert missing.json()["error_code"] == "ag.generation_quality_disposition_not_found"
 
@@ -434,6 +450,35 @@ def test_generation_quality_disposition_route_still_accepts_when_audit_emit_fail
 
     assert response.status_code == 202
     assert store.get("disp-audit-failed") is not None
+
+
+def test_generation_quality_disposition_route_reports_store_failures() -> None:
+    class FailingDispositionStore:
+        def save(self, record: dict[str, Any]) -> dict[str, Any]:
+            raise GenerationQualityDispositionError(
+                status_code=503,
+                error_code="ag.generation_quality_disposition_store_unavailable",
+                detail="store down",
+            )
+
+        def get(self, disposition_id: str) -> None:
+            return None
+
+        def list_for_generation(self, cx_generation_id: str) -> list[dict[str, Any]]:
+            return []
+
+    client, _, _ = build_route_client(store=FailingDispositionStore())
+
+    response = client.post(
+        "/admin/v1/generation-audit/generations/cx-gen-001/quality-dispositions",
+        headers=auth_headers(),
+        json=sample_payload(disposition_id="disp-store-failed"),
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == (
+        "ag.generation_quality_disposition_store_unavailable"
+    )
 
 
 def test_sqlalchemy_disposition_store_round_trips_sqlite() -> None:
@@ -469,6 +514,15 @@ def test_sqlalchemy_disposition_store_round_trips_sqlite() -> None:
         assert store.delete("missing") == 0
     finally:
         engine.dispose()
+
+
+def test_disposition_sql_helpers_cover_postgres_json_and_value_normalization() -> None:
+    assert _json_param_expr("metadata", "postgresql") == "CAST(:metadata AS jsonb)"
+    assert _json_param_expr("metadata", "sqlite") == ":metadata"
+    assert _json_value("{\"ok\": true}", {}) == {"ok": True}
+    assert _json_value(None, []) == []
+    assert _json_value({"already": "decoded"}, {}) == {"already": "decoded"}
+    assert _datetime_value("2026-08-25T00:00:00Z") == "2026-08-25T00:00:00Z"
 
 
 def test_default_generation_quality_disposition_store_uses_persistence_session_factory() -> None:

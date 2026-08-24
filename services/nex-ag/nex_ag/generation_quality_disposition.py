@@ -258,10 +258,10 @@ def register_generation_quality_disposition_routes(
                 request_id=request_id,
                 trace_id=trace_id,
             )
+            selected_store.save(record)
         except GenerationQualityDispositionError as exc:
             return _disposition_problem_response(request, exc)
 
-        selected_store.save(record)
         emit_generation_quality_disposition_event(audit_emitter, record)
         return JSONResponse(status_code=202, content=record)
 
