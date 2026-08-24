@@ -19,7 +19,6 @@ from nex_runtime import (
     validate_authorization_header,
 )
 
-
 SAFE_TIMELINE_FIELDS = {
     "event_id",
     "event_schema_version",
@@ -55,6 +54,21 @@ FORBIDDEN_DETAIL_KEYS = {
     "cookie",
 }
 FORBIDDEN_DETAIL_FRAGMENTS = {"api_key", "bearer", "password", "secret"}
+AG_GROUNDED_RESPONSE_QUALITY_GAP_AUDIT_SCHEMA_VERSION = (
+    "ag_generation_audit_grounded_response_quality_gap_audit.v1"
+)
+CX_GROUNDED_RESPONSE_QUALITY_METADATA_FIELDS = (
+    "grounded_response_quality_audit_schema_version",
+    "grounded_response_quality_status",
+    "grounded_response_quality_issue_count",
+)
+ARTIFACT_QUALITY_SUMMARY_FIELDS = (
+    "citation_status",
+    "grounding_required",
+    "retrieval_package_id",
+    "retrieval_package_hash",
+    "evidence_ref_count",
+)
 
 
 class GenerationAuditSourceClient(Protocol):
@@ -64,8 +78,7 @@ class GenerationAuditSourceClient(Protocol):
         *,
         request_id: str,
         trace_id: str,
-    ) -> dict[str, Any]:
-        ...
+    ) -> dict[str, Any]: ...
 
     def get_cx_generation_events(
         self,
@@ -73,8 +86,7 @@ class GenerationAuditSourceClient(Protocol):
         *,
         request_id: str,
         trace_id: str,
-    ) -> dict[str, Any]:
-        ...
+    ) -> dict[str, Any]: ...
 
     def get_ae_artifact_handoff(
         self,
@@ -82,8 +94,7 @@ class GenerationAuditSourceClient(Protocol):
         *,
         request_id: str,
         trace_id: str,
-    ) -> dict[str, Any]:
-        ...
+    ) -> dict[str, Any]: ...
 
     def get_ae_recovery_request(
         self,
@@ -91,8 +102,7 @@ class GenerationAuditSourceClient(Protocol):
         *,
         request_id: str,
         trace_id: str,
-    ) -> dict[str, Any]:
-        ...
+    ) -> dict[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -177,10 +187,13 @@ class HttpGenerationAuditSourceClient:
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
-        token = service_token or issue_mock_service_token(
-            service_id="nex-ag",
-            audience=audience,
-        ).access_token
+        token = (
+            service_token
+            or issue_mock_service_token(
+                service_id="nex-ag",
+                audience=audience,
+            ).access_token
+        )
         response = httpx.get(
             f"{base_url}{path}",
             headers={
@@ -226,7 +239,9 @@ def register_generation_audit_routes(
 ) -> None:
     client = source_client or build_default_generation_audit_client()
 
-    @app.get("/admin/v1/generation-audit/generations/{cx_generation_id}", response_model=None)
+    @app.get(
+        "/admin/v1/generation-audit/generations/{cx_generation_id}", response_model=None
+    )
     def get_generation_audit_projection(
         cx_generation_id: str,
         request: Request,
@@ -332,7 +347,9 @@ def build_ag_generation_audit_event(
     recovery_request: dict[str, Any] | None = None,
     occurred_at: str | None = None,
 ) -> dict[str, Any]:
-    result_status = "SUCCEEDED" if generation_record.get("status") == "COMPLETED" else "FAILED"
+    result_status = (
+        "SUCCEEDED" if generation_record.get("status") == "COMPLETED" else "FAILED"
+    )
     action_type = audit_action_type(recovery_request)
     actor_ref = (
         artifact_handoff["actor_claims_ref"]
@@ -369,18 +386,24 @@ def build_ag_generation_audit_event(
         "details": safe_details(
             {
                 "timeline_event_count": len(timeline_events),
-                "artifact_handoff_id": artifact_handoff["artifact_handoff_id"]
-                if artifact_handoff
-                else None,
-                "recovery_request_id": recovery_request["recovery_request_id"]
-                if recovery_request
-                else None,
-                "requested_action": recovery_request["requested_action"]
-                if recovery_request
-                else None,
-                "policy_hash_status": recovery_request["policy"]["hash_status"]
-                if recovery_request
-                else None,
+                "artifact_handoff_id": (
+                    artifact_handoff["artifact_handoff_id"]
+                    if artifact_handoff
+                    else None
+                ),
+                "recovery_request_id": (
+                    recovery_request["recovery_request_id"]
+                    if recovery_request
+                    else None
+                ),
+                "requested_action": (
+                    recovery_request["requested_action"] if recovery_request else None
+                ),
+                "policy_hash_status": (
+                    recovery_request["policy"]["hash_status"]
+                    if recovery_request
+                    else None
+                ),
             }
         ),
     }
@@ -409,7 +432,11 @@ def project_timeline_events(progress_payload: dict[str, Any]) -> list[dict[str, 
         return []
     return [
         {
-            key: safe_details(value) if key == "details" and isinstance(value, dict) else value
+            key: (
+                safe_details(value)
+                if key == "details" and isinstance(value, dict)
+                else value
+            )
             for key, value in event.items()
             if key in SAFE_TIMELINE_FIELDS
         }
@@ -508,6 +535,97 @@ def quality_summary_from_sources(
     }
 
 
+def build_grounded_response_quality_gap_audit(
+    generation_record: dict[str, Any],
+    artifact_handoff: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    metadata = _dict_value(generation_record.get("request_metadata"))
+    artifact_quality = _dict_value(
+        artifact_handoff.get("quality_summary") if artifact_handoff else None
+    )
+    grounding_required = _grounding_required(metadata, artifact_quality)
+    cx_missing_fields = (
+        _missing_fields(metadata, CX_GROUNDED_RESPONSE_QUALITY_METADATA_FIELDS)
+        if grounding_required
+        else []
+    )
+    artifact_missing_fields = (
+        _missing_fields(artifact_quality, ARTIFACT_QUALITY_SUMMARY_FIELDS)
+        if artifact_handoff is not None
+        else []
+    )
+    lineage_mismatches = _grounded_quality_lineage_mismatches(
+        metadata,
+        artifact_handoff,
+        artifact_quality,
+    )
+    source_quality_status = _grounded_quality_status(
+        metadata.get("grounded_response_quality_status"),
+        grounding_required=grounding_required,
+    )
+    issues = _grounded_quality_gap_issues(
+        cx_missing_fields=cx_missing_fields,
+        artifact_missing_fields=artifact_missing_fields,
+        lineage_mismatches=lineage_mismatches,
+        source_quality_status=source_quality_status,
+    )
+    coverage_status = _grounded_quality_coverage_status(
+        grounding_required=grounding_required,
+        issues=issues,
+    )
+    return {
+        "audit_schema_version": AG_GROUNDED_RESPONSE_QUALITY_GAP_AUDIT_SCHEMA_VERSION,
+        "source_schema_versions": {
+            "cx_generation_execution_record": generation_record.get(
+                "record_schema_version"
+            ),
+            "cx_grounded_response_quality_audit": metadata.get(
+                "grounded_response_quality_audit_schema_version"
+            ),
+            "ae_artifact_handoff": (
+                artifact_handoff.get("handoff_schema_version")
+                if artifact_handoff
+                else None
+            ),
+        },
+        "coverage_status": coverage_status,
+        "source_quality_status": source_quality_status,
+        "grounding_required": grounding_required,
+        "source_summaries": {
+            "cx_generation": _cx_grounded_quality_summary(metadata),
+            "ae_artifact_handoff": _artifact_grounded_quality_summary(
+                artifact_handoff,
+                artifact_quality,
+            ),
+        },
+        "lineage_mismatches": lineage_mismatches,
+        "issues": issues,
+        "issue_count": len(issues),
+        "recommended_action": _grounded_quality_gap_recommended_action(
+            coverage_status,
+            source_quality_status,
+        ),
+        "next_guard_slot": "ag_generation_audit_quality_projection",
+        "redaction_summary": {
+            "raw_content_included": False,
+            "prompt_text_included": False,
+            "evidence_text_included": False,
+            "provider_detail_included": False,
+            "excluded_fields": [
+                "raw_prompt",
+                "messages",
+                "source_text",
+                "output_text",
+                "raw_output",
+                "provider_url",
+                "provider_endpoint",
+                "model_path",
+                "storage_path",
+            ],
+        },
+    }
+
+
 def compatibility_summary(generation_record: dict[str, Any]) -> dict[str, Any]:
     metadata = generation_record.get("request_metadata", {})
     return {
@@ -556,6 +674,219 @@ def _safe_detail_value(value: Any) -> Any:
     if isinstance(value, str | int | float | bool) or value is None:
         return value
     return str(value)
+
+
+def _dict_value(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _missing_fields(source: dict[str, Any], fields: tuple[str, ...]) -> list[str]:
+    return [field for field in fields if _is_missing_value(source.get(field))]
+
+
+def _is_missing_value(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and value.strip() == "")
+
+
+def _grounding_required(
+    metadata: dict[str, Any],
+    artifact_quality: dict[str, Any],
+) -> bool:
+    return bool(
+        metadata.get("grounding_required") or artifact_quality.get("grounding_required")
+    )
+
+
+def _grounded_quality_status(value: Any, *, grounding_required: bool) -> str:
+    if isinstance(value, str):
+        normalized = value.strip().upper()
+        if normalized in {"PASS", "FAIL", "NOT_REQUIRED"}:
+            return normalized
+    if not grounding_required:
+        return "NOT_REQUIRED"
+    return "UNKNOWN"
+
+
+def _non_negative_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value >= 0:
+        return value
+    return None
+
+
+def _cx_grounded_quality_summary(metadata: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "available": any(
+            not _is_missing_value(metadata.get(field))
+            for field in CX_GROUNDED_RESPONSE_QUALITY_METADATA_FIELDS
+        ),
+        "audit_schema_version": metadata.get(
+            "grounded_response_quality_audit_schema_version"
+        ),
+        "quality_status": _grounded_quality_status(
+            metadata.get("grounded_response_quality_status"),
+            grounding_required=bool(metadata.get("grounding_required")),
+        ),
+        "issue_count": _non_negative_int(
+            metadata.get("grounded_response_quality_issue_count")
+        ),
+        "grounding_required": bool(metadata.get("grounding_required")),
+        "retrieval_package_id": metadata.get("retrieval_package_id"),
+        "retrieval_package_hash": metadata.get("retrieval_package_hash"),
+        "structured_draft_id": metadata.get("structured_draft_id"),
+        "selected_evidence_count": _non_negative_int(
+            metadata.get("selected_evidence_count")
+        ),
+        "missing_fields": (
+            _missing_fields(
+                metadata,
+                CX_GROUNDED_RESPONSE_QUALITY_METADATA_FIELDS,
+            )
+            if metadata.get("grounding_required")
+            else []
+        ),
+    }
+
+
+def _artifact_grounded_quality_summary(
+    artifact_handoff: dict[str, Any] | None,
+    artifact_quality: dict[str, Any],
+) -> dict[str, Any]:
+    if artifact_handoff is None:
+        return {
+            "available": False,
+            "required": False,
+            "missing_fields": [],
+        }
+    return {
+        "available": bool(artifact_quality),
+        "required": True,
+        "citation_status": artifact_quality.get("citation_status"),
+        "grounding_required": bool(artifact_quality.get("grounding_required")),
+        "retrieval_package_id": artifact_quality.get("retrieval_package_id"),
+        "retrieval_package_hash": artifact_quality.get("retrieval_package_hash"),
+        "structured_draft_id": artifact_handoff.get("structured_draft_id"),
+        "evidence_ref_count": _non_negative_int(
+            artifact_quality.get("evidence_ref_count")
+        ),
+        "missing_fields": _missing_fields(
+            artifact_quality,
+            ARTIFACT_QUALITY_SUMMARY_FIELDS,
+        ),
+    }
+
+
+def _grounded_quality_lineage_mismatches(
+    metadata: dict[str, Any],
+    artifact_handoff: dict[str, Any] | None,
+    artifact_quality: dict[str, Any],
+) -> list[str]:
+    mismatches: list[str] = []
+    if artifact_handoff is None:
+        return mismatches
+    comparisons = {
+        "grounding_required": (
+            metadata.get("grounding_required"),
+            artifact_quality.get("grounding_required"),
+        ),
+        "retrieval_package_id": (
+            metadata.get("retrieval_package_id"),
+            artifact_quality.get("retrieval_package_id"),
+        ),
+        "retrieval_package_hash": (
+            metadata.get("retrieval_package_hash"),
+            artifact_quality.get("retrieval_package_hash"),
+        ),
+        "structured_draft_id": (
+            metadata.get("structured_draft_id"),
+            artifact_handoff.get("structured_draft_id"),
+        ),
+    }
+    for field, (left, right) in comparisons.items():
+        if (
+            not _is_missing_value(left)
+            and not _is_missing_value(right)
+            and left != right
+        ):
+            mismatches.append(field)
+    return mismatches
+
+
+def _grounded_quality_gap_issues(
+    *,
+    cx_missing_fields: list[str],
+    artifact_missing_fields: list[str],
+    lineage_mismatches: list[str],
+    source_quality_status: str,
+) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    if cx_missing_fields:
+        issues.append(
+            {
+                "code": "MISSING_CX_GROUNDED_RESPONSE_QUALITY_FIELDS",
+                "severity": "WARN",
+                "source_service": "nex-cx",
+                "fields": cx_missing_fields,
+            }
+        )
+    if artifact_missing_fields:
+        issues.append(
+            {
+                "code": "MISSING_AE_ARTIFACT_QUALITY_SUMMARY_FIELDS",
+                "severity": "WARN",
+                "source_service": "nex-ae-api",
+                "fields": artifact_missing_fields,
+            }
+        )
+    if lineage_mismatches:
+        issues.append(
+            {
+                "code": "GROUNDED_RESPONSE_QUALITY_LINEAGE_MISMATCH",
+                "severity": "WARN",
+                "source_service": "nex-ag",
+                "fields": lineage_mismatches,
+            }
+        )
+    if source_quality_status == "FAIL":
+        issues.append(
+            {
+                "code": "CX_GROUNDED_RESPONSE_QUALITY_FAILED",
+                "severity": "FAIL",
+                "source_service": "nex-cx",
+                "fields": ["grounded_response_quality_status"],
+            }
+        )
+    return issues
+
+
+def _grounded_quality_coverage_status(
+    *,
+    grounding_required: bool,
+    issues: list[dict[str, Any]],
+) -> str:
+    if any(issue["severity"] == "FAIL" for issue in issues):
+        return "FAIL"
+    if not grounding_required:
+        return "NOT_REQUIRED"
+    if issues:
+        return "WARN"
+    return "PASS"
+
+
+def _grounded_quality_gap_recommended_action(
+    coverage_status: str,
+    source_quality_status: str,
+) -> str:
+    if coverage_status == "NOT_REQUIRED":
+        return "no_action"
+    if source_quality_status == "FAIL":
+        return "investigate_quality_failure"
+    if coverage_status == "WARN":
+        return "complete_source_quality_metadata"
+    return "wire_ag_quality_projection"
 
 
 def _authorize_ag_request(

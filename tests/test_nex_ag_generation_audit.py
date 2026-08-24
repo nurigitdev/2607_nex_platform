@@ -14,6 +14,7 @@ from nex_ag.generation_audit import (
     artifact_handoff_summary,
     build_ag_generation_audit_event,
     build_generation_audit_projection,
+    build_grounded_response_quality_gap_audit,
     failure_summary,
     project_timeline_events,
     register_generation_audit_routes,
@@ -21,7 +22,6 @@ from nex_ag.generation_audit import (
     safe_details,
 )
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
-
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
@@ -115,6 +115,11 @@ def sample_generation_record(*, status: str = "COMPLETED") -> dict[str, Any]:
             "selected_evidence_count": 2,
             "structured_draft_id": "draft-001",
             "draft_validation_status": "VALIDATED",
+            "grounded_response_quality_audit_schema_version": (
+                "cx_grounded_response_citation_quality_audit.v1"
+            ),
+            "grounded_response_quality_status": "PASS",
+            "grounded_response_quality_issue_count": 0,
         },
         "response_metadata": {
             "finish_reason": "STOP",
@@ -185,6 +190,7 @@ def sample_progress_payload() -> dict[str, Any]:
 
 def sample_artifact_handoff() -> dict[str, Any]:
     return {
+        "handoff_schema_version": "ae_artifact_handoff.v1",
         "artifact_handoff_id": "handoff-001",
         "handoff_status": "READY_FOR_RENDERING",
         "artifact_intent": "create_artifact",
@@ -246,7 +252,9 @@ def build_client(
     return TestClient(app), client
 
 
-def test_build_generation_audit_projection_reads_services_and_redacts_timeline() -> None:
+def test_build_generation_audit_projection_reads_services_and_redacts_timeline() -> (
+    None
+):
     source_client = FakeGenerationAuditSourceClient()
 
     projection = build_generation_audit_projection(
@@ -262,7 +270,9 @@ def test_build_generation_audit_projection_reads_services_and_redacts_timeline()
         ("events", "cx-gen-001"),
         ("handoff", "handoff-001"),
     ]
-    assert projection["projection_schema_version"] == "ag_generation_audit_projection.v1"
+    assert (
+        projection["projection_schema_version"] == "ag_generation_audit_projection.v1"
+    )
     assert projection["audit_event"]["event_schema_version"] == (
         "ag_generation_audit_event.v1"
     )
@@ -347,6 +357,160 @@ def test_generation_audit_event_marks_failed_generation() -> None:
     assert event["details"]["timeline_event_count"] == 0
 
 
+def test_grounded_response_quality_gap_audit_reports_complete_safe_sources() -> None:
+    generation_record = sample_generation_record()
+    generation_record["request_metadata"]["raw_prompt"] = "private prompt"
+    artifact_handoff = sample_artifact_handoff()
+    artifact_handoff["quality_summary"]["source_text"] = "private evidence text"
+
+    audit = build_grounded_response_quality_gap_audit(
+        generation_record,
+        artifact_handoff,
+    )
+
+    assert audit["audit_schema_version"] == (
+        "ag_generation_audit_grounded_response_quality_gap_audit.v1"
+    )
+    assert audit["coverage_status"] == "PASS"
+    assert audit["source_quality_status"] == "PASS"
+    assert audit["issue_count"] == 0
+    assert audit["source_summaries"]["cx_generation"]["audit_schema_version"] == (
+        "cx_grounded_response_citation_quality_audit.v1"
+    )
+    assert audit["source_summaries"]["ae_artifact_handoff"]["citation_status"] == (
+        "VALIDATED"
+    )
+    assert audit["recommended_action"] == "wire_ag_quality_projection"
+    assert audit["redaction_summary"]["raw_content_included"] is False
+    assert "private prompt" not in str(audit)
+    assert "private evidence text" not in str(audit)
+
+
+def test_grounded_response_quality_gap_audit_flags_missing_cx_metadata() -> None:
+    generation_record = sample_generation_record()
+    for field in (
+        "grounded_response_quality_audit_schema_version",
+        "grounded_response_quality_status",
+        "grounded_response_quality_issue_count",
+    ):
+        del generation_record["request_metadata"][field]
+
+    audit = build_grounded_response_quality_gap_audit(generation_record)
+
+    assert audit["coverage_status"] == "WARN"
+    assert audit["source_quality_status"] == "UNKNOWN"
+    assert audit["recommended_action"] == "complete_source_quality_metadata"
+    assert audit["source_summaries"]["ae_artifact_handoff"] == {
+        "available": False,
+        "required": False,
+        "missing_fields": [],
+    }
+    assert audit["issues"] == [
+        {
+            "code": "MISSING_CX_GROUNDED_RESPONSE_QUALITY_FIELDS",
+            "severity": "WARN",
+            "source_service": "nex-cx",
+            "fields": [
+                "grounded_response_quality_audit_schema_version",
+                "grounded_response_quality_status",
+                "grounded_response_quality_issue_count",
+            ],
+        }
+    ]
+
+
+def test_grounded_response_quality_gap_audit_handles_not_required_generation() -> None:
+    generation_record = sample_generation_record()
+    generation_record["request_metadata"] = {
+        "grounding_required": False,
+        "raw_output": "private output",
+    }
+
+    audit = build_grounded_response_quality_gap_audit(generation_record)
+
+    assert audit["coverage_status"] == "NOT_REQUIRED"
+    assert audit["source_quality_status"] == "NOT_REQUIRED"
+    assert audit["issues"] == []
+    assert audit["recommended_action"] == "no_action"
+    assert "private output" not in str(audit)
+
+
+def test_grounded_response_quality_gap_audit_keeps_failure_signal_first() -> None:
+    generation_record = sample_generation_record()
+    generation_record["request_metadata"]["grounding_required"] = False
+    generation_record["request_metadata"]["grounded_response_quality_status"] = "FAIL"
+    generation_record["request_metadata"]["grounded_response_quality_issue_count"] = 1
+
+    audit = build_grounded_response_quality_gap_audit(generation_record)
+
+    assert audit["coverage_status"] == "FAIL"
+    assert audit["source_quality_status"] == "FAIL"
+    assert audit["recommended_action"] == "investigate_quality_failure"
+
+
+def test_grounded_response_quality_gap_audit_flags_failure_and_handoff_gaps() -> None:
+    generation_record = sample_generation_record()
+    generation_record["request_metadata"]["grounded_response_quality_status"] = "FAIL"
+    generation_record["request_metadata"][
+        "grounded_response_quality_issue_count"
+    ] = True
+    generation_record["request_metadata"]["selected_evidence_count"] = True
+    artifact_handoff = sample_artifact_handoff()
+    artifact_handoff["structured_draft_id"] = "draft-mismatch"
+    artifact_handoff["quality_summary"] = {
+        "citation_status": "VALIDATED",
+        "grounding_required": True,
+        "retrieval_package_id": "cx-ret-mismatch",
+        "evidence_ref_count": True,
+    }
+
+    audit = build_grounded_response_quality_gap_audit(
+        generation_record,
+        artifact_handoff,
+    )
+
+    assert audit["coverage_status"] == "FAIL"
+    assert audit["recommended_action"] == "investigate_quality_failure"
+    assert audit["source_summaries"]["cx_generation"]["issue_count"] is None
+    assert (
+        audit["source_summaries"]["ae_artifact_handoff"]["evidence_ref_count"] is None
+    )
+    assert audit["lineage_mismatches"] == [
+        "retrieval_package_id",
+        "structured_draft_id",
+    ]
+    assert [issue["code"] for issue in audit["issues"]] == [
+        "MISSING_AE_ARTIFACT_QUALITY_SUMMARY_FIELDS",
+        "GROUNDED_RESPONSE_QUALITY_LINEAGE_MISMATCH",
+        "CX_GROUNDED_RESPONSE_QUALITY_FAILED",
+    ]
+
+
+def test_grounded_response_quality_gap_audit_handles_malformed_handoff_quality() -> (
+    None
+):
+    generation_record = sample_generation_record()
+    generation_record["request_metadata"]["grounded_response_quality_status"] = " "
+    artifact_handoff = sample_artifact_handoff()
+    artifact_handoff["quality_summary"] = "bad"
+
+    audit = build_grounded_response_quality_gap_audit(
+        generation_record,
+        artifact_handoff,
+    )
+
+    assert audit["coverage_status"] == "WARN"
+    assert audit["source_quality_status"] == "UNKNOWN"
+    assert audit["source_summaries"]["ae_artifact_handoff"]["available"] is False
+    assert audit["source_summaries"]["ae_artifact_handoff"]["missing_fields"] == [
+        "citation_status",
+        "grounding_required",
+        "retrieval_package_id",
+        "retrieval_package_hash",
+        "evidence_ref_count",
+    ]
+
+
 def test_project_timeline_events_handles_invalid_shape_and_safe_details() -> None:
     assert project_timeline_events({"events": "bad"}) == []
     assert project_timeline_events({"events": ["bad"]}) == []
@@ -381,15 +545,28 @@ def test_recovery_summary_and_action_type_helpers_map_safe_fields() -> None:
         "requires_user_confirmation": False,
     }
     assert audit_action_type(None) == "generation_run"
-    assert audit_action_type(sample_recovery_request(requested_action="repair")) == "repair"
-    assert audit_action_type(
-        sample_recovery_request(requested_action="sectional_retry")
-    ) == "repair"
-    assert audit_action_type(
-        sample_recovery_request(requested_action="manual_accept_with_warning")
-    ) == "override"
-    assert audit_action_type(sample_recovery_request(requested_action="regenerate")) == "retry"
-    assert audit_action_type(sample_recovery_request(requested_action="cancel")) == "override"
+    assert (
+        audit_action_type(sample_recovery_request(requested_action="repair"))
+        == "repair"
+    )
+    assert (
+        audit_action_type(sample_recovery_request(requested_action="sectional_retry"))
+        == "repair"
+    )
+    assert (
+        audit_action_type(
+            sample_recovery_request(requested_action="manual_accept_with_warning")
+        )
+        == "override"
+    )
+    assert (
+        audit_action_type(sample_recovery_request(requested_action="regenerate"))
+        == "retry"
+    )
+    assert (
+        audit_action_type(sample_recovery_request(requested_action="cancel"))
+        == "override"
+    )
 
 
 def test_generation_audit_route_requires_auth_and_returns_projection() -> None:
@@ -436,14 +613,20 @@ def test_generation_audit_route_maps_source_errors() -> None:
 def test_http_generation_audit_source_client_reads_cx_and_ae(monkeypatch) -> None:
     seen: list[tuple[str, str]] = []
 
-    def fake_get(url: str, *, headers: dict[str, str], timeout: float) -> httpx.Response:
+    def fake_get(
+        url: str, *, headers: dict[str, str], timeout: float
+    ) -> httpx.Response:
         seen.append((url, headers["X-Service-ID"]))
         if url.endswith("/events"):
             return httpx.Response(status_code=200, json={"events": []})
         if "artifact-handoffs" in url:
-            return httpx.Response(status_code=200, json={"artifact_handoff_id": "handoff-001"})
+            return httpx.Response(
+                status_code=200, json={"artifact_handoff_id": "handoff-001"}
+            )
         if "generation-requests" in url:
-            return httpx.Response(status_code=200, json={"recovery_request_id": "ae-rec-001"})
+            return httpx.Response(
+                status_code=200, json={"recovery_request_id": "ae-rec-001"}
+            )
         return httpx.Response(status_code=200, json={"cx_generation_id": "cx-gen-001"})
 
     monkeypatch.setattr(ag_audit.httpx, "get", fake_get)
@@ -480,7 +663,9 @@ def test_http_generation_audit_source_client_reads_cx_and_ae(monkeypatch) -> Non
     ]
 
 
-def test_http_generation_audit_source_client_maps_error_and_bad_json(monkeypatch) -> None:
+def test_http_generation_audit_source_client_maps_error_and_bad_json(
+    monkeypatch,
+) -> None:
     def source_error(*args: Any, **kwargs: Any) -> httpx.Response:
         return httpx.Response(
             status_code=404,
@@ -501,7 +686,9 @@ def test_http_generation_audit_source_client_maps_error_and_bad_json(monkeypatch
 
     monkeypatch.setattr(ag_audit.httpx, "get", bad_json)
     with pytest.raises(GenerationAuditError) as fallback_exc:
-        HttpGenerationAuditSourceClient(cx_base_url="http://cx.test").get_cx_generation_events(
+        HttpGenerationAuditSourceClient(
+            cx_base_url="http://cx.test"
+        ).get_cx_generation_events(
             "cx-gen-001",
             request_id=REQUEST_ID,
             trace_id=TRACE_ID,
