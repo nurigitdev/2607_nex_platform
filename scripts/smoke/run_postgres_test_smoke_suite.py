@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SHARED_PATH = ROOT / "services" / "_shared"
 DB_SCRIPT_PATH = ROOT / "scripts" / "db"
@@ -48,6 +47,11 @@ from run_ag_cx_processing_run_postgres_smoke import (  # noqa: E402
     SMOKE_ENV as AG_CX_PROCESSING_RUN_POSTGRES_SMOKE_ENV,
     SMOKE_PROFILE_ENV as AG_CX_PROCESSING_RUN_POSTGRES_PROFILE_ENV,
     run_ag_cx_processing_run_postgres_smoke,
+)
+from run_ag_generation_quality_postgres_smoke import (  # noqa: E402
+    SMOKE_ENV as AG_GENERATION_QUALITY_POSTGRES_SMOKE_ENV,
+    SMOKE_PROFILE_ENV as AG_GENERATION_QUALITY_POSTGRES_PROFILE_ENV,
+    run_ag_generation_quality_postgres_smoke,
 )
 from run_cx_processing_postgres_event_smoke import (  # noqa: E402
     SMOKE_ENV as CX_PROCESSING_EVENT_SMOKE_ENV,
@@ -158,7 +162,6 @@ from run_postgres_operations_smoke_pack import (  # noqa: E402
     run_postgres_operations_smoke_pack,
 )
 
-
 SMOKE_ENV = "NEX_POSTGRES_TEST_SMOKE_SUITE"
 SMOKE_PROFILE_ENV = "NEX_POSTGRES_TEST_SMOKE_SUITE_PROFILE"
 SMOKE_SERVICES_ENV = "NEX_POSTGRES_TEST_SMOKE_SUITE_SERVICES"
@@ -188,6 +191,7 @@ SUITE_STAGE_ORDER = (
     "ae_web_credential_login",
     "ag_retrieval_package_postgres",
     "ag_retrieval_threshold_decision_postgres",
+    "ag_generation_quality_postgres",
     "cx_processing_jobqueue",
     "cx_processing_events",
     "cx_processing_persistence",
@@ -294,6 +298,8 @@ def run_postgres_test_smoke_suite(
         AG_RETRIEVAL_PACKAGE_POSTGRES_PROFILE_ENV: profile,
         AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_SMOKE_ENV: "1",
         AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_PROFILE_ENV: profile,
+        AG_GENERATION_QUALITY_POSTGRES_SMOKE_ENV: "1",
+        AG_GENERATION_QUALITY_POSTGRES_PROFILE_ENV: profile,
         CX_PROCESSING_JOBQUEUE_SMOKE_ENV: "1",
         CX_PROCESSING_JOBQUEUE_PROFILE_ENV: profile,
         CX_PROCESSING_EVENT_SMOKE_ENV: "1",
@@ -361,6 +367,9 @@ def run_postgres_test_smoke_suite(
     stages["ag_retrieval_threshold_decision_postgres"] = _stage_from_child_smoke(
         run_ag_retrieval_threshold_decision_postgres_smoke(environ=smoke_env)
     )
+    stages["ag_generation_quality_postgres"] = _stage_from_child_smoke(
+        run_ag_generation_quality_postgres_smoke(environ=smoke_env)
+    )
     stages["cx_processing_jobqueue"] = _stage_from_child_smoke(
         run_cx_processing_postgres_jobqueue_smoke(environ=smoke_env)
     )
@@ -391,9 +400,7 @@ def _selected_service_ids(raw_value: str | None) -> tuple[str, ...]:
     if raw_value is None or not raw_value.strip():
         return DEFAULT_SERVICE_IDS
     return tuple(
-        service_id.strip()
-        for service_id in raw_value.split(",")
-        if service_id.strip()
+        service_id.strip() for service_id in raw_value.split(",") if service_id.strip()
     )
 
 
@@ -461,7 +468,9 @@ def _run_readiness_stage(
     for service_id in service_ids:
         try:
             database_env = service_database_env(service_id, profile=profile)
-            database_url = service_database_url(service_id, profile=profile, environ=env)
+            database_url = service_database_url(
+                service_id, profile=profile, environ=env
+            )
         except MigrationError as exc:
             services.append(
                 {
@@ -496,7 +505,9 @@ def _run_migration_stage(
     for service_id in service_ids:
         try:
             database_env = service_database_env(service_id, profile=profile)
-            database_url = service_database_url(service_id, profile=profile, environ=env)
+            database_url = service_database_url(
+                service_id, profile=profile, environ=env
+            )
             result = run_service_migrations(
                 service_id,
                 database_url=database_url,
@@ -546,7 +557,9 @@ def _stage_from_child_smoke(evidence: dict[str, object]) -> dict[str, object]:
     return stage
 
 
-def _stage_evidence(stage_name: str, services: list[dict[str, object]]) -> dict[str, object]:
+def _stage_evidence(
+    stage_name: str, services: list[dict[str, object]]
+) -> dict[str, object]:
     failed_services = [
         str(service["service_id"])
         for service in services
@@ -671,7 +684,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run the optional PostgreSQL test-profile smoke suite."
     )
-    parser.add_argument("--summary", action="store_true", help="Print a short result line.")
+    parser.add_argument(
+        "--summary", action="store_true", help="Print a short result line."
+    )
     return parser
 
 
@@ -679,7 +694,11 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     load_env_file(ROOT / ".env.local")
     evidence = run_postgres_test_smoke_suite()
-    output = summary_line(evidence) if args.summary else json.dumps(evidence, ensure_ascii=False)
+    output = (
+        summary_line(evidence)
+        if args.summary
+        else json.dumps(evidence, ensure_ascii=False)
+    )
     print(output)
     return 1 if evidence["status"] == "FAIL" else 0
 
