@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/ag_generation_quality_operator_disposition.v1.schema.json",
+  "title": "NeX AG Generation Quality Operator Disposition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "disposition_schema_version",
+    "disposition_id",
+    "cx_generation_id",
+    "trace_id",
+    "request_id",
+    "operator_ref",
+    "operator_action",
+    "disposition_status",
+    "reason_codes",
+    "operator_note_hash",
+    "operator_note_preview",
+    "quality_issue_refs",
+    "metadata",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "disposition_schema_version": {
+      "const": "ag_generation_quality_operator_disposition.v1"
+    },
+    "disposition_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cx_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operator_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operator_type",
+        "operator_id",
+        "tenant_id"
+      ],
+      "properties": {
+        "operator_type": {
+          "type": "string",
+          "enum": [
+            "service",
+            "user"
+          ]
+        },
+        "operator_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenant_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        }
+      }
+    },
+    "operator_action": {
+      "$ref": "#/$defs/operatorAction"
+    },
+    "disposition_status": {
+      "$ref": "#/$defs/dispositionStatus"
+    },
+    "reason_codes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/reasonCode"
+      }
+    },
+    "operator_note_hash": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "operator_note_preview": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 240
+    },
+    "quality_issue_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/qualityIssueRef"
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_note_stored",
+        "raw_prompt_stored",
+        "raw_generation_output_stored",
+        "operator_note_storage"
+      ],
+      "properties": {
+        "raw_note_stored": {
+          "const": false
+        },
+        "raw_prompt_stored": {
+          "const": false
+        },
+        "raw_generation_output_stored": {
+          "const": false
+        },
+        "operator_note_storage": {
+          "const": "hash_and_short_preview_only"
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "operatorAction": {
+      "type": "string",
+      "enum": [
+        "acknowledged",
+        "false_positive",
+        "needs_cx_repair",
+        "needs_ae_followup",
+        "escalated",
+        "resolved"
+      ]
+    },
+    "dispositionStatus": {
+      "type": "string",
+      "enum": [
+        "ACKNOWLEDGED",
+        "DISMISSED",
+        "IN_REPAIR",
+        "ESCALATED",
+        "RESOLVED"
+      ]
+    },
+    "reasonCode": {
+      "type": "string",
+      "enum": [
+        "metadata_gap",
+        "citation_quality",
+        "retrieval_quality",
+        "generation_quality",
+        "user_feedback",
+        "duplicate",
+        "not_reproducible",
+        "other"
+      ]
+    },
+    "qualityIssueRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_service",
+        "issue_type",
+        "issue_code",
+        "issue_ref_id"
+      ],
+      "properties": {
+        "source_service": {
+          "type": "string",
+          "enum": [
+            "nex-ae-api",
+            "nex-cx",
+            "nex-ag"
+          ]
+        },
+        "issue_type": {
+          "type": "string",
+          "enum": [
+            "retrieval_quality",
+            "generation_quality",
+            "citation_quality",
+            "artifact_quality",
+            "user_feedback",
+            "operator_review"
+          ]
+        },
+        "issue_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "issue_ref_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -141,6 +141,11 @@
       "schema": "schemas/generation/ag_generation_quality_issue_detail_projection.v1.schema.json"
     },
     {
+      "name": "ag_generation_quality_operator_disposition_raw_note_field",
+      "path": "tests/negative/generation/ag_generation_quality_operator_disposition.raw_note_field.json",
+      "schema": "schemas/generation/ag_generation_quality_operator_disposition.v1.schema.json"
+    },
+    {
       "name": "ae_chat_interaction_raw_user_message_leak",
       "path": "tests/negative/generation/ae_chat_interaction.raw_user_message_leak.json",
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"

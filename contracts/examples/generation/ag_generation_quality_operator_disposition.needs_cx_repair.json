@@ -1,0 +1,36 @@
+{
+  "disposition_schema_version": "ag_generation_quality_operator_disposition.v1",
+  "disposition_id": "ag-gq-disposition-001",
+  "cx_generation_id": "cx-gen-001",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "operator_ref": {
+    "operator_type": "user",
+    "operator_id": "employee-0001",
+    "tenant_id": "local-tenant"
+  },
+  "operator_action": "needs_cx_repair",
+  "disposition_status": "IN_REPAIR",
+  "reason_codes": [
+    "metadata_gap",
+    "user_feedback"
+  ],
+  "operator_note_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "operator_note_preview": "CX grounded quality metadata should be restored and replayed.",
+  "quality_issue_refs": [
+    {
+      "source_service": "nex-ag",
+      "issue_type": "generation_quality",
+      "issue_code": "MISSING_CX_GROUNDED_RESPONSE_QUALITY_FIELDS",
+      "issue_ref_id": "cx-gen-001"
+    }
+  ],
+  "metadata": {
+    "raw_note_stored": false,
+    "raw_prompt_stored": false,
+    "raw_generation_output_stored": false,
+    "operator_note_storage": "hash_and_short_preview_only"
+  },
+  "created_at": "2026-08-25T00:00:00Z",
+  "updated_at": "2026-08-25T00:00:00Z"
+}

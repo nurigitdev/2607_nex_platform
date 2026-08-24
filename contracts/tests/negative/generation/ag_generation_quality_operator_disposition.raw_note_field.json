@@ -1,0 +1,29 @@
+{
+  "disposition_schema_version": "ag_generation_quality_operator_disposition.v1",
+  "disposition_id": "ag-gq-disposition-raw-note",
+  "cx_generation_id": "cx-gen-001",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "operator_ref": {
+    "operator_type": "user",
+    "operator_id": "employee-0001",
+    "tenant_id": "local-tenant"
+  },
+  "operator_action": "needs_cx_repair",
+  "disposition_status": "IN_REPAIR",
+  "reason_codes": [
+    "metadata_gap"
+  ],
+  "operator_note_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "operator_note_preview": "CX grounded quality metadata should be restored.",
+  "quality_issue_refs": [],
+  "metadata": {
+    "raw_note_stored": false,
+    "raw_prompt_stored": false,
+    "raw_generation_output_stored": false,
+    "operator_note_storage": "hash_and_short_preview_only"
+  },
+  "raw_operator_note": "Do not expose raw operator notes in contracts.",
+  "created_at": "2026-08-25T00:00:00Z",
+  "updated_at": "2026-08-25T00:00:00Z"
+}
