@@ -536,6 +536,48 @@ def test_nex_ag_openapi_includes_generation_quality_issue_detail_contract() -> N
     )
 
 
+def test_ag_generation_quality_observability_closure_artifacts_are_linked() -> None:
+    root = Path(__file__).parents[1]
+    docs_readme = (root / "docs" / "README.md").read_text(encoding="utf-8")
+    expected_slice_docs = {
+        "0321": "0321_ag_generation_audit_grounded_quality_gap_audit.md",
+        "0322": "0322_ag_generation_audit_quality_projection_wiring.md",
+        "0323": "0323_ag_generation_audit_quality_contract_schema_hardening.md",
+        "0324": "0324_ag_generation_audit_quality_dashboard_surface.md",
+        "0325": "0325_ag_generation_audit_quality_postgresql_smoke_evidence.md",
+        "0326": "0326_ag_generation_quality_issue_detail_runbook_projection.md",
+        "0327": "0327_ag_generation_quality_issue_detail_api_wiring.md",
+        "0328": "0328_ag_generation_quality_issue_detail_contract_schema_hardening.md",
+        "0329": "0329_ag_generation_quality_issue_detail_postgresql_smoke_evidence.md",
+    }
+
+    for slice_id, filename in expected_slice_docs.items():
+        assert f"Slice {slice_id}" in docs_readme
+        assert f"slices/{filename}" in docs_readme
+        assert (root / "docs" / "slices" / filename).exists()
+
+    assert (
+        root
+        / "contracts"
+        / "schemas"
+        / "generation"
+        / "ag_generation_audit_grounded_response_quality_projection.v1.schema.json"
+    ).exists()
+    assert (
+        root
+        / "contracts"
+        / "schemas"
+        / "generation"
+        / "ag_generation_quality_issue_detail_projection.v1.schema.json"
+    ).exists()
+    smoke_text = (
+        root / "scripts" / "smoke" / "run_ag_generation_quality_postgres_smoke.py"
+    ).read_text(encoding="utf-8")
+    assert "issue_detail_contract_valid" in smoke_text
+    assert "issue_detail_runbook_surfaces_metadata_gap" in smoke_text
+    assert "NEX_AG_GENERATION_QUALITY_POSTGRES_SMOKE" in smoke_text
+
+
 def test_nex_cx_openapi_includes_service_log_retention_control() -> None:
     openapi_path = (
         Path(__file__).parents[1] / "contracts" / "openapi" / "nex-cx.openapi.yaml"
