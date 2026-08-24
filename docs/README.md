@@ -426,6 +426,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0320`](slices/0320_ae_web_grounded_response_quality_smoke_evidence.md) | `S32-010` AE Web grounded response quality smoke evidence. |
 | [`Slice 0321`](slices/0321_ag_generation_audit_grounded_quality_gap_audit.md) | `S33-001` AG generation audit grounded quality gap audit. |
 | [`Slice 0322`](slices/0322_ag_generation_audit_quality_projection_wiring.md) | `S33-002` AG generation audit quality projection wiring. |
+| [`Slice 0323`](slices/0323_ag_generation_audit_quality_contract_schema_hardening.md) | `S33-003` AG generation audit quality contract/schema hardening. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

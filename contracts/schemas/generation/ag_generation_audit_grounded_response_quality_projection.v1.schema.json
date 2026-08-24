@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/ag_generation_audit_grounded_response_quality_projection.v1.schema.json",
+  "title": "NeX AG Generation Audit Grounded Response Quality Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "projection_schema_version",
+    "gap_audit_schema_version",
+    "source_audit_schema_version",
+    "coverage_status",
+    "boundary_status",
+    "grounding_required",
+    "citation_status",
+    "source_quality_issue_count",
+    "projection_issue_count",
+    "issue_codes",
+    "lineage_mismatches",
+    "recommended_action",
+    "retrieval_package_id",
+    "retrieval_package_hash",
+    "structured_draft_id",
+    "evidence_ref_count",
+    "artifact_handoff_quality_available",
+    "raw_content_included",
+    "prompt_text_included",
+    "evidence_text_included",
+    "provider_detail_included"
+  ],
+  "properties": {
+    "projection_schema_version": {
+      "const": "ag_generation_audit_grounded_response_quality_projection.v1"
+    },
+    "gap_audit_schema_version": {
+      "const": "ag_generation_audit_grounded_response_quality_gap_audit.v1"
+    },
+    "source_audit_schema_version": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "cx_grounded_response_citation_quality_audit.v1",
+        null
+      ]
+    },
+    "coverage_status": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "WARN",
+        "FAIL",
+        "NOT_REQUIRED",
+        "UNKNOWN"
+      ]
+    },
+    "boundary_status": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "FAIL",
+        "NOT_REQUIRED",
+        "UNKNOWN"
+      ]
+    },
+    "grounding_required": {
+      "type": "boolean"
+    },
+    "citation_status": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "VALIDATED",
+        "FAILED",
+        "INVALID",
+        "NOT_REQUIRED",
+        "UNKNOWN",
+        null
+      ]
+    },
+    "source_quality_issue_count": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "projection_issue_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "issue_codes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "MISSING_CX_GROUNDED_RESPONSE_QUALITY_FIELDS",
+          "MISSING_AE_ARTIFACT_QUALITY_SUMMARY_FIELDS",
+          "GROUNDED_RESPONSE_QUALITY_LINEAGE_MISMATCH",
+          "CX_GROUNDED_RESPONSE_QUALITY_FAILED"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "lineage_mismatches": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "grounding_required",
+          "retrieval_package_id",
+          "retrieval_package_hash",
+          "structured_draft_id"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "recommended_action": {
+      "type": "string",
+      "enum": [
+        "no_action",
+        "investigate_quality_failure",
+        "complete_source_quality_metadata",
+        "wire_ag_quality_projection"
+      ]
+    },
+    "retrieval_package_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "retrieval_package_hash": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "structured_draft_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "evidence_ref_count": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "artifact_handoff_quality_available": {
+      "type": "boolean"
+    },
+    "raw_content_included": {
+      "const": false
+    },
+    "prompt_text_included": {
+      "const": false
+    },
+    "evidence_text_included": {
+      "const": false
+    },
+    "provider_detail_included": {
+      "const": false
+    }
+  }
+}

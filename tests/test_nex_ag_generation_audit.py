@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from jsonschema import Draft202012Validator
 
 import nex_ag.generation_audit as ag_audit
 from nex_ag.generation_audit import (
@@ -26,6 +29,7 @@ from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_tok
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
+CONTRACTS_ROOT = Path(__file__).resolve().parents[1] / "contracts"
 
 
 class FakeGenerationAuditSourceClient:
@@ -251,6 +255,15 @@ def build_client(
     client = source_client or FakeGenerationAuditSourceClient()
     register_generation_audit_routes(app, source_client=client)
     return TestClient(app), client
+
+
+def ag_grounded_response_quality_projection_schema() -> dict[str, Any]:
+    return json.loads(
+        (
+            CONTRACTS_ROOT
+            / "schemas/generation/ag_generation_audit_grounded_response_quality_projection.v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
 
 
 def test_build_generation_audit_projection_reads_services_and_redacts_timeline() -> (
@@ -575,6 +588,18 @@ def test_grounded_response_quality_projection_compacts_gap_audit_safely() -> Non
     assert projection["artifact_handoff_quality_available"] is True
     assert projection["raw_content_included"] is False
     assert "private output" not in str(projection)
+
+
+def test_grounded_response_quality_projection_matches_contract_schema() -> None:
+    gap_audit = build_grounded_response_quality_gap_audit(
+        sample_generation_record(),
+        sample_artifact_handoff(),
+    )
+    projection = grounded_response_quality_projection(gap_audit)
+
+    Draft202012Validator(ag_grounded_response_quality_projection_schema()).validate(
+        projection
+    )
 
 
 def test_grounded_response_quality_projection_handles_sparse_gap_audit() -> None:
