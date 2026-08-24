@@ -1,0 +1,39 @@
+{
+  "projection_schema_version": "ag_generation_quality_issue_detail_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-05T00:01:00Z",
+  "cx_generation_id": "cx-gen-001",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "source_projection": {
+    "projection_schema_version": "ag_generation_audit_projection.v1",
+    "created_at": "2026-08-05T00:00:08Z",
+    "grounded_response_quality_available": true
+  },
+  "quality": null,
+  "attention_required": true,
+  "severity": "WARNING",
+  "runbook": {
+    "runbook_id": "ag.generation_quality.source_projection_invalid.v1",
+    "recommended_operator_action": "restore_generation_quality_projection",
+    "operator_steps": [
+      "open_generation_audit_source",
+      "verify_grounded_response_quality_projection",
+      "rerun_generation_audit_projection"
+    ]
+  },
+  "debug_paths": {
+    "generation_audit_detail_path": null,
+    "operations_dashboard_path": "/admin/v1/operations/dashboard",
+    "retrieval_package_detail_path": null
+  },
+  "redaction_summary": {
+    "raw_content_included": true,
+    "prompt_text_included": false,
+    "evidence_text_included": false,
+    "provider_detail_included": false,
+    "excluded_fields": [
+      "raw_prompt"
+    ]
+  }
+}

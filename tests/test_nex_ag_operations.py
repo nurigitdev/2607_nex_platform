@@ -273,6 +273,16 @@ def ag_operations_projection_schema() -> dict[str, object]:
     return json.loads(schema_path.read_text(encoding="utf-8"))
 
 
+def ag_generation_quality_issue_detail_projection_schema() -> dict[str, object]:
+    schema_path = (
+        CONTRACT_ROOT
+        / "schemas"
+        / "generation"
+        / "ag_generation_quality_issue_detail_projection.v1.schema.json"
+    )
+    return json.loads(schema_path.read_text(encoding="utf-8"))
+
+
 def assert_ag_operations_projection_contract(payload: dict[str, object]) -> None:
     Draft202012Validator(ag_operations_projection_schema()).validate(payload)
 
@@ -3390,6 +3400,23 @@ def test_generation_quality_issue_detail_projection_handles_invalid_source() -> 
         "operations_dashboard_path": "/admin/v1/operations/dashboard",
         "retrieval_package_detail_path": None,
     }
+
+
+def test_generation_quality_issue_detail_projection_matches_contract_schema() -> None:
+    projection = build_generation_quality_issue_detail_projection(
+        generation_audit_projection_record(
+            cx_generation_id="cx-gen-contract",
+            coverage_status="WARN",
+            boundary_status="PASS",
+            issue_codes=["MISSING_CX_GROUNDED_RESPONSE_QUALITY_FIELDS"],
+        ),
+        checked_at="2026-08-05T00:03:00Z",
+        request_trace_id=TRACE_ID,
+    )
+
+    Draft202012Validator(
+        ag_generation_quality_issue_detail_projection_schema()
+    ).validate(projection)
 
 
 def test_generation_quality_issue_candidates_handle_warning_only_attention() -> None:

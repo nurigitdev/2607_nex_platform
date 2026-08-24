@@ -108,6 +108,10 @@ paths:
       responses:
         "200":
           description: Read-only redacted generation quality issue detail and operator runbook projection assembled from the AG generation audit projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgGenerationQualityIssueDetailProjection"
         "401":
           description: Service claim is missing or invalid.
         "404":
@@ -1181,6 +1185,71 @@ components:
         - WARNING
         - ERROR
         - CRITICAL
+    AgGenerationQualityIssueDetailProjection:
+      type: object
+      additionalProperties: true
+      required:
+        - projection_schema_version
+        - projection_status
+        - checked_at
+        - cx_generation_id
+        - source_projection
+        - quality
+        - attention_required
+        - severity
+        - runbook
+        - debug_paths
+        - redaction_summary
+      properties:
+        projection_schema_version:
+          type: string
+          const: ag_generation_quality_issue_detail_projection.v1
+        projection_status:
+          type: string
+          enum:
+            - READY
+            - DEGRADED
+        checked_at:
+          type: string
+          format: date-time
+        cx_generation_id:
+          type: string
+          minLength: 1
+        trace_id:
+          type:
+            - string
+            - "null"
+          pattern: "^[0-9a-f]{32}$"
+        request_id:
+          type:
+            - string
+            - "null"
+          minLength: 1
+        source_projection:
+          type: object
+          additionalProperties: true
+        quality:
+          type:
+            - object
+            - "null"
+          additionalProperties: true
+        attention_required:
+          type: boolean
+        severity:
+          type: string
+          enum:
+            - INFO
+            - WARNING
+            - ERROR
+        runbook:
+          type: object
+          additionalProperties: true
+        debug_paths:
+          type: object
+          additionalProperties: true
+        redaction_summary:
+          type: object
+          additionalProperties: true
     AgOperationsProjection:
       type: object
       required:

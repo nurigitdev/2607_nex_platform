@@ -176,6 +176,11 @@
       "schema": "schemas/generation/ag_generation_audit_grounded_response_quality_projection.v1.schema.json"
     },
     {
+      "name": "ag_generation_quality_issue_detail_projection_metadata_gap",
+      "path": "examples/generation/ag_generation_quality_issue_detail_projection.metadata_gap.json",
+      "schema": "schemas/generation/ag_generation_quality_issue_detail_projection.v1.schema.json"
+    },
+    {
       "name": "ae_chat_interaction_mock",
       "path": "examples/generation/ae_chat_interaction.mock_success.json",
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"

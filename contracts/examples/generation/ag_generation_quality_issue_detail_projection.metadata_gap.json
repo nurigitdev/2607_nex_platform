@@ -1,0 +1,70 @@
+{
+  "projection_schema_version": "ag_generation_quality_issue_detail_projection.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-05T00:01:00Z",
+  "cx_generation_id": "cx-gen-001",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "request_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "source_projection": {
+    "projection_schema_version": "ag_generation_audit_projection.v1",
+    "created_at": "2026-08-05T00:00:08Z",
+    "grounded_response_quality_available": true
+  },
+  "quality": {
+    "cx_generation_id": "cx-gen-001",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "created_at": "2026-08-05T00:00:08Z",
+    "coverage_status": "WARN",
+    "boundary_status": "UNKNOWN",
+    "citation_status": "VALIDATED",
+    "grounding_required": true,
+    "source_quality_issue_count": null,
+    "projection_issue_count": 1,
+    "issue_codes": [
+      "MISSING_CX_GROUNDED_RESPONSE_QUALITY_FIELDS"
+    ],
+    "lineage_mismatches": [],
+    "recommended_action": "complete_source_quality_metadata",
+    "retrieval_package_id": "cx-ret-001",
+    "retrieval_package_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "structured_draft_id": "draft-001",
+    "evidence_ref_count": 2,
+    "artifact_handoff_quality_available": false,
+    "detail_path": "/admin/v1/generation-audit/generations/cx-gen-001"
+  },
+  "attention_required": true,
+  "severity": "WARNING",
+  "runbook": {
+    "runbook_id": "ag.generation_quality.metadata_gap_triage.v1",
+    "recommended_operator_action": "restore_missing_quality_metadata",
+    "operator_steps": [
+      "open_generation_audit_detail",
+      "verify_cx_grounded_response_quality_metadata",
+      "verify_ae_artifact_handoff_quality_summary"
+    ]
+  },
+  "debug_paths": {
+    "generation_audit_detail_path": "/admin/v1/generation-audit/generations/cx-gen-001",
+    "operations_dashboard_path": "/admin/v1/operations/dashboard",
+    "retrieval_package_detail_path": "/admin/v1/operations/retrieval-packages/cx-ret-001"
+  },
+  "redaction_summary": {
+    "raw_content_included": false,
+    "prompt_text_included": false,
+    "evidence_text_included": false,
+    "provider_detail_included": false,
+    "excluded_fields": [
+      "raw_prompt",
+      "messages",
+      "source_text",
+      "output_text",
+      "raw_output",
+      "provider_url",
+      "provider_endpoint",
+      "model_path",
+      "storage_path"
+    ]
+  }
+}

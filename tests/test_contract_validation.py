@@ -501,6 +501,41 @@ def test_nex_ag_openapi_includes_retrieval_calibration_and_decision_contracts() 
     assert "ag_retrieval_threshold_decision_projection.v1" in projection_versions
 
 
+def test_nex_ag_openapi_includes_generation_quality_issue_detail_contract() -> None:
+    openapi_path = (
+        Path(__file__).parents[1] / "contracts" / "openapi" / "nex-ag.openapi.yaml"
+    )
+    spec = yaml.safe_load(openapi_path.read_text(encoding="utf-8"))
+
+    operation = spec["paths"][
+        "/admin/v1/generation-audit/generations/{cx_generation_id}/quality-issue-detail"
+    ]["get"]
+    parameters = {parameter["name"]: parameter for parameter in operation["parameters"]}
+    response_schema = operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]
+    component = spec["components"]["schemas"][
+        "AgGenerationQualityIssueDetailProjection"
+    ]
+
+    assert operation["operationId"] == "getAgGenerationQualityIssueDetailProjection"
+    assert set(parameters) == {
+        "cx_generation_id",
+        "artifact_handoff_id",
+        "recovery_request_id",
+    }
+    assert parameters["cx_generation_id"]["required"] is True
+    assert response_schema["$ref"] == (
+        "#/components/schemas/AgGenerationQualityIssueDetailProjection"
+    )
+    assert component["properties"]["projection_schema_version"]["const"] == (
+        "ag_generation_quality_issue_detail_projection.v1"
+    )
+    assert {"quality", "runbook", "debug_paths", "redaction_summary"}.issubset(
+        set(component["required"])
+    )
+
+
 def test_nex_cx_openapi_includes_service_log_retention_control() -> None:
     openapi_path = (
         Path(__file__).parents[1] / "contracts" / "openapi" / "nex-cx.openapi.yaml"

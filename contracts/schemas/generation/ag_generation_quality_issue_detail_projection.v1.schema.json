@@ -1,0 +1,397 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/ag_generation_quality_issue_detail_projection.v1.schema.json",
+  "title": "NeX AG Generation Quality Issue Detail Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "projection_schema_version",
+    "projection_status",
+    "checked_at",
+    "cx_generation_id",
+    "trace_id",
+    "request_id",
+    "source_projection",
+    "quality",
+    "attention_required",
+    "severity",
+    "runbook",
+    "debug_paths",
+    "redaction_summary"
+  ],
+  "properties": {
+    "projection_schema_version": {
+      "const": "ag_generation_quality_issue_detail_projection.v1"
+    },
+    "projection_status": {
+      "type": "string",
+      "enum": [
+        "READY",
+        "DEGRADED"
+      ]
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cx_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "request_trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "source_projection": {
+      "$ref": "#/$defs/source_projection"
+    },
+    "quality": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/quality_item"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "attention_required": {
+      "type": "boolean"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "INFO",
+        "WARNING",
+        "ERROR"
+      ]
+    },
+    "runbook": {
+      "$ref": "#/$defs/runbook"
+    },
+    "debug_paths": {
+      "$ref": "#/$defs/debug_paths"
+    },
+    "redaction_summary": {
+      "$ref": "#/$defs/redaction_summary"
+    }
+  },
+  "$defs": {
+    "source_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "created_at",
+        "grounded_response_quality_available"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "ag_generation_audit_projection.v1",
+            null
+          ]
+        },
+        "created_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "grounded_response_quality_available": {
+          "type": "boolean"
+        }
+      }
+    },
+    "quality_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cx_generation_id",
+        "trace_id",
+        "request_id",
+        "created_at",
+        "coverage_status",
+        "boundary_status",
+        "citation_status",
+        "grounding_required",
+        "source_quality_issue_count",
+        "projection_issue_count",
+        "issue_codes",
+        "lineage_mismatches",
+        "recommended_action",
+        "retrieval_package_id",
+        "retrieval_package_hash",
+        "structured_draft_id",
+        "evidence_ref_count",
+        "artifact_handoff_quality_available",
+        "detail_path"
+      ],
+      "properties": {
+        "cx_generation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "created_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "coverage_status": {
+          "$ref": "#/$defs/generation_quality_status"
+        },
+        "boundary_status": {
+          "$ref": "#/$defs/generation_quality_status"
+        },
+        "citation_status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "grounding_required": {
+          "type": "boolean"
+        },
+        "source_quality_issue_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "projection_issue_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "issue_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "lineage_mismatches": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "recommended_action": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "retrieval_package_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "retrieval_package_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "structured_draft_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "evidence_ref_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "artifact_handoff_quality_available": {
+          "type": "boolean"
+        },
+        "detail_path": {
+          "type": "string",
+          "pattern": "^/admin/v1/generation-audit/generations/[^/]+$"
+        }
+      }
+    },
+    "generation_quality_status": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "WARN",
+        "FAIL",
+        "NOT_REQUIRED",
+        "UNKNOWN"
+      ]
+    },
+    "runbook": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runbook_id",
+        "recommended_operator_action",
+        "operator_steps"
+      ],
+      "properties": {
+        "runbook_id": {
+          "type": "string",
+          "enum": [
+            "ag.generation_quality.source_projection_invalid.v1",
+            "ag.generation_quality.failure_triage.v1",
+            "ag.generation_quality.metadata_gap_triage.v1",
+            "ag.generation_quality.warning_triage.v1",
+            "ag.generation_quality.no_attention_required.v1"
+          ]
+        },
+        "recommended_operator_action": {
+          "type": "string",
+          "enum": [
+            "restore_generation_quality_projection",
+            "triage_grounded_generation_quality_failure",
+            "restore_missing_quality_metadata",
+            "review_generation_quality_warning",
+            "complete_source_quality_metadata",
+            "observe"
+          ]
+        },
+        "operator_steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "open_generation_audit_source",
+              "verify_grounded_response_quality_projection",
+              "rerun_generation_audit_projection",
+              "open_generation_audit_detail",
+              "compare_cx_and_ae_quality_lineage",
+              "decide_repair_retry_or_user_escalation",
+              "verify_cx_grounded_response_quality_metadata",
+              "verify_ae_artifact_handoff_quality_summary",
+              "review_issue_codes_and_lineage_mismatches",
+              "complete_missing_quality_metadata",
+              "keep_dashboard_monitoring"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "debug_paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generation_audit_detail_path",
+        "operations_dashboard_path",
+        "retrieval_package_detail_path"
+      ],
+      "properties": {
+        "generation_audit_detail_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^/admin/v1/generation-audit/generations/[^/]+$"
+        },
+        "operations_dashboard_path": {
+          "const": "/admin/v1/operations/dashboard"
+        },
+        "retrieval_package_detail_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^/admin/v1/operations/retrieval-packages/[^/]+$"
+        }
+      }
+    },
+    "redaction_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_content_included",
+        "prompt_text_included",
+        "evidence_text_included",
+        "provider_detail_included",
+        "excluded_fields"
+      ],
+      "properties": {
+        "raw_content_included": {
+          "const": false
+        },
+        "prompt_text_included": {
+          "const": false
+        },
+        "evidence_text_included": {
+          "const": false
+        },
+        "provider_detail_included": {
+          "const": false
+        },
+        "excluded_fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "raw_prompt",
+              "messages",
+              "source_text",
+              "output_text",
+              "raw_output",
+              "provider_url",
+              "provider_endpoint",
+              "model_path",
+              "storage_path"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}
