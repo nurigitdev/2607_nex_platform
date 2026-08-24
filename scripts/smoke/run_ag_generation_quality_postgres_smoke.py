@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from jsonschema import Draft202012Validator, ValidationError
 from sqlalchemy import text
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,6 +22,7 @@ sys.path.insert(0, str(AG_PATH))
 
 from nex_ag.generation_audit import build_generation_audit_projection  # noqa: E402
 from nex_ag.operations import (  # noqa: E402
+    build_generation_quality_issue_detail_projection,
     build_operations_dashboard_snapshot_projection,
     build_operations_issue_candidate_projection,
 )
@@ -205,11 +207,17 @@ def _execute_ag_generation_quality_postgres_smoke(
             recent_limit=5,
             generation_audit_projections=[audit_projection],
         )
+        issue_detail = build_generation_quality_issue_detail_projection(
+            audit_projection,
+            checked_at=CREATED_AT,
+            request_trace_id=refs["trace_id"],
+        )
         checks = _checks(
             stored_event=stored_event,
             listed_events=listed_events,
             dashboard=dashboard,
             issue_projection=issue_projection,
+            issue_detail=issue_detail,
             audit_projection=audit_projection,
             refs=refs,
             raw_values=raw_values,
@@ -231,6 +239,7 @@ def _execute_ag_generation_quality_postgres_smoke(
                 "grounded_response_quality": audit_projection.get(
                     "grounded_response_quality", {}
                 ).get("projection_schema_version"),
+                "issue_detail": issue_detail.get("projection_schema_version"),
                 "dashboard": dashboard.get("projection_schema_version"),
                 "issue_candidates": issue_projection.get("projection_schema_version"),
             },
@@ -254,6 +263,10 @@ def _execute_ag_generation_quality_postgres_smoke(
                 "issue_codes": audit_projection.get(
                     "grounded_response_quality", {}
                 ).get("issue_codes", []),
+                "issue_detail_severity": issue_detail.get("severity"),
+                "issue_detail_runbook_id": issue_detail.get("runbook", {}).get(
+                    "runbook_id"
+                ),
             },
             "checks": checks,
             "raw_values": raw_values,
@@ -421,6 +434,7 @@ def _checks(
     listed_events: list[dict[str, Any]],
     dashboard: dict[str, Any],
     issue_projection: dict[str, Any],
+    issue_detail: dict[str, Any],
     audit_projection: dict[str, Any],
     refs: dict[str, str],
     raw_values: list[str],
@@ -440,6 +454,7 @@ def _checks(
             "listed_events": listed_events,
             "dashboard_quality": dashboard_quality,
             "quality_candidates": quality_candidates,
+            "issue_detail": issue_detail,
             "audit_projection": audit_projection,
         },
         ensure_ascii=False,
@@ -474,10 +489,43 @@ def _checks(
             and quality_candidates[0].get("signal", {}).get("cx_generation_ids")
             == [refs["cx_generation_id"]]
         ),
+        "issue_detail_contract_valid": _issue_detail_contract_valid(issue_detail),
+        "issue_detail_runbook_surfaces_metadata_gap": (
+            issue_detail.get("projection_schema_version")
+            == "ag_generation_quality_issue_detail_projection.v1"
+            and issue_detail.get("severity") == "WARNING"
+            and issue_detail.get("attention_required") is True
+            and issue_detail.get("runbook", {}).get("runbook_id")
+            == "ag.generation_quality.metadata_gap_triage.v1"
+            and issue_detail.get("debug_paths", {}).get(
+                "generation_audit_detail_path"
+            )
+            == f"/admin/v1/generation-audit/generations/{refs['cx_generation_id']}"
+        ),
         "raw_values_absent_from_ag_evidence": not any(
             value and value in serialized_evidence for value in raw_values
         ),
     }
+
+
+def _issue_detail_contract_valid(issue_detail: dict[str, Any]) -> bool:
+    try:
+        Draft202012Validator(_issue_detail_schema()).validate(issue_detail)
+    except (ValidationError, OSError, json.JSONDecodeError):
+        return False
+    return True
+
+
+def _issue_detail_schema() -> dict[str, Any]:
+    return json.loads(
+        (
+            ROOT
+            / "contracts"
+            / "schemas"
+            / "generation"
+            / "ag_generation_quality_issue_detail_projection.v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
 
 
 def _execution_failure(

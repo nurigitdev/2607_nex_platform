@@ -3912,6 +3912,7 @@ def test_ag_generation_quality_postgres_smoke_reports_pass_without_leaking_secre
                 "grounded_response_quality": (
                     "ag_generation_audit_grounded_response_quality_projection.v1"
                 ),
+                "issue_detail": "ag_generation_quality_issue_detail_projection.v1",
                 "dashboard": "ag_operations_dashboard_snapshot_projection.v1",
                 "issue_candidates": "ag_operations_issue_candidate_projection.v1",
             },
@@ -3932,6 +3933,8 @@ def test_ag_generation_quality_postgres_smoke_reports_pass_without_leaking_secre
                 "quality_projection_warns_on_missing_cx_metadata": True,
                 "dashboard_surfaces_generation_quality": True,
                 "issue_candidate_flags_quality_attention": True,
+                "issue_detail_contract_valid": True,
+                "issue_detail_runbook_surfaces_metadata_gap": True,
                 "raw_values_absent_from_ag_evidence": True,
             },
             "raw_values": ["raw prompt", "provider secret"],
@@ -4079,6 +4082,15 @@ def test_ag_generation_quality_postgres_smoke_execute_with_sqlite_fixture(
     assert evidence["quality_status"]["issue_codes"] == [
         "MISSING_CX_GROUNDED_RESPONSE_QUALITY_FIELDS"
     ]
+    assert evidence["projection_versions"]["issue_detail"] == (
+        "ag_generation_quality_issue_detail_projection.v1"
+    )
+    assert evidence["quality_status"]["issue_detail_severity"] == "WARNING"
+    assert evidence["quality_status"]["issue_detail_runbook_id"] == (
+        "ag.generation_quality.metadata_gap_triage.v1"
+    )
+    assert evidence["checks"]["issue_detail_contract_valid"] is True
+    assert evidence["checks"]["issue_detail_runbook_surfaces_metadata_gap"] is True
     assert all(evidence["checks"].values())
     assert ag_generation_quality_smoke._redaction_safe(
         {key: value for key, value in evidence.items() if key != "raw_values"},
@@ -4144,6 +4156,13 @@ def test_ag_generation_quality_postgres_smoke_helpers_cover_edges(
                 "issue_codes": [],
             }
         },
+        issue_detail={
+            "projection_schema_version": "wrong",
+            "severity": "INFO",
+            "attention_required": False,
+            "runbook": {"runbook_id": "wrong"},
+            "debug_paths": {"generation_audit_detail_path": None},
+        },
         refs=refs,
         raw_values=["private"],
     )
@@ -4154,6 +4173,8 @@ def test_ag_generation_quality_postgres_smoke_helpers_cover_edges(
         "quality_projection_warns_on_missing_cx_metadata": False,
         "dashboard_surfaces_generation_quality": False,
         "issue_candidate_flags_quality_attention": False,
+        "issue_detail_contract_valid": False,
+        "issue_detail_runbook_surfaces_metadata_gap": False,
         "raw_values_absent_from_ag_evidence": True,
     }
     assert ag_generation_quality_smoke._execution_failure(
