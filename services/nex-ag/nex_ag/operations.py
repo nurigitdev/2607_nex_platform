@@ -96,16 +96,13 @@ from nex_runtime.retrieval_policies import list_retrieval_policy_records
 
 DEFAULT_OPERATIONAL_EVENT_STORE = InMemoryOperationalEventStore()
 DEFAULT_JOB_QUEUE_STORES = {
-    service_id: InMemoryJobQueue()
-    for service_id in sorted(SERVICE_SPECS)
+    service_id: InMemoryJobQueue() for service_id in sorted(SERVICE_SPECS)
 }
 DEFAULT_SERVICE_LOG_STORES = {
-    service_id: InMemoryServiceLogStore()
-    for service_id in sorted(SERVICE_SPECS)
+    service_id: InMemoryServiceLogStore() for service_id in sorted(SERVICE_SPECS)
 }
 DEFAULT_WORKER_HEARTBEAT_STORES = {
-    service_id: InMemoryWorkerHeartbeatStore()
-    for service_id in sorted(SERVICE_SPECS)
+    service_id: InMemoryWorkerHeartbeatStore() for service_id in sorted(SERVICE_SPECS)
 }
 
 AG_OPERATIONS_SOURCE_MODE_ENV = "NEX_AG_OPERATIONS_SOURCE_MODE"
@@ -164,8 +161,7 @@ class RetrievalPackageTraceStore(Protocol):
         request_id: str | None = None,
         retrieval_policy_id: str | None = None,
         limit: int = 500,
-    ) -> list[dict[str, Any]]:
-        ...
+    ) -> list[dict[str, Any]]: ...
 
 
 class CxProcessingRunDashboardStore(Protocol):
@@ -183,14 +179,15 @@ class CxProcessingRunDashboardStore(Protocol):
         job_id: str | None = None,
         include_steps: bool = False,
         limit: int = 500,
-    ) -> list[dict[str, Any]]:
-        ...
+    ) -> list[dict[str, Any]]: ...
 
 
 MIN_SERVICE_LOG_RETENTION_DAYS = 7
 MAX_SERVICE_LOG_RETENTION_DAYS = 365
 MAX_OPERATION_EVENT_QUERY_LENGTH = 128
 MAX_DASHBOARD_RECENT_LIMIT = 20
+GENERATION_QUALITY_STATUSES = ("PASS", "WARN", "FAIL", "NOT_REQUIRED", "UNKNOWN")
+GENERATION_QUALITY_ATTENTION_STATUSES = {"WARN", "FAIL", "UNKNOWN"}
 OPERATIONS_ISSUE_CANDIDATE_RULES = (
     {
         "rule_id": "operations_source_unavailable.v1",
@@ -312,6 +309,14 @@ OPERATIONS_ISSUE_CANDIDATE_RULES = (
         "enabled": True,
         "signal_type": "retrieval_threshold_decision",
     },
+    {
+        "rule_id": "generation_quality_attention_required.v1",
+        "severity": "WARNING",
+        "title": "Generation quality attention required",
+        "description": "One or more grounded generation quality projections need review.",
+        "enabled": True,
+        "signal_type": "generation_quality",
+    },
 )
 RETRIEVAL_THRESHOLD_ISSUE_RULES_BY_READINESS = {
     "NO_DECISION_CHECKPOINT": {
@@ -421,16 +426,22 @@ class ReadOnlyJobQueue:
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         return self.delegate.get_job(job_id)
 
-    def start_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
+    def start_job(
+        self, job_id: str, *, updated_at: str | None = None
+    ) -> dict[str, Any]:
         raise _operations_source_read_only_job_error()
 
-    def complete_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
+    def complete_job(
+        self, job_id: str, *, updated_at: str | None = None
+    ) -> dict[str, Any]:
         raise _operations_source_read_only_job_error()
 
     def fail_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
         raise _operations_source_read_only_job_error()
 
-    def cancel_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
+    def cancel_job(
+        self, job_id: str, *, updated_at: str | None = None
+    ) -> dict[str, Any]:
         raise _operations_source_read_only_job_error()
 
     def claim_next_job(
@@ -564,7 +575,9 @@ class OperationsSource:
 
     def __post_init__(self) -> None:
         if self.service_id not in SERVICE_SPECS:
-            raise ValueError(f"unsupported operations source service: {self.service_id}")
+            raise ValueError(
+                f"unsupported operations source service: {self.service_id}"
+            )
         if not self.source_kind:
             raise ValueError("source_kind must be a non-empty string")
         if self.database_env is not None and not self.database_env:
@@ -626,9 +639,7 @@ class AgOperationsSourceRuntime:
             "profile": self.profile,
             "selected_service_ids": list(self.selected_service_ids),
             "registry": (
-                self.registry.to_summary()
-                if self.registry is not None
-                else None
+                self.registry.to_summary() if self.registry is not None else None
             ),
         }
 
@@ -718,7 +729,9 @@ class RegistryOperationalEventStore:
     ) -> list[dict[str, Any]]:
         normalized_limit = normalize_operational_event_limit(limit)
         event_stores = self.registry.event_stores()
-        selected_service_ids = [service_id] if service_id is not None else sorted(SERVICE_SPECS)
+        selected_service_ids = (
+            [service_id] if service_id is not None else sorted(SERVICE_SPECS)
+        )
         events: list[dict[str, Any]] = []
         for selected_service_id in selected_service_ids:
             store = event_stores.get(selected_service_id)
@@ -776,7 +789,9 @@ class RegistryServiceLogStore:
     ) -> list[dict[str, Any]]:
         normalized_limit = normalize_service_log_limit(limit)
         stores = self.registry.service_log_stores()
-        selected_service_ids = [service_id] if service_id is not None else sorted(SERVICE_SPECS)
+        selected_service_ids = (
+            [service_id] if service_id is not None else sorted(SERVICE_SPECS)
+        )
         logs: list[dict[str, Any]] = []
         for selected_service_id in selected_service_ids:
             store = stores.get(selected_service_id)
@@ -818,7 +833,10 @@ def build_operations_source_registry(
     log_store_map = service_log_stores or {}
     worker_store_map = worker_heartbeat_stores or {}
     source_ids = sorted(
-        set(queue_map) | set(event_store_map) | set(log_store_map) | set(worker_store_map)
+        set(queue_map)
+        | set(event_store_map)
+        | set(log_store_map)
+        | set(worker_store_map)
     )
     registry = OperationsSourceRegistry()
     for service_id in source_ids:
@@ -933,9 +951,7 @@ def select_ag_operations_source_service_ids(raw_value: str | None) -> tuple[str,
             f"{AG_OPERATIONS_SOURCE_SERVICES_ENV} selected no services"
         )
     unknown_services = [
-        service_id
-        for service_id in selected
-        if service_id not in SERVICE_SPECS
+        service_id for service_id in selected if service_id not in SERVICE_SPECS
     ]
     if unknown_services:
         raise OperationsSourceConfigError(
@@ -1066,9 +1082,7 @@ def _build_postgres_operations_source(
     api_session_factory = session_factory_builder(api_engine)
     return OperationsSource(
         service_id=service_id,
-        job_queue=ReadOnlyJobQueue(
-            SqlAlchemyJobQueue(worker_session_factory)
-        ),
+        job_queue=ReadOnlyJobQueue(SqlAlchemyJobQueue(worker_session_factory)),
         operational_event_store=ReadOnlyOperationalEventStore(
             SqlAlchemyOperationalEventStore(api_session_factory)
         ),
@@ -1114,7 +1128,10 @@ def register_operational_event_routes(
         auth_problem = _authorize_ag_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
-        if severity is not None and severity.upper() not in OPERATIONAL_EVENT_SEVERITIES:
+        if (
+            severity is not None
+            and severity.upper() not in OPERATIONAL_EVENT_SEVERITIES
+        ):
             return problem_response(
                 request,
                 status_code=400,
@@ -1358,7 +1375,9 @@ def register_service_log_routes(
                 ),
             )
 
-    @app.post("/admin/v1/operations/logs/retention/{service_id}/purge", response_model=None)
+    @app.post(
+        "/admin/v1/operations/logs/retention/{service_id}/purge", response_model=None
+    )
     def dispatch_service_log_retention_purge(
         service_id: str,
         request: Request,
@@ -1664,7 +1683,9 @@ def register_job_operation_routes(
             request_trace_id=trace_id_from_headers(request),
         )
 
-    @app.post("/admin/v1/operations/jobs/{service_id}/{job_id}/cancel", response_model=None)
+    @app.post(
+        "/admin/v1/operations/jobs/{service_id}/{job_id}/cancel", response_model=None
+    )
     def cancel_operational_job(
         service_id: str,
         job_id: str,
@@ -1727,7 +1748,9 @@ def register_job_operation_routes(
             request_trace_id=trace_id,
         )
 
-    @app.post("/admin/v1/operations/jobs/{service_id}/{job_id}/retry", response_model=None)
+    @app.post(
+        "/admin/v1/operations/jobs/{service_id}/{job_id}/retry", response_model=None
+    )
     def retry_operational_job(
         service_id: str,
         job_id: str,
@@ -1792,7 +1815,9 @@ def register_job_operation_routes(
             request_trace_id=trace_id,
         )
 
-    @app.post("/admin/v1/operations/jobs/{service_id}/{job_id}/replay", response_model=None)
+    @app.post(
+        "/admin/v1/operations/jobs/{service_id}/{job_id}/replay", response_model=None
+    )
     def replay_operational_job(
         service_id: str,
         job_id: str,
@@ -2032,7 +2057,9 @@ def register_unified_operation_routes(
         since: str | None = None,
         until: str | None = None,
         recent_limit: int = Query(default=5, ge=1),
-        stale_after_seconds: int = Query(default=DEFAULT_WORKER_STALE_AFTER_SECONDS, ge=1),
+        stale_after_seconds: int = Query(
+            default=DEFAULT_WORKER_STALE_AFTER_SECONDS, ge=1
+        ),
     ):
         auth_problem = _authorize_ag_request(request, authorization)
         if auth_problem is not None:
@@ -2083,7 +2110,9 @@ def register_unified_operation_routes(
         service_id: str | None = None,
         worker_type: str | None = None,
         status: str | None = None,
-        stale_after_seconds: int = Query(default=DEFAULT_WORKER_STALE_AFTER_SECONDS, ge=1),
+        stale_after_seconds: int = Query(
+            default=DEFAULT_WORKER_STALE_AFTER_SECONDS, ge=1
+        ),
         since: str | None = None,
         until: str | None = None,
         sort: str | None = None,
@@ -2124,13 +2153,17 @@ def register_unified_operation_routes(
             request_trace_id=trace_id_from_headers(request),
         )
 
-    @app.get("/admin/v1/operations/workers/{service_id}/{worker_id}", response_model=None)
+    @app.get(
+        "/admin/v1/operations/workers/{service_id}/{worker_id}", response_model=None
+    )
     def get_worker_detail_projection(
         service_id: str,
         worker_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
-        stale_after_seconds: int = Query(default=DEFAULT_WORKER_STALE_AFTER_SECONDS, ge=1),
+        stale_after_seconds: int = Query(
+            default=DEFAULT_WORKER_STALE_AFTER_SECONDS, ge=1
+        ),
         event_limit: int = Query(default=50, ge=1),
     ):
         auth_problem = _authorize_ag_request(request, authorization)
@@ -2246,9 +2279,7 @@ def build_operational_event_projection(
     )
     if q is not None:
         events = [
-            event
-            for event in events
-            if _operational_event_matches_query(event, q)
+            event for event in events if _operational_event_matches_query(event, q)
         ]
     events = _apply_operation_query_options(
         events,
@@ -2361,11 +2392,7 @@ def build_service_log_projection(
             }
             continue
         if q is not None:
-            logs = [
-                entry
-                for entry in logs
-                if _service_log_matches_query(entry, q)
-            ]
+            logs = [entry for entry in logs if _service_log_matches_query(entry, q)]
         logs = _filter_records_by_operation_time(
             logs,
             options,
@@ -2435,9 +2462,7 @@ def build_service_log_query_policy_projection(
             "status": policy["status"],
             "default_limit": policy["query"]["default_limit"],
             "max_limit": policy["query"]["max_limit"],
-            "default_retention_days": policy["retention"][
-                "default_retention_days"
-            ],
+            "default_retention_days": policy["retention"]["default_retention_days"],
             "supported_filter_count": len(policy["query"]["supported_filters"]),
         },
     }
@@ -2879,9 +2904,7 @@ def build_unified_operations_projection(
         query_options=options,
     )
     projection_status = (
-        "DEGRADED"
-        if job_projection["projection_status"] == "DEGRADED"
-        else "READY"
+        "DEGRADED" if job_projection["projection_status"] == "DEGRADED" else "READY"
     )
     projection = {
         "projection_schema_version": "ag_unified_operations_projection.v1",
@@ -2934,6 +2957,7 @@ def build_operations_issue_candidate_projection(
     checked_at: str | None = None,
     request_trace_id: str | None = None,
     retrieval_policies: tuple[dict[str, Any], ...] | None = None,
+    generation_audit_projections: list[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     options = query_options or build_operation_query_options(limit=limit)
     observed_at = checked_at or _utc_now()
@@ -2948,6 +2972,7 @@ def build_operations_issue_candidate_projection(
         recent_limit=recent_limit,
         query_options=options,
         retrieval_policies=retrieval_policies,
+        generation_audit_projections=generation_audit_projections,
     )
     worker_projection = None
     if _worker_reconciliation_enabled(
@@ -3152,11 +3177,7 @@ def build_worker_detail_projection(
     job_stores = (
         registry.job_queues()
         if registry is not None
-        else (
-            DEFAULT_JOB_QUEUE_STORES
-            if job_queues is None
-            else job_queues
-        )
+        else (DEFAULT_JOB_QUEUE_STORES if job_queues is None else job_queues)
     )
     selected_event_store = event_store
     if registry is not None:
@@ -3251,14 +3272,24 @@ def build_worker_detail_projection(
             "worker_id": normalized_worker_id,
             "worker_found": projected_worker is not None,
             "worker_type": (
-                projected_worker["worker_type"] if projected_worker is not None else None
+                projected_worker["worker_type"]
+                if projected_worker is not None
+                else None
             ),
-            "status": projected_worker["status"] if projected_worker is not None else None,
-            "stale": projected_worker["stale"] if projected_worker is not None else None,
+            "status": (
+                projected_worker["status"] if projected_worker is not None else None
+            ),
+            "stale": (
+                projected_worker["stale"] if projected_worker is not None else None
+            ),
             "active_job_id": (
-                projected_worker["active_job_id"] if projected_worker is not None else None
+                projected_worker["active_job_id"]
+                if projected_worker is not None
+                else None
             ),
-            "active_job_status": active_job["status"] if active_job is not None else None,
+            "active_job_status": (
+                active_job["status"] if active_job is not None else None
+            ),
             "timeline_status": lifecycle_timeline["timeline_status"],
             "timeline_event_count": lifecycle_timeline["event_count"],
             "source_statuses": {
@@ -3290,6 +3321,7 @@ def build_operations_dashboard_snapshot_projection(
     query_options: OperationQueryOptions | None = None,
     request_trace_id: str | None = None,
     retrieval_policies: tuple[dict[str, Any], ...] | None = None,
+    generation_audit_projections: list[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     options = query_options or build_operation_query_options(limit=limit)
     normalized_recent_limit = normalize_dashboard_recent_limit(recent_limit)
@@ -3365,6 +3397,10 @@ def build_operations_dashboard_snapshot_projection(
         options=options,
         policies=retrieval_policies,
     )
+    generation_quality = _dashboard_generation_quality_section(
+        generation_audit_projections,
+        limit=normalized_recent_limit,
+    )
     degraded_sources = _dashboard_degraded_sources(
         operation_sources=readiness_projection["sources"],
         job_source_statuses=rollup_projection["job_source_statuses"],
@@ -3394,6 +3430,7 @@ def build_operations_dashboard_snapshot_projection(
         "active_jobs": active_jobs,
         "cx_processing_runs": cx_processing_runs,
         "retrieval_threshold_decisions": retrieval_threshold_decisions,
+        "generation_quality": generation_quality,
         "degraded_sources": degraded_sources,
         "job_source_statuses": rollup_projection["job_source_statuses"],
         "event_source_statuses": rollup_projection["event_source_statuses"],
@@ -3433,9 +3470,7 @@ def build_operations_rollup_metrics_projection(
         registry=registry,
     )
     configured_event_service_ids = (
-        set(registry.event_stores())
-        if registry is not None
-        else None
+        set(registry.event_stores()) if registry is not None else None
     )
     selected_service_ids = (
         [service_id] if service_id is not None else sorted(SERVICE_SPECS)
@@ -3483,11 +3518,13 @@ def build_operations_rollup_metrics_projection(
         "DEGRADED"
         if any(
             source["status"] != "READY"
-            for source in [*job_source_statuses.values(), *event_source_statuses.values()]
+            for source in [
+                *job_source_statuses.values(),
+                *event_source_statuses.values(),
+            ]
         )
         or any(
-            source["status"] == "UNAVAILABLE"
-            for source in log_source_statuses.values()
+            source["status"] == "UNAVAILABLE" for source in log_source_statuses.values()
         )
         else "READY"
     )
@@ -3580,8 +3617,7 @@ def build_cross_service_trace_timeline_projection(
             for source in job_source_statuses.values()
         )
         or any(
-            source["status"] == "UNAVAILABLE"
-            for source in log_source_statuses.values()
+            source["status"] == "UNAVAILABLE" for source in log_source_statuses.values()
         )
         or any(
             source["status"] == "UNAVAILABLE"
@@ -3623,7 +3659,9 @@ def build_job_operations_projection(
 ) -> dict[str, Any]:
     options = query_options or build_operation_query_options(limit=limit)
     normalized_status = status.upper() if status is not None else None
-    selected_service_ids = [service_id] if service_id is not None else sorted(SERVICE_SPECS)
+    selected_service_ids = (
+        [service_id] if service_id is not None else sorted(SERVICE_SPECS)
+    )
     projected_jobs: list[dict[str, Any]] = []
     source_statuses: dict[str, dict[str, Any]] = {}
 
@@ -3655,8 +3693,7 @@ def build_job_operations_projection(
             "job_count": len(service_jobs),
         }
         projected_jobs.extend(
-            _project_job_for_service(selected_service_id, job)
-            for job in service_jobs
+            _project_job_for_service(selected_service_id, job) for job in service_jobs
         )
 
     page = _apply_operation_query_options(
@@ -3667,7 +3704,10 @@ def build_job_operations_projection(
     )
     projection_status = (
         "DEGRADED"
-        if any(source["status"] in {"NOT_CONFIGURED", "UNAVAILABLE"} for source in source_statuses.values())
+        if any(
+            source["status"] in {"NOT_CONFIGURED", "UNAVAILABLE"}
+            for source in source_statuses.values()
+        )
         else "READY"
     )
     projection = {
@@ -3956,13 +3996,9 @@ def build_operations_issue_candidates(
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     candidates.extend(
-        _issue_candidates_from_degraded_sources(
-            dashboard_snapshot["degraded_sources"]
-        )
+        _issue_candidates_from_degraded_sources(dashboard_snapshot["degraded_sources"])
     )
-    candidates.extend(
-        _issue_candidates_from_rollups(dashboard_snapshot["rollups"])
-    )
+    candidates.extend(_issue_candidates_from_rollups(dashboard_snapshot["rollups"]))
     candidates.extend(
         _issue_candidates_from_failure_logs(
             dashboard_snapshot.get("recent_failures", {}).get("logs", [])
@@ -3981,6 +4017,11 @@ def build_operations_issue_candidates(
             dashboard_snapshot.get("retrieval_threshold_decisions")
         )
     )
+    candidates.extend(
+        _issue_candidates_from_generation_quality(
+            dashboard_snapshot.get("generation_quality")
+        )
+    )
     if worker_runtime_projection is not None:
         candidates.extend(
             _issue_candidates_from_worker_source_statuses(
@@ -3988,9 +4029,7 @@ def build_operations_issue_candidates(
             )
         )
         candidates.extend(
-            _issue_candidates_from_stale_workers(
-                worker_runtime_projection["workers"]
-            )
+            _issue_candidates_from_stale_workers(worker_runtime_projection["workers"])
         )
         candidates.extend(
             _issue_candidates_from_active_jobs_without_fresh_workers(
@@ -4157,7 +4196,9 @@ def _job_control_payload_string(payload: dict[str, Any] | None, key: str) -> str
     return value
 
 
-def _job_control_required_payload_string(payload: dict[str, Any] | None, key: str) -> str:
+def _job_control_required_payload_string(
+    payload: dict[str, Any] | None, key: str
+) -> str:
     value = _job_control_payload_string(payload, key)
     if value is None:
         raise AgJobControlError(
@@ -4380,7 +4421,10 @@ def _validate_unified_operation_filters(
     )
     if job_problem is not None:
         return job_problem
-    if event_severity is not None and event_severity.upper() not in OPERATIONAL_EVENT_SEVERITIES:
+    if (
+        event_severity is not None
+        and event_severity.upper() not in OPERATIONAL_EVENT_SEVERITIES
+    ):
         return problem_response(
             request,
             status_code=400,
@@ -4571,9 +4615,7 @@ def _operation_source_statuses(
     service_id: str | None,
 ) -> list[dict[str, Any]]:
     selected_service_ids = (
-        [service_id]
-        if service_id is not None
-        else list(runtime.selected_service_ids)
+        [service_id] if service_id is not None else list(runtime.selected_service_ids)
     )
     return [
         _operation_source_status(runtime, selected_service_id)
@@ -4644,21 +4686,17 @@ def _operation_source_status(
 
 
 def _operation_source_is_read_only(source: OperationsSource) -> bool:
-    job_read_only = (
-        source.job_queue is None
-        or isinstance(source.job_queue, ReadOnlyJobQueue)
+    job_read_only = source.job_queue is None or isinstance(
+        source.job_queue, ReadOnlyJobQueue
     )
-    event_read_only = (
-        source.operational_event_store is None
-        or isinstance(source.operational_event_store, ReadOnlyOperationalEventStore)
+    event_read_only = source.operational_event_store is None or isinstance(
+        source.operational_event_store, ReadOnlyOperationalEventStore
     )
-    log_read_only = (
-        source.service_log_store is None
-        or isinstance(source.service_log_store, ReadOnlyServiceLogStore)
+    log_read_only = source.service_log_store is None or isinstance(
+        source.service_log_store, ReadOnlyServiceLogStore
     )
-    worker_read_only = (
-        source.worker_heartbeat_store is None
-        or isinstance(source.worker_heartbeat_store, ReadOnlyWorkerHeartbeatStore)
+    worker_read_only = source.worker_heartbeat_store is None or isinstance(
+        source.worker_heartbeat_store, ReadOnlyWorkerHeartbeatStore
     )
     return job_read_only and event_read_only and log_read_only and worker_read_only
 
@@ -4706,14 +4744,10 @@ def _filter_records_by_operation_time(
     timestamp_field: str,
 ) -> list[dict[str, Any]]:
     since_dt = (
-        _parse_operation_timestamp(options.since)
-        if options.since is not None
-        else None
+        _parse_operation_timestamp(options.since) if options.since is not None else None
     )
     until_dt = (
-        _parse_operation_timestamp(options.until)
-        if options.until is not None
-        else None
+        _parse_operation_timestamp(options.until) if options.until is not None else None
     )
     filtered: list[dict[str, Any]] = []
     for record in records:
@@ -4772,9 +4806,7 @@ def _operational_event_matches_query(event: dict[str, Any], query: str) -> bool:
         searchable_parts.extend(subject_ref.values())
     details = event.get("details")
     if isinstance(details, Mapping):
-        searchable_parts.append(
-            json.dumps(details, ensure_ascii=False, sort_keys=True)
-        )
+        searchable_parts.append(json.dumps(details, ensure_ascii=False, sort_keys=True))
     return any(
         lowered_query in str(part).lower()
         for part in searchable_parts
@@ -4960,11 +4992,7 @@ def _trace_job_timeline_items(
             }
             continue
         try:
-            jobs = [
-                job
-                for job in queue.list_jobs()
-                if job.get("trace_id") == trace_id
-            ]
+            jobs = [job for job in queue.list_jobs() if job.get("trace_id") == trace_id]
         except JobQueueError as exc:
             source_statuses[selected_service_id] = {
                 "status": "UNAVAILABLE",
@@ -4978,8 +5006,7 @@ def _trace_job_timeline_items(
             "job_count": len(jobs),
         }
         timeline_items.extend(
-            _job_trace_timeline_item(selected_service_id, job)
-            for job in jobs
+            _job_trace_timeline_item(selected_service_id, job) for job in jobs
         )
     return timeline_items, source_statuses
 
@@ -5107,15 +5134,12 @@ def _dashboard_job_candidates(
             continue
         try:
             service_jobs = [
-                job
-                for job in queue.list_jobs()
-                if str(job.get("status")) in statuses
+                job for job in queue.list_jobs() if str(job.get("status")) in statuses
             ]
         except JobQueueError:
             continue
         jobs.extend(
-            _project_job_for_service(selected_service_id, job)
-            for job in service_jobs
+            _project_job_for_service(selected_service_id, job) for job in service_jobs
         )
     dashboard_options = OperationQueryOptions(
         limit=limit,
@@ -5147,9 +5171,7 @@ def _dashboard_failure_event_candidates(
     except OperationalEventError:
         return []
     failure_events = [
-        event
-        for event in events
-        if str(event.get("severity")) in {"ERROR", "CRITICAL"}
+        event for event in events if str(event.get("severity")) in {"ERROR", "CRITICAL"}
     ]
     dashboard_options = OperationQueryOptions(
         limit=limit,
@@ -5299,16 +5321,8 @@ def _dashboard_cx_processing_run_section(
         timestamp_field="updated_at",
         tie_breaker_fields=("service_id", "pipeline_run_id"),
     )["items"]
-    recent_failures = [
-        run
-        for run in recent
-        if run["status"] == "FAILED"
-    ][:limit]
-    active = [
-        run
-        for run in recent
-        if run["status"] in {"QUEUED", "RUNNING"}
-    ][:limit]
+    recent_failures = [run for run in recent if run["status"] == "FAILED"][:limit]
+    active = [run for run in recent if run["status"] in {"QUEUED", "RUNNING"}][:limit]
     return {
         "summary": _summarize_dashboard_cx_processing_runs(processing_runs),
         "recent": recent,
@@ -5461,8 +5475,10 @@ def _dashboard_retrieval_threshold_decision_section(
             for record in visible_records
         )
 
-    policy_records = list_retrieval_policy_records() if policies is None else (
-        list_retrieval_policy_records(policies)
+    policy_records = (
+        list_retrieval_policy_records()
+        if policies is None
+        else (list_retrieval_policy_records(policies))
     )
     source_degraded = any(
         source["status"] in {"NOT_CONFIGURED", "UNAVAILABLE"}
@@ -5545,9 +5561,7 @@ def _dashboard_retrieval_threshold_samples_for_policy(
     policy_id: object,
 ) -> list[dict[str, Any]]:
     return [
-        sample
-        for sample in samples
-        if sample.get("retrieval_policy_id") == policy_id
+        sample for sample in samples if sample.get("retrieval_policy_id") == policy_id
     ]
 
 
@@ -5589,6 +5603,121 @@ def _dashboard_retrieval_threshold_source_status(
     return source
 
 
+def _dashboard_generation_quality_section(
+    generation_audit_projections: list[Mapping[str, Any]] | None,
+    *,
+    limit: int,
+) -> dict[str, Any]:
+    items = [
+        item
+        for projection in generation_audit_projections or []
+        if isinstance(projection, Mapping)
+        and (item := _dashboard_generation_quality_item(projection)) is not None
+    ]
+    items.sort(key=lambda item: item["created_at"] or "", reverse=True)
+    recent = items[:limit]
+    attention = [
+        item for item in recent if _generation_quality_item_needs_attention(item)
+    ]
+    return {
+        "projection_schema_version": "ag_generation_quality_dashboard_section.v1",
+        "summary": _summarize_dashboard_generation_quality(items),
+        "recent": recent,
+        "attention": attention,
+    }
+
+
+def _dashboard_generation_quality_item(
+    generation_audit_projection: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    quality = generation_audit_projection.get("grounded_response_quality")
+    if not isinstance(quality, Mapping):
+        return None
+    cx_generation_id = str(
+        generation_audit_projection.get("cx_generation_id") or "UNKNOWN"
+    )
+    coverage_status = _generation_quality_status(quality.get("coverage_status"))
+    boundary_status = _generation_quality_status(quality.get("boundary_status"))
+    issue_codes = [
+        str(code) for code in quality.get("issue_codes", []) if isinstance(code, str)
+    ]
+    lineage_mismatches = [
+        str(field)
+        for field in quality.get("lineage_mismatches", [])
+        if isinstance(field, str)
+    ]
+    return {
+        "cx_generation_id": cx_generation_id,
+        "trace_id": generation_audit_projection.get("trace_id"),
+        "request_id": generation_audit_projection.get("request_id"),
+        "created_at": _dashboard_optional_timestamp(
+            generation_audit_projection.get("created_at")
+        ),
+        "coverage_status": coverage_status,
+        "boundary_status": boundary_status,
+        "citation_status": _nullable_string(quality.get("citation_status")),
+        "grounding_required": bool(quality.get("grounding_required")),
+        "source_quality_issue_count": _safe_optional_int(
+            quality.get("source_quality_issue_count")
+        ),
+        "projection_issue_count": _safe_int(quality.get("projection_issue_count")),
+        "issue_codes": issue_codes,
+        "lineage_mismatches": lineage_mismatches,
+        "recommended_action": _nullable_string(quality.get("recommended_action")),
+        "retrieval_package_id": _nullable_string(quality.get("retrieval_package_id")),
+        "retrieval_package_hash": _nullable_string(
+            quality.get("retrieval_package_hash")
+        ),
+        "structured_draft_id": _nullable_string(quality.get("structured_draft_id")),
+        "evidence_ref_count": _safe_optional_int(quality.get("evidence_ref_count")),
+        "artifact_handoff_quality_available": bool(
+            quality.get("artifact_handoff_quality_available")
+        ),
+        "detail_path": f"/admin/v1/generation-audit/generations/{cx_generation_id}",
+    }
+
+
+def _summarize_dashboard_generation_quality(
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    by_coverage_status = {status: 0 for status in GENERATION_QUALITY_STATUSES}
+    by_boundary_status = {status: 0 for status in GENERATION_QUALITY_STATUSES}
+    for item in items:
+        by_coverage_status[str(item["coverage_status"])] += 1
+        by_boundary_status[str(item["boundary_status"])] += 1
+    return {
+        "total": len(items),
+        "by_coverage_status": by_coverage_status,
+        "by_boundary_status": by_boundary_status,
+        "attention_count": sum(
+            1 for item in items if _generation_quality_item_needs_attention(item)
+        ),
+        "failed_count": sum(
+            1
+            for item in items
+            if item["coverage_status"] == "FAIL" or item["boundary_status"] == "FAIL"
+        ),
+        "warning_count": sum(
+            1
+            for item in items
+            if item["coverage_status"] == "WARN" or item["boundary_status"] == "WARN"
+        ),
+    }
+
+
+def _generation_quality_status(value: object) -> str:
+    if isinstance(value, str) and value in GENERATION_QUALITY_STATUSES:
+        return value
+    return "UNKNOWN"
+
+
+def _generation_quality_item_needs_attention(item: Mapping[str, Any]) -> bool:
+    return (
+        item.get("coverage_status") in GENERATION_QUALITY_ATTENTION_STATUSES
+        or item.get("boundary_status") in GENERATION_QUALITY_ATTENTION_STATUSES
+    )
+
+
 def _summarize_dashboard_cx_processing_runs(
     processing_runs: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -5609,8 +5738,7 @@ def _summarize_dashboard_cx_processing_runs(
             if run["status"] == "FAILED" and run.get("job_retryable") is True
         ),
         "step_failed_count": sum(
-            _safe_int(run.get("step_failed"))
-            for run in processing_runs
+            _safe_int(run.get("step_failed")) for run in processing_runs
         ),
     }
 
@@ -5626,6 +5754,28 @@ def _safe_int(value: object) -> int:
         except ValueError:
             return 0
     return 0
+
+
+def _safe_optional_int(value: object) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value >= 0:
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = int(value)
+        except ValueError:
+            return None
+        if parsed >= 0:
+            return parsed
+    return None
+
+
+def _nullable_string(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text if text else None
 
 
 def _dashboard_optional_timestamp(value: object) -> str | None:
@@ -5914,9 +6064,7 @@ def _issue_candidates_from_failure_logs(
                     "count": len(logs),
                     "threshold": 1,
                     "log_ids": sorted(str(log["log_id"]) for log in logs),
-                    "logger_names": sorted(
-                        {str(log["logger_name"]) for log in logs}
-                    ),
+                    "logger_names": sorted({str(log["logger_name"]) for log in logs}),
                 },
             )
         )
@@ -5991,9 +6139,7 @@ def _retrieval_threshold_issue_candidate(
     grouped_decisions: list[dict[str, Any]],
 ) -> dict[str, Any]:
     rule = RETRIEVAL_THRESHOLD_ISSUE_RULES_BY_READINESS[readiness]
-    policy_ids = sorted(
-        {str(decision["policy_id"]) for decision in grouped_decisions}
-    )
+    policy_ids = sorted({str(decision["policy_id"]) for decision in grouped_decisions})
     recommended_actions = sorted(
         {
             str(decision.get("recommended_operator_action"))
@@ -6068,6 +6214,69 @@ def _retrieval_threshold_issue_candidate(
     )
 
 
+def _issue_candidates_from_generation_quality(
+    section: object,
+) -> list[dict[str, Any]]:
+    if not isinstance(section, Mapping):
+        return []
+    attention = section.get("attention")
+    if not isinstance(attention, list):
+        return []
+    items = [
+        dict(item)
+        for item in attention
+        if isinstance(item, Mapping) and _generation_quality_item_needs_attention(item)
+    ]
+    if not items:
+        return []
+    return [_generation_quality_issue_candidate(items)]
+
+
+def _generation_quality_issue_candidate(
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    has_failure = any(
+        item["coverage_status"] == "FAIL" or item["boundary_status"] == "FAIL"
+        for item in items
+    )
+    coverage_statuses = sorted({str(item["coverage_status"]) for item in items})
+    boundary_statuses = sorted({str(item["boundary_status"]) for item in items})
+    issue_codes = sorted(
+        {
+            str(code)
+            for item in items
+            for code in item.get("issue_codes", [])
+            if isinstance(code, str)
+        }
+    )
+    return _operations_issue_candidate(
+        rule_id="generation_quality_attention_required.v1",
+        service_id="nex-ag",
+        severity="ERROR" if has_failure else "WARNING",
+        title="Generation quality attention required",
+        detail=f"{len(items)} generation quality projection(s) need review.",
+        signal={
+            "source_type": "generation_quality",
+            "status": "FAIL" if has_failure else "WARN",
+            "count": len(items),
+            "threshold": 1,
+            "coverage_statuses": coverage_statuses,
+            "boundary_statuses": boundary_statuses,
+            "issue_codes": issue_codes,
+            "cx_generation_ids": sorted(
+                {
+                    str(item["cx_generation_id"])
+                    for item in items
+                    if item.get("cx_generation_id")
+                }
+            ),
+            "detail_paths": sorted(
+                {str(item["detail_path"]) for item in items if item.get("detail_path")}
+            ),
+        },
+    )
+
+
 def _job_dead_lettered(job: Mapping[str, Any]) -> bool:
     error = job.get("error")
     return isinstance(error, Mapping) and error.get("dead_lettered") is True
@@ -6126,7 +6335,9 @@ def _issue_candidates_from_stale_workers(
         if worker.get("stale") is not True:
             continue
         service_id = str(worker["service_id"])
-        stale_workers_by_service.setdefault(service_id, []).append(str(worker["worker_id"]))
+        stale_workers_by_service.setdefault(service_id, []).append(
+            str(worker["worker_id"])
+        )
         stale_after_by_service[service_id] = int(worker["stale_after_seconds"])
     return [
         _operations_issue_candidate(
@@ -6241,10 +6452,7 @@ def _operations_rollup_jobs_for_service(
         options,
         timestamp_field="updated_at",
     )
-    projected_jobs = [
-        _project_job_for_service(service_id, job)
-        for job in jobs
-    ]
+    projected_jobs = [_project_job_for_service(service_id, job) for job in jobs]
     return _rollup_jobs(projected_jobs), {
         "status": "READY",
         "job_count": len(projected_jobs),
@@ -6340,10 +6548,7 @@ def _trace_event_timeline_items(
             "error_code": exc.error_code,
             "detail": exc.detail,
         }
-    return [
-        _event_trace_timeline_item(event)
-        for event in events
-    ], {
+    return [_event_trace_timeline_item(event) for event in events], {
         "status": "READY",
         "event_count": len(events),
     }
@@ -6431,7 +6636,9 @@ def _retrieval_package_trace_timeline_item(
             "document_count": _operation_integer_or_none(
                 source_summary.get("document_count")
             ),
-            "chunk_count": _operation_integer_or_none(source_summary.get("chunk_count")),
+            "chunk_count": _operation_integer_or_none(
+                source_summary.get("chunk_count")
+            ),
             "created_at": package["created_at"],
             "updated_at": package.get("updated_at"),
         },
@@ -6541,9 +6748,7 @@ def _build_job_lifecycle_timeline(
             },
         }
     lifecycle_events = [
-        event
-        for event in events
-        if _operational_event_matches_job(job, event)
+        event for event in events if _operational_event_matches_job(job, event)
     ]
     lifecycle_events.sort(
         key=lambda event: (
@@ -6638,9 +6843,7 @@ def _build_worker_lifecycle_timeline(
             },
         }
     lifecycle_events = [
-        event
-        for event in events
-        if _operational_event_matches_worker(worker, event)
+        event for event in events if _operational_event_matches_worker(worker, event)
     ]
     lifecycle_events.sort(
         key=lambda event: (

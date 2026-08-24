@@ -251,6 +251,9 @@
     "retrieval_threshold_decisions": {
       "$ref": "#/$defs/dashboard_retrieval_threshold_decisions"
     },
+    "generation_quality": {
+      "$ref": "#/$defs/dashboard_generation_quality"
+    },
     "replay_candidates": {
       "type": "array",
       "items": {
@@ -721,6 +724,7 @@
           "active_jobs",
           "cx_processing_runs",
           "retrieval_threshold_decisions",
+          "generation_quality",
           "degraded_sources",
           "job_source_statuses",
           "event_source_statuses",
@@ -1792,6 +1796,274 @@
           }
         }
       }
+    },
+    "dashboard_generation_quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "summary",
+        "recent",
+        "attention"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "const": "ag_generation_quality_dashboard_section.v1"
+        },
+        "summary": {
+          "$ref": "#/$defs/dashboard_generation_quality_summary"
+        },
+        "recent": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dashboard_generation_quality_item"
+          }
+        },
+        "attention": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dashboard_generation_quality_item"
+          }
+        }
+      }
+    },
+    "dashboard_generation_quality_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "by_coverage_status",
+        "by_boundary_status",
+        "attention_count",
+        "failed_count",
+        "warning_count"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_coverage_status": {
+          "$ref": "#/$defs/generation_quality_status_counts"
+        },
+        "by_boundary_status": {
+          "$ref": "#/$defs/generation_quality_status_counts"
+        },
+        "attention_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "generation_quality_status_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "PASS",
+        "WARN",
+        "FAIL",
+        "NOT_REQUIRED",
+        "UNKNOWN"
+      ],
+      "properties": {
+        "PASS": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "WARN": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "FAIL": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "NOT_REQUIRED": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "UNKNOWN": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "dashboard_generation_quality_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cx_generation_id",
+        "trace_id",
+        "request_id",
+        "created_at",
+        "coverage_status",
+        "boundary_status",
+        "citation_status",
+        "grounding_required",
+        "source_quality_issue_count",
+        "projection_issue_count",
+        "issue_codes",
+        "lineage_mismatches",
+        "recommended_action",
+        "retrieval_package_id",
+        "retrieval_package_hash",
+        "structured_draft_id",
+        "evidence_ref_count",
+        "artifact_handoff_quality_available",
+        "detail_path"
+      ],
+      "properties": {
+        "cx_generation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "created_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "coverage_status": {
+          "$ref": "#/$defs/generation_quality_status"
+        },
+        "boundary_status": {
+          "$ref": "#/$defs/generation_quality_status"
+        },
+        "citation_status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "VALIDATED",
+            "FAILED",
+            "INVALID",
+            "NOT_REQUIRED",
+            "UNKNOWN",
+            null
+          ]
+        },
+        "grounding_required": {
+          "type": "boolean"
+        },
+        "source_quality_issue_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "projection_issue_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "issue_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "MISSING_CX_GROUNDED_RESPONSE_QUALITY_FIELDS",
+              "MISSING_AE_ARTIFACT_QUALITY_SUMMARY_FIELDS",
+              "GROUNDED_RESPONSE_QUALITY_LINEAGE_MISMATCH",
+              "CX_GROUNDED_RESPONSE_QUALITY_FAILED"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "lineage_mismatches": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "grounding_required",
+              "retrieval_package_id",
+              "retrieval_package_hash",
+              "structured_draft_id"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "recommended_action": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "no_action",
+            "investigate_quality_failure",
+            "complete_source_quality_metadata",
+            "wire_ag_quality_projection",
+            null
+          ]
+        },
+        "retrieval_package_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "retrieval_package_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "structured_draft_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "evidence_ref_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "artifact_handoff_quality_available": {
+          "type": "boolean"
+        },
+        "detail_path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "generation_quality_status": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "WARN",
+        "FAIL",
+        "NOT_REQUIRED",
+        "UNKNOWN"
+      ]
     },
     "dashboard_degraded_source": {
       "type": "object",

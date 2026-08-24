@@ -78,10 +78,15 @@ from nex_ag.operations import (
     summarize_operations_rollup_metrics,
     summarize_trace_timeline_items,
     _filter_records_by_operation_time,
+    _dashboard_generation_quality_section,
     _dashboard_replay_candidates,
+    _dashboard_timestamp,
+    _issue_candidates_from_generation_quality,
     _job_error_code,
+    _nullable_string,
     _operational_event_matches_query,
     _operation_record_timestamp,
+    _safe_optional_int,
     _service_log_matches_query,
     service_log_query_policy,
 )
@@ -199,6 +204,60 @@ def cx_processing_run_record(
         "completed_at": updated_at if status in {"SUCCEEDED", "FAILED"} else None,
         "updated_at": updated_at,
         "steps": [],
+    }
+
+
+def generation_audit_projection_record(
+    *,
+    cx_generation_id: str = "cx-gen-001",
+    coverage_status: str = "PASS",
+    boundary_status: str = "PASS",
+    issue_codes: list[str] | None = None,
+    created_at: str = "2026-08-05T00:00:08Z",
+) -> dict[str, object]:
+    return {
+        "projection_schema_version": "ag_generation_audit_projection.v1",
+        "cx_generation_id": cx_generation_id,
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "created_at": created_at,
+        "grounded_response_quality": {
+            "projection_schema_version": (
+                "ag_generation_audit_grounded_response_quality_projection.v1"
+            ),
+            "gap_audit_schema_version": (
+                "ag_generation_audit_grounded_response_quality_gap_audit.v1"
+            ),
+            "source_audit_schema_version": (
+                "cx_grounded_response_citation_quality_audit.v1"
+            ),
+            "coverage_status": coverage_status,
+            "boundary_status": boundary_status,
+            "grounding_required": True,
+            "citation_status": "VALIDATED",
+            "source_quality_issue_count": 0 if boundary_status != "FAIL" else 1,
+            "projection_issue_count": len(issue_codes or []),
+            "issue_codes": issue_codes or [],
+            "lineage_mismatches": [],
+            "recommended_action": (
+                "investigate_quality_failure"
+                if boundary_status == "FAIL"
+                else (
+                    "wire_ag_quality_projection"
+                    if coverage_status == "PASS"
+                    else "complete_source_quality_metadata"
+                )
+            ),
+            "retrieval_package_id": "cx-ret-001",
+            "retrieval_package_hash": "d" * 64,
+            "structured_draft_id": "draft-001",
+            "evidence_ref_count": 2,
+            "artifact_handoff_quality_available": True,
+            "raw_content_included": False,
+            "prompt_text_included": False,
+            "evidence_text_included": False,
+            "provider_detail_included": False,
+        },
     }
 
 
@@ -388,7 +447,9 @@ def sample_job(**overrides):
         job_type=overrides.pop("job_type", "cx.document_processing"),
         trace_id=overrides.pop("trace_id", TRACE_ID),
         request_id=overrides.pop("request_id", REQUEST_ID),
-        subject_ref=overrides.pop("subject_ref", build_subject_ref("cx.document", "doc-001")),
+        subject_ref=overrides.pop(
+            "subject_ref", build_subject_ref("cx.document", "doc-001")
+        ),
         idempotency_key=overrides.pop("idempotency_key", "idem-001"),
         created_at=overrides.pop("created_at", "2026-08-05T00:00:00Z"),
         max_attempts=overrides.pop("max_attempts", 2),
@@ -997,7 +1058,9 @@ def test_operation_query_options_normalize_sort_cursor_and_timestamps() -> None:
         ),
     ],
 )
-def test_operation_query_options_reject_invalid_inputs(operation, expected_code) -> None:
+def test_operation_query_options_reject_invalid_inputs(
+    operation, expected_code
+) -> None:
     with pytest.raises(OperationsQueryError) as exc_info:
         operation()
 
@@ -1017,10 +1080,14 @@ def test_operation_query_helpers_cover_timestamp_fallback_edges() -> None:
     ]
 
     assert options.since == "2026-08-05T00:00:00Z"
-    assert _operation_record_timestamp(
-        {"created_at": "2026-08-05T00:00:01Z"},
-        timestamp_field="updated_at",
-    ).isoformat().endswith("+00:00")
+    assert (
+        _operation_record_timestamp(
+            {"created_at": "2026-08-05T00:00:01Z"},
+            timestamp_field="updated_at",
+        )
+        .isoformat()
+        .endswith("+00:00")
+    )
     assert _operation_record_timestamp({}, timestamp_field="updated_at").year == 1
     assert [
         record["record_id"]
@@ -1066,9 +1133,9 @@ def test_read_only_operational_event_store_allows_reads_and_rejects_append() -> 
     event = store.get_event("event-cx-001")
     assert event is not None
     assert event["event_id"] == "event-cx-001"
-    assert [stored["event_id"] for stored in store.list_events(service_id="nex-cx")] == [
-        "event-cx-001"
-    ]
+    assert [
+        stored["event_id"] for stored in store.list_events(service_id="nex-cx")
+    ] == ["event-cx-001"]
     with pytest.raises(OperationalEventError, match="read-only"):
         store.append(event)
 
@@ -1094,7 +1161,9 @@ def test_read_only_worker_heartbeat_store_allows_reads_and_rejects_writes() -> N
     heartbeat = store.get_heartbeat("nex-cx", "cx-worker-001")
     assert heartbeat is not None
     assert heartbeat["worker_id"] == "cx-worker-001"
-    assert [item["worker_id"] for item in store.list_heartbeats(service_id="nex-cx")] == [
+    assert [
+        item["worker_id"] for item in store.list_heartbeats(service_id="nex-cx")
+    ] == [
         "cx-worker-001",
         "cx-worker-002",
     ]
@@ -1130,7 +1199,9 @@ def test_ag_operations_source_runtime_builds_postgres_read_only_registry() -> No
 
     def fake_session_factory_builder(engine: object) -> object:
         session_calls.append(engine)
-        return f"session:{engine.pool_settings.service_id}:{engine.pool_settings.workload}"
+        return (
+            f"session:{engine.pool_settings.service_id}:{engine.pool_settings.workload}"
+        )
 
     runtime = build_ag_operations_source_runtime(
         environ={
@@ -1257,7 +1328,9 @@ def test_operation_source_readiness_projection_reports_postgres_sources() -> Non
     assert "secret" not in str(projection)
 
 
-def test_operation_source_readiness_projection_reports_not_configured_registry_source() -> None:
+def test_operation_source_readiness_projection_reports_not_configured_registry_source() -> (
+    None
+):
     runtime = build_ag_operations_source_runtime(
         environ={
             AG_OPERATIONS_SOURCE_MODE_ENV: "postgres",
@@ -1294,8 +1367,14 @@ def test_summarize_operation_source_readiness_counts_empty_sources() -> None:
 @pytest.mark.parametrize(
     "environ, expected",
     [
-        ({AG_OPERATIONS_SOURCE_MODE_ENV: "filesystem"}, "unsupported AG operations source mode"),
-        ({AG_OPERATIONS_SOURCE_PROFILE_ENV: "prod"}, "unsupported AG operations source profile"),
+        (
+            {AG_OPERATIONS_SOURCE_MODE_ENV: "filesystem"},
+            "unsupported AG operations source mode",
+        ),
+        (
+            {AG_OPERATIONS_SOURCE_PROFILE_ENV: "prod"},
+            "unsupported AG operations source profile",
+        ),
         (
             {AG_OPERATIONS_SOURCE_SERVICES_ENV: "nex-cx,nex-unknown"},
             "unknown AG operations source services",
@@ -1330,11 +1409,15 @@ def test_ag_operations_source_runtime_rejects_invalid_config(
 
 
 def test_ag_operations_source_database_env_rejects_unknown_service() -> None:
-    with pytest.raises(OperationsSourceConfigError, match="unknown AG operations source"):
+    with pytest.raises(
+        OperationsSourceConfigError, match="unknown AG operations source"
+    ):
         ag_operations_source_database_env("nex-unknown")
 
 
-def test_operations_source_registry_registers_sources_and_reports_capabilities() -> None:
+def test_operations_source_registry_registers_sources_and_reports_capabilities() -> (
+    None
+):
     job_queues = build_job_queues()
     event_stores = build_event_stores()
     registry = build_operations_source_registry(
@@ -1354,7 +1437,10 @@ def test_operations_source_registry_registers_sources_and_reports_capabilities()
     assert sorted(registry.event_stores()) == ["nex-cx", "nex-mo"]
     assert sorted(registry.service_log_stores()) == ["nex-cx", "nex-mo"]
     assert sorted(registry.worker_heartbeat_stores()) == ["nex-cx", "nex-mo"]
-    assert registry.to_summary()["registry_schema_version"] == "ag_operations_source_registry.v1"
+    assert (
+        registry.to_summary()["registry_schema_version"]
+        == "ag_operations_source_registry.v1"
+    )
     assert registry.to_summary()["sources"]["nex-mo"]["capabilities"] == {
         "jobs": False,
         "events": True,
@@ -1531,7 +1617,9 @@ def test_build_worker_runtime_projection_filters_and_marks_stale_workers() -> No
     assert_ag_operations_projection_contract(projection)
 
 
-def test_worker_runtime_projection_reports_degraded_sources_and_applies_paging() -> None:
+def test_worker_runtime_projection_reports_degraded_sources_and_applies_paging() -> (
+    None
+):
     projection = build_worker_runtime_projection(
         registry=build_operations_source_registry(
             worker_heartbeat_stores=build_worker_heartbeat_stores(),
@@ -1550,7 +1638,10 @@ def test_worker_runtime_projection_reports_degraded_sources_and_applies_paging()
         "status": "NOT_CONFIGURED",
         "worker_count": 0,
     }
-    assert projection["source_registry"]["sources"]["nex-cx"]["capabilities"]["workers"] is True
+    assert (
+        projection["source_registry"]["sources"]["nex-cx"]["capabilities"]["workers"]
+        is True
+    )
     assert_ag_operations_projection_contract(projection)
 
 
@@ -1572,7 +1663,9 @@ def test_worker_runtime_projection_reports_unavailable_source() -> None:
     assert_ag_operations_projection_contract(projection)
 
 
-def test_build_worker_detail_projection_correlates_active_job_and_lifecycle_events() -> None:
+def test_build_worker_detail_projection_correlates_active_job_and_lifecycle_events() -> (
+    None
+):
     registry = build_operations_source_registry(
         job_queues=build_job_queues(),
         event_stores=build_worker_lifecycle_event_stores(),
@@ -1597,8 +1690,7 @@ def test_build_worker_detail_projection_correlates_active_job_and_lifecycle_even
     assert projection["active_job"]["status"] == RUNNING
     assert projection["worker_lifecycle_timeline"]["timeline_status"] == "READY"
     assert [
-        event["event_id"]
-        for event in projection["worker_lifecycle_timeline"]["events"]
+        event["event_id"] for event in projection["worker_lifecycle_timeline"]["events"]
     ] == ["event-cx-worker-001"]
     assert projection["summary"]["active_job_status"] == RUNNING
     assert projection["source_statuses"] == {
@@ -1727,7 +1819,9 @@ def test_build_worker_detail_projection_rejects_bad_service_or_missing_worker() 
     assert missing_worker.value.status_code == 404
 
 
-def test_worker_runtime_route_requires_auth_returns_projection_and_rejects_bad_filters() -> None:
+def test_worker_runtime_route_requires_auth_returns_projection_and_rejects_bad_filters() -> (
+    None
+):
     registry = build_operations_source_registry(
         worker_heartbeat_stores=build_worker_heartbeat_stores(),
     )
@@ -1778,7 +1872,9 @@ def test_worker_runtime_route_requires_auth_returns_projection_and_rejects_bad_f
     assert bad_worker_type.json()["error_code"] == "ag.worker_type_invalid"
 
 
-def test_worker_detail_route_requires_auth_returns_projection_and_rejects_bad_inputs() -> None:
+def test_worker_detail_route_requires_auth_returns_projection_and_rejects_bad_inputs() -> (
+    None
+):
     registry = build_operations_source_registry(
         job_queues=build_job_queues(),
         event_stores=build_worker_lifecycle_event_stores(),
@@ -1879,7 +1975,9 @@ def test_operation_source_readiness_route_rejects_bad_service() -> None:
     assert response.json()["error_code"] == "ag.operation_source_service_invalid"
 
 
-def test_build_unified_operations_projection_combines_jobs_events_and_registry_summary() -> None:
+def test_build_unified_operations_projection_combines_jobs_events_and_registry_summary() -> (
+    None
+):
     registry = build_operations_source_registry(
         job_queues=build_job_queues(),
         event_stores=build_event_stores(),
@@ -1895,7 +1993,9 @@ def test_build_unified_operations_projection_combines_jobs_events_and_registry_s
         request_trace_id=TRACE_ID,
     )
 
-    assert projection["projection_schema_version"] == "ag_unified_operations_projection.v1"
+    assert (
+        projection["projection_schema_version"] == "ag_unified_operations_projection.v1"
+    )
     assert projection["projection_status"] == "READY"
     assert projection["request_trace_id"] == TRACE_ID
     assert projection["filters"] == {
@@ -1922,7 +2022,9 @@ def test_build_unified_operations_projection_combines_jobs_events_and_registry_s
     assert projection["pagination"]["events"]["total_after_filters"] == 1
 
 
-def test_build_unified_operations_projection_supports_direct_injection_and_degraded_jobs() -> None:
+def test_build_unified_operations_projection_supports_direct_injection_and_degraded_jobs() -> (
+    None
+):
     projection = build_unified_operations_projection(
         job_queues={
             **build_job_queues(),
@@ -2312,6 +2414,21 @@ def test_build_operations_dashboard_snapshot_projection_combines_sections() -> N
             )
         },
         cx_processing_run_stores={"nex-cx": cx_processing_store},
+        generation_audit_projections=[
+            generation_audit_projection_record(
+                cx_generation_id="cx-gen-pass",
+                coverage_status="PASS",
+                boundary_status="PASS",
+                created_at="2026-08-05T00:00:04Z",
+            ),
+            generation_audit_projection_record(
+                cx_generation_id="cx-gen-warn",
+                coverage_status="WARN",
+                boundary_status="PASS",
+                issue_codes=["MISSING_CX_GROUNDED_RESPONSE_QUALITY_FIELDS"],
+                created_at="2026-08-05T00:00:08Z",
+            ),
+        ],
         service_id="nex-cx",
         recent_limit=2,
         request_trace_id=TRACE_ID,
@@ -2370,8 +2487,7 @@ def test_build_operations_dashboard_snapshot_projection_combines_sections() -> N
         "step_failed_count": 1,
     }
     assert [
-        run["pipeline_run_id"]
-        for run in projection["cx_processing_runs"]["recent"]
+        run["pipeline_run_id"] for run in projection["cx_processing_runs"]["recent"]
     ] == ["processing-run-002", "processing-run-001"]
     assert (
         projection["cx_processing_runs"]["recent_failures"][0]["detail_path"]
@@ -2399,9 +2515,10 @@ def test_build_operations_dashboard_snapshot_projection_combines_sections() -> N
         "insufficient_samples": 2,
         "source_degraded": 0,
     }
-    assert projection["retrieval_threshold_decisions"]["closure"][
-        "closure_status"
-    ] == "COLLECTING_SAMPLES"
+    assert (
+        projection["retrieval_threshold_decisions"]["closure"]["closure_status"]
+        == "COLLECTING_SAMPLES"
+    )
     assert {
         decision["policy_id"]: decision["observed_sample_count"]
         for decision in projection["retrieval_threshold_decisions"][
@@ -2411,9 +2528,7 @@ def test_build_operations_dashboard_snapshot_projection_combines_sections() -> N
         "retrieval_quality_v1": 0,
         "weighted_rrf_vector_bm25_v1": 1,
     }
-    assert projection["retrieval_threshold_decisions"]["source_statuses"][
-        "nex-cx"
-    ] == {
+    assert projection["retrieval_threshold_decisions"]["source_statuses"]["nex-cx"] == {
         "status": "READY",
         "service_id": "nex-cx",
         "source_kind": "memory",
@@ -2421,6 +2536,35 @@ def test_build_operations_dashboard_snapshot_projection_combines_sections() -> N
         "database_env": None,
         "redacted_database_url": None,
     }
+    assert projection["generation_quality"]["summary"] == {
+        "total": 2,
+        "by_coverage_status": {
+            "PASS": 1,
+            "WARN": 1,
+            "FAIL": 0,
+            "NOT_REQUIRED": 0,
+            "UNKNOWN": 0,
+        },
+        "by_boundary_status": {
+            "PASS": 2,
+            "WARN": 0,
+            "FAIL": 0,
+            "NOT_REQUIRED": 0,
+            "UNKNOWN": 0,
+        },
+        "attention_count": 1,
+        "failed_count": 0,
+        "warning_count": 1,
+    }
+    assert [
+        item["cx_generation_id"] for item in projection["generation_quality"]["recent"]
+    ] == ["cx-gen-warn", "cx-gen-pass"]
+    assert projection["generation_quality"]["attention"][0]["issue_codes"] == [
+        "MISSING_CX_GROUNDED_RESPONSE_QUALITY_FIELDS"
+    ]
+    assert projection["generation_quality"]["attention"][0]["detail_path"] == (
+        "/admin/v1/generation-audit/generations/cx-gen-warn"
+    )
     assert projection["degraded_sources"] == []
     assert projection["log_source_statuses"]["nex-cx"] == {
         "status": "NOT_CONFIGURED",
@@ -2429,17 +2573,22 @@ def test_build_operations_dashboard_snapshot_projection_combines_sections() -> N
     assert_ag_operations_projection_contract(projection)
 
 
-def test_operations_dashboard_snapshot_reports_retrieval_threshold_source_unavailable() -> None:
+def test_operations_dashboard_snapshot_reports_retrieval_threshold_source_unavailable() -> (
+    None
+):
     projection = build_operations_dashboard_snapshot_projection(
         retrieval_package_stores={"nex-cx": BrokenRetrievalPackageStore()},
         service_id="nex-cx",
     )
 
     assert projection["projection_status"] == "DEGRADED"
-    assert projection["retrieval_threshold_decisions"]["summary"]["source_degraded"] == 2
-    assert projection["retrieval_threshold_decisions"]["closure"][
-        "closure_status"
-    ] == "BLOCKED"
+    assert (
+        projection["retrieval_threshold_decisions"]["summary"]["source_degraded"] == 2
+    )
+    assert (
+        projection["retrieval_threshold_decisions"]["closure"]["closure_status"]
+        == "BLOCKED"
+    )
     assert {
         decision["sample_readiness"]
         for decision in projection["retrieval_threshold_decisions"][
@@ -2463,7 +2612,9 @@ def test_operations_dashboard_snapshot_reports_retrieval_threshold_source_unavai
     assert_ag_operations_projection_contract(projection)
 
 
-def test_operations_dashboard_snapshot_retrieval_threshold_handles_missing_and_other_scope() -> None:
+def test_operations_dashboard_snapshot_retrieval_threshold_handles_missing_and_other_scope() -> (
+    None
+):
     missing = build_operations_dashboard_snapshot_projection(
         retrieval_package_stores={},
         service_id="nex-cx",
@@ -2487,9 +2638,10 @@ def test_operations_dashboard_snapshot_retrieval_threshold_handles_missing_and_o
         "redacted_database_url": None,
     }
     assert missing["retrieval_threshold_decisions"]["summary"]["source_degraded"] == 2
-    assert missing["retrieval_threshold_decisions"]["closure"][
-        "closure_status"
-    ] == "BLOCKED"
+    assert (
+        missing["retrieval_threshold_decisions"]["closure"]["closure_status"]
+        == "BLOCKED"
+    )
     assert {
         (source["source_type"], source["service_id"], source["status"])
         for source in missing["degraded_sources"]
@@ -2507,9 +2659,7 @@ def test_operations_dashboard_snapshot_retrieval_threshold_handles_missing_and_o
             "source_degraded": 0,
         },
         "closure": {
-            "closure_schema_version": (
-                "ag_retrieval_threshold_calibration_closure.v1"
-            ),
+            "closure_schema_version": ("ag_retrieval_threshold_calibration_closure.v1"),
             "closure_status": "NO_DECISIONS",
             "total_decisions": 0,
             "closed_decision_count": 0,
@@ -2529,7 +2679,9 @@ def test_operations_dashboard_snapshot_retrieval_threshold_handles_missing_and_o
     assert_ag_operations_projection_contract(other_scope)
 
 
-def test_operations_dashboard_snapshot_reports_cx_processing_source_unavailable() -> None:
+def test_operations_dashboard_snapshot_reports_cx_processing_source_unavailable() -> (
+    None
+):
     projection = build_operations_dashboard_snapshot_projection(
         cx_processing_run_stores={"nex-cx": BrokenCxProcessingRunStore()},
         service_id="nex-cx",
@@ -2554,7 +2706,9 @@ def test_operations_dashboard_snapshot_reports_cx_processing_source_unavailable(
     assert_ag_operations_projection_contract(projection)
 
 
-def test_operations_dashboard_snapshot_cx_processing_handles_missing_store_and_coercions() -> None:
+def test_operations_dashboard_snapshot_cx_processing_handles_missing_store_and_coercions() -> (
+    None
+):
     missing = build_operations_dashboard_snapshot_projection(
         cx_processing_run_stores={},
         service_id="nex-cx",
@@ -2600,7 +2754,9 @@ def test_operations_dashboard_snapshot_cx_processing_handles_missing_store_and_c
     assert_ag_operations_projection_contract(projection)
 
 
-def test_operations_dashboard_snapshot_reports_degraded_sources_and_failure_events_and_logs() -> None:
+def test_operations_dashboard_snapshot_reports_degraded_sources_and_failure_events_and_logs() -> (
+    None
+):
     registry = build_operations_source_registry(
         job_queues=build_job_queues(),
         event_stores=build_event_stores(),
@@ -2761,9 +2917,7 @@ def test_operations_dashboard_snapshot_route_requires_auth_returns_projection() 
     assert payload["cx_processing_runs"]["recent_failures"][0]["pipeline_run_id"] == (
         "processing-run-001"
     )
-    assert payload["retrieval_threshold_decisions"]["summary"][
-        "total_decisions"
-    ] == 2
+    assert payload["retrieval_threshold_decisions"]["summary"]["total_decisions"] == 2
     assert payload["replay_candidates"][0]["control_path"] == (
         "/admin/v1/operations/jobs/nex-cx/job-cx-002/replay"
     )
@@ -2828,6 +2982,7 @@ def test_build_operations_issue_candidate_projection_flags_service_scope() -> No
         "retrieval_threshold_live_samples_insufficient.v1",
         "retrieval_threshold_operator_review_required.v1",
         "retrieval_threshold_policy_review_ready.v1",
+        "generation_quality_attention_required.v1",
     ]
     assert [
         (candidate["rule_id"], candidate["service_id"], candidate["severity"])
@@ -2875,7 +3030,9 @@ def test_build_operations_issue_candidate_projection_flags_service_scope() -> No
     assert_ag_operations_projection_contract(projection)
 
 
-def test_operations_issue_candidate_projection_flags_retrieval_threshold_decisions() -> None:
+def test_operations_issue_candidate_projection_flags_retrieval_threshold_decisions() -> (
+    None
+):
     registry = build_operations_source_registry(
         job_queues={"nex-cx": InMemoryJobQueue()},
         event_stores={"nex-cx": InMemoryOperationalEventStore()},
@@ -2892,9 +3049,9 @@ def test_operations_issue_candidate_projection_flags_retrieval_threshold_decisio
     )
 
     assert projection["projection_status"] == "READY"
-    assert [
-        candidate["rule_id"] for candidate in projection["issue_candidates"]
-    ] == ["retrieval_threshold_live_samples_insufficient.v1"]
+    assert [candidate["rule_id"] for candidate in projection["issue_candidates"]] == [
+        "retrieval_threshold_live_samples_insufficient.v1"
+    ]
     candidate = projection["issue_candidates"][0]
     assert candidate["candidate_id"] == (
         "nex-cx:INSUFFICIENT_SAMPLES:"
@@ -2937,6 +3094,235 @@ def test_operations_issue_candidate_projection_flags_retrieval_threshold_decisio
         "retrieval_threshold_live_samples_insufficient.v1": 1
     }
     assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_issue_candidate_projection_flags_generation_quality_attention() -> (
+    None
+):
+    projection = build_operations_issue_candidate_projection(
+        job_queues={"nex-ag": InMemoryJobQueue()},
+        event_store=InMemoryOperationalEventStore(),
+        service_log_stores={"nex-ag": InMemoryServiceLogStore()},
+        generation_audit_projections=[
+            generation_audit_projection_record(
+                cx_generation_id="cx-gen-warn",
+                coverage_status="WARN",
+                boundary_status="PASS",
+                issue_codes=["MISSING_CX_GROUNDED_RESPONSE_QUALITY_FIELDS"],
+            ),
+            generation_audit_projection_record(
+                cx_generation_id="cx-gen-fail",
+                coverage_status="PASS",
+                boundary_status="FAIL",
+                issue_codes=["CX_GROUNDED_RESPONSE_QUALITY_FAILED"],
+                created_at="2026-08-05T00:00:09Z",
+            ),
+            generation_audit_projection_record(
+                cx_generation_id="cx-gen-pass",
+                coverage_status="PASS",
+                boundary_status="PASS",
+                created_at="2026-08-05T00:00:01Z",
+            ),
+        ],
+        service_id="nex-ag",
+        recent_limit=3,
+    )
+
+    assert projection["projection_status"] == "READY"
+    candidate = projection["issue_candidates"][0]
+    assert candidate["rule_id"] == "generation_quality_attention_required.v1"
+    assert candidate["candidate_id"] == (
+        "nex-ag:generation_quality:generation_quality_attention_required.v1"
+    )
+    assert candidate["severity"] == "ERROR"
+    assert candidate["signal"] == {
+        "source_type": "generation_quality",
+        "status": "FAIL",
+        "count": 2,
+        "threshold": 1,
+        "coverage_statuses": ["PASS", "WARN"],
+        "boundary_statuses": ["FAIL", "PASS"],
+        "issue_codes": [
+            "CX_GROUNDED_RESPONSE_QUALITY_FAILED",
+            "MISSING_CX_GROUNDED_RESPONSE_QUALITY_FIELDS",
+        ],
+        "cx_generation_ids": ["cx-gen-fail", "cx-gen-warn"],
+        "detail_paths": [
+            "/admin/v1/generation-audit/generations/cx-gen-fail",
+            "/admin/v1/generation-audit/generations/cx-gen-warn",
+        ],
+    }
+    assert projection["summary"]["by_rule"] == {
+        "generation_quality_attention_required.v1": 1
+    }
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_dashboard_generation_quality_section_handles_malformed_inputs() -> None:
+    empty = _dashboard_generation_quality_section(None, limit=3)
+    assert empty["summary"]["total"] == 0
+    assert empty["recent"] == []
+    assert empty["attention"] == []
+
+    projection = _dashboard_generation_quality_section(
+        [
+            "malformed",
+            {"cx_generation_id": "cx-gen-no-quality"},
+            {
+                "cx_generation_id": "cx-gen-unknown",
+                "trace_id": TRACE_ID,
+                "request_id": REQUEST_ID,
+                "created_at": None,
+                "grounded_response_quality": {
+                    "coverage_status": "BROKEN",
+                    "boundary_status": None,
+                    "citation_status": "",
+                    "grounding_required": False,
+                    "source_quality_issue_count": True,
+                    "projection_issue_count": "bad",
+                    "issue_codes": ["MISSING_FIELD", 404],
+                    "lineage_mismatches": ["retrieval_package_id", None],
+                    "recommended_action": "",
+                    "retrieval_package_id": "",
+                    "retrieval_package_hash": None,
+                    "structured_draft_id": "",
+                    "evidence_ref_count": "bad",
+                    "artifact_handoff_quality_available": False,
+                },
+            },
+            {
+                "cx_generation_id": "cx-gen-pass",
+                "created_at": datetime(2026, 8, 5, tzinfo=UTC),
+                "grounded_response_quality": {
+                    "coverage_status": "PASS",
+                    "boundary_status": "NOT_REQUIRED",
+                    "citation_status": "VALIDATED",
+                    "grounding_required": True,
+                    "source_quality_issue_count": "2",
+                    "projection_issue_count": "3",
+                    "issue_codes": [],
+                    "lineage_mismatches": [],
+                    "recommended_action": "monitor",
+                    "retrieval_package_id": "cx-ret-001",
+                    "retrieval_package_hash": "d" * 64,
+                    "structured_draft_id": "draft-001",
+                    "evidence_ref_count": 0,
+                    "artifact_handoff_quality_available": True,
+                },
+            },
+        ],
+        limit=5,
+    )
+
+    assert projection["summary"] == {
+        "total": 2,
+        "by_coverage_status": {
+            "PASS": 1,
+            "WARN": 0,
+            "FAIL": 0,
+            "NOT_REQUIRED": 0,
+            "UNKNOWN": 1,
+        },
+        "by_boundary_status": {
+            "PASS": 0,
+            "WARN": 0,
+            "FAIL": 0,
+            "NOT_REQUIRED": 1,
+            "UNKNOWN": 1,
+        },
+        "attention_count": 1,
+        "failed_count": 0,
+        "warning_count": 0,
+    }
+    assert [item["cx_generation_id"] for item in projection["recent"]] == [
+        "cx-gen-pass",
+        "cx-gen-unknown",
+    ]
+    unknown = projection["attention"][0]
+    assert unknown["cx_generation_id"] == "cx-gen-unknown"
+    assert unknown["created_at"] is None
+    assert unknown["coverage_status"] == "UNKNOWN"
+    assert unknown["boundary_status"] == "UNKNOWN"
+    assert unknown["citation_status"] is None
+    assert unknown["source_quality_issue_count"] is None
+    assert unknown["projection_issue_count"] == 0
+    assert unknown["issue_codes"] == ["MISSING_FIELD"]
+    assert unknown["lineage_mismatches"] == ["retrieval_package_id"]
+    assert unknown["recommended_action"] is None
+    assert unknown["retrieval_package_id"] is None
+    assert unknown["evidence_ref_count"] is None
+    pass_item = projection["recent"][0]
+    assert pass_item["created_at"] == "2026-08-05T00:00:00Z"
+    assert pass_item["source_quality_issue_count"] == 2
+    assert pass_item["projection_issue_count"] == 3
+    assert pass_item["evidence_ref_count"] == 0
+    assert _dashboard_timestamp(None) == "1970-01-01T00:00:00Z"
+
+
+def test_generation_quality_issue_candidates_handle_warning_only_attention() -> None:
+    assert (
+        _issue_candidates_from_generation_quality(
+            {
+                "attention": [
+                    {
+                        "coverage_status": "PASS",
+                        "boundary_status": "PASS",
+                        "cx_generation_id": "cx-gen-pass",
+                    }
+                ]
+            }
+        )
+        == []
+    )
+
+    candidates = _issue_candidates_from_generation_quality(
+        {
+            "attention": [
+                {
+                    "coverage_status": "WARN",
+                    "boundary_status": "PASS",
+                    "issue_codes": ["MISSING_FIELD", 404],
+                    "cx_generation_id": "cx-gen-warn",
+                    "detail_path": "/admin/v1/generation-audit/generations/cx-gen-warn",
+                },
+                {
+                    "coverage_status": "PASS",
+                    "boundary_status": "UNKNOWN",
+                    "cx_generation_id": "",
+                    "detail_path": "",
+                },
+                "malformed",
+            ]
+        }
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0]["severity"] == "WARNING"
+    assert candidates[0]["signal"] == {
+        "source_type": "generation_quality",
+        "status": "WARN",
+        "count": 2,
+        "threshold": 1,
+        "coverage_statuses": ["PASS", "WARN"],
+        "boundary_statuses": ["PASS", "UNKNOWN"],
+        "issue_codes": ["MISSING_FIELD"],
+        "cx_generation_ids": ["cx-gen-warn"],
+        "detail_paths": ["/admin/v1/generation-audit/generations/cx-gen-warn"],
+    }
+
+
+def test_generation_quality_optional_value_helpers_are_defensive() -> None:
+    assert _safe_optional_int(None) is None
+    assert _safe_optional_int(False) is None
+    assert _safe_optional_int(3) == 3
+    assert _safe_optional_int(-1) is None
+    assert _safe_optional_int("4") == 4
+    assert _safe_optional_int("-2") is None
+    assert _safe_optional_int("bad") is None
+    assert _safe_optional_int(1.5) is None
+    assert _nullable_string(None) is None
+    assert _nullable_string("") is None
+    assert _nullable_string(123) == "123"
 
 
 def test_operations_issue_candidates_group_threshold_decision_readiness() -> None:
@@ -3020,18 +3406,38 @@ def test_operations_issue_candidates_group_threshold_decision_readiness() -> Non
         candidate["signal"]["threshold_decision_paths"] == []
         for candidate in candidates
     )
-    assert build_operations_issue_candidates(
-        {**base_dashboard, "retrieval_threshold_decisions": "bad"}
-    ) == []
-    assert build_operations_issue_candidates(
-        {
-            **base_dashboard,
-            "retrieval_threshold_decisions": {"threshold_decisions": "bad"},
-        }
-    ) == []
+    assert (
+        build_operations_issue_candidates(
+            {**base_dashboard, "retrieval_threshold_decisions": "bad"}
+        )
+        == []
+    )
+    assert (
+        build_operations_issue_candidates(
+            {
+                **base_dashboard,
+                "retrieval_threshold_decisions": {"threshold_decisions": "bad"},
+            }
+        )
+        == []
+    )
+    assert (
+        build_operations_issue_candidates(
+            {**base_dashboard, "generation_quality": "bad"}
+        )
+        == []
+    )
+    assert (
+        build_operations_issue_candidates(
+            {**base_dashboard, "generation_quality": {"attention": "bad"}}
+        )
+        == []
+    )
 
 
-def test_operations_issue_candidate_projection_flags_error_and_critical_service_logs() -> None:
+def test_operations_issue_candidate_projection_flags_error_and_critical_service_logs() -> (
+    None
+):
     log_store = InMemoryServiceLogStore()
     log_store.append(
         build_service_log_entry(
@@ -3130,7 +3536,9 @@ def test_operations_issue_candidate_projection_flags_error_and_critical_service_
     assert_ag_operations_projection_contract(projection)
 
 
-def test_operations_issue_candidate_projection_flags_degraded_and_error_event_sources() -> None:
+def test_operations_issue_candidate_projection_flags_degraded_and_error_event_sources() -> (
+    None
+):
     registry = build_operations_source_registry(
         job_queues=build_job_queues(),
         event_stores=build_event_stores(),
@@ -3158,8 +3566,7 @@ def test_operations_issue_candidate_projection_flags_degraded_and_error_event_so
     assert projection["summary"]["by_severity"]["WARNING"] >= 1
     assert projection["summary"]["by_rule"]["operations_source_not_configured.v1"] >= 1
     candidate_ids = [
-        candidate["candidate_id"]
-        for candidate in projection["issue_candidates"]
+        candidate["candidate_id"] for candidate in projection["issue_candidates"]
     ]
     assert len(candidate_ids) == len(set(candidate_ids))
     assert_ag_operations_projection_contract(projection)
@@ -3225,16 +3632,22 @@ def test_operations_issue_candidates_ignore_malformed_candidate_inputs() -> None
         "active_jobs": [],
     }
 
-    assert build_operations_issue_candidates(
-        {**base_dashboard, "replay_candidates": "not-a-list"}
-    ) == []
-    assert build_operations_issue_candidates(
-        {
-            **base_dashboard,
-            "recent_failures": {"logs": "not-a-list"},
-            "replay_candidates": [],
-        }
-    ) == []
+    assert (
+        build_operations_issue_candidates(
+            {**base_dashboard, "replay_candidates": "not-a-list"}
+        )
+        == []
+    )
+    assert (
+        build_operations_issue_candidates(
+            {
+                **base_dashboard,
+                "recent_failures": {"logs": "not-a-list"},
+                "replay_candidates": [],
+            }
+        )
+        == []
+    )
 
     candidates = build_operations_issue_candidates(
         {
@@ -3281,7 +3694,9 @@ def test_operations_issue_candidates_ignore_malformed_candidate_inputs() -> None
     assert log_candidates[0]["signal"]["log_ids"] == ["log-cx-error-001"]
 
 
-def test_operations_issue_candidate_projection_suppresses_worker_gap_when_worker_is_fresh() -> None:
+def test_operations_issue_candidate_projection_suppresses_worker_gap_when_worker_is_fresh() -> (
+    None
+):
     fresh_store = InMemoryWorkerHeartbeatStore()
     fresh_store.upsert_heartbeat(
         build_worker_heartbeat(
@@ -3371,7 +3786,9 @@ def test_operations_issue_candidate_projection_reconciles_workers_by_service() -
     assert_ag_operations_projection_contract(projection)
 
 
-def test_operations_issue_candidate_projection_flags_worker_source_unavailable() -> None:
+def test_operations_issue_candidate_projection_flags_worker_source_unavailable() -> (
+    None
+):
     projection = build_operations_issue_candidate_projection(
         job_queues={"nex-cx": build_job_queues()["nex-cx"]},
         event_store=build_store(),
@@ -3563,8 +3980,7 @@ def test_build_cross_service_trace_timeline_projection_sorts_and_summarizes() ->
         "cursor": None,
     }
     assert [
-        (item["timeline_item_type"], item["item_id"])
-        for item in projection["timeline"]
+        (item["timeline_item_type"], item["item_id"]) for item in projection["timeline"]
     ] == [
         ("event", "event:event-cx-001"),
         ("job", "job:nex-cx:job-cx-001"),
@@ -3603,8 +4019,7 @@ def test_cross_service_trace_timeline_projection_includes_service_logs() -> None
 
     assert projection["projection_status"] == "READY"
     assert [
-        (item["timeline_item_type"], item["item_id"])
-        for item in projection["timeline"]
+        (item["timeline_item_type"], item["item_id"]) for item in projection["timeline"]
     ] == [
         ("event", "event:event-cx-001"),
         ("log", "log:nex-cx:log-001"),
@@ -3652,8 +4067,7 @@ def test_cross_service_trace_timeline_projection_includes_retrieval_packages() -
 
     assert projection["projection_status"] == "READY"
     assert [
-        (item["timeline_item_type"], item["item_id"])
-        for item in projection["timeline"]
+        (item["timeline_item_type"], item["item_id"]) for item in projection["timeline"]
     ] == [
         ("event", "event:event-cx-001"),
         ("log", "log:nex-cx:log-001"),
@@ -3787,7 +4201,9 @@ def test_summarize_trace_timeline_items_counts_empty_and_unknown_services() -> N
     }
 
 
-def test_cross_service_trace_timeline_route_requires_auth_and_returns_projection() -> None:
+def test_cross_service_trace_timeline_route_requires_auth_and_returns_projection() -> (
+    None
+):
     registry = build_operations_source_registry(
         job_queues=build_job_queues(),
         event_stores=build_event_stores(),
@@ -3966,7 +4382,9 @@ def test_build_operational_event_projection_filters_and_summarizes() -> None:
         request_trace_id=TRACE_ID,
     )
 
-    assert projection["projection_schema_version"] == "ag_operational_event_projection.v1"
+    assert (
+        projection["projection_schema_version"] == "ag_operational_event_projection.v1"
+    )
     assert projection["request_trace_id"] == TRACE_ID
     assert projection["filters"] == {
         "service_id": "nex-mo",
@@ -4041,7 +4459,9 @@ def test_operation_text_search_helpers_handle_minimal_records() -> None:
     assert _service_log_matches_query(minimal_log, "missing") is False
 
 
-def test_normalize_operation_event_search_query_strips_and_rejects_long_values() -> None:
+def test_normalize_operation_event_search_query_strips_and_rejects_long_values() -> (
+    None
+):
     assert normalize_operation_event_search_query("  Provider  ") == "Provider"
     assert normalize_operation_event_search_query("   ") is None
 
@@ -4099,7 +4519,9 @@ def test_build_operational_event_taxonomy_projection_filters_and_summarizes() ->
     assert projection["summary"]["by_service"] == {"nex-cx": 1}
 
 
-def test_operational_event_taxonomy_route_requires_auth_returns_filtered_projection() -> None:
+def test_operational_event_taxonomy_route_requires_auth_returns_filtered_projection() -> (
+    None
+):
     app = build_service_app(SERVICE_SPECS["nex-ag"])
     register_operational_event_taxonomy_routes(app)
     client = TestClient(app)
@@ -4297,7 +4719,9 @@ def test_build_service_log_projection_filters_searches_and_summarizes() -> None:
     assert [entry["log_id"] for entry in by_redacted_key["logs"]] == ["log-002"]
 
 
-def test_service_log_query_policy_projection_reports_query_and_retention_contract() -> None:
+def test_service_log_query_policy_projection_reports_query_and_retention_contract() -> (
+    None
+):
     projection = build_service_log_query_policy_projection(
         retention_days=999,
         request_trace_id=TRACE_ID,
@@ -4444,7 +4868,9 @@ def test_service_log_retention_dry_run_projection_reports_degraded_sources() -> 
     }
     assert projection["retention_candidates"] == []
     assert unavailable_projection["projection_status"] == "DEGRADED"
-    assert unavailable_projection["source_statuses"]["nex-mo"]["status"] == "UNAVAILABLE"
+    assert (
+        unavailable_projection["source_statuses"]["nex-mo"]["status"] == "UNAVAILABLE"
+    )
     assert unavailable_projection["source_statuses"]["nex-mo"]["candidate_count"] == 0
     assert_ag_operations_projection_contract(projection)
     assert_ag_operations_projection_contract(unavailable_projection)
@@ -4493,9 +4919,10 @@ def test_service_log_retention_history_projection_filters_and_paginates() -> Non
         "status": "READY",
         "history_count": 1,
     }
-    assert projection["source_registry"]["sources"]["nex-cx"]["capabilities"][
-        "logs"
-    ] is True
+    assert (
+        projection["source_registry"]["sources"]["nex-cx"]["capabilities"]["logs"]
+        is True
+    )
     assert projection["summary"]["total"] == 1
     assert projection["summary"]["by_mode"]["EXECUTE"] == 1
     assert projection["summary"]["by_status"]["SUCCEEDED"] == 1
@@ -4817,9 +5244,7 @@ def test_service_log_retention_dispatch_request_rejects_payload_edges() -> None:
     with pytest.raises(AgServiceLogRetentionError) as missing_cutoff:
         ag_operations._service_log_retention_dispatch_request({})
     with pytest.raises(AgServiceLogRetentionError) as blank_cutoff:
-        ag_operations._service_log_retention_dispatch_request(
-            {"retention_cutoff": ""}
-        )
+        ag_operations._service_log_retention_dispatch_request({"retention_cutoff": ""})
     with pytest.raises(AgServiceLogRetentionError) as bad_bool:
         ag_operations._service_log_retention_dispatch_request(
             {"retention_cutoff": "2026-07-06T00:00:00Z", "dry_run": "yes"}
@@ -4843,7 +5268,9 @@ def test_service_log_retention_dispatch_request_rejects_payload_edges() -> None:
     assert bad_object.value.detail == "requested_by must be an object."
 
 
-def test_build_service_log_projection_uses_registry_and_can_omit_request_trace_id() -> None:
+def test_build_service_log_projection_uses_registry_and_can_omit_request_trace_id() -> (
+    None
+):
     registry = build_operations_source_registry(service_log_stores=build_log_stores())
 
     projection = build_service_log_projection(
@@ -4856,11 +5283,16 @@ def test_build_service_log_projection_uses_registry_and_can_omit_request_trace_i
 
     assert "request_trace_id" not in projection
     assert projection["projection_status"] == "READY"
-    assert projection["source_registry"]["sources"]["nex-cx"]["capabilities"]["logs"] is True
+    assert (
+        projection["source_registry"]["sources"]["nex-cx"]["capabilities"]["logs"]
+        is True
+    )
     assert [entry["log_id"] for entry in projection["logs"]] == ["log-001"]
 
 
-def test_build_service_log_projection_applies_query_options_and_reports_sources() -> None:
+def test_build_service_log_projection_applies_query_options_and_reports_sources() -> (
+    None
+):
     projection = build_service_log_projection(
         service_log_stores={
             "nex-cx": build_log_stores()["nex-cx"],
@@ -4907,7 +5339,9 @@ def test_build_service_log_detail_projection_returns_safe_log_summary() -> None:
         request_trace_id=TRACE_ID,
     )
 
-    assert projection["projection_schema_version"] == "ag_service_log_detail_projection.v1"
+    assert (
+        projection["projection_schema_version"] == "ag_service_log_detail_projection.v1"
+    )
     assert projection["request_trace_id"] == TRACE_ID
     assert projection["log"]["log_id"] == "log-002"
     assert projection["summary"] == {
@@ -4932,9 +5366,7 @@ def test_service_logs_route_requires_auth_returns_filtered_projection() -> None:
 
     missing_auth = client.get("/admin/v1/operations/logs")
     missing_policy_auth = client.get("/admin/v1/operations/logs/policy")
-    missing_retention_auth = client.get(
-        "/admin/v1/operations/logs/retention/dry-run"
-    )
+    missing_retention_auth = client.get("/admin/v1/operations/logs/retention/dry-run")
     response = client.get(
         "/admin/v1/operations/logs",
         params={"service_id": "nex-cx", "q": "worker", "limit": 1},
@@ -5066,8 +5498,7 @@ def test_service_logs_route_rejects_bad_filters() -> None:
     assert bad_service.json()["error_code"] == "ag.service_log_service_invalid"
     assert bad_retention_service.status_code == 400
     assert (
-        bad_retention_service.json()["error_code"]
-        == "ag.service_log_service_invalid"
+        bad_retention_service.json()["error_code"] == "ag.service_log_service_invalid"
     )
     assert bad_severity.status_code == 400
     assert bad_severity.json()["error_code"] == "ag.service_log_severity_invalid"
@@ -5129,7 +5560,9 @@ def test_build_job_operations_projection_aggregates_filters_and_summarizes() -> 
     }
 
 
-def test_build_job_operations_projection_sorts_limits_and_reports_degraded_sources() -> None:
+def test_build_job_operations_projection_sorts_limits_and_reports_degraded_sources() -> (
+    None
+):
     projection = build_job_operations_projection(
         {
             **build_job_queues(),
@@ -5195,8 +5628,7 @@ def test_build_job_operation_detail_projection_includes_lifecycle_timeline() -> 
     assert projection["summary"]["timeline_status"] == "READY"
     assert projection["summary"]["timeline_event_count"] == 1
     timeline_event_ids = [
-        event["event_id"]
-        for event in projection["lifecycle_timeline"]["events"]
+        event["event_id"] for event in projection["lifecycle_timeline"]["events"]
     ]
     assert timeline_event_ids == ["event-001"]
 
@@ -5310,8 +5742,7 @@ def test_job_operation_detail_route_requires_auth_returns_job_and_404() -> None:
     assert payload["job"]["job_id"] == "job-cx-001"
     assert payload["lifecycle_timeline"]["timeline_status"] == "READY"
     timeline_event_ids = [
-        event["event_id"]
-        for event in payload["lifecycle_timeline"]["events"]
+        event["event_id"] for event in payload["lifecycle_timeline"]["events"]
     ]
     assert timeline_event_ids == ["event-cx-001"]
     assert missing_job.status_code == 404
@@ -5365,7 +5796,10 @@ def test_job_control_dispatch_projection_wraps_service_response() -> None:
         request_trace_id=TRACE_ID,
     )
 
-    assert projection["projection_schema_version"] == AG_JOB_CONTROL_DISPATCH_SCHEMA_VERSION
+    assert (
+        projection["projection_schema_version"]
+        == AG_JOB_CONTROL_DISPATCH_SCHEMA_VERSION
+    )
     assert projection["dispatch_status"] == "SUCCEEDED"
     assert projection["request_trace_id"] == TRACE_ID
     assert projection["audit_event"] == {
@@ -5381,7 +5815,9 @@ def test_job_control_dispatch_projection_wraps_service_response() -> None:
     }
 
 
-def test_job_control_routes_dispatch_cancel_retry_and_replay_to_service_client() -> None:
+def test_job_control_routes_dispatch_cancel_retry_and_replay_to_service_client() -> (
+    None
+):
     control_client = RecordingJobControlClient()
     audit_store = InMemoryOperationalEventStore()
     app = build_service_app(SERVICE_SPECS["nex-ag"])
@@ -5427,7 +5863,10 @@ def test_job_control_routes_dispatch_cancel_retry_and_replay_to_service_client()
     assert cancel.status_code == 200
     assert retry.status_code == 200
     assert replay.status_code == 200
-    assert cancel.json()["projection_schema_version"] == AG_JOB_CONTROL_DISPATCH_SCHEMA_VERSION
+    assert (
+        cancel.json()["projection_schema_version"]
+        == AG_JOB_CONTROL_DISPATCH_SCHEMA_VERSION
+    )
     assert cancel.json()["audit_event"]["event_type"] == AG_JOB_CONTROL_EVENT_SUCCEEDED
     assert retry.json()["service_response"]["action"] == "retry"
     assert replay.json()["action"] == "replay"
@@ -5492,8 +5931,12 @@ def test_job_control_routes_require_auth_and_validate_service_and_payload() -> N
     client = TestClient(app)
 
     missing_auth = client.post("/admin/v1/operations/jobs/nex-cx/job-cx-001/cancel")
-    retry_missing_auth = client.post("/admin/v1/operations/jobs/nex-cx/job-cx-001/retry")
-    replay_missing_auth = client.post("/admin/v1/operations/jobs/nex-cx/job-cx-001/replay")
+    retry_missing_auth = client.post(
+        "/admin/v1/operations/jobs/nex-cx/job-cx-001/retry"
+    )
+    replay_missing_auth = client.post(
+        "/admin/v1/operations/jobs/nex-cx/job-cx-001/replay"
+    )
     cancel_bad_service = client.post(
         "/admin/v1/operations/jobs/nex-unknown/job-cx-001/cancel",
         headers=auth_headers(),
@@ -5559,7 +6002,10 @@ def test_job_control_routes_map_service_client_errors() -> None:
     assert response.status_code == 409
     assert response.json()["error_code"] == "job.retry_status_invalid"
     assert response.json()["type"].endswith("/job-control-dispatch-failed")
-    assert response.json()["details"]["audit_event"]["event_type"] == AG_JOB_CONTROL_EVENT_FAILED
+    assert (
+        response.json()["details"]["audit_event"]["event_type"]
+        == AG_JOB_CONTROL_EVENT_FAILED
+    )
     audit_events = audit_store.list_events(service_id="nex-ag", limit=10)
     assert audit_events[0]["event_type"] == AG_JOB_CONTROL_EVENT_FAILED
     assert audit_events[0]["details"]["error_code"] == "job.retry_status_invalid"
