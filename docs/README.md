@@ -435,6 +435,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0329`](slices/0329_ag_generation_quality_issue_detail_postgresql_smoke_evidence.md) | `S33-009` AG generation quality issue detail PostgreSQL smoke evidence. |
 | [`Slice 0330`](slices/0330_ag_generation_quality_observability_closure_checkpoint.md) | `S33-010` AG generation quality observability closure checkpoint. |
 | [`Slice 0331`](slices/0331_ae_generation_feedback_disposition_boundary_audit.md) | `S34-001` AE generation feedback/disposition boundary audit. |
+| [`Slice 0332`](slices/0332_ae_generation_feedback_contract_foundation.md) | `S34-002` AE generation feedback contract foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

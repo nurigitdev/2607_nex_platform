@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/generation_feedback.v1.schema.json",
+  "title": "NeX AE Generation Feedback",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "feedback_schema_version",
+    "feedback_id",
+    "status",
+    "tenant_id",
+    "user_id",
+    "interaction_id",
+    "chat_document_id",
+    "cx_generation_id",
+    "trace_id",
+    "request_id",
+    "feedback_value",
+    "feedback_reasons",
+    "feedback_comment_hash",
+    "feedback_comment_preview",
+    "quality_issue_refs",
+    "metadata",
+    "created_at"
+  ],
+  "properties": {
+    "feedback_schema_version": {
+      "const": "ae_generation_feedback.v1"
+    },
+    "feedback_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "RECORDED",
+        "REJECTED"
+      ]
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "user_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "interaction_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "chat_document_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "cx_generation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "feedback_value": {
+      "$ref": "#/$defs/feedbackValue"
+    },
+    "feedback_reasons": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/feedbackReason"
+      }
+    },
+    "feedback_comment_hash": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "feedback_comment_preview": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 240
+    },
+    "quality_issue_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/qualityIssueRef"
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "submitted_via",
+        "raw_prompt_stored",
+        "raw_generation_output_stored",
+        "free_text_comment_storage"
+      ],
+      "properties": {
+        "submitted_via": {
+          "type": "string",
+          "enum": [
+            "chat",
+            "document_detail",
+            "artifact_preview",
+            "operator_replay"
+          ]
+        },
+        "raw_prompt_stored": {
+          "const": false
+        },
+        "raw_generation_output_stored": {
+          "const": false
+        },
+        "free_text_comment_storage": {
+          "const": "hash_and_short_preview_only"
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "feedbackValue": {
+      "type": "string",
+      "enum": [
+        "positive",
+        "negative",
+        "neutral"
+      ]
+    },
+    "feedbackReason": {
+      "type": "string",
+      "enum": [
+        "helpful",
+        "not_helpful",
+        "incorrect",
+        "citation_issue",
+        "irrelevant",
+        "incomplete",
+        "unsafe",
+        "slow",
+        "other"
+      ]
+    },
+    "qualityIssueRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_service",
+        "issue_type",
+        "issue_code",
+        "issue_ref_id"
+      ],
+      "properties": {
+        "source_service": {
+          "type": "string",
+          "enum": [
+            "nex-ae-api",
+            "nex-cx",
+            "nex-ag"
+          ]
+        },
+        "issue_type": {
+          "type": "string",
+          "enum": [
+            "retrieval_quality",
+            "generation_quality",
+            "citation_quality",
+            "artifact_quality",
+            "user_reported"
+          ]
+        },
+        "issue_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "issue_ref_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
