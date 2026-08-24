@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from nex_ag.generation_quality_disposition import (
     ACTION_STATUS,
@@ -14,8 +17,10 @@ from nex_ag.generation_quality_disposition import (
     DISPOSITION_RECORDED_EVENT_TYPE,
     GenerationQualityDispositionError,
     GenerationQualityDispositionStore,
+    SqlAlchemyGenerationQualityDispositionStore,
     build_generation_quality_disposition_record,
     build_generation_quality_disposition_list_response,
+    default_generation_quality_disposition_store,
     emit_generation_quality_disposition_event,
     find_sensitive_disposition_keys,
     operator_note_preview,
@@ -27,7 +32,9 @@ from nex_runtime import (
     OperationalEventError,
     OperationalEventEmitter,
     SERVICE_SPECS,
+    build_engine,
     build_service_app,
+    build_session_factory,
     issue_mock_service_token,
 )
 
@@ -101,6 +108,38 @@ def build_route_client(
         audit_event_store=selected_event_store,
     )
     return TestClient(app), selected_store, selected_event_store
+
+
+def sqlite_disposition_store() -> tuple[SqlAlchemyGenerationQualityDispositionStore, Any]:
+    engine = build_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ag_generation_quality_operator_dispositions (
+                    disposition_id TEXT PRIMARY KEY,
+                    disposition_schema_version TEXT NOT NULL,
+                    cx_generation_id TEXT NOT NULL,
+                    trace_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    operator_type TEXT NOT NULL,
+                    operator_id TEXT NOT NULL,
+                    tenant_id TEXT,
+                    operator_ref TEXT NOT NULL,
+                    operator_action TEXT NOT NULL,
+                    disposition_status TEXT NOT NULL,
+                    reason_codes TEXT NOT NULL,
+                    operator_note_hash TEXT,
+                    operator_note_preview TEXT,
+                    quality_issue_refs TEXT NOT NULL,
+                    metadata TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+    return SqlAlchemyGenerationQualityDispositionStore(build_session_factory(engine)), engine
 
 
 def assert_disposition_error(payload: dict[str, Any], error_code: str) -> None:
@@ -395,6 +434,81 @@ def test_generation_quality_disposition_route_still_accepts_when_audit_emit_fail
 
     assert response.status_code == 202
     assert store.get("disp-audit-failed") is not None
+
+
+def test_sqlalchemy_disposition_store_round_trips_sqlite() -> None:
+    store, engine = sqlite_disposition_store()
+    try:
+        first = build_record(sample_payload(disposition_id="disp-sqlite-old"))
+        newer = build_generation_quality_disposition_record(
+            sample_payload(
+                disposition_id="disp-sqlite-new",
+                operator_action="resolved",
+            ),
+            cx_generation_id="cx-gen-001",
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            created_at="2026-08-25T00:10:00Z",
+        )
+
+        store.save(first)
+        store.save(newer)
+        store.save({**first, "operator_action": "acknowledged"})
+
+        loaded = store.get("disp-sqlite-new")
+        listed = store.list_for_generation("cx-gen-001")
+        deleted = store.delete("disp-sqlite-new")
+
+        assert loaded == newer
+        assert [record["disposition_id"] for record in listed] == [
+            "disp-sqlite-new",
+            "disp-sqlite-old",
+        ]
+        assert deleted == 1
+        assert store.get("disp-sqlite-new") is None
+        assert store.delete("missing") == 0
+    finally:
+        engine.dispose()
+
+
+def test_default_generation_quality_disposition_store_uses_persistence_session_factory() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    session_factory = object()
+    app.state.nex_persistence = SimpleNamespace(api_session_factory=session_factory)
+
+    store = default_generation_quality_disposition_store(app)
+
+    assert isinstance(store, SqlAlchemyGenerationQualityDispositionStore)
+    assert store._session_factory is session_factory
+    app_without_persistence = build_service_app(SERVICE_SPECS["nex-ag"])
+    assert isinstance(
+        default_generation_quality_disposition_store(app_without_persistence),
+        GenerationQualityDispositionStore,
+    )
+
+
+def test_sqlalchemy_disposition_store_reports_unavailable_errors() -> None:
+    class FailingSession:
+        def __enter__(self) -> "FailingSession":
+            raise SQLAlchemyError("database unavailable")
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    store = SqlAlchemyGenerationQualityDispositionStore(lambda: FailingSession())
+
+    for action in (
+        lambda: store.save(build_record()),
+        lambda: store.get("disp"),
+        lambda: store.list_for_generation("cx-gen-001"),
+        lambda: store.delete("disp"),
+    ):
+        with pytest.raises(GenerationQualityDispositionError) as exc:
+            action()
+        assert exc.value.status_code == 503
+        assert exc.value.error_code == (
+            "ag.generation_quality_disposition_store_unavailable"
+        )
 
 
 @pytest.mark.parametrize(

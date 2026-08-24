@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -8,6 +9,9 @@ from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import Body, FastAPI, Header, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
@@ -115,6 +119,87 @@ class GenerationQualityDispositionStore:
             if disposition_id in self.records
         ]
 
+    def delete(self, disposition_id: str) -> int:
+        record = self.records.pop(disposition_id, None)
+        if record is None:
+            return 0
+        ids = self.disposition_ids_by_generation.get(record["cx_generation_id"], [])
+        self.disposition_ids_by_generation[record["cx_generation_id"]] = [
+            existing_id for existing_id in ids if existing_id != disposition_id
+        ]
+        return 1
+
+
+class SqlAlchemyGenerationQualityDispositionStore:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    text(_disposition_upsert_sql(_dialect_name(session))),
+                    _disposition_record_params(record),
+                )
+                session.commit()
+            return record
+        except SQLAlchemyError as exc:
+            raise _store_unavailable_error() from exc
+
+    def get(self, disposition_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _disposition_select_sql(
+                                "disposition_id = :disposition_id"
+                            )
+                        ),
+                        {"disposition_id": disposition_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+            return _disposition_record_from_row(row) if row is not None else None
+        except SQLAlchemyError as exc:
+            raise _store_unavailable_error() from exc
+
+    def list_for_generation(self, cx_generation_id: str) -> list[dict[str, Any]]:
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            _disposition_select_sql(
+                                "cx_generation_id = :cx_generation_id "
+                                "ORDER BY updated_at DESC, disposition_id ASC"
+                            )
+                        ),
+                        {"cx_generation_id": cx_generation_id},
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [_disposition_record_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _store_unavailable_error() from exc
+
+    def delete(self, disposition_id: str) -> int:
+        try:
+            with self._session_factory() as session:
+                result = session.execute(
+                    text(
+                        "DELETE FROM ag_generation_quality_operator_dispositions "
+                        "WHERE disposition_id = :disposition_id"
+                    ),
+                    {"disposition_id": disposition_id},
+                )
+                session.commit()
+                return int(result.rowcount or 0)
+        except SQLAlchemyError as exc:
+            raise _store_unavailable_error() from exc
+
 
 @dataclass(frozen=True)
 class GenerationQualityDispositionError(Exception):
@@ -130,13 +215,21 @@ DEFAULT_DISPOSITION_STORE = GenerationQualityDispositionStore()
 DEFAULT_AUDIT_EVENT_STORE = InMemoryOperationalEventStore()
 
 
+def default_generation_quality_disposition_store(app: FastAPI) -> Any:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is not None:
+        return SqlAlchemyGenerationQualityDispositionStore(session_factory)
+    return DEFAULT_DISPOSITION_STORE
+
+
 def register_generation_quality_disposition_routes(
     app: FastAPI,
     *,
-    store: GenerationQualityDispositionStore | None = None,
+    store: Any | None = None,
     audit_event_store: OperationalEventStore | None = None,
 ) -> None:
-    selected_store = store or GenerationQualityDispositionStore()
+    selected_store = store or default_generation_quality_disposition_store(app)
     audit_emitter = OperationalEventEmitter(
         service_id="nex-ag",
         store=audit_event_store or DEFAULT_AUDIT_EVENT_STORE,
@@ -497,6 +590,162 @@ def _collect_sensitive_keys(value: Any, *, path: str, matches: list[str]) -> Non
 def _is_sensitive_key(key: str) -> bool:
     normalized = key.strip().lower()
     return any(part in normalized for part in SENSITIVE_KEY_PARTS)
+
+
+def _disposition_upsert_sql(dialect_name: str) -> str:
+    operator_ref_expr = _json_param_expr("operator_ref", dialect_name)
+    reason_codes_expr = _json_param_expr("reason_codes", dialect_name)
+    quality_issue_refs_expr = _json_param_expr("quality_issue_refs", dialect_name)
+    metadata_expr = _json_param_expr("metadata", dialect_name)
+    return f"""
+        INSERT INTO ag_generation_quality_operator_dispositions (
+            disposition_id,
+            disposition_schema_version,
+            cx_generation_id,
+            trace_id,
+            request_id,
+            operator_type,
+            operator_id,
+            tenant_id,
+            operator_ref,
+            operator_action,
+            disposition_status,
+            reason_codes,
+            operator_note_hash,
+            operator_note_preview,
+            quality_issue_refs,
+            metadata,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :disposition_id,
+            :disposition_schema_version,
+            :cx_generation_id,
+            :trace_id,
+            :request_id,
+            :operator_type,
+            :operator_id,
+            :tenant_id,
+            {operator_ref_expr},
+            :operator_action,
+            :disposition_status,
+            {reason_codes_expr},
+            :operator_note_hash,
+            :operator_note_preview,
+            {quality_issue_refs_expr},
+            {metadata_expr},
+            :created_at,
+            :updated_at
+        )
+        ON CONFLICT (disposition_id) DO UPDATE SET
+            trace_id = excluded.trace_id,
+            request_id = excluded.request_id,
+            operator_type = excluded.operator_type,
+            operator_id = excluded.operator_id,
+            tenant_id = excluded.tenant_id,
+            operator_ref = excluded.operator_ref,
+            operator_action = excluded.operator_action,
+            disposition_status = excluded.disposition_status,
+            reason_codes = excluded.reason_codes,
+            operator_note_hash = excluded.operator_note_hash,
+            operator_note_preview = excluded.operator_note_preview,
+            quality_issue_refs = excluded.quality_issue_refs,
+            metadata = excluded.metadata,
+            updated_at = excluded.updated_at
+    """
+
+
+def _disposition_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            disposition_schema_version,
+            disposition_id,
+            cx_generation_id,
+            trace_id,
+            request_id,
+            operator_ref,
+            operator_action,
+            disposition_status,
+            reason_codes,
+            operator_note_hash,
+            operator_note_preview,
+            quality_issue_refs,
+            metadata,
+            created_at,
+            updated_at
+        FROM ag_generation_quality_operator_dispositions
+        WHERE {where_clause}
+    """
+
+
+def _disposition_record_params(record: dict[str, Any]) -> dict[str, Any]:
+    operator = record["operator_ref"]
+    return {
+        **record,
+        "operator_type": operator["operator_type"],
+        "operator_id": operator["operator_id"],
+        "tenant_id": operator.get("tenant_id"),
+        "operator_ref": json.dumps(record["operator_ref"]),
+        "reason_codes": json.dumps(record["reason_codes"]),
+        "quality_issue_refs": json.dumps(record["quality_issue_refs"]),
+        "metadata": json.dumps(record["metadata"]),
+    }
+
+
+def _disposition_record_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return {
+        "disposition_schema_version": data["disposition_schema_version"],
+        "disposition_id": data["disposition_id"],
+        "cx_generation_id": data["cx_generation_id"],
+        "trace_id": data["trace_id"],
+        "request_id": data["request_id"],
+        "operator_ref": _json_value(data["operator_ref"], {}),
+        "operator_action": data["operator_action"],
+        "disposition_status": data["disposition_status"],
+        "reason_codes": _json_value(data["reason_codes"], []),
+        "operator_note_hash": data["operator_note_hash"],
+        "operator_note_preview": data["operator_note_preview"],
+        "quality_issue_refs": _json_value(data["quality_issue_refs"], []),
+        "metadata": _json_value(data["metadata"], {}),
+        "created_at": _datetime_value(data["created_at"]),
+        "updated_at": _datetime_value(data["updated_at"]),
+    }
+
+
+def _json_param_expr(name: str, dialect_name: str) -> str:
+    if dialect_name == "postgresql":
+        return f"CAST(:{name} AS jsonb)"
+    return f":{name}"
+
+
+def _dialect_name(session: Session) -> str:
+    return session.get_bind().dialect.name
+
+
+def _json_value(value: Any, default: Any) -> Any:
+    if isinstance(value, str):
+        return json.loads(value)
+    if value is None:
+        return default
+    return value
+
+
+def _datetime_value(value: Any) -> str:
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    if hasattr(value, "isoformat"):
+        return value.isoformat().replace("+00:00", "Z")
+    return str(value)
+
+
+def _store_unavailable_error() -> GenerationQualityDispositionError:
+    return GenerationQualityDispositionError(
+        status_code=503,
+        error_code="ag.generation_quality_disposition_store_unavailable",
+        detail="Generation quality disposition store is unavailable.",
+    )
 
 
 def _authorize_ag_request(
