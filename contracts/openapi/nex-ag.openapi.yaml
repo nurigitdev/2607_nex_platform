@@ -84,6 +84,36 @@ paths:
           description: Source generation, artifact handoff, or recovery request was not found.
         "503":
           description: Source service is unavailable.
+  /admin/v1/generation-audit/generations/{cx_generation_id}/quality-issue-detail:
+    get:
+      operationId: getAgGenerationQualityIssueDetailProjection
+      tags:
+        - GenerationAudit
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: artifact_handoff_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: recovery_request_id
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Read-only redacted generation quality issue detail and operator runbook projection assembled from the AG generation audit projection.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Source generation, artifact handoff, or recovery request was not found.
+        "503":
+          description: Source service is unavailable.
   /admin/v1/operations:
     get:
       operationId: getAgUnifiedOperationsProjection

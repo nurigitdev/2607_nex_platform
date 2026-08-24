@@ -704,6 +704,85 @@ def test_generation_audit_route_requires_auth_and_returns_projection() -> None:
     ]
 
 
+def test_generation_quality_issue_detail_route_returns_operator_runbook() -> None:
+    generation_record = sample_generation_record()
+    for field in (
+        "grounded_response_quality_audit_schema_version",
+        "grounded_response_quality_status",
+        "grounded_response_quality_issue_count",
+    ):
+        del generation_record["request_metadata"][field]
+    client, source_client = build_client(
+        FakeGenerationAuditSourceClient(generation_record=generation_record)
+    )
+
+    unauthorized = client.get(
+        "/admin/v1/generation-audit/generations/cx-gen-001/quality-issue-detail"
+    )
+    response = client.get(
+        "/admin/v1/generation-audit/generations/cx-gen-001/quality-issue-detail",
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["projection_schema_version"] == (
+        "ag_generation_quality_issue_detail_projection.v1"
+    )
+    assert payload["projection_status"] == "READY"
+    assert payload["attention_required"] is True
+    assert payload["severity"] == "WARNING"
+    assert payload["quality"]["coverage_status"] == "WARN"
+    assert payload["quality"]["issue_codes"] == [
+        "MISSING_CX_GROUNDED_RESPONSE_QUALITY_FIELDS"
+    ]
+    assert payload["quality"]["boundary_status"] == "UNKNOWN"
+    assert payload["runbook"] == {
+        "runbook_id": "ag.generation_quality.metadata_gap_triage.v1",
+        "recommended_operator_action": "restore_missing_quality_metadata",
+        "operator_steps": [
+            "open_generation_audit_detail",
+            "verify_cx_grounded_response_quality_metadata",
+            "verify_ae_artifact_handoff_quality_summary",
+        ],
+    }
+    assert payload["debug_paths"] == {
+        "generation_audit_detail_path": (
+            "/admin/v1/generation-audit/generations/cx-gen-001"
+        ),
+        "operations_dashboard_path": "/admin/v1/operations/dashboard",
+        "retrieval_package_detail_path": (
+            "/admin/v1/operations/retrieval-packages/cx-ret-001"
+        ),
+    }
+    assert payload["request_trace_id"] == TRACE_ID
+    assert "private prompt" not in str(payload)
+    assert source_client.calls == [
+        ("generation", "cx-gen-001"),
+        ("events", "cx-gen-001"),
+    ]
+
+
+def test_generation_quality_issue_detail_route_maps_source_errors() -> None:
+    error = GenerationAuditError(
+        status_code=404,
+        error_code="cx.generation_not_found",
+        detail="Generation not found.",
+        retryable=False,
+    )
+    client, _ = build_client(FakeGenerationAuditSourceClient(error=error))
+
+    response = client.get(
+        "/admin/v1/generation-audit/generations/cx-gen-missing/quality-issue-detail",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "cx.generation_not_found"
+    assert response.json()["retryable"] is False
+
+
 def test_generation_audit_route_maps_source_errors() -> None:
     error = GenerationAuditError(
         status_code=503,

@@ -18,6 +18,7 @@ from nex_runtime import (
     trace_id_from_headers,
     validate_authorization_header,
 )
+from nex_ag.operations import build_generation_quality_issue_detail_projection
 
 SAFE_TIMELINE_FIELDS = {
     "event_id",
@@ -266,6 +267,39 @@ def register_generation_audit_routes(
                 recovery_request_id=recovery_request_id,
                 request_id=request_id,
                 trace_id=trace_id,
+            )
+        except GenerationAuditError as exc:
+            return _audit_problem_response(request, exc)
+
+    @app.get(
+        "/admin/v1/generation-audit/generations/{cx_generation_id}/quality-issue-detail",
+        response_model=None,
+    )
+    def get_generation_quality_issue_detail_projection(
+        cx_generation_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        artifact_handoff_id: str | None = Query(default=None, min_length=1),
+        recovery_request_id: str | None = Query(default=None, min_length=1),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            audit_projection = build_generation_audit_projection(
+                client,
+                cx_generation_id=cx_generation_id,
+                artifact_handoff_id=artifact_handoff_id,
+                recovery_request_id=recovery_request_id,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            return build_generation_quality_issue_detail_projection(
+                audit_projection,
+                request_trace_id=trace_id,
             )
         except GenerationAuditError as exc:
             return _audit_problem_response(request, exc)
