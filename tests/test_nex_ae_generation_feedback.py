@@ -4,13 +4,18 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
+from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 
 from nex_ae_api.generation_feedback import (
     GenerationFeedbackError,
+    GenerationFeedbackStore,
     build_generation_feedback_record,
     feedback_reason_list,
+    payload_with_path_interaction_id,
     quality_issue_refs,
+    register_generation_feedback_routes,
 )
 from nex_ae_api.generation_feedback_boundary import (
     AE_FEEDBACK_OWNER_SERVICE,
@@ -23,6 +28,7 @@ from nex_ae_api.generation_feedback_boundary import (
     find_sensitive_feedback_keys,
     validate_generation_feedback_boundary_decision,
 )
+from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 
 
 ROOT = Path(__file__).parents[1]
@@ -39,6 +45,30 @@ def generation_feedback_schema() -> dict[str, object]:
             / "generation_feedback.v1.schema.json"
         ).read_text(encoding="utf-8")
     )
+
+
+def ae_openapi_spec() -> dict[str, object]:
+    return yaml.safe_load(
+        (ROOT / "contracts" / "openapi" / "nex-ae-api.openapi.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def auth_headers() -> dict[str, str]:
+    issued = issue_mock_service_token(service_id="nex-oa", audience="nex-ae-api")
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+    }
+
+
+def build_feedback_test_client() -> tuple[TestClient, GenerationFeedbackStore]:
+    app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    store = GenerationFeedbackStore()
+    register_generation_feedback_routes(app, store=store)
+    return TestClient(app), store
 
 
 def test_generation_feedback_boundary_decision_assigns_owner_services() -> None:
@@ -278,3 +308,147 @@ def test_quality_issue_refs_rejects_non_object_items() -> None:
         quality_issue_refs(["bad"])
 
     assert exc_info.value.error_code == "ae.generation_feedback_quality_ref_invalid"
+
+
+def test_generation_feedback_store_indexes_unique_feedback_ids() -> None:
+    store = GenerationFeedbackStore()
+    record = build_generation_feedback_record(
+        feedback_payload(),
+        request_id="req-001",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+        created_at="2026-08-24T00:00:00Z",
+    )
+
+    store.save(record)
+    store.save(record)
+
+    assert store.get(record["feedback_id"]) == record
+    assert store.list_for_interaction("ae-chat-001") == [record]
+    assert store.list_for_interaction("missing") == []
+
+
+def test_payload_with_path_interaction_id_rejects_mismatch() -> None:
+    with pytest.raises(GenerationFeedbackError) as exc_info:
+        payload_with_path_interaction_id(
+            {"interaction_id": "payload-interaction"},
+            "path-interaction",
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.error_code == "ae.generation_feedback_interaction_mismatch"
+
+
+def test_generation_feedback_route_records_lists_and_reads_feedback() -> None:
+    client, store = build_feedback_test_client()
+
+    create_response = client.post(
+        "/api/v1/chat/interactions/ae-chat-001/feedback",
+        json=feedback_payload(interaction_id="ae-chat-001"),
+        headers=auth_headers(),
+    )
+
+    assert create_response.status_code == 202
+    created = create_response.json()
+    Draft202012Validator(generation_feedback_schema()).validate(created)
+    assert created["interaction_id"] == "ae-chat-001"
+    assert created["feedback_comment_hash"] is not None
+    assert store.get(created["feedback_id"]) == created
+
+    list_response = client.get(
+        "/api/v1/chat/interactions/ae-chat-001/feedback",
+        headers=auth_headers(),
+    )
+    assert list_response.status_code == 200
+    listed = list_response.json()
+    assert listed["feedback_schema_version"] == "ae_generation_feedback_list.v1"
+    assert listed["items"] == [created]
+
+    get_response = client.get(
+        f"/api/v1/chat/interactions/ae-chat-001/feedback/{created['feedback_id']}",
+        headers=auth_headers(),
+    )
+    assert get_response.status_code == 200
+    assert get_response.json() == created
+
+
+def test_generation_feedback_route_defaults_path_interaction_id() -> None:
+    client, _store = build_feedback_test_client()
+
+    response = client.post(
+        "/api/v1/chat/interactions/ae-chat-from-path/feedback",
+        json=feedback_payload(interaction_id=None),
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 202
+    assert response.json()["interaction_id"] == "ae-chat-from-path"
+
+
+def test_generation_feedback_route_maps_auth_and_validation_errors() -> None:
+    client, store = build_feedback_test_client()
+
+    unauthorized = client.post(
+        "/api/v1/chat/interactions/ae-chat-001/feedback",
+        json=feedback_payload(),
+    )
+    assert unauthorized.status_code == 401
+    assert unauthorized.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+
+    mismatch = client.post(
+        "/api/v1/chat/interactions/ae-chat-001/feedback",
+        json=feedback_payload(interaction_id="other-interaction"),
+        headers=auth_headers(),
+    )
+    assert mismatch.status_code == 409
+    assert mismatch.json()["error_code"] == "ae.generation_feedback_interaction_mismatch"
+
+    sensitive = client.post(
+        "/api/v1/chat/interactions/ae-chat-001/feedback",
+        json=feedback_payload(raw_prompt="never store this"),
+        headers=auth_headers(),
+    )
+    assert sensitive.status_code == 422
+    assert sensitive.json()["error_code"] == "ae.generation_feedback_sensitive_payload"
+    assert store.list_for_interaction("ae-chat-001") == []
+
+
+def test_generation_feedback_detail_route_returns_not_found_for_wrong_scope() -> None:
+    client, _store = build_feedback_test_client()
+    created = client.post(
+        "/api/v1/chat/interactions/ae-chat-001/feedback",
+        json=feedback_payload(),
+        headers=auth_headers(),
+    ).json()
+
+    wrong_scope = client.get(
+        f"/api/v1/chat/interactions/other-chat/feedback/{created['feedback_id']}",
+        headers=auth_headers(),
+    )
+    missing = client.get(
+        "/api/v1/chat/interactions/ae-chat-001/feedback/missing-feedback",
+        headers=auth_headers(),
+    )
+
+    assert wrong_scope.status_code == 404
+    assert wrong_scope.json()["error_code"] == "ae.generation_feedback_not_found"
+    assert missing.status_code == 404
+    assert missing.json()["error_code"] == "ae.generation_feedback_not_found"
+
+
+def test_generation_feedback_openapi_paths_are_registered() -> None:
+    spec = ae_openapi_spec()
+    paths = spec["paths"]
+
+    feedback_collection = paths["/api/v1/chat/interactions/{interaction_id}/feedback"]
+    feedback_detail = paths[
+        "/api/v1/chat/interactions/{interaction_id}/feedback/{feedback_id}"
+    ]
+
+    assert feedback_collection["post"]["operationId"] == "createAeGenerationFeedback"
+    assert feedback_collection["get"]["operationId"] == "listAeGenerationFeedback"
+    assert feedback_detail["get"]["operationId"] == "getAeGenerationFeedback"
+    assert feedback_collection["post"]["responses"]["202"]["content"][
+        "application/json"
+    ]["schema"]["properties"]["feedback_schema_version"] == {
+        "const": "ae_generation_feedback.v1"
+    }

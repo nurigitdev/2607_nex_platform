@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
+from fastapi import FastAPI, Header, Request
+from fastapi.responses import JSONResponse
+
+from nex_runtime import (
+    DEFAULT_SERVICE_SCOPE,
+    problem_response,
+    request_id_from_headers,
+    trace_id_from_headers,
+    validate_authorization_header,
+)
 from nex_ae_api.generation_feedback_boundary import (
     ALLOWED_FEEDBACK_REASONS,
     ALLOWED_FEEDBACK_VALUES,
@@ -31,6 +41,33 @@ ALLOWED_QUALITY_ISSUE_SOURCE_SERVICES = (
 )
 
 
+@dataclass
+class GenerationFeedbackStore:
+    records: dict[str, dict[str, Any]] = field(default_factory=dict)
+    feedback_ids_by_interaction: dict[str, list[str]] = field(default_factory=dict)
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        feedback_id = record["feedback_id"]
+        self.records[feedback_id] = record
+        interaction_ids = self.feedback_ids_by_interaction.setdefault(
+            record["interaction_id"],
+            [],
+        )
+        if feedback_id not in interaction_ids:
+            interaction_ids.append(feedback_id)
+        return record
+
+    def get(self, feedback_id: str) -> dict[str, Any] | None:
+        return self.records.get(feedback_id)
+
+    def list_for_interaction(self, interaction_id: str) -> list[dict[str, Any]]:
+        return [
+            self.records[feedback_id]
+            for feedback_id in self.feedback_ids_by_interaction.get(interaction_id, [])
+            if feedback_id in self.records
+        ]
+
+
 @dataclass(frozen=True)
 class GenerationFeedbackError(Exception):
     status_code: int
@@ -39,6 +76,112 @@ class GenerationFeedbackError(Exception):
 
     def __str__(self) -> str:
         return self.detail
+
+
+DEFAULT_GENERATION_FEEDBACK_STORE = GenerationFeedbackStore()
+
+
+def register_generation_feedback_routes(
+    app: FastAPI,
+    *,
+    store: GenerationFeedbackStore | None = None,
+) -> None:
+    feedback_store = store or DEFAULT_GENERATION_FEEDBACK_STORE
+
+    @app.post(
+        "/api/v1/chat/interactions/{interaction_id}/feedback",
+        response_model=None,
+        status_code=202,
+    )
+    def create_generation_feedback(
+        interaction_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        request_id = request_id_from_headers(request)
+        trace_id = payload.get("trace_id") or trace_id_from_headers(request)
+        try:
+            source_payload = payload_with_path_interaction_id(payload, interaction_id)
+            return feedback_store.save(
+                build_generation_feedback_record(
+                    source_payload,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+            )
+        except GenerationFeedbackError as exc:
+            return _feedback_problem_response(request, exc)
+
+    @app.get(
+        "/api/v1/chat/interactions/{interaction_id}/feedback",
+        response_model=None,
+    )
+    def list_generation_feedback(
+        interaction_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        return {
+            "feedback_schema_version": "ae_generation_feedback_list.v1",
+            "interaction_id": interaction_id,
+            "items": feedback_store.list_for_interaction(interaction_id),
+        }
+
+    @app.get(
+        "/api/v1/chat/interactions/{interaction_id}/feedback/{feedback_id}",
+        response_model=None,
+    )
+    def get_generation_feedback(
+        interaction_id: str,
+        feedback_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        record = feedback_store.get(feedback_id)
+        if record is None or record["interaction_id"] != interaction_id:
+            return _feedback_problem_response(
+                request,
+                GenerationFeedbackError(
+                    status_code=404,
+                    error_code="ae.generation_feedback_not_found",
+                    detail=f"Generation feedback was not found: {feedback_id}",
+                ),
+            )
+        return record
+
+
+def payload_with_path_interaction_id(
+    payload: dict[str, Any],
+    interaction_id: str,
+) -> dict[str, Any]:
+    path_interaction_id = interaction_id.strip()
+    if not path_interaction_id:
+        raise GenerationFeedbackError(
+            status_code=422,
+            error_code="ae.generation_feedback_interaction_id_required",
+            detail="interaction_id is required.",
+        )
+    payload_interaction_id = optional_string(payload.get("interaction_id"))
+    if payload_interaction_id is not None and payload_interaction_id != path_interaction_id:
+        raise GenerationFeedbackError(
+            status_code=409,
+            error_code="ae.generation_feedback_interaction_mismatch",
+            detail="Feedback interaction_id does not match the route interaction_id.",
+        )
+    return {**payload, "interaction_id": path_interaction_id}
 
 
 def build_generation_feedback_record(
@@ -219,6 +362,41 @@ def optional_string(value: Any) -> str | None:
 
 def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _authorize_ae_request(
+    request: Request,
+    authorization: str | None,
+) -> JSONResponse | None:
+    validation = validate_authorization_header(
+        authorization,
+        expected_audience="nex-ae-api",
+        required_scopes=[DEFAULT_SERVICE_SCOPE],
+    )
+    if validation.ok:
+        return None
+    return problem_response(
+        request,
+        status_code=401,
+        error_code=validation.error_code or "SERVICE_CLAIM_INVALID",
+        title="Authentication failed",
+        detail=validation.detail or "AE API requires a valid service claim.",
+        type_uri="https://nex-platform.local/problems/authentication-failed",
+    )
+
+
+def _feedback_problem_response(
+    request: Request,
+    error: GenerationFeedbackError,
+) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=error.status_code,
+        error_code=error.error_code,
+        title="Generation feedback failed",
+        detail=error.detail,
+        type_uri="https://nex-platform.local/problems/generation-feedback-failed",
+    )
 
 
 def _utc_now() -> str:
