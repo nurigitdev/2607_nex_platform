@@ -1,0 +1,26 @@
+{
+  "projection_schema_version": "ag_generation_quality_feedback_rollup.v1",
+  "checked_at": "2026-08-25T00:00:00Z",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "items": [],
+  "summary": {
+    "generation_count": 0,
+    "quality_item_count": 0,
+    "feedback_count": 0,
+    "negative_feedback_count": 0,
+    "disposition_count": 0,
+    "open_attention_count": 0,
+    "closed_attention_count": 0,
+    "unlinked_feedback_count": 0
+  },
+  "by_feedback_value": {},
+  "by_disposition_status": {},
+  "redaction_summary": {
+    "raw_prompt_included": false,
+    "raw_generation_output_included": false,
+    "raw_feedback_comment_included": false,
+    "raw_operator_note_included": false
+  },
+  "raw_generation_output": "Do not expose generated raw output in AG rollups."
+}

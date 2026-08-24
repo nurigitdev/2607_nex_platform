@@ -1,0 +1,367 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/ag_generation_quality_feedback_rollup.v1.schema.json",
+  "title": "NeX AG Generation Quality Feedback Rollup",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "projection_schema_version",
+    "checked_at",
+    "trace_id",
+    "request_id",
+    "items",
+    "summary",
+    "by_feedback_value",
+    "by_disposition_status",
+    "redaction_summary"
+  ],
+  "properties": {
+    "projection_schema_version": {
+      "const": "ag_generation_quality_feedback_rollup.v1"
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rollupItem"
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generation_count",
+        "quality_item_count",
+        "feedback_count",
+        "negative_feedback_count",
+        "disposition_count",
+        "open_attention_count",
+        "closed_attention_count",
+        "unlinked_feedback_count"
+      ],
+      "properties": {
+        "generation_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quality_item_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "feedback_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "negative_feedback_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "disposition_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_attention_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "closed_attention_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unlinked_feedback_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "by_feedback_value": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "by_disposition_status": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "redaction_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_prompt_included",
+        "raw_generation_output_included",
+        "raw_feedback_comment_included",
+        "raw_operator_note_included"
+      ],
+      "properties": {
+        "raw_prompt_included": {
+          "const": false
+        },
+        "raw_generation_output_included": {
+          "const": false
+        },
+        "raw_feedback_comment_included": {
+          "const": false
+        },
+        "raw_operator_note_included": {
+          "const": false
+        }
+      }
+    }
+  },
+  "$defs": {
+    "rollupItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cx_generation_id",
+        "attention_status",
+        "attention_required",
+        "severity",
+        "quality",
+        "feedback",
+        "disposition",
+        "recommended_operator_action",
+        "debug_paths"
+      ],
+      "properties": {
+        "cx_generation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attention_status": {
+          "type": "string",
+          "enum": [
+            "OPEN",
+            "IN_PROGRESS",
+            "CLOSED",
+            "OK"
+          ]
+        },
+        "attention_required": {
+          "type": "boolean"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ]
+        },
+        "quality": {
+          "$ref": "#/$defs/qualitySummary"
+        },
+        "feedback": {
+          "$ref": "#/$defs/feedbackSummary"
+        },
+        "disposition": {
+          "$ref": "#/$defs/dispositionSummary"
+        },
+        "recommended_operator_action": {
+          "type": "string",
+          "enum": [
+            "no_action",
+            "record_operator_disposition",
+            "continue_operator_disposition",
+            "follow_escalation",
+            "fetch_generation_quality_detail",
+            "monitor_closed_disposition"
+          ]
+        },
+        "debug_paths": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "quality_issue_detail_path",
+            "dispositions_path"
+          ],
+          "properties": {
+            "quality_issue_detail_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "dispositions_path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "qualitySummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "count",
+        "attention_required",
+        "max_severity",
+        "coverage_statuses",
+        "boundary_statuses",
+        "issue_codes",
+        "recommended_actions"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attention_required": {
+          "type": "boolean"
+        },
+        "max_severity": {
+          "type": "string",
+          "enum": [
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ]
+        },
+        "coverage_statuses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "boundary_statuses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "issue_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommended_actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "feedbackSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "count",
+        "by_value",
+        "negative_count",
+        "latest_feedback_id",
+        "latest_feedback_at",
+        "quality_issue_ref_count"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_value": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "negative_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latest_feedback_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "latest_feedback_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "quality_issue_ref_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "dispositionSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "count",
+        "by_status",
+        "latest_disposition_id",
+        "latest_status",
+        "latest_action",
+        "latest_updated_at",
+        "reason_count"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_status": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "latest_disposition_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "latest_status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latest_action": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latest_updated_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "reason_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

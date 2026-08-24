@@ -1,0 +1,75 @@
+{
+  "projection_schema_version": "ag_generation_quality_feedback_rollup.v1",
+  "checked_at": "2026-08-25T00:00:00Z",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "items": [
+    {
+      "cx_generation_id": "cx-gen-001",
+      "attention_status": "OPEN",
+      "attention_required": true,
+      "severity": "ERROR",
+      "quality": {
+        "count": 1,
+        "attention_required": true,
+        "max_severity": "ERROR",
+        "coverage_statuses": [
+          "FAIL"
+        ],
+        "boundary_statuses": [
+          "WARN"
+        ],
+        "issue_codes": [
+          "MISSING_CX_GROUNDED_RESPONSE_QUALITY_FIELDS"
+        ],
+        "recommended_actions": [
+          "complete_source_quality_metadata"
+        ]
+      },
+      "feedback": {
+        "count": 1,
+        "by_value": {
+          "negative": 1
+        },
+        "negative_count": 1,
+        "latest_feedback_id": "ae-feedback-001",
+        "latest_feedback_at": "2026-08-25T00:00:00Z",
+        "quality_issue_ref_count": 1
+      },
+      "disposition": {
+        "count": 0,
+        "by_status": {},
+        "latest_disposition_id": null,
+        "latest_status": null,
+        "latest_action": null,
+        "latest_updated_at": null,
+        "reason_count": 0
+      },
+      "recommended_operator_action": "record_operator_disposition",
+      "debug_paths": {
+        "quality_issue_detail_path": "/admin/v1/generation-audit/generations/cx-gen-001/quality-issue-detail",
+        "dispositions_path": "/admin/v1/generation-audit/generations/cx-gen-001/quality-dispositions"
+      }
+    }
+  ],
+  "summary": {
+    "generation_count": 1,
+    "quality_item_count": 1,
+    "feedback_count": 1,
+    "negative_feedback_count": 1,
+    "disposition_count": 0,
+    "open_attention_count": 1,
+    "closed_attention_count": 0,
+    "unlinked_feedback_count": 0
+  },
+  "by_feedback_value": {
+    "negative": 1
+  },
+  "by_disposition_status": {},
+  "redaction_summary": {
+    "raw_prompt_included": false,
+    "raw_generation_output_included": false,
+    "raw_feedback_comment_included": false,
+    "raw_operator_note_included": false
+  }
+}
