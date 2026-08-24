@@ -442,6 +442,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0336`](slices/0336_ag_generation_quality_disposition_api_wiring.md) | `S34-006` AG generation quality disposition API wiring. |
 | [`Slice 0337`](slices/0337_ag_generation_quality_disposition_postgresql_smoke_evidence.md) | `S34-007` AG generation quality disposition PostgreSQL smoke evidence. |
 | [`Slice 0338`](slices/0338_ag_generation_quality_feedback_rollup_projection.md) | `S34-008` AG generation quality feedback rollup projection. |
+| [`Slice 0339`](slices/0339_ae_web_generation_feedback_surface.md) | `S34-009` AE Web generation feedback surface. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

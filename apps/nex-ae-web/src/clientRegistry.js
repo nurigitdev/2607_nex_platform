@@ -7,6 +7,10 @@ import {
   createMockRetrievalClient
 } from "./retrievalClient.js";
 import {
+  createFetchGenerationFeedbackClient,
+  createMockGenerationFeedbackClient
+} from "./generationFeedback.js";
+import {
   createFetchUploadClient,
   createMockUploadClient
 } from "./uploadClient.js";
@@ -41,12 +45,17 @@ export function createAeWebClients({
           }),
           retrievalClient: createMockRetrievalClient({
             responseFactory: responseFactories.retrieval
+          }),
+          generationFeedbackClient: createMockGenerationFeedbackClient({
+            responseFactory: responseFactories.generationFeedback
           })
         }
       : {
           documentDetailClient: createFetchDocumentDetailClient(commonFetchOptions),
           uploadClient: createFetchUploadClient(commonFetchOptions),
-          retrievalClient: createFetchRetrievalClient(commonFetchOptions)
+          retrievalClient: createFetchRetrievalClient(commonFetchOptions),
+          generationFeedbackClient:
+            createFetchGenerationFeedbackClient(commonFetchOptions)
         };
 
   return {
@@ -77,7 +86,8 @@ export function buildClientRegistrySummary(registry) {
     clients: {
       document_detail: registry.documentDetailClient.clientMode,
       upload: registry.uploadClient.clientMode,
-      retrieval: registry.retrievalClient.clientMode
+      retrieval: registry.retrievalClient.clientMode,
+      generation_feedback: registry.generationFeedbackClient.clientMode
     },
     metadata: registry.metadata
   };
@@ -108,6 +118,7 @@ function isRegistry(value) {
     value.client_registry_schema_version === AE_WEB_CLIENT_REGISTRY_SCHEMA_VERSION &&
     value.documentDetailClient &&
     value.uploadClient &&
-    value.retrievalClient
+    value.retrievalClient &&
+    value.generationFeedbackClient
   );
 }

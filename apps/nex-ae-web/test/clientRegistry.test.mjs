@@ -40,7 +40,9 @@ describe("AE Web client registry", () => {
     assert.equal(registry.documentDetailClient.clientMode, "mock");
     assert.equal(registry.uploadClient.clientMode, "mock");
     assert.equal(registry.retrievalClient.clientMode, "mock");
+    assert.equal(registry.generationFeedbackClient.clientMode, "mock");
     assert.equal(summary.clients.document_detail, "mock");
+    assert.equal(summary.clients.generation_feedback, "mock");
     assert.deepEqual(summary.metadata, {
       browserServiceTokenIncluded: false,
       providerUrlIncluded: false,
@@ -57,6 +59,26 @@ describe("AE Web client registry", () => {
       baseUrl: "https://ae.local/",
       fetchImpl: async (url, options) => {
         calls.push({ url, options });
+        if (String(url).includes("/feedback")) {
+          return {
+            ok: true,
+            status: 202,
+            async json() {
+              return {
+                feedback_schema_version: "ae_generation_feedback.v1",
+                feedback_id: "feedback-001",
+                status: "RECORDED",
+                tenant_id: "tenant-local",
+                user_id: "owner-local",
+                interaction_id: "interaction-001",
+                feedback_value: "positive",
+                feedback_reasons: ["helpful"],
+                quality_issue_refs: [],
+                created_at: "2026-08-25T00:00:00Z"
+              };
+            }
+          };
+        }
         return {
           ok: true,
           status: 200,
@@ -79,14 +101,31 @@ describe("AE Web client registry", () => {
     });
 
     await registry.documentDetailClient.getDocumentDetail("doc-001");
+    await registry.generationFeedbackClient.submitGenerationFeedback({
+      route: "/api/v1/chat/interactions/interaction-001/feedback",
+      payload: {
+        tenant_id: "tenant-local",
+        user_id: "owner-local",
+        interaction_id: "interaction-001",
+        feedback_value: "positive",
+        feedback_reasons: ["helpful"],
+        quality_issue_refs: [],
+        submitted_via: "ae-web"
+      }
+    });
     const summary = buildClientRegistrySummary(registry);
 
     assert.equal(registry.clientMode, "fetch");
     assert.equal(registry.baseUrl, "https://ae.local");
     assert.equal(calls[0].url, "https://ae.local/api/v1/documents/doc-001");
+    assert.equal(
+      calls[1].url,
+      "https://ae.local/api/v1/chat/interactions/interaction-001/feedback"
+    );
     assert.equal(summary.base_url, "https://ae.local");
     assert.equal(summary.clients.upload, "fetch");
     assert.equal(summary.clients.retrieval, "fetch");
+    assert.equal(summary.clients.generation_feedback, "fetch");
   });
 
   it("rejects unsupported client modes and invalid base URLs", () => {

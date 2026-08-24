@@ -54,6 +54,11 @@ import {
   buildGroundedResponseQualitySummary
 } from "./groundedResponseQuality.js";
 import {
+  buildGenerationFeedbackRequest,
+  buildGenerationFeedbackSurfaceSummary,
+  createGenerationFeedbackSurfaceState
+} from "./generationFeedback.js";
+import {
   buildUploadFileMetadata,
   buildUploadHandoffPayload,
   buildUploadSurfaceDraftFromFileMetadata
@@ -114,6 +119,7 @@ const workspaceState = {
   documentScope: null,
   lastRetrievalRequest: null,
   lastRetrievalResult: null,
+  generationFeedbackClient: null,
   uploadSubmission: null,
   uploadFileMetadata: defaultUploadFileMetadata,
   uploadDraft: buildUploadSurfaceDraftFromFileMetadata({
@@ -202,6 +208,11 @@ const workspaceState = {
         generation: {
           grounded_response_quality: buildMockGroundedResponseQualityContract(true)
         }
+      }),
+      generationFeedback: createGenerationFeedbackSurfaceState({
+        interactionId: "interaction-local",
+        chatDocumentId: "chat-doc-local",
+        cxGenerationId: "cx-gen-local"
       })
     }
   ],
@@ -326,6 +337,14 @@ retrievalRetryButton.addEventListener("click", () => {
   void retryLastRetrievalRequest();
 });
 
+messageList.addEventListener("click", event => {
+  const target = event.target.closest("[data-generation-feedback-value]");
+  if (!target) return;
+  const interactionId = target.closest("[data-interaction-id]")?.dataset.interactionId;
+  if (!interactionId) return;
+  void submitGenerationFeedback(interactionId, target.dataset.generationFeedbackValue);
+});
+
 uploadMetadataForm.addEventListener("submit", event => {
   event.preventDefault();
   applyUploadFileMetadataFromForm();
@@ -432,6 +451,8 @@ function applySessionBootstrap(sessionBootstrap) {
   workspaceState.documentDetailClient = workspaceState.clientRegistry.documentDetailClient;
   workspaceState.uploadClient = workspaceState.clientRegistry.uploadClient;
   workspaceState.retrievalClient = workspaceState.clientRegistry.retrievalClient;
+  workspaceState.generationFeedbackClient =
+    workspaceState.clientRegistry.generationFeedbackClient;
 }
 
 function syncOwnerScopeFromSessionClaims() {
@@ -670,6 +691,13 @@ function initializeOperationStates() {
       status: "READY_FOR_PROMPT",
       clientMode: workspaceState.retrievalClient.clientMode,
       route: workspaceState.documentScope.route
+    }),
+    generationFeedback: createOperationState({
+      operationId: "generation_feedback",
+      label: "Generation feedback",
+      status: "READY",
+      clientMode: workspaceState.generationFeedbackClient.clientMode,
+      route: "/api/v1/chat/interactions/{interaction_id}/feedback"
     })
   };
 }
@@ -901,6 +929,9 @@ function renderMessages() {
   for (const message of workspaceState.messages) {
     const article = document.createElement("article");
     article.className = `message ${message.role}`;
+    if (message.generationFeedback) {
+      article.dataset.interactionId = message.generationFeedback.interaction_id;
+    }
     article.innerHTML = `
       <span>${escapeHtml(message.label)}</span>
       <p>${escapeHtml(message.text)}</p>
@@ -908,6 +939,7 @@ function renderMessages() {
       ${renderMessageRetrievalQualityWarning(message.retrievalQualityWarning)}
       ${renderMessageGroundedResponseQuality(message.groundedResponseQuality)}
       ${renderArtifactRefs(message.artifactRefs || [])}
+      ${renderMessageGenerationFeedback(message.generationFeedback)}
     `;
     messageList.appendChild(article);
   }
@@ -945,6 +977,50 @@ function renderMessageGroundedResponseQuality(surface) {
   return renderGroundedResponseQuality(surface, {
     className: "inline-meta slim grounded-response-quality-chip"
   });
+}
+
+function renderMessageGenerationFeedback(surface) {
+  if (!surface) return "";
+  const summary = buildGenerationFeedbackSurfaceSummary(surface);
+  const disabled = summary.status === "SUBMITTING" ? "disabled" : "";
+  return `
+    <div
+      class="generation-feedback-surface"
+      data-status="${escapeHtml(summary.status)}"
+      aria-label="생성 응답 피드백"
+    >
+      <div class="generation-feedback-actions">
+        ${renderGenerationFeedbackButton(summary, "positive", "좋아요", disabled)}
+        ${renderGenerationFeedbackButton(summary, "negative", "문제", disabled)}
+        ${renderGenerationFeedbackButton(summary, "neutral", "보통", disabled)}
+      </div>
+      <dl class="inline-meta slim generation-feedback-summary">
+        <div>
+          <dt>status</dt>
+          <dd>${escapeHtml(summary.status)}</dd>
+        </div>
+        <div>
+          <dt>feedback</dt>
+          <dd>${escapeHtml(summary.feedback_value)} · ${escapeHtml(summary.selected_reason_count)}</dd>
+        </div>
+        <div>
+          <dt>route</dt>
+          <dd>${escapeHtml(summary.route)}</dd>
+        </div>
+      </dl>
+    </div>
+  `;
+}
+
+function renderGenerationFeedbackButton(summary, value, label, disabled) {
+  return `
+    <button
+      type="button"
+      data-generation-feedback-value="${escapeHtml(value)}"
+      aria-pressed="${summary.feedback_value === value ? "true" : "false"}"
+      ${disabled}
+    >${escapeHtml(label)}</button>
+  `;
 }
 
 function renderRetrievalQualityWarning(
@@ -1355,6 +1431,12 @@ async function appendPromptInteraction() {
             })
           : buildMockGroundedResponseQualityContract(false)
       }
+    }),
+    generationFeedback: createGenerationFeedbackSurfaceState({
+      interactionId: workspaceState.interactionId,
+      chatDocumentId: workspaceState.chatDocumentId,
+      cxGenerationId: workspaceState.cxGenerationId,
+      clientMode: workspaceState.generationFeedbackClient.clientMode
     })
   });
   workspaceState.lastRetrievalRequest = retrievalRequest;
@@ -1367,6 +1449,103 @@ async function appendPromptInteraction() {
   workspaceState.artifact.downloadRoutes = workspaceState.artifactRef.downloadRoutes;
   workspaceState.progressEvents = buildProgressEvents(grounded);
   renderWorkspace();
+}
+
+async function submitGenerationFeedback(interactionId, feedbackValue) {
+  const targetMessage = workspaceState.messages.find(
+    message => message.generationFeedback?.interaction_id === interactionId
+  );
+  if (!targetMessage) return;
+
+  const ownerScope =
+    ownerScopeFromSessionState(workspaceState.sessionState) || localOwnerScope;
+  targetMessage.generationFeedback = updateGenerationFeedbackSurface(
+    targetMessage.generationFeedback,
+    {
+    feedbackValue,
+    selectedReasons: feedbackReasonsForValue(feedbackValue),
+    status: "SUBMITTING",
+    reason: "feedback_submit_requested",
+    clientMode: workspaceState.generationFeedbackClient.clientMode
+    }
+  );
+  renderMessages();
+
+  try {
+    const feedbackRequest = buildGenerationFeedbackRequest({
+      tenantId: ownerScope.tenantId,
+      userId: ownerScope.ownerUserId,
+      interactionId,
+      chatDocumentId: targetMessage.generationFeedback.chat_document_id,
+      cxGenerationId: targetMessage.generationFeedback.cx_generation_id,
+      feedbackValue,
+      feedbackReasons: feedbackReasonsForValue(feedbackValue),
+      qualityIssueRefs:
+        feedbackValue === "negative"
+          ? [
+              {
+                source_service: "nex-ae-api",
+                issue_type: "user_reported",
+                issue_code: "ae_web_generation_feedback_negative",
+                issue_ref_id: targetMessage.generationFeedback.cx_generation_id
+              }
+            ]
+          : []
+    });
+    const result =
+      await workspaceState.generationFeedbackClient.submitGenerationFeedback(
+        feedbackRequest
+      );
+    targetMessage.generationFeedback = updateGenerationFeedbackSurface(
+      targetMessage.generationFeedback,
+      {
+      feedbackValue: result.feedbackValue,
+      selectedReasons: feedbackReasonsForValue(result.feedbackValue),
+      status: result.status,
+      reason: "feedback_recorded",
+      route: result.route,
+      feedbackId: result.feedbackId,
+      clientMode: result.clientMode
+      }
+    );
+  } catch (error) {
+    targetMessage.generationFeedback = updateGenerationFeedbackSurface(
+      targetMessage.generationFeedback,
+      {
+      feedbackValue,
+      selectedReasons: feedbackReasonsForValue(feedbackValue),
+      status: "FAILED",
+      reason: "feedback_failed",
+      errorStatus: error.status || "GENERATION_FEEDBACK_FAILED",
+      clientMode: workspaceState.generationFeedbackClient.clientMode
+      }
+    );
+  }
+  renderMessages();
+  renderRuntimeDiagnostics();
+}
+
+function updateGenerationFeedbackSurface(surface, overrides = {}) {
+  return createGenerationFeedbackSurfaceState({
+    interactionId: surface.interaction_id,
+    chatDocumentId: surface.chat_document_id,
+    cxGenerationId: surface.cx_generation_id,
+    feedbackValue: surface.feedback_value,
+    selectedReasons: surface.selected_reasons,
+    status: surface.status,
+    reason: surface.reason,
+    route: surface.route,
+    feedbackId: surface.feedback_id,
+    errorStatus: surface.error_status,
+    clientMode: surface.client_mode,
+    ...overrides
+  });
+}
+
+function feedbackReasonsForValue(value) {
+  if (value === "positive") return ["helpful"];
+  if (value === "negative") return ["not_helpful"];
+  return ["other"];
 }
 
 async function submitRetrievalRequest(retrievalRequest) {

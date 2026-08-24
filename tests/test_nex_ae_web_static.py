@@ -132,6 +132,64 @@ def test_ae_web_credential_login_surface_wires_employee_password_form() -> None:
         assert forbidden not in credential_surface
 
 
+def test_ae_web_generation_feedback_surface_wires_safe_client() -> None:
+    javascript = read_web_file("src/main.js")
+    feedback = read_web_file("src/generationFeedback.js")
+    registry = read_web_file("src/clientRegistry.js")
+    styles = read_web_file("src/styles.css")
+
+    for expected in [
+        "buildGenerationFeedbackRequest",
+        "buildGenerationFeedbackSurfaceSummary",
+        "createGenerationFeedbackSurfaceState",
+        "submitGenerationFeedback",
+        "renderMessageGenerationFeedback",
+        "data-generation-feedback-value",
+        "generationFeedbackClient",
+        "feedbackReasonsForValue",
+    ]:
+        assert expected in javascript
+
+    for expected in [
+        "ae_web_generation_feedback_client.v1",
+        "ae_web_generation_feedback_surface.v1",
+        "ae_generation_feedback.v1",
+        "AE_GENERATION_FEEDBACK_ROUTE_TEMPLATE",
+        "buildGenerationFeedbackRequest",
+        "createFetchGenerationFeedbackClient",
+        "createMockGenerationFeedbackClient",
+        "buildGenerationFeedbackSubmissionResult",
+        "rawCommentRendered: false",
+        "rawPromptRendered: false",
+        "rawGenerationOutputRendered: false",
+        "browserServiceTokenIncluded: false",
+        "databaseEndpointIncluded: false",
+        "providerEndpointIncluded: false",
+    ]:
+        assert expected in feedback
+
+    for expected in [
+        "createFetchGenerationFeedbackClient",
+        "createMockGenerationFeedbackClient",
+        "generationFeedbackClient",
+        "generation_feedback",
+    ]:
+        assert expected in registry
+
+    assert ".generation-feedback-surface" in styles
+    assert ".generation-feedback-actions" in styles
+
+    for forbidden in [
+        "access_token",
+        "database_url",
+        "password_hash",
+        "provider_url",
+        "service_token",
+        "/data/nex-platform",
+    ]:
+        assert forbidden not in feedback
+
+
 def test_ae_web_credential_login_browser_harness_exercises_safe_fetch_flow() -> None:
     harness = read_web_file("src/credentialLoginHarness.js")
 

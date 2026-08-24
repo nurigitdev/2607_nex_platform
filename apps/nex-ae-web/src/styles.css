@@ -332,6 +332,39 @@ h2 {
   padding-top: 12px;
 }
 
+.generation-feedback-surface {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  border-top: 1px solid var(--nex-border);
+  padding-top: 12px;
+}
+
+.generation-feedback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.generation-feedback-actions button {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.generation-feedback-actions button[aria-pressed="true"] {
+  background: var(--nex-success);
+  border-color: var(--nex-success);
+}
+
+.generation-feedback-surface[data-status="FAILED"] .generation-feedback-summary {
+  color: var(--nex-danger);
+}
+
+.generation-feedback-surface[data-status="SUBMITTING"] .generation-feedback-summary {
+  color: var(--nex-info);
+}
+
 .artifact-link {
   display: grid;
   gap: 8px;
