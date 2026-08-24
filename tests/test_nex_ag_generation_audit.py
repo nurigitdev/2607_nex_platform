@@ -16,6 +16,7 @@ from nex_ag.generation_audit import (
     build_generation_audit_projection,
     build_grounded_response_quality_gap_audit,
     failure_summary,
+    grounded_response_quality_projection,
     project_timeline_events,
     register_generation_audit_routes,
     recovery_request_summary,
@@ -282,6 +283,35 @@ def test_build_generation_audit_projection_reads_services_and_redacts_timeline()
         "MD",
         "HTML_PREVIEW",
     ]
+    assert projection["grounded_response_quality"] == {
+        "projection_schema_version": (
+            "ag_generation_audit_grounded_response_quality_projection.v1"
+        ),
+        "gap_audit_schema_version": (
+            "ag_generation_audit_grounded_response_quality_gap_audit.v1"
+        ),
+        "source_audit_schema_version": (
+            "cx_grounded_response_citation_quality_audit.v1"
+        ),
+        "coverage_status": "PASS",
+        "boundary_status": "PASS",
+        "grounding_required": True,
+        "citation_status": "VALIDATED",
+        "source_quality_issue_count": 0,
+        "projection_issue_count": 0,
+        "issue_codes": [],
+        "lineage_mismatches": [],
+        "recommended_action": "wire_ag_quality_projection",
+        "retrieval_package_id": "cx-ret-001",
+        "retrieval_package_hash": "d" * 64,
+        "structured_draft_id": "draft-001",
+        "evidence_ref_count": 2,
+        "artifact_handoff_quality_available": True,
+        "raw_content_included": False,
+        "prompt_text_included": False,
+        "evidence_text_included": False,
+        "provider_detail_included": False,
+    }
     assert "private prompt" not in str(projection)
     assert "should-not-leak" not in str(projection)
     assert "/tmp/private" not in str(projection)
@@ -304,6 +334,11 @@ def test_build_generation_audit_projection_can_omit_artifact_handoff() -> None:
     ]
     assert projection["artifact_handoff_summary"] is None
     assert projection["recovery_request_summary"] is None
+    assert (
+        projection["grounded_response_quality"]["artifact_handoff_quality_available"]
+        is False
+    )
+    assert projection["grounded_response_quality"]["coverage_status"] == "PASS"
     assert projection["audit_event"]["actor_ref"]["actor_type"] == "service"
 
 
@@ -509,6 +544,59 @@ def test_grounded_response_quality_gap_audit_handles_malformed_handoff_quality()
         "retrieval_package_hash",
         "evidence_ref_count",
     ]
+
+
+def test_grounded_response_quality_projection_compacts_gap_audit_safely() -> None:
+    generation_record = sample_generation_record()
+    artifact_handoff = sample_artifact_handoff()
+    artifact_handoff["structured_draft_id"] = "draft-mismatch"
+    artifact_handoff["quality_summary"]["retrieval_package_hash"] = "e" * 64
+    artifact_handoff["quality_summary"]["raw_output"] = "private output"
+    gap_audit = build_grounded_response_quality_gap_audit(
+        generation_record,
+        artifact_handoff,
+    )
+
+    projection = grounded_response_quality_projection(gap_audit)
+
+    assert projection["projection_schema_version"] == (
+        "ag_generation_audit_grounded_response_quality_projection.v1"
+    )
+    assert projection["coverage_status"] == "WARN"
+    assert projection["boundary_status"] == "PASS"
+    assert projection["source_quality_issue_count"] == 0
+    assert projection["projection_issue_count"] == 1
+    assert projection["issue_codes"] == ["GROUNDED_RESPONSE_QUALITY_LINEAGE_MISMATCH"]
+    assert projection["lineage_mismatches"] == [
+        "retrieval_package_hash",
+        "structured_draft_id",
+    ]
+    assert projection["retrieval_package_hash"] == "d" * 64
+    assert projection["artifact_handoff_quality_available"] is True
+    assert projection["raw_content_included"] is False
+    assert "private output" not in str(projection)
+
+
+def test_grounded_response_quality_projection_handles_sparse_gap_audit() -> None:
+    projection = grounded_response_quality_projection(
+        {
+            "issues": [
+                {"code": "SAFE_CODE"},
+                {"code": 3},
+                "bad",
+            ],
+            "lineage_mismatches": ["retrieval_package_id", 4],
+            "issue_count": "bad",
+        }
+    )
+
+    assert projection["coverage_status"] == "UNKNOWN"
+    assert projection["boundary_status"] == "UNKNOWN"
+    assert projection["source_quality_issue_count"] is None
+    assert projection["projection_issue_count"] == 0
+    assert projection["issue_codes"] == ["SAFE_CODE"]
+    assert projection["lineage_mismatches"] == ["retrieval_package_id"]
+    assert projection["citation_status"] is None
 
 
 def test_project_timeline_events_handles_invalid_shape_and_safe_details() -> None:

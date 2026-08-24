@@ -57,6 +57,9 @@ FORBIDDEN_DETAIL_FRAGMENTS = {"api_key", "bearer", "password", "secret"}
 AG_GROUNDED_RESPONSE_QUALITY_GAP_AUDIT_SCHEMA_VERSION = (
     "ag_generation_audit_grounded_response_quality_gap_audit.v1"
 )
+AG_GROUNDED_RESPONSE_QUALITY_PROJECTION_SCHEMA_VERSION = (
+    "ag_generation_audit_grounded_response_quality_projection.v1"
+)
 CX_GROUNDED_RESPONSE_QUALITY_METADATA_FIELDS = (
     "grounded_response_quality_audit_schema_version",
     "grounded_response_quality_status",
@@ -306,6 +309,10 @@ def build_generation_audit_projection(
         else None
     )
     now = _utc_now()
+    grounded_quality_gap_audit = build_grounded_response_quality_gap_audit(
+        generation_record,
+        artifact_handoff,
+    )
     audit_event = build_ag_generation_audit_event(
         generation_record=generation_record,
         artifact_handoff=artifact_handoff,
@@ -323,6 +330,9 @@ def build_generation_audit_projection(
         "timeline": project_timeline_events(progress_payload),
         "artifact_handoff_summary": artifact_handoff_summary(artifact_handoff),
         "recovery_request_summary": recovery_request_summary(recovery_request),
+        "grounded_response_quality": grounded_response_quality_projection(
+            grounded_quality_gap_audit
+        ),
         "redaction_summary": {
             "raw_content_included": False,
             "excluded_fields": [
@@ -717,6 +727,13 @@ def _non_negative_int(value: Any) -> int | None:
     return None
 
 
+def _first_non_missing(*values: Any) -> Any:
+    for value in values:
+        if not _is_missing_value(value):
+            return value
+    return None
+
+
 def _cx_grounded_quality_summary(metadata: dict[str, Any]) -> dict[str, Any]:
     return {
         "available": any(
@@ -730,6 +747,7 @@ def _cx_grounded_quality_summary(metadata: dict[str, Any]) -> dict[str, Any]:
             metadata.get("grounded_response_quality_status"),
             grounding_required=bool(metadata.get("grounding_required")),
         ),
+        "citation_status": metadata.get("draft_validation_status"),
         "issue_count": _non_negative_int(
             metadata.get("grounded_response_quality_issue_count")
         ),
@@ -748,6 +766,63 @@ def _cx_grounded_quality_summary(metadata: dict[str, Any]) -> dict[str, Any]:
             if metadata.get("grounding_required")
             else []
         ),
+    }
+
+
+def grounded_response_quality_projection(
+    gap_audit: dict[str, Any],
+) -> dict[str, Any]:
+    source_summaries = _dict_value(gap_audit.get("source_summaries"))
+    cx_summary = _dict_value(source_summaries.get("cx_generation"))
+    artifact_summary = _dict_value(source_summaries.get("ae_artifact_handoff"))
+    issue_codes = [
+        issue["code"]
+        for issue in gap_audit.get("issues", [])
+        if isinstance(issue, dict) and isinstance(issue.get("code"), str)
+    ]
+    return {
+        "projection_schema_version": (
+            AG_GROUNDED_RESPONSE_QUALITY_PROJECTION_SCHEMA_VERSION
+        ),
+        "gap_audit_schema_version": gap_audit.get("audit_schema_version"),
+        "source_audit_schema_version": cx_summary.get("audit_schema_version"),
+        "coverage_status": gap_audit.get("coverage_status", "UNKNOWN"),
+        "boundary_status": gap_audit.get("source_quality_status", "UNKNOWN"),
+        "grounding_required": bool(gap_audit.get("grounding_required")),
+        "citation_status": _first_non_missing(
+            artifact_summary.get("citation_status"),
+            cx_summary.get("citation_status"),
+        ),
+        "source_quality_issue_count": _non_negative_int(cx_summary.get("issue_count")),
+        "projection_issue_count": _non_negative_int(gap_audit.get("issue_count")) or 0,
+        "issue_codes": issue_codes,
+        "lineage_mismatches": [
+            field
+            for field in gap_audit.get("lineage_mismatches", [])
+            if isinstance(field, str)
+        ],
+        "recommended_action": gap_audit.get("recommended_action"),
+        "retrieval_package_id": _first_non_missing(
+            cx_summary.get("retrieval_package_id"),
+            artifact_summary.get("retrieval_package_id"),
+        ),
+        "retrieval_package_hash": _first_non_missing(
+            cx_summary.get("retrieval_package_hash"),
+            artifact_summary.get("retrieval_package_hash"),
+        ),
+        "structured_draft_id": _first_non_missing(
+            cx_summary.get("structured_draft_id"),
+            artifact_summary.get("structured_draft_id"),
+        ),
+        "evidence_ref_count": _first_non_missing(
+            cx_summary.get("selected_evidence_count"),
+            artifact_summary.get("evidence_ref_count"),
+        ),
+        "artifact_handoff_quality_available": bool(artifact_summary.get("available")),
+        "raw_content_included": False,
+        "prompt_text_included": False,
+        "evidence_text_included": False,
+        "provider_detail_included": False,
     }
 
 
