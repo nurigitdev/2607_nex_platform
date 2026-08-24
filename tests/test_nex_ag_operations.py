@@ -35,6 +35,7 @@ from nex_ag.operations import (
     build_cross_service_trace_timeline_projection,
     build_job_operation_detail_projection,
     build_job_control_dispatch_projection,
+    build_generation_quality_issue_detail_projection,
     build_job_operations_projection,
     build_operation_query_options,
     build_operation_source_readiness_projection,
@@ -3257,6 +3258,138 @@ def test_dashboard_generation_quality_section_handles_malformed_inputs() -> None
     assert pass_item["projection_issue_count"] == 3
     assert pass_item["evidence_ref_count"] == 0
     assert _dashboard_timestamp(None) == "1970-01-01T00:00:00Z"
+
+
+@pytest.mark.parametrize(
+    (
+        "coverage_status",
+        "boundary_status",
+        "expected_severity",
+        "expected_runbook_id",
+        "expected_action",
+        "expected_attention_required",
+    ),
+    [
+        (
+            "FAIL",
+            "PASS",
+            "ERROR",
+            "ag.generation_quality.failure_triage.v1",
+            "triage_grounded_generation_quality_failure",
+            True,
+        ),
+        (
+            "PASS",
+            "FAIL",
+            "ERROR",
+            "ag.generation_quality.failure_triage.v1",
+            "triage_grounded_generation_quality_failure",
+            True,
+        ),
+        (
+            "WARN",
+            "PASS",
+            "WARNING",
+            "ag.generation_quality.warning_triage.v1",
+            "complete_source_quality_metadata",
+            True,
+        ),
+        (
+            "UNKNOWN",
+            "PASS",
+            "WARNING",
+            "ag.generation_quality.metadata_gap_triage.v1",
+            "restore_missing_quality_metadata",
+            True,
+        ),
+        (
+            "PASS",
+            "PASS",
+            "INFO",
+            "ag.generation_quality.no_attention_required.v1",
+            "observe",
+            False,
+        ),
+    ],
+)
+def test_generation_quality_issue_detail_projection_runbook_matrix(
+    coverage_status: str,
+    boundary_status: str,
+    expected_severity: str,
+    expected_runbook_id: str,
+    expected_action: str,
+    expected_attention_required: bool,
+) -> None:
+    projection = build_generation_quality_issue_detail_projection(
+        generation_audit_projection_record(
+            cx_generation_id=f"cx-gen-{coverage_status.lower()}-{boundary_status.lower()}",
+            coverage_status=coverage_status,
+            boundary_status=boundary_status,
+            issue_codes=["QUALITY_SIGNAL"],
+        ),
+        checked_at="2026-08-05T00:01:00Z",
+        request_trace_id="request-trace-001",
+    )
+
+    assert projection["projection_schema_version"] == (
+        "ag_generation_quality_issue_detail_projection.v1"
+    )
+    assert projection["projection_status"] == "READY"
+    assert projection["checked_at"] == "2026-08-05T00:01:00Z"
+    assert projection["request_trace_id"] == "request-trace-001"
+    assert projection["attention_required"] is expected_attention_required
+    assert projection["severity"] == expected_severity
+    assert projection["runbook"]["runbook_id"] == expected_runbook_id
+    assert (
+        projection["runbook"]["recommended_operator_action"] == expected_action
+    )
+    assert projection["debug_paths"]["generation_audit_detail_path"] == (
+        f"/admin/v1/generation-audit/generations/{projection['cx_generation_id']}"
+    )
+    assert projection["debug_paths"]["retrieval_package_detail_path"] == (
+        "/admin/v1/operations/retrieval-packages/cx-ret-001"
+    )
+    assert projection["redaction_summary"]["raw_content_included"] is False
+    assert projection["quality"]["issue_codes"] == ["QUALITY_SIGNAL"]
+
+
+def test_generation_quality_issue_detail_projection_handles_invalid_source() -> None:
+    projection = build_generation_quality_issue_detail_projection(
+        {
+            "projection_schema_version": "ag_generation_audit_projection.v1",
+            "cx_generation_id": "cx-gen-invalid",
+            "trace_id": TRACE_ID,
+            "request_id": REQUEST_ID,
+            "created_at": None,
+            "grounded_response_quality": "bad",
+        },
+        checked_at="2026-08-05T00:02:00Z",
+    )
+
+    assert projection["projection_status"] == "DEGRADED"
+    assert projection["cx_generation_id"] == "cx-gen-invalid"
+    assert projection["source_projection"] == {
+        "projection_schema_version": "ag_generation_audit_projection.v1",
+        "created_at": None,
+        "grounded_response_quality_available": False,
+    }
+    assert projection["quality"] is None
+    assert projection["attention_required"] is True
+    assert projection["severity"] == "WARNING"
+    assert projection["runbook"] == {
+        "runbook_id": "ag.generation_quality.source_projection_invalid.v1",
+        "recommended_operator_action": "restore_generation_quality_projection",
+        "operator_steps": [
+            "open_generation_audit_source",
+            "verify_grounded_response_quality_projection",
+            "rerun_generation_audit_projection",
+        ],
+    }
+    assert projection["debug_paths"] == {
+        "generation_audit_detail_path": None,
+        "operations_dashboard_path": "/admin/v1/operations/dashboard",
+        "retrieval_package_detail_path": None,
+    }
 
 
 def test_generation_quality_issue_candidates_handle_warning_only_attention() -> None:

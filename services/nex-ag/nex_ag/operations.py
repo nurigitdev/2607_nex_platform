@@ -124,6 +124,9 @@ AG_SERVICE_LOG_RETENTION_DISPATCH_SCHEMA_VERSION = (
 AG_SERVICE_LOG_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION = (
     "ag_service_log_retention_history_projection.v1"
 )
+AG_GENERATION_QUALITY_ISSUE_DETAIL_PROJECTION_SCHEMA_VERSION = (
+    "ag_generation_quality_issue_detail_projection.v1"
+)
 AG_SERVICE_LOG_RETENTION_EVENT_SUCCEEDED = "ag.service_log_retention.succeeded"
 AG_SERVICE_LOG_RETENTION_EVENT_FAILED = "ag.service_log_retention.failed"
 SERVICE_LOG_QUERY_POLICY_SCHEMA_VERSION = "service_log_query_policy.v1"
@@ -5716,6 +5719,172 @@ def _generation_quality_item_needs_attention(item: Mapping[str, Any]) -> bool:
         item.get("coverage_status") in GENERATION_QUALITY_ATTENTION_STATUSES
         or item.get("boundary_status") in GENERATION_QUALITY_ATTENTION_STATUSES
     )
+
+
+def build_generation_quality_issue_detail_projection(
+    generation_audit_projection: Mapping[str, Any],
+    *,
+    checked_at: str | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    item = _dashboard_generation_quality_item(generation_audit_projection)
+    projection = {
+        "projection_schema_version": (
+            AG_GENERATION_QUALITY_ISSUE_DETAIL_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "READY" if item is not None else "DEGRADED",
+        "checked_at": checked_at or _utc_now(),
+        "cx_generation_id": _generation_quality_detail_generation_id(
+            generation_audit_projection,
+            item,
+        ),
+        "trace_id": generation_audit_projection.get("trace_id"),
+        "request_id": generation_audit_projection.get("request_id"),
+        "source_projection": _generation_quality_detail_source_projection(
+            generation_audit_projection
+        ),
+        "quality": item,
+        "attention_required": (
+            _generation_quality_item_needs_attention(item)
+            if item is not None
+            else True
+        ),
+        "severity": _generation_quality_detail_severity(item),
+        "runbook": _generation_quality_detail_runbook(item),
+        "debug_paths": _generation_quality_detail_debug_paths(item),
+        "redaction_summary": {
+            "raw_content_included": False,
+            "prompt_text_included": False,
+            "evidence_text_included": False,
+            "provider_detail_included": False,
+            "excluded_fields": [
+                "raw_prompt",
+                "messages",
+                "source_text",
+                "output_text",
+                "raw_output",
+                "provider_url",
+                "provider_endpoint",
+                "model_path",
+                "storage_path",
+            ],
+        },
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
+def _generation_quality_detail_generation_id(
+    generation_audit_projection: Mapping[str, Any],
+    item: Mapping[str, Any] | None,
+) -> str:
+    if item is not None:
+        return str(item["cx_generation_id"])
+    return str(generation_audit_projection.get("cx_generation_id") or "UNKNOWN")
+
+
+def _generation_quality_detail_source_projection(
+    generation_audit_projection: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "projection_schema_version": generation_audit_projection.get(
+            "projection_schema_version"
+        ),
+        "created_at": _dashboard_optional_timestamp(
+            generation_audit_projection.get("created_at")
+        ),
+        "grounded_response_quality_available": isinstance(
+            generation_audit_projection.get("grounded_response_quality"),
+            Mapping,
+        ),
+    }
+
+
+def _generation_quality_detail_severity(item: Mapping[str, Any] | None) -> str:
+    if item is None:
+        return "WARNING"
+    if item["coverage_status"] == "FAIL" or item["boundary_status"] == "FAIL":
+        return "ERROR"
+    if (
+        item["coverage_status"] in {"WARN", "UNKNOWN"}
+        or item["boundary_status"] in {"WARN", "UNKNOWN"}
+    ):
+        return "WARNING"
+    return "INFO"
+
+
+def _generation_quality_detail_runbook(
+    item: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    if item is None:
+        return {
+            "runbook_id": "ag.generation_quality.source_projection_invalid.v1",
+            "recommended_operator_action": "restore_generation_quality_projection",
+            "operator_steps": [
+                "open_generation_audit_source",
+                "verify_grounded_response_quality_projection",
+                "rerun_generation_audit_projection",
+            ],
+        }
+    if item["coverage_status"] == "FAIL" or item["boundary_status"] == "FAIL":
+        return {
+            "runbook_id": "ag.generation_quality.failure_triage.v1",
+            "recommended_operator_action": "triage_grounded_generation_quality_failure",
+            "operator_steps": [
+                "open_generation_audit_detail",
+                "compare_cx_and_ae_quality_lineage",
+                "decide_repair_retry_or_user_escalation",
+            ],
+        }
+    if item["coverage_status"] == "UNKNOWN" or item["boundary_status"] == "UNKNOWN":
+        return {
+            "runbook_id": "ag.generation_quality.metadata_gap_triage.v1",
+            "recommended_operator_action": "restore_missing_quality_metadata",
+            "operator_steps": [
+                "open_generation_audit_detail",
+                "verify_cx_grounded_response_quality_metadata",
+                "verify_ae_artifact_handoff_quality_summary",
+            ],
+        }
+    if item["coverage_status"] == "WARN" or item["boundary_status"] == "WARN":
+        return {
+            "runbook_id": "ag.generation_quality.warning_triage.v1",
+            "recommended_operator_action": (
+                item.get("recommended_action") or "review_generation_quality_warning"
+            ),
+            "operator_steps": [
+                "open_generation_audit_detail",
+                "review_issue_codes_and_lineage_mismatches",
+                "complete_missing_quality_metadata",
+            ],
+        }
+    return {
+        "runbook_id": "ag.generation_quality.no_attention_required.v1",
+        "recommended_operator_action": "observe",
+        "operator_steps": ["keep_dashboard_monitoring"],
+    }
+
+
+def _generation_quality_detail_debug_paths(
+    item: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    if item is None:
+        return {
+            "generation_audit_detail_path": None,
+            "operations_dashboard_path": "/admin/v1/operations/dashboard",
+            "retrieval_package_detail_path": None,
+        }
+    retrieval_package_id = item.get("retrieval_package_id")
+    return {
+        "generation_audit_detail_path": item.get("detail_path"),
+        "operations_dashboard_path": "/admin/v1/operations/dashboard",
+        "retrieval_package_detail_path": (
+            f"/admin/v1/operations/retrieval-packages/{retrieval_package_id}"
+            if retrieval_package_id
+            else None
+        ),
+    }
 
 
 def _summarize_dashboard_cx_processing_runs(

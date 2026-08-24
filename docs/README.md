@@ -429,6 +429,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0323`](slices/0323_ag_generation_audit_quality_contract_schema_hardening.md) | `S33-003` AG generation audit quality contract/schema hardening. |
 | [`Slice 0324`](slices/0324_ag_generation_audit_quality_dashboard_surface.md) | `S33-004` AG generation audit quality dashboard surface. |
 | [`Slice 0325`](slices/0325_ag_generation_audit_quality_postgresql_smoke_evidence.md) | `S33-005` AG generation audit quality PostgreSQL smoke evidence. |
+| [`Slice 0326`](slices/0326_ag_generation_quality_issue_detail_runbook_projection.md) | `S33-006` AG generation quality issue detail/runbook projection. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
