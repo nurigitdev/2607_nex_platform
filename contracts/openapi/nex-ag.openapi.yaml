@@ -118,6 +118,84 @@ paths:
           description: Source generation, artifact handoff, or recovery request was not found.
         "503":
           description: Source service is unavailable.
+  /admin/v1/generation-audit/generations/{cx_generation_id}/quality-dispositions:
+    post:
+      operationId: createAgGenerationQualityOperatorDisposition
+      tags:
+        - GenerationAudit
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgGenerationQualityOperatorDispositionRequest"
+      responses:
+        "202":
+          description: AG accepted and recorded an operator disposition for the generation quality issue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgGenerationQualityOperatorDisposition"
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Operator disposition payload is invalid or contains unsafe raw fields.
+    get:
+      operationId: listAgGenerationQualityOperatorDispositions
+      tags:
+        - GenerationAudit
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Read-only operator dispositions for a CX generation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgGenerationQualityOperatorDispositionList"
+        "401":
+          description: Service claim is missing or invalid.
+  /admin/v1/generation-audit/generations/{cx_generation_id}/quality-dispositions/{disposition_id}:
+    get:
+      operationId: getAgGenerationQualityOperatorDisposition
+      tags:
+        - GenerationAudit
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: disposition_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Read-only operator disposition record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgGenerationQualityOperatorDisposition"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Operator disposition was not found for this generation.
   /admin/v1/operations:
     get:
       operationId: getAgUnifiedOperationsProjection
@@ -1250,6 +1328,243 @@ components:
         redaction_summary:
           type: object
           additionalProperties: true
+    AgGenerationQualityOperatorDispositionRequest:
+      type: object
+      additionalProperties: true
+      required:
+        - operator_ref
+        - operator_action
+      properties:
+        disposition_id:
+          type: string
+          minLength: 1
+        operator_ref:
+          type: object
+          additionalProperties: false
+          required:
+            - operator_type
+            - operator_id
+          properties:
+            operator_type:
+              type: string
+              enum:
+                - service
+                - user
+            operator_id:
+              type: string
+              minLength: 1
+            tenant_id:
+              type: string
+              minLength: 1
+        operator_action:
+          type: string
+          enum:
+            - acknowledged
+            - false_positive
+            - needs_cx_repair
+            - needs_ae_followup
+            - escalated
+            - resolved
+        reason_codes:
+          type: array
+          items:
+            type: string
+            enum:
+              - metadata_gap
+              - citation_quality
+              - retrieval_quality
+              - generation_quality
+              - user_feedback
+              - duplicate
+              - not_reproducible
+              - other
+        operator_note:
+          type: string
+          maxLength: 4096
+        quality_issue_refs:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - source_service
+              - issue_type
+              - issue_code
+            properties:
+              source_service:
+                type: string
+                enum:
+                  - nex-ae-api
+                  - nex-cx
+                  - nex-ag
+              issue_type:
+                type: string
+                enum:
+                  - retrieval_quality
+                  - generation_quality
+                  - citation_quality
+                  - artifact_quality
+                  - user_feedback
+                  - operator_review
+              issue_code:
+                type: string
+                minLength: 1
+              issue_ref_id:
+                type: string
+                minLength: 1
+    AgGenerationQualityOperatorDisposition:
+      type: object
+      additionalProperties: false
+      required:
+        - disposition_schema_version
+        - disposition_id
+        - cx_generation_id
+        - trace_id
+        - request_id
+        - operator_ref
+        - operator_action
+        - disposition_status
+        - reason_codes
+        - operator_note_hash
+        - operator_note_preview
+        - quality_issue_refs
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        disposition_schema_version:
+          type: string
+          const: ag_generation_quality_operator_disposition.v1
+        disposition_id:
+          type: string
+          minLength: 1
+        cx_generation_id:
+          type: string
+          minLength: 1
+        trace_id:
+          $ref: "#/components/schemas/TraceId"
+        request_id:
+          type: string
+          minLength: 1
+        operator_ref:
+          type: object
+          additionalProperties: false
+          required:
+            - operator_type
+            - operator_id
+            - tenant_id
+          properties:
+            operator_type:
+              type: string
+              enum:
+                - service
+                - user
+            operator_id:
+              type: string
+              minLength: 1
+            tenant_id:
+              type:
+                - string
+                - "null"
+              minLength: 1
+        operator_action:
+          type: string
+          enum:
+            - acknowledged
+            - false_positive
+            - needs_cx_repair
+            - needs_ae_followup
+            - escalated
+            - resolved
+        disposition_status:
+          type: string
+          enum:
+            - ACKNOWLEDGED
+            - DISMISSED
+            - IN_REPAIR
+            - ESCALATED
+            - RESOLVED
+        reason_codes:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+        operator_note_hash:
+          type:
+            - string
+            - "null"
+          pattern: "^[0-9a-f]{64}$"
+        operator_note_preview:
+          type:
+            - string
+            - "null"
+          maxLength: 240
+        quality_issue_refs:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        metadata:
+          type: object
+          additionalProperties: true
+          required:
+            - raw_note_stored
+            - raw_prompt_stored
+            - raw_generation_output_stored
+            - operator_note_storage
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AgGenerationQualityOperatorDispositionList:
+      type: object
+      additionalProperties: false
+      required:
+        - disposition_list_schema_version
+        - cx_generation_id
+        - trace_id
+        - request_id
+        - items
+        - summary
+      properties:
+        disposition_list_schema_version:
+          type: string
+          const: ag_generation_quality_operator_disposition_list.v1
+        cx_generation_id:
+          type: string
+          minLength: 1
+        trace_id:
+          $ref: "#/components/schemas/TraceId"
+        request_id:
+          type: string
+          minLength: 1
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgGenerationQualityOperatorDisposition"
+        summary:
+          type: object
+          additionalProperties: false
+          required:
+            - count
+            - by_status
+            - latest_updated_at
+          properties:
+            count:
+              type: integer
+              minimum: 0
+            by_status:
+              type: object
+              additionalProperties:
+                type: integer
+                minimum: 0
+            latest_updated_at:
+              type:
+                - string
+                - "null"
+              format: date-time
     AgOperationsProjection:
       type: object
       required:

@@ -6,6 +6,9 @@ from nex_runtime import (
     register_service_log_retention_routes,
 )
 from nex_ag.generation_audit import register_generation_audit_routes
+from nex_ag.generation_quality_disposition import (
+    register_generation_quality_disposition_routes,
+)
 from nex_ag.operations import (
     attach_ag_operations_source_runtime,
     register_job_operation_routes,
@@ -50,6 +53,10 @@ CX_PROCESSING_RUN_OPERATION_STORES = build_cx_processing_run_operation_stores(
 )
 register_readiness_routes(app)
 register_generation_audit_routes(app)
+register_generation_quality_disposition_routes(
+    app,
+    audit_event_store=SERVICE_PERSISTENCE.operational_event_store,
+)
 register_retrieval_policy_routes(app)
 register_cx_processing_run_operation_routes(
     app,

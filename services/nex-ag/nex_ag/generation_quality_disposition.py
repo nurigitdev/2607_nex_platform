@@ -6,9 +6,25 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
+from fastapi import Body, FastAPI, Header, Request
+from fastapi.responses import JSONResponse
+
+from nex_runtime import (
+    DEFAULT_SERVICE_SCOPE,
+    InMemoryOperationalEventStore,
+    OperationalEventEmitter,
+    OperationalEventEmitResult,
+    OperationalEventStore,
+    problem_response,
+    request_id_from_headers,
+    trace_id_from_headers,
+    validate_authorization_header,
+)
+
 
 DISPOSITION_SCHEMA_VERSION = "ag_generation_quality_operator_disposition.v1"
 DISPOSITION_LIST_SCHEMA_VERSION = "ag_generation_quality_operator_disposition_list.v1"
+DISPOSITION_RECORDED_EVENT_TYPE = "ag.generation_quality.disposition_recorded"
 MAX_OPERATOR_NOTE_PREVIEW_LENGTH = 240
 
 ALLOWED_OPERATOR_ACTIONS = (
@@ -111,6 +127,160 @@ class GenerationQualityDispositionError(Exception):
 
 
 DEFAULT_DISPOSITION_STORE = GenerationQualityDispositionStore()
+DEFAULT_AUDIT_EVENT_STORE = InMemoryOperationalEventStore()
+
+
+def register_generation_quality_disposition_routes(
+    app: FastAPI,
+    *,
+    store: GenerationQualityDispositionStore | None = None,
+    audit_event_store: OperationalEventStore | None = None,
+) -> None:
+    selected_store = store or GenerationQualityDispositionStore()
+    audit_emitter = OperationalEventEmitter(
+        service_id="nex-ag",
+        store=audit_event_store or DEFAULT_AUDIT_EVENT_STORE,
+    )
+
+    @app.post(
+        "/admin/v1/generation-audit/generations/{cx_generation_id}/quality-dispositions",
+        response_model=None,
+    )
+    def create_generation_quality_disposition(
+        cx_generation_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        payload: dict[str, Any] = Body(...),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            record = build_generation_quality_disposition_record(
+                payload,
+                cx_generation_id=cx_generation_id,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        except GenerationQualityDispositionError as exc:
+            return _disposition_problem_response(request, exc)
+
+        selected_store.save(record)
+        emit_generation_quality_disposition_event(audit_emitter, record)
+        return JSONResponse(status_code=202, content=record)
+
+    @app.get(
+        "/admin/v1/generation-audit/generations/{cx_generation_id}/quality-dispositions",
+        response_model=None,
+    )
+    def list_generation_quality_dispositions(
+        cx_generation_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        return build_generation_quality_disposition_list_response(
+            selected_store.list_for_generation(cx_generation_id),
+            cx_generation_id=cx_generation_id,
+            request_id=request_id_from_headers(request),
+            trace_id=trace_id_from_headers(request),
+        )
+
+    @app.get(
+        (
+            "/admin/v1/generation-audit/generations/{cx_generation_id}"
+            "/quality-dispositions/{disposition_id}"
+        ),
+        response_model=None,
+    )
+    def get_generation_quality_disposition(
+        cx_generation_id: str,
+        disposition_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        record = selected_store.get(disposition_id)
+        if record is None or record.get("cx_generation_id") != cx_generation_id:
+            return problem_response(
+                request,
+                status_code=404,
+                error_code="ag.generation_quality_disposition_not_found",
+                title="Generation quality disposition not found",
+                detail=f"Disposition was not found: {disposition_id}",
+                type_uri=(
+                    "https://nex-platform.local/problems/"
+                    "generation-quality-disposition-not-found"
+                ),
+            )
+        return record
+
+
+def build_generation_quality_disposition_list_response(
+    records: list[dict[str, Any]],
+    *,
+    cx_generation_id: str,
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    items = sorted(
+        records,
+        key=lambda record: (str(record.get("updated_at")), str(record.get("disposition_id"))),
+        reverse=True,
+    )
+    by_status: dict[str, int] = {}
+    for record in items:
+        status = str(record.get("disposition_status") or "UNKNOWN")
+        by_status[status] = by_status.get(status, 0) + 1
+    return {
+        "disposition_list_schema_version": DISPOSITION_LIST_SCHEMA_VERSION,
+        "cx_generation_id": cx_generation_id,
+        "trace_id": trace_id,
+        "request_id": request_id,
+        "items": items,
+        "summary": {
+            "count": len(items),
+            "by_status": by_status,
+            "latest_updated_at": items[0]["updated_at"] if items else None,
+        },
+    }
+
+
+def emit_generation_quality_disposition_event(
+    audit_emitter: OperationalEventEmitter,
+    record: dict[str, Any],
+) -> OperationalEventEmitResult:
+    operator_ref = record.get("operator_ref") if isinstance(record.get("operator_ref"), dict) else {}
+    return audit_emitter.safe_emit(
+        event_type=DISPOSITION_RECORDED_EVENT_TYPE,
+        severity="INFO",
+        message="Generation quality operator disposition recorded.",
+        trace_id=record.get("trace_id"),
+        request_id=record.get("request_id"),
+        subject_ref={
+            "type": "generation_quality_disposition",
+            "id": str(record["disposition_id"]),
+        },
+        details={
+            "cx_generation_id": record.get("cx_generation_id"),
+            "disposition_id": record.get("disposition_id"),
+            "operator_action": record.get("operator_action"),
+            "disposition_status": record.get("disposition_status"),
+            "operator_type": operator_ref.get("operator_type"),
+            "operator_id": operator_ref.get("operator_id"),
+            "reason_count": len(record.get("reason_codes") or []),
+            "quality_issue_ref_count": len(record.get("quality_issue_refs") or []),
+        },
+    )
 
 
 def build_generation_quality_disposition_record(
@@ -327,6 +497,45 @@ def _collect_sensitive_keys(value: Any, *, path: str, matches: list[str]) -> Non
 def _is_sensitive_key(key: str) -> bool:
     normalized = key.strip().lower()
     return any(part in normalized for part in SENSITIVE_KEY_PARTS)
+
+
+def _authorize_ag_request(
+    request: Request,
+    authorization: str | None,
+) -> JSONResponse | None:
+    result = validate_authorization_header(
+        authorization,
+        expected_audience="nex-ag",
+        required_scopes=[DEFAULT_SERVICE_SCOPE],
+    )
+    if result.ok:
+        return None
+
+    return problem_response(
+        request,
+        status_code=401,
+        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
+        title="Authentication failed",
+        detail=result.detail or "AG requires a valid service claim.",
+        type_uri="https://nex-platform.local/problems/authentication-failed",
+    )
+
+
+def _disposition_problem_response(
+    request: Request,
+    exc: GenerationQualityDispositionError,
+) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="Generation quality disposition rejected",
+        detail=exc.detail,
+        type_uri=(
+            "https://nex-platform.local/problems/"
+            "generation-quality-disposition-rejected"
+        ),
+    )
 
 
 def _utc_now() -> str:
