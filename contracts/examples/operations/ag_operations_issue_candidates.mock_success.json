@@ -129,6 +129,22 @@
       "description": "A retrieval threshold decision has enough samples for policy review.",
       "enabled": true,
       "signal_type": "retrieval_threshold_decision"
+    },
+    {
+      "rule_id": "generation_quality_attention_required.v1",
+      "severity": "WARNING",
+      "title": "Generation quality attention required",
+      "description": "One or more grounded generation quality projections need review.",
+      "enabled": true,
+      "signal_type": "generation_quality"
+    },
+    {
+      "rule_id": "generation_remediation_attention_required.v1",
+      "severity": "WARNING",
+      "title": "Generation remediation attention required",
+      "description": "One or more generation remediation tasks need operator review.",
+      "enabled": true,
+      "signal_type": "generation_remediation"
     }
   ],
   "issue_candidates": [

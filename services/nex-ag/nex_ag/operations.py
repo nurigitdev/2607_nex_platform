@@ -335,6 +335,14 @@ OPERATIONS_ISSUE_CANDIDATE_RULES = (
         "enabled": True,
         "signal_type": "generation_quality",
     },
+    {
+        "rule_id": "generation_remediation_attention_required.v1",
+        "severity": "WARNING",
+        "title": "Generation remediation attention required",
+        "description": "One or more generation remediation tasks need operator review.",
+        "enabled": True,
+        "signal_type": "generation_remediation",
+    },
 )
 RETRIEVAL_THRESHOLD_ISSUE_RULES_BY_READINESS = {
     "NO_DECISION_CHECKPOINT": {
@@ -2115,6 +2123,7 @@ def register_unified_operation_routes(
             event_store=event_store,
             service_log_stores=service_log_stores,
             retrieval_package_stores=retrieval_package_stores,
+            generation_remediation_task_stores=generation_remediation_task_stores,
             worker_heartbeat_stores=worker_heartbeat_stores,
             registry=registry,
             runtime=selected_runtime,
@@ -2968,6 +2977,9 @@ def build_operations_issue_candidate_projection(
     event_store: OperationalEventStore | None = None,
     service_log_stores: Mapping[str, ServiceLogStore] | None = None,
     retrieval_package_stores: Mapping[str, RetrievalPackageTraceStore] | None = None,
+    generation_remediation_task_stores: (
+        Mapping[str, GenerationRemediationTaskDashboardStore] | None
+    ) = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -2988,6 +3000,7 @@ def build_operations_issue_candidate_projection(
         event_store=event_store,
         service_log_stores=service_log_stores,
         retrieval_package_stores=retrieval_package_stores,
+        generation_remediation_task_stores=generation_remediation_task_stores,
         registry=registry,
         runtime=runtime,
         service_id=service_id,
@@ -4055,6 +4068,11 @@ def build_operations_issue_candidates(
     candidates.extend(
         _issue_candidates_from_generation_quality(
             dashboard_snapshot.get("generation_quality")
+        )
+    )
+    candidates.extend(
+        _issue_candidates_from_generation_remediation(
+            dashboard_snapshot.get("generation_remediation")
         )
     )
     if worker_runtime_projection is not None:
@@ -6700,6 +6718,131 @@ def _generation_quality_issue_candidate(
             ),
         },
     )
+
+
+def _issue_candidates_from_generation_remediation(
+    section: object,
+) -> list[dict[str, Any]]:
+    if not isinstance(section, Mapping):
+        return []
+    attention = section.get("attention")
+    if not isinstance(attention, list):
+        return []
+    items = [
+        dict(item)
+        for item in attention
+        if isinstance(item, Mapping)
+        and str(item.get("service_id") or "") in SERVICE_SPECS
+        and _generation_remediation_task_needs_attention(item)
+    ]
+    if not items:
+        return []
+    return [_generation_remediation_issue_candidate(items)]
+
+
+def _generation_remediation_issue_candidate(
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    failed_count = sum(
+        1 for item in items if str(item.get("action_status") or "UNKNOWN") == "FAILED"
+    )
+    urgent_count = sum(
+        1 for item in items if str(item.get("priority") or "NORMAL") == "URGENT"
+    )
+    waiting_on_cx_count = sum(
+        1
+        for item in items
+        if str(item.get("action_status") or "UNKNOWN") == "WAITING_ON_CX"
+    )
+    status = "FAILED" if failed_count > 0 else "ACTIVE"
+    return _operations_issue_candidate(
+        rule_id="generation_remediation_attention_required.v1",
+        service_id="nex-ag",
+        severity="ERROR" if failed_count > 0 else "WARNING",
+        title="Generation remediation attention required",
+        detail=f"{len(items)} generation remediation task(s) need operator review.",
+        signal={
+            "source_type": "generation_remediation",
+            "status": status,
+            "count": len(items),
+            "threshold": 1,
+            "failed_count": failed_count,
+            "urgent_count": urgent_count,
+            "waiting_on_cx_count": waiting_on_cx_count,
+            "action_statuses": sorted(
+                {str(item.get("action_status") or "UNKNOWN") for item in items}
+            ),
+            "action_types": sorted(
+                {str(item.get("action_type") or "unknown") for item in items}
+            ),
+            "priorities": sorted(
+                {str(item.get("priority") or "NORMAL") for item in items}
+            ),
+            "remediation_action_ids": sorted(
+                {
+                    str(item["remediation_action_id"])
+                    for item in items
+                    if item.get("remediation_action_id")
+                }
+            ),
+            "cx_generation_ids": sorted(
+                {
+                    str(item["cx_generation_id"])
+                    for item in items
+                    if item.get("cx_generation_id")
+                }
+            ),
+            "task_detail_paths": sorted(
+                {str(item["detail_path"]) for item in items if item.get("detail_path")}
+            ),
+            "runbook_ids": _generation_remediation_issue_runbook_ids(items),
+            "recommended_operator_actions": (
+                _generation_remediation_issue_operator_actions(items)
+            ),
+        },
+    )
+
+
+def _generation_remediation_issue_runbook_ids(
+    items: list[dict[str, Any]],
+) -> list[str]:
+    runbook_ids: set[str] = set()
+    for item in items:
+        action_status = str(item.get("action_status") or "")
+        priority = str(item.get("priority") or "")
+        action_type = str(item.get("action_type") or "")
+        if action_status == "FAILED":
+            runbook_ids.add("ag.generation_remediation.failed_task_triage.v1")
+        elif action_status == "WAITING_ON_CX":
+            runbook_ids.add("ag.generation_remediation.cx_dependency_followup.v1")
+        elif priority == "URGENT":
+            runbook_ids.add("ag.generation_remediation.urgent_task_review.v1")
+        else:
+            runbook_ids.add("ag.generation_remediation.active_task_review.v1")
+        if action_type == "prompt_policy_review":
+            runbook_ids.add("ag.generation_remediation.prompt_policy_review.v1")
+    return sorted(runbook_ids)
+
+
+def _generation_remediation_issue_operator_actions(
+    items: list[dict[str, Any]],
+) -> list[str]:
+    actions: set[str] = set()
+    for item in items:
+        action_status = str(item.get("action_status") or "")
+        priority = str(item.get("priority") or "")
+        action_type = str(item.get("action_type") or "")
+        if action_status == "FAILED":
+            actions.add("triage_failed_remediation_task")
+        elif action_status == "WAITING_ON_CX":
+            actions.add("follow_up_with_cx_owner")
+        elif priority == "URGENT":
+            actions.add("review_urgent_remediation_task")
+        else:
+            actions.add("review_active_remediation_task")
+        if action_type == "prompt_policy_review":
+            actions.add("prepare_prompt_policy_review")
+    return sorted(actions)
 
 
 def _job_dead_lettered(job: Mapping[str, Any]) -> bool:
