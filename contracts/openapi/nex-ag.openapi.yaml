@@ -196,6 +196,122 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: Operator disposition was not found for this generation.
+  /admin/v1/generation-audit/generations/{cx_generation_id}/remediation-tasks:
+    post:
+      operationId: createAgGenerationRemediationTask
+      tags:
+        - GenerationAudit
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgGenerationRemediationTaskRequest"
+      responses:
+        "202":
+          description: AG accepted and recorded a generation remediation task.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgGenerationRemediationAction"
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Remediation task payload is invalid or contains unsafe raw fields.
+    get:
+      operationId: listAgGenerationRemediationTasks
+      tags:
+        - GenerationAudit
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Read-only generation remediation tasks for a CX generation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgGenerationRemediationActionList"
+        "401":
+          description: Service claim is missing or invalid.
+  /admin/v1/generation-audit/generations/{cx_generation_id}/remediation-tasks/{remediation_action_id}:
+    get:
+      operationId: getAgGenerationRemediationTask
+      tags:
+        - GenerationAudit
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: remediation_action_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Read-only generation remediation task.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgGenerationRemediationAction"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Remediation task was not found for this generation.
+    patch:
+      operationId: updateAgGenerationRemediationTaskStatus
+      tags:
+        - GenerationAudit
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: remediation_action_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgGenerationRemediationTaskStatusUpdateRequest"
+      responses:
+        "200":
+          description: Remediation task status was updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgGenerationRemediationAction"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Remediation task was not found for this generation.
+        "409":
+          description: Requested remediation status transition is not allowed.
+        "422":
+          description: Status update payload is invalid or contains unsafe raw fields.
   /admin/v1/operations:
     get:
       operationId: getAgUnifiedOperationsProjection
@@ -1565,6 +1681,230 @@ components:
                 - string
                 - "null"
               format: date-time
+    AgGenerationRemediationTaskRequest:
+      type: object
+      additionalProperties: true
+      required:
+        - action_type
+      properties:
+        remediation_action_id:
+          type: string
+          minLength: 1
+        tenant_id:
+          type: string
+          minLength: 1
+        action_type:
+          $ref: "#/components/schemas/AgGenerationRemediationActionType"
+        action_status:
+          $ref: "#/components/schemas/AgGenerationRemediationActionStatus"
+        priority:
+          $ref: "#/components/schemas/AgGenerationRemediationPriority"
+        reason_codes:
+          type: array
+          items:
+            type: string
+        owner_ref:
+          type: object
+          additionalProperties: true
+        source_refs:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        evidence_hashes:
+          type: array
+          items:
+            type: string
+            pattern: "^[0-9a-f]{64}$"
+        evidence_previews:
+          type: array
+          items:
+            type: string
+            maxLength: 240
+        result_ref:
+          type:
+            - object
+            - "null"
+          additionalProperties: true
+        action_source:
+          type: string
+          enum:
+            - manual
+            - candidate_projection
+            - operator_disposition
+            - system_policy
+    AgGenerationRemediationTaskStatusUpdateRequest:
+      type: object
+      additionalProperties: true
+      required:
+        - action_status
+      properties:
+        action_status:
+          $ref: "#/components/schemas/AgGenerationRemediationActionStatus"
+        result_ref:
+          type:
+            - object
+            - "null"
+          additionalProperties: true
+        evidence_hashes:
+          type: array
+          items:
+            type: string
+            pattern: "^[0-9a-f]{64}$"
+        evidence_previews:
+          type: array
+          items:
+            type: string
+            maxLength: 240
+    AgGenerationRemediationActionType:
+      type: string
+      enum:
+        - retry_generation
+        - retrieval_repair
+        - citation_repair
+        - prompt_policy_review
+        - operator_followup
+        - mark_accepted
+    AgGenerationRemediationActionStatus:
+      type: string
+      enum:
+        - PROPOSED
+        - ASSIGNED
+        - IN_PROGRESS
+        - WAITING_ON_CX
+        - COMPLETED
+        - FAILED
+        - CANCELLED
+    AgGenerationRemediationPriority:
+      type: string
+      enum:
+        - LOW
+        - NORMAL
+        - HIGH
+        - URGENT
+    AgGenerationRemediationAction:
+      type: object
+      additionalProperties: false
+      required:
+        - action_schema_version
+        - remediation_action_id
+        - cx_generation_id
+        - tenant_id
+        - trace_id
+        - request_id
+        - action_type
+        - action_status
+        - priority
+        - reason_codes
+        - owner_ref
+        - source_refs
+        - evidence
+        - result_ref
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        action_schema_version:
+          type: string
+          const: ag_generation_remediation_action.v1
+        remediation_action_id:
+          type: string
+          minLength: 1
+        cx_generation_id:
+          type: string
+          minLength: 1
+        tenant_id:
+          type:
+            - string
+            - "null"
+          minLength: 1
+        trace_id:
+          $ref: "#/components/schemas/TraceId"
+        request_id:
+          type: string
+          minLength: 1
+        action_type:
+          $ref: "#/components/schemas/AgGenerationRemediationActionType"
+        action_status:
+          $ref: "#/components/schemas/AgGenerationRemediationActionStatus"
+        priority:
+          $ref: "#/components/schemas/AgGenerationRemediationPriority"
+        reason_codes:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+        owner_ref:
+          type: object
+          additionalProperties: true
+        source_refs:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        evidence:
+          type: object
+          additionalProperties: true
+          required:
+            - evidence_hashes
+            - evidence_previews
+            - raw_evidence_stored
+        result_ref:
+          type:
+            - object
+            - "null"
+          additionalProperties: true
+        metadata:
+          type: object
+          additionalProperties: true
+          required:
+            - action_source
+            - raw_prompt_stored
+            - raw_generation_output_stored
+            - raw_source_document_text_stored
+            - raw_feedback_comment_stored
+            - raw_operator_note_stored
+            - free_text_storage
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AgGenerationRemediationActionList:
+      type: object
+      additionalProperties: false
+      required:
+        - action_list_schema_version
+        - cx_generation_id
+        - trace_id
+        - request_id
+        - items
+        - summary
+      properties:
+        action_list_schema_version:
+          type: string
+          const: ag_generation_remediation_action_list.v1
+        cx_generation_id:
+          type: string
+          minLength: 1
+        trace_id:
+          $ref: "#/components/schemas/TraceId"
+        request_id:
+          type: string
+          minLength: 1
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgGenerationRemediationAction"
+        summary:
+          type: object
+          additionalProperties: true
+          required:
+            - count
+            - by_status
+            - by_action_type
+            - latest_updated_at
     AgOperationsProjection:
       type: object
       required:

@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from fastapi import Body, FastAPI, Header, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 from typing import Any, Iterable, Mapping
 from uuid import NAMESPACE_URL, uuid5
 
@@ -11,12 +17,29 @@ from nex_ag.generation_remediation_boundary import (
     REMEDIATION_STATUS_TRANSITIONS,
     GenerationRemediationBoundaryError,
     assert_generation_remediation_payload_redaction_safe,
+    remediation_transition_allowed,
+)
+from nex_runtime import (
+    DEFAULT_SERVICE_SCOPE,
+    InMemoryOperationalEventStore,
+    OperationalEventEmitter,
+    OperationalEventEmitResult,
+    OperationalEventStore,
+    problem_response,
+    request_id_from_headers,
+    trace_id_from_headers,
+    validate_authorization_header,
 )
 
 
 REMEDIATION_ACTION_SCHEMA_VERSION = "ag_generation_remediation_action.v1"
+REMEDIATION_ACTION_LIST_SCHEMA_VERSION = "ag_generation_remediation_action_list.v1"
 REMEDIATION_CANDIDATE_PROJECTION_SCHEMA_VERSION = (
     "ag_generation_remediation_candidate_projection.v1"
+)
+REMEDIATION_TASK_RECORDED_EVENT_TYPE = "ag.generation_remediation.task_recorded"
+REMEDIATION_TASK_STATUS_UPDATED_EVENT_TYPE = (
+    "ag.generation_remediation.task_status_updated"
 )
 MAX_EVIDENCE_PREVIEW_LENGTH = 240
 MAX_CANDIDATE_ITEMS = 500
@@ -78,6 +101,370 @@ class GenerationRemediationError(Exception):
 
     def __str__(self) -> str:
         return self.detail
+
+
+@dataclass
+class GenerationRemediationTaskStore:
+    records: dict[str, dict[str, Any]] = field(default_factory=dict)
+    action_ids_by_generation: dict[str, list[str]] = field(default_factory=dict)
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        action_id = record["remediation_action_id"]
+        previous = self.records.get(action_id)
+        if previous is not None and previous["cx_generation_id"] != record["cx_generation_id"]:
+            self._remove_generation_index(previous["cx_generation_id"], action_id)
+        self.records[action_id] = record
+        ids = self.action_ids_by_generation.setdefault(record["cx_generation_id"], [])
+        if action_id not in ids:
+            ids.append(action_id)
+        return record
+
+    def get(self, remediation_action_id: str) -> dict[str, Any] | None:
+        return self.records.get(remediation_action_id)
+
+    def list_for_generation(self, cx_generation_id: str) -> list[dict[str, Any]]:
+        return [
+            self.records[action_id]
+            for action_id in self.action_ids_by_generation.get(cx_generation_id, [])
+            if action_id in self.records
+        ]
+
+    def delete(self, remediation_action_id: str) -> int:
+        record = self.records.pop(remediation_action_id, None)
+        if record is None:
+            return 0
+        self._remove_generation_index(record["cx_generation_id"], remediation_action_id)
+        return 1
+
+    def _remove_generation_index(self, cx_generation_id: str, action_id: str) -> None:
+        ids = self.action_ids_by_generation.get(cx_generation_id, [])
+        self.action_ids_by_generation[cx_generation_id] = [
+            existing_id for existing_id in ids if existing_id != action_id
+        ]
+
+
+class SqlAlchemyGenerationRemediationTaskStore:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    text(_remediation_upsert_sql(_dialect_name(session))),
+                    _remediation_record_params(record),
+                )
+                session.commit()
+            return record
+        except SQLAlchemyError as exc:
+            raise _store_unavailable_error() from exc
+
+    def get(self, remediation_action_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _remediation_select_sql(
+                                "remediation_action_id = :remediation_action_id"
+                            )
+                        ),
+                        {"remediation_action_id": remediation_action_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+            return _remediation_record_from_row(row) if row is not None else None
+        except SQLAlchemyError as exc:
+            raise _store_unavailable_error() from exc
+
+    def list_for_generation(self, cx_generation_id: str) -> list[dict[str, Any]]:
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            _remediation_select_sql(
+                                "cx_generation_id = :cx_generation_id "
+                                "ORDER BY updated_at DESC, remediation_action_id ASC"
+                            )
+                        ),
+                        {"cx_generation_id": cx_generation_id},
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [_remediation_record_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _store_unavailable_error() from exc
+
+    def delete(self, remediation_action_id: str) -> int:
+        try:
+            with self._session_factory() as session:
+                result = session.execute(
+                    text(
+                        "DELETE FROM ag_generation_remediation_tasks "
+                        "WHERE remediation_action_id = :remediation_action_id"
+                    ),
+                    {"remediation_action_id": remediation_action_id},
+                )
+                session.commit()
+                return int(result.rowcount or 0)
+        except SQLAlchemyError as exc:
+            raise _store_unavailable_error() from exc
+
+
+DEFAULT_REMEDIATION_TASK_STORE = GenerationRemediationTaskStore()
+DEFAULT_REMEDIATION_AUDIT_EVENT_STORE = InMemoryOperationalEventStore()
+
+
+def default_generation_remediation_task_store(app: FastAPI) -> Any:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is not None:
+        return SqlAlchemyGenerationRemediationTaskStore(session_factory)
+    return DEFAULT_REMEDIATION_TASK_STORE
+
+
+def register_generation_remediation_task_routes(
+    app: FastAPI,
+    *,
+    store: Any | None = None,
+    audit_event_store: OperationalEventStore | None = None,
+) -> None:
+    selected_store = store or default_generation_remediation_task_store(app)
+    audit_emitter = OperationalEventEmitter(
+        service_id="nex-ag",
+        store=audit_event_store or DEFAULT_REMEDIATION_AUDIT_EVENT_STORE,
+    )
+
+    @app.post(
+        "/admin/v1/generation-audit/generations/{cx_generation_id}/remediation-tasks",
+        response_model=None,
+    )
+    def create_generation_remediation_task(
+        cx_generation_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        payload: dict[str, Any] = Body(...),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            record = build_generation_remediation_action(
+                payload,
+                cx_generation_id=cx_generation_id,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            selected_store.save(record)
+        except GenerationRemediationError as exc:
+            return _remediation_problem_response(request, exc)
+
+        emit_generation_remediation_task_event(
+            audit_emitter,
+            record,
+            event_type=REMEDIATION_TASK_RECORDED_EVENT_TYPE,
+        )
+        return JSONResponse(status_code=202, content=record)
+
+    @app.get(
+        "/admin/v1/generation-audit/generations/{cx_generation_id}/remediation-tasks",
+        response_model=None,
+    )
+    def list_generation_remediation_tasks(
+        cx_generation_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            records = selected_store.list_for_generation(cx_generation_id)
+        except GenerationRemediationError as exc:
+            return _remediation_problem_response(request, exc)
+        return build_generation_remediation_action_list_response(
+            records,
+            cx_generation_id=cx_generation_id,
+            request_id=request_id_from_headers(request),
+            trace_id=trace_id_from_headers(request),
+        )
+
+    @app.get(
+        (
+            "/admin/v1/generation-audit/generations/{cx_generation_id}"
+            "/remediation-tasks/{remediation_action_id}"
+        ),
+        response_model=None,
+    )
+    def get_generation_remediation_task(
+        cx_generation_id: str,
+        remediation_action_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            record = selected_store.get(remediation_action_id)
+        except GenerationRemediationError as exc:
+            return _remediation_problem_response(request, exc)
+        if record is None or record.get("cx_generation_id") != cx_generation_id:
+            return _remediation_not_found_response(request, remediation_action_id)
+        return record
+
+    @app.patch(
+        (
+            "/admin/v1/generation-audit/generations/{cx_generation_id}"
+            "/remediation-tasks/{remediation_action_id}"
+        ),
+        response_model=None,
+    )
+    def update_generation_remediation_task_status(
+        cx_generation_id: str,
+        remediation_action_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        payload: dict[str, Any] = Body(...),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            record = selected_store.get(remediation_action_id)
+            if record is None or record.get("cx_generation_id") != cx_generation_id:
+                return _remediation_not_found_response(request, remediation_action_id)
+            updated = update_generation_remediation_action_status(
+                record,
+                payload,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            selected_store.save(updated)
+        except GenerationRemediationError as exc:
+            return _remediation_problem_response(request, exc)
+
+        emit_generation_remediation_task_event(
+            audit_emitter,
+            updated,
+            event_type=REMEDIATION_TASK_STATUS_UPDATED_EVENT_TYPE,
+        )
+        return updated
+
+
+def build_generation_remediation_action_list_response(
+    records: list[dict[str, Any]],
+    *,
+    cx_generation_id: str,
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    items = sorted(
+        records,
+        key=lambda record: (
+            str(record.get("updated_at")),
+            str(record.get("remediation_action_id")),
+        ),
+        reverse=True,
+    )
+    return {
+        "action_list_schema_version": REMEDIATION_ACTION_LIST_SCHEMA_VERSION,
+        "cx_generation_id": cx_generation_id,
+        "trace_id": trace_id,
+        "request_id": request_id,
+        "items": items,
+        "summary": {
+            "count": len(items),
+            "by_status": _record_count_by(items, "action_status"),
+            "by_action_type": _record_count_by(items, "action_type"),
+            "latest_updated_at": items[0]["updated_at"] if items else None,
+        },
+    }
+
+
+def update_generation_remediation_action_status(
+    record: dict[str, Any],
+    payload: dict[str, Any],
+    *,
+    request_id: str,
+    trace_id: str,
+    updated_at: str | None = None,
+) -> dict[str, Any]:
+    try:
+        assert_generation_remediation_payload_redaction_safe(payload)
+    except GenerationRemediationBoundaryError as exc:
+        raise GenerationRemediationError(
+            status_code=422,
+            error_code="ag.generation_remediation_sensitive_payload",
+            detail=str(exc),
+        ) from exc
+    next_status = required_choice(
+        payload,
+        "action_status",
+        choices=ALLOWED_ACTION_STATUSES,
+    )
+    current_status = str(record.get("action_status") or "")
+    if next_status != current_status and not remediation_transition_allowed(
+        current_status,
+        next_status,
+    ):
+        raise GenerationRemediationError(
+            status_code=409,
+            error_code="ag.generation_remediation_status_transition_invalid",
+            detail=f"Cannot move remediation action from {current_status} to {next_status}.",
+        )
+    updated = dict(record)
+    updated["action_status"] = next_status
+    updated["request_id"] = required_text({"request_id": request_id}, "request_id")
+    updated["trace_id"] = required_text({"trace_id": trace_id}, "trace_id")
+    if "result_ref" in payload:
+        updated["result_ref"] = result_ref(payload.get("result_ref"))
+    if "evidence_hashes" in payload or "evidence_previews" in payload:
+        updated["evidence"] = evidence_summary(payload)
+    updated["updated_at"] = updated_at or _utc_now()
+    return updated
+
+
+def emit_generation_remediation_task_event(
+    audit_emitter: OperationalEventEmitter,
+    record: dict[str, Any],
+    *,
+    event_type: str,
+) -> OperationalEventEmitResult:
+    owner = record.get("owner_ref") if isinstance(record.get("owner_ref"), dict) else {}
+    return audit_emitter.safe_emit(
+        event_type=event_type,
+        severity="INFO",
+        message="Generation remediation task state changed.",
+        trace_id=record.get("trace_id"),
+        request_id=record.get("request_id"),
+        subject_ref={
+            "type": "generation_remediation_task",
+            "id": str(record["remediation_action_id"]),
+        },
+        details={
+            "cx_generation_id": record.get("cx_generation_id"),
+            "remediation_action_id": record.get("remediation_action_id"),
+            "action_type": record.get("action_type"),
+            "action_status": record.get("action_status"),
+            "priority": record.get("priority"),
+            "owner_type": owner.get("owner_type"),
+            "owner_id": owner.get("owner_id"),
+            "source_ref_count": len(record.get("source_refs") or []),
+            "result_ref_present": record.get("result_ref") is not None,
+        },
+    )
 
 
 def build_generation_remediation_action(
@@ -476,6 +863,236 @@ def _int_value(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _record_count_by(records: list[Mapping[str, Any]], key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for record in records:
+        label = str(record.get(key) or "UNKNOWN")
+        counts[label] = counts.get(label, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _remediation_upsert_sql(dialect_name: str) -> str:
+    owner_ref_expr = _json_param_expr("owner_ref", dialect_name)
+    reason_codes_expr = _json_param_expr("reason_codes", dialect_name)
+    source_refs_expr = _json_param_expr("source_refs", dialect_name)
+    evidence_expr = _json_param_expr("evidence", dialect_name)
+    result_ref_expr = _json_param_expr("result_ref", dialect_name)
+    metadata_expr = _json_param_expr("metadata", dialect_name)
+    return f"""
+        INSERT INTO ag_generation_remediation_tasks (
+            remediation_action_id,
+            action_schema_version,
+            cx_generation_id,
+            tenant_id,
+            trace_id,
+            request_id,
+            action_type,
+            action_status,
+            priority,
+            owner_type,
+            owner_id,
+            owner_tenant_id,
+            owner_ref,
+            reason_codes,
+            source_refs,
+            evidence,
+            result_ref,
+            metadata,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :remediation_action_id,
+            :action_schema_version,
+            :cx_generation_id,
+            :tenant_id,
+            :trace_id,
+            :request_id,
+            :action_type,
+            :action_status,
+            :priority,
+            :owner_type,
+            :owner_id,
+            :owner_tenant_id,
+            {owner_ref_expr},
+            {reason_codes_expr},
+            {source_refs_expr},
+            {evidence_expr},
+            {result_ref_expr},
+            {metadata_expr},
+            :created_at,
+            :updated_at
+        )
+        ON CONFLICT (remediation_action_id) DO UPDATE SET
+            tenant_id = excluded.tenant_id,
+            trace_id = excluded.trace_id,
+            request_id = excluded.request_id,
+            action_type = excluded.action_type,
+            action_status = excluded.action_status,
+            priority = excluded.priority,
+            owner_type = excluded.owner_type,
+            owner_id = excluded.owner_id,
+            owner_tenant_id = excluded.owner_tenant_id,
+            owner_ref = excluded.owner_ref,
+            reason_codes = excluded.reason_codes,
+            source_refs = excluded.source_refs,
+            evidence = excluded.evidence,
+            result_ref = excluded.result_ref,
+            metadata = excluded.metadata,
+            updated_at = excluded.updated_at
+    """
+
+
+def _remediation_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            action_schema_version,
+            remediation_action_id,
+            cx_generation_id,
+            tenant_id,
+            trace_id,
+            request_id,
+            action_type,
+            action_status,
+            priority,
+            owner_ref,
+            reason_codes,
+            source_refs,
+            evidence,
+            result_ref,
+            metadata,
+            created_at,
+            updated_at
+        FROM ag_generation_remediation_tasks
+        WHERE {where_clause}
+    """
+
+
+def _remediation_record_params(record: dict[str, Any]) -> dict[str, Any]:
+    owner = record["owner_ref"]
+    return {
+        **record,
+        "owner_type": owner["owner_type"],
+        "owner_id": owner["owner_id"],
+        "owner_tenant_id": owner.get("tenant_id"),
+        "owner_ref": json.dumps(record["owner_ref"]),
+        "reason_codes": json.dumps(record["reason_codes"]),
+        "source_refs": json.dumps(record["source_refs"]),
+        "evidence": json.dumps(record["evidence"]),
+        "result_ref": json.dumps(record["result_ref"]),
+        "metadata": json.dumps(record["metadata"]),
+    }
+
+
+def _remediation_record_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return {
+        "action_schema_version": data["action_schema_version"],
+        "remediation_action_id": data["remediation_action_id"],
+        "cx_generation_id": data["cx_generation_id"],
+        "tenant_id": data["tenant_id"],
+        "trace_id": data["trace_id"],
+        "request_id": data["request_id"],
+        "action_type": data["action_type"],
+        "action_status": data["action_status"],
+        "priority": data["priority"],
+        "owner_ref": _json_value(data["owner_ref"], {}),
+        "reason_codes": _json_value(data["reason_codes"], []),
+        "source_refs": _json_value(data["source_refs"], []),
+        "evidence": _json_value(data["evidence"], {}),
+        "result_ref": _json_value(data["result_ref"], None),
+        "metadata": _json_value(data["metadata"], {}),
+        "created_at": _datetime_value(data["created_at"]),
+        "updated_at": _datetime_value(data["updated_at"]),
+    }
+
+
+def _json_param_expr(name: str, dialect_name: str) -> str:
+    if dialect_name == "postgresql":
+        return f"CAST(:{name} AS jsonb)"
+    return f":{name}"
+
+
+def _dialect_name(session: Session) -> str:
+    return session.get_bind().dialect.name
+
+
+def _json_value(value: Any, default: Any) -> Any:
+    if isinstance(value, str):
+        return json.loads(value)
+    if value is None:
+        return default
+    return value
+
+
+def _datetime_value(value: Any) -> str:
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    if hasattr(value, "isoformat"):
+        return value.isoformat().replace("+00:00", "Z")
+    return str(value)
+
+
+def _store_unavailable_error() -> GenerationRemediationError:
+    return GenerationRemediationError(
+        status_code=503,
+        error_code="ag.generation_remediation_store_unavailable",
+        detail="Generation remediation task store is unavailable.",
+    )
+
+
+def _authorize_ag_request(
+    request: Request,
+    authorization: str | None,
+) -> JSONResponse | None:
+    result = validate_authorization_header(
+        authorization,
+        expected_audience="nex-ag",
+        required_scopes=[DEFAULT_SERVICE_SCOPE],
+    )
+    if result.ok:
+        return None
+    return problem_response(
+        request,
+        status_code=401,
+        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
+        title="Authentication failed",
+        detail=result.detail or "AG requires a valid service claim.",
+        type_uri="https://nex-platform.local/problems/authentication-failed",
+    )
+
+
+def _remediation_problem_response(
+    request: Request,
+    exc: GenerationRemediationError,
+) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="Generation remediation task error",
+        detail=exc.detail,
+        type_uri="https://nex-platform.local/problems/generation-remediation-task",
+    )
+
+
+def _remediation_not_found_response(
+    request: Request,
+    remediation_action_id: str,
+) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=404,
+        error_code="ag.generation_remediation_task_not_found",
+        title="Generation remediation task not found",
+        detail=f"Remediation task was not found: {remediation_action_id}",
+        type_uri=(
+            "https://nex-platform.local/problems/"
+            "generation-remediation-task-not-found"
+        ),
+    )
 
 
 def owner_ref(value: Any, *, tenant_id: str | None) -> dict[str, str | None]:

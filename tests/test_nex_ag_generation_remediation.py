@@ -1,27 +1,110 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, date, datetime
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
+import yaml
+from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator, ValidationError
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 
 from nex_ag.generation_remediation import (
     REMEDIATION_CANDIDATE_PROJECTION_SCHEMA_VERSION,
     REMEDIATION_ACTION_SCHEMA_VERSION,
     GenerationRemediationError,
+    GenerationRemediationTaskStore,
+    SqlAlchemyGenerationRemediationTaskStore,
     build_generation_remediation_candidate_projection,
     build_generation_remediation_action,
+    build_generation_remediation_action_list_response,
+    default_generation_remediation_task_store,
+    emit_generation_remediation_task_event,
     evidence_summary,
     hash_list,
     preview_list,
     reason_code_list,
+    register_generation_remediation_task_routes,
     result_ref,
     source_ref_list,
+    update_generation_remediation_action_status,
+    _datetime_value,
+    _json_param_expr,
+    _json_value,
+)
+from nex_runtime import (
+    InMemoryOperationalEventStore,
+    OperationalEventEmitter,
+    SERVICE_SPECS,
+    build_service_app,
+    issue_mock_service_token,
 )
 
 
 ROOT = Path(__file__).parents[1]
+
+
+def auth_headers() -> dict[str, str]:
+    issued = issue_mock_service_token(service_id="nex-oa", audience="nex-ag")
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+    }
+
+
+def build_route_client(
+    *,
+    store: Any | None = None,
+    audit_event_store: InMemoryOperationalEventStore | None = None,
+) -> tuple[TestClient, Any, InMemoryOperationalEventStore]:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    selected_store = store or GenerationRemediationTaskStore()
+    selected_event_store = audit_event_store or InMemoryOperationalEventStore()
+    register_generation_remediation_task_routes(
+        app,
+        store=selected_store,
+        audit_event_store=selected_event_store,
+    )
+    return TestClient(app), selected_store, selected_event_store
+
+
+def sqlite_remediation_store() -> tuple[SqlAlchemyGenerationRemediationTaskStore, Any]:
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ag_generation_remediation_tasks (
+                    remediation_action_id TEXT PRIMARY KEY,
+                    action_schema_version TEXT NOT NULL,
+                    cx_generation_id TEXT NOT NULL,
+                    tenant_id TEXT,
+                    trace_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    action_type TEXT NOT NULL,
+                    action_status TEXT NOT NULL,
+                    priority TEXT NOT NULL,
+                    owner_type TEXT NOT NULL,
+                    owner_id TEXT NOT NULL,
+                    owner_tenant_id TEXT,
+                    owner_ref TEXT NOT NULL,
+                    reason_codes TEXT NOT NULL,
+                    source_refs TEXT NOT NULL,
+                    evidence TEXT NOT NULL,
+                    result_ref TEXT,
+                    metadata TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+    return SqlAlchemyGenerationRemediationTaskStore(sessionmaker(bind=engine)), engine
 
 
 def remediation_action_schema() -> dict[str, object]:
@@ -58,6 +141,14 @@ def remediation_action_negative_example() -> dict[str, object]:
             / "generation"
             / "ag_generation_remediation_action.raw_output_field.json"
         ).read_text(encoding="utf-8")
+    )
+
+
+def ag_openapi_spec() -> dict[str, object]:
+    return yaml.safe_load(
+        (ROOT / "contracts" / "openapi" / "nex-ag.openapi.yaml").read_text(
+            encoding="utf-8"
+        )
     )
 
 
@@ -234,6 +325,426 @@ def test_generation_remediation_action_builder_accepts_result_ref() -> None:
         "ref_id": "cx-repair-run-001",
         "relation": "result_of",
     }
+
+
+def test_generation_remediation_in_memory_store_saves_lists_and_deletes() -> None:
+    store = GenerationRemediationTaskStore()
+    first = build_action(remediation_action_id="ag-remediation-001")
+    second = build_generation_remediation_action(
+        action_payload(
+            remediation_action_id="ag-remediation-002",
+            action_type="retry_generation",
+        ),
+        cx_generation_id="cx-gen-002",
+        request_id="request-002",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+        created_at="2026-08-25T00:00:00Z",
+    )
+
+    assert store.save(first) == first
+    assert store.save(second) == second
+    assert store.get("ag-remediation-001") == first
+    assert store.list_for_generation("cx-gen-001") == [first]
+    assert store.list_for_generation("missing") == []
+    assert store.delete("missing") == 0
+    assert store.delete("ag-remediation-001") == 1
+    assert store.get("ag-remediation-001") is None
+
+
+def test_generation_remediation_in_memory_store_reindexes_existing_action() -> None:
+    store = GenerationRemediationTaskStore()
+    original = build_action(remediation_action_id="ag-remediation-reindex")
+    moved = build_generation_remediation_action(
+        action_payload(remediation_action_id="ag-remediation-reindex"),
+        cx_generation_id="cx-gen-reindexed",
+        request_id="request-reindexed",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+        created_at="2026-08-25T00:00:00Z",
+    )
+
+    store.save(original)
+    store.save(moved)
+
+    assert store.list_for_generation("cx-gen-001") == []
+    assert store.list_for_generation("cx-gen-reindexed") == [moved]
+
+
+def test_generation_remediation_list_response_sorts_and_summarizes() -> None:
+    older = build_action(
+        remediation_action_id="ag-remediation-older",
+        action_type="citation_repair",
+    )
+    newer = build_action(
+        remediation_action_id="ag-remediation-newer",
+        action_type="retry_generation",
+    )
+    newer["updated_at"] = "2026-08-25T00:01:00Z"
+    newer["action_status"] = "ASSIGNED"
+
+    response = build_generation_remediation_action_list_response(
+        [older, newer],
+        cx_generation_id="cx-gen-001",
+        request_id="request-list",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    )
+
+    assert response["action_list_schema_version"] == (
+        "ag_generation_remediation_action_list.v1"
+    )
+    assert [item["remediation_action_id"] for item in response["items"]] == [
+        "ag-remediation-newer",
+        "ag-remediation-older",
+    ]
+    assert response["summary"] == {
+        "count": 2,
+        "by_status": {"ASSIGNED": 1, "PROPOSED": 1},
+        "by_action_type": {"citation_repair": 1, "retry_generation": 1},
+        "latest_updated_at": "2026-08-25T00:01:00Z",
+    }
+
+
+def test_generation_remediation_status_update_allows_valid_transition() -> None:
+    record = build_action()
+    updated = update_generation_remediation_action_status(
+        record,
+        {
+            "action_status": "ASSIGNED",
+            "evidence_previews": ["Task was assigned to the CX repair queue."],
+            "result_ref": {
+                "source_service": "nex-cx",
+                "ref_type": "repair_execution",
+                "ref_id": "cx-repair-run-001",
+            },
+        },
+        request_id="request-update",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+        updated_at="2026-08-25T00:05:00Z",
+    )
+
+    assert updated["action_status"] == "ASSIGNED"
+    assert updated["request_id"] == "request-update"
+    assert updated["updated_at"] == "2026-08-25T00:05:00Z"
+    assert updated["evidence"]["evidence_previews"] == [
+        "Task was assigned to the CX repair queue."
+    ]
+    assert updated["result_ref"] == {
+        "source_service": "nex-cx",
+        "ref_type": "repair_execution",
+        "ref_id": "cx-repair-run-001",
+        "relation": "result_of",
+    }
+
+
+def test_generation_remediation_status_update_rejects_invalid_transition() -> None:
+    record = build_action(action_status="COMPLETED")
+
+    with pytest.raises(GenerationRemediationError) as exc_info:
+        update_generation_remediation_action_status(
+            record,
+            {"action_status": "IN_PROGRESS"},
+            request_id="request-invalid-transition",
+            trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.error_code == (
+        "ag.generation_remediation_status_transition_invalid"
+    )
+
+
+def test_generation_remediation_status_update_rejects_sensitive_payload() -> None:
+    with pytest.raises(GenerationRemediationError) as exc_info:
+        update_generation_remediation_action_status(
+            build_action(),
+            {
+                "action_status": "ASSIGNED",
+                "raw_generation_output": "do not persist raw generated text",
+            },
+            request_id="request-redaction",
+            trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+        )
+
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.error_code == "ag.generation_remediation_sensitive_payload"
+
+
+def test_emit_generation_remediation_task_event_records_safe_event() -> None:
+    event_store = InMemoryOperationalEventStore()
+    audit_emitter = OperationalEventEmitter(service_id="nex-ag", store=event_store)
+    result = emit_generation_remediation_task_event(
+        audit_emitter,
+        build_action(),
+        event_type="ag.generation_remediation.task_recorded",
+    )
+
+    assert result.ok is True
+    event = event_store.list_events()[0]
+    assert event["event_type"] == "ag.generation_remediation.task_recorded"
+    assert event["details"]["action_type"] == "citation_repair"
+    assert "raw_generation_output" not in event["details"]
+
+
+def test_generation_remediation_routes_create_list_get_and_update() -> None:
+    client, store, event_store = build_route_client()
+    create_response = client.post(
+        "/admin/v1/generation-audit/generations/cx-gen-001/remediation-tasks",
+        headers=auth_headers(),
+        json=action_payload(remediation_action_id="ag-remediation-route"),
+    )
+    list_response = client.get(
+        "/admin/v1/generation-audit/generations/cx-gen-001/remediation-tasks",
+        headers=auth_headers(),
+    )
+    get_response = client.get(
+        (
+            "/admin/v1/generation-audit/generations/cx-gen-001"
+            "/remediation-tasks/ag-remediation-route"
+        ),
+        headers=auth_headers(),
+    )
+    patch_response = client.patch(
+        (
+            "/admin/v1/generation-audit/generations/cx-gen-001"
+            "/remediation-tasks/ag-remediation-route"
+        ),
+        headers=auth_headers(),
+        json={"action_status": "ASSIGNED"},
+    )
+
+    assert create_response.status_code == 202
+    assert list_response.status_code == 200
+    assert list_response.json()["summary"]["count"] == 1
+    assert get_response.status_code == 200
+    assert patch_response.status_code == 200
+    assert patch_response.json()["action_status"] == "ASSIGNED"
+    assert store.get("ag-remediation-route")["action_status"] == "ASSIGNED"
+    assert [
+        event["event_type"] for event in event_store.list_events()
+    ] == [
+        "ag.generation_remediation.task_status_updated",
+        "ag.generation_remediation.task_recorded",
+    ]
+
+
+def test_generation_remediation_routes_reject_auth_invalid_and_cross_generation() -> None:
+    client, _, _ = build_route_client()
+    create_unauthorized = client.post(
+        "/admin/v1/generation-audit/generations/cx-gen-001/remediation-tasks",
+        json=action_payload(remediation_action_id="ag-remediation-auth-create"),
+    )
+    unauthorized = client.get(
+        "/admin/v1/generation-audit/generations/cx-gen-001/remediation-tasks"
+    )
+    get_unauthorized = client.get(
+        (
+            "/admin/v1/generation-audit/generations/cx-gen-001"
+            "/remediation-tasks/ag-remediation-auth-get"
+        )
+    )
+    patch_unauthorized = client.patch(
+        (
+            "/admin/v1/generation-audit/generations/cx-gen-001"
+            "/remediation-tasks/ag-remediation-auth-patch"
+        ),
+        json={"action_status": "ASSIGNED"},
+    )
+    invalid = client.post(
+        "/admin/v1/generation-audit/generations/cx-gen-001/remediation-tasks",
+        headers=auth_headers(),
+        json={"action_type": "citation_repair", "raw_generation_output": "bad"},
+    )
+    client.post(
+        "/admin/v1/generation-audit/generations/cx-gen-001/remediation-tasks",
+        headers=auth_headers(),
+        json=action_payload(remediation_action_id="ag-remediation-private"),
+    )
+    missing = client.get(
+        (
+            "/admin/v1/generation-audit/generations/cx-gen-other"
+            "/remediation-tasks/ag-remediation-private"
+        ),
+        headers=auth_headers(),
+    )
+    bad_transition = client.patch(
+        (
+            "/admin/v1/generation-audit/generations/cx-gen-001"
+            "/remediation-tasks/ag-remediation-private"
+        ),
+        headers=auth_headers(),
+        json={"action_status": "COMPLETED"},
+    )
+    missing_patch = client.patch(
+        (
+            "/admin/v1/generation-audit/generations/cx-gen-other"
+            "/remediation-tasks/ag-remediation-private"
+        ),
+        headers=auth_headers(),
+        json={"action_status": "ASSIGNED"},
+    )
+
+    assert create_unauthorized.status_code == 401
+    assert unauthorized.status_code == 401
+    assert get_unauthorized.status_code == 401
+    assert patch_unauthorized.status_code == 401
+    assert invalid.status_code == 422
+    assert invalid.json()["error_code"] == "ag.generation_remediation_sensitive_payload"
+    assert missing.status_code == 404
+    assert bad_transition.status_code == 409
+    assert missing_patch.status_code == 404
+
+
+def test_generation_remediation_route_reports_store_failures() -> None:
+    class FailingStore:
+        def save(self, record: dict[str, Any]) -> dict[str, Any]:
+            raise GenerationRemediationError(
+                status_code=503,
+                error_code="ag.generation_remediation_store_unavailable",
+                detail="store down",
+            )
+
+        def get(self, remediation_action_id: str) -> None:
+            return None
+
+        def list_for_generation(self, cx_generation_id: str) -> list[dict[str, Any]]:
+            raise GenerationRemediationError(
+                status_code=503,
+                error_code="ag.generation_remediation_store_unavailable",
+                detail="store down",
+            )
+
+    client, _, _ = build_route_client(store=FailingStore())
+    create_response = client.post(
+        "/admin/v1/generation-audit/generations/cx-gen-001/remediation-tasks",
+        headers=auth_headers(),
+        json=action_payload(remediation_action_id="ag-remediation-store-failed"),
+    )
+    list_response = client.get(
+        "/admin/v1/generation-audit/generations/cx-gen-001/remediation-tasks",
+        headers=auth_headers(),
+    )
+
+    assert create_response.status_code == 503
+    assert list_response.status_code == 503
+
+
+def test_generation_remediation_get_route_reports_store_failure() -> None:
+    class FailingGetStore:
+        def save(self, record: dict[str, Any]) -> dict[str, Any]:
+            return record
+
+        def get(self, remediation_action_id: str) -> None:
+            raise GenerationRemediationError(
+                status_code=503,
+                error_code="ag.generation_remediation_store_unavailable",
+                detail="store down",
+            )
+
+        def list_for_generation(self, cx_generation_id: str) -> list[dict[str, Any]]:
+            return []
+
+    client, _, _ = build_route_client(store=FailingGetStore())
+    response = client.get(
+        (
+            "/admin/v1/generation-audit/generations/cx-gen-001"
+            "/remediation-tasks/ag-remediation-store-failed"
+        ),
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 503
+
+
+def test_sqlalchemy_generation_remediation_store_round_trips_sqlite() -> None:
+    store, engine = sqlite_remediation_store()
+    try:
+        first = build_action(remediation_action_id="ag-remediation-sql-001")
+        second = build_generation_remediation_action(
+            action_payload(
+                remediation_action_id="ag-remediation-sql-002",
+                action_type="retry_generation",
+            ),
+            cx_generation_id="cx-gen-sql-002",
+            request_id="request-sql-002",
+            trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+            created_at="2026-08-25T00:00:00Z",
+        )
+
+        store.save(first)
+        store.save(second)
+        loaded = store.get("ag-remediation-sql-001")
+        listed = store.list_for_generation("cx-gen-001")
+
+        assert loaded == first
+        assert [item["remediation_action_id"] for item in listed] == [
+            "ag-remediation-sql-001"
+        ]
+        first["action_status"] = "ASSIGNED"
+        first["updated_at"] = "2026-08-25T00:05:00Z"
+        store.save(first)
+        assert store.get("ag-remediation-sql-001")["action_status"] == "ASSIGNED"
+        assert store.delete("missing") == 0
+        assert store.delete("ag-remediation-sql-001") == 1
+    finally:
+        engine.dispose()
+
+
+def test_sqlalchemy_generation_remediation_store_wraps_sql_failures() -> None:
+    store, engine = sqlite_remediation_store()
+    engine.dispose()
+
+    for operation in (
+        lambda: store.save(build_action(remediation_action_id="ag-remediation-sql-down")),
+        lambda: store.get("ag-remediation-sql-down"),
+        lambda: store.list_for_generation("cx-gen-001"),
+        lambda: store.delete("ag-remediation-sql-down"),
+    ):
+        with pytest.raises(GenerationRemediationError) as exc_info:
+            operation()
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.error_code == (
+            "ag.generation_remediation_store_unavailable"
+        )
+
+
+def test_default_generation_remediation_store_uses_persistence_session_factory() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    session_factory = object()
+    app.state.nex_persistence = SimpleNamespace(api_session_factory=session_factory)
+
+    store = default_generation_remediation_task_store(app)
+
+    assert isinstance(store, SqlAlchemyGenerationRemediationTaskStore)
+    app_without_persistence = build_service_app(SERVICE_SPECS["nex-ag"])
+    assert isinstance(
+        default_generation_remediation_task_store(app_without_persistence),
+        GenerationRemediationTaskStore,
+    )
+
+
+def test_generation_remediation_sql_helpers_cover_json_and_datetime_paths() -> None:
+    assert _json_param_expr("metadata", "postgresql") == "CAST(:metadata AS jsonb)"
+    assert _json_param_expr("metadata", "sqlite") == ":metadata"
+    assert _json_value("{\"ok\": true}", {}) == {"ok": True}
+    assert _json_value(None, []) == []
+    assert _json_value({"already": "decoded"}, {}) == {"already": "decoded"}
+    assert _datetime_value(datetime(2026, 8, 25, tzinfo=UTC)) == "2026-08-25T00:00:00Z"
+    assert _datetime_value(date(2026, 8, 25)) == "2026-08-25"
+    assert _datetime_value("2026-08-25T00:00:00Z") == "2026-08-25T00:00:00Z"
+
+
+def test_nex_ag_openapi_includes_generation_remediation_task_routes() -> None:
+    spec = ag_openapi_spec()
+    paths = spec["paths"]
+
+    assert (
+        "/admin/v1/generation-audit/generations/{cx_generation_id}/remediation-tasks"
+        in paths
+    )
+    assert (
+        "/admin/v1/generation-audit/generations/{cx_generation_id}"
+        "/remediation-tasks/{remediation_action_id}"
+    ) in paths
+    assert "AgGenerationRemediationAction" in spec["components"]["schemas"]
 
 
 @pytest.mark.parametrize(

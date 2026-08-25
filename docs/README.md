@@ -447,6 +447,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0341`](slices/0341_generation_quality_repair_boundary_audit_refactoring_checkpoint.md) | `S35-001` Generation quality repair boundary audit/refactoring checkpoint. |
 | [`Slice 0342`](slices/0342_generation_remediation_action_contract_schema_foundation.md) | `S35-002` Generation remediation action contract/schema foundation. |
 | [`Slice 0343`](slices/0343_ag_remediation_candidate_projection_rules.md) | `S35-003` AG remediation candidate projection rules. |
+| [`Slice 0344`](slices/0344_ag_remediation_task_api_repository_foundation.md) | `S35-004` AG remediation task API/repository foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
