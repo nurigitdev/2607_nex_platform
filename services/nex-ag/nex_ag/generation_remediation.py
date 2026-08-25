@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Iterable, Mapping
 from uuid import NAMESPACE_URL, uuid5
 
 from nex_ag.generation_remediation_boundary import (
@@ -15,7 +15,12 @@ from nex_ag.generation_remediation_boundary import (
 
 
 REMEDIATION_ACTION_SCHEMA_VERSION = "ag_generation_remediation_action.v1"
+REMEDIATION_CANDIDATE_PROJECTION_SCHEMA_VERSION = (
+    "ag_generation_remediation_candidate_projection.v1"
+)
 MAX_EVIDENCE_PREVIEW_LENGTH = 240
+MAX_CANDIDATE_ITEMS = 500
+DEFAULT_CANDIDATE_ITEMS = 50
 
 ALLOWED_ACTION_TYPES = ALLOWED_REMEDIATION_INTENTS
 ALLOWED_ACTION_STATUSES = tuple(REMEDIATION_STATUS_TRANSITIONS)
@@ -53,6 +58,15 @@ ALLOWED_ACTION_SOURCES = (
     "candidate_projection",
     "operator_disposition",
     "system_policy",
+)
+ISSUE_CODE_ACTION_HINTS = (
+    ("CITATION", "citation_repair"),
+    ("RETRIEVAL", "retrieval_repair"),
+    ("NO_ANSWER", "retrieval_repair"),
+    ("LOW_CONFIDENCE", "retrieval_repair"),
+    ("GROUNDING", "retrieval_repair"),
+    ("METADATA", "retry_generation"),
+    ("GENERATION", "retry_generation"),
 )
 
 
@@ -148,6 +162,320 @@ def build_generation_remediation_action(
         "created_at": now,
         "updated_at": now,
     }
+
+
+def build_generation_remediation_candidate_projection(
+    *,
+    rollup_items: Iterable[Mapping[str, Any]],
+    request_id: str,
+    trace_id: str,
+    checked_at: str | None = None,
+    limit: int = DEFAULT_CANDIDATE_ITEMS,
+) -> dict[str, Any]:
+    rollup_items_list = list(rollup_items)
+    candidates = [
+        candidate
+        for item in rollup_items_list
+        if (candidate := _candidate_from_rollup_item(item, request_id, trace_id))
+        is not None
+    ]
+    candidates.sort(key=_candidate_sort_key)
+    limited = candidates[:normalize_candidate_limit(limit)]
+    return {
+        "projection_schema_version": REMEDIATION_CANDIDATE_PROJECTION_SCHEMA_VERSION,
+        "checked_at": checked_at or _utc_now(),
+        "trace_id": required_text({"trace_id": trace_id}, "trace_id"),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "items": limited,
+        "summary": {
+            "candidate_count": len(candidates),
+            "returned_count": len(limited),
+            "by_action_type": _count_by(limited, ("action", "action_type")),
+            "by_priority": _count_by(limited, ("action", "priority")),
+            "skipped_count": max(0, len(rollup_items_list) - len(candidates)),
+        },
+        "redaction_summary": {
+            "raw_prompt_included": False,
+            "raw_generation_output_included": False,
+            "raw_feedback_comment_included": False,
+            "raw_operator_note_included": False,
+        },
+    }
+
+
+def normalize_candidate_limit(limit: int) -> int:
+    if not isinstance(limit, int):
+        return DEFAULT_CANDIDATE_ITEMS
+    return min(max(limit, 1), MAX_CANDIDATE_ITEMS)
+
+
+def _candidate_from_rollup_item(
+    item: Mapping[str, Any],
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any] | None:
+    cx_generation_id = optional_text(item.get("cx_generation_id"))
+    if cx_generation_id is None:
+        return None
+    attention_status = str(item.get("attention_status") or "OK")
+    if attention_status in {"OK", "CLOSED"}:
+        return None
+
+    quality = _safe_mapping(item.get("quality"))
+    feedback = _safe_mapping(item.get("feedback"))
+    disposition = _safe_mapping(item.get("disposition"))
+    action_type, candidate_reason = _candidate_action_type(
+        quality=quality,
+        feedback=feedback,
+        disposition=disposition,
+        attention_status=attention_status,
+    )
+    priority = _candidate_priority(
+        severity=str(item.get("severity") or "INFO"),
+        feedback=feedback,
+        disposition=disposition,
+        attention_status=attention_status,
+    )
+    action = build_generation_remediation_action(
+        {
+            "tenant_id": _candidate_tenant_id(item),
+            "action_type": action_type,
+            "priority": priority,
+            "reason_codes": _candidate_reason_codes(
+                action_type=action_type,
+                quality=quality,
+                feedback=feedback,
+                disposition=disposition,
+            ),
+            "source_refs": _candidate_source_refs(
+                cx_generation_id=cx_generation_id,
+                feedback=feedback,
+                disposition=disposition,
+                quality=quality,
+            ),
+            "evidence_previews": _candidate_evidence_previews(
+                candidate_reason=candidate_reason,
+                item=item,
+            ),
+            "action_source": _candidate_action_source(disposition),
+        },
+        cx_generation_id=cx_generation_id,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    return {
+        "candidate_schema_version": "ag_generation_remediation_candidate.v1",
+        "candidate_id": action["remediation_action_id"],
+        "cx_generation_id": cx_generation_id,
+        "candidate_reason": candidate_reason,
+        "action": action,
+        "debug_paths": {
+            "quality_issue_detail_path": (
+                f"/admin/v1/generation-audit/generations/{cx_generation_id}"
+                "/quality-issue-detail"
+            ),
+            "dispositions_path": (
+                f"/admin/v1/generation-audit/generations/{cx_generation_id}"
+                "/quality-dispositions"
+            ),
+            "remediation_tasks_path": (
+                f"/admin/v1/generation-audit/generations/{cx_generation_id}"
+                "/remediation-tasks"
+            ),
+        },
+    }
+
+
+def _candidate_action_type(
+    *,
+    quality: Mapping[str, Any],
+    feedback: Mapping[str, Any],
+    disposition: Mapping[str, Any],
+    attention_status: str,
+) -> tuple[str, str]:
+    latest_action = optional_text(disposition.get("latest_action"))
+    if latest_action == "needs_ae_followup":
+        return "operator_followup", "operator_requested_ae_followup"
+    quality_action = _action_type_from_quality(quality)
+    if latest_action == "needs_cx_repair":
+        return quality_action or "retry_generation", "operator_requested_cx_repair"
+    if latest_action == "escalated":
+        return "prompt_policy_review", "operator_escalated_generation_quality"
+    if quality_action is not None:
+        return quality_action, "quality_signal_requires_repair"
+    if _int_value(feedback.get("negative_count")) > 0:
+        return "operator_followup", "negative_feedback_needs_triage"
+    if attention_status == "IN_PROGRESS":
+        return "operator_followup", "open_operator_disposition_in_progress"
+    return "operator_followup", "attention_signal_needs_triage"
+
+
+def _action_type_from_quality(quality: Mapping[str, Any]) -> str | None:
+    for value in (
+        _list_texts(quality.get("issue_codes"))
+        + _list_texts(quality.get("coverage_statuses"))
+        + _list_texts(quality.get("boundary_statuses"))
+        + _list_texts(quality.get("recommended_actions"))
+    ):
+        upper_value = value.upper()
+        for token, action_type in ISSUE_CODE_ACTION_HINTS:
+            if token in upper_value:
+                return action_type
+    if quality.get("attention_required") is True:
+        return "retry_generation"
+    return None
+
+
+def _candidate_priority(
+    *,
+    severity: str,
+    feedback: Mapping[str, Any],
+    disposition: Mapping[str, Any],
+    attention_status: str,
+) -> str:
+    latest_status = optional_text(disposition.get("latest_status"))
+    if latest_status == "ESCALATED" or severity == "ERROR":
+        return "URGENT"
+    if _int_value(feedback.get("negative_count")) >= 2:
+        return "HIGH"
+    if attention_status == "IN_PROGRESS":
+        return "HIGH"
+    if severity == "WARNING":
+        return "HIGH"
+    return "NORMAL"
+
+
+def _candidate_reason_codes(
+    *,
+    action_type: str,
+    quality: Mapping[str, Any],
+    feedback: Mapping[str, Any],
+    disposition: Mapping[str, Any],
+) -> list[str]:
+    reasons: list[str] = []
+    if _int_value(feedback.get("negative_count")) > 0:
+        reasons.append("negative_user_feedback")
+    if optional_text(disposition.get("latest_disposition_id")) is not None:
+        reasons.append("operator_requested_repair")
+    if action_type == "citation_repair":
+        reasons.append("citation_quality")
+    elif action_type == "retrieval_repair":
+        reasons.append("retrieval_quality")
+    elif action_type == "retry_generation":
+        reasons.append("generation_quality")
+    elif action_type == "prompt_policy_review":
+        reasons.append("policy_review")
+    if any("METADATA" in code.upper() for code in _list_texts(quality.get("issue_codes"))):
+        reasons.append("metadata_gap")
+    return list(dict.fromkeys(reasons or ["other"]))
+
+
+def _candidate_source_refs(
+    *,
+    cx_generation_id: str,
+    feedback: Mapping[str, Any],
+    disposition: Mapping[str, Any],
+    quality: Mapping[str, Any],
+) -> list[dict[str, str]]:
+    refs: list[dict[str, str]] = []
+    if _int_value(quality.get("count")) > 0:
+        refs.append(
+            {
+                "source_service": "nex-ag",
+                "ref_type": "generation_quality",
+                "ref_id": cx_generation_id,
+                "relation": "caused_by",
+            }
+        )
+    if (feedback_id := optional_text(feedback.get("latest_feedback_id"))) is not None:
+        refs.append(
+            {
+                "source_service": "nex-ae-api",
+                "ref_type": "feedback",
+                "ref_id": feedback_id,
+                "relation": "caused_by",
+            }
+        )
+    if (
+        disposition_id := optional_text(disposition.get("latest_disposition_id"))
+    ) is not None:
+        refs.append(
+            {
+                "source_service": "nex-ag",
+                "ref_type": "operator_disposition",
+                "ref_id": disposition_id,
+                "relation": "recommended_by",
+            }
+        )
+    return refs
+
+
+def _candidate_evidence_previews(
+    *,
+    candidate_reason: str,
+    item: Mapping[str, Any],
+) -> list[str]:
+    quality = _safe_mapping(item.get("quality"))
+    feedback = _safe_mapping(item.get("feedback"))
+    parts = [
+        f"reason={candidate_reason}",
+        f"attention={item.get('attention_status') or 'UNKNOWN'}",
+        f"severity={item.get('severity') or 'INFO'}",
+    ]
+    issue_codes = _list_texts(quality.get("issue_codes"))
+    if issue_codes:
+        parts.append(f"issues={','.join(issue_codes[:3])}")
+    negative_count = _int_value(feedback.get("negative_count"))
+    if negative_count:
+        parts.append(f"negative_feedback={negative_count}")
+    return [" ".join(parts)]
+
+
+def _candidate_action_source(disposition: Mapping[str, Any]) -> str:
+    if optional_text(disposition.get("latest_disposition_id")) is not None:
+        return "operator_disposition"
+    return "candidate_projection"
+
+
+def _candidate_tenant_id(item: Mapping[str, Any]) -> str | None:
+    return optional_text(item.get("tenant_id"))
+
+
+def _candidate_sort_key(candidate: Mapping[str, Any]) -> tuple[int, str, str]:
+    action = _safe_mapping(candidate.get("action"))
+    priority_order = {"URGENT": 0, "HIGH": 1, "NORMAL": 2, "LOW": 3}
+    priority = str(action.get("priority") or "NORMAL")
+    action_type = str(action.get("action_type") or "")
+    generation_id = str(candidate.get("cx_generation_id") or "")
+    return (priority_order.get(priority, 4), action_type, generation_id)
+
+
+def _count_by(items: list[Mapping[str, Any]], path: tuple[str, ...]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        value: Any = item
+        for key in path:
+            value = value.get(key) if isinstance(value, Mapping) else None
+        label = str(value or "unknown")
+        counts[label] = counts.get(label, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _safe_mapping(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _list_texts(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str) and item]
+
+
+def _int_value(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def owner_ref(value: Any, *, tenant_id: str | None) -> dict[str, str | None]:
