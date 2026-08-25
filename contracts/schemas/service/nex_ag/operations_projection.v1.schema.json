@@ -254,6 +254,9 @@
     "generation_quality": {
       "$ref": "#/$defs/dashboard_generation_quality"
     },
+    "generation_remediation": {
+      "$ref": "#/$defs/dashboard_generation_remediation"
+    },
     "replay_candidates": {
       "type": "array",
       "items": {
@@ -725,6 +728,7 @@
           "cx_processing_runs",
           "retrieval_threshold_decisions",
           "generation_quality",
+          "generation_remediation",
           "degraded_sources",
           "job_source_statuses",
           "event_source_statuses",
@@ -1824,6 +1828,242 @@
           "items": {
             "$ref": "#/$defs/dashboard_generation_quality_item"
           }
+        }
+      }
+    },
+    "dashboard_generation_remediation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "summary",
+        "recent",
+        "attention",
+        "source_statuses"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "const": "ag_generation_remediation_dashboard_section.v1"
+        },
+        "summary": {
+          "$ref": "#/$defs/dashboard_generation_remediation_summary"
+        },
+        "recent": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dashboard_generation_remediation_item"
+          }
+        },
+        "attention": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dashboard_generation_remediation_item"
+          }
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/source_status"
+          }
+        }
+      }
+    },
+    "dashboard_generation_remediation_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "by_status",
+        "by_action_type",
+        "active_count",
+        "failed_count",
+        "completed_count",
+        "urgent_count",
+        "attention_count"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_status": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_action_type": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "active_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completed_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "urgent_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attention_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "dashboard_generation_remediation_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service_id",
+        "operation_type",
+        "remediation_action_id",
+        "cx_generation_id",
+        "trace_id",
+        "request_id",
+        "action_type",
+        "action_status",
+        "priority",
+        "owner_type",
+        "owner_id",
+        "tenant_id",
+        "reason_codes",
+        "source_ref_count",
+        "evidence_hash_count",
+        "evidence_preview_count",
+        "result_available",
+        "created_at",
+        "updated_at",
+        "detail_path"
+      ],
+      "properties": {
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        },
+        "operation_type": {
+          "const": "generation_remediation_task"
+        },
+        "remediation_action_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cx_generation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "$ref": "#/$defs/trace_id"
+        },
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "action_type": {
+          "type": "string",
+          "enum": [
+            "retry_generation",
+            "retrieval_repair",
+            "citation_repair",
+            "prompt_policy_review",
+            "operator_followup",
+            "mark_accepted",
+            "unknown"
+          ]
+        },
+        "action_status": {
+          "type": "string",
+          "enum": [
+            "PROPOSED",
+            "ASSIGNED",
+            "IN_PROGRESS",
+            "WAITING_ON_CX",
+            "COMPLETED",
+            "FAILED",
+            "CANCELLED",
+            "UNKNOWN"
+          ]
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "LOW",
+            "NORMAL",
+            "HIGH",
+            "URGENT"
+          ]
+        },
+        "owner_type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "service",
+            "user",
+            null
+          ]
+        },
+        "owner_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "tenant_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_ref_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence_hash_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence_preview_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "result_available": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "detail_path": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },

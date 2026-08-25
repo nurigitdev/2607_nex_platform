@@ -35,6 +35,7 @@ from nex_ag.generation_remediation import (
     _datetime_value,
     _json_param_expr,
     _json_value,
+    _normalize_remediation_list_limit,
 )
 from nex_runtime import (
     InMemoryOperationalEventStore,
@@ -345,6 +346,9 @@ def test_generation_remediation_in_memory_store_saves_lists_and_deletes() -> Non
     assert store.save(second) == second
     assert store.get("ag-remediation-001") == first
     assert store.list_for_generation("cx-gen-001") == [first]
+    assert [
+        item["remediation_action_id"] for item in store.list_recent(limit=1)
+    ] == ["ag-remediation-001"]
     assert store.list_for_generation("missing") == []
     assert store.delete("missing") == 0
     assert store.delete("ag-remediation-001") == 1
@@ -673,15 +677,23 @@ def test_sqlalchemy_generation_remediation_store_round_trips_sqlite() -> None:
         store.save(second)
         loaded = store.get("ag-remediation-sql-001")
         listed = store.list_for_generation("cx-gen-001")
+        recent = store.list_recent(limit=10)
 
         assert loaded == first
         assert [item["remediation_action_id"] for item in listed] == [
             "ag-remediation-sql-001"
         ]
+        assert [item["remediation_action_id"] for item in recent] == [
+            "ag-remediation-sql-001",
+            "ag-remediation-sql-002",
+        ]
         first["action_status"] = "ASSIGNED"
         first["updated_at"] = "2026-08-25T00:05:00Z"
         store.save(first)
         assert store.get("ag-remediation-sql-001")["action_status"] == "ASSIGNED"
+        assert store.list_recent(limit=0)[0]["remediation_action_id"] == (
+            "ag-remediation-sql-001"
+        )
         assert store.delete("missing") == 0
         assert store.delete("ag-remediation-sql-001") == 1
     finally:
@@ -696,6 +708,7 @@ def test_sqlalchemy_generation_remediation_store_wraps_sql_failures() -> None:
         lambda: store.save(build_action(remediation_action_id="ag-remediation-sql-down")),
         lambda: store.get("ag-remediation-sql-down"),
         lambda: store.list_for_generation("cx-gen-001"),
+        lambda: store.list_recent(limit=1),
         lambda: store.delete("ag-remediation-sql-down"),
     ):
         with pytest.raises(GenerationRemediationError) as exc_info:
@@ -730,6 +743,9 @@ def test_generation_remediation_sql_helpers_cover_json_and_datetime_paths() -> N
     assert _datetime_value(datetime(2026, 8, 25, tzinfo=UTC)) == "2026-08-25T00:00:00Z"
     assert _datetime_value(date(2026, 8, 25)) == "2026-08-25"
     assert _datetime_value("2026-08-25T00:00:00Z") == "2026-08-25T00:00:00Z"
+    assert _normalize_remediation_list_limit("bad") == 500
+    assert _normalize_remediation_list_limit(-5) == 1
+    assert _normalize_remediation_list_limit(501) == 500
 
 
 def test_nex_ag_openapi_includes_generation_remediation_task_routes() -> None:

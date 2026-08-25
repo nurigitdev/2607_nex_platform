@@ -107,6 +107,9 @@ class GenerationRemediationError(Exception):
 class GenerationRemediationTaskStore:
     records: dict[str, dict[str, Any]] = field(default_factory=dict)
     action_ids_by_generation: dict[str, list[str]] = field(default_factory=dict)
+    source_kind: str = "memory"
+    database_env: str | None = None
+    redacted_database_url: str | None = None
 
     def save(self, record: dict[str, Any]) -> dict[str, Any]:
         action_id = record["remediation_action_id"]
@@ -129,6 +132,13 @@ class GenerationRemediationTaskStore:
             if action_id in self.records
         ]
 
+    def list_recent(self, *, limit: int = 500) -> list[dict[str, Any]]:
+        normalized_limit = _normalize_remediation_list_limit(limit)
+        records = list(self.records.values())
+        records.sort(key=lambda record: str(record.get("remediation_action_id") or ""))
+        records.sort(key=lambda record: str(record.get("updated_at") or ""), reverse=True)
+        return records[:normalized_limit]
+
     def delete(self, remediation_action_id: str) -> int:
         record = self.records.pop(remediation_action_id, None)
         if record is None:
@@ -144,8 +154,18 @@ class GenerationRemediationTaskStore:
 
 
 class SqlAlchemyGenerationRemediationTaskStore:
-    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        source_kind: str = "postgres",
+        database_env: str | None = None,
+        redacted_database_url: str | None = None,
+    ) -> None:
         self._session_factory = session_factory
+        self.source_kind = source_kind
+        self.database_env = database_env
+        self.redacted_database_url = redacted_database_url
 
     def save(self, record: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -190,6 +210,26 @@ class SqlAlchemyGenerationRemediationTaskStore:
                             )
                         ),
                         {"cx_generation_id": cx_generation_id},
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [_remediation_record_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _store_unavailable_error() from exc
+
+    def list_recent(self, *, limit: int = 500) -> list[dict[str, Any]]:
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            _remediation_select_sql(
+                                "1 = 1 ORDER BY updated_at DESC, remediation_action_id ASC "
+                                "LIMIT :limit"
+                            )
+                        ),
+                        {"limit": _normalize_remediation_list_limit(limit)},
                     )
                     .mappings()
                     .all()
@@ -863,6 +903,18 @@ def _int_value(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _normalize_remediation_list_limit(limit: int) -> int:
+    try:
+        value = int(limit)
+    except (TypeError, ValueError):
+        value = 500
+    if value < 1:
+        return 1
+    if value > 500:
+        return 500
+    return value
 
 
 def _record_count_by(records: list[Mapping[str, Any]], key: str) -> dict[str, int]:

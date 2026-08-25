@@ -499,6 +499,22 @@
     ],
     "attention": []
   },
+  "generation_remediation": {
+    "projection_schema_version": "ag_generation_remediation_dashboard_section.v1",
+    "summary": {
+      "total": 0,
+      "by_status": {},
+      "by_action_type": {},
+      "active_count": 0,
+      "failed_count": 0,
+      "completed_count": 0,
+      "urgent_count": 0,
+      "attention_count": 0
+    },
+    "recent": [],
+    "attention": [],
+    "source_statuses": {}
+  },
   "degraded_sources": [],
   "job_source_statuses": {
     "nex-cx": {

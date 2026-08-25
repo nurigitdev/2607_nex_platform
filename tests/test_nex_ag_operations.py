@@ -79,6 +79,7 @@ from nex_ag.operations import (
     summarize_operations_rollup_metrics,
     summarize_trace_timeline_items,
     _filter_records_by_operation_time,
+    _dashboard_generation_remediation_section,
     _dashboard_generation_quality_section,
     _dashboard_replay_candidates,
     _dashboard_timestamp,
@@ -91,6 +92,7 @@ from nex_ag.operations import (
     _service_log_matches_query,
     service_log_query_policy,
 )
+from nex_ag.generation_remediation import GenerationRemediationTaskStore
 from nex_ag.job_control import AgJobControlError
 from nex_ag.retrieval_operations import (
     InMemoryRetrievalPackageOperationsStore,
@@ -259,6 +261,50 @@ def generation_audit_projection_record(
             "evidence_text_included": False,
             "provider_detail_included": False,
         },
+    }
+
+
+def generation_remediation_task_record(
+    *,
+    remediation_action_id: str = "ag-remediation-dashboard-001",
+    cx_generation_id: str = "cx-gen-remediation",
+    action_type: str = "citation_repair",
+    action_status: str = "ASSIGNED",
+    priority: str = "HIGH",
+    updated_at: str = "2026-08-05T00:00:09Z",
+) -> dict[str, object]:
+    return {
+        "action_schema_version": "ag_generation_remediation_action.v1",
+        "remediation_action_id": remediation_action_id,
+        "cx_generation_id": cx_generation_id,
+        "tenant_id": "local-tenant",
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "action_type": action_type,
+        "action_status": action_status,
+        "priority": priority,
+        "owner_ref": {
+            "owner_type": "service",
+            "owner_id": "nex-cx",
+            "tenant_id": "local-tenant",
+        },
+        "reason_codes": ["citation_quality"],
+        "source_refs": [
+            {
+                "source_service": "nex-ag",
+                "ref_type": "generation_quality",
+                "ref_id": cx_generation_id,
+                "relation": "caused_by",
+            }
+        ],
+        "evidence": {
+            "evidence_hashes": ["a" * 64],
+            "evidence_previews": ["Citation quality needs a bounded repair task."],
+        },
+        "result_ref": None,
+        "metadata": {"source": "unit_test"},
+        "created_at": "2026-08-05T00:00:08Z",
+        "updated_at": updated_at,
     }
 
 
@@ -2576,12 +2622,131 @@ def test_build_operations_dashboard_snapshot_projection_combines_sections() -> N
     assert projection["generation_quality"]["attention"][0]["detail_path"] == (
         "/admin/v1/generation-audit/generations/cx-gen-warn"
     )
+    assert projection["generation_remediation"] == {
+        "projection_schema_version": "ag_generation_remediation_dashboard_section.v1",
+        "summary": {
+            "total": 0,
+            "by_status": {},
+            "by_action_type": {},
+            "active_count": 0,
+            "failed_count": 0,
+            "completed_count": 0,
+            "urgent_count": 0,
+            "attention_count": 0,
+        },
+        "recent": [],
+        "attention": [],
+        "source_statuses": {},
+    }
     assert projection["degraded_sources"] == []
     assert projection["log_source_statuses"]["nex-cx"] == {
         "status": "NOT_CONFIGURED",
         "log_count": 0,
     }
     assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_dashboard_snapshot_includes_generation_remediation_tasks() -> None:
+    store = GenerationRemediationTaskStore()
+    store.save(
+        generation_remediation_task_record(
+            remediation_action_id="ag-remediation-dashboard-001",
+            action_status="ASSIGNED",
+            priority="HIGH",
+            updated_at="2026-08-05T00:00:09Z",
+        )
+    )
+    store.save(
+        generation_remediation_task_record(
+            remediation_action_id="ag-remediation-dashboard-002",
+            cx_generation_id="cx-gen-remediation-2",
+            action_type="retry_generation",
+            action_status="COMPLETED",
+            priority="NORMAL",
+            updated_at="2026-08-05T00:00:10Z",
+        )
+    )
+
+    projection = build_operations_dashboard_snapshot_projection(
+        generation_remediation_task_stores={"nex-ag": store},
+        recent_limit=2,
+    )
+
+    remediation = projection["generation_remediation"]
+    assert remediation["summary"] == {
+        "total": 2,
+        "by_status": {"ASSIGNED": 1, "COMPLETED": 1},
+        "by_action_type": {"citation_repair": 1, "retry_generation": 1},
+        "active_count": 1,
+        "failed_count": 0,
+        "completed_count": 1,
+        "urgent_count": 0,
+        "attention_count": 1,
+    }
+    assert [
+        item["remediation_action_id"] for item in remediation["recent"]
+    ] == ["ag-remediation-dashboard-002", "ag-remediation-dashboard-001"]
+    assert [
+        item["remediation_action_id"] for item in remediation["attention"]
+    ] == ["ag-remediation-dashboard-001"]
+    assert remediation["attention"][0]["detail_path"] == (
+        "/admin/v1/generation-audit/generations/cx-gen-remediation"
+        "/remediation-tasks/ag-remediation-dashboard-001"
+    )
+    assert remediation["source_statuses"]["nex-ag"] == {
+        "status": "READY",
+        "service_id": "nex-ag",
+        "source_kind": "memory",
+        "task_count": 2,
+        "database_env": None,
+        "redacted_database_url": None,
+    }
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_dashboard_generation_remediation_section_handles_missing_and_broken_sources() -> (
+    None
+):
+    class BrokenRemediationStore:
+        source_kind = "postgres"
+        database_env = "NEX_AG_TEST_DATABASE_URL"
+        redacted_database_url = "postgresql://nex_ag_user:***@localhost/nex_ag_test"
+
+        def list_recent(self, *, limit: int = 500) -> list[dict[str, object]]:
+            raise RuntimeError("store down")
+
+    empty = _dashboard_generation_remediation_section(
+        None,
+        service_id=None,
+        options=build_operation_query_options(limit=500),
+        limit=3,
+    )
+    filtered = _dashboard_generation_remediation_section(
+        {"nex-ag": GenerationRemediationTaskStore()},
+        service_id="nex-cx",
+        options=build_operation_query_options(limit=500),
+        limit=3,
+    )
+    missing = _dashboard_generation_remediation_section(
+        {},
+        service_id="nex-ag",
+        options=build_operation_query_options(limit=500),
+        limit=3,
+    )
+    broken = _dashboard_generation_remediation_section(
+        {"nex-ag": BrokenRemediationStore()},
+        service_id="nex-ag",
+        options=build_operation_query_options(limit=500),
+        limit=3,
+    )
+
+    assert empty["source_statuses"] == {}
+    assert filtered["source_statuses"] == {}
+    assert missing["source_statuses"]["nex-ag"]["status"] == "NOT_CONFIGURED"
+    assert broken["source_statuses"]["nex-ag"]["status"] == "UNAVAILABLE"
+    assert broken["source_statuses"]["nex-ag"]["error_code"] == (
+        "ag.generation_remediation_source_unavailable"
+    )
 
 
 def test_operations_dashboard_snapshot_reports_retrieval_threshold_source_unavailable() -> (

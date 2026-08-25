@@ -185,12 +185,27 @@ class CxProcessingRunDashboardStore(Protocol):
     ) -> list[dict[str, Any]]: ...
 
 
+class GenerationRemediationTaskDashboardStore(Protocol):
+    source_kind: str
+    database_env: str | None
+    redacted_database_url: str | None
+
+    def list_recent(self, *, limit: int = 500) -> list[dict[str, Any]]: ...
+
+
 MIN_SERVICE_LOG_RETENTION_DAYS = 7
 MAX_SERVICE_LOG_RETENTION_DAYS = 365
 MAX_OPERATION_EVENT_QUERY_LENGTH = 128
 MAX_DASHBOARD_RECENT_LIMIT = 20
 GENERATION_QUALITY_STATUSES = ("PASS", "WARN", "FAIL", "NOT_REQUIRED", "UNKNOWN")
 GENERATION_QUALITY_ATTENTION_STATUSES = {"WARN", "FAIL", "UNKNOWN"}
+GENERATION_REMEDIATION_TERMINAL_STATUSES = {"COMPLETED", "CANCELLED"}
+GENERATION_REMEDIATION_ACTIVE_STATUSES = {
+    "PROPOSED",
+    "ASSIGNED",
+    "IN_PROGRESS",
+    "WAITING_ON_CX",
+}
 OPERATIONS_ISSUE_CANDIDATE_RULES = (
     {
         "rule_id": "operations_source_unavailable.v1",
@@ -1905,6 +1920,9 @@ def register_unified_operation_routes(
     service_log_stores: Mapping[str, ServiceLogStore] | None = None,
     retrieval_package_stores: Mapping[str, RetrievalPackageTraceStore] | None = None,
     cx_processing_run_stores: Mapping[str, CxProcessingRunDashboardStore] | None = None,
+    generation_remediation_task_stores: (
+        Mapping[str, GenerationRemediationTaskDashboardStore] | None
+    ) = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -2046,6 +2064,7 @@ def register_unified_operation_routes(
             registry=registry,
             runtime=selected_runtime,
             cx_processing_run_stores=cx_processing_run_stores,
+            generation_remediation_task_stores=generation_remediation_task_stores,
             service_id=service_id,
             recent_limit=recent_limit,
             query_options=query_options,
@@ -3318,6 +3337,9 @@ def build_operations_dashboard_snapshot_projection(
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
     cx_processing_run_stores: Mapping[str, CxProcessingRunDashboardStore] | None = None,
+    generation_remediation_task_stores: (
+        Mapping[str, GenerationRemediationTaskDashboardStore] | None
+    ) = None,
     service_id: str | None = None,
     recent_limit: int = 5,
     limit: int = 500,
@@ -3404,6 +3426,12 @@ def build_operations_dashboard_snapshot_projection(
         generation_audit_projections,
         limit=normalized_recent_limit,
     )
+    generation_remediation = _dashboard_generation_remediation_section(
+        generation_remediation_task_stores,
+        service_id=service_id,
+        options=options,
+        limit=normalized_recent_limit,
+    )
     degraded_sources = _dashboard_degraded_sources(
         operation_sources=readiness_projection["sources"],
         job_source_statuses=rollup_projection["job_source_statuses"],
@@ -3412,6 +3440,9 @@ def build_operations_dashboard_snapshot_projection(
         cx_processing_run_source_statuses=cx_processing_runs["source_statuses"],
         retrieval_threshold_decision_source_statuses=(
             retrieval_threshold_decisions["source_statuses"]
+        ),
+        generation_remediation_source_statuses=(
+            generation_remediation["source_statuses"]
         ),
     )
     projection = {
@@ -3434,6 +3465,7 @@ def build_operations_dashboard_snapshot_projection(
         "cx_processing_runs": cx_processing_runs,
         "retrieval_threshold_decisions": retrieval_threshold_decisions,
         "generation_quality": generation_quality,
+        "generation_remediation": generation_remediation,
         "degraded_sources": degraded_sources,
         "job_source_statuses": rollup_projection["job_source_statuses"],
         "event_source_statuses": rollup_projection["event_source_statuses"],
@@ -5606,6 +5638,228 @@ def _dashboard_retrieval_threshold_source_status(
     return source
 
 
+def _dashboard_generation_remediation_section(
+    stores: Mapping[str, GenerationRemediationTaskDashboardStore] | None,
+    *,
+    service_id: str | None,
+    options: OperationQueryOptions,
+    limit: int,
+) -> dict[str, Any]:
+    source_statuses: dict[str, dict[str, Any]] = {}
+    selected_service_ids = _dashboard_generation_remediation_service_ids(service_id)
+    if not selected_service_ids or stores is None:
+        return _empty_dashboard_generation_remediation_section(source_statuses)
+
+    tasks: list[dict[str, Any]] = []
+    for selected_service_id in selected_service_ids:
+        store = stores.get(selected_service_id)
+        if store is None:
+            source_statuses[selected_service_id] = (
+                _dashboard_generation_remediation_source_status(
+                    service_id=selected_service_id,
+                    store=None,
+                    task_count=0,
+                )
+            )
+            continue
+        try:
+            records = store.list_recent(limit=500)
+        except Exception as exc:
+            source_statuses[selected_service_id] = (
+                _dashboard_generation_remediation_source_status(
+                    service_id=selected_service_id,
+                    store=store,
+                    task_count=0,
+                    error=exc,
+                )
+            )
+            continue
+        projected = [
+            _dashboard_generation_remediation_item(selected_service_id, record)
+            for record in records
+            if isinstance(record, Mapping)
+        ]
+        visible = _filter_records_by_operation_time(
+            projected,
+            options,
+            timestamp_field="updated_at",
+        )
+        source_statuses[selected_service_id] = (
+            _dashboard_generation_remediation_source_status(
+                service_id=selected_service_id,
+                store=store,
+                task_count=len(visible),
+            )
+        )
+        tasks.extend(visible)
+
+    dashboard_options = OperationQueryOptions(
+        limit=limit,
+        since=options.since,
+        until=options.until,
+        sort="desc",
+        cursor=None,
+    )
+    recent = _apply_operation_query_options(
+        tasks,
+        dashboard_options,
+        timestamp_field="updated_at",
+        tie_breaker_fields=("service_id", "remediation_action_id"),
+    )["items"]
+    attention = [
+        task for task in recent if _generation_remediation_task_needs_attention(task)
+    ]
+    return {
+        "projection_schema_version": "ag_generation_remediation_dashboard_section.v1",
+        "summary": _summarize_dashboard_generation_remediation(tasks),
+        "recent": recent,
+        "attention": attention,
+        "source_statuses": source_statuses,
+    }
+
+
+def _dashboard_generation_remediation_service_ids(service_id: str | None) -> list[str]:
+    if service_id is None:
+        return ["nex-ag"]
+    if service_id == "nex-ag":
+        return ["nex-ag"]
+    return []
+
+
+def _empty_dashboard_generation_remediation_section(
+    source_statuses: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "projection_schema_version": "ag_generation_remediation_dashboard_section.v1",
+        "summary": _summarize_dashboard_generation_remediation([]),
+        "recent": [],
+        "attention": [],
+        "source_statuses": source_statuses,
+    }
+
+
+def _dashboard_generation_remediation_item(
+    service_id: str,
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    owner = record.get("owner_ref")
+    owner_ref = owner if isinstance(owner, Mapping) else {}
+    evidence = record.get("evidence")
+    evidence_summary = evidence if isinstance(evidence, Mapping) else {}
+    result = record.get("result_ref")
+    remediation_action_id = str(record.get("remediation_action_id") or "")
+    cx_generation_id = str(record.get("cx_generation_id") or "UNKNOWN")
+    return {
+        "service_id": service_id,
+        "operation_type": "generation_remediation_task",
+        "remediation_action_id": remediation_action_id,
+        "cx_generation_id": cx_generation_id,
+        "trace_id": _nullable_string(record.get("trace_id")),
+        "request_id": _nullable_string(record.get("request_id")),
+        "action_type": str(record.get("action_type") or "unknown"),
+        "action_status": str(record.get("action_status") or "UNKNOWN"),
+        "priority": str(record.get("priority") or "NORMAL"),
+        "owner_type": _nullable_string(owner_ref.get("owner_type")),
+        "owner_id": _nullable_string(owner_ref.get("owner_id")),
+        "tenant_id": _nullable_string(record.get("tenant_id")),
+        "reason_codes": [
+            str(reason)
+            for reason in record.get("reason_codes", [])
+            if isinstance(reason, str)
+        ],
+        "source_ref_count": _safe_int(len(record.get("source_refs", []))),
+        "evidence_hash_count": _safe_int(
+            len(evidence_summary.get("evidence_hashes", []))
+        ),
+        "evidence_preview_count": _safe_int(
+            len(evidence_summary.get("evidence_previews", []))
+        ),
+        "result_available": isinstance(result, Mapping),
+        "created_at": _dashboard_optional_timestamp(record.get("created_at")),
+        "updated_at": _dashboard_timestamp(record.get("updated_at")),
+        "detail_path": (
+            f"/admin/v1/generation-audit/generations/{cx_generation_id}"
+            f"/remediation-tasks/{remediation_action_id}"
+        ),
+    }
+
+
+def _summarize_dashboard_generation_remediation(
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    by_status = _dashboard_count_by(items, "action_status")
+    by_action_type = _dashboard_count_by(items, "action_type")
+    return {
+        "total": len(items),
+        "by_status": by_status,
+        "by_action_type": by_action_type,
+        "active_count": sum(
+            1
+            for item in items
+            if item["action_status"] in GENERATION_REMEDIATION_ACTIVE_STATUSES
+        ),
+        "failed_count": sum(1 for item in items if item["action_status"] == "FAILED"),
+        "completed_count": sum(
+            1 for item in items if item["action_status"] == "COMPLETED"
+        ),
+        "urgent_count": sum(1 for item in items if item["priority"] == "URGENT"),
+        "attention_count": sum(
+            1 for item in items if _generation_remediation_task_needs_attention(item)
+        ),
+    }
+
+
+def _dashboard_count_by(items: list[dict[str, Any]], key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        label = str(item.get(key) or "UNKNOWN")
+        counts[label] = counts.get(label, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _generation_remediation_task_needs_attention(item: Mapping[str, Any]) -> bool:
+    status = str(item.get("action_status") or "UNKNOWN")
+    return status not in GENERATION_REMEDIATION_TERMINAL_STATUSES
+
+
+def _dashboard_generation_remediation_source_status(
+    *,
+    service_id: str,
+    store: GenerationRemediationTaskDashboardStore | None,
+    task_count: int,
+    error: Exception | None = None,
+) -> dict[str, Any]:
+    if store is None:
+        return {
+            "status": "NOT_CONFIGURED",
+            "service_id": service_id,
+            "source_kind": "none",
+            "task_count": 0,
+            "database_env": None,
+            "redacted_database_url": None,
+        }
+    source = {
+        "status": "UNAVAILABLE" if error is not None else "READY",
+        "service_id": service_id,
+        "source_kind": getattr(store, "source_kind", "unknown"),
+        "task_count": task_count,
+        "database_env": getattr(store, "database_env", None),
+        "redacted_database_url": getattr(store, "redacted_database_url", None),
+    }
+    if error is not None:
+        source["error_code"] = getattr(
+            error,
+            "error_code",
+            "ag.generation_remediation_source_unavailable",
+        )
+        source["detail"] = getattr(
+            error,
+            "detail",
+            "Generation remediation task source could not be read.",
+        )
+    return source
+
+
 def _dashboard_generation_quality_section(
     generation_audit_projections: list[Mapping[str, Any]] | None,
     *,
@@ -6005,6 +6259,7 @@ def _dashboard_degraded_sources(
     retrieval_threshold_decision_source_statuses: (
         Mapping[str, dict[str, Any]] | None
     ) = None,
+    generation_remediation_source_statuses: Mapping[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     degraded: list[dict[str, Any]] = []
     for source in operation_sources:
@@ -6027,6 +6282,7 @@ def _dashboard_degraded_sources(
             "retrieval_threshold_decisions",
             retrieval_threshold_decision_source_statuses or {},
         ),
+        ("generation_remediation", generation_remediation_source_statuses or {}),
     ):
         for service_id, source_status in statuses.items():
             status = str(source_status["status"])

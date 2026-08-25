@@ -9,7 +9,10 @@ from nex_ag.generation_audit import register_generation_audit_routes
 from nex_ag.generation_quality_disposition import (
     register_generation_quality_disposition_routes,
 )
-from nex_ag.generation_remediation import register_generation_remediation_task_routes
+from nex_ag.generation_remediation import (
+    default_generation_remediation_task_store,
+    register_generation_remediation_task_routes,
+)
 from nex_ag.operations import (
     attach_ag_operations_source_runtime,
     register_job_operation_routes,
@@ -52,6 +55,10 @@ RETRIEVAL_PACKAGE_OPERATION_STORES = build_retrieval_package_operation_stores(
 CX_PROCESSING_RUN_OPERATION_STORES = build_cx_processing_run_operation_stores(
     runtime=OPERATIONS_SOURCE_RUNTIME
 )
+GENERATION_REMEDIATION_TASK_STORE = default_generation_remediation_task_store(app)
+GENERATION_REMEDIATION_TASK_STORES = {
+    "nex-ag": GENERATION_REMEDIATION_TASK_STORE,
+}
 register_readiness_routes(app)
 register_generation_audit_routes(app)
 register_generation_quality_disposition_routes(
@@ -60,6 +67,7 @@ register_generation_quality_disposition_routes(
 )
 register_generation_remediation_task_routes(
     app,
+    store=GENERATION_REMEDIATION_TASK_STORE,
     audit_event_store=SERVICE_PERSISTENCE.operational_event_store,
 )
 register_retrieval_policy_routes(app)
@@ -79,6 +87,7 @@ register_unified_operation_routes(
     event_store=SERVICE_PERSISTENCE.operational_event_store,
     retrieval_package_stores=RETRIEVAL_PACKAGE_OPERATION_STORES,
     cx_processing_run_stores=CX_PROCESSING_RUN_OPERATION_STORES,
+    generation_remediation_task_stores=GENERATION_REMEDIATION_TASK_STORES,
     registry=OPERATIONS_SOURCE_REGISTRY,
     runtime=OPERATIONS_SOURCE_RUNTIME,
 )
