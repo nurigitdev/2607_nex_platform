@@ -146,6 +146,11 @@
       "schema": "schemas/generation/ag_generation_quality_operator_disposition.v1.schema.json"
     },
     {
+      "name": "ag_generation_remediation_action_raw_output_field",
+      "path": "tests/negative/generation/ag_generation_remediation_action.raw_output_field.json",
+      "schema": "schemas/generation/ag_generation_remediation_action.v1.schema.json"
+    },
+    {
       "name": "ag_generation_quality_feedback_rollup_raw_output_field",
       "path": "tests/negative/generation/ag_generation_quality_feedback_rollup.raw_output_field.json",
       "schema": "schemas/generation/ag_generation_quality_feedback_rollup.v1.schema.json"

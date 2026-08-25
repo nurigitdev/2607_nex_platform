@@ -191,6 +191,11 @@
       "schema": "schemas/generation/ag_generation_quality_operator_disposition.v1.schema.json"
     },
     {
+      "name": "ag_generation_remediation_action_citation_repair",
+      "path": "examples/generation/ag_generation_remediation_action.citation_repair.json",
+      "schema": "schemas/generation/ag_generation_remediation_action.v1.schema.json"
+    },
+    {
       "name": "ag_generation_quality_feedback_rollup_operator_attention",
       "path": "examples/generation/ag_generation_quality_feedback_rollup.operator_attention.json",
       "schema": "schemas/generation/ag_generation_quality_feedback_rollup.v1.schema.json"
