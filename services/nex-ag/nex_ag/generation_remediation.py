@@ -981,7 +981,11 @@ def _remediation_record_params(record: dict[str, Any]) -> dict[str, Any]:
         "reason_codes": json.dumps(record["reason_codes"]),
         "source_refs": json.dumps(record["source_refs"]),
         "evidence": json.dumps(record["evidence"]),
-        "result_ref": json.dumps(record["result_ref"]),
+        "result_ref": (
+            json.dumps(record["result_ref"])
+            if record.get("result_ref") is not None
+            else None
+        ),
         "metadata": json.dumps(record["metadata"]),
     }
 
