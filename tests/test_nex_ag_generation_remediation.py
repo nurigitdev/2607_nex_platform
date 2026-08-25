@@ -16,12 +16,14 @@ from sqlalchemy.orm import sessionmaker
 from nex_ag.generation_remediation import (
     REMEDIATION_CANDIDATE_PROJECTION_SCHEMA_VERSION,
     REMEDIATION_ACTION_SCHEMA_VERSION,
+    REMEDIATION_TASK_DETAIL_SCHEMA_VERSION,
     GenerationRemediationError,
     GenerationRemediationTaskStore,
     SqlAlchemyGenerationRemediationTaskStore,
     build_generation_remediation_candidate_projection,
     build_generation_remediation_action,
     build_generation_remediation_action_list_response,
+    build_generation_remediation_task_detail_response,
     default_generation_remediation_task_store,
     emit_generation_remediation_task_event,
     evidence_summary,
@@ -116,6 +118,18 @@ def remediation_action_schema() -> dict[str, object]:
             / "schemas"
             / "generation"
             / "ag_generation_remediation_action.v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+
+
+def remediation_task_detail_schema() -> dict[str, object]:
+    return json.loads(
+        (
+            ROOT
+            / "contracts"
+            / "schemas"
+            / "generation"
+            / "ag_generation_remediation_task_detail.v1.schema.json"
         ).read_text(encoding="utf-8")
     )
 
@@ -407,6 +421,117 @@ def test_generation_remediation_list_response_sorts_and_summarizes() -> None:
     }
 
 
+def test_generation_remediation_task_detail_response_matches_contract() -> None:
+    record = build_action(action_status="WAITING_ON_CX")
+
+    response = build_generation_remediation_task_detail_response(
+        record,
+        request_id="request-detail",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+        checked_at="2026-08-25T00:10:00Z",
+    )
+
+    Draft202012Validator(remediation_task_detail_schema()).validate(response)
+    assert response["detail_schema_version"] == REMEDIATION_TASK_DETAIL_SCHEMA_VERSION
+    assert response["projection_status"] == "READY"
+    assert response["attention_required"] is True
+    assert response["severity"] == "WARNING"
+    assert response["allowed_next_statuses"] == [
+        "IN_PROGRESS",
+        "COMPLETED",
+        "FAILED",
+        "CANCELLED",
+    ]
+    assert response["runbook"] == {
+        "runbook_id": "ag.generation_remediation.cx_dependency_followup.v1",
+        "recommended_operator_action": "follow_up_with_cx_owner",
+        "operator_steps": [
+            "open_remediation_task_detail",
+            "verify_cx_repair_execution_state",
+            "record_result_ref_or_escalate_owner",
+        ],
+    }
+    assert response["debug_paths"]["remediation_task_detail_path"] == (
+        "/admin/v1/generation-audit/generations/cx-gen-001"
+        "/remediation-tasks/ag-remediation-action-test"
+    )
+    assert response["redaction_summary"]["raw_generation_output_included"] is False
+    assert "raw_generation_output" not in response["task"]
+    assert response["task"]["metadata"]["raw_generation_output_stored"] is False
+
+
+@pytest.mark.parametrize(
+    ("action_status", "priority", "action_type", "expected_severity", "runbook_id"),
+    [
+        (
+            "FAILED",
+            "NORMAL",
+            "citation_repair",
+            "ERROR",
+            "ag.generation_remediation.failed_task_triage.v1",
+        ),
+        (
+            "COMPLETED",
+            "NORMAL",
+            "citation_repair",
+            "INFO",
+            "ag.generation_remediation.no_attention_required.v1",
+        ),
+        (
+            "CANCELLED",
+            "NORMAL",
+            "citation_repair",
+            "INFO",
+            "ag.generation_remediation.no_attention_required.v1",
+        ),
+        (
+            "ASSIGNED",
+            "URGENT",
+            "citation_repair",
+            "WARNING",
+            "ag.generation_remediation.urgent_task_review.v1",
+        ),
+        (
+            "ASSIGNED",
+            "NORMAL",
+            "prompt_policy_review",
+            "WARNING",
+            "ag.generation_remediation.prompt_policy_review.v1",
+        ),
+        (
+            "ASSIGNED",
+            "NORMAL",
+            "citation_repair",
+            "WARNING",
+            "ag.generation_remediation.active_task_review.v1",
+        ),
+    ],
+)
+def test_generation_remediation_task_detail_runbook_matrix(
+    action_status: str,
+    priority: str,
+    action_type: str,
+    expected_severity: str,
+    runbook_id: str,
+) -> None:
+    response = build_generation_remediation_task_detail_response(
+        build_action(
+            action_status=action_status,
+            priority=priority,
+            action_type=action_type,
+        ),
+        request_id="request-detail-matrix",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+        checked_at="2026-08-25T00:11:00Z",
+    )
+
+    assert response["severity"] == expected_severity
+    assert response["runbook"]["runbook_id"] == runbook_id
+    assert response["attention_required"] is (
+        action_status not in {"COMPLETED", "CANCELLED"}
+    )
+
+
 def test_generation_remediation_status_update_allows_valid_transition() -> None:
     record = build_action()
     updated = update_generation_remediation_action_status(
@@ -519,6 +644,17 @@ def test_generation_remediation_routes_create_list_get_and_update() -> None:
     assert list_response.status_code == 200
     assert list_response.json()["summary"]["count"] == 1
     assert get_response.status_code == 200
+    assert get_response.json()["detail_schema_version"] == (
+        REMEDIATION_TASK_DETAIL_SCHEMA_VERSION
+    )
+    assert get_response.json()["task"]["remediation_action_id"] == (
+        "ag-remediation-route"
+    )
+    assert get_response.json()["allowed_next_statuses"] == [
+        "ASSIGNED",
+        "IN_PROGRESS",
+        "CANCELLED",
+    ]
     assert patch_response.status_code == 200
     assert patch_response.json()["action_status"] == "ASSIGNED"
     assert store.get("ag-remediation-route")["action_status"] == "ASSIGNED"
@@ -761,6 +897,15 @@ def test_nex_ag_openapi_includes_generation_remediation_task_routes() -> None:
         "/remediation-tasks/{remediation_action_id}"
     ) in paths
     assert "AgGenerationRemediationAction" in spec["components"]["schemas"]
+    assert "AgGenerationRemediationTaskDetail" in spec["components"]["schemas"]
+    assert paths[
+        (
+            "/admin/v1/generation-audit/generations/{cx_generation_id}"
+            "/remediation-tasks/{remediation_action_id}"
+        )
+    ]["get"]["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AgGenerationRemediationTaskDetail"
+    }
 
 
 @pytest.mark.parametrize(

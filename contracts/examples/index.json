@@ -196,6 +196,11 @@
       "schema": "schemas/generation/ag_generation_remediation_action.v1.schema.json"
     },
     {
+      "name": "ag_generation_remediation_task_detail_waiting_on_cx",
+      "path": "examples/generation/ag_generation_remediation_task_detail.waiting_on_cx.json",
+      "schema": "schemas/generation/ag_generation_remediation_task_detail.v1.schema.json"
+    },
+    {
       "name": "ag_generation_quality_feedback_rollup_operator_attention",
       "path": "examples/generation/ag_generation_quality_feedback_rollup.operator_attention.json",
       "schema": "schemas/generation/ag_generation_quality_feedback_rollup.v1.schema.json"

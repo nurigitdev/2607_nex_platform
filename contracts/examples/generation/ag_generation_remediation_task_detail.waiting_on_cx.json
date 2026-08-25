@@ -1,0 +1,106 @@
+{
+  "detail_schema_version": "ag_generation_remediation_task_detail.v1",
+  "projection_status": "READY",
+  "checked_at": "2026-08-25T00:10:00Z",
+  "cx_generation_id": "cx-gen-001",
+  "remediation_action_id": "ag-remediation-action-test",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "request-detail",
+  "task": {
+    "action_schema_version": "ag_generation_remediation_action.v1",
+    "remediation_action_id": "ag-remediation-action-test",
+    "cx_generation_id": "cx-gen-001",
+    "tenant_id": "local-tenant",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "action_type": "citation_repair",
+    "action_status": "WAITING_ON_CX",
+    "priority": "HIGH",
+    "reason_codes": [
+      "negative_user_feedback",
+      "citation_quality"
+    ],
+    "owner_ref": {
+      "owner_type": "user",
+      "owner_id": "employee-0001",
+      "tenant_id": "local-tenant"
+    },
+    "source_refs": [
+      {
+        "source_service": "nex-ae-api",
+        "ref_type": "feedback",
+        "ref_id": "ae-feedback-001",
+        "relation": "caused_by"
+      }
+    ],
+    "evidence": {
+      "evidence_hashes": [
+        "4c38aa6aee30d0267d0cfe08c98474c97c58e2e7f6433ff0ec0ab29145dd3860"
+      ],
+      "evidence_previews": [
+        "Citation evidence preview only."
+      ],
+      "raw_evidence_stored": false
+    },
+    "result_ref": null,
+    "metadata": {
+      "action_source": "operator_disposition",
+      "raw_prompt_stored": false,
+      "raw_generation_output_stored": false,
+      "raw_source_document_text_stored": false,
+      "raw_feedback_comment_stored": false,
+      "raw_operator_note_stored": false,
+      "free_text_storage": "hash_and_short_preview_only"
+    },
+    "created_at": "2026-08-25T00:00:00Z",
+    "updated_at": "2026-08-25T00:00:00Z"
+  },
+  "attention_required": true,
+  "severity": "WARNING",
+  "allowed_next_statuses": [
+    "IN_PROGRESS",
+    "COMPLETED",
+    "FAILED",
+    "CANCELLED"
+  ],
+  "runbook": {
+    "runbook_id": "ag.generation_remediation.cx_dependency_followup.v1",
+    "recommended_operator_action": "follow_up_with_cx_owner",
+    "operator_steps": [
+      "open_remediation_task_detail",
+      "verify_cx_repair_execution_state",
+      "record_result_ref_or_escalate_owner"
+    ]
+  },
+  "debug_paths": {
+    "remediation_task_detail_path": "/admin/v1/generation-audit/generations/cx-gen-001/remediation-tasks/ag-remediation-action-test",
+    "remediation_task_list_path": "/admin/v1/generation-audit/generations/cx-gen-001/remediation-tasks",
+    "generation_quality_issue_detail_path": "/admin/v1/generation-audit/generations/cx-gen-001/quality-issue-detail",
+    "operations_dashboard_path": "/admin/v1/operations/dashboard?service_id=nex-ag",
+    "operations_issue_candidates_path": "/admin/v1/operations/issue-candidates?service_id=nex-ag"
+  },
+  "redaction_summary": {
+    "raw_prompt_included": false,
+    "raw_generation_output_included": false,
+    "raw_source_document_text_included": false,
+    "raw_feedback_comment_included": false,
+    "raw_operator_note_included": false,
+    "raw_evidence_included": false,
+    "provider_detail_included": false,
+    "evidence_preview_policy": "short_preview_only",
+    "excluded_fields": [
+      "raw_prompt",
+      "messages",
+      "source_text",
+      "raw_source_document_text",
+      "raw_feedback_comment",
+      "raw_operator_note",
+      "raw_generation_output",
+      "raw_output",
+      "provider_url",
+      "provider_endpoint",
+      "model_path",
+      "storage_path"
+    ]
+  }
+}

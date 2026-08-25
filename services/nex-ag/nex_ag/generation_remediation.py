@@ -34,6 +34,9 @@ from nex_runtime import (
 
 REMEDIATION_ACTION_SCHEMA_VERSION = "ag_generation_remediation_action.v1"
 REMEDIATION_ACTION_LIST_SCHEMA_VERSION = "ag_generation_remediation_action_list.v1"
+REMEDIATION_TASK_DETAIL_SCHEMA_VERSION = (
+    "ag_generation_remediation_task_detail.v1"
+)
 REMEDIATION_CANDIDATE_PROJECTION_SCHEMA_VERSION = (
     "ag_generation_remediation_candidate_projection.v1"
 )
@@ -359,7 +362,11 @@ def register_generation_remediation_task_routes(
             return _remediation_problem_response(request, exc)
         if record is None or record.get("cx_generation_id") != cx_generation_id:
             return _remediation_not_found_response(request, remediation_action_id)
-        return record
+        return build_generation_remediation_task_detail_response(
+            record,
+            request_id=request_id_from_headers(request),
+            trace_id=trace_id_from_headers(request),
+        )
 
     @app.patch(
         (
@@ -430,6 +437,163 @@ def build_generation_remediation_action_list_response(
             "by_action_type": _record_count_by(items, "action_type"),
             "latest_updated_at": items[0]["updated_at"] if items else None,
         },
+    }
+
+
+def build_generation_remediation_task_detail_response(
+    record: Mapping[str, Any],
+    *,
+    request_id: str,
+    trace_id: str,
+    checked_at: str | None = None,
+) -> dict[str, Any]:
+    task = dict(record)
+    return {
+        "detail_schema_version": REMEDIATION_TASK_DETAIL_SCHEMA_VERSION,
+        "projection_status": "READY",
+        "checked_at": checked_at or _utc_now(),
+        "cx_generation_id": str(task.get("cx_generation_id") or "UNKNOWN"),
+        "remediation_action_id": str(
+            task.get("remediation_action_id") or "UNKNOWN"
+        ),
+        "trace_id": required_text({"trace_id": trace_id}, "trace_id"),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "task": task,
+        "attention_required": _remediation_detail_attention_required(task),
+        "severity": _remediation_detail_severity(task),
+        "allowed_next_statuses": list(
+            REMEDIATION_STATUS_TRANSITIONS.get(str(task.get("action_status") or ""), ())
+        ),
+        "runbook": _remediation_detail_runbook(task),
+        "debug_paths": _remediation_detail_debug_paths(task),
+        "redaction_summary": _remediation_detail_redaction_summary(),
+    }
+
+
+def _remediation_detail_attention_required(record: Mapping[str, Any]) -> bool:
+    return str(record.get("action_status") or "") not in {"COMPLETED", "CANCELLED"}
+
+
+def _remediation_detail_severity(record: Mapping[str, Any]) -> str:
+    status = str(record.get("action_status") or "")
+    priority = str(record.get("priority") or "NORMAL")
+    if status == "FAILED":
+        return "ERROR"
+    if status == "COMPLETED" or status == "CANCELLED":
+        return "INFO"
+    if status == "WAITING_ON_CX" or priority == "URGENT":
+        return "WARNING"
+    return "WARNING"
+
+
+def _remediation_detail_runbook(record: Mapping[str, Any]) -> dict[str, Any]:
+    status = str(record.get("action_status") or "")
+    priority = str(record.get("priority") or "NORMAL")
+    action_type = str(record.get("action_type") or "")
+    if status == "FAILED":
+        return {
+            "runbook_id": "ag.generation_remediation.failed_task_triage.v1",
+            "recommended_operator_action": "triage_failed_remediation_task",
+            "operator_steps": [
+                "open_remediation_task_detail",
+                "review_result_ref_and_evidence_hashes",
+                "decide_retry_cancel_or_manual_followup",
+            ],
+        }
+    if status == "WAITING_ON_CX":
+        return {
+            "runbook_id": "ag.generation_remediation.cx_dependency_followup.v1",
+            "recommended_operator_action": "follow_up_with_cx_owner",
+            "operator_steps": [
+                "open_remediation_task_detail",
+                "verify_cx_repair_execution_state",
+                "record_result_ref_or_escalate_owner",
+            ],
+        }
+    if action_type == "prompt_policy_review":
+        return {
+            "runbook_id": "ag.generation_remediation.prompt_policy_review.v1",
+            "recommended_operator_action": "prepare_prompt_policy_review",
+            "operator_steps": [
+                "open_generation_quality_issue_detail",
+                "review_prompt_policy_reason_codes",
+                "prepare_policy_change_candidate",
+            ],
+        }
+    if status == "COMPLETED" or status == "CANCELLED":
+        return {
+            "runbook_id": "ag.generation_remediation.no_attention_required.v1",
+            "recommended_operator_action": "observe",
+            "operator_steps": ["keep_dashboard_monitoring"],
+        }
+    if priority == "URGENT":
+        return {
+            "runbook_id": "ag.generation_remediation.urgent_task_review.v1",
+            "recommended_operator_action": "review_urgent_remediation_task",
+            "operator_steps": [
+                "open_remediation_task_detail",
+                "assign_owner_and_next_status",
+                "verify_time_sensitive_generation_impact",
+            ],
+        }
+    return {
+        "runbook_id": "ag.generation_remediation.active_task_review.v1",
+        "recommended_operator_action": "review_active_remediation_task",
+        "operator_steps": [
+            "open_remediation_task_detail",
+            "review_owner_and_source_refs",
+            "move_task_to_next_allowed_status",
+        ],
+    }
+
+
+def _remediation_detail_debug_paths(record: Mapping[str, Any]) -> dict[str, str]:
+    cx_generation_id = str(record.get("cx_generation_id") or "UNKNOWN")
+    remediation_action_id = str(record.get("remediation_action_id") or "UNKNOWN")
+    return {
+        "remediation_task_detail_path": (
+            f"/admin/v1/generation-audit/generations/{cx_generation_id}"
+            f"/remediation-tasks/{remediation_action_id}"
+        ),
+        "remediation_task_list_path": (
+            f"/admin/v1/generation-audit/generations/{cx_generation_id}"
+            "/remediation-tasks"
+        ),
+        "generation_quality_issue_detail_path": (
+            f"/admin/v1/generation-audit/generations/{cx_generation_id}"
+            "/quality-issue-detail"
+        ),
+        "operations_dashboard_path": "/admin/v1/operations/dashboard?service_id=nex-ag",
+        "operations_issue_candidates_path": (
+            "/admin/v1/operations/issue-candidates?service_id=nex-ag"
+        ),
+    }
+
+
+def _remediation_detail_redaction_summary() -> dict[str, Any]:
+    return {
+        "raw_prompt_included": False,
+        "raw_generation_output_included": False,
+        "raw_source_document_text_included": False,
+        "raw_feedback_comment_included": False,
+        "raw_operator_note_included": False,
+        "raw_evidence_included": False,
+        "provider_detail_included": False,
+        "evidence_preview_policy": "short_preview_only",
+        "excluded_fields": [
+            "raw_prompt",
+            "messages",
+            "source_text",
+            "raw_source_document_text",
+            "raw_feedback_comment",
+            "raw_operator_note",
+            "raw_generation_output",
+            "raw_output",
+            "provider_url",
+            "provider_endpoint",
+            "model_path",
+            "storage_path",
+        ],
     }
 
 

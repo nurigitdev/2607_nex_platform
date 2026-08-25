@@ -265,11 +265,11 @@ paths:
             minLength: 1
       responses:
         "200":
-          description: Read-only generation remediation task.
+          description: Read-only generation remediation task detail and operator runbook projection.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgGenerationRemediationAction"
+                $ref: "#/components/schemas/AgGenerationRemediationTaskDetail"
         "401":
           description: Service claim is missing or invalid.
         "404":
@@ -1871,6 +1871,118 @@ components:
         updated_at:
           type: string
           format: date-time
+    AgGenerationRemediationTaskDetail:
+      type: object
+      additionalProperties: false
+      required:
+        - detail_schema_version
+        - projection_status
+        - checked_at
+        - cx_generation_id
+        - remediation_action_id
+        - trace_id
+        - request_id
+        - task
+        - attention_required
+        - severity
+        - allowed_next_statuses
+        - runbook
+        - debug_paths
+        - redaction_summary
+      properties:
+        detail_schema_version:
+          type: string
+          const: ag_generation_remediation_task_detail.v1
+        projection_status:
+          type: string
+          const: READY
+        checked_at:
+          type: string
+          format: date-time
+        cx_generation_id:
+          type: string
+          minLength: 1
+        remediation_action_id:
+          type: string
+          minLength: 1
+        trace_id:
+          $ref: "#/components/schemas/TraceId"
+        request_id:
+          type: string
+          minLength: 1
+        task:
+          $ref: "#/components/schemas/AgGenerationRemediationAction"
+        attention_required:
+          type: boolean
+        severity:
+          type: string
+          enum:
+            - INFO
+            - WARNING
+            - ERROR
+        allowed_next_statuses:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/AgGenerationRemediationActionStatus"
+        runbook:
+          type: object
+          additionalProperties: false
+          required:
+            - runbook_id
+            - recommended_operator_action
+            - operator_steps
+          properties:
+            runbook_id:
+              type: string
+              minLength: 1
+            recommended_operator_action:
+              type: string
+              minLength: 1
+            operator_steps:
+              type: array
+              minItems: 1
+              items:
+                type: string
+                minLength: 1
+        debug_paths:
+          type: object
+          additionalProperties: false
+          required:
+            - remediation_task_detail_path
+            - remediation_task_list_path
+            - generation_quality_issue_detail_path
+            - operations_dashboard_path
+            - operations_issue_candidates_path
+          properties:
+            remediation_task_detail_path:
+              type: string
+              minLength: 1
+            remediation_task_list_path:
+              type: string
+              minLength: 1
+            generation_quality_issue_detail_path:
+              type: string
+              minLength: 1
+            operations_dashboard_path:
+              type: string
+              minLength: 1
+            operations_issue_candidates_path:
+              type: string
+              minLength: 1
+        redaction_summary:
+          type: object
+          additionalProperties: true
+          required:
+            - raw_prompt_included
+            - raw_generation_output_included
+            - raw_source_document_text_included
+            - raw_feedback_comment_included
+            - raw_operator_note_included
+            - raw_evidence_included
+            - provider_detail_included
+            - evidence_preview_policy
+            - excluded_fields
     AgGenerationRemediationActionList:
       type: object
       additionalProperties: false

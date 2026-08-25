@@ -1,0 +1,255 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/ag_generation_remediation_task_detail.v1.schema.json",
+  "title": "NeX AG Generation Remediation Task Detail",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "detail_schema_version",
+    "projection_status",
+    "checked_at",
+    "cx_generation_id",
+    "remediation_action_id",
+    "trace_id",
+    "request_id",
+    "task",
+    "attention_required",
+    "severity",
+    "allowed_next_statuses",
+    "runbook",
+    "debug_paths",
+    "redaction_summary"
+  ],
+  "properties": {
+    "detail_schema_version": {
+      "const": "ag_generation_remediation_task_detail.v1"
+    },
+    "projection_status": {
+      "const": "READY"
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cx_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "remediation_action_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "action_schema_version",
+        "remediation_action_id",
+        "cx_generation_id",
+        "action_type",
+        "action_status",
+        "priority",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "action_schema_version": {
+          "const": "ag_generation_remediation_action.v1"
+        },
+        "remediation_action_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cx_generation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_type": {
+          "$ref": "#/$defs/action_type"
+        },
+        "action_status": {
+          "$ref": "#/$defs/action_status"
+        },
+        "priority": {
+          "$ref": "#/$defs/priority"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "attention_required": {
+      "type": "boolean"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "INFO",
+        "WARNING",
+        "ERROR"
+      ]
+    },
+    "allowed_next_statuses": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/action_status"
+      },
+      "uniqueItems": true
+    },
+    "runbook": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runbook_id",
+        "recommended_operator_action",
+        "operator_steps"
+      ],
+      "properties": {
+        "runbook_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recommended_operator_action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operator_steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "debug_paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "remediation_task_detail_path",
+        "remediation_task_list_path",
+        "generation_quality_issue_detail_path",
+        "operations_dashboard_path",
+        "operations_issue_candidates_path"
+      ],
+      "properties": {
+        "remediation_task_detail_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "remediation_task_list_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generation_quality_issue_detail_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operations_dashboard_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operations_issue_candidates_path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "redaction_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_prompt_included",
+        "raw_generation_output_included",
+        "raw_source_document_text_included",
+        "raw_feedback_comment_included",
+        "raw_operator_note_included",
+        "raw_evidence_included",
+        "provider_detail_included",
+        "evidence_preview_policy",
+        "excluded_fields"
+      ],
+      "properties": {
+        "raw_prompt_included": {
+          "const": false
+        },
+        "raw_generation_output_included": {
+          "const": false
+        },
+        "raw_source_document_text_included": {
+          "const": false
+        },
+        "raw_feedback_comment_included": {
+          "const": false
+        },
+        "raw_operator_note_included": {
+          "const": false
+        },
+        "raw_evidence_included": {
+          "const": false
+        },
+        "provider_detail_included": {
+          "const": false
+        },
+        "evidence_preview_policy": {
+          "const": "short_preview_only"
+        },
+        "excluded_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "retry_generation",
+        "retrieval_repair",
+        "citation_repair",
+        "prompt_policy_review",
+        "operator_followup",
+        "mark_accepted"
+      ]
+    },
+    "action_status": {
+      "type": "string",
+      "enum": [
+        "PROPOSED",
+        "ASSIGNED",
+        "IN_PROGRESS",
+        "WAITING_ON_CX",
+        "COMPLETED",
+        "FAILED",
+        "CANCELLED"
+      ]
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "NORMAL",
+        "HIGH",
+        "URGENT"
+      ]
+    }
+  }
+}
