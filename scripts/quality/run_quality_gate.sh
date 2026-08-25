@@ -97,3 +97,4 @@ mkdir -p "$REPORT_DIR"
 "$PYTHON_BIN" scripts/smoke/run_ag_cross_service_observability_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_postgres_test_smoke_suite.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s34_feedback_disposition_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s35_remediation_observability_closure.py --summary

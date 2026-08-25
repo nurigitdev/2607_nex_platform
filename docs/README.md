@@ -453,6 +453,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0347`](slices/0347_ag_remediation_issue_candidate_runbook_projection.md) | `S35-007` AG remediation issue candidate/runbook projection. |
 | [`Slice 0348`](slices/0348_ag_remediation_detail_api_contract_hardening.md) | `S35-008` AG remediation detail API/contract hardening. |
 | [`Slice 0349`](slices/0349_ag_remediation_dashboard_postgresql_smoke_evidence.md) | `S35-009` AG remediation dashboard PostgreSQL smoke evidence. |
+| [`Slice 0350`](slices/0350_s35_remediation_observability_closure_checkpoint.md) | `S35-010` S35 remediation observability closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
