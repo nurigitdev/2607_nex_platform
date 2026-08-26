@@ -1,0 +1,314 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+from sqlalchemy.exc import SQLAlchemyError
+
+import run_ag_remediation_execution_dispatch_postgres_smoke as smoke
+from nex_ag.generation_remediation import GenerationRemediationTaskStore
+from run_migrations import MigrationError
+
+
+class FakeEngine:
+    def __init__(self) -> None:
+        self.disposed = False
+
+    def dispose(self) -> None:
+        self.disposed = True
+
+
+def migration_result() -> SimpleNamespace:
+    return SimpleNamespace(
+        service_id=smoke.SERVICE_ID,
+        profile=smoke.DEFAULT_PROFILE,
+        dry_run=False,
+        planned=("0345_ag_generation_remediation_task_persistence",),
+        applied=("0345_ag_generation_remediation_task_persistence",),
+        skipped=(),
+    )
+
+
+def observations() -> dict[str, Any]:
+    return {
+        "row_count": 1,
+        "action_status": "WAITING_ON_CX",
+        "result_ref_id": "ag-remediation-dispatch-smoke",
+        "jsonb_columns": dict(smoke.EXPECTED_JSONB_COLUMNS),
+        "index_names": sorted(smoke.EXPECTED_INDEXES),
+    }
+
+
+def test_ag_remediation_execution_dispatch_postgres_smoke_skips_when_disabled() -> None:
+    evidence = smoke.run_ag_remediation_execution_dispatch_postgres_smoke({})
+
+    assert evidence == {
+        "smoke_schema_version": smoke.SCHEMA_VERSION,
+        "status": "SKIPPED",
+        "skip_reason": f"{smoke.SMOKE_ENV} is not enabled.",
+    }
+    assert smoke.summary_line(evidence) == (
+        "ag_remediation_execution_dispatch_postgres_smoke=skipped "
+        f"reason={smoke.SMOKE_ENV}"
+    )
+
+
+def test_ag_remediation_execution_dispatch_postgres_smoke_rejects_dev_profile() -> None:
+    evidence = smoke.run_ag_remediation_execution_dispatch_postgres_smoke(
+        {
+            smoke.SMOKE_ENV: "1",
+            smoke.SMOKE_PROFILE_ENV: "dev",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "profile_not_allowed"
+
+
+def test_ag_remediation_execution_dispatch_postgres_smoke_requires_database_url() -> None:
+    evidence = smoke.run_ag_remediation_execution_dispatch_postgres_smoke(
+        {smoke.SMOKE_ENV: "1"}
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "configuration_invalid"
+    assert "NEX_AG_TEST_DATABASE_URL" in evidence["detail"]
+
+
+def test_ag_remediation_execution_dispatch_postgres_smoke_reports_migration_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        smoke,
+        "run_service_migrations",
+        lambda *args, **kwargs: (_ for _ in ()).throw(MigrationError("bad migration")),
+    )
+
+    evidence = smoke.run_ag_remediation_execution_dispatch_postgres_smoke(
+        {
+            smoke.SMOKE_ENV: "1",
+            "NEX_AG_TEST_DATABASE_URL": "postgresql://nex_ag_user:secret@localhost/nex_ag_test",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "configuration_invalid"
+    assert evidence["detail"] == "bad migration"
+
+
+def test_ag_remediation_execution_dispatch_postgres_smoke_success_is_redacted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_engine = FakeEngine()
+    store = GenerationRemediationTaskStore()
+    monkeypatch.setattr(smoke, "run_service_migrations", lambda *args, **kwargs: migration_result())
+    monkeypatch.setattr(smoke, "build_engine", lambda database_url: fake_engine)
+    monkeypatch.setattr(smoke, "build_session_factory", lambda engine: object())
+    monkeypatch.setattr(
+        smoke,
+        "SqlAlchemyGenerationRemediationTaskStore",
+        lambda session_factory, **kwargs: store,
+    )
+    monkeypatch.setattr(
+        smoke,
+        "_db_observations",
+        lambda engine, remediation_action_id: observations(),
+    )
+    monkeypatch.setattr(
+        smoke,
+        "_cleanup_smoke_rows",
+        lambda engine, remediation_action_id: {
+            "ag_generation_remediation_tasks": 1
+        },
+    )
+    raw_url = "postgresql://nex_ag_user:secret@localhost/nex_ag_test"
+
+    evidence = smoke.run_ag_remediation_execution_dispatch_postgres_smoke(
+        {
+            smoke.SMOKE_ENV: "1",
+            "NEX_AG_TEST_DATABASE_URL": raw_url,
+        }
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["dispatch"]["final_action_status"] == "WAITING_ON_CX"
+    assert evidence["checks"]["result_ref_round_tripped"] is True
+    assert evidence["cleanup"]["ag_generation_remediation_tasks"] == 1
+    assert fake_engine.disposed is True
+    assert raw_url not in str(evidence)
+    assert "secret" not in evidence["redacted_database_url"]
+    assert smoke.summary_line(evidence).startswith(
+        "ag_remediation_execution_dispatch_postgres_smoke=pass"
+    )
+
+
+def test_ag_remediation_execution_dispatch_postgres_smoke_reports_failed_checks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_engine = FakeEngine()
+    bad_observations = observations()
+    bad_observations["action_status"] = "PROPOSED"
+    monkeypatch.setattr(smoke, "run_service_migrations", lambda *args, **kwargs: migration_result())
+    monkeypatch.setattr(smoke, "build_engine", lambda database_url: fake_engine)
+    monkeypatch.setattr(smoke, "build_session_factory", lambda engine: object())
+    monkeypatch.setattr(
+        smoke,
+        "SqlAlchemyGenerationRemediationTaskStore",
+        lambda session_factory, **kwargs: GenerationRemediationTaskStore(),
+    )
+    monkeypatch.setattr(
+        smoke,
+        "_db_observations",
+        lambda engine, remediation_action_id: bad_observations,
+    )
+    monkeypatch.setattr(
+        smoke,
+        "_cleanup_smoke_rows",
+        lambda engine, remediation_action_id: {
+            "ag_generation_remediation_tasks": 1
+        },
+    )
+
+    evidence = smoke.run_ag_remediation_execution_dispatch_postgres_smoke(
+        {
+            smoke.SMOKE_ENV: "1",
+            "NEX_AG_TEST_DATABASE_URL": "postgresql://nex_ag_user:secret@localhost/nex_ag_test",
+        }
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["failure_code"] == "execution_failed"
+    assert fake_engine.disposed is True
+
+
+def test_ag_remediation_execution_dispatch_redaction_guard_rejects_raw_url() -> None:
+    with pytest.raises(ValueError):
+        smoke.assert_smoke_evidence_redacted(
+            "postgresql://nex_ag_user:secret@localhost/nex_ag_test",
+            {
+                "NEX_AG_TEST_DATABASE_URL": (
+                    "postgresql://nex_ag_user:secret@localhost/nex_ag_test"
+                )
+            },
+        )
+
+
+def test_ag_remediation_execution_dispatch_db_observations_handles_missing_row() -> None:
+    class FakeResult:
+        def __init__(self, row: dict[str, Any] | None = None) -> None:
+            self.row = row
+
+        def mappings(self) -> "FakeResult":
+            return self
+
+        def first(self) -> dict[str, Any] | None:
+            return self.row
+
+        def all(self) -> list[dict[str, str]]:
+            return [{"indexname": "idx_b"}, {"indexname": "idx_a"}]
+
+    class FakeConnection:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __enter__(self) -> "FakeConnection":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def execute(self, statement: object, params: object | None = None) -> FakeResult:
+            self.calls += 1
+            if self.calls == 1:
+                return FakeResult()
+            return FakeResult()
+
+    class FakeObservationEngine:
+        def connect(self) -> FakeConnection:
+            return FakeConnection()
+
+    assert smoke._db_observations(
+        FakeObservationEngine(),
+        remediation_action_id="missing",
+    ) == {
+        "row_count": 0,
+        "action_status": None,
+        "result_ref_id": None,
+        "jsonb_columns": {
+            "owner_ref": None,
+            "reason_codes": None,
+            "source_refs": None,
+            "evidence": None,
+            "result_ref": None,
+            "metadata": None,
+        },
+        "index_names": ["idx_a", "idx_b"],
+    }
+
+
+def test_ag_remediation_execution_dispatch_cleanup_reports_rowcount() -> None:
+    class FakeDeleteResult:
+        rowcount = 1
+
+    class FakeBegin:
+        def __enter__(self) -> "FakeBegin":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def execute(self, *args: object, **kwargs: object) -> FakeDeleteResult:
+            return FakeDeleteResult()
+
+    class FakeCleanupEngine:
+        def begin(self) -> FakeBegin:
+            return FakeBegin()
+
+    assert smoke._cleanup_smoke_rows(
+        FakeCleanupEngine(),
+        remediation_action_id="action-id",
+    ) == {"ag_generation_remediation_tasks": 1}
+    assert smoke._rowcount(SimpleNamespace(rowcount=-1)) == 0
+
+
+def test_ag_remediation_execution_dispatch_cleanup_ignores_sqlalchemy_errors() -> None:
+    class ExplodingBegin:
+        def __enter__(self) -> "ExplodingBegin":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def execute(self, *args: object, **kwargs: object) -> None:
+            raise SQLAlchemyError("delete failed")
+
+    class ExplodingEngine:
+        def begin(self) -> ExplodingBegin:
+            return ExplodingBegin()
+
+    assert smoke._cleanup_smoke_rows(
+        ExplodingEngine(),
+        remediation_action_id="action-id",
+    ) == {"ag_generation_remediation_tasks": 0}
+
+
+def test_ag_remediation_execution_dispatch_main_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        smoke,
+        "run_ag_remediation_execution_dispatch_postgres_smoke",
+        lambda: {
+            "smoke_schema_version": smoke.SCHEMA_VERSION,
+            "status": "FAIL",
+            "service_id": smoke.SERVICE_ID,
+            "failure_code": "forced",
+        },
+    )
+
+    assert smoke.main(["--summary"]) == 1
+    assert "ag_remediation_execution_dispatch_postgres_smoke=fail" in (
+        capsys.readouterr().out
+    )

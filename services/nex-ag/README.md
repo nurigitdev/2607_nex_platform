@@ -168,6 +168,14 @@ Unified operations:
   to CX execution. It shares the existing remediation task store, updates task
   status through the planner, and supports safe `requested_at`, `planned_at`,
   and `idempotency_key` controls.
+- `scripts/smoke/run_ag_remediation_execution_dispatch_postgres_smoke.py` is
+  the guarded PostgreSQL test-profile evidence path for the dispatch API. It is
+  skipped unless
+  `NEX_AG_REMEDIATION_EXECUTION_DISPATCH_POSTGRES_SMOKE=1`, runs `nex-ag`
+  migrations, writes one smoke task into `NEX_AG_TEST_DATABASE_URL`, dispatches
+  it through the protected API with a static CX execution client, verifies the
+  persisted `WAITING_ON_CX` state directly from PostgreSQL, and deletes the
+  smoke row.
 - `GET /admin/v1/operations/retrieval-packages` returns
   `ag_retrieval_package_operations_projection.v1`, a CX-sourced read-only
   projection of persisted retrieval packages for debugging grounded retrieval
