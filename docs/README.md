@@ -454,6 +454,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0348`](slices/0348_ag_remediation_detail_api_contract_hardening.md) | `S35-008` AG remediation detail API/contract hardening. |
 | [`Slice 0349`](slices/0349_ag_remediation_dashboard_postgresql_smoke_evidence.md) | `S35-009` AG remediation dashboard PostgreSQL smoke evidence. |
 | [`Slice 0350`](slices/0350_s35_remediation_observability_closure_checkpoint.md) | `S35-010` S35 remediation observability closure checkpoint. |
+| [`Slice 0351`](slices/0351_cx_remediation_execution_boundary_audit_refactoring_checkpoint.md) | `S36-001` CX remediation execution boundary audit/refactoring checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

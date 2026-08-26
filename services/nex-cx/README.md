@@ -272,6 +272,12 @@ Grounded generation validation:
 - MO generation failures after prompt packaging are stored as redacted `FAILED`
   CX execution records with `failure` and `recovery_lineage` metadata, so AE/AG
   can inspect retry or repair intent by `cx_generation_id`.
+- Remediation execution boundary v1 keeps AG and CX responsibilities split:
+  AG owns remediation task orchestration, while CX executes only
+  `retry_generation`, `retrieval_repair`, and `citation_repair`. CX never
+  mutates the original generation record; it records a child repair
+  attempt/generation lineage linked by parent/root generation refs and returns a
+  safe `repair_execution` result ref for AG/AE follow-up.
 - CX-to-MO remote-mode regression stays in-process: tests configure MO as
   `NEX_MO_PROVIDER_MODE=live`, fake only the remote provider HTTP hop, and prove
   that CX embedding, retrieval reranking, and generation calls still use MO's
