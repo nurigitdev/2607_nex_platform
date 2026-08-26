@@ -218,6 +218,10 @@ Internal persistence boundary:
 - Slice 0359 wires the remediation execution worker into the shared
   `WorkerRunner` once/batch runtime. The domain handler finalizes the job, while
   the common runner emits standard worker heartbeats and optional service logs.
+- Slice 0360 closes the S36 remediation execution slice group with a quality
+  gate closure checker covering boundary, contracts, AG handoff, CX API,
+  persistence, job admission, worker planning, mock execution, and runner
+  integration.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`

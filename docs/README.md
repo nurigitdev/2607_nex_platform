@@ -463,6 +463,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0357`](slices/0357_cx_remediation_execution_job_admission_wiring.md) | `S36-007` CX remediation execution job admission wiring. |
 | [`Slice 0358`](slices/0358_cx_remediation_execution_worker_mock_pipeline.md) | `S36-008` CX remediation execution worker mock pipeline. |
 | [`Slice 0359`](slices/0359_cx_remediation_execution_runner_integration.md) | `S36-009` CX remediation execution runner integration. |
+| [`Slice 0360`](slices/0360_s36_remediation_execution_closure_checkpoint.md) | `S36-010` S36 remediation execution closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
