@@ -199,6 +199,13 @@ Internal persistence boundary:
   for local regression mode and pre-persistence records.
   Optional header-table decisions for zero-token lexical and zero-chunk
   embedding index history remain deferred.
+- Remediation execution currently has contract/API/persistence foundations.
+  Slice 0356 adds the internal worker planning state machine before job
+  admission: `ACCEPTED -> RUNNING | CANCELLED`,
+  `RUNNING -> SUCCEEDED | FAILED | CANCELLED`, with terminal states closed.
+  Worker plans remain raw-safe, keep the parent generation immutable, create a
+  child repair generation only on success, and call MO through the CX-to-MO
+  service API boundary only.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`
