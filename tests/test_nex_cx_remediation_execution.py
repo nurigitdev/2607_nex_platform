@@ -13,6 +13,7 @@ from sqlalchemy import text
 
 from nex_cx.generation import GenerationExecutionStore
 from nex_cx.remediation_execution import (
+    CX_REMEDIATION_EXECUTION_JOB_TYPE,
     RemediationExecutionError,
     RemediationExecutionStore,
     SqlAlchemyRemediationExecutionStore,
@@ -20,10 +21,15 @@ from nex_cx.remediation_execution import (
     _json_sql_expression,
     _timestamp_to_wire,
     build_cx_remediation_execution_result,
+    build_remediation_execution_job,
+    enqueue_remediation_execution_job,
     register_remediation_execution_routes,
+    remediation_execution_job_id,
     validate_cx_remediation_execution_request,
 )
 from nex_runtime import (
+    InMemoryJobQueue,
+    JobQueueError,
     SERVICE_SPECS,
     build_engine,
     build_service_app,
@@ -51,6 +57,18 @@ def build_route_client() -> tuple[
     GenerationExecutionStore,
     RemediationExecutionStore,
 ]:
+    client, generation_store, execution_store, _ = build_route_client_with_queue()
+    return client, generation_store, execution_store
+
+
+def build_route_client_with_queue(
+    job_queue: object | None = None,
+) -> tuple[
+    TestClient,
+    GenerationExecutionStore,
+    RemediationExecutionStore,
+    object | None,
+]:
     app = build_service_app(SERVICE_SPECS["nex-cx"])
     generation_store = GenerationExecutionStore()
     execution_store = RemediationExecutionStore()
@@ -58,8 +76,9 @@ def build_route_client() -> tuple[
         app,
         generation_store=generation_store,
         execution_store=execution_store,
+        job_queue=job_queue,
     )
-    return TestClient(app), generation_store, execution_store
+    return TestClient(app), generation_store, execution_store, job_queue
 
 
 def result_schema() -> dict[str, Any]:
@@ -171,6 +190,165 @@ def test_cx_remediation_execution_route_accepts_and_stores_result() -> None:
     assert body["redaction_summary"]["provider_detail_included"] is False
     assert execution_store.get("ag-remediation-action-001") == body
     assert execution_store.list_for_parent("cx-gen-001") == [body]
+
+
+def test_cx_remediation_execution_route_enqueues_job_when_queue_is_configured() -> None:
+    job_queue = InMemoryJobQueue()
+    client, generation_store, execution_store, _ = build_route_client_with_queue(
+        job_queue=job_queue,
+    )
+    generation_store.save(parent_generation_record())
+
+    response = client.post(
+        "/api/v1/generations/cx-gen-001/remediation-executions",
+        headers=auth_headers(),
+        json=remediation_request(),
+    )
+    repeated = client.post(
+        "/api/v1/generations/cx-gen-001/remediation-executions",
+        headers=auth_headers(),
+        json=remediation_request(),
+    )
+
+    assert response.status_code == 202
+    assert repeated.status_code == 202
+    body = response.json()
+    repeated_body = repeated.json()
+    job_id = remediation_execution_job_id("ag-remediation-action-001")
+    job = job_queue.get_job(job_id)
+    assert job is not None
+    assert len(job_queue.list_jobs(job_type=CX_REMEDIATION_EXECUTION_JOB_TYPE)) == 1
+    assert job["job_type"] == CX_REMEDIATION_EXECUTION_JOB_TYPE
+    assert job["subject_ref"] == {
+        "type": "cx.remediation_execution",
+        "id": "ag-remediation-action-001",
+    }
+    assert job["idempotency_key"] == "cx-remediation-execution-001"
+    assert job["links"] == {
+        "parent_generation": "/api/v1/generations/cx-gen-001",
+        "remediation_execution": (
+            "/api/v1/generations/cx-gen-001/remediation-executions"
+        ),
+    }
+    assert job["payload"]["payload_schema_version"] == (
+        "cx_remediation_execution_job_payload.v1"
+    )
+    assert job["payload"]["worker_plan"]["action_type"] == "citation_repair"
+    assert job["payload"]["worker_plan"]["provider_boundary"] == (
+        "cx_to_mo_service_api_only"
+    )
+    assert job["payload"]["execution_policy"]["parent_generation_mutation_allowed"] is False
+    job_dump = json.dumps(job, sort_keys=True)
+    assert "hidden prompt" not in job_dump
+    assert "ed6@c496em" not in job_dump
+    assert body["remediation_action_id"] == repeated_body["remediation_action_id"]
+    assert execution_store.get("ag-remediation-action-001") == repeated_body
+
+
+def test_build_remediation_execution_job_is_deterministic_and_raw_safe() -> None:
+    result = build_cx_remediation_execution_result(
+        remediation_request(),
+        created_at="2026-08-26T00:00:00Z",
+    )
+
+    job = build_remediation_execution_job(
+        execution_record=result,
+        request_payload=remediation_request(),
+        created_at="2026-08-26T00:00:00Z",
+    )
+
+    assert job["job_id"] == remediation_execution_job_id("ag-remediation-action-001")
+    assert job["created_at"] == "2026-08-26T00:00:00Z"
+    assert job["payload"]["root_cx_generation_id"] == "cx-gen-001"
+    assert job["payload"]["attempt_no"] == 1
+    assert job["payload"]["reason_codes"] == [
+        "negative_user_feedback",
+        "citation_quality",
+    ]
+    assert job["payload"]["source_refs"][0]["ref_id"] == "ae-feedback-001"
+    assert job["payload"]["evidence_hashes"] == [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ]
+    assert job["payload"]["worker_plan"]["worker_stages"][-1]["stage_id"] == (
+        "notify_ag_result_available"
+    )
+
+
+def test_build_remediation_execution_job_handles_optional_ref_shape_edges() -> None:
+    result = build_cx_remediation_execution_result(
+        remediation_request(),
+        created_at="2026-08-26T00:00:00Z",
+    )
+    payload = remediation_request(
+        source_refs="not-a-list",
+        evidence={"evidence_hashes": "not-a-list"},
+    )
+
+    job = build_remediation_execution_job(
+        execution_record=result,
+        request_payload=payload,
+        created_at="2026-08-26T00:00:00Z",
+    )
+
+    assert job["payload"]["source_refs"] == []
+    assert job["payload"]["evidence_hashes"] == []
+
+    with pytest.raises(RemediationExecutionError) as blank_action:
+        remediation_execution_job_id(" ")
+
+    assert blank_action.value.error_code == (
+        "cx.remediation_execution_remediation_action_id_required"
+    )
+
+
+def test_enqueue_remediation_execution_job_wraps_queue_errors() -> None:
+    class FailingQueue:
+        def enqueue(self, job: dict[str, Any]) -> dict[str, Any]:
+            raise JobQueueError(
+                error_code="job.store_unavailable",
+                detail="store unavailable",
+                status_code=503,
+            )
+
+    result = build_cx_remediation_execution_result(remediation_request())
+
+    with pytest.raises(RemediationExecutionError) as exc_info:
+        enqueue_remediation_execution_job(
+            FailingQueue(),
+            execution_record=result,
+            request_payload=remediation_request(),
+        )
+
+    assert exc_info.value.error_code == "cx.remediation_execution_job_admission_failed"
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.retryable is True
+
+
+def test_cx_remediation_execution_route_reports_job_admission_failures() -> None:
+    class FailingQueue:
+        def enqueue(self, job: dict[str, Any]) -> dict[str, Any]:
+            raise JobQueueError(
+                error_code="job.store_unavailable",
+                detail="store unavailable",
+                status_code=503,
+            )
+
+    client, generation_store, execution_store, _ = build_route_client_with_queue(
+        job_queue=FailingQueue(),
+    )
+    generation_store.save(parent_generation_record())
+
+    response = client.post(
+        "/api/v1/generations/cx-gen-001/remediation-executions",
+        headers=auth_headers(),
+        json=remediation_request(),
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == (
+        "cx.remediation_execution_job_admission_failed"
+    )
+    assert execution_store.get("ag-remediation-action-001") is not None
 
 
 def test_cx_remediation_execution_store_reindexes_existing_action() -> None:

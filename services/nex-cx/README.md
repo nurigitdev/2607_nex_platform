@@ -206,6 +206,10 @@ Internal persistence boundary:
   Worker plans remain raw-safe, keep the parent generation immutable, create a
   child repair generation only on success, and call MO through the CX-to-MO
   service API boundary only.
+- Slice 0357 wires accepted remediation execution requests to the service-local
+  job queue as `cx.remediation_execution` jobs. The public API response stays
+  `cx_remediation_execution_result.v1`; the job payload carries only ids,
+  hashes, refs, policy, and the Slice 0356 worker plan.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`

@@ -101,6 +101,7 @@ register_remediation_execution_routes(
     app,
     generation_store=DEFAULT_GENERATION_STORE,
     execution_store=CX_REMEDIATION_EXECUTION_STORE,
+    job_queue=SERVICE_PERSISTENCE.job_queue,
 )
 register_generation_compatibility_routes(app, expected_audience="nex-cx")
 register_generation_recovery_policy_routes(app, expected_audience="nex-cx")

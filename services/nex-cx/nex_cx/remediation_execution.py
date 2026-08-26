@@ -6,6 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
+from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
@@ -15,6 +16,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
+    JobQueue,
+    JobQueueError,
+    build_common_job,
+    build_subject_ref,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
@@ -35,6 +40,7 @@ CX_REMEDIATION_EXECUTION_RESULT_SCHEMA_VERSION = (
     "cx_remediation_execution_result.v1"
 )
 CX_REMEDIATION_EXECUTION_ACCEPTED_STATUS = "ACCEPTED"
+CX_REMEDIATION_EXECUTION_JOB_TYPE = "cx.remediation_execution"
 PROVIDER_BOUNDARY = "cx_to_mo_service_api_only"
 REDACTION_EXCLUDED_FIELDS = (
     "raw_prompt",
@@ -196,6 +202,7 @@ def register_remediation_execution_routes(
     *,
     generation_store: ParentGenerationStore,
     execution_store: RemediationExecutionStoreProtocol | None = None,
+    job_queue: JobQueue | None = None,
 ) -> None:
     selected_execution_store = execution_store or DEFAULT_REMEDIATION_EXECUTION_STORE
 
@@ -247,6 +254,12 @@ def register_remediation_execution_routes(
                 trace_id=trace_id_from_headers(request),
             )
             selected_execution_store.save(result)
+            if job_queue is not None:
+                enqueue_remediation_execution_job(
+                    job_queue,
+                    execution_record=result,
+                    request_payload=validated_payload,
+                )
             return JSONResponse(status_code=202, content=result)
         except RemediationExecutionError as exc:
             return _remediation_execution_problem_response(request, exc)
@@ -361,6 +374,116 @@ def build_cx_remediation_execution_result(
         "created_at": now,
         "updated_at": now,
     }
+
+
+def build_remediation_execution_job(
+    *,
+    execution_record: Mapping[str, Any],
+    request_payload: Mapping[str, Any],
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    from nex_cx.remediation_execution_planning import (
+        build_remediation_execution_worker_plan,
+    )
+
+    record = dict(execution_record)
+    payload = dict(request_payload)
+    plan = build_remediation_execution_worker_plan(
+        record,
+        planned_at=created_at or optional_text(record.get("created_at")),
+    )
+    action_id = required_text(record, "remediation_action_id")
+    parent_id = required_text(record, "parent_cx_generation_id")
+    job = build_common_job(
+        job_id=remediation_execution_job_id(action_id),
+        job_type=CX_REMEDIATION_EXECUTION_JOB_TYPE,
+        trace_id=required_text(record, "trace_id"),
+        request_id=required_text(record, "request_id"),
+        subject_ref=build_subject_ref("cx.remediation_execution", action_id),
+        idempotency_key=required_text(payload, "idempotency_key"),
+        max_attempts=1,
+        retryable=True,
+        links={
+            "parent_generation": f"/api/v1/generations/{parent_id}",
+            "remediation_execution": (
+                f"/api/v1/generations/{parent_id}/remediation-executions"
+            ),
+        },
+        created_at=created_at or optional_text(record.get("created_at")),
+    )
+    job["payload"] = {
+        "payload_schema_version": "cx_remediation_execution_job_payload.v1",
+        "remediation_action_id": action_id,
+        "parent_cx_generation_id": parent_id,
+        "root_cx_generation_id": plan["root_cx_generation_id"],
+        "tenant_id": record.get("tenant_id"),
+        "trace_id": record["trace_id"],
+        "request_id": record["request_id"],
+        "action_type": record["action_type"],
+        "lineage_type": record["lineage_type"],
+        "attempt_no": plan["attempt_no"],
+        "reason_codes": list(payload.get("reason_codes", [])),
+        "source_refs": _safe_source_refs(payload.get("source_refs")),
+        "evidence_hashes": _safe_evidence_hashes(payload.get("evidence")),
+        "execution_policy": {
+            "parent_generation_mutation_allowed": False,
+            "retrieval_package_policy": plan["retrieval_package_policy"],
+            "prompt_package_policy": plan["prompt_package_policy"],
+            "provider_boundary": PROVIDER_BOUNDARY,
+        },
+        "worker_plan": plan,
+        "redaction_summary": dict(record.get("redaction_summary", {})),
+    }
+    assert_cx_remediation_execution_payload_redaction_safe(job)
+    return job
+
+
+def enqueue_remediation_execution_job(
+    queue: JobQueue,
+    *,
+    execution_record: Mapping[str, Any],
+    request_payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    try:
+        return queue.enqueue(
+            build_remediation_execution_job(
+                execution_record=execution_record,
+                request_payload=request_payload,
+            )
+        )
+    except JobQueueError as exc:
+        raise RemediationExecutionError(
+            status_code=exc.status_code,
+            error_code="cx.remediation_execution_job_admission_failed",
+            detail=exc.detail,
+            retryable=exc.status_code >= 500,
+        ) from exc
+
+
+def remediation_execution_job_id(remediation_action_id: str) -> str:
+    action_id = optional_text(remediation_action_id)
+    if action_id is None:
+        raise RemediationExecutionError(
+            status_code=422,
+            error_code="cx.remediation_execution_remediation_action_id_required",
+            detail="CX remediation execution requires remediation_action_id.",
+            retryable=False,
+        )
+    return str(uuid5(NAMESPACE_URL, f"cx-remediation-execution-job:{action_id}"))
+
+
+def _safe_source_refs(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [dict(item) for item in value if isinstance(item, Mapping)]
+
+
+def _safe_evidence_hashes(value: Any) -> list[str]:
+    evidence = _mapping(value)
+    hashes = evidence.get("evidence_hashes", [])
+    if not isinstance(hashes, list):
+        return []
+    return [str(item) for item in hashes]
 
 
 def required_text(payload: Mapping[str, Any], key: str) -> str:
