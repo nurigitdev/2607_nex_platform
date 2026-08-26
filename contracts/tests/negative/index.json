@@ -151,6 +151,16 @@
       "schema": "schemas/generation/ag_generation_remediation_action.v1.schema.json"
     },
     {
+      "name": "cx_remediation_execution_request_raw_prompt_leak",
+      "path": "tests/negative/generation/cx_remediation_execution_request.raw_prompt_leak.json",
+      "schema": "schemas/generation/cx_remediation_execution_request.v1.schema.json"
+    },
+    {
+      "name": "cx_remediation_execution_result_provider_endpoint_leak",
+      "path": "tests/negative/generation/cx_remediation_execution_result.provider_endpoint_leak.json",
+      "schema": "schemas/generation/cx_remediation_execution_result.v1.schema.json"
+    },
+    {
       "name": "ag_generation_quality_feedback_rollup_raw_output_field",
       "path": "tests/negative/generation/ag_generation_quality_feedback_rollup.raw_output_field.json",
       "schema": "schemas/generation/ag_generation_quality_feedback_rollup.v1.schema.json"

@@ -1,0 +1,62 @@
+{
+  "request_schema_version": "cx_remediation_execution_request.v1",
+  "remediation_action_id": "ag-remediation-action-001",
+  "parent_cx_generation_id": "cx-gen-001",
+  "tenant_id": "local-tenant",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "action_type": "citation_repair",
+  "lineage_type": "repair",
+  "reason_codes": [
+    "negative_user_feedback",
+    "citation_quality"
+  ],
+  "source_refs": [
+    {
+      "source_service": "nex-ae-api",
+      "ref_type": "feedback",
+      "ref_id": "ae-feedback-001",
+      "relation": "caused_by"
+    },
+    {
+      "source_service": "nex-ag",
+      "ref_type": "operator_disposition",
+      "ref_id": "ag-gq-disposition-001",
+      "relation": "recommended_by"
+    }
+  ],
+  "evidence": {
+    "evidence_hashes": [
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    "evidence_previews": [
+      "Citation [2] did not support the generated answer."
+    ],
+    "raw_evidence_stored": false
+  },
+  "execution_policy": {
+    "parent_generation_mutation_allowed": false,
+    "retrieval_package_policy": "reuse_or_expand_cited_evidence",
+    "prompt_package_policy": "rebuild_with_citation_repair_instruction_ref",
+    "provider_boundary": "cx_to_mo_service_api_only"
+  },
+  "idempotency_key": "cx-remediation-execution-001",
+  "requested_by": {
+    "source_service": "nex-ag",
+    "owner_ref": {
+      "owner_type": "service",
+      "owner_id": "nex-ag",
+      "tenant_id": "local-tenant"
+    }
+  },
+  "metadata": {
+    "handoff_source": "ag_remediation_action",
+    "raw_prompt_stored": false,
+    "raw_generation_output_stored": false,
+    "raw_source_document_text_stored": false,
+    "raw_feedback_comment_stored": false,
+    "raw_operator_note_stored": false,
+    "free_text_storage": "hash_and_short_preview_only"
+  },
+  "requested_at": "2026-08-26T00:00:00Z"
+}

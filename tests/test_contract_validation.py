@@ -667,6 +667,65 @@ def test_nex_cx_text_extraction_contract_hardens_normalized_markdown_metadata() 
     ] is False
 
 
+def test_nex_cx_remediation_execution_contracts_preserve_cx_boundary() -> None:
+    root = Path(__file__).parents[1]
+    request_schema = json.loads(
+        (
+            root
+            / "contracts"
+            / "schemas"
+            / "generation"
+            / "cx_remediation_execution_request.v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    result_schema = json.loads(
+        (
+            root
+            / "contracts"
+            / "schemas"
+            / "generation"
+            / "cx_remediation_execution_result.v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    spec = yaml.safe_load(
+        (root / "contracts" / "openapi" / "nex-cx.openapi.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    request_action_enum = request_schema["$defs"]["cxExecutableActionType"]["enum"]
+    request_policy = request_schema["$defs"]["executionPolicy"]["properties"]
+    request_metadata = request_schema["$defs"]["rawSafeMetadata"]["properties"]
+    result_ref = result_schema["$defs"]["resultRef"]["properties"]
+    redaction_summary = result_schema["$defs"]["redactionSummary"]["properties"]
+    operation = spec["paths"][
+        "/api/v1/generations/{cx_generation_id}/remediation-executions"
+    ]["post"]
+    response_schema = operation["responses"]["202"]["content"]["application/json"][
+        "schema"
+    ]
+
+    assert request_action_enum == [
+        "retry_generation",
+        "retrieval_repair",
+        "citation_repair",
+    ]
+    assert "prompt_policy_review" not in request_action_enum
+    assert "mark_accepted" not in request_action_enum
+    assert request_policy["parent_generation_mutation_allowed"]["const"] is False
+    assert request_policy["provider_boundary"]["const"] == "cx_to_mo_service_api_only"
+    assert request_metadata["raw_prompt_stored"]["const"] is False
+    assert request_metadata["raw_generation_output_stored"]["const"] is False
+    assert result_ref["source_service"]["const"] == "nex-cx"
+    assert result_ref["ref_type"]["const"] == "repair_execution"
+    assert result_ref["relation"]["const"] == "result_of"
+    assert redaction_summary["provider_detail_included"]["const"] is False
+    assert operation["operationId"] == "createCxRemediationExecution"
+    assert response_schema["properties"]["result_schema_version"]["const"] == (
+        "cx_remediation_execution_result.v1"
+    )
+
+
 def test_nex_ae_openapi_hardens_document_detail_contract() -> None:
     openapi_path = (
         Path(__file__).parents[1]

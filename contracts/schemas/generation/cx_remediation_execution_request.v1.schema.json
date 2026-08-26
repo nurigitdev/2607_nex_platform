@@ -1,0 +1,429 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/cx_remediation_execution_request.v1.schema.json",
+  "title": "NeX CX Remediation Execution Request",
+  "type": "object",
+  "additionalProperties": false,
+  "propertyNames": {
+    "not": {
+      "enum": [
+        "prompt",
+        "messages",
+        "content",
+        "raw_prompt",
+        "raw_generation_output",
+        "raw_source_document_text",
+        "raw_feedback_comment",
+        "raw_operator_note",
+        "raw_evidence",
+        "raw_output",
+        "provider_url",
+        "provider_endpoint",
+        "model_path",
+        "storage_path",
+        "authorization",
+        "cookie",
+        "api_key",
+        "password",
+        "secret"
+      ]
+    }
+  },
+  "required": [
+    "request_schema_version",
+    "remediation_action_id",
+    "parent_cx_generation_id",
+    "tenant_id",
+    "trace_id",
+    "request_id",
+    "action_type",
+    "lineage_type",
+    "reason_codes",
+    "source_refs",
+    "evidence",
+    "execution_policy",
+    "idempotency_key",
+    "requested_by",
+    "metadata",
+    "requested_at"
+  ],
+  "properties": {
+    "request_schema_version": {
+      "const": "cx_remediation_execution_request.v1"
+    },
+    "remediation_action_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parent_cx_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "action_type": {
+      "$ref": "#/$defs/cxExecutableActionType"
+    },
+    "lineage_type": {
+      "$ref": "#/$defs/lineageType"
+    },
+    "reason_codes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/reasonCode"
+      }
+    },
+    "source_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/sourceRef"
+      }
+    },
+    "evidence": {
+      "$ref": "#/$defs/evidence"
+    },
+    "execution_policy": {
+      "$ref": "#/$defs/executionPolicy"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requested_by": {
+      "$ref": "#/$defs/requestedBy"
+    },
+    "metadata": {
+      "$ref": "#/$defs/rawSafeMetadata"
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "action_type": {
+            "const": "retry_generation"
+          }
+        },
+        "required": [
+          "action_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "lineage_type": {
+            "const": "retry"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action_type": {
+            "const": "retrieval_repair"
+          }
+        },
+        "required": [
+          "action_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "lineage_type": {
+            "const": "fresh_retrieval_regenerate"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action_type": {
+            "const": "citation_repair"
+          }
+        },
+        "required": [
+          "action_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "lineage_type": {
+            "const": "repair"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "cxExecutableActionType": {
+      "type": "string",
+      "enum": [
+        "retry_generation",
+        "retrieval_repair",
+        "citation_repair"
+      ]
+    },
+    "lineageType": {
+      "type": "string",
+      "enum": [
+        "retry",
+        "fresh_retrieval_regenerate",
+        "repair"
+      ]
+    },
+    "reasonCode": {
+      "type": "string",
+      "enum": [
+        "negative_user_feedback",
+        "operator_requested_repair",
+        "retrieval_quality",
+        "citation_quality",
+        "generation_quality",
+        "metadata_gap",
+        "policy_review",
+        "false_positive",
+        "other"
+      ]
+    },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_service",
+        "ref_type",
+        "ref_id",
+        "relation"
+      ],
+      "properties": {
+        "source_service": {
+          "type": "string",
+          "enum": [
+            "nex-ae-api",
+            "nex-cx",
+            "nex-ag"
+          ]
+        },
+        "ref_type": {
+          "type": "string",
+          "enum": [
+            "generation_quality",
+            "feedback",
+            "operator_disposition",
+            "retrieval_package",
+            "chat_interaction",
+            "repair_execution"
+          ]
+        },
+        "ref_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relation": {
+          "type": "string",
+          "enum": [
+            "caused_by",
+            "recommended_by",
+            "blocks",
+            "supersedes",
+            "result_of"
+          ]
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_hashes",
+        "evidence_previews",
+        "raw_evidence_stored"
+      ],
+      "properties": {
+        "evidence_hashes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "evidence_previews": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "raw_evidence_stored": {
+          "const": false
+        }
+      }
+    },
+    "executionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parent_generation_mutation_allowed",
+        "retrieval_package_policy",
+        "prompt_package_policy",
+        "provider_boundary"
+      ],
+      "properties": {
+        "parent_generation_mutation_allowed": {
+          "const": false
+        },
+        "retrieval_package_policy": {
+          "type": "string",
+          "enum": [
+            "reuse_original_retrieval_package",
+            "reuse_or_expand_cited_evidence",
+            "fresh_retrieval_required"
+          ]
+        },
+        "prompt_package_policy": {
+          "type": "string",
+          "enum": [
+            "reuse_original_prompt_binding_refs",
+            "rebuild_with_retry_instruction_ref",
+            "rebuild_with_retrieval_repair_instruction_ref",
+            "rebuild_with_citation_repair_instruction_ref"
+          ]
+        },
+        "provider_boundary": {
+          "const": "cx_to_mo_service_api_only"
+        }
+      }
+    },
+    "requestedBy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_service",
+        "owner_ref"
+      ],
+      "properties": {
+        "source_service": {
+          "const": "nex-ag"
+        },
+        "owner_ref": {
+          "$ref": "#/$defs/ownerRef"
+        }
+      }
+    },
+    "ownerRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner_type",
+        "owner_id",
+        "tenant_id"
+      ],
+      "properties": {
+        "owner_type": {
+          "type": "string",
+          "enum": [
+            "service",
+            "user"
+          ]
+        },
+        "owner_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenant_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        }
+      }
+    },
+    "rawSafeMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyNames": {
+        "not": {
+          "enum": [
+            "prompt",
+            "messages",
+            "content",
+            "raw_prompt",
+            "raw_generation_output",
+            "raw_source_document_text",
+            "raw_feedback_comment",
+            "raw_operator_note",
+            "raw_evidence",
+            "raw_output",
+            "provider_url",
+            "provider_endpoint",
+            "model_path",
+            "storage_path",
+            "authorization",
+            "cookie",
+            "api_key",
+            "password",
+            "secret"
+          ]
+        }
+      },
+      "required": [
+        "handoff_source",
+        "raw_prompt_stored",
+        "raw_generation_output_stored",
+        "raw_source_document_text_stored",
+        "raw_feedback_comment_stored",
+        "raw_operator_note_stored",
+        "free_text_storage"
+      ],
+      "properties": {
+        "handoff_source": {
+          "const": "ag_remediation_action"
+        },
+        "raw_prompt_stored": {
+          "const": false
+        },
+        "raw_generation_output_stored": {
+          "const": false
+        },
+        "raw_source_document_text_stored": {
+          "const": false
+        },
+        "raw_feedback_comment_stored": {
+          "const": false
+        },
+        "raw_operator_note_stored": {
+          "const": false
+        },
+        "free_text_storage": {
+          "const": "hash_and_short_preview_only"
+        }
+      }
+    }
+  }
+}

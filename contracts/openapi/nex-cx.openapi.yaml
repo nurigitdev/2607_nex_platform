@@ -1351,6 +1351,149 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: CX generation record was not found.
+  /api/v1/generations/{cx_generation_id}/remediation-executions:
+    post:
+      operationId: createCxRemediationExecution
+      tags:
+        - Generation
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - request_schema_version
+                - remediation_action_id
+                - parent_cx_generation_id
+                - action_type
+                - lineage_type
+                - execution_policy
+                - metadata
+              properties:
+                request_schema_version:
+                  const: cx_remediation_execution_request.v1
+                remediation_action_id:
+                  type: string
+                parent_cx_generation_id:
+                  type: string
+                action_type:
+                  type: string
+                  enum:
+                    - retry_generation
+                    - retrieval_repair
+                    - citation_repair
+                lineage_type:
+                  type: string
+                  enum:
+                    - retry
+                    - fresh_retrieval_regenerate
+                    - repair
+                execution_policy:
+                  type: object
+                  additionalProperties: true
+                  required:
+                    - parent_generation_mutation_allowed
+                    - provider_boundary
+                  properties:
+                    parent_generation_mutation_allowed:
+                      const: false
+                    provider_boundary:
+                      const: cx_to_mo_service_api_only
+                metadata:
+                  type: object
+                  additionalProperties: true
+                  required:
+                    - raw_prompt_stored
+                    - raw_generation_output_stored
+                    - raw_source_document_text_stored
+                  properties:
+                    raw_prompt_stored:
+                      const: false
+                    raw_generation_output_stored:
+                      const: false
+                    raw_source_document_text_stored:
+                      const: false
+      responses:
+        "202":
+          description: CX remediation execution accepted and linked to a child repair attempt.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - result_schema_version
+                  - remediation_action_id
+                  - parent_cx_generation_id
+                  - repair_cx_generation_id
+                  - execution_status
+                  - result_ref
+                  - redaction_summary
+                properties:
+                  result_schema_version:
+                    const: cx_remediation_execution_result.v1
+                  remediation_action_id:
+                    type: string
+                  parent_cx_generation_id:
+                    type: string
+                  repair_cx_generation_id:
+                    type:
+                      - string
+                      - "null"
+                  execution_status:
+                    type: string
+                    enum:
+                      - ACCEPTED
+                      - RUNNING
+                      - SUCCEEDED
+                      - FAILED
+                      - CANCELLED
+                  result_ref:
+                    type:
+                      - object
+                      - "null"
+                    properties:
+                      source_service:
+                        const: nex-cx
+                      ref_type:
+                        const: repair_execution
+                      relation:
+                        const: result_of
+                  redaction_summary:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - raw_content_included
+                      - prompt_text_included
+                      - evidence_text_included
+                      - provider_detail_included
+                    properties:
+                      raw_content_included:
+                        const: false
+                      prompt_text_included:
+                        const: false
+                      evidence_text_included:
+                        const: false
+                      provider_detail_included:
+                        const: false
+        "400":
+          description: Request path/body lineage is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Parent CX generation record was not found.
+        "409":
+          description: Parent generation cannot accept a child remediation attempt in its current state.
+        "422":
+          description: AG-only actions, parent mutation requests, raw text, provider details, credentials, model paths, or storage paths are rejected.
   /api/v1/prompts/bindings:
     get:
       operationId: listCxPromptBindings

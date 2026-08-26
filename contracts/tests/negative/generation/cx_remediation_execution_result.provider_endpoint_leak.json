@@ -1,0 +1,36 @@
+{
+  "result_schema_version": "cx_remediation_execution_result.v1",
+  "remediation_action_id": "ag-remediation-action-001",
+  "parent_cx_generation_id": "cx-gen-001",
+  "repair_cx_generation_id": "cx-gen-repair-001",
+  "tenant_id": "local-tenant",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "action_type": "citation_repair",
+  "lineage_type": "repair",
+  "execution_status": "SUCCEEDED",
+  "result_ref": {
+    "source_service": "nex-cx",
+    "ref_type": "repair_execution",
+    "ref_id": "cx-gen-repair-001",
+    "relation": "result_of"
+  },
+  "failure": null,
+  "redaction_summary": {
+    "raw_content_included": false,
+    "prompt_text_included": false,
+    "evidence_text_included": false,
+    "provider_detail_included": false,
+    "excluded_fields": [
+      "raw_prompt",
+      "output_text",
+      "provider_endpoint",
+      "model_path",
+      "storage_path",
+      "api_key"
+    ]
+  },
+  "created_at": "2026-08-26T00:00:00Z",
+  "updated_at": "2026-08-26T00:00:01Z",
+  "provider_endpoint": "http://192.168.20.243:12000/v1/chat/completions"
+}

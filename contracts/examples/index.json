@@ -201,6 +201,16 @@
       "schema": "schemas/generation/ag_generation_remediation_task_detail.v1.schema.json"
     },
     {
+      "name": "cx_remediation_execution_request_citation_repair",
+      "path": "examples/generation/cx_remediation_execution_request.citation_repair.json",
+      "schema": "schemas/generation/cx_remediation_execution_request.v1.schema.json"
+    },
+    {
+      "name": "cx_remediation_execution_result_succeeded",
+      "path": "examples/generation/cx_remediation_execution_result.succeeded.json",
+      "schema": "schemas/generation/cx_remediation_execution_result.v1.schema.json"
+    },
+    {
       "name": "ag_generation_quality_feedback_rollup_operator_attention",
       "path": "examples/generation/ag_generation_quality_feedback_rollup.operator_attention.json",
       "schema": "schemas/generation/ag_generation_quality_feedback_rollup.v1.schema.json"
