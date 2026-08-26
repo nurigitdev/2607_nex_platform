@@ -13,7 +13,7 @@ from nex_runtime.recovery import register_generation_recovery_policy_routes
 from nex_cx.chunking import register_chunking_routes
 from nex_cx.document_library import register_document_library_routes
 from nex_cx.embedding_index import register_embedding_index_routes
-from nex_cx.generation import register_generation_routes
+from nex_cx.generation import DEFAULT_GENERATION_STORE, register_generation_routes
 from nex_cx.ingestion import (
     DEFAULT_INGESTION_STORE,
     CxStorageConfig,
@@ -25,6 +25,7 @@ from nex_cx.processing import register_processing_routes
 from nex_cx.prompts import DEFAULT_CX_PROMPT_STORE
 from nex_cx.repository import CxContentRepository, SqlAlchemyCxContentRepository
 from nex_cx.retrieval import register_retrieval_routes
+from nex_cx.remediation_execution import register_remediation_execution_routes
 from nex_cx.summary_embeddings import register_summary_embedding_routes
 from nex_cx.summaries import register_summary_routes
 
@@ -69,7 +70,15 @@ register_service_log_retention_routes(
     service_id=SERVICE_SPEC.service_id,
     store=SERVICE_PERSISTENCE.service_log_store,
 )
-register_generation_routes(app, retrieval_store=DEFAULT_INGESTION_STORE)
+register_generation_routes(
+    app,
+    store=DEFAULT_GENERATION_STORE,
+    retrieval_store=DEFAULT_INGESTION_STORE,
+)
+register_remediation_execution_routes(
+    app,
+    generation_store=DEFAULT_GENERATION_STORE,
+)
 register_generation_compatibility_routes(app, expected_audience="nex-cx")
 register_generation_recovery_policy_routes(app, expected_audience="nex-cx")
 register_ingestion_routes(

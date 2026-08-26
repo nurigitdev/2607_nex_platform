@@ -1,0 +1,317 @@
+from __future__ import annotations
+
+import json
+from copy import deepcopy
+from pathlib import Path
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+from jsonschema import Draft202012Validator
+
+from nex_cx.generation import GenerationExecutionStore
+from nex_cx.remediation_execution import (
+    RemediationExecutionError,
+    RemediationExecutionStore,
+    build_cx_remediation_execution_result,
+    register_remediation_execution_routes,
+    validate_cx_remediation_execution_request,
+)
+from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
+
+
+ROOT = Path(__file__).parents[1]
+TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
+REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
+
+
+def auth_headers() -> dict[str, str]:
+    issued = issue_mock_service_token(service_id="nex-ag", audience="nex-cx")
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": REQUEST_ID,
+        "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+    }
+
+
+def build_route_client() -> tuple[
+    TestClient,
+    GenerationExecutionStore,
+    RemediationExecutionStore,
+]:
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    generation_store = GenerationExecutionStore()
+    execution_store = RemediationExecutionStore()
+    register_remediation_execution_routes(
+        app,
+        generation_store=generation_store,
+        execution_store=execution_store,
+    )
+    return TestClient(app), generation_store, execution_store
+
+
+def result_schema() -> dict[str, Any]:
+    return json.loads(
+        (
+            ROOT
+            / "contracts"
+            / "schemas"
+            / "generation"
+            / "cx_remediation_execution_result.v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+
+
+def remediation_request(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "request_schema_version": "cx_remediation_execution_request.v1",
+        "remediation_action_id": "ag-remediation-action-001",
+        "parent_cx_generation_id": "cx-gen-001",
+        "tenant_id": "local-tenant",
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "action_type": "citation_repair",
+        "lineage_type": "repair",
+        "reason_codes": [
+            "negative_user_feedback",
+            "citation_quality",
+        ],
+        "source_refs": [
+            {
+                "source_service": "nex-ae-api",
+                "ref_type": "feedback",
+                "ref_id": "ae-feedback-001",
+                "relation": "caused_by",
+            },
+            {
+                "source_service": "nex-ag",
+                "ref_type": "operator_disposition",
+                "ref_id": "ag-gq-disposition-001",
+                "relation": "recommended_by",
+            },
+        ],
+        "evidence": {
+            "evidence_hashes": [
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "evidence_previews": [
+                "Citation [2] did not support the generated answer.",
+            ],
+            "raw_evidence_stored": False,
+        },
+        "execution_policy": {
+            "parent_generation_mutation_allowed": False,
+            "retrieval_package_policy": "reuse_or_expand_cited_evidence",
+            "prompt_package_policy": "rebuild_with_citation_repair_instruction_ref",
+            "provider_boundary": "cx_to_mo_service_api_only",
+        },
+        "idempotency_key": "cx-remediation-execution-001",
+        "requested_by": {
+            "source_service": "nex-ag",
+            "owner_ref": {
+                "owner_type": "service",
+                "owner_id": "nex-ag",
+                "tenant_id": "local-tenant",
+            },
+        },
+        "metadata": {
+            "handoff_source": "ag_remediation_action",
+            "raw_prompt_stored": False,
+            "raw_generation_output_stored": False,
+            "raw_source_document_text_stored": False,
+            "raw_feedback_comment_stored": False,
+            "raw_operator_note_stored": False,
+            "free_text_storage": "hash_and_short_preview_only",
+        },
+        "requested_at": "2026-08-26T00:00:00Z",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def parent_generation_record() -> dict[str, Any]:
+    return {
+        "record_schema_version": "cx_generation_execution_record.v1",
+        "cx_generation_id": "cx-gen-001",
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "status": "COMPLETED",
+    }
+
+
+def test_cx_remediation_execution_route_accepts_and_stores_result() -> None:
+    client, generation_store, execution_store = build_route_client()
+    generation_store.save(parent_generation_record())
+
+    response = client.post(
+        "/api/v1/generations/cx-gen-001/remediation-executions",
+        headers=auth_headers(),
+        json=remediation_request(),
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    Draft202012Validator(result_schema()).validate(body)
+    assert body["result_schema_version"] == "cx_remediation_execution_result.v1"
+    assert body["execution_status"] == "ACCEPTED"
+    assert body["repair_cx_generation_id"] is None
+    assert body["result_ref"] is None
+    assert body["redaction_summary"]["provider_detail_included"] is False
+    assert execution_store.get("ag-remediation-action-001") == body
+    assert execution_store.list_for_parent("cx-gen-001") == [body]
+
+
+def test_cx_remediation_execution_store_reindexes_existing_action() -> None:
+    store = RemediationExecutionStore()
+    first = build_cx_remediation_execution_result(
+        remediation_request(),
+        created_at="2026-08-26T00:00:00Z",
+    )
+    second_payload = remediation_request(parent_cx_generation_id="cx-gen-002")
+    second = build_cx_remediation_execution_result(
+        second_payload,
+        created_at="2026-08-26T00:00:01Z",
+    )
+
+    store.action_ids_by_parent["cx-gen-001"] = ["ag-remediation-action-001"]
+    store.save(first)
+    store.save(first)
+    store.save(second)
+
+    assert store.get("ag-remediation-action-001") == second
+    assert store.list_for_parent("cx-gen-001") == []
+    assert store.list_for_parent("cx-gen-002") == [second]
+
+    null_tenant = build_cx_remediation_execution_result(
+        remediation_request(
+            remediation_action_id="ag-remediation-action-null-tenant",
+            tenant_id=None,
+        ),
+        created_at="2026-08-26T00:00:02Z",
+    )
+
+    assert null_tenant["tenant_id"] is None
+
+
+def test_validate_cx_remediation_execution_request_rejects_boundary_violations() -> None:
+    with pytest.raises(RemediationExecutionError) as schema_error:
+        validate_cx_remediation_execution_request(
+            remediation_request(request_schema_version="old")
+        )
+
+    assert schema_error.value.error_code == (
+        "cx.remediation_execution_request_schema_invalid"
+    )
+
+    with pytest.raises(RemediationExecutionError) as ag_only:
+        validate_cx_remediation_execution_request(
+            remediation_request(
+                action_type="prompt_policy_review",
+                lineage_type="repair",
+            )
+        )
+
+    assert ag_only.value.error_code == "cx.remediation_execution_action_not_executable"
+
+    with pytest.raises(RemediationExecutionError) as lineage_error:
+        validate_cx_remediation_execution_request(
+            remediation_request(
+                action_type="retrieval_repair",
+                lineage_type="repair",
+            )
+        )
+
+    assert lineage_error.value.error_code == "cx.remediation_execution_lineage_invalid"
+
+    bad_policy = deepcopy(remediation_request()["execution_policy"])
+    bad_policy["parent_generation_mutation_allowed"] = True
+    with pytest.raises(RemediationExecutionError) as mutation_error:
+        validate_cx_remediation_execution_request(
+            remediation_request(execution_policy=bad_policy)
+        )
+
+    assert mutation_error.value.error_code == (
+        "cx.remediation_execution_parent_mutation_forbidden"
+    )
+
+    bad_boundary = deepcopy(remediation_request()["execution_policy"])
+    bad_boundary["provider_boundary"] = "direct_provider"
+    with pytest.raises(RemediationExecutionError) as boundary_error:
+        validate_cx_remediation_execution_request(
+            remediation_request(execution_policy=bad_boundary)
+        )
+
+    assert boundary_error.value.error_code == (
+        "cx.remediation_execution_provider_boundary_invalid"
+    )
+
+    bad_evidence = deepcopy(remediation_request()["evidence"])
+    bad_evidence.pop("raw_evidence_stored")
+    with pytest.raises(RemediationExecutionError) as evidence_error:
+        validate_cx_remediation_execution_request(
+            remediation_request(evidence=bad_evidence)
+        )
+
+    assert evidence_error.value.error_code == "cx.remediation_execution_evidence_invalid"
+
+
+def test_cx_remediation_execution_route_rejects_auth_path_and_parent_errors() -> None:
+    client, generation_store, _ = build_route_client()
+    generation_store.save(parent_generation_record())
+
+    unauthorized = client.post(
+        "/api/v1/generations/cx-gen-001/remediation-executions",
+        json=remediation_request(),
+    )
+    mismatch = client.post(
+        "/api/v1/generations/cx-gen-other/remediation-executions",
+        headers=auth_headers(),
+        json=remediation_request(),
+    )
+    missing_parent = client.post(
+        "/api/v1/generations/missing/remediation-executions",
+        headers=auth_headers(),
+        json=remediation_request(parent_cx_generation_id="missing"),
+    )
+
+    assert unauthorized.status_code == 401
+    assert mismatch.status_code == 400
+    assert mismatch.json()["error_code"] == "cx.remediation_execution_parent_mismatch"
+    assert missing_parent.status_code == 404
+    assert missing_parent.json()["error_code"] == (
+        "cx.remediation_execution_parent_not_found"
+    )
+
+
+def test_cx_remediation_execution_route_rejects_sensitive_payload() -> None:
+    client, generation_store, _ = build_route_client()
+    generation_store.save(parent_generation_record())
+
+    response = client.post(
+        "/api/v1/generations/cx-gen-001/remediation-executions",
+        headers=auth_headers(),
+        json=remediation_request(raw_prompt="hidden prompt"),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "cx.remediation_execution_sensitive_payload"
+
+
+def test_build_cx_remediation_execution_result_requires_core_fields() -> None:
+    assert str(
+        RemediationExecutionError(
+            status_code=422,
+            error_code="example",
+            detail="example detail",
+        )
+    ) == "example detail"
+
+    payload = remediation_request()
+    payload["remediation_action_id"] = " "
+
+    with pytest.raises(RemediationExecutionError) as exc_info:
+        build_cx_remediation_execution_result(payload)
+
+    assert exc_info.value.error_code == (
+        "cx.remediation_execution_remediation_action_id_required"
+    )
