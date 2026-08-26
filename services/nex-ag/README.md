@@ -155,6 +155,11 @@ Unified operations:
   read-only rules to operations dashboard signals, including retrieval
   threshold decision readiness. Notification delivery, acknowledgements, and
   incident mutation are intentionally deferred.
+- AG remediation execution handoff planning is centralized in
+  `nex_ag.generation_remediation_execution`. The planner maps CX remediation
+  execution statuses back to AG task updates without bypassing the existing
+  remediation transition policy, for example
+  `PROPOSED -> IN_PROGRESS -> WAITING_ON_CX` after a CX `ACCEPTED` response.
 - `GET /admin/v1/operations/retrieval-packages` returns
   `ag_retrieval_package_operations_projection.v1`, a CX-sourced read-only
   projection of persisted retrieval packages for debugging grounded retrieval
