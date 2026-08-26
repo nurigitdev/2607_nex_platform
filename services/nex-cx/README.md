@@ -387,3 +387,10 @@ Grounded generation validation:
   enqueues a `cx.remediation_execution` durable job, runs the CX remediation
   worker once, observes `cx_remediation_execution_attempts` and `service_jobs`,
   and cleans up the smoke rows before returning evidence.
+- CX remediation execution read-model APIs are available through
+  `GET /api/v1/generations/{cx_generation_id}/remediation-executions` and
+  `GET /api/v1/generations/{cx_generation_id}/remediation-executions/{remediation_action_id}`.
+  They return `cx_remediation_execution_list.v1` and
+  `cx_remediation_execution_detail.v1` projections from the execution store
+  without requiring the parent generation record to be loaded in memory, so AG
+  can follow up after dispatch using persisted execution state.

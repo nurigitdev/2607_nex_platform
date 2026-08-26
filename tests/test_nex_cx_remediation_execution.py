@@ -13,7 +13,9 @@ from sqlalchemy import text
 
 from nex_cx.generation import GenerationExecutionStore
 from nex_cx.remediation_execution import (
+    CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION,
     CX_REMEDIATION_EXECUTION_JOB_TYPE,
+    CX_REMEDIATION_EXECUTION_LIST_SCHEMA_VERSION,
     RemediationExecutionError,
     RemediationExecutionStore,
     SqlAlchemyRemediationExecutionStore,
@@ -21,6 +23,8 @@ from nex_cx.remediation_execution import (
     _json_sql_expression,
     _timestamp_to_wire,
     build_cx_remediation_execution_result,
+    build_cx_remediation_execution_detail_response,
+    build_cx_remediation_execution_list_response,
     build_remediation_execution_job,
     enqueue_remediation_execution_job,
     register_remediation_execution_routes,
@@ -190,6 +194,185 @@ def test_cx_remediation_execution_route_accepts_and_stores_result() -> None:
     assert body["redaction_summary"]["provider_detail_included"] is False
     assert execution_store.get("ag-remediation-action-001") == body
     assert execution_store.list_for_parent("cx-gen-001") == [body]
+
+
+def test_cx_remediation_execution_read_model_lists_and_gets_persisted_rows() -> None:
+    client, generation_store, execution_store = build_route_client()
+    accepted = build_cx_remediation_execution_result(
+        remediation_request(),
+        created_at="2026-08-26T00:00:00Z",
+    )
+    failed = {
+        **build_cx_remediation_execution_result(
+            remediation_request(remediation_action_id="ag-remediation-action-002"),
+            created_at="2026-08-26T00:00:01Z",
+        ),
+        "execution_status": "FAILED",
+        "failure": {
+            "failure_class": "policy_rejected",
+            "retryable": False,
+            "detail_hash": "b" * 64,
+        },
+        "updated_at": "2026-08-26T00:00:02Z",
+    }
+    execution_store.save(accepted)
+    execution_store.save(failed)
+
+    listed = client.get(
+        "/api/v1/generations/cx-gen-001/remediation-executions",
+        headers=auth_headers(),
+    )
+    detail = client.get(
+        (
+            "/api/v1/generations/cx-gen-001/remediation-executions/"
+            "ag-remediation-action-002"
+        ),
+        headers=auth_headers(),
+    )
+
+    assert generation_store.get("cx-gen-001") is None
+    assert listed.status_code == 200
+    assert listed.json()["list_schema_version"] == (
+        CX_REMEDIATION_EXECUTION_LIST_SCHEMA_VERSION
+    )
+    assert listed.json()["summary"] == {
+        "count": 2,
+        "by_execution_status": {"FAILED": 1, "ACCEPTED": 1},
+        "by_action_type": {"citation_repair": 2},
+        "latest_updated_at": "2026-08-26T00:00:02Z",
+    }
+    assert [item["remediation_action_id"] for item in listed.json()["items"]] == [
+        "ag-remediation-action-002",
+        "ag-remediation-action-001",
+    ]
+    assert listed.json()["redaction_summary"]["prompt_text_included"] is False
+
+    assert detail.status_code == 200
+    detail_body = detail.json()
+    assert detail_body["detail_schema_version"] == (
+        CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION
+    )
+    assert detail_body["projection_status"] == "READY"
+    assert detail_body["execution_status"] == "FAILED"
+    assert detail_body["attention_required"] is True
+    assert detail_body["execution"]["failure"]["detail_hash"] == "b" * 64
+    assert detail_body["debug_paths"]["cx_remediation_execution_path"].endswith(
+        "/ag-remediation-action-002"
+    )
+
+
+def test_cx_remediation_execution_read_model_handles_auth_and_not_found_edges() -> None:
+    client, _, execution_store = build_route_client()
+    execution_store.save(
+        build_cx_remediation_execution_result(
+            remediation_request(),
+            created_at="2026-08-26T00:00:00Z",
+        )
+    )
+
+    unauthorized_list = client.get(
+        "/api/v1/generations/cx-gen-001/remediation-executions"
+    )
+    unauthorized_detail = client.get(
+        (
+            "/api/v1/generations/cx-gen-001/remediation-executions/"
+            "ag-remediation-action-001"
+        )
+    )
+    missing_detail = client.get(
+        "/api/v1/generations/cx-gen-001/remediation-executions/missing",
+        headers=auth_headers(),
+    )
+    wrong_parent = client.get(
+        (
+            "/api/v1/generations/cx-gen-other/remediation-executions/"
+            "ag-remediation-action-001"
+        ),
+        headers=auth_headers(),
+    )
+
+    assert unauthorized_list.status_code == 401
+    assert unauthorized_detail.status_code == 401
+    assert missing_detail.status_code == 404
+    assert missing_detail.json()["error_code"] == "cx.remediation_execution_not_found"
+    assert wrong_parent.status_code == 404
+    assert wrong_parent.json()["error_code"] == "cx.remediation_execution_not_found"
+
+
+def test_cx_remediation_execution_read_model_reports_store_errors() -> None:
+    class FailingExecutionStore:
+        def save(self, record: dict[str, Any]) -> dict[str, Any]:
+            return record
+
+        def get(self, remediation_action_id: str) -> dict[str, Any] | None:
+            raise RemediationExecutionError(
+                status_code=503,
+                error_code="cx.remediation_execution_store_unavailable",
+                detail="store unavailable",
+                retryable=True,
+            )
+
+        def list_for_parent(self, parent_cx_generation_id: str) -> list[dict[str, Any]]:
+            raise RemediationExecutionError(
+                status_code=503,
+                error_code="cx.remediation_execution_store_unavailable",
+                detail="store unavailable",
+                retryable=True,
+            )
+
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    register_remediation_execution_routes(
+        app,
+        generation_store=GenerationExecutionStore(),
+        execution_store=FailingExecutionStore(),
+    )
+    client = TestClient(app)
+
+    listed = client.get(
+        "/api/v1/generations/cx-gen-001/remediation-executions",
+        headers=auth_headers(),
+    )
+    detail = client.get(
+        (
+            "/api/v1/generations/cx-gen-001/remediation-executions/"
+            "ag-remediation-action-001"
+        ),
+        headers=auth_headers(),
+    )
+
+    assert listed.status_code == 503
+    assert listed.json()["retryable"] is True
+    assert detail.status_code == 503
+    assert detail.json()["error_code"] == "cx.remediation_execution_store_unavailable"
+
+
+def test_cx_remediation_execution_read_model_builders_cover_empty_and_unknown_edges() -> None:
+    listed = build_cx_remediation_execution_list_response(
+        [{"remediation_action_id": "a", "updated_at": "2026-08-26T00:00:00Z"}],
+        parent_cx_generation_id="cx-gen-001",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    empty = build_cx_remediation_execution_list_response(
+        [],
+        parent_cx_generation_id="cx-gen-001",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert listed["summary"]["by_execution_status"] == {"UNKNOWN": 1}
+    assert empty["summary"]["latest_updated_at"] is None
+
+    with pytest.raises(RemediationExecutionError) as detail_error:
+        build_cx_remediation_execution_detail_response(
+            {"parent_cx_generation_id": "cx-gen-001"},
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert detail_error.value.error_code == (
+        "cx.remediation_execution_remediation_action_id_required"
+    )
 
 
 def test_cx_remediation_execution_route_enqueues_job_when_queue_is_configured() -> None:

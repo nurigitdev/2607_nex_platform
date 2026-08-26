@@ -1352,6 +1352,109 @@ paths:
         "404":
           description: CX generation record was not found.
   /api/v1/generations/{cx_generation_id}/remediation-executions:
+    get:
+      operationId: listCxRemediationExecutions
+      tags:
+        - Generation
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CX remediation execution attempts for a parent generation.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - list_schema_version
+                  - parent_cx_generation_id
+                  - items
+                  - summary
+                  - redaction_summary
+                properties:
+                  list_schema_version:
+                    const: cx_remediation_execution_list.v1
+                  parent_cx_generation_id:
+                    type: string
+                  trace_id:
+                    type: string
+                  request_id:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                      required:
+                        - result_schema_version
+                        - remediation_action_id
+                        - parent_cx_generation_id
+                        - execution_status
+                      properties:
+                        result_schema_version:
+                          const: cx_remediation_execution_result.v1
+                        remediation_action_id:
+                          type: string
+                        parent_cx_generation_id:
+                          type: string
+                        execution_status:
+                          type: string
+                          enum:
+                            - ACCEPTED
+                            - RUNNING
+                            - SUCCEEDED
+                            - FAILED
+                            - CANCELLED
+                  summary:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - count
+                      - by_execution_status
+                      - by_action_type
+                      - latest_updated_at
+                    properties:
+                      count:
+                        type: integer
+                        minimum: 0
+                      by_execution_status:
+                        type: object
+                        additionalProperties:
+                          type: integer
+                      by_action_type:
+                        type: object
+                        additionalProperties:
+                          type: integer
+                      latest_updated_at:
+                        type:
+                          - string
+                          - "null"
+                  redaction_summary:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - raw_content_included
+                      - prompt_text_included
+                      - evidence_text_included
+                      - provider_detail_included
+                    properties:
+                      raw_content_included:
+                        const: false
+                      prompt_text_included:
+                        const: false
+                      evidence_text_included:
+                        const: false
+                      provider_detail_included:
+                        const: false
+        "401":
+          description: Service claim is missing or invalid.
+        "503":
+          description: CX remediation execution store is unavailable.
     post:
       operationId: createCxRemediationExecution
       tags:
@@ -1494,6 +1597,122 @@ paths:
           description: Parent generation cannot accept a child remediation attempt in its current state.
         "422":
           description: AG-only actions, parent mutation requests, raw text, provider details, credentials, model paths, or storage paths are rejected.
+  /api/v1/generations/{cx_generation_id}/remediation-executions/{remediation_action_id}:
+    get:
+      operationId: getCxRemediationExecution
+      tags:
+        - Generation
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: remediation_action_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CX remediation execution detail for AG status follow-up.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - detail_schema_version
+                  - projection_status
+                  - parent_cx_generation_id
+                  - remediation_action_id
+                  - execution_status
+                  - execution
+                  - attention_required
+                  - debug_paths
+                  - redaction_summary
+                properties:
+                  detail_schema_version:
+                    const: cx_remediation_execution_detail.v1
+                  projection_status:
+                    const: READY
+                  checked_at:
+                    type: string
+                  parent_cx_generation_id:
+                    type: string
+                  remediation_action_id:
+                    type: string
+                  trace_id:
+                    type: string
+                  request_id:
+                    type: string
+                  execution_status:
+                    type: string
+                    enum:
+                      - ACCEPTED
+                      - RUNNING
+                      - SUCCEEDED
+                      - FAILED
+                      - CANCELLED
+                  execution:
+                    type: object
+                    additionalProperties: true
+                    required:
+                      - result_schema_version
+                      - remediation_action_id
+                      - parent_cx_generation_id
+                      - execution_status
+                    properties:
+                      result_schema_version:
+                        const: cx_remediation_execution_result.v1
+                      remediation_action_id:
+                        type: string
+                      parent_cx_generation_id:
+                        type: string
+                      execution_status:
+                        type: string
+                        enum:
+                          - ACCEPTED
+                          - RUNNING
+                          - SUCCEEDED
+                          - FAILED
+                          - CANCELLED
+                  attention_required:
+                    type: boolean
+                  debug_paths:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - cx_remediation_execution_path
+                      - cx_remediation_execution_list_path
+                    properties:
+                      cx_remediation_execution_path:
+                        type: string
+                      cx_remediation_execution_list_path:
+                        type: string
+                  redaction_summary:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - raw_content_included
+                      - prompt_text_included
+                      - evidence_text_included
+                      - provider_detail_included
+                    properties:
+                      raw_content_included:
+                        const: false
+                      prompt_text_included:
+                        const: false
+                      evidence_text_included:
+                        const: false
+                      provider_detail_included:
+                        const: false
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: CX remediation execution was not found.
+        "503":
+          description: CX remediation execution store is unavailable.
   /api/v1/prompts/bindings:
     get:
       operationId: listCxPromptBindings

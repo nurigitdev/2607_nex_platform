@@ -39,6 +39,8 @@ CX_REMEDIATION_EXECUTION_REQUEST_SCHEMA_VERSION = (
 CX_REMEDIATION_EXECUTION_RESULT_SCHEMA_VERSION = (
     "cx_remediation_execution_result.v1"
 )
+CX_REMEDIATION_EXECUTION_LIST_SCHEMA_VERSION = "cx_remediation_execution_list.v1"
+CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION = "cx_remediation_execution_detail.v1"
 CX_REMEDIATION_EXECUTION_ACCEPTED_STATUS = "ACCEPTED"
 CX_REMEDIATION_EXECUTION_JOB_TYPE = "cx.remediation_execution"
 PROVIDER_BOUNDARY = "cx_to_mo_service_api_only"
@@ -264,6 +266,70 @@ def register_remediation_execution_routes(
         except RemediationExecutionError as exc:
             return _remediation_execution_problem_response(request, exc)
 
+    @app.get(
+        "/api/v1/generations/{cx_generation_id}/remediation-executions",
+        response_model=None,
+    )
+    def list_remediation_executions(
+        cx_generation_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_cx_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            records = selected_execution_store.list_for_parent(cx_generation_id)
+            return build_cx_remediation_execution_list_response(
+                records,
+                parent_cx_generation_id=cx_generation_id,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+            )
+        except RemediationExecutionError as exc:
+            return _remediation_execution_problem_response(request, exc)
+
+    @app.get(
+        (
+            "/api/v1/generations/{cx_generation_id}/remediation-executions/"
+            "{remediation_action_id}"
+        ),
+        response_model=None,
+    )
+    def get_remediation_execution(
+        cx_generation_id: str,
+        remediation_action_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_cx_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            record = selected_execution_store.get(remediation_action_id)
+            if (
+                record is None
+                or required_text(record, "parent_cx_generation_id") != cx_generation_id
+            ):
+                raise RemediationExecutionError(
+                    status_code=404,
+                    error_code="cx.remediation_execution_not_found",
+                    detail=(
+                        "CX remediation execution was not found: "
+                        f"{remediation_action_id}"
+                    ),
+                    retryable=False,
+                )
+            return build_cx_remediation_execution_detail_response(
+                record,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+            )
+        except RemediationExecutionError as exc:
+            return _remediation_execution_problem_response(request, exc)
+
 
 def validate_cx_remediation_execution_request(
     payload: Mapping[str, Any],
@@ -376,6 +442,74 @@ def build_cx_remediation_execution_result(
     }
 
 
+def build_cx_remediation_execution_list_response(
+    records: list[dict[str, Any]],
+    *,
+    parent_cx_generation_id: str,
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    items = sorted(
+        [deepcopy(record) for record in records],
+        key=lambda record: (
+            str(record.get("updated_at") or ""),
+            str(record.get("remediation_action_id") or ""),
+        ),
+        reverse=True,
+    )
+    return {
+        "list_schema_version": CX_REMEDIATION_EXECUTION_LIST_SCHEMA_VERSION,
+        "parent_cx_generation_id": required_text(
+            {"parent_cx_generation_id": parent_cx_generation_id},
+            "parent_cx_generation_id",
+        ),
+        "trace_id": required_text({"trace_id": trace_id}, "trace_id"),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "items": items,
+        "summary": {
+            "count": len(items),
+            "by_execution_status": _record_count_by(items, "execution_status"),
+            "by_action_type": _record_count_by(items, "action_type"),
+            "latest_updated_at": items[0]["updated_at"] if items else None,
+        },
+        "redaction_summary": _remediation_execution_read_model_redaction_summary(),
+    }
+
+
+def build_cx_remediation_execution_detail_response(
+    record: Mapping[str, Any],
+    *,
+    request_id: str,
+    trace_id: str,
+    checked_at: str | None = None,
+) -> dict[str, Any]:
+    execution = deepcopy(dict(record))
+    action_id = required_text(execution, "remediation_action_id")
+    parent_id = required_text(execution, "parent_cx_generation_id")
+    execution_status = required_text(execution, "execution_status")
+    return {
+        "detail_schema_version": CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION,
+        "projection_status": "READY",
+        "checked_at": checked_at or _utc_now(),
+        "parent_cx_generation_id": parent_id,
+        "remediation_action_id": action_id,
+        "trace_id": required_text({"trace_id": trace_id}, "trace_id"),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "execution_status": execution_status,
+        "execution": execution,
+        "attention_required": execution_status in {"FAILED", "CANCELLED"},
+        "debug_paths": {
+            "cx_remediation_execution_path": (
+                f"/api/v1/generations/{parent_id}/remediation-executions/{action_id}"
+            ),
+            "cx_remediation_execution_list_path": (
+                f"/api/v1/generations/{parent_id}/remediation-executions"
+            ),
+        },
+        "redaction_summary": _remediation_execution_read_model_redaction_summary(),
+    }
+
+
 def build_remediation_execution_job(
     *,
     execution_record: Mapping[str, Any],
@@ -484,6 +618,23 @@ def _safe_evidence_hashes(value: Any) -> list[str]:
     if not isinstance(hashes, list):
         return []
     return [str(item) for item in hashes]
+
+
+def _record_count_by(records: list[Mapping[str, Any]], key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for record in records:
+        value = optional_text(record.get(key)) or "UNKNOWN"
+        counts[value] = counts.get(value, 0) + 1
+    return counts
+
+
+def _remediation_execution_read_model_redaction_summary() -> dict[str, bool]:
+    return {
+        "raw_content_included": False,
+        "prompt_text_included": False,
+        "evidence_text_included": False,
+        "provider_detail_included": False,
+    }
 
 
 def required_text(payload: Mapping[str, Any], key: str) -> str:
