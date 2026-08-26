@@ -210,6 +210,11 @@ Internal persistence boundary:
   job queue as `cx.remediation_execution` jobs. The public API response stays
   `cx_remediation_execution_result.v1`; the job payload carries only ids,
   hashes, refs, policy, and the Slice 0356 worker plan.
+- Slice 0358 adds a deterministic remediation execution worker mock pipeline.
+  It claims `cx.remediation_execution` jobs, transitions execution records
+  through `ACCEPTED/RUNNING -> SUCCEEDED/FAILED`, stores a child repair
+  generation record on success, leaves the parent generation immutable, and
+  never calls remote providers.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`
