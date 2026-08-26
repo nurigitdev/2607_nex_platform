@@ -2,22 +2,34 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
+from sqlalchemy import text
 
 from nex_cx.generation import GenerationExecutionStore
 from nex_cx.remediation_execution import (
     RemediationExecutionError,
     RemediationExecutionStore,
+    SqlAlchemyRemediationExecutionStore,
+    _json_loads,
+    _json_sql_expression,
+    _timestamp_to_wire,
     build_cx_remediation_execution_result,
     register_remediation_execution_routes,
     validate_cx_remediation_execution_request,
 )
-from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
+from nex_runtime import (
+    SERVICE_SPECS,
+    build_engine,
+    build_service_app,
+    build_session_factory,
+    issue_mock_service_token,
+)
 
 
 ROOT = Path(__file__).parents[1]
@@ -193,6 +205,114 @@ def test_cx_remediation_execution_store_reindexes_existing_action() -> None:
     assert null_tenant["tenant_id"] is None
 
 
+def test_sqlalchemy_remediation_execution_store_persists_lineage_without_raw_data() -> None:
+    store, engine = sqlite_remediation_execution_store()
+    result = build_cx_remediation_execution_result(
+        remediation_request(),
+        created_at="2026-08-26T00:00:00Z",
+    )
+
+    saved = store.save(result)
+    loaded = store.get("ag-remediation-action-001")
+    listed = store.list_for_parent("cx-gen-001")
+
+    assert saved == result
+    assert loaded is not None
+    assert loaded["result_schema_version"] == "cx_remediation_execution_result.v1"
+    assert loaded["parent_cx_generation_id"] == "cx-gen-001"
+    assert loaded["root_cx_generation_id"] == "cx-gen-001"
+    assert loaded["action_type"] == "citation_repair"
+    assert loaded["lineage_type"] == "repair"
+    assert loaded["attempt_no"] == 1
+    assert loaded["result_ref"] is None
+    assert loaded["failure"] is None
+    assert loaded["metadata"] == {}
+    assert listed == [loaded]
+
+    dump = sqlite_table_dump(engine, "cx_remediation_execution_attempts")
+    assert "hidden prompt" not in dump
+    assert "provider_endpoint" in dump
+    assert "ed6@c496em" not in dump
+
+
+def test_sqlalchemy_remediation_execution_store_reindexes_and_reads_json_payloads() -> None:
+    store, _ = sqlite_remediation_execution_store()
+    accepted = build_cx_remediation_execution_result(
+        remediation_request(),
+        created_at="2026-08-26T00:00:00Z",
+    )
+    succeeded = {
+        **accepted,
+        "parent_cx_generation_id": "cx-gen-002",
+        "root_cx_generation_id": "cx-gen-root",
+        "repair_cx_generation_id": "cx-gen-repair-001",
+        "execution_status": "SUCCEEDED",
+        "attempt_no": 2,
+        "result_ref": {
+            "ref_type": "cx_generation",
+            "ref_id": "cx-gen-repair-001",
+        },
+        "metadata": {"repair_source": "slice_0355"},
+        "updated_at": "2026-08-26T00:00:01Z",
+    }
+
+    store.save(accepted)
+    store.save(succeeded)
+
+    assert store.list_for_parent("cx-gen-001") == []
+    loaded = store.get("ag-remediation-action-001")
+    assert loaded is not None
+    assert loaded["parent_cx_generation_id"] == "cx-gen-002"
+    assert loaded["root_cx_generation_id"] == "cx-gen-root"
+    assert loaded["repair_cx_generation_id"] == "cx-gen-repair-001"
+    assert loaded["attempt_no"] == 2
+    assert loaded["result_ref"]["ref_id"] == "cx-gen-repair-001"
+    assert loaded["metadata"] == {"repair_source": "slice_0355"}
+    assert store.list_for_parent("cx-gen-002") == [loaded]
+
+
+def test_sqlalchemy_remediation_execution_store_reports_database_errors() -> None:
+    store, _ = sqlite_remediation_execution_store(create_schema=False)
+
+    with pytest.raises(RemediationExecutionError) as save_error:
+        store.save(build_cx_remediation_execution_result(remediation_request()))
+    with pytest.raises(RemediationExecutionError) as get_error:
+        store.get("ag-remediation-action-001")
+    with pytest.raises(RemediationExecutionError) as list_error:
+        store.list_for_parent("cx-gen-001")
+
+    assert save_error.value.error_code == "cx.remediation_execution_store_unavailable"
+    assert save_error.value.status_code == 503
+    assert save_error.value.retryable is True
+    assert get_error.value.error_code == "cx.remediation_execution_store_unavailable"
+    assert list_error.value.error_code == "cx.remediation_execution_store_unavailable"
+
+
+def test_remediation_execution_sqlalchemy_helpers_cover_dialect_and_wire_edges() -> None:
+    store, _ = sqlite_remediation_execution_store()
+
+    assert store.get("missing-action") is None
+    assert _json_loads({"already": "decoded"}, default={}) == {"already": "decoded"}
+    assert _json_loads(b'{"from":"bytes"}', default={}) == {"from": "bytes"}
+    assert _json_loads(123, default={"fallback": True}) == {"fallback": True}
+    assert _timestamp_to_wire(datetime(2026, 8, 26, 1, 2, 3, tzinfo=UTC)) == (
+        "2026-08-26T01:02:03Z"
+    )
+    assert _timestamp_to_wire(datetime(2026, 8, 26, 1, 2, 3)) == (
+        "2026-08-26T01:02:03Z"
+    )
+
+    class PostgresSession:
+        def get_bind(self) -> Any:
+            class Bind:
+                class dialect:
+                    name = "postgresql"
+
+            return Bind()
+
+    assert _json_sql_expression(PostgresSession(), "payload") == "CAST(:payload AS JSONB)"
+
+
 def test_validate_cx_remediation_execution_request_rejects_boundary_violations() -> None:
     with pytest.raises(RemediationExecutionError) as schema_error:
         validate_cx_remediation_execution_request(
@@ -314,4 +434,59 @@ def test_build_cx_remediation_execution_result_requires_core_fields() -> None:
 
     assert exc_info.value.error_code == (
         "cx.remediation_execution_remediation_action_id_required"
+    )
+
+
+def sqlite_remediation_execution_store(
+    *,
+    create_schema: bool = True,
+) -> tuple[SqlAlchemyRemediationExecutionStore, object]:
+    engine = build_engine("sqlite+pysqlite:///:memory:")
+    if create_schema:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE cx_remediation_execution_attempts (
+                        remediation_action_id TEXT PRIMARY KEY,
+                        result_schema_version TEXT NOT NULL,
+                        parent_cx_generation_id TEXT NOT NULL,
+                        root_cx_generation_id TEXT NOT NULL,
+                        repair_cx_generation_id TEXT,
+                        tenant_id TEXT,
+                        trace_id TEXT NOT NULL,
+                        request_id TEXT NOT NULL,
+                        action_type TEXT NOT NULL,
+                        lineage_type TEXT NOT NULL,
+                        execution_status TEXT NOT NULL,
+                        attempt_no INTEGER NOT NULL DEFAULT 1,
+                        result_ref TEXT,
+                        failure TEXT,
+                        redaction_summary TEXT NOT NULL,
+                        metadata TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """
+                )
+            )
+    return (
+        SqlAlchemyRemediationExecutionStore(
+            build_session_factory(engine),
+            source_kind="sqlite-regression",
+            database_env="test",
+            redacted_database_url="sqlite:///***",
+        ),
+        engine,
+    )
+
+
+def sqlite_table_dump(engine: object, table_name: str) -> str:
+    with engine.connect() as connection:
+        rows = connection.execute(text(f"SELECT * FROM {table_name}")).mappings().all()
+    return json.dumps(
+        [dict(row) for row in rows],
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
     )

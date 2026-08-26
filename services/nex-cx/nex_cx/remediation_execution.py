@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
@@ -50,6 +55,17 @@ class ParentGenerationStore(Protocol):
         ...
 
 
+class RemediationExecutionStoreProtocol(Protocol):
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+    def get(self, remediation_action_id: str) -> dict[str, Any] | None:
+        ...
+
+    def list_for_parent(self, parent_cx_generation_id: str) -> list[dict[str, Any]]:
+        ...
+
+
 @dataclass
 class RemediationExecutionStore:
     records: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -86,6 +102,81 @@ class RemediationExecutionStore:
         ]
 
 
+class SqlAlchemyRemediationExecutionStore:
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        source_kind: str = "postgres-write",
+        database_env: str | None = None,
+        redacted_database_url: str | None = None,
+    ) -> None:
+        self._session_factory = session_factory
+        self.source_kind = source_kind
+        self.database_env = database_env
+        self.redacted_database_url = redacted_database_url
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        record_to_store = dict(record)
+        try:
+            self._run_in_transaction(
+                lambda session: session.execute(
+                    text(_remediation_execution_upsert_sql(session)),
+                    _remediation_execution_persistence_params(record_to_store),
+                )
+            )
+            return record
+        except SQLAlchemyError as exc:
+            raise _remediation_execution_store_unavailable() from exc
+
+    def get(self, remediation_action_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = session.execute(
+                    text(_remediation_execution_select_sql(
+                        "remediation_action_id = :remediation_action_id"
+                    )),
+                    {"remediation_action_id": remediation_action_id},
+                ).mappings().first()
+                return _remediation_execution_record_from_row(row)
+        except SQLAlchemyError as exc:
+            raise _remediation_execution_store_unavailable() from exc
+
+    def list_for_parent(self, parent_cx_generation_id: str) -> list[dict[str, Any]]:
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(
+                    text(
+                        _remediation_execution_select_sql(
+                            "parent_cx_generation_id = :parent_cx_generation_id"
+                        )
+                        + " ORDER BY updated_at DESC, remediation_action_id ASC"
+                    ),
+                    {"parent_cx_generation_id": parent_cx_generation_id},
+                ).mappings().all()
+                return [
+                    record
+                    for row in rows
+                    if (record := _remediation_execution_record_from_row(row))
+                    is not None
+                ]
+        except SQLAlchemyError as exc:
+            raise _remediation_execution_store_unavailable() from exc
+
+    def _run_in_transaction(self, operation: Any) -> Any:
+        session = self._session_factory()
+        try:
+            try:
+                result = operation(session)
+                session.commit()
+                return result
+            except Exception:
+                session.rollback()
+                raise
+        finally:
+            session.close()
+
+
 DEFAULT_REMEDIATION_EXECUTION_STORE = RemediationExecutionStore()
 
 
@@ -104,7 +195,7 @@ def register_remediation_execution_routes(
     app: FastAPI,
     *,
     generation_store: ParentGenerationStore,
-    execution_store: RemediationExecutionStore | None = None,
+    execution_store: RemediationExecutionStoreProtocol | None = None,
 ) -> None:
     selected_execution_store = execution_store or DEFAULT_REMEDIATION_EXECUTION_STORE
 
@@ -336,3 +427,205 @@ def _remediation_execution_problem_response(
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _remediation_execution_upsert_sql(session: Session) -> str:
+    result_ref = _json_sql_expression(session, "result_ref")
+    failure = _json_sql_expression(session, "failure")
+    redaction_summary = _json_sql_expression(session, "redaction_summary")
+    metadata = _json_sql_expression(session, "metadata")
+    return f"""
+        INSERT INTO cx_remediation_execution_attempts (
+            remediation_action_id,
+            result_schema_version,
+            parent_cx_generation_id,
+            root_cx_generation_id,
+            repair_cx_generation_id,
+            tenant_id,
+            trace_id,
+            request_id,
+            action_type,
+            lineage_type,
+            execution_status,
+            attempt_no,
+            result_ref,
+            failure,
+            redaction_summary,
+            metadata,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :remediation_action_id,
+            :result_schema_version,
+            :parent_cx_generation_id,
+            :root_cx_generation_id,
+            :repair_cx_generation_id,
+            :tenant_id,
+            :trace_id,
+            :request_id,
+            :action_type,
+            :lineage_type,
+            :execution_status,
+            :attempt_no,
+            {result_ref},
+            {failure},
+            {redaction_summary},
+            {metadata},
+            :created_at,
+            :updated_at
+        )
+        ON CONFLICT (remediation_action_id) DO UPDATE SET
+            result_schema_version = excluded.result_schema_version,
+            parent_cx_generation_id = excluded.parent_cx_generation_id,
+            root_cx_generation_id = excluded.root_cx_generation_id,
+            repair_cx_generation_id = excluded.repair_cx_generation_id,
+            tenant_id = excluded.tenant_id,
+            trace_id = excluded.trace_id,
+            request_id = excluded.request_id,
+            action_type = excluded.action_type,
+            lineage_type = excluded.lineage_type,
+            execution_status = excluded.execution_status,
+            attempt_no = excluded.attempt_no,
+            result_ref = excluded.result_ref,
+            failure = excluded.failure,
+            redaction_summary = excluded.redaction_summary,
+            metadata = excluded.metadata,
+            updated_at = excluded.updated_at
+    """
+
+
+def _remediation_execution_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            remediation_action_id,
+            result_schema_version,
+            parent_cx_generation_id,
+            root_cx_generation_id,
+            repair_cx_generation_id,
+            tenant_id,
+            trace_id,
+            request_id,
+            action_type,
+            lineage_type,
+            execution_status,
+            attempt_no,
+            result_ref,
+            failure,
+            redaction_summary,
+            metadata,
+            created_at,
+            updated_at
+        FROM cx_remediation_execution_attempts
+        WHERE {where_clause}
+    """
+
+
+def _remediation_execution_persistence_params(
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "remediation_action_id": required_text(record, "remediation_action_id"),
+        "result_schema_version": required_text(record, "result_schema_version"),
+        "parent_cx_generation_id": required_text(record, "parent_cx_generation_id"),
+        "root_cx_generation_id": (
+            optional_text(record.get("root_cx_generation_id"))
+            or required_text(record, "parent_cx_generation_id")
+        ),
+        "repair_cx_generation_id": optional_text(record.get("repair_cx_generation_id")),
+        "tenant_id": optional_text(record.get("tenant_id")),
+        "trace_id": required_text(record, "trace_id"),
+        "request_id": required_text(record, "request_id"),
+        "action_type": required_text(record, "action_type"),
+        "lineage_type": required_text(record, "lineage_type"),
+        "execution_status": required_text(record, "execution_status"),
+        "attempt_no": _positive_int(record.get("attempt_no"), default=1),
+        "result_ref": _json_dumps_or_none(record.get("result_ref")),
+        "failure": _json_dumps_or_none(record.get("failure")),
+        "redaction_summary": _json_dumps(record.get("redaction_summary", {})),
+        "metadata": _json_dumps(record.get("metadata", {})),
+        "created_at": optional_text(record.get("created_at")) or _utc_now(),
+        "updated_at": optional_text(record.get("updated_at")) or _utc_now(),
+    }
+
+
+def _remediation_execution_record_from_row(
+    row: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    return {
+        "result_schema_version": row["result_schema_version"],
+        "remediation_action_id": row["remediation_action_id"],
+        "parent_cx_generation_id": row["parent_cx_generation_id"],
+        "root_cx_generation_id": row["root_cx_generation_id"],
+        "repair_cx_generation_id": row["repair_cx_generation_id"],
+        "tenant_id": row["tenant_id"],
+        "trace_id": row["trace_id"],
+        "request_id": row["request_id"],
+        "action_type": row["action_type"],
+        "lineage_type": row["lineage_type"],
+        "execution_status": row["execution_status"],
+        "attempt_no": row["attempt_no"],
+        "result_ref": _json_loads(row["result_ref"], default=None),
+        "failure": _json_loads(row["failure"], default=None),
+        "redaction_summary": _json_loads(row["redaction_summary"], default={}),
+        "metadata": _json_loads(row["metadata"], default={}),
+        "created_at": _timestamp_to_wire(row["created_at"]),
+        "updated_at": _timestamp_to_wire(row["updated_at"]),
+    }
+
+
+def _json_sql_expression(session: Session, param_name: str) -> str:
+    if _dialect_name(session) == "postgresql":
+        return f"CAST(:{param_name} AS JSONB)"
+    return f":{param_name}"
+
+
+def _dialect_name(session: Session) -> str:
+    bind = session.get_bind()
+    return bind.dialect.name if bind is not None else ""
+
+
+def _json_dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _json_dumps_or_none(value: Any) -> str | None:
+    return None if value is None else _json_dumps(value)
+
+
+def _json_loads(value: Any, *, default: Any) -> Any:
+    if value is None:
+        return deepcopy(default)
+    if isinstance(value, (dict, list)):
+        return deepcopy(value)
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if isinstance(value, str):
+        return json.loads(value)
+    return deepcopy(default)
+
+
+def _timestamp_to_wire(value: Any) -> str:
+    if isinstance(value, datetime):
+        observed = value
+        if observed.tzinfo is None:
+            observed = observed.replace(tzinfo=UTC)
+        return observed.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return str(value)
+
+
+def _positive_int(value: Any, *, default: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return default
+    return value
+
+
+def _remediation_execution_store_unavailable() -> RemediationExecutionError:
+    return RemediationExecutionError(
+        status_code=503,
+        error_code="cx.remediation_execution_store_unavailable",
+        detail="CX remediation execution store is unavailable.",
+        retryable=True,
+    )

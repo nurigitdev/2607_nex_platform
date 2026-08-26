@@ -456,6 +456,56 @@ def test_cx_schema_tracks_processing_run_metadata_without_raw_payloads() -> None
     assert "error_detail text" not in compact
 
 
+def test_cx_schema_tracks_remediation_execution_lineage_without_raw_payloads() -> None:
+    compact = normalized(read_migration("nex-cx"))
+    remediation = normalized(
+        read_migration_named(
+            "nex-cx",
+            "0355_cx_repair_attempt_lineage_persistence_foundation.sql",
+        )
+    )
+
+    assert "create table if not exists cx_remediation_execution_attempts" in compact
+    for column in (
+        "remediation_action_id text primary key",
+        "result_schema_version text not null default 'cx_remediation_execution_result.v1'",
+        "parent_cx_generation_id text not null",
+        "root_cx_generation_id text not null",
+        "repair_cx_generation_id text",
+        "trace_id text not null check",
+        "action_type text not null check",
+        "lineage_type text not null check",
+        "execution_status text not null check",
+        "attempt_no integer not null default 1 check (attempt_no >= 1)",
+        "result_ref jsonb",
+        "failure jsonb",
+        "redaction_summary jsonb not null default '{}'::jsonb",
+        "metadata jsonb not null default '{}'::jsonb",
+    ):
+        assert column in remediation
+    assert "ck_cx_remediation_execution_action_lineage" in remediation
+    assert "action_type = 'retry_generation' and lineage_type = 'retry'" in remediation
+    assert (
+        "action_type = 'retrieval_repair' and lineage_type = "
+        "'fresh_retrieval_regenerate'"
+    ) in remediation
+    assert "action_type = 'citation_repair' and lineage_type = 'repair'" in remediation
+    assert "ck_cx_remediation_execution_parent_immutable" in remediation
+    assert "ck_cx_remediation_execution_succeeded_result" in remediation
+    assert "ck_cx_remediation_execution_failed_result" in remediation
+    assert "idx_cx_remediation_execution_parent_updated" in remediation
+    assert "idx_cx_remediation_execution_root_updated" in remediation
+    assert "idx_cx_remediation_execution_trace" in remediation
+    assert "idx_cx_remediation_execution_status_updated" in remediation
+    assert "idx_cx_remediation_execution_repair_generation" in remediation
+    assert "0355_cx_repair_attempt_lineage_persistence_foundation" in remediation
+    assert "raw_prompt" not in remediation
+    assert "messages text" not in compact
+    assert "source_text" not in remediation
+    assert "output_text" not in remediation
+    assert "provider_endpoint" not in remediation
+
+
 def test_prompt_registry_is_service_local_and_versioned() -> None:
     cx = normalized(read_migration("nex-cx"))
     ae = normalized(read_migration("nex-ae-api"))

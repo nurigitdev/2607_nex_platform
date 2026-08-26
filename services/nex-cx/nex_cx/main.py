@@ -25,7 +25,11 @@ from nex_cx.processing import register_processing_routes
 from nex_cx.prompts import DEFAULT_CX_PROMPT_STORE
 from nex_cx.repository import CxContentRepository, SqlAlchemyCxContentRepository
 from nex_cx.retrieval import register_retrieval_routes
-from nex_cx.remediation_execution import register_remediation_execution_routes
+from nex_cx.remediation_execution import (
+    RemediationExecutionStoreProtocol,
+    SqlAlchemyRemediationExecutionStore,
+    register_remediation_execution_routes,
+)
 from nex_cx.summary_embeddings import register_summary_embedding_routes
 from nex_cx.summaries import register_summary_routes
 
@@ -46,6 +50,21 @@ def build_cx_content_repository(
     return DEFAULT_INGESTION_STORE.content_repository
 
 
+def build_cx_remediation_execution_store(
+    runtime: ServicePersistenceRuntime,
+) -> RemediationExecutionStoreProtocol | None:
+    if (
+        runtime.mode == PERSISTENCE_MODE_POSTGRES
+        and runtime.api_session_factory is not None
+    ):
+        return SqlAlchemyRemediationExecutionStore(
+            runtime.api_session_factory,
+            database_env=runtime.database_env,
+            redacted_database_url=runtime.redacted_database_url,
+        )
+    return None
+
+
 SERVICE_SPEC = SERVICE_SPECS["nex-cx"]
 app = build_service_app(SERVICE_SPEC)
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
@@ -59,6 +78,9 @@ CX_PROCESSING_RUN_REPOSITORY: CxContentRepository | None = (
     CX_CONTENT_REPOSITORY
     if SERVICE_PERSISTENCE.mode == PERSISTENCE_MODE_POSTGRES
     else None
+)
+CX_REMEDIATION_EXECUTION_STORE = build_cx_remediation_execution_store(
+    SERVICE_PERSISTENCE,
 )
 register_service_job_control_routes(
     app,
@@ -78,6 +100,7 @@ register_generation_routes(
 register_remediation_execution_routes(
     app,
     generation_store=DEFAULT_GENERATION_STORE,
+    execution_store=CX_REMEDIATION_EXECUTION_STORE,
 )
 register_generation_compatibility_routes(app, expected_audience="nex-cx")
 register_generation_recovery_policy_routes(app, expected_audience="nex-cx")
