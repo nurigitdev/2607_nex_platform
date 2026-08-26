@@ -303,8 +303,10 @@ def register_generation_remediation_execution_routes(
     *,
     store: GenerationRemediationTaskExecutionStore,
     cx_client: CxRemediationExecutionClient | None = None,
+    cx_status_client: CxRemediationExecutionStatusClient | None = None,
 ) -> None:
     selected_cx_client = cx_client or build_default_cx_remediation_execution_client()
+    selected_cx_status_client = cx_status_client or selected_cx_client
 
     @app.post(
         (
@@ -341,6 +343,40 @@ def register_generation_remediation_execution_routes(
         except GenerationRemediationExecutionError as exc:
             return _remediation_execution_problem_response(request, exc)
         return JSONResponse(status_code=202, content=dispatch)
+
+    @app.post(
+        (
+            "/admin/v1/generation-audit/generations/{cx_generation_id}"
+            "/remediation-tasks/{remediation_action_id}/sync-execution-status"
+        ),
+        response_model=None,
+        status_code=200,
+    )
+    def sync_generation_remediation_task_execution_status(
+        cx_generation_id: str,
+        remediation_action_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        payload: dict[str, Any] | None = Body(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        body = payload or {}
+        try:
+            sync = sync_generation_remediation_execution_status(
+                store=store,
+                cx_status_client=selected_cx_status_client,
+                remediation_action_id=remediation_action_id,
+                cx_generation_id=cx_generation_id,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                observed_at=optional_text(body.get("observed_at")),
+            )
+        except GenerationRemediationExecutionError as exc:
+            return _remediation_execution_problem_response(request, exc)
+        return JSONResponse(status_code=200, content=sync)
 
 
 def build_generation_remediation_execution_handoff_plan(

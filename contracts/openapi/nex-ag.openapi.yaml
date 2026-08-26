@@ -353,6 +353,47 @@ paths:
           description: Dispatch request is invalid or remediation action is not executable by CX.
         "503":
           description: CX remediation execution endpoint or AG task store is unavailable.
+  /admin/v1/generation-audit/generations/{cx_generation_id}/remediation-tasks/{remediation_action_id}/sync-execution-status:
+    post:
+      operationId: syncAgGenerationRemediationExecutionStatus
+      tags:
+        - GenerationAudit
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: remediation_action_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgGenerationRemediationExecutionStatusSyncRequest"
+      responses:
+        "200":
+          description: AG synchronized the remediation task status from CX execution detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgGenerationRemediationExecutionStatusSync"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Remediation task was not found for this generation.
+        "409":
+          description: Remediation task cannot be synchronized from the observed CX status.
+        "422":
+          description: CX execution detail is invalid or cannot be reconciled.
+        "503":
+          description: CX remediation execution endpoint or AG task store is unavailable.
   /admin/v1/operations:
     get:
       operationId: getAgUnifiedOperationsProjection
@@ -1858,6 +1899,81 @@ components:
         status_update_count:
           type: integer
           minimum: 1
+        result_ref:
+          type: object
+          additionalProperties: true
+        plan:
+          type: object
+          additionalProperties: true
+        task:
+          $ref: "#/components/schemas/AgGenerationRemediationAction"
+        redaction_summary:
+          type: object
+          additionalProperties: true
+    AgGenerationRemediationExecutionStatusSyncRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        observed_at:
+          type: string
+          minLength: 1
+    AgGenerationRemediationExecutionStatusSync:
+      type: object
+      additionalProperties: true
+      required:
+        - status_sync_schema_version
+        - sync_status
+        - remediation_action_id
+        - cx_generation_id
+        - trace_id
+        - request_id
+        - cx_detail_schema_version
+        - cx_execution_status
+        - previous_action_status
+        - final_action_status
+        - status_update_count
+        - result_ref
+        - plan
+        - task
+        - redaction_summary
+      properties:
+        status_sync_schema_version:
+          type: string
+          const: ag_generation_remediation_execution_status_sync.v1
+        sync_status:
+          type: string
+          enum:
+            - UPDATED
+            - UNCHANGED
+        remediation_action_id:
+          type: string
+          minLength: 1
+        cx_generation_id:
+          type: string
+          minLength: 1
+        trace_id:
+          $ref: "#/components/schemas/TraceId"
+        request_id:
+          type: string
+          minLength: 1
+        cx_detail_schema_version:
+          type: string
+          const: cx_remediation_execution_detail.v1
+        cx_execution_status:
+          type: string
+          enum:
+            - ACCEPTED
+            - RUNNING
+            - SUCCEEDED
+            - FAILED
+            - CANCELLED
+        previous_action_status:
+          $ref: "#/components/schemas/AgGenerationRemediationActionStatus"
+        final_action_status:
+          $ref: "#/components/schemas/AgGenerationRemediationActionStatus"
+        status_update_count:
+          type: integer
+          minimum: 0
         result_ref:
           type: object
           additionalProperties: true

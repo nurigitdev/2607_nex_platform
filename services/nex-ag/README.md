@@ -36,6 +36,7 @@ Current endpoints:
 - `GET /admin/v1/policies/retrieval`
 - `GET /admin/v1/policies/retrieval/active`
 - `GET /admin/v1/policies/retrieval/{policy_id}`
+- `POST /admin/v1/generation-audit/generations/{cx_generation_id}/remediation-tasks/{remediation_action_id}/sync-execution-status`
 
 Provider readiness:
 
@@ -173,8 +174,13 @@ Unified operations:
   follow-up foundation after dispatch. AG reads the CX
   `cx_remediation_execution_detail.v1` projection, validates the embedded
   execution result, maps CX execution status back to the AG remediation task
-  state machine, and keeps same-status sync idempotent without exposing a new
-  AG HTTP route yet.
+  state machine, and keeps same-status sync idempotent.
+- `POST /admin/v1/generation-audit/generations/{cx_generation_id}/remediation-tasks/{remediation_action_id}/sync-execution-status`
+  is the protected AG status sync API for reconciling a dispatched task from
+  CX execution detail. It returns
+  `ag_generation_remediation_execution_status_sync.v1`, preserves
+  `UPDATED`/`UNCHANGED` sync outcomes, and shares the dispatch route's service
+  authorization boundary.
 - `scripts/smoke/run_ag_remediation_execution_dispatch_postgres_smoke.py` is
   the guarded PostgreSQL test-profile evidence path for the dispatch API. It is
   skipped unless
@@ -183,6 +189,14 @@ Unified operations:
   it through the protected API with a static CX execution client, verifies the
   persisted `WAITING_ON_CX` state directly from PostgreSQL, and deletes the
   smoke row.
+- `scripts/smoke/run_ag_remediation_execution_status_sync_postgres_smoke.py`
+  is the guarded cross-database PostgreSQL test-profile evidence path for the
+  status sync API. It is skipped unless
+  `NEX_AG_REMEDIATION_EXECUTION_STATUS_SYNC_POSTGRES_SMOKE=1`, runs both
+  `nex-ag` and `nex-cx` migrations, reads CX execution detail from
+  `NEX_CX_TEST_DATABASE_URL`, updates the AG task in
+  `NEX_AG_TEST_DATABASE_URL`, verifies both rows directly from PostgreSQL, and
+  deletes both smoke rows.
 - `GET /admin/v1/operations/retrieval-packages` returns
   `ag_retrieval_package_operations_projection.v1`, a CX-sourced read-only
   projection of persisted retrieval packages for debugging grounded retrieval
