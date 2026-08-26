@@ -379,3 +379,11 @@ Grounded generation validation:
   `scripts/smoke/run_cx_processing_postgres_api_smoke.py`. It is skipped by
   default and only writes to the CX test database when
   `NEX_CX_PROCESSING_POSTGRES_API_SMOKE=1` is set with the `test` profile.
+- CX remediation execution PostgreSQL smoke evidence is available through
+  `scripts/smoke/run_cx_remediation_execution_postgres_smoke.py`. It is
+  skipped by default and only writes to the CX test database when
+  `NEX_CX_REMEDIATION_EXECUTION_POSTGRES_SMOKE=1` is set with the `test`
+  profile. The smoke runs migrations, persists a repair execution attempt,
+  enqueues a `cx.remediation_execution` durable job, runs the CX remediation
+  worker once, observes `cx_remediation_execution_attempts` and `service_jobs`,
+  and cleans up the smoke rows before returning evidence.
