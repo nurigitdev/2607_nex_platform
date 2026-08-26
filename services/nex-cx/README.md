@@ -394,3 +394,11 @@ Grounded generation validation:
   `cx_remediation_execution_detail.v1` projections from the execution store
   without requiring the parent generation record to be loaded in memory, so AG
   can follow up after dispatch using persisted execution state.
+- CX remediation execution read-model PostgreSQL smoke evidence is available
+  through
+  `scripts/smoke/run_cx_remediation_execution_read_model_postgres_smoke.py`.
+  It is skipped by default and only writes to the CX test database when
+  `NEX_CX_REMEDIATION_EXECUTION_READ_MODEL_POSTGRES_SMOKE=1` is set with the
+  `test` profile. The smoke writes one accepted execution attempt, reads it
+  through the protected list/detail APIs using an empty parent generation
+  store, observes PostgreSQL JSONB/index metadata, and cleans up the smoke row.
