@@ -18,15 +18,27 @@ from nex_cx.remediation_execution_planning import (
 )
 from nex_cx.remediation_execution_worker import (
     CX_REMEDIATION_EXECUTION_WORKER_ID,
+    CX_REMEDIATION_EXECUTION_WORKER_TYPE,
     RemediationExecutionWorkerError,
     build_mock_repair_generation_record,
+    build_remediation_execution_worker_config,
     build_remediation_execution_worker_handler,
     execute_claimed_remediation_execution_job,
     remediation_action_id_from_job,
     repair_generation_id_for_action,
+    run_cx_remediation_execution_worker_batch,
+    run_cx_remediation_execution_worker_once,
     run_remediation_execution_worker_once,
 )
-from nex_runtime import InMemoryJobQueue, JobQueueError
+from nex_runtime import (
+    InMemoryJobQueue,
+    InMemoryServiceLogStore,
+    InMemoryWorkerHeartbeatStore,
+    JobQueueError,
+    ServiceLogEmitter,
+    WorkerHeartbeatEmitter,
+    WorkerRunnerError,
+)
 
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
@@ -104,6 +116,28 @@ def enqueue_execution_job(
     if payload_overrides:
         job["payload"].update(payload_overrides)
     return queue.enqueue(job)
+
+
+def enqueue_remediation_fixture(
+    *,
+    queue: InMemoryJobQueue,
+    generation_store: GenerationExecutionStore,
+    execution_store: RemediationExecutionStore,
+    action_id: str = "ag-remediation-action-001",
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    payload = remediation_request(
+        remediation_action_id=action_id,
+        idempotency_key=idempotency_key or f"cx-remediation-execution-{action_id}",
+    )
+    execution_record = build_cx_remediation_execution_result(payload, created_at=NOW)
+    generation_store.save(parent_generation_record())
+    execution_store.save(execution_record)
+    return enqueue_execution_job(
+        queue=queue,
+        execution_record=execution_record,
+        request_payload=payload,
+    )
 
 
 def test_remediation_worker_claims_job_and_persists_mock_repair_generation() -> None:
@@ -374,6 +408,145 @@ def test_remediation_worker_handler_executes_claimed_job_and_finalizes_queue() -
 
     assert result["job_status"] == "SUCCEEDED"
     assert queue.get_job(claimed["job_id"])["status"] == "SUCCEEDED"
+
+
+def test_remediation_worker_common_runner_emits_heartbeats_and_logs() -> None:
+    queue = InMemoryJobQueue()
+    generation_store = GenerationExecutionStore()
+    execution_store = RemediationExecutionStore()
+    enqueued = enqueue_remediation_fixture(
+        queue=queue,
+        generation_store=generation_store,
+        execution_store=execution_store,
+    )
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_emitter = WorkerHeartbeatEmitter(
+        service_id="nex-cx",
+        worker_id="cx-remediation-runner-test",
+        worker_type=CX_REMEDIATION_EXECUTION_WORKER_TYPE,
+        store=heartbeat_store,
+        started_at=NOW,
+        metadata={"queue": CX_REMEDIATION_EXECUTION_JOB_TYPE},
+    )
+    log_store = InMemoryServiceLogStore()
+    log_emitter = ServiceLogEmitter(
+        service_id="nex-cx",
+        logger_name="nex_cx.remediation_execution_worker",
+        store=log_store,
+    )
+
+    execution = run_cx_remediation_execution_worker_once(
+        job_queue=queue,
+        generation_store=generation_store,
+        execution_store=execution_store,
+        worker_id="cx-remediation-runner-test",
+        worker_heartbeat_emitter=heartbeat_emitter,
+        service_log_emitter=log_emitter,
+        clock=lambda: NOW,
+    )
+
+    assert execution.status == "SUCCEEDED"
+    assert execution.job["job_id"] == enqueued["job_id"]
+    assert execution.completed_job["status"] == "SUCCEEDED"
+    assert execution.handler_result["repair_cx_generation_id"] == (
+        repair_generation_id_for_action("ag-remediation-action-001")
+    )
+    assert [item["status"] for item in execution.heartbeat_results] == [
+        "STARTING",
+        "BUSY",
+        "IDLE",
+    ]
+    heartbeat = heartbeat_store.get_heartbeat("nex-cx", "cx-remediation-runner-test")
+    assert heartbeat["status"] == "IDLE"
+    assert heartbeat["metadata"]["job_status"] == "SUCCEEDED"
+    logs = log_store.list_logs(
+        logger_name="nex_cx.remediation_execution_worker",
+        limit=10,
+    )
+    assert [log["message"] for log in logs] == [
+        "Worker polling started.",
+        "Worker claimed a job.",
+        "Worker completed a job.",
+    ]
+    assert logs[-1]["attributes"]["handler_finalizes_job"] is True
+
+
+def test_remediation_worker_common_runner_batch_processes_until_idle() -> None:
+    queue = InMemoryJobQueue()
+    generation_store = GenerationExecutionStore()
+    execution_store = RemediationExecutionStore()
+    enqueue_remediation_fixture(
+        queue=queue,
+        generation_store=generation_store,
+        execution_store=execution_store,
+        action_id="ag-remediation-action-001",
+        idempotency_key="idem-001",
+    )
+    enqueue_remediation_fixture(
+        queue=queue,
+        generation_store=generation_store,
+        execution_store=execution_store,
+        action_id="ag-remediation-action-002",
+        idempotency_key="idem-002",
+    )
+
+    batch = run_cx_remediation_execution_worker_batch(
+        job_queue=queue,
+        generation_store=generation_store,
+        execution_store=execution_store,
+        max_jobs=3,
+        clock=lambda: NOW,
+    )
+
+    assert batch.claimed_count == 2
+    assert batch.succeeded_count == 2
+    assert batch.idle_count == 1
+    assert [execution.status for execution in batch.executions] == [
+        "SUCCEEDED",
+        "SUCCEEDED",
+        "IDLE",
+    ]
+    assert queue.summary()["statuses"]["SUCCEEDED"] == 2
+    assert batch.to_summary()["job_type"] == CX_REMEDIATION_EXECUTION_JOB_TYPE
+
+
+def test_remediation_worker_common_runner_surfaces_domain_failure_result() -> None:
+    queue = InMemoryJobQueue()
+    generation_store = GenerationExecutionStore()
+    execution_store = RemediationExecutionStore()
+    accepted = accepted_execution_record()
+    execution_store.save(accepted)
+    enqueue_execution_job(queue=queue, execution_record=accepted)
+
+    execution = run_cx_remediation_execution_worker_once(
+        job_queue=queue,
+        generation_store=generation_store,
+        execution_store=execution_store,
+        clock=lambda: NOW,
+    )
+
+    assert execution.status == "FAILED"
+    assert execution.error_code is None
+    assert execution.completed_job["status"] == "FAILED"
+    assert execution.handler_result["error_code"] == (
+        "cx.remediation_execution_worker.parent_generation_not_found"
+    )
+    assert execution.to_summary()["handler_result"]["execution_status"] == "FAILED"
+
+
+def test_remediation_worker_common_runner_config_validation() -> None:
+    config = build_remediation_execution_worker_config(
+        worker_id="cx-remediation-runner-test",
+        max_jobs=5,
+    )
+
+    assert config.service_id == "nex-cx"
+    assert config.worker_id == "cx-remediation-runner-test"
+    assert config.worker_type == CX_REMEDIATION_EXECUTION_WORKER_TYPE
+    assert config.job_type == CX_REMEDIATION_EXECUTION_JOB_TYPE
+    assert config.max_jobs == 5
+    with pytest.raises(WorkerRunnerError):
+        build_remediation_execution_worker_config(max_jobs=0)
 
 
 def test_remediation_worker_raises_worker_error_when_claim_fails() -> None:

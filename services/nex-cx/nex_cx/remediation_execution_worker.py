@@ -7,7 +7,19 @@ from datetime import UTC, datetime
 from typing import Any, Callable, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
-from nex_runtime import JobQueue, JobQueueError, build_job_error
+from nex_runtime import (
+    InMemoryWorkerHeartbeatStore,
+    JobQueue,
+    JobQueueError,
+    ServiceLogEmitter,
+    WorkerBatchResult,
+    WorkerHeartbeatEmitter,
+    WorkerJobExecution,
+    WorkerRunnerConfig,
+    build_job_error,
+    run_worker_batch,
+    run_worker_once,
+)
 from nex_cx.remediation_execution import (
     CX_REMEDIATION_EXECUTION_JOB_TYPE,
     RemediationExecutionStoreProtocol,
@@ -229,6 +241,84 @@ def build_remediation_execution_worker_handler(
         )
 
     return handler
+
+
+def build_remediation_execution_worker_config(
+    *,
+    worker_id: str = CX_REMEDIATION_EXECUTION_WORKER_ID,
+    max_jobs: int = 1,
+) -> WorkerRunnerConfig:
+    return WorkerRunnerConfig(
+        service_id="nex-cx",
+        worker_id=worker_id,
+        worker_type=CX_REMEDIATION_EXECUTION_WORKER_TYPE,
+        job_type=CX_REMEDIATION_EXECUTION_JOB_TYPE,
+        max_jobs=max_jobs,
+    )
+
+
+def run_cx_remediation_execution_worker_once(
+    *,
+    job_queue: JobQueue,
+    generation_store: GenerationRecordStore,
+    execution_store: RemediationExecutionStoreProtocol,
+    worker_id: str = CX_REMEDIATION_EXECUTION_WORKER_ID,
+    worker_heartbeat_emitter: WorkerHeartbeatEmitter | None = None,
+    service_log_emitter: ServiceLogEmitter | None = None,
+    clock: WorkerClock | None = None,
+) -> WorkerJobExecution:
+    heartbeat_emitter = worker_heartbeat_emitter or _default_worker_heartbeat_emitter(
+        worker_id=worker_id,
+    )
+    return run_worker_once(
+        config=build_remediation_execution_worker_config(worker_id=worker_id),
+        queue=job_queue,
+        heartbeat_emitter=heartbeat_emitter,
+        handler=build_remediation_execution_worker_handler(
+            generation_store=generation_store,
+            execution_store=execution_store,
+            job_queue=job_queue,
+            clock=clock,
+        ),
+        service_log_emitter=service_log_emitter,
+        handler_finalizes_job=True,
+        clock=clock,
+    )
+
+
+def run_cx_remediation_execution_worker_batch(
+    *,
+    job_queue: JobQueue,
+    generation_store: GenerationRecordStore,
+    execution_store: RemediationExecutionStoreProtocol,
+    worker_id: str = CX_REMEDIATION_EXECUTION_WORKER_ID,
+    max_jobs: int = 10,
+    stop_on_failure: bool = True,
+    worker_heartbeat_emitter: WorkerHeartbeatEmitter | None = None,
+    service_log_emitter: ServiceLogEmitter | None = None,
+    clock: WorkerClock | None = None,
+) -> WorkerBatchResult:
+    heartbeat_emitter = worker_heartbeat_emitter or _default_worker_heartbeat_emitter(
+        worker_id=worker_id,
+    )
+    return run_worker_batch(
+        config=build_remediation_execution_worker_config(
+            worker_id=worker_id,
+            max_jobs=max_jobs,
+        ),
+        queue=job_queue,
+        heartbeat_emitter=heartbeat_emitter,
+        handler=build_remediation_execution_worker_handler(
+            generation_store=generation_store,
+            execution_store=execution_store,
+            job_queue=job_queue,
+            clock=clock,
+        ),
+        service_log_emitter=service_log_emitter,
+        handler_finalizes_job=True,
+        stop_on_failure=stop_on_failure,
+        clock=clock,
+    )
 
 
 def remediation_action_id_from_job(job: Mapping[str, Any]) -> str:
@@ -495,6 +585,22 @@ def _worker_failure_result(
 
 def _mapping(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _default_worker_heartbeat_emitter(
+    *,
+    worker_id: str,
+) -> WorkerHeartbeatEmitter:
+    return WorkerHeartbeatEmitter(
+        service_id="nex-cx",
+        worker_id=worker_id,
+        worker_type=CX_REMEDIATION_EXECUTION_WORKER_TYPE,
+        store=InMemoryWorkerHeartbeatStore(),
+        metadata={
+            "queue": CX_REMEDIATION_EXECUTION_JOB_TYPE,
+            "runtime": "background",
+        },
+    )
 
 
 def _worker_error_from_exception(

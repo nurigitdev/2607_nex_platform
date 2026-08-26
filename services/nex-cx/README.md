@@ -215,6 +215,9 @@ Internal persistence boundary:
   through `ACCEPTED/RUNNING -> SUCCEEDED/FAILED`, stores a child repair
   generation record on success, leaves the parent generation immutable, and
   never calls remote providers.
+- Slice 0359 wires the remediation execution worker into the shared
+  `WorkerRunner` once/batch runtime. The domain handler finalizes the job, while
+  the common runner emits standard worker heartbeats and optional service logs.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`
