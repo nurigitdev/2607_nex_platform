@@ -160,6 +160,9 @@ Unified operations:
   execution statuses back to AG task updates without bypassing the existing
   remediation transition policy, for example
   `PROPOSED -> IN_PROGRESS -> WAITING_ON_CX` after a CX `ACCEPTED` response.
+  The same module also owns the dispatch service facade that loads an AG task,
+  calls the injected CX remediation execution client, applies the planned task
+  updates, and returns `ag_generation_remediation_execution_dispatch.v1`.
 - `GET /admin/v1/operations/retrieval-packages` returns
   `ag_retrieval_package_operations_projection.v1`, a CX-sourced read-only
   projection of persisted retrieval packages for debugging grounded retrieval

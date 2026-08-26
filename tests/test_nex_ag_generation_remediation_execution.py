@@ -6,6 +6,7 @@ import pytest
 
 from nex_ag.generation_remediation import build_generation_remediation_action
 from nex_ag.generation_remediation_execution import (
+    AG_REMEDIATION_EXECUTION_DISPATCH_SCHEMA_VERSION,
     AG_REMEDIATION_EXECUTION_HANDOFF_PLAN_SCHEMA_VERSION,
     AG_REMEDIATION_EXECUTION_RESULT_REF_SCHEMA_VERSION,
     GenerationRemediationExecutionError,
@@ -14,7 +15,9 @@ from nex_ag.generation_remediation_execution import (
     build_generation_remediation_execution_handoff_plan,
     build_generation_remediation_execution_result_ref,
     clone_plan,
+    dispatch_generation_remediation_execution,
 )
+from nex_ag.generation_remediation_handoff import CxRemediationExecutionClientError
 
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
@@ -85,6 +88,48 @@ def cx_execution_result(**overrides: Any) -> dict[str, Any]:
     return payload
 
 
+class FakeRemediationTaskStore:
+    def __init__(self, record: dict[str, Any] | None) -> None:
+        self.record = record
+        self.saved: list[dict[str, Any]] = []
+
+    def get(self, remediation_action_id: str) -> dict[str, Any] | None:
+        if self.record and self.record["remediation_action_id"] == remediation_action_id:
+            return self.record
+        return None
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        self.record = record
+        self.saved.append(record)
+        return record
+
+
+class FakeCxExecutionClient:
+    def __init__(self, response: dict[str, Any] | None = None) -> None:
+        self.response = response or cx_execution_result()
+        self.calls: list[dict[str, Any]] = []
+
+    def submit_remediation_action(
+        self,
+        action: dict[str, Any],
+        *,
+        request_id: str | None = None,
+        trace_id: str | None = None,
+        requested_at: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            {
+                "action": action,
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "requested_at": requested_at,
+                "idempotency_key": idempotency_key,
+            }
+        )
+        return self.response
+
+
 def test_handoff_plan_moves_proposed_task_through_in_progress_to_waiting_on_cx() -> None:
     plan = build_generation_remediation_execution_handoff_plan(
         remediation_record(),
@@ -116,6 +161,75 @@ def test_handoff_plan_moves_proposed_task_through_in_progress_to_waiting_on_cx()
     assert "cx-gen-001/remediation-tasks/ag-remediation-action-001" in plan[
         "debug_paths"
     ]["ag_remediation_task_path"]
+
+
+def test_dispatch_generation_remediation_execution_updates_store_sequentially() -> None:
+    store = FakeRemediationTaskStore(remediation_record())
+    client = FakeCxExecutionClient()
+
+    dispatch = dispatch_generation_remediation_execution(
+        store=store,
+        cx_client=client,
+        remediation_action_id="ag-remediation-action-001",
+        cx_generation_id="cx-gen-001",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        requested_at=NOW,
+        idempotency_key="dispatch-idem-001",
+        planned_at=NOW,
+    )
+
+    assert dispatch["dispatch_schema_version"] == (
+        AG_REMEDIATION_EXECUTION_DISPATCH_SCHEMA_VERSION
+    )
+    assert dispatch["dispatch_status"] == "DISPATCHED"
+    assert dispatch["final_action_status"] == "WAITING_ON_CX"
+    assert dispatch["status_update_count"] == 2
+    assert [record["action_status"] for record in store.saved] == [
+        "IN_PROGRESS",
+        "WAITING_ON_CX",
+    ]
+    assert dispatch["task"] == store.saved[-1]
+    assert dispatch["plan"]["status_updates"][-1]["result_ref"]["ref_id"] == (
+        "ag-remediation-action-001"
+    )
+    assert dispatch["redaction_summary"]["provider_detail_included"] is False
+    assert len(client.calls) == 1
+    assert client.calls[0]["request_id"] == REQUEST_ID
+    assert client.calls[0]["trace_id"] == TRACE_ID
+    assert client.calls[0]["requested_at"] == NOW
+    assert client.calls[0]["idempotency_key"] == "dispatch-idem-001"
+    assert client.calls[0]["action"]["action_status"] == "PROPOSED"
+
+
+def test_dispatch_generation_remediation_execution_can_complete_succeeded_result() -> None:
+    store = FakeRemediationTaskStore(remediation_record(action_status="WAITING_ON_CX"))
+    client = FakeCxExecutionClient(
+        cx_execution_result(
+            execution_status="SUCCEEDED",
+            repair_cx_generation_id="cx-gen-repair-001",
+            result_ref={
+                "source_service": "nex-cx",
+                "ref_type": "repair_execution",
+                "ref_id": "cx-repair-run-001",
+                "relation": "result_of",
+            },
+        )
+    )
+
+    dispatch = dispatch_generation_remediation_execution(
+        store=store,
+        cx_client=client,
+        remediation_action_id="ag-remediation-action-001",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        planned_at=NOW,
+    )
+
+    assert dispatch["final_action_status"] == "COMPLETED"
+    assert dispatch["status_update_count"] == 1
+    assert dispatch["result_ref"]["repair_cx_generation_id"] == "cx-gen-repair-001"
+    assert store.saved[-1]["result_ref"]["ref_id"] == "cx-repair-run-001"
 
 
 def test_apply_handoff_plan_returns_sequential_records() -> None:
@@ -344,6 +458,98 @@ def test_apply_handoff_plan_rejects_bad_update_and_transition() -> None:
     assert transition_error.value.error_code == (
         "ag.generation_remediation_status_transition_invalid"
     )
+
+
+def test_dispatch_generation_remediation_execution_reports_missing_task() -> None:
+    with pytest.raises(GenerationRemediationExecutionError) as exc_info:
+        dispatch_generation_remediation_execution(
+            store=FakeRemediationTaskStore(None),
+            cx_client=FakeCxExecutionClient(),
+            remediation_action_id="missing",
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.error_code == "ag.remediation_execution_task_not_found"
+
+
+def test_dispatch_generation_remediation_execution_collapses_generation_mismatch() -> None:
+    with pytest.raises(GenerationRemediationExecutionError) as exc_info:
+        dispatch_generation_remediation_execution(
+            store=FakeRemediationTaskStore(remediation_record()),
+            cx_client=FakeCxExecutionClient(),
+            remediation_action_id="ag-remediation-action-001",
+            cx_generation_id="other",
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.error_code == "ag.remediation_execution_task_not_found"
+
+
+def test_dispatch_generation_remediation_execution_maps_client_failure() -> None:
+    class FailingCxClient(FakeCxExecutionClient):
+        def submit_remediation_action(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            raise CxRemediationExecutionClientError(
+                status_code=503,
+                error_code="ag.cx_remediation_execution_unavailable",
+                detail="cx down",
+                retryable=True,
+            )
+
+    with pytest.raises(GenerationRemediationExecutionError) as exc_info:
+        dispatch_generation_remediation_execution(
+            store=FakeRemediationTaskStore(remediation_record()),
+            cx_client=FailingCxClient(),
+            remediation_action_id="ag-remediation-action-001",
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.error_code == "ag.cx_remediation_execution_unavailable"
+    assert exc_info.value.retryable is True
+
+
+def test_dispatch_generation_remediation_execution_maps_store_failures() -> None:
+    class FailingGetStore(FakeRemediationTaskStore):
+        def get(self, remediation_action_id: str) -> dict[str, Any] | None:
+            from nex_ag.generation_remediation import GenerationRemediationError
+
+            raise GenerationRemediationError(
+                status_code=503,
+                error_code="ag.generation_remediation_store_unavailable",
+                detail="store down",
+            )
+
+    class FailingSaveStore(FakeRemediationTaskStore):
+        def save(self, record: dict[str, Any]) -> dict[str, Any]:
+            from nex_ag.generation_remediation import GenerationRemediationError
+
+            raise GenerationRemediationError(
+                status_code=503,
+                error_code="ag.generation_remediation_store_unavailable",
+                detail="store down",
+            )
+
+    for store in (
+        FailingGetStore(remediation_record()),
+        FailingSaveStore(remediation_record()),
+    ):
+        with pytest.raises(GenerationRemediationExecutionError) as exc_info:
+            dispatch_generation_remediation_execution(
+                store=store,
+                cx_client=FakeCxExecutionClient(),
+                remediation_action_id="ag-remediation-action-001",
+                request_id=REQUEST_ID,
+                trace_id=TRACE_ID,
+                planned_at=NOW,
+            )
+
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.retryable is True
 
 
 def test_clone_plan_returns_independent_copy() -> None:

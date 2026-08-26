@@ -4,9 +4,10 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from nex_ag.generation_remediation import (
+    GenerationRemediationError,
     REMEDIATION_ACTION_SCHEMA_VERSION,
     REMEDIATION_STATUS_TRANSITIONS,
     update_generation_remediation_action_status,
@@ -14,6 +15,8 @@ from nex_ag.generation_remediation import (
 from nex_ag.generation_remediation_handoff import (
     CX_REMEDIATION_EXECUTION_RESULT_SCHEMA_VERSION,
     CX_EXECUTABLE_ACTION_TYPES,
+    CxRemediationExecutionClient,
+    CxRemediationExecutionClientError,
     assert_remediation_action_handoff_safe,
     optional_text,
     required_text,
@@ -22,6 +25,9 @@ from nex_ag.generation_remediation_handoff import (
 
 AG_REMEDIATION_EXECUTION_HANDOFF_PLAN_SCHEMA_VERSION = (
     "ag_generation_remediation_execution_handoff_plan.v1"
+)
+AG_REMEDIATION_EXECUTION_DISPATCH_SCHEMA_VERSION = (
+    "ag_generation_remediation_execution_dispatch.v1"
 )
 AG_REMEDIATION_EXECUTION_RESULT_REF_SCHEMA_VERSION = (
     "ag_generation_remediation_execution_result_ref.v1"
@@ -45,6 +51,116 @@ class GenerationRemediationExecutionError(Exception):
 
     def __str__(self) -> str:
         return self.detail
+
+
+class GenerationRemediationTaskExecutionStore(Protocol):
+    def get(self, remediation_action_id: str) -> dict[str, Any] | None:
+        ...
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+
+def dispatch_generation_remediation_execution(
+    *,
+    store: GenerationRemediationTaskExecutionStore,
+    cx_client: CxRemediationExecutionClient,
+    remediation_action_id: str,
+    cx_generation_id: str | None = None,
+    request_id: str,
+    trace_id: str,
+    requested_at: str | None = None,
+    idempotency_key: str | None = None,
+    planned_at: str | None = None,
+) -> dict[str, Any]:
+    action_id = required_text(
+        {"remediation_action_id": remediation_action_id},
+        "remediation_action_id",
+    )
+    requested_generation_id = optional_text(cx_generation_id)
+    request_id_value = required_text({"request_id": request_id}, "request_id")
+    trace_id_value = required_text({"trace_id": trace_id}, "trace_id")
+    try:
+        record = store.get(action_id)
+    except GenerationRemediationError as exc:
+        raise _execution_error_from_exception(exc) from exc
+    if record is None:
+        raise GenerationRemediationExecutionError(
+            status_code=404,
+            error_code="ag.remediation_execution_task_not_found",
+            detail=f"Generation remediation task was not found: {action_id}",
+            retryable=False,
+        )
+    if (
+        requested_generation_id is not None
+        and optional_text(record.get("cx_generation_id")) != requested_generation_id
+    ):
+        raise GenerationRemediationExecutionError(
+            status_code=404,
+            error_code="ag.remediation_execution_task_not_found",
+            detail=f"Generation remediation task was not found: {action_id}",
+            retryable=False,
+        )
+
+    try:
+        cx_result = cx_client.submit_remediation_action(
+            record,
+            request_id=request_id_value,
+            trace_id=trace_id_value,
+            requested_at=requested_at,
+            idempotency_key=idempotency_key,
+        )
+    except CxRemediationExecutionClientError as exc:
+        raise GenerationRemediationExecutionError(
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            detail=exc.detail,
+            retryable=exc.retryable,
+        ) from exc
+
+    plan = build_generation_remediation_execution_handoff_plan(
+        record,
+        cx_result,
+        request_id=request_id_value,
+        trace_id=trace_id_value,
+        planned_at=planned_at,
+    )
+    planned_records = apply_generation_remediation_execution_handoff_plan(
+        record,
+        plan,
+        request_id=request_id_value,
+        trace_id=trace_id_value,
+        updated_at=planned_at,
+    )
+    saved_records: list[dict[str, Any]] = []
+    try:
+        for planned_record in planned_records:
+            saved_records.append(store.save(planned_record))
+    except GenerationRemediationError as exc:
+        raise _execution_error_from_exception(exc) from exc
+
+    final_record = saved_records[-1]
+    return {
+        "dispatch_schema_version": AG_REMEDIATION_EXECUTION_DISPATCH_SCHEMA_VERSION,
+        "dispatch_status": "DISPATCHED",
+        "remediation_action_id": action_id,
+        "cx_generation_id": final_record["cx_generation_id"],
+        "trace_id": trace_id_value,
+        "request_id": request_id_value,
+        "cx_execution_status": plan["cx_execution_status"],
+        "final_action_status": final_record["action_status"],
+        "status_update_count": len(saved_records),
+        "result_ref": deepcopy(plan["result_ref"]),
+        "plan": clone_plan(plan),
+        "task": deepcopy(final_record),
+        "redaction_summary": {
+            "raw_prompt_included": False,
+            "raw_generation_output_included": False,
+            "raw_source_document_text_included": False,
+            "raw_evidence_included": False,
+            "provider_detail_included": False,
+        },
+    }
 
 
 def build_generation_remediation_execution_handoff_plan(
@@ -343,3 +459,14 @@ def _utc_now() -> str:
 
 def clone_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
     return deepcopy(dict(plan))
+
+
+def _execution_error_from_exception(exc: Exception) -> GenerationRemediationExecutionError:
+    return GenerationRemediationExecutionError(
+        status_code=int(getattr(exc, "status_code", 500)),
+        error_code=str(
+            getattr(exc, "error_code", "ag.remediation_execution_store_unavailable")
+        ),
+        detail=str(getattr(exc, "detail", str(exc))),
+        retryable=int(getattr(exc, "status_code", 500)) >= 500,
+    )
