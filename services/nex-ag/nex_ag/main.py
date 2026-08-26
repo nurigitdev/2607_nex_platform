@@ -13,6 +13,9 @@ from nex_ag.generation_remediation import (
     default_generation_remediation_task_store,
     register_generation_remediation_task_routes,
 )
+from nex_ag.generation_remediation_execution import (
+    register_generation_remediation_execution_routes,
+)
 from nex_ag.operations import (
     attach_ag_operations_source_runtime,
     register_job_operation_routes,
@@ -69,6 +72,10 @@ register_generation_remediation_task_routes(
     app,
     store=GENERATION_REMEDIATION_TASK_STORE,
     audit_event_store=SERVICE_PERSISTENCE.operational_event_store,
+)
+register_generation_remediation_execution_routes(
+    app,
+    store=GENERATION_REMEDIATION_TASK_STORE,
 )
 register_retrieval_policy_routes(app)
 register_cx_processing_run_operation_routes(

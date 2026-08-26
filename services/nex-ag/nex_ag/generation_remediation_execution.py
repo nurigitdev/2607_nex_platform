@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+from fastapi import Body, FastAPI, Header, Request
+from fastapi.responses import JSONResponse
 from nex_ag.generation_remediation import (
     GenerationRemediationError,
     REMEDIATION_ACTION_SCHEMA_VERSION,
@@ -18,8 +20,16 @@ from nex_ag.generation_remediation_handoff import (
     CxRemediationExecutionClient,
     CxRemediationExecutionClientError,
     assert_remediation_action_handoff_safe,
+    build_default_cx_remediation_execution_client,
     optional_text,
     required_text,
+)
+from nex_runtime import (
+    DEFAULT_SERVICE_SCOPE,
+    problem_response,
+    request_id_from_headers,
+    trace_id_from_headers,
+    validate_authorization_header,
 )
 
 
@@ -161,6 +171,51 @@ def dispatch_generation_remediation_execution(
             "provider_detail_included": False,
         },
     }
+
+
+def register_generation_remediation_execution_routes(
+    app: FastAPI,
+    *,
+    store: GenerationRemediationTaskExecutionStore,
+    cx_client: CxRemediationExecutionClient | None = None,
+) -> None:
+    selected_cx_client = cx_client or build_default_cx_remediation_execution_client()
+
+    @app.post(
+        (
+            "/admin/v1/generation-audit/generations/{cx_generation_id}"
+            "/remediation-tasks/{remediation_action_id}/execute"
+        ),
+        response_model=None,
+        status_code=202,
+    )
+    def execute_generation_remediation_task(
+        cx_generation_id: str,
+        remediation_action_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        payload: dict[str, Any] | None = Body(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        body = payload or {}
+        try:
+            dispatch = dispatch_generation_remediation_execution(
+                store=store,
+                cx_client=selected_cx_client,
+                remediation_action_id=remediation_action_id,
+                cx_generation_id=cx_generation_id,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                requested_at=optional_text(body.get("requested_at")),
+                idempotency_key=optional_text(body.get("idempotency_key")),
+                planned_at=optional_text(body.get("planned_at")),
+            )
+        except GenerationRemediationExecutionError as exc:
+            return _remediation_execution_problem_response(request, exc)
+        return JSONResponse(status_code=202, content=dispatch)
 
 
 def build_generation_remediation_execution_handoff_plan(
@@ -469,4 +524,43 @@ def _execution_error_from_exception(exc: Exception) -> GenerationRemediationExec
         ),
         detail=str(getattr(exc, "detail", str(exc))),
         retryable=int(getattr(exc, "status_code", 500)) >= 500,
+    )
+
+
+def _authorize_ag_request(
+    request: Request,
+    authorization: str | None,
+) -> JSONResponse | None:
+    result = validate_authorization_header(
+        authorization,
+        expected_audience="nex-ag",
+        required_scopes=[DEFAULT_SERVICE_SCOPE],
+    )
+    if result.ok:
+        return None
+    return problem_response(
+        request,
+        status_code=401,
+        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
+        title="Authentication failed",
+        detail=result.detail or "AG requires a valid service claim.",
+        type_uri="https://nex-platform.local/problems/authentication-failed",
+    )
+
+
+def _remediation_execution_problem_response(
+    request: Request,
+    exc: GenerationRemediationExecutionError,
+) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="Generation remediation execution dispatch error",
+        detail=exc.detail,
+        retryable=exc.retryable,
+        type_uri=(
+            "https://nex-platform.local/problems/"
+            "generation-remediation-execution-dispatch"
+        ),
     )

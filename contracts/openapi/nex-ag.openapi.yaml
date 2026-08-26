@@ -312,6 +312,47 @@ paths:
           description: Requested remediation status transition is not allowed.
         "422":
           description: Status update payload is invalid or contains unsafe raw fields.
+  /admin/v1/generation-audit/generations/{cx_generation_id}/remediation-tasks/{remediation_action_id}/execute:
+    post:
+      operationId: executeAgGenerationRemediationTask
+      tags:
+        - GenerationAudit
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: remediation_action_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgGenerationRemediationExecutionDispatchRequest"
+      responses:
+        "202":
+          description: AG dispatched the remediation task to CX execution.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgGenerationRemediationExecutionDispatch"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Remediation task was not found for this generation.
+        "409":
+          description: Remediation task cannot be dispatched from its current state.
+        "422":
+          description: Dispatch request is invalid or remediation action is not executable by CX.
+        "503":
+          description: CX remediation execution endpoint or AG task store is unavailable.
   /admin/v1/operations:
     get:
       operationId: getAgUnifiedOperationsProjection
@@ -1756,6 +1797,78 @@ components:
           items:
             type: string
             maxLength: 240
+    AgGenerationRemediationExecutionDispatchRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        requested_at:
+          type: string
+          minLength: 1
+        planned_at:
+          type: string
+          minLength: 1
+        idempotency_key:
+          type: string
+          minLength: 1
+    AgGenerationRemediationExecutionDispatch:
+      type: object
+      additionalProperties: true
+      required:
+        - dispatch_schema_version
+        - dispatch_status
+        - remediation_action_id
+        - cx_generation_id
+        - trace_id
+        - request_id
+        - cx_execution_status
+        - final_action_status
+        - status_update_count
+        - result_ref
+        - plan
+        - task
+        - redaction_summary
+      properties:
+        dispatch_schema_version:
+          type: string
+          const: ag_generation_remediation_execution_dispatch.v1
+        dispatch_status:
+          type: string
+          const: DISPATCHED
+        remediation_action_id:
+          type: string
+          minLength: 1
+        cx_generation_id:
+          type: string
+          minLength: 1
+        trace_id:
+          $ref: "#/components/schemas/TraceId"
+        request_id:
+          type: string
+          minLength: 1
+        cx_execution_status:
+          type: string
+          enum:
+            - ACCEPTED
+            - RUNNING
+            - SUCCEEDED
+            - FAILED
+            - CANCELLED
+        final_action_status:
+          $ref: "#/components/schemas/AgGenerationRemediationActionStatus"
+        status_update_count:
+          type: integer
+          minimum: 1
+        result_ref:
+          type: object
+          additionalProperties: true
+        plan:
+          type: object
+          additionalProperties: true
+        task:
+          $ref: "#/components/schemas/AgGenerationRemediationAction"
+        redaction_summary:
+          type: object
+          additionalProperties: true
     AgGenerationRemediationActionType:
       type: string
       enum:

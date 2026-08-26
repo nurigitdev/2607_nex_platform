@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
+from fastapi.testclient import TestClient
 
 from nex_ag.generation_remediation import build_generation_remediation_action
 from nex_ag.generation_remediation_execution import (
@@ -16,13 +19,16 @@ from nex_ag.generation_remediation_execution import (
     build_generation_remediation_execution_result_ref,
     clone_plan,
     dispatch_generation_remediation_execution,
+    register_generation_remediation_execution_routes,
 )
 from nex_ag.generation_remediation_handoff import CxRemediationExecutionClientError
+from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
 NOW = "2026-08-26T00:00:00Z"
+ROOT = Path(__file__).parents[1]
 
 
 def remediation_record(**overrides: Any) -> dict[str, Any]:
@@ -130,6 +136,31 @@ class FakeCxExecutionClient:
         return self.response
 
 
+def auth_headers() -> dict[str, str]:
+    issued = issue_mock_service_token(service_id="nex-oa", audience="nex-ag")
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": REQUEST_ID,
+        "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+    }
+
+
+def build_execution_route_client(
+    *,
+    store: FakeRemediationTaskStore | None = None,
+    cx_client: FakeCxExecutionClient | None = None,
+) -> tuple[TestClient, FakeRemediationTaskStore, FakeCxExecutionClient]:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    selected_store = store or FakeRemediationTaskStore(remediation_record())
+    selected_client = cx_client or FakeCxExecutionClient()
+    register_generation_remediation_execution_routes(
+        app,
+        store=selected_store,
+        cx_client=selected_client,
+    )
+    return TestClient(app), selected_store, selected_client
+
+
 def test_handoff_plan_moves_proposed_task_through_in_progress_to_waiting_on_cx() -> None:
     plan = build_generation_remediation_execution_handoff_plan(
         remediation_record(),
@@ -200,6 +231,110 @@ def test_dispatch_generation_remediation_execution_updates_store_sequentially() 
     assert client.calls[0]["requested_at"] == NOW
     assert client.calls[0]["idempotency_key"] == "dispatch-idem-001"
     assert client.calls[0]["action"]["action_status"] == "PROPOSED"
+
+
+def test_generation_remediation_execution_route_dispatches_task() -> None:
+    client, store, cx_client = build_execution_route_client()
+
+    response = client.post(
+        (
+            "/admin/v1/generation-audit/generations/cx-gen-001"
+            "/remediation-tasks/ag-remediation-action-001/execute"
+        ),
+        headers=auth_headers(),
+        json={
+            "requested_at": NOW,
+            "planned_at": NOW,
+            "idempotency_key": "route-idem-001",
+        },
+    )
+    payload = response.json()
+
+    assert response.status_code == 202
+    assert payload["dispatch_schema_version"] == (
+        AG_REMEDIATION_EXECUTION_DISPATCH_SCHEMA_VERSION
+    )
+    assert payload["final_action_status"] == "WAITING_ON_CX"
+    assert store.record["action_status"] == "WAITING_ON_CX"
+    assert cx_client.calls[0]["idempotency_key"] == "route-idem-001"
+    assert payload["task"]["result_ref"]["source_service"] == "nex-cx"
+
+
+def test_generation_remediation_execution_route_protects_auth_and_not_found() -> None:
+    client, _, _ = build_execution_route_client(store=FakeRemediationTaskStore(None))
+
+    unauthorized = client.post(
+        (
+            "/admin/v1/generation-audit/generations/cx-gen-001"
+            "/remediation-tasks/ag-remediation-action-001/execute"
+        ),
+        json={},
+    )
+    missing = client.post(
+        (
+            "/admin/v1/generation-audit/generations/cx-gen-001"
+            "/remediation-tasks/ag-remediation-action-001/execute"
+        ),
+        headers=auth_headers(),
+        json={},
+    )
+
+    assert unauthorized.status_code == 401
+    assert missing.status_code == 404
+    assert missing.json()["error_code"] == "ag.remediation_execution_task_not_found"
+
+
+def test_generation_remediation_execution_route_maps_client_failure() -> None:
+    class FailingCxClient(FakeCxExecutionClient):
+        def submit_remediation_action(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            raise CxRemediationExecutionClientError(
+                status_code=503,
+                error_code="ag.cx_remediation_execution_unavailable",
+                detail="cx down",
+                retryable=True,
+            )
+
+    client, store, _ = build_execution_route_client(cx_client=FailingCxClient())
+
+    response = client.post(
+        (
+            "/admin/v1/generation-audit/generations/cx-gen-001"
+            "/remediation-tasks/ag-remediation-action-001/execute"
+        ),
+        headers=auth_headers(),
+        json={},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == "ag.cx_remediation_execution_unavailable"
+    assert response.json()["retryable"] is True
+    assert store.record["action_status"] == "PROPOSED"
+
+
+def test_generation_remediation_execution_static_openapi_contract() -> None:
+    spec = yaml.safe_load(
+        (ROOT / "contracts" / "openapi" / "nex-ag.openapi.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    path = (
+        "/admin/v1/generation-audit/generations/{cx_generation_id}"
+        "/remediation-tasks/{remediation_action_id}/execute"
+    )
+    operation = spec["paths"][path]["post"]
+
+    assert operation["operationId"] == "executeAgGenerationRemediationTask"
+    assert operation["requestBody"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AgGenerationRemediationExecutionDispatchRequest"
+    }
+    assert operation["responses"]["202"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AgGenerationRemediationExecutionDispatch"
+    }
+    assert spec["components"]["schemas"]["AgGenerationRemediationExecutionDispatch"][
+        "properties"
+    ]["dispatch_schema_version"]["const"] == (
+        AG_REMEDIATION_EXECUTION_DISPATCH_SCHEMA_VERSION
+    )
 
 
 def test_dispatch_generation_remediation_execution_can_complete_succeeded_result() -> None:

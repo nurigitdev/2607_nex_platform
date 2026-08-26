@@ -163,6 +163,11 @@ Unified operations:
   The same module also owns the dispatch service facade that loads an AG task,
   calls the injected CX remediation execution client, applies the planned task
   updates, and returns `ag_generation_remediation_execution_dispatch.v1`.
+- `POST /admin/v1/generation-audit/generations/{cx_generation_id}/remediation-tasks/{remediation_action_id}/execute`
+  is the protected AG dispatch API for sending a recorded AG remediation task
+  to CX execution. It shares the existing remediation task store, updates task
+  status through the planner, and supports safe `requested_at`, `planned_at`,
+  and `idempotency_key` controls.
 - `GET /admin/v1/operations/retrieval-packages` returns
   `ag_retrieval_package_operations_projection.v1`, a CX-sourced read-only
   projection of persisted retrieval packages for debugging grounded retrieval
