@@ -168,6 +168,13 @@ Unified operations:
   to CX execution. It shares the existing remediation task store, updates task
   status through the planner, and supports safe `requested_at`, `planned_at`,
   and `idempotency_key` controls.
+- `HttpCxRemediationExecutionClient.get_remediation_execution_detail(...)` and
+  `sync_generation_remediation_execution_status(...)` form the AG status
+  follow-up foundation after dispatch. AG reads the CX
+  `cx_remediation_execution_detail.v1` projection, validates the embedded
+  execution result, maps CX execution status back to the AG remediation task
+  state machine, and keeps same-status sync idempotent without exposing a new
+  AG HTTP route yet.
 - `scripts/smoke/run_ag_remediation_execution_dispatch_postgres_smoke.py` is
   the guarded PostgreSQL test-profile evidence path for the dispatch API. It is
   skipped unless

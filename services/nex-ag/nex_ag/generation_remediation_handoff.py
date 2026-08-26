@@ -17,6 +17,9 @@ CX_REMEDIATION_EXECUTION_REQUEST_SCHEMA_VERSION = (
 CX_REMEDIATION_EXECUTION_RESULT_SCHEMA_VERSION = (
     "cx_remediation_execution_result.v1"
 )
+CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION = (
+    "cx_remediation_execution_detail.v1"
+)
 AG_CX_REMEDIATION_HANDOFF_SCHEMA_VERSION = (
     "ag_cx_remediation_handoff_client.v1"
 )
@@ -90,6 +93,18 @@ class CxRemediationExecutionClient(Protocol):
         trace_id: str | None = None,
         requested_at: str | None = None,
         idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        ...
+
+
+class CxRemediationExecutionStatusClient(Protocol):
+    def get_remediation_execution_detail(
+        self,
+        *,
+        parent_cx_generation_id: str,
+        remediation_action_id: str,
+        request_id: str | None = None,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         ...
 
@@ -183,6 +198,83 @@ class HttpCxRemediationExecutionClient:
                 status_code=502,
                 error_code="ag.cx_remediation_execution_response_invalid",
                 detail="CX remediation execution response schema version is invalid.",
+                retryable=True,
+            )
+        return body
+
+    def get_remediation_execution_detail(
+        self,
+        *,
+        parent_cx_generation_id: str,
+        remediation_action_id: str,
+        request_id: str | None = None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        parent_id = required_text(
+            {"parent_cx_generation_id": parent_cx_generation_id},
+            "parent_cx_generation_id",
+        )
+        action_id = required_text(
+            {"remediation_action_id": remediation_action_id},
+            "remediation_action_id",
+        )
+        selected_request_id = request_id or f"ag-cx-remediation-status:{action_id}"
+        token = self.service_token or issue_mock_service_token(
+            service_id="nex-ag",
+            audience="nex-cx",
+        ).access_token
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "X-Request-ID": selected_request_id,
+            "X-Service-ID": "nex-ag",
+        }
+        selected_trace_id = optional_text(trace_id)
+        if selected_trace_id is not None:
+            headers["traceparent"] = f"00-{selected_trace_id}-00f067aa0ba902b7-01"
+        try:
+            response = self.requester(
+                "GET",
+                (
+                    f"{self.base_url.rstrip('/')}/api/v1/generations/{parent_id}"
+                    f"/remediation-executions/{action_id}"
+                ),
+                headers=headers,
+                timeout=self.timeout_seconds,
+            )
+        except httpx.HTTPError as exc:
+            raise CxRemediationExecutionClientError(
+                status_code=503,
+                error_code="ag.cx_remediation_execution_unavailable",
+                detail="CX remediation execution read-model endpoint is unavailable.",
+                retryable=True,
+            ) from exc
+
+        body = _safe_response_json(response)
+        if response.status_code >= 400:
+            raise CxRemediationExecutionClientError(
+                status_code=response.status_code,
+                error_code=str(
+                    body.get(
+                        "error_code",
+                        "ag.cx_remediation_execution_detail_request_failed",
+                    )
+                ),
+                detail=str(
+                    body.get("detail", "CX remediation execution detail failed.")
+                ),
+                retryable=bool(body.get("retryable", response.status_code >= 500)),
+            )
+        if (
+            body.get("detail_schema_version")
+            != CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION
+        ):
+            raise CxRemediationExecutionClientError(
+                status_code=502,
+                error_code="ag.cx_remediation_execution_response_invalid",
+                detail=(
+                    "CX remediation execution detail response schema version "
+                    "is invalid."
+                ),
                 retryable=True,
             )
         return body

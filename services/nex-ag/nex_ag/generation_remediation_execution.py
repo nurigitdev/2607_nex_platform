@@ -15,10 +15,12 @@ from nex_ag.generation_remediation import (
     update_generation_remediation_action_status,
 )
 from nex_ag.generation_remediation_handoff import (
+    CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION,
     CX_REMEDIATION_EXECUTION_RESULT_SCHEMA_VERSION,
     CX_EXECUTABLE_ACTION_TYPES,
     CxRemediationExecutionClient,
     CxRemediationExecutionClientError,
+    CxRemediationExecutionStatusClient,
     assert_remediation_action_handoff_safe,
     build_default_cx_remediation_execution_client,
     optional_text,
@@ -41,6 +43,9 @@ AG_REMEDIATION_EXECUTION_DISPATCH_SCHEMA_VERSION = (
 )
 AG_REMEDIATION_EXECUTION_RESULT_REF_SCHEMA_VERSION = (
     "ag_generation_remediation_execution_result_ref.v1"
+)
+AG_REMEDIATION_EXECUTION_STATUS_SYNC_SCHEMA_VERSION = (
+    "ag_generation_remediation_execution_status_sync.v1"
 )
 TARGET_STATUS_BY_CX_EXECUTION_STATUS = {
     "ACCEPTED": "WAITING_ON_CX",
@@ -161,6 +166,126 @@ def dispatch_generation_remediation_execution(
         "final_action_status": final_record["action_status"],
         "status_update_count": len(saved_records),
         "result_ref": deepcopy(plan["result_ref"]),
+        "plan": clone_plan(plan),
+        "task": deepcopy(final_record),
+        "redaction_summary": {
+            "raw_prompt_included": False,
+            "raw_generation_output_included": False,
+            "raw_source_document_text_included": False,
+            "raw_evidence_included": False,
+            "provider_detail_included": False,
+        },
+    }
+
+
+def sync_generation_remediation_execution_status(
+    *,
+    store: GenerationRemediationTaskExecutionStore,
+    cx_status_client: CxRemediationExecutionStatusClient,
+    remediation_action_id: str,
+    cx_generation_id: str | None = None,
+    request_id: str,
+    trace_id: str,
+    observed_at: str | None = None,
+) -> dict[str, Any]:
+    action_id = required_text(
+        {"remediation_action_id": remediation_action_id},
+        "remediation_action_id",
+    )
+    requested_generation_id = optional_text(cx_generation_id)
+    request_id_value = required_text({"request_id": request_id}, "request_id")
+    trace_id_value = required_text({"trace_id": trace_id}, "trace_id")
+    try:
+        record = store.get(action_id)
+    except GenerationRemediationError as exc:
+        raise _execution_error_from_exception(exc) from exc
+    if record is None:
+        raise GenerationRemediationExecutionError(
+            status_code=404,
+            error_code="ag.remediation_execution_task_not_found",
+            detail=f"Generation remediation task was not found: {action_id}",
+            retryable=False,
+        )
+    if (
+        requested_generation_id is not None
+        and optional_text(record.get("cx_generation_id")) != requested_generation_id
+    ):
+        raise GenerationRemediationExecutionError(
+            status_code=404,
+            error_code="ag.remediation_execution_task_not_found",
+            detail=f"Generation remediation task was not found: {action_id}",
+            retryable=False,
+        )
+
+    try:
+        detail = cx_status_client.get_remediation_execution_detail(
+            parent_cx_generation_id=required_text(record, "cx_generation_id"),
+            remediation_action_id=action_id,
+            request_id=request_id_value,
+            trace_id=trace_id_value,
+        )
+    except CxRemediationExecutionClientError as exc:
+        raise GenerationRemediationExecutionError(
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            detail=exc.detail,
+            retryable=exc.retryable,
+        ) from exc
+
+    cx_result = _validate_cx_execution_detail(detail, record=record)
+    previous_status = required_text(record, "action_status")
+    target_status = TARGET_STATUS_BY_CX_EXECUTION_STATUS[
+        cx_result["execution_status"]
+    ]
+    result_ref = build_generation_remediation_execution_result_ref(
+        cx_result,
+        record=record,
+    )
+    saved_records: list[dict[str, Any]] = []
+    if previous_status == target_status:
+        plan = _status_sync_noop_plan(
+            record,
+            cx_result,
+            result_ref=result_ref,
+            request_id=request_id_value,
+            trace_id=trace_id_value,
+            observed_at=observed_at,
+        )
+    else:
+        plan = build_generation_remediation_execution_handoff_plan(
+            record,
+            cx_result,
+            request_id=request_id_value,
+            trace_id=trace_id_value,
+            planned_at=observed_at,
+        )
+        planned_records = apply_generation_remediation_execution_handoff_plan(
+            record,
+            plan,
+            request_id=request_id_value,
+            trace_id=trace_id_value,
+            updated_at=observed_at,
+        )
+        try:
+            for planned_record in planned_records:
+                saved_records.append(store.save(planned_record))
+        except GenerationRemediationError as exc:
+            raise _execution_error_from_exception(exc) from exc
+
+    final_record = saved_records[-1] if saved_records else deepcopy(dict(record))
+    return {
+        "status_sync_schema_version": AG_REMEDIATION_EXECUTION_STATUS_SYNC_SCHEMA_VERSION,
+        "sync_status": "UPDATED" if saved_records else "UNCHANGED",
+        "remediation_action_id": action_id,
+        "cx_generation_id": final_record["cx_generation_id"],
+        "trace_id": trace_id_value,
+        "request_id": request_id_value,
+        "cx_detail_schema_version": detail["detail_schema_version"],
+        "cx_execution_status": cx_result["execution_status"],
+        "previous_action_status": previous_status,
+        "final_action_status": final_record["action_status"],
+        "status_update_count": len(saved_records),
+        "result_ref": deepcopy(result_ref),
         "plan": clone_plan(plan),
         "task": deepcopy(final_record),
         "redaction_summary": {
@@ -466,6 +591,88 @@ def _validate_cx_execution_result(
             retryable=True,
         )
     return normalized
+
+
+def _validate_cx_execution_detail(
+    detail: Mapping[str, Any],
+    *,
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    if (
+        detail.get("detail_schema_version")
+        != CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION
+    ):
+        raise GenerationRemediationExecutionError(
+            status_code=502,
+            error_code="ag.remediation_execution_cx_detail_schema_invalid",
+            detail="CX remediation execution detail schema version is invalid.",
+            retryable=True,
+        )
+    execution = detail.get("execution")
+    if not isinstance(execution, Mapping):
+        raise GenerationRemediationExecutionError(
+            status_code=502,
+            error_code="ag.remediation_execution_cx_detail_execution_invalid",
+            detail="CX remediation execution detail requires an execution object.",
+            retryable=True,
+        )
+    normalized = _validate_cx_execution_result(execution, record=record)
+    detail_status = optional_text(detail.get("execution_status"))
+    if (
+        detail_status is not None
+        and detail_status != normalized["execution_status"]
+    ):
+        raise GenerationRemediationExecutionError(
+            status_code=502,
+            error_code="ag.remediation_execution_cx_detail_status_mismatch",
+            detail="CX remediation execution detail status does not match execution.",
+            retryable=True,
+        )
+    return normalized
+
+
+def _status_sync_noop_plan(
+    record: Mapping[str, Any],
+    cx_result: Mapping[str, Any],
+    *,
+    result_ref: Mapping[str, Any],
+    request_id: str,
+    trace_id: str,
+    observed_at: str | None,
+) -> dict[str, Any]:
+    cx_generation_id = required_text(record, "cx_generation_id")
+    action_id = required_text(record, "remediation_action_id")
+    action_status = required_text(record, "action_status")
+    return {
+        "plan_schema_version": AG_REMEDIATION_EXECUTION_HANDOFF_PLAN_SCHEMA_VERSION,
+        "remediation_action_id": action_id,
+        "cx_generation_id": cx_generation_id,
+        "trace_id": required_text({"trace_id": trace_id}, "trace_id"),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "current_action_status": action_status,
+        "target_action_status": action_status,
+        "cx_execution_status": required_text(cx_result, "execution_status"),
+        "status_updates": [],
+        "result_ref": deepcopy(dict(result_ref)),
+        "debug_paths": {
+            "ag_remediation_task_path": (
+                "/admin/v1/generation-audit/generations/"
+                f"{cx_generation_id}/remediation-tasks/{action_id}"
+            ),
+            "cx_remediation_execution_path": (
+                f"/api/v1/generations/{cx_generation_id}"
+                f"/remediation-executions/{action_id}"
+            ),
+        },
+        "redaction_summary": {
+            "raw_prompt_included": False,
+            "raw_generation_output_included": False,
+            "raw_source_document_text_included": False,
+            "raw_evidence_included": False,
+            "provider_detail_included": False,
+        },
+        "planned_at": observed_at or _utc_now(),
+    }
 
 
 def _status_path(current_status: str, target_status: str) -> list[str]:

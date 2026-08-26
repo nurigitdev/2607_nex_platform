@@ -10,6 +10,7 @@ from jsonschema import Draft202012Validator
 
 from nex_ag.generation_remediation_handoff import (
     AG_CX_REMEDIATION_TIMEOUT_ENV,
+    CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION,
     CX_REMEDIATION_EXECUTION_RESULT_SCHEMA_VERSION,
     CxRemediationExecutionClientError,
     HttpCxRemediationExecutionClient,
@@ -241,6 +242,73 @@ def test_http_cx_remediation_execution_client_posts_guarded_payload() -> None:
     )
 
 
+def test_http_cx_remediation_execution_client_gets_detail_with_optional_trace() -> None:
+    calls: list[dict[str, Any]] = []
+
+    def fake_request(method: str, url: str, **kwargs: Any) -> httpx.Response:
+        calls.append({"method": method, "url": url, **kwargs})
+        return httpx.Response(
+            200,
+            json={
+                "detail_schema_version": CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION,
+                "projection_status": "READY",
+                "parent_cx_generation_id": "cx-gen-001",
+                "remediation_action_id": "ag-remediation-action-001",
+                "execution_status": "SUCCEEDED",
+                "execution": {
+                    "result_schema_version": (
+                        CX_REMEDIATION_EXECUTION_RESULT_SCHEMA_VERSION
+                    ),
+                    "remediation_action_id": "ag-remediation-action-001",
+                    "parent_cx_generation_id": "cx-gen-001",
+                    "repair_cx_generation_id": "cx-gen-repair-001",
+                    "execution_status": "SUCCEEDED",
+                },
+                "redaction_summary": {
+                    "raw_content_included": False,
+                    "prompt_text_included": False,
+                    "evidence_text_included": False,
+                    "provider_detail_included": False,
+                },
+            },
+        )
+
+    client = HttpCxRemediationExecutionClient(
+        base_url="http://cx.local/",
+        service_token="cx-token",
+        timeout_seconds=3.0,
+        requester=fake_request,
+    )
+
+    detail = client.get_remediation_execution_detail(
+        parent_cx_generation_id="cx-gen-001",
+        remediation_action_id="ag-remediation-action-001",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    detail_without_trace = client.get_remediation_execution_detail(
+        parent_cx_generation_id="cx-gen-001",
+        remediation_action_id="ag-remediation-action-001",
+    )
+
+    assert detail["detail_schema_version"] == (
+        CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION
+    )
+    assert detail_without_trace["execution_status"] == "SUCCEEDED"
+    assert calls[0]["method"] == "GET"
+    assert calls[0]["url"] == (
+        "http://cx.local/api/v1/generations/"
+        "cx-gen-001/remediation-executions/ag-remediation-action-001"
+    )
+    assert calls[0]["headers"]["traceparent"] == (
+        f"00-{TRACE_ID}-00f067aa0ba902b7-01"
+    )
+    assert "traceparent" not in calls[1]["headers"]
+    assert calls[1]["headers"]["X-Request-ID"] == (
+        "ag-cx-remediation-status:ag-remediation-action-001"
+    )
+
+
 def test_http_cx_remediation_execution_client_maps_failures() -> None:
     assert str(
         CxRemediationExecutionClientError(
@@ -325,6 +393,66 @@ def test_http_cx_remediation_execution_client_maps_failures() -> None:
 
     assert wrong_schema.value.status_code == 502
     assert wrong_schema.value.retryable is True
+
+
+def test_http_cx_remediation_execution_client_maps_detail_failures() -> None:
+    def problem_request(method: str, url: str, **kwargs: Any) -> httpx.Response:
+        return httpx.Response(
+            404,
+            json={
+                "error_code": "cx.remediation_execution_not_found",
+                "detail": "missing",
+                "retryable": False,
+            },
+        )
+
+    client = HttpCxRemediationExecutionClient(
+        base_url="http://cx.local",
+        requester=problem_request,
+    )
+
+    with pytest.raises(CxRemediationExecutionClientError) as problem:
+        client.get_remediation_execution_detail(
+            parent_cx_generation_id="cx-gen-001",
+            remediation_action_id="ag-remediation-action-001",
+        )
+
+    assert problem.value.status_code == 404
+    assert problem.value.error_code == "cx.remediation_execution_not_found"
+
+    def timeout_request(method: str, url: str, **kwargs: Any) -> httpx.Response:
+        raise httpx.ConnectError("down")
+
+    timeout_client = HttpCxRemediationExecutionClient(
+        base_url="http://cx.local",
+        requester=timeout_request,
+    )
+    with pytest.raises(CxRemediationExecutionClientError) as timeout:
+        timeout_client.get_remediation_execution_detail(
+            parent_cx_generation_id="cx-gen-001",
+            remediation_action_id="ag-remediation-action-001",
+        )
+
+    assert timeout.value.status_code == 503
+    assert timeout.value.retryable is True
+
+    def wrong_schema_request(method: str, url: str, **kwargs: Any) -> httpx.Response:
+        return httpx.Response(200, json={"detail_schema_version": "old"})
+
+    wrong_schema_client = HttpCxRemediationExecutionClient(
+        base_url="http://cx.local",
+        requester=wrong_schema_request,
+    )
+    with pytest.raises(CxRemediationExecutionClientError) as wrong_schema:
+        wrong_schema_client.get_remediation_execution_detail(
+            parent_cx_generation_id="cx-gen-001",
+            remediation_action_id="ag-remediation-action-001",
+        )
+
+    assert wrong_schema.value.status_code == 502
+    assert wrong_schema.value.error_code == (
+        "ag.cx_remediation_execution_response_invalid"
+    )
 
 
 def test_default_cx_remediation_execution_client_reads_env_and_rejects_bad_timeout() -> None:
