@@ -264,6 +264,12 @@ Unified operations:
   `remediation_executions` section plus
   `remediation_execution_attention_required.v1` issue candidates for failed,
   orphan, missing, unknown, or status-sync-required execution records.
+- `nex_ag.remediation_execution_status_sync_jobs` plans deterministic
+  `common_job.v1` records for AG-owned remediation execution status sync. The
+  planner queues only `SYNC_REQUIRED` records with trace/request correlation,
+  blocks operator-review states, reuses AG/CX debug links, and keeps raw
+  prompt/output/source/evidence text and provider/runtime secrets out of job
+  payloads.
 - `scripts/smoke/run_ag_cx_processing_run_postgres_smoke.py` is the guarded
   PostgreSQL test-profile evidence path for the CX processing run list/detail
   APIs. It is skipped unless `NEX_AG_CX_PROCESSING_RUN_POSTGRES_SMOKE=1` and is
