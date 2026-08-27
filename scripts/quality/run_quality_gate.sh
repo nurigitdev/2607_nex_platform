@@ -103,5 +103,6 @@ mkdir -p "$REPORT_DIR"
 "$PYTHON_BIN" scripts/smoke/run_s35_remediation_observability_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s36_remediation_execution_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s37_remediation_runtime_integration_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s38_remediation_operations_automation_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_remediation_execution_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_remediation_execution_read_model_postgres_smoke.py --summary
