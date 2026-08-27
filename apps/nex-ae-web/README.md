@@ -556,5 +556,12 @@ diagnostics:
 - The smoke is skipped by default and writes to `nex_ae_test` only when
   `NEX_AE_WEB_REPAIRED_RESPONSE_REVIEW_DIAGNOSTICS_POSTGRES_SMOKE=1` is set.
 
+Slice 0400 closes S40:
+
+- `scripts/smoke/run_s40_ae_web_repaired_response_review_closure.py` verifies
+  that the repaired response review surface, client adapters, decision UX,
+  read-model diagnostics, protected PostgreSQL smoke evidence, and slice docs
+  remain registered together.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

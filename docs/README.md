@@ -503,6 +503,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0397`](slices/0397_ae_web_repaired_response_review_read_model.md) | `S40-007` AE Web repaired response review read-model. |
 | [`Slice 0398`](slices/0398_ae_web_repaired_response_read_model_runtime_diagnostics.md) | `S40-008` AE Web repaired response read-model runtime diagnostics. |
 | [`Slice 0399`](slices/0399_ae_web_repaired_response_review_diagnostics_postgresql_smoke.md) | `S40-009` AE Web repaired response review diagnostics PostgreSQL smoke evidence. |
+| [`Slice 0400`](slices/0400_s40_ae_web_repaired_response_review_closure.md) | `S40-010` S40 AE Web repaired response review closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
