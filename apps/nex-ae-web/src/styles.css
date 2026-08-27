@@ -692,6 +692,76 @@ code {
   color: var(--nex-info);
 }
 
+.repaired-response-review-card {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  border: 1px solid var(--nex-border);
+  border-left: 3px solid var(--nex-info);
+  border-radius: 6px;
+  background: #f8fbff;
+  padding: 12px;
+}
+
+.repaired-response-review-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.repaired-response-review-card-header strong,
+.repaired-response-review-preview {
+  overflow-wrap: anywhere;
+}
+
+.repaired-response-review-card-header span {
+  color: var(--nex-info);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.repaired-response-review-preview {
+  margin: 0;
+  color: var(--nex-text);
+  line-height: 1.55;
+}
+
+.repaired-response-review-actions,
+.repaired-response-review-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.repaired-response-review-actions button {
+  min-height: 32px;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.repaired-response-review-actions button:disabled {
+  border-color: var(--nex-border);
+  background: var(--nex-surface-muted);
+  color: var(--nex-muted);
+  cursor: not-allowed;
+}
+
+.repaired-response-review-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  color: var(--nex-primary);
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.repaired-response-review-links a:hover {
+  text-decoration: underline;
+}
+
 .inline-meta div,
 .meta-list div {
   display: grid;
@@ -799,6 +869,11 @@ code {
   .inline-meta div,
   .meta-list div {
     grid-template-columns: 1fr;
+  }
+
+  .repaired-response-review-card-header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .credential-login-form button {

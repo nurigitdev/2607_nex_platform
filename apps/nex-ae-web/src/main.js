@@ -59,6 +59,12 @@ import {
   createGenerationFeedbackSurfaceState
 } from "./generationFeedback.js";
 import {
+  buildRepairedResponseReviewSurfaceFromProjection
+} from "./repairedResponseReviewClient.js";
+import {
+  renderRepairedResponseReviewCard
+} from "./repairedResponseReviewCard.js";
+import {
   buildUploadFileMetadata,
   buildUploadHandoffPayload,
   buildUploadSurfaceDraftFromFileMetadata
@@ -213,7 +219,10 @@ const workspaceState = {
         interactionId: "interaction-local",
         chatDocumentId: "chat-doc-local",
         cxGenerationId: "cx-gen-local"
-      })
+      }),
+      repairedResponseReview: buildRepairedResponseReviewSurfaceFromProjection(
+        buildMockRepairedResponseReviewProjection()
+      )
     }
   ],
   progressEvents: buildProgressEvents(true),
@@ -941,6 +950,7 @@ function renderMessages() {
       ${renderMessageRetrievalQualityWarning(message.retrievalQualityWarning)}
       ${renderMessageGroundedResponseQuality(message.groundedResponseQuality)}
       ${renderArtifactRefs(message.artifactRefs || [])}
+      ${renderMessageRepairedResponseReview(message.repairedResponseReview)}
       ${renderMessageGenerationFeedback(message.generationFeedback)}
     `;
     messageList.appendChild(article);
@@ -1012,6 +1022,13 @@ function renderMessageGenerationFeedback(surface) {
       </dl>
     </div>
   `;
+}
+
+function renderMessageRepairedResponseReview(surface) {
+  if (!surface) return "";
+  return renderRepairedResponseReviewCard(surface, {
+    decisionEnabled: false
+  });
 }
 
 function renderGenerationFeedbackButton(summary, value, label, disabled) {
@@ -1439,7 +1456,23 @@ async function appendPromptInteraction() {
       chatDocumentId: workspaceState.chatDocumentId,
       cxGenerationId: workspaceState.cxGenerationId,
       clientMode: workspaceState.generationFeedbackClient.clientMode
-    })
+    }),
+    repairedResponseReview: grounded
+      ? buildRepairedResponseReviewSurfaceFromProjection(
+          buildMockRepairedResponseReviewProjection({
+            interactionId: workspaceState.interactionId,
+            chatDocumentId: workspaceState.chatDocumentId,
+            originalGenerationId: workspaceState.cxGenerationId,
+            repairedGenerationId: `${workspaceState.cxGenerationId}-repair`,
+            retrievalPackageId:
+              retrievalResult.cxRetrievalPackageId || workspaceState.retrievalPackageId,
+            clientMode: workspaceState.repairedResponseReviewClient.clientMode
+          }),
+          {
+            clientMode: workspaceState.repairedResponseReviewClient.clientMode
+          }
+        )
+      : null
   });
   workspaceState.lastRetrievalRequest = retrievalRequest;
   workspaceState.lastRetrievalResult = retrievalResult;
@@ -1895,6 +1928,112 @@ function buildMockGroundedResponseQualityContract(grounded, overrides = {}) {
     prompt_text_included: false,
     provider_detail_included: false,
     ...overrides
+  };
+}
+
+function buildMockRepairedResponseReviewProjection({
+  interactionId = "interaction-local",
+  chatDocumentId = "chat-doc-local",
+  repairedResponseHandoffId = "handoff-local-repair-001",
+  handoffRequestId = "request-local-repair-001",
+  originalGenerationId = "cx-gen-local",
+  repairedGenerationId = "cx-gen-local-repair",
+  retrievalPackageId = "cx-ret-local",
+  outputPreview = "근거 누락 지점을 보강한 수정 응답입니다."
+} = {}) {
+  const redactionSummary = {
+    raw_output_included: false,
+    ["raw_" + "prompt_included"]: false,
+    ["raw_" + "source_" + "text_included"]: false,
+    ["evidence_" + "text_included"]: false,
+    provider_detail_included: false,
+    ["storage_" + "path_included"]: false
+  };
+  return {
+    projection_schema_version: "ae_repaired_response_review_projection.v1",
+    projection_status: "READY_FOR_DECISION",
+    repaired_response_handoff_id: repairedResponseHandoffId,
+    handoff_request_id: handoffRequestId,
+    trace_id: "trace-local-repair",
+    request_id: "request-local-repair",
+    owner_scope: {
+      tenant_id: localOwnerScope.tenantId,
+      workspace_id: "workspace-local",
+      owner_user_id: localOwnerScope.ownerUserId
+    },
+    conversation_scope: {
+      chat_document_id: chatDocumentId,
+      interaction_id: interactionId
+    },
+    review_card: {
+      title: "수정 응답 검토",
+      presentation_mode: "side_by_side_review",
+      default_action: "review_repair"
+    },
+    original_response_ref: {
+      cx_generation_id: originalGenerationId,
+      link: `/api/v1/generations/${originalGenerationId}`,
+      parent_generation_mutated: false
+    },
+    repaired_response_summary: {
+      cx_generation_id: repairedGenerationId,
+      status: "SUCCEEDED",
+      alias: "default",
+      provider_capability: "grounded_generation",
+      finish_reason: "stop",
+      output_hash: "a".repeat(64),
+      output_preview: outputPreview,
+      usage: {
+        input_tokens: 120,
+        output_tokens: 80,
+        total_tokens: 200
+      },
+      quality_summary: {
+        grounding_required: true,
+        retrieval_package_id: retrievalPackageId,
+        grounded_response_quality_status: "PASS"
+      }
+    },
+    lineage_summary: {
+      remediation_action_id: "remediation-local-001",
+      lineage_status: "REPAIRED",
+      action_type: "regenerate_answer",
+      lineage_type: "repair",
+      attempt_no: 2,
+      result_ref: {
+        kind: "cx_generation",
+        id: repairedGenerationId
+      }
+    },
+    decision_controls: {
+      available_actions: [
+        "view_original",
+        "view_repaired",
+        "accept_repair",
+        "keep_original",
+        "view_lineage"
+      ],
+      primary_actions: ["accept_repair", "keep_original"],
+      secondary_actions: ["view_original", "view_repaired", "view_lineage"],
+      decision_submit_path:
+        `/api/v1/chat/interactions/${interactionId}/` +
+        `repaired-response-handoffs/${repairedResponseHandoffId}/decisions`,
+      idempotency_key_hint: handoffRequestId
+    },
+    links: {
+      handoff:
+        `/api/v1/chat/interactions/${interactionId}/` +
+        `repaired-response-handoffs/${repairedResponseHandoffId}`,
+      original_generation: `/api/v1/generations/${originalGenerationId}`,
+      repaired_generation: `/api/v1/generations/${repairedGenerationId}`,
+      remediation_execution:
+        `/api/v1/generations/${originalGenerationId}/` +
+        "remediation-executions/remediation-local-001"
+    },
+    redaction_summary: redactionSummary,
+    created_at: "2026-08-27T00:00:00Z",
+    updated_at: "2026-08-27T00:01:00Z",
+    checked_at: "2026-08-27T00:02:00Z"
   };
 }
 

@@ -494,5 +494,15 @@ Slice 0392 adds the repaired response review client adapter:
   raw generation output, source text, service credentials, provider endpoints,
   database endpoints, or storage locations.
 
+Slice 0393 renders repaired response review cards in chat:
+
+- `src/repairedResponseReviewCard.js` owns the safe card view-model, summary,
+  and HTML rendering helper.
+- `src/main.js` renders repaired response review cards on assistant messages
+  using the same message-surface pattern as retrieval quality and generation
+  feedback.
+- Primary accept/keep buttons are visible but disabled until the decision
+  submit adapter and click handling are wired in the following slices.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
