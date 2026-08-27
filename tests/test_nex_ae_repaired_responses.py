@@ -29,6 +29,17 @@ from nex_ae_api.repaired_responses import (
     repaired_response_payload_with_path_interaction_id,
     validate_repaired_response_handoff_record,
 )
+from nex_ae_api.repaired_response_review import (
+    AE_REPAIRED_RESPONSE_REVIEW_PROJECTION_SCHEMA_VERSION,
+    PRIMARY_REVIEW_ACTIONS,
+    RepairedResponseReviewProjectionError,
+    assert_repaired_response_review_projection_redaction_safe,
+    build_repaired_response_review_collection,
+    build_repaired_response_review_projection,
+    decision_submit_path_for_handoff,
+    find_sensitive_repaired_response_review_projection_keys,
+    validate_repaired_response_review_projection,
+)
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 
 
@@ -46,6 +57,19 @@ def repaired_response_schema() -> dict[str, Any]:
             / "service"
             / "nex_ae_api"
             / "repaired_response_handoff.v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+
+
+def repaired_response_review_schema() -> dict[str, Any]:
+    return json.loads(
+        (
+            ROOT
+            / "contracts"
+            / "schemas"
+            / "service"
+            / "nex_ae_api"
+            / "repaired_response_review_projection.v1.schema.json"
         ).read_text(encoding="utf-8")
     )
 
@@ -861,3 +885,203 @@ def test_repaired_response_handoff_helpers_cover_optional_edges() -> None:
             detail="readable detail",
         )
     ) == "readable detail"
+
+
+def test_repaired_response_review_projection_is_schema_valid_and_safe() -> None:
+    handoff = build_handoff()
+
+    projection = build_repaired_response_review_projection(
+        handoff,
+        checked_at="2026-08-27T00:02:00Z",
+    )
+
+    Draft202012Validator(repaired_response_review_schema()).validate(projection)
+    assert projection["projection_schema_version"] == (
+        AE_REPAIRED_RESPONSE_REVIEW_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["projection_status"] == "READY_FOR_DECISION"
+    assert projection["owner_scope"] == {
+        "tenant_id": "tenant-001",
+        "workspace_id": "workspace-001",
+        "owner_user_id": "user-001",
+    }
+    assert projection["conversation_scope"]["interaction_id"] == "interaction-001"
+    assert projection["original_response_ref"] == {
+        "cx_generation_id": "cx-gen-001",
+        "link": "/api/v1/generations/cx-gen-001",
+        "parent_generation_mutated": False,
+    }
+    assert projection["repaired_response_summary"]["output_hash"] == "c" * 64
+    assert projection["repaired_response_summary"]["output_preview"] == (
+        "Repaired answer with citation support."
+    )
+    assert projection["decision_controls"]["primary_actions"] == list(
+        PRIMARY_REVIEW_ACTIONS
+    )
+    assert projection["decision_controls"]["secondary_actions"] == [
+        "view_original",
+        "view_repaired",
+        "view_lineage",
+    ]
+    assert projection["decision_controls"]["decision_submit_path"] == (
+        "/api/v1/chat/interactions/interaction-001/"
+        f"repaired-response-handoffs/{handoff['repaired_response_handoff_id']}/"
+        "decisions"
+    )
+    serialized = json.dumps(projection, sort_keys=True)
+    assert "raw answer body" not in serialized
+    assert "hidden prompt" not in serialized
+    assert "/data/nex-platform" not in serialized
+
+
+def test_repaired_response_review_projection_adds_required_primary_actions() -> None:
+    handoff = build_handoff()
+    handoff["user_surface"]["available_actions"] = [
+        None,
+        "",
+        "view_lineage",
+        "view_lineage",
+    ]
+
+    projection = build_repaired_response_review_projection(handoff)
+
+    assert projection["decision_controls"]["available_actions"] == [
+        "view_lineage",
+        "accept_repair",
+        "keep_original",
+    ]
+    assert projection["decision_controls"]["secondary_actions"] == ["view_lineage"]
+
+
+def test_repaired_response_review_collection_filters_and_sorts_by_interaction() -> None:
+    older = build_handoff()
+    newer = deepcopy(older)
+    newer["repaired_response_handoff_id"] = "handoff-newer"
+    newer["handoff_request_id"] = "request-newer"
+    newer["links"]["handoff"] = (
+        "/api/v1/chat/interactions/interaction-001/"
+        "repaired-response-handoffs/handoff-newer"
+    )
+    newer["created_at"] = "2026-08-27T00:10:00Z"
+    other = deepcopy(older)
+    other["interaction_id"] = "other-interaction"
+
+    collection = build_repaired_response_review_collection(
+        [older, other, newer],
+        interaction_id="interaction-001",
+        checked_at="2026-08-27T00:11:00Z",
+    )
+
+    assert collection == {
+        "collection_schema_version": "ae_repaired_response_review_collection.v1",
+        "interaction_id": "interaction-001",
+        "items": collection["items"],
+        "item_count": 2,
+        "checked_at": "2026-08-27T00:11:00Z",
+    }
+    assert [
+        item["repaired_response_handoff_id"] for item in collection["items"]
+    ] == ["handoff-newer", older["repaired_response_handoff_id"]]
+
+
+@pytest.mark.parametrize(
+    ("override", "error_code"),
+    [
+        (
+            {"projection_schema_version": "old"},
+            "ae.repaired_response_review.schema_version_invalid",
+        ),
+        (
+            {"projection_status": "PENDING"},
+            "ae.repaired_response_review.status_invalid",
+        ),
+        (
+            {"owner_scope": {"tenant_id": "", "workspace_id": "w", "owner_user_id": "u"}},
+            "ae.repaired_response_review.owner_scope_invalid",
+        ),
+        (
+            {"conversation_scope": {"chat_document_id": "", "interaction_id": "i"}},
+            "ae.repaired_response_review.conversation_scope_invalid",
+        ),
+        (
+            {"decision_controls": {"primary_actions": ["keep_original"]}},
+            "ae.repaired_response_review.primary_actions_invalid",
+        ),
+        (
+            {
+                "decision_controls": {
+                    "primary_actions": ["accept_repair", "keep_original"],
+                    "available_actions": ["accept_repair", "keep_original", "raw_output"],
+                    "secondary_actions": [],
+                    "decision_submit_path": (
+                        "/api/v1/chat/interactions/i/repaired-response-handoffs/h/decisions"
+                    ),
+                }
+            },
+            "ae.repaired_response_review.available_actions_invalid",
+        ),
+        (
+            {
+                "decision_controls": {
+                    "primary_actions": ["accept_repair", "keep_original"],
+                    "available_actions": ["accept_repair", "keep_original"],
+                    "secondary_actions": [],
+                    "decision_submit_path": "https://example.invalid/decisions",
+                }
+            },
+            "ae.repaired_response_review.decision_path_invalid",
+        ),
+        (
+            {"redaction_summary": {"raw_output_included": True}},
+            "ae.repaired_response_review.redaction_invalid",
+        ),
+    ],
+)
+def test_validate_repaired_response_review_projection_rejects_invalid_shapes(
+    override: dict[str, Any],
+    error_code: str,
+) -> None:
+    projection = build_repaired_response_review_projection(build_handoff())
+    projection.update(override)
+
+    with pytest.raises(RepairedResponseReviewProjectionError) as exc_info:
+        validate_repaired_response_review_projection(projection)
+
+    assert exc_info.value.error_code == error_code
+
+
+def test_repaired_response_review_helpers_reject_invalid_inputs() -> None:
+    handoff = build_handoff()
+    bad_handoff = deepcopy(handoff)
+    bad_handoff["handoff_schema_version"] = "old"
+    with pytest.raises(RepairedResponseReviewProjectionError) as handoff_error:
+        build_repaired_response_review_projection(bad_handoff)
+    assert handoff_error.value.error_code == "ae.repaired_response_review.handoff_invalid"
+
+    bad_path_handoff = deepcopy(handoff)
+    bad_path_handoff["links"]["handoff"] = "https://example.invalid/handoff"
+    with pytest.raises(RepairedResponseReviewProjectionError) as path_error:
+        decision_submit_path_for_handoff(bad_path_handoff)
+    assert path_error.value.error_code == (
+        "ae.repaired_response_review.handoff_path_invalid"
+    )
+
+    with pytest.raises(RepairedResponseReviewProjectionError) as interaction_error:
+        build_repaired_response_review_collection([handoff], interaction_id="")
+    assert interaction_error.value.error_code == (
+        "ae.repaired_response_review.interaction_id_required"
+    )
+
+    payload = {
+        "redaction_summary": {"raw_output_included": False},
+        "nested": [{"raw_prompt": "hidden"}],
+    }
+    assert find_sensitive_repaired_response_review_projection_keys(payload) == [
+        "nested[0].raw_prompt"
+    ]
+    with pytest.raises(RepairedResponseReviewProjectionError) as sensitive_error:
+        assert_repaired_response_review_projection_redaction_safe(payload)
+    assert sensitive_error.value.error_code == (
+        "ae.repaired_response_review.sensitive_key"
+    )
+    assert str(sensitive_error.value) == sensitive_error.value.detail

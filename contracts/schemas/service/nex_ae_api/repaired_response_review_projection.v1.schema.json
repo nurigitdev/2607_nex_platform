@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/repaired_response_review_projection.v1.schema.json",
+  "title": "NeX AE Repaired Response Review Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "propertyNames": {
+    "not": {
+      "enum": [
+        "raw_prompt",
+        "raw_generation_output",
+        "raw_output",
+        "raw_source_text",
+        "source_text",
+        "messages",
+        "provider_endpoint",
+        "provider_url",
+        "model_path",
+        "storage_path",
+        "authorization",
+        "access_token",
+        "refresh_token",
+        "api_key",
+        "password",
+        "secret"
+      ]
+    }
+  },
+  "required": [
+    "projection_schema_version",
+    "projection_status",
+    "repaired_response_handoff_id",
+    "handoff_request_id",
+    "trace_id",
+    "request_id",
+    "owner_scope",
+    "conversation_scope",
+    "review_card",
+    "original_response_ref",
+    "repaired_response_summary",
+    "lineage_summary",
+    "decision_controls",
+    "links",
+    "redaction_summary",
+    "created_at",
+    "updated_at",
+    "checked_at"
+  ],
+  "properties": {
+    "projection_schema_version": {
+      "const": "ae_repaired_response_review_projection.v1"
+    },
+    "projection_status": {
+      "const": "READY_FOR_DECISION"
+    },
+    "repaired_response_handoff_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "handoff_request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "$ref": "#/$defs/traceId"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner_scope": {
+      "$ref": "#/$defs/ownerScope"
+    },
+    "conversation_scope": {
+      "$ref": "#/$defs/conversationScope"
+    },
+    "review_card": {
+      "$ref": "#/$defs/reviewCard"
+    },
+    "original_response_ref": {
+      "$ref": "#/$defs/originalResponseRef"
+    },
+    "repaired_response_summary": {
+      "$ref": "#/$defs/repairedResponseSummary"
+    },
+    "lineage_summary": {
+      "$ref": "#/$defs/lineageSummary"
+    },
+    "decision_controls": {
+      "$ref": "#/$defs/decisionControls"
+    },
+    "links": {
+      "$ref": "#/$defs/links"
+    },
+    "redaction_summary": {
+      "$ref": "#/$defs/redactionSummary"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "traceId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "hash64": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ownerScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tenant_id", "workspace_id", "owner_user_id"],
+      "properties": {
+        "tenant_id": {"type": "string", "minLength": 1},
+        "workspace_id": {"type": "string", "minLength": 1},
+        "owner_user_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "conversationScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chat_document_id", "interaction_id"],
+      "properties": {
+        "chat_document_id": {"type": "string", "minLength": 1},
+        "interaction_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "reviewCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "presentation_mode", "default_action"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "presentation_mode": {
+          "enum": [
+            "side_by_side_review",
+            "replace_answer_candidate",
+            "append_revision_note"
+          ]
+        },
+        "default_action": {"const": "review_repair"}
+      }
+    },
+    "originalResponseRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cx_generation_id", "link", "parent_generation_mutated"],
+      "properties": {
+        "cx_generation_id": {"type": "string", "minLength": 1},
+        "link": {"type": "string", "minLength": 1},
+        "parent_generation_mutated": {"const": false}
+      }
+    },
+    "repairedResponseSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cx_generation_id",
+        "status",
+        "alias",
+        "provider_capability",
+        "finish_reason",
+        "output_hash",
+        "output_preview",
+        "usage",
+        "quality_summary"
+      ],
+      "properties": {
+        "cx_generation_id": {"type": "string", "minLength": 1},
+        "status": {"const": "COMPLETED"},
+        "alias": {"type": "string", "minLength": 1},
+        "provider_capability": {"const": "generation"},
+        "finish_reason": {"type": "string", "minLength": 1},
+        "output_hash": {"$ref": "#/$defs/hash64"},
+        "output_preview": {"type": "string", "maxLength": 120},
+        "usage": {"type": "object"},
+        "quality_summary": {"type": "object"}
+      }
+    },
+    "lineageSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "remediation_action_id",
+        "lineage_status",
+        "action_type",
+        "lineage_type",
+        "attempt_no",
+        "result_ref"
+      ],
+      "properties": {
+        "remediation_action_id": {"type": "string", "minLength": 1},
+        "lineage_status": {"const": "LINKED"},
+        "action_type": {"type": "string", "minLength": 1},
+        "lineage_type": {"const": "repair"},
+        "attempt_no": {"type": "integer", "minimum": 0},
+        "result_ref": {
+          "anyOf": [
+            {"type": "object"},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "decisionControls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available_actions",
+        "primary_actions",
+        "secondary_actions",
+        "decision_submit_path",
+        "idempotency_key_hint"
+      ],
+      "properties": {
+        "available_actions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/reviewAction"}
+        },
+        "primary_actions": {
+          "prefixItems": [
+            {"const": "accept_repair"},
+            {"const": "keep_original"}
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "secondary_actions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/reviewAction"}
+        },
+        "decision_submit_path": {
+          "type": "string",
+          "pattern": "^/api/v1/chat/interactions/.+/repaired-response-handoffs/.+/decisions$"
+        },
+        "idempotency_key_hint": {"type": "string", "minLength": 1}
+      }
+    },
+    "reviewAction": {
+      "enum": [
+        "accept_repair",
+        "keep_original",
+        "view_original",
+        "view_repaired",
+        "view_lineage"
+      ]
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "handoff",
+        "original_generation",
+        "repaired_generation",
+        "remediation_execution"
+      ],
+      "properties": {
+        "handoff": {"type": "string", "minLength": 1},
+        "original_generation": {"type": "string", "minLength": 1},
+        "repaired_generation": {"type": "string", "minLength": 1},
+        "remediation_execution": {"type": "string", "minLength": 1}
+      }
+    },
+    "redactionSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_output_included",
+        "raw_prompt_included",
+        "raw_source_text_included",
+        "evidence_text_included",
+        "provider_detail_included",
+        "storage_path_included",
+        "free_text_storage"
+      ],
+      "properties": {
+        "raw_output_included": {"const": false},
+        "raw_prompt_included": {"const": false},
+        "raw_source_text_included": {"const": false},
+        "evidence_text_included": {"const": false},
+        "provider_detail_included": {"const": false},
+        "storage_path_included": {"const": false},
+        "free_text_storage": {"const": "hash_and_short_preview_only"}
+      }
+    }
+  }
+}

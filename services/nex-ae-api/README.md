@@ -231,6 +231,10 @@ Repaired response handoff:
   store. Set `NEX_AE_REPAIRED_RESPONSE_HANDOFF_POSTGRES_SMOKE=1` with
   `NEX_AE_TEST_DATABASE_URL` to run test-profile migration, insert/select/list
   checks, JSONB/index observations, and cleanup against the real AE test DB.
+- Slice 0386 adds the AE Web-facing repaired response review projection. It
+  converts a validated handoff into a redaction-safe review card with owner
+  scope, generation refs, short repaired preview, lineage summary, primary
+  user actions, and the future `/decisions` submit path.
 
 Chat artifact links:
 
