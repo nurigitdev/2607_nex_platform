@@ -487,6 +487,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0381`](slices/0381_ae_repaired_response_runtime_boundary_audit.md) | `S39-001` AE repaired response runtime boundary audit. |
 | [`Slice 0382`](slices/0382_ae_to_cx_repaired_lineage_client_adapter.md) | `S39-002` AE-to-CX repaired lineage client adapter. |
 | [`Slice 0383`](slices/0383_ae_repaired_handoff_persistence_foundation.md) | `S39-003` AE repaired handoff persistence foundation. |
+| [`Slice 0384`](slices/0384_ae_repaired_handoff_service_api_wiring.md) | `S39-004` AE repaired handoff service API wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -7,9 +7,19 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
+from fastapi import FastAPI, Header, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
+
+from nex_runtime import (
+    DEFAULT_SERVICE_SCOPE,
+    problem_response,
+    request_id_from_headers,
+    trace_id_from_headers,
+    validate_authorization_header,
+)
 
 
 AE_REPAIRED_RESPONSE_HANDOFF_SCHEMA_VERSION = "ae_repaired_response_handoff.v1"
@@ -215,6 +225,92 @@ def default_repaired_response_handoff_store(app: Any) -> Any:
     if session_factory is not None:
         return SqlAlchemyRepairedResponseHandoffStore(session_factory)
     return DEFAULT_REPAIRED_RESPONSE_HANDOFF_STORE
+
+
+def register_repaired_response_handoff_routes(
+    app: FastAPI,
+    *,
+    store: Any | None = None,
+    cx_client: Any | None = None,
+) -> None:
+    from nex_ae_api.repaired_response_client import (
+        CxRepairedResponseSourceClientError,
+        build_default_cx_repaired_response_source_client,
+        build_repaired_response_handoff_from_source_package,
+        build_repaired_response_source_package,
+    )
+
+    handoff_store = store or default_repaired_response_handoff_store(app)
+    client = cx_client or build_default_cx_repaired_response_source_client()
+
+    @app.post(
+        "/api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs",
+        response_model=None,
+        status_code=202,
+    )
+    def create_repaired_response_handoff(
+        interaction_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        request_id = request_id_from_headers(request)
+        trace_id = payload.get("trace_id") or trace_id_from_headers(request)
+        try:
+            source_payload = repaired_response_payload_with_path_interaction_id(
+                payload,
+                interaction_id,
+            )
+            source_package = build_repaired_response_source_package(
+                source_payload=source_payload,
+                client=client,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            handoff = build_repaired_response_handoff_from_source_package(
+                source_payload=source_payload,
+                source_package=source_package,
+                request_id=request_id,
+                trace_id=trace_id,
+                handoff_request_id=optional_text(payload.get("handoff_request_id")),
+            )
+            return handoff_store.save(handoff)
+        except (RepairedResponseHandoffError, CxRepairedResponseSourceClientError) as exc:
+            return _handoff_problem_response(request, exc)
+
+    @app.get(
+        "/api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs/"
+        "{repaired_response_handoff_id}",
+        response_model=None,
+    )
+    def get_repaired_response_handoff(
+        interaction_id: str,
+        repaired_response_handoff_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        record = handoff_store.get(repaired_response_handoff_id)
+        if record is None or record["interaction_id"] != interaction_id:
+            return _handoff_problem_response(
+                request,
+                RepairedResponseHandoffError(
+                    status_code=404,
+                    error_code="ae.repaired_response_handoff_not_found",
+                    detail=(
+                        "Repaired response handoff was not found: "
+                        f"{repaired_response_handoff_id}"
+                    ),
+                ),
+            )
+        return record
 
 
 def build_repaired_response_handoff_record(
@@ -445,6 +541,30 @@ def validate_repaired_response_handoff_record(record: Mapping[str, Any]) -> dict
         )
     assert_repaired_response_handoff_redaction_safe(record)
     return dict(record)
+
+
+def repaired_response_payload_with_path_interaction_id(
+    payload: Mapping[str, Any],
+    interaction_id: str,
+) -> dict[str, Any]:
+    path_interaction_id = interaction_id.strip()
+    if not path_interaction_id:
+        raise RepairedResponseHandoffError(
+            status_code=422,
+            error_code="ae.repaired_response_interaction_id_required",
+            detail="interaction_id is required.",
+        )
+    payload_interaction_id = optional_text(payload.get("interaction_id"))
+    if (
+        payload_interaction_id is not None
+        and payload_interaction_id != path_interaction_id
+    ):
+        raise RepairedResponseHandoffError(
+            status_code=409,
+            error_code="ae.repaired_response_interaction_mismatch",
+            detail="Repaired response interaction_id does not match the route.",
+        )
+    return {**dict(payload), "interaction_id": path_interaction_id}
 
 
 def presentation_mode_from_payload(payload: Mapping[str, Any]) -> str:
@@ -849,6 +969,39 @@ def _non_negative_int(value: Any) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         return 0
     return max(value, 0)
+
+
+def _authorize_ae_request(
+    request: Request,
+    authorization: str | None,
+) -> JSONResponse | None:
+    validation = validate_authorization_header(
+        authorization,
+        expected_audience="nex-ae-api",
+        required_scopes=[DEFAULT_SERVICE_SCOPE],
+    )
+    if validation.ok:
+        return None
+    return problem_response(
+        request,
+        status_code=401,
+        error_code=validation.error_code or "SERVICE_CLAIM_INVALID",
+        title="Authentication failed",
+        detail=validation.detail or "AE API requires a valid service claim.",
+        type_uri="https://nex-platform.local/problems/authentication-failed",
+    )
+
+
+def _handoff_problem_response(request: Request, exc: Any) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=int(getattr(exc, "status_code", 500)),
+        error_code=str(getattr(exc, "error_code", "ae.repaired_response_error")),
+        title="Repaired response handoff failed",
+        detail=str(getattr(exc, "detail", str(exc))),
+        type_uri="https://nex-platform.local/problems/repaired-response-handoff",
+        retryable=bool(getattr(exc, "retryable", False)),
+    )
 
 
 def _utc_now() -> str:

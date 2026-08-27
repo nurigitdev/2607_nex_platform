@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
@@ -24,9 +25,11 @@ from nex_ae_api.repaired_responses import (
     default_repaired_response_handoff_store,
     find_sensitive_repaired_response_handoff_keys,
     presentation_mode_from_payload,
+    register_repaired_response_handoff_routes,
+    repaired_response_payload_with_path_interaction_id,
     validate_repaired_response_handoff_record,
 )
-from nex_runtime import SERVICE_SPECS, build_service_app
+from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 
 
 ROOT = Path(__file__).parents[1]
@@ -55,6 +58,7 @@ def source_payload(**overrides: Any) -> dict[str, Any]:
         "chat_document_id": "chat-doc-001",
         "interaction_id": "interaction-001",
         "original_cx_generation_id": "cx-gen-001",
+        "remediation_action_id": "ag-remediation-action-001",
         "handoff_request_id": "ae-repaired-request-001",
         "actor_claims_ref": {
             "actor_type": "user",
@@ -198,6 +202,79 @@ def build_handoff(
         trace_id=TRACE_ID,
         created_at="2026-08-27T00:00:00Z",
     )
+
+
+class FakeCxRepairedResponseSourceClient:
+    def __init__(
+        self,
+        *,
+        detail: dict[str, Any] | None = None,
+        generation: dict[str, Any] | None = None,
+    ) -> None:
+        self.detail = detail or cx_remediation_detail()
+        self.generation = generation or repaired_generation_record()
+        self.calls: list[dict[str, Any]] = []
+
+    def get_remediation_execution_detail(
+        self,
+        *,
+        parent_cx_generation_id: str,
+        remediation_action_id: str,
+        request_id: str | None = None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            {
+                "method": "detail",
+                "parent_cx_generation_id": parent_cx_generation_id,
+                "remediation_action_id": remediation_action_id,
+                "request_id": request_id,
+                "trace_id": trace_id,
+            }
+        )
+        return self.detail
+
+    def get_repaired_generation_record(
+        self,
+        *,
+        cx_generation_id: str,
+        request_id: str | None = None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            {
+                "method": "generation",
+                "cx_generation_id": cx_generation_id,
+                "request_id": request_id,
+                "trace_id": trace_id,
+            }
+        )
+        return self.generation
+
+
+def auth_headers() -> dict[str, str]:
+    issued = issue_mock_service_token(service_id="nex-ag", audience="nex-ae-api")
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": REQUEST_ID,
+        "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+    }
+
+
+def build_handoff_test_client(
+    *,
+    store: RepairedResponseHandoffStore | None = None,
+    cx_client: FakeCxRepairedResponseSourceClient | None = None,
+) -> tuple[TestClient, RepairedResponseHandoffStore, FakeCxRepairedResponseSourceClient]:
+    app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    selected_store = store or RepairedResponseHandoffStore()
+    selected_client = cx_client or FakeCxRepairedResponseSourceClient()
+    register_repaired_response_handoff_routes(
+        app,
+        store=selected_store,
+        cx_client=selected_client,
+    )
+    return TestClient(app), selected_store, selected_client
 
 
 def sqlite_handoff_session_factory():
@@ -388,6 +465,153 @@ def test_repaired_response_handoff_migration_declares_safe_indexes() -> None:
     assert "raw_generation_output" not in migration
     assert "idx_ae_repaired_response_handoffs_owner_time" in migration
     assert "idx_ae_repaired_response_handoffs_interaction_time" in migration
+
+
+def test_repaired_response_handoff_route_creates_and_reads_record() -> None:
+    client, store, cx_client = build_handoff_test_client()
+
+    create_response = client.post(
+        "/api/v1/chat/interactions/interaction-001/repaired-response-handoffs",
+        json=source_payload(interaction_id="interaction-001"),
+        headers=auth_headers(),
+    )
+
+    assert create_response.status_code == 202
+    created = create_response.json()
+    Draft202012Validator(repaired_response_schema()).validate(created)
+    assert created["handoff_schema_version"] == AE_REPAIRED_RESPONSE_HANDOFF_SCHEMA_VERSION
+    assert created["interaction_id"] == "interaction-001"
+    assert created["source"]["repair_cx_generation_id"] == "cx-gen-repair-001"
+    assert store.get(created["repaired_response_handoff_id"]) == created
+    assert cx_client.calls == [
+        {
+            "method": "detail",
+            "parent_cx_generation_id": "cx-gen-001",
+            "remediation_action_id": "ag-remediation-action-001",
+            "request_id": REQUEST_ID,
+            "trace_id": TRACE_ID,
+        },
+        {
+            "method": "generation",
+            "cx_generation_id": "cx-gen-repair-001",
+            "request_id": REQUEST_ID,
+            "trace_id": TRACE_ID,
+        },
+    ]
+
+    read_response = client.get(
+        (
+            "/api/v1/chat/interactions/interaction-001/"
+            f"repaired-response-handoffs/{created['repaired_response_handoff_id']}"
+        ),
+        headers=auth_headers(),
+    )
+
+    assert read_response.status_code == 200
+    assert read_response.json() == created
+
+
+def test_repaired_response_handoff_route_defaults_path_interaction_id() -> None:
+    client, _store, _cx_client = build_handoff_test_client()
+    payload = source_payload(interaction_id=None)
+
+    response = client.post(
+        "/api/v1/chat/interactions/interaction-from-path/repaired-response-handoffs",
+        json=payload,
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 202
+    assert response.json()["interaction_id"] == "interaction-from-path"
+
+
+def test_repaired_response_handoff_route_maps_auth_validation_and_cx_errors() -> None:
+    client, store, _cx_client = build_handoff_test_client()
+
+    unauthorized = client.post(
+        "/api/v1/chat/interactions/interaction-001/repaired-response-handoffs",
+        json=source_payload(interaction_id="interaction-001"),
+    )
+    assert unauthorized.status_code == 401
+    assert unauthorized.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+
+    mismatch = client.post(
+        "/api/v1/chat/interactions/interaction-001/repaired-response-handoffs",
+        json=source_payload(interaction_id="other-interaction"),
+        headers=auth_headers(),
+    )
+    assert mismatch.status_code == 409
+    assert mismatch.json()["error_code"] == "ae.repaired_response_interaction_mismatch"
+
+    sensitive = client.post(
+        "/api/v1/chat/interactions/interaction-001/repaired-response-handoffs",
+        json=source_payload(interaction_id="interaction-001", raw_prompt="hidden"),
+        headers=auth_headers(),
+    )
+    assert sensitive.status_code == 422
+    assert sensitive.json()["error_code"] == (
+        "ae.cx_repaired_response_source_sensitive_payload"
+    )
+    assert store.list_for_interaction("interaction-001") == []
+
+    cx_error_client, _store, _cx_client = build_handoff_test_client(
+        cx_client=FakeCxRepairedResponseSourceClient(
+            detail=cx_remediation_detail(execution_status="RUNNING")
+        )
+    )
+    cx_error = cx_error_client.post(
+        "/api/v1/chat/interactions/interaction-001/repaired-response-handoffs",
+        json=source_payload(interaction_id="interaction-001"),
+        headers=auth_headers(),
+    )
+    assert cx_error.status_code == 409
+    assert cx_error.json()["error_code"] == (
+        "ae.repaired_response_execution_not_succeeded"
+    )
+
+
+def test_repaired_response_handoff_detail_route_checks_interaction_scope() -> None:
+    client, _store, _cx_client = build_handoff_test_client()
+    created = client.post(
+        "/api/v1/chat/interactions/interaction-001/repaired-response-handoffs",
+        json=source_payload(interaction_id="interaction-001"),
+        headers=auth_headers(),
+    ).json()
+
+    wrong_scope = client.get(
+        (
+            "/api/v1/chat/interactions/other-interaction/"
+            f"repaired-response-handoffs/{created['repaired_response_handoff_id']}"
+        ),
+        headers=auth_headers(),
+    )
+    missing = client.get(
+        (
+            "/api/v1/chat/interactions/interaction-001/"
+            "repaired-response-handoffs/missing-handoff"
+        ),
+        headers=auth_headers(),
+    )
+    unauthorized = client.get(
+        (
+            "/api/v1/chat/interactions/interaction-001/"
+            f"repaired-response-handoffs/{created['repaired_response_handoff_id']}"
+        )
+    )
+
+    assert wrong_scope.status_code == 404
+    assert wrong_scope.json()["error_code"] == "ae.repaired_response_handoff_not_found"
+    assert missing.status_code == 404
+    assert missing.json()["error_code"] == "ae.repaired_response_handoff_not_found"
+    assert unauthorized.status_code == 401
+
+
+def test_repaired_response_payload_with_path_interaction_id_rejects_blank_path() -> None:
+    with pytest.raises(RepairedResponseHandoffError) as exc_info:
+        repaired_response_payload_with_path_interaction_id({}, "  ")
+
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.error_code == "ae.repaired_response_interaction_id_required"
 
 
 def test_repaired_response_handoff_defaults_ids_actor_and_nullable_refs() -> None:

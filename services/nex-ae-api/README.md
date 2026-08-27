@@ -223,6 +223,10 @@ Repaired response handoff:
   `ae_repaired_response_handoffs`. The table indexes owner/time,
   interaction/time, parent generation, repair generation, and remediation
   action while storing only sanitized handoff JSON fields.
+- Slice 0384 wires the service API routes for creating and reading repaired
+  response handoffs. POST fetches sanitized CX source material, builds the
+  handoff record, and persists it; GET enforces interaction scope before
+  returning the safe record.
 
 Chat artifact links:
 
