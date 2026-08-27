@@ -222,6 +222,10 @@ Internal persistence boundary:
   gate closure checker covering boundary, contracts, AG handoff, CX API,
   persistence, job admission, worker planning, mock execution, and runner
   integration.
+- Slice 0370 closes the S37 remediation runtime integration group with a
+  quality gate checker covering CX PostgreSQL execution evidence, AG dispatch,
+  CX read-model follow-up, AG status sync, and optional PostgreSQL smoke suite
+  wiring.
 
 - Chunk policy: `chunk_1000_100`
 - BM25 tokenizer: `mecab_ko`, fallback `korean_mixed_v1`

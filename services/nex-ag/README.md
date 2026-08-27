@@ -197,6 +197,10 @@ Unified operations:
   `NEX_CX_TEST_DATABASE_URL`, updates the AG task in
   `NEX_AG_TEST_DATABASE_URL`, verifies both rows directly from PostgreSQL, and
   deletes both smoke rows.
+- Slice 0370 closes the S37 remediation runtime integration track with a
+  quality gate checker covering CX execution evidence, AG dispatch, CX
+  read-model follow-up, AG status sync, and optional PostgreSQL smoke suite
+  wiring.
 - `GET /admin/v1/operations/retrieval-packages` returns
   `ag_retrieval_package_operations_projection.v1`, a CX-sourced read-only
   projection of persisted retrieval packages for debugging grounded retrieval
