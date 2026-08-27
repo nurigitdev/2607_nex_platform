@@ -729,6 +729,101 @@ def test_repaired_response_handoff_detail_route_checks_interaction_scope() -> No
     assert unauthorized.status_code == 401
 
 
+def test_repaired_response_handoff_review_routes_list_and_read_projection() -> None:
+    store = RepairedResponseHandoffStore()
+    handoff = store.save(build_handoff())
+    store.save(
+        build_handoff(
+            payload=source_payload(
+                interaction_id="other-interaction",
+                handoff_request_id="ae-repaired-request-other",
+            )
+        )
+    )
+    client, _store, _cx_client = build_handoff_test_client(store=store)
+    collection_path = (
+        f"/api/v1/chat/interactions/{handoff['interaction_id']}/"
+        "repaired-response-handoffs/review"
+    )
+    detail_path = (
+        f"/api/v1/chat/interactions/{handoff['interaction_id']}/"
+        f"repaired-response-handoffs/{handoff['repaired_response_handoff_id']}/"
+        "review"
+    )
+
+    collection_response = client.get(collection_path, headers=auth_headers())
+    detail_response = client.get(detail_path, headers=auth_headers())
+    wrong_scope = client.get(
+        detail_path.replace("interaction-001", "other-interaction", 1),
+        headers=auth_headers(),
+    )
+    unauthorized = client.get(collection_path)
+    unauthorized_detail = client.get(detail_path)
+
+    assert collection_response.status_code == 200
+    collection = collection_response.json()
+    assert collection["collection_schema_version"] == (
+        "ae_repaired_response_review_collection.v1"
+    )
+    assert collection["item_count"] == 1
+    assert collection["items"][0]["repaired_response_handoff_id"] == (
+        handoff["repaired_response_handoff_id"]
+    )
+    assert collection["items"][0]["decision_controls"]["decision_submit_path"] == (
+        f"/api/v1/chat/interactions/{handoff['interaction_id']}/"
+        f"repaired-response-handoffs/{handoff['repaired_response_handoff_id']}/"
+        "decisions"
+    )
+
+    assert detail_response.status_code == 200
+    projection = detail_response.json()
+    Draft202012Validator(repaired_response_review_schema()).validate(projection)
+    assert projection["projection_schema_version"] == (
+        AE_REPAIRED_RESPONSE_REVIEW_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["repaired_response_summary"]["output_preview"] == (
+        "Repaired answer with citation support."
+    )
+    assert "hidden" not in json.dumps(projection)
+    assert "raw_prompt\"" not in json.dumps(projection)
+    assert wrong_scope.status_code == 404
+    assert unauthorized.status_code == 401
+    assert unauthorized_detail.status_code == 401
+
+
+def test_repaired_response_handoff_review_routes_map_projection_errors() -> None:
+    store = RepairedResponseHandoffStore()
+    handoff = store.save(build_handoff())
+    corrupted = deepcopy(handoff)
+    corrupted["redaction_summary"] = {
+        **corrupted["redaction_summary"],
+        "raw_prompt_included": True,
+    }
+    store.records[handoff["repaired_response_handoff_id"]] = corrupted
+    client, _store, _cx_client = build_handoff_test_client(store=store)
+    collection_path = (
+        f"/api/v1/chat/interactions/{handoff['interaction_id']}/"
+        "repaired-response-handoffs/review"
+    )
+    detail_path = (
+        f"/api/v1/chat/interactions/{handoff['interaction_id']}/"
+        f"repaired-response-handoffs/{handoff['repaired_response_handoff_id']}/"
+        "review"
+    )
+
+    collection_response = client.get(collection_path, headers=auth_headers())
+    detail_response = client.get(detail_path, headers=auth_headers())
+
+    assert collection_response.status_code == 422
+    assert collection_response.json()["error_code"] == (
+        "ae.repaired_response_review.handoff_invalid"
+    )
+    assert detail_response.status_code == 422
+    assert detail_response.json()["error_code"] == (
+        "ae.repaired_response_review.handoff_invalid"
+    )
+
+
 def test_repaired_response_payload_with_path_interaction_id_rejects_blank_path() -> None:
     with pytest.raises(RepairedResponseHandoffError) as exc_info:
         repaired_response_payload_with_path_interaction_id({}, "  ")

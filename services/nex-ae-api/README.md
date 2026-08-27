@@ -250,6 +250,10 @@ Repaired response handoff:
   real AE test DB.
 - Slice 0390 closes S39 with a repaired response handoff closure checkpoint and
   adds AE OpenAPI coverage for repaired response decision POST/list/detail.
+- Slice 0392 exposes read-only repaired response review projection routes for
+  AE Web. The handoff review collection and detail routes return
+  `ae_repaired_response_review_collection.v1` and
+  `ae_repaired_response_review_projection.v1` without adding new persistence.
 
 Chat artifact links:
 

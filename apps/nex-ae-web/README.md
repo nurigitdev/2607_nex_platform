@@ -483,5 +483,16 @@ Slice 0391 starts the repaired response review surface:
   service tokens, provider endpoints, database endpoints, and storage locations
   out of browser state.
 
+Slice 0392 adds the repaired response review client adapter:
+
+- `src/repairedResponseReviewClient.js` owns mock and fetch adapters for the AE
+  review projection list/detail routes.
+- `src/clientRegistry.js` composes `repairedResponseReviewClient` in mock and
+  fetch runtime modes.
+- The adapter normalizes review projections into
+  `ae_web_repaired_response_review_surface.v1` without storing raw prompts,
+  raw generation output, source text, service credentials, provider endpoints,
+  database endpoints, or storage locations.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

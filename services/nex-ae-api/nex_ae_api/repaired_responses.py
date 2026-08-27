@@ -239,6 +239,11 @@ def register_repaired_response_handoff_routes(
         build_repaired_response_handoff_from_source_package,
         build_repaired_response_source_package,
     )
+    from nex_ae_api.repaired_response_review import (
+        RepairedResponseReviewProjectionError,
+        build_repaired_response_review_collection,
+        build_repaired_response_review_projection,
+    )
 
     handoff_store = store or default_repaired_response_handoff_store(app)
     client = cx_client or build_default_cx_repaired_response_source_client()
@@ -284,6 +289,35 @@ def register_repaired_response_handoff_routes(
 
     @app.get(
         "/api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs/"
+        "review",
+        response_model=None,
+    )
+    def list_repaired_response_handoff_reviews(
+        interaction_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return build_repaired_response_review_collection(
+                handoff_store.list_for_interaction(interaction_id),
+                interaction_id=interaction_id,
+            )
+        except RepairedResponseReviewProjectionError as exc:
+            return _handoff_problem_response(
+                request,
+                RepairedResponseHandoffError(
+                    status_code=422,
+                    error_code=exc.error_code,
+                    detail=exc.detail,
+                ),
+            )
+
+    @app.get(
+        "/api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs/"
         "{repaired_response_handoff_id}",
         response_model=None,
     )
@@ -311,6 +345,46 @@ def register_repaired_response_handoff_routes(
                 ),
             )
         return record
+
+    @app.get(
+        "/api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs/"
+        "{repaired_response_handoff_id}/review",
+        response_model=None,
+    )
+    def get_repaired_response_handoff_review(
+        interaction_id: str,
+        repaired_response_handoff_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        record = handoff_store.get(repaired_response_handoff_id)
+        if record is None or record["interaction_id"] != interaction_id:
+            return _handoff_problem_response(
+                request,
+                RepairedResponseHandoffError(
+                    status_code=404,
+                    error_code="ae.repaired_response_handoff_not_found",
+                    detail=(
+                        "Repaired response handoff was not found: "
+                        f"{repaired_response_handoff_id}"
+                    ),
+                ),
+            )
+        try:
+            return build_repaired_response_review_projection(record)
+        except RepairedResponseReviewProjectionError as exc:
+            return _handoff_problem_response(
+                request,
+                RepairedResponseHandoffError(
+                    status_code=422,
+                    error_code=exc.error_code,
+                    detail=exc.detail,
+                ),
+            )
 
 
 def build_repaired_response_handoff_record(

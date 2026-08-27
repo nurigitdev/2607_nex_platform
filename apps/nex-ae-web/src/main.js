@@ -453,6 +453,8 @@ function applySessionBootstrap(sessionBootstrap) {
   workspaceState.retrievalClient = workspaceState.clientRegistry.retrievalClient;
   workspaceState.generationFeedbackClient =
     workspaceState.clientRegistry.generationFeedbackClient;
+  workspaceState.repairedResponseReviewClient =
+    workspaceState.clientRegistry.repairedResponseReviewClient;
 }
 
 function syncOwnerScopeFromSessionClaims() {

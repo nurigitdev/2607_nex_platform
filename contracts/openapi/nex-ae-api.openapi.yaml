@@ -846,6 +846,59 @@ paths:
           description: Handoff payload is invalid or contains sensitive fields.
         "503":
           description: CX remediation or generation read model is unavailable.
+  /api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs/review:
+    get:
+      operationId: listAeRepairedResponseHandoffReviews
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Safe AE Web repaired response review projection collection.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                required:
+                  - collection_schema_version
+                  - interaction_id
+                  - items
+                  - item_count
+                properties:
+                  collection_schema_version:
+                    const: ae_repaired_response_review_collection.v1
+                  interaction_id:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                      required:
+                        - projection_schema_version
+                        - repaired_response_handoff_id
+                        - decision_controls
+                      properties:
+                        projection_schema_version:
+                          const: ae_repaired_response_review_projection.v1
+                        repaired_response_handoff_id:
+                          type: string
+                        decision_controls:
+                          type: object
+                          additionalProperties: true
+                  item_count:
+                    type: integer
+                    minimum: 0
+        "401":
+          description: Service claim or browser user session is missing or invalid.
+        "422":
+          description: Stored handoff cannot be projected into a safe review card.
   /api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs/{repaired_response_handoff_id}:
     get:
       operationId: getAeRepairedResponseHandoff
@@ -885,6 +938,82 @@ paths:
           description: Service claim or browser user session is missing or invalid.
         "404":
           description: Repaired response handoff was not found for the interaction.
+  /api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs/{repaired_response_handoff_id}/review:
+    get:
+      operationId: getAeRepairedResponseHandoffReview
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repaired_response_handoff_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Safe AE Web repaired response review projection.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                required:
+                  - projection_schema_version
+                  - projection_status
+                  - repaired_response_handoff_id
+                  - owner_scope
+                  - conversation_scope
+                  - repaired_response_summary
+                  - decision_controls
+                  - redaction_summary
+                properties:
+                  projection_schema_version:
+                    const: ae_repaired_response_review_projection.v1
+                  projection_status:
+                    const: READY_FOR_DECISION
+                  repaired_response_handoff_id:
+                    type: string
+                  owner_scope:
+                    type: object
+                    additionalProperties: true
+                  conversation_scope:
+                    type: object
+                    additionalProperties: true
+                  repaired_response_summary:
+                    type: object
+                    additionalProperties: true
+                    properties:
+                      output_preview:
+                        type: string
+                        maxLength: 120
+                  decision_controls:
+                    type: object
+                    additionalProperties: true
+                    required:
+                      - primary_actions
+                      - decision_submit_path
+                    properties:
+                      primary_actions:
+                        type: array
+                        contains:
+                          const: accept_repair
+                      decision_submit_path:
+                        type: string
+                        pattern: "^/api/v1/chat/interactions/.+/repaired-response-handoffs/.+/decisions$"
+                  redaction_summary:
+                    type: object
+                    additionalProperties: true
+        "401":
+          description: Service claim or browser user session is missing or invalid.
+        "404":
+          description: Repaired response handoff was not found for the interaction.
+        "422":
+          description: Stored handoff cannot be projected into a safe review card.
   /api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs/{repaired_response_handoff_id}/decisions:
     post:
       operationId: createAeRepairedResponseDecision

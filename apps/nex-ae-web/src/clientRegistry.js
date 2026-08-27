@@ -11,6 +11,10 @@ import {
   createMockGenerationFeedbackClient
 } from "./generationFeedback.js";
 import {
+  createFetchRepairedResponseReviewClient,
+  createMockRepairedResponseReviewClient
+} from "./repairedResponseReviewClient.js";
+import {
   createFetchUploadClient,
   createMockUploadClient
 } from "./uploadClient.js";
@@ -48,6 +52,10 @@ export function createAeWebClients({
           }),
           generationFeedbackClient: createMockGenerationFeedbackClient({
             responseFactory: responseFactories.generationFeedback
+          }),
+          repairedResponseReviewClient: createMockRepairedResponseReviewClient({
+            projections: responseFactories.repairedResponseReviewProjections || [],
+            responseFactory: responseFactories.repairedResponseReview
           })
         }
       : {
@@ -55,7 +63,9 @@ export function createAeWebClients({
           uploadClient: createFetchUploadClient(commonFetchOptions),
           retrievalClient: createFetchRetrievalClient(commonFetchOptions),
           generationFeedbackClient:
-            createFetchGenerationFeedbackClient(commonFetchOptions)
+            createFetchGenerationFeedbackClient(commonFetchOptions),
+          repairedResponseReviewClient:
+            createFetchRepairedResponseReviewClient(commonFetchOptions)
         };
 
   return {
@@ -87,7 +97,8 @@ export function buildClientRegistrySummary(registry) {
       document_detail: registry.documentDetailClient.clientMode,
       upload: registry.uploadClient.clientMode,
       retrieval: registry.retrievalClient.clientMode,
-      generation_feedback: registry.generationFeedbackClient.clientMode
+      generation_feedback: registry.generationFeedbackClient.clientMode,
+      repaired_response_review: registry.repairedResponseReviewClient.clientMode
     },
     metadata: registry.metadata
   };
@@ -119,6 +130,7 @@ function isRegistry(value) {
     value.documentDetailClient &&
     value.uploadClient &&
     value.retrievalClient &&
-    value.generationFeedbackClient
+    value.generationFeedbackClient &&
+    value.repairedResponseReviewClient
   );
 }

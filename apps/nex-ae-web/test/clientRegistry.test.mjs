@@ -41,8 +41,10 @@ describe("AE Web client registry", () => {
     assert.equal(registry.uploadClient.clientMode, "mock");
     assert.equal(registry.retrievalClient.clientMode, "mock");
     assert.equal(registry.generationFeedbackClient.clientMode, "mock");
+    assert.equal(registry.repairedResponseReviewClient.clientMode, "mock");
     assert.equal(summary.clients.document_detail, "mock");
     assert.equal(summary.clients.generation_feedback, "mock");
+    assert.equal(summary.clients.repaired_response_review, "mock");
     assert.deepEqual(summary.metadata, {
       browserServiceTokenIncluded: false,
       providerUrlIncluded: false,
@@ -75,6 +77,22 @@ describe("AE Web client registry", () => {
                 feedback_reasons: ["helpful"],
                 quality_issue_refs: [],
                 created_at: "2026-08-25T00:00:00Z"
+              };
+            }
+          };
+        }
+        if (String(url).includes("/repaired-response-handoffs/review")) {
+          return {
+            ok: true,
+            status: 200,
+            async json() {
+              return {
+                collection_schema_version:
+                  "ae_repaired_response_review_collection.v1",
+                interaction_id: "interaction-001",
+                items: [],
+                item_count: 0,
+                checked_at: "2026-08-27T00:00:00Z"
               };
             }
           };
@@ -113,6 +131,9 @@ describe("AE Web client registry", () => {
         submitted_via: "ae-web"
       }
     });
+    await registry.repairedResponseReviewClient.listRepairedResponseReviews(
+      "interaction-001"
+    );
     const summary = buildClientRegistrySummary(registry);
 
     assert.equal(registry.clientMode, "fetch");
@@ -122,10 +143,15 @@ describe("AE Web client registry", () => {
       calls[1].url,
       "https://ae.local/api/v1/chat/interactions/interaction-001/feedback"
     );
+    assert.equal(
+      calls[2].url,
+      "https://ae.local/api/v1/chat/interactions/interaction-001/repaired-response-handoffs/review"
+    );
     assert.equal(summary.base_url, "https://ae.local");
     assert.equal(summary.clients.upload, "fetch");
     assert.equal(summary.clients.retrieval, "fetch");
     assert.equal(summary.clients.generation_feedback, "fetch");
+    assert.equal(summary.clients.repaired_response_review, "fetch");
   });
 
   it("rejects unsupported client modes and invalid base URLs", () => {
