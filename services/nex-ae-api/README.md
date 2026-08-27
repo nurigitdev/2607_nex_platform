@@ -214,6 +214,11 @@ Repaired response handoff:
 - Slice 0381 freezes the runtime boundary before route/persistence wiring: AE
   API is the handoff system of record, AE Web owns the review surface, CX owns
   repaired lineage/source records, and AG owns remediation orchestration.
+- Slice 0382 adds the AE-to-CX repaired response source client. It fetches CX
+  remediation detail and the repaired generation record, validates schema
+  versions, sanitizes source material into
+  `ae_cx_repaired_response_source_package.v1`, and uses
+  `NEX_AE_CX_REPAIRED_RESPONSE_TIMEOUT_SECONDS` for timeout tuning.
 
 Chat artifact links:
 
