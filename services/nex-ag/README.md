@@ -270,6 +270,11 @@ Unified operations:
   blocks operator-review states, reuses AG/CX debug links, and keeps raw
   prompt/output/source/evidence text and provider/runtime secrets out of job
   payloads.
+- `nex_ag.remediation_execution_status_sync_worker` runs those status-sync
+  jobs through the shared worker runner. It validates job shape and correlation,
+  emits heartbeat/log evidence through injected runtime stores, delegates the
+  task update to `sync_generation_remediation_execution_status(...)`, and
+  returns only a redacted worker result summary.
 - `scripts/smoke/run_ag_cx_processing_run_postgres_smoke.py` is the guarded
   PostgreSQL test-profile evidence path for the CX processing run list/detail
   APIs. It is skipped unless `NEX_AG_CX_PROCESSING_RUN_POSTGRES_SMOKE=1` and is
