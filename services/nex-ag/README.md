@@ -275,6 +275,13 @@ Unified operations:
   emits heartbeat/log evidence through injected runtime stores, delegates the
   task update to `sync_generation_remediation_execution_status(...)`, and
   returns only a redacted worker result summary.
+- `scripts/smoke/run_ag_remediation_execution_status_sync_worker_postgres_smoke.py`
+  is the guarded cross-database PostgreSQL test-profile evidence path for the
+  AG status-sync worker. It is skipped unless
+  `NEX_AG_REMEDIATION_EXECUTION_STATUS_SYNC_WORKER_POSTGRES_SMOKE=1`, runs
+  `nex-ag` and `nex-cx` migrations, enqueues an AG status-sync job, claims it
+  through the worker runtime, verifies AG task/job/heartbeat/log rows and the
+  CX execution row directly from PostgreSQL, and cleans up smoke rows.
 - `scripts/smoke/run_ag_cx_processing_run_postgres_smoke.py` is the guarded
   PostgreSQL test-profile evidence path for the CX processing run list/detail
   APIs. It is skipped unless `NEX_AG_CX_PROCESSING_RUN_POSTGRES_SMOKE=1` and is

@@ -53,6 +53,11 @@ from run_ag_remediation_execution_status_sync_postgres_smoke import (  # noqa: E
     SMOKE_PROFILE_ENV as AG_REMEDIATION_EXECUTION_STATUS_SYNC_POSTGRES_PROFILE_ENV,
     run_ag_remediation_execution_status_sync_postgres_smoke,
 )
+from run_ag_remediation_execution_status_sync_worker_postgres_smoke import (  # noqa: E402
+    SMOKE_ENV as AG_REMEDIATION_EXECUTION_STATUS_SYNC_WORKER_POSTGRES_SMOKE_ENV,
+    SMOKE_PROFILE_ENV as AG_REMEDIATION_EXECUTION_STATUS_SYNC_WORKER_POSTGRES_PROFILE_ENV,
+    run_ag_remediation_execution_status_sync_worker_postgres_smoke,
+)
 from run_ag_generation_quality_postgres_smoke import (  # noqa: E402
     SMOKE_ENV as AG_GENERATION_QUALITY_POSTGRES_SMOKE_ENV,
     SMOKE_PROFILE_ENV as AG_GENERATION_QUALITY_POSTGRES_PROFILE_ENV,
@@ -203,6 +208,7 @@ SUITE_STAGE_ORDER = (
     "cx_processing_api",
     "ag_cx_processing_run_postgres",
     "ag_remediation_execution_status_sync_postgres",
+    "ag_remediation_execution_status_sync_worker_postgres",
     "ag_cross_service_observability",
 )
 
@@ -318,6 +324,8 @@ def run_postgres_test_smoke_suite(
         AG_CX_PROCESSING_RUN_POSTGRES_PROFILE_ENV: profile,
         AG_REMEDIATION_EXECUTION_STATUS_SYNC_POSTGRES_SMOKE_ENV: "1",
         AG_REMEDIATION_EXECUTION_STATUS_SYNC_POSTGRES_PROFILE_ENV: profile,
+        AG_REMEDIATION_EXECUTION_STATUS_SYNC_WORKER_POSTGRES_SMOKE_ENV: "1",
+        AG_REMEDIATION_EXECUTION_STATUS_SYNC_WORKER_POSTGRES_PROFILE_ENV: profile,
         AG_OBSERVABILITY_SMOKE_ENV: "1",
         AG_OBSERVABILITY_PROFILE_ENV: profile,
     }
@@ -395,6 +403,13 @@ def run_postgres_test_smoke_suite(
     )
     stages["ag_remediation_execution_status_sync_postgres"] = _stage_from_child_smoke(
         run_ag_remediation_execution_status_sync_postgres_smoke(environ=smoke_env)
+    )
+    stages["ag_remediation_execution_status_sync_worker_postgres"] = (
+        _stage_from_child_smoke(
+            run_ag_remediation_execution_status_sync_worker_postgres_smoke(
+                environ=smoke_env
+            )
+        )
     )
     stages["ag_cross_service_observability"] = _stage_from_child_smoke(
         run_ag_cross_service_observability_smoke(environ=smoke_env)

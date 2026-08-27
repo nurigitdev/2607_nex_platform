@@ -2924,6 +2924,11 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
     )
     monkeypatch.setattr(
         postgres_suite_smoke,
+        "run_ag_remediation_execution_status_sync_worker_postgres_smoke",
+        child_pass("ag_remediation_execution_status_sync_worker_postgres_smoke"),
+    )
+    monkeypatch.setattr(
+        postgres_suite_smoke,
         "run_ag_cross_service_observability_smoke",
         child_pass("ag_cross_service_observability_smoke"),
     )
@@ -2971,10 +2976,11 @@ def test_postgres_test_smoke_suite_reports_pass_without_leaking_secret(
         ("cx_processing_postgres_api_smoke", "test"),
         ("ag_cx_processing_run_postgres_smoke", "test"),
         ("ag_remediation_execution_status_sync_postgres_smoke", "test"),
+        ("ag_remediation_execution_status_sync_worker_postgres_smoke", "test"),
         ("ag_cross_service_observability_smoke", "test"),
     ]
     assert postgres_suite_smoke.summary_line(evidence) == (
-        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=28"
+        "postgres_test_smoke_suite=pass services=2 profile=test primary=nex-cx stages=29"
     )
 
 
