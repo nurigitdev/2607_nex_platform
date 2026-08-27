@@ -885,6 +885,184 @@ paths:
           description: Service claim or browser user session is missing or invalid.
         "404":
           description: Repaired response handoff was not found for the interaction.
+  /api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs/{repaired_response_handoff_id}/decisions:
+    post:
+      operationId: createAeRepairedResponseDecision
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repaired_response_handoff_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              required:
+                - decision_action
+              properties:
+                decision_action:
+                  enum:
+                    - accept_repair
+                    - keep_original
+                decision_reason_codes:
+                  type: array
+                  items:
+                    type: string
+                decision_comment:
+                  type: string
+                  maxLength: 240
+                submitted_via:
+                  enum:
+                    - chat_review
+                    - document_detail
+                    - operator_replay
+      responses:
+        "202":
+          description: AE repaired response user decision was recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                required:
+                  - decision_schema_version
+                  - repaired_response_decision_id
+                  - decision_action
+                  - selected_cx_generation_id
+                  - rejected_cx_generation_id
+                properties:
+                  decision_schema_version:
+                    const: ae_repaired_response_decision.v1
+                  repaired_response_decision_id:
+                    type: string
+                  decision_action:
+                    enum:
+                      - accept_repair
+                      - keep_original
+                  selected_cx_generation_id:
+                    type: string
+                  rejected_cx_generation_id:
+                    type: string
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Repaired response handoff was not found for the interaction.
+        "409":
+          description: Decision payload scope does not match the handoff.
+        "422":
+          description: Decision payload is invalid or contains sensitive fields.
+        "503":
+          description: Repaired response decision store is unavailable.
+    get:
+      operationId: listAeRepairedResponseDecisions
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repaired_response_handoff_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Safe repaired response decision collection for the handoff.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                required:
+                  - collection_schema_version
+                  - interaction_id
+                  - repaired_response_handoff_id
+                  - items
+                  - item_count
+                properties:
+                  collection_schema_version:
+                    const: ae_repaired_response_decision_collection.v1
+                  interaction_id:
+                    type: string
+                  repaired_response_handoff_id:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  item_count:
+                    type: integer
+                    minimum: 0
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Repaired response handoff was not found for the interaction.
+        "503":
+          description: Repaired response decision store is unavailable.
+  /api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs/{repaired_response_handoff_id}/decisions/{repaired_response_decision_id}:
+    get:
+      operationId: getAeRepairedResponseDecision
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repaired_response_handoff_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repaired_response_decision_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Safe repaired response decision record.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                required:
+                  - decision_schema_version
+                  - repaired_response_decision_id
+                  - interaction_id
+                  - repaired_response_handoff_id
+                properties:
+                  decision_schema_version:
+                    const: ae_repaired_response_decision.v1
+                  repaired_response_decision_id:
+                    type: string
+                  interaction_id:
+                    type: string
+                  repaired_response_handoff_id:
+                    type: string
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Repaired response handoff or decision was not found.
+        "503":
+          description: Repaired response decision store is unavailable.
   /api/v1/chat/interactions/{interaction_id}/feedback:
     post:
       operationId: createAeGenerationFeedback

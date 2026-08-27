@@ -55,6 +55,13 @@ table_present=true migration_recorded=true row_count=1
 jsonb_columns=7/7 indexes_present=6/6 cleanup_deleted_rows=1
 ```
 
+Protected PostgreSQL smoke summary refresh:
+
+```text
+NEX_AE_REPAIRED_RESPONSE_HANDOFF_POSTGRES_SMOKE=1 NEX_AE_TEST_DATABASE_URL=<redacted> ./.venv/bin/python scripts/smoke/run_ae_repaired_response_handoff_postgres_smoke.py --summary
+ae_repaired_response_handoff_postgres_smoke=pass service=nex-ae-api db_env=NEX_AE_TEST_DATABASE_URL handoff_id=77c20a90-dff1-59a1-b813-d951d9703a4f row_count=1 deleted_rows=1
+```
+
 Full quality gate:
 
 ```text

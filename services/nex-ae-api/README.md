@@ -248,6 +248,8 @@ Repaired response handoff:
   `NEX_AE_TEST_DATABASE_URL` to run test-profile migration, DB-backed route
   POST/list/detail checks, JSONB/index observations, and cleanup against the
   real AE test DB.
+- Slice 0390 closes S39 with a repaired response handoff closure checkpoint and
+  adds AE OpenAPI coverage for repaired response decision POST/list/detail.
 
 Chat artifact links:
 
