@@ -138,7 +138,12 @@ def test_cx_remediation_execution_read_model_postgres_smoke_success_is_redacted(
     assert evidence["status"] == "PASS"
     assert evidence["api"]["list_count"] == 1
     assert evidence["api"]["detail_execution_status"] == "ACCEPTED"
+    assert evidence["api"]["lineage_status"] == "PENDING_REPAIR_GENERATION"
     assert evidence["api"]["missing_status"] == 404
+    assert evidence["checks"]["lineage_schema"] is True
+    assert evidence["checks"]["lineage_pending"] is True
+    assert evidence["checks"]["lineage_parent_independent"] is True
+    assert evidence["checks"]["lineage_redaction_safe"] is True
     assert evidence["checks"]["read_model_parent_independent"] is True
     assert evidence["cleanup"]["cx_remediation_execution_attempts"] == 1
     assert fake_engine.disposed is True

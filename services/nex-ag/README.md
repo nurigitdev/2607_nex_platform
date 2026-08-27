@@ -173,8 +173,10 @@ Unified operations:
   `sync_generation_remediation_execution_status(...)` form the AG status
   follow-up foundation after dispatch. AG reads the CX
   `cx_remediation_execution_detail.v1` projection, validates the embedded
-  execution result, maps CX execution status back to the AG remediation task
-  state machine, and keeps same-status sync idempotent.
+  execution result, can inspect the safe
+  `cx_repaired_generation_lineage.v1` parent/action/repair link, maps CX
+  execution status back to the AG remediation task state machine, and keeps
+  same-status sync idempotent.
 - `POST /admin/v1/generation-audit/generations/{cx_generation_id}/remediation-tasks/{remediation_action_id}/sync-execution-status`
   is the protected AG status sync API for reconciling a dispatched task from
   CX execution detail. It returns

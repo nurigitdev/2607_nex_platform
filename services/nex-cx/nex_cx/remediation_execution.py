@@ -41,6 +41,7 @@ CX_REMEDIATION_EXECUTION_RESULT_SCHEMA_VERSION = (
 )
 CX_REMEDIATION_EXECUTION_LIST_SCHEMA_VERSION = "cx_remediation_execution_list.v1"
 CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION = "cx_remediation_execution_detail.v1"
+CX_REPAIRED_GENERATION_LINEAGE_SCHEMA_VERSION = "cx_repaired_generation_lineage.v1"
 CX_REMEDIATION_EXECUTION_ACCEPTED_STATUS = "ACCEPTED"
 CX_REMEDIATION_EXECUTION_JOB_TYPE = "cx.remediation_execution"
 PROVIDER_BOUNDARY = "cx_to_mo_service_api_only"
@@ -487,6 +488,7 @@ def build_cx_remediation_execution_detail_response(
     action_id = required_text(execution, "remediation_action_id")
     parent_id = required_text(execution, "parent_cx_generation_id")
     execution_status = required_text(execution, "execution_status")
+    repaired_generation_lineage = build_cx_repaired_generation_lineage(execution)
     return {
         "detail_schema_version": CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION,
         "projection_status": "READY",
@@ -497,13 +499,66 @@ def build_cx_remediation_execution_detail_response(
         "request_id": required_text({"request_id": request_id}, "request_id"),
         "execution_status": execution_status,
         "execution": execution,
-        "attention_required": execution_status in {"FAILED", "CANCELLED"},
+        "repaired_generation_lineage": repaired_generation_lineage,
+        "attention_required": (
+            execution_status in {"FAILED", "CANCELLED"}
+            or repaired_generation_lineage["lineage_status"] == "INCONSISTENT"
+        ),
         "debug_paths": {
             "cx_remediation_execution_path": (
                 f"/api/v1/generations/{parent_id}/remediation-executions/{action_id}"
             ),
             "cx_remediation_execution_list_path": (
                 f"/api/v1/generations/{parent_id}/remediation-executions"
+            ),
+        },
+        "redaction_summary": _remediation_execution_read_model_redaction_summary(),
+    }
+
+
+def build_cx_repaired_generation_lineage(record: Mapping[str, Any]) -> dict[str, Any]:
+    parent_id = required_text(record, "parent_cx_generation_id")
+    action_id = required_text(record, "remediation_action_id")
+    root_id = optional_text(record.get("root_cx_generation_id")) or parent_id
+    repair_id = optional_text(record.get("repair_cx_generation_id"))
+    execution_status = required_text(record, "execution_status")
+    result_ref = _safe_remediation_result_ref(record.get("result_ref"))
+    lineage_status = _repaired_generation_lineage_status(
+        execution_status=execution_status,
+        parent_cx_generation_id=parent_id,
+        root_cx_generation_id=root_id,
+        repair_cx_generation_id=repair_id,
+    )
+    repair_generation_linked = lineage_status == "LINKED"
+    return {
+        "lineage_schema_version": CX_REPAIRED_GENERATION_LINEAGE_SCHEMA_VERSION,
+        "lineage_status": lineage_status,
+        "parent_cx_generation_id": parent_id,
+        "root_cx_generation_id": root_id,
+        "repair_cx_generation_id": repair_id,
+        "remediation_action_id": action_id,
+        "action_type": required_text(record, "action_type"),
+        "lineage_type": required_text(record, "lineage_type"),
+        "execution_status": execution_status,
+        "attempt_no": _positive_int(record.get("attempt_no"), default=1),
+        "result_ref": result_ref,
+        "diagnostics": {
+            "lineage_consistent": lineage_status != "INCONSISTENT",
+            "repair_generation_linked": repair_generation_linked,
+            "result_ref_present": result_ref is not None,
+            "result_ref_matches_remediation_action": (
+                result_ref is not None and result_ref.get("ref_id") == action_id
+            ),
+            "parent_generation_mutated": False,
+        },
+        "debug_paths": {
+            "parent_generation_path": f"/api/v1/generations/{parent_id}",
+            "root_generation_path": f"/api/v1/generations/{root_id}",
+            "repair_generation_path": (
+                f"/api/v1/generations/{repair_id}" if repair_id is not None else None
+            ),
+            "cx_remediation_execution_path": (
+                f"/api/v1/generations/{parent_id}/remediation-executions/{action_id}"
             ),
         },
         "redaction_summary": _remediation_execution_read_model_redaction_summary(),
@@ -635,6 +690,46 @@ def _remediation_execution_read_model_redaction_summary() -> dict[str, bool]:
         "evidence_text_included": False,
         "provider_detail_included": False,
     }
+
+
+def _safe_remediation_result_ref(value: Any) -> dict[str, str] | None:
+    result_ref = _mapping(value)
+    safe_ref = {
+        key: optional_text(result_ref.get(key))
+        for key in ("source_service", "ref_type", "ref_id", "relation")
+    }
+    if any(field is None for field in safe_ref.values()):
+        return None
+    if (
+        safe_ref["source_service"] != "nex-cx"
+        or safe_ref["ref_type"] != "repair_execution"
+        or safe_ref["relation"] != "result_of"
+    ):
+        return None
+    return {
+        "source_service": safe_ref["source_service"] or "",
+        "ref_type": safe_ref["ref_type"] or "",
+        "ref_id": safe_ref["ref_id"] or "",
+        "relation": safe_ref["relation"] or "",
+    }
+
+
+def _repaired_generation_lineage_status(
+    *,
+    execution_status: str,
+    parent_cx_generation_id: str,
+    root_cx_generation_id: str,
+    repair_cx_generation_id: str | None,
+) -> str:
+    if repair_cx_generation_id is None:
+        if execution_status in {"ACCEPTED", "RUNNING"}:
+            return "PENDING_REPAIR_GENERATION"
+        if execution_status in {"FAILED", "CANCELLED"}:
+            return "TERMINAL_WITHOUT_REPAIR"
+        return "INCONSISTENT"
+    if repair_cx_generation_id in {parent_cx_generation_id, root_cx_generation_id}:
+        return "INCONSISTENT"
+    return "LINKED"
 
 
 def required_text(payload: Mapping[str, Any], key: str) -> str:

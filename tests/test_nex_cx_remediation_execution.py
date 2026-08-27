@@ -16,6 +16,7 @@ from nex_cx.remediation_execution import (
     CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION,
     CX_REMEDIATION_EXECUTION_JOB_TYPE,
     CX_REMEDIATION_EXECUTION_LIST_SCHEMA_VERSION,
+    CX_REPAIRED_GENERATION_LINEAGE_SCHEMA_VERSION,
     RemediationExecutionError,
     RemediationExecutionStore,
     SqlAlchemyRemediationExecutionStore,
@@ -25,6 +26,7 @@ from nex_cx.remediation_execution import (
     build_cx_remediation_execution_result,
     build_cx_remediation_execution_detail_response,
     build_cx_remediation_execution_list_response,
+    build_cx_repaired_generation_lineage,
     build_remediation_execution_job,
     enqueue_remediation_execution_job,
     register_remediation_execution_routes,
@@ -256,8 +258,105 @@ def test_cx_remediation_execution_read_model_lists_and_gets_persisted_rows() -> 
     assert detail_body["execution_status"] == "FAILED"
     assert detail_body["attention_required"] is True
     assert detail_body["execution"]["failure"]["detail_hash"] == "b" * 64
+    assert detail_body["repaired_generation_lineage"]["lineage_status"] == (
+        "TERMINAL_WITHOUT_REPAIR"
+    )
+    assert detail_body["repaired_generation_lineage"]["diagnostics"] == {
+        "lineage_consistent": True,
+        "repair_generation_linked": False,
+        "result_ref_present": False,
+        "result_ref_matches_remediation_action": False,
+        "parent_generation_mutated": False,
+    }
     assert detail_body["debug_paths"]["cx_remediation_execution_path"].endswith(
         "/ag-remediation-action-002"
+    )
+
+
+def test_cx_repaired_generation_lineage_read_model_covers_runtime_edges() -> None:
+    accepted = build_cx_remediation_execution_result(
+        remediation_request(),
+        created_at="2026-08-26T00:00:00Z",
+    )
+    pending = build_cx_repaired_generation_lineage(accepted)
+
+    assert pending["lineage_schema_version"] == (
+        CX_REPAIRED_GENERATION_LINEAGE_SCHEMA_VERSION
+    )
+    assert pending["lineage_status"] == "PENDING_REPAIR_GENERATION"
+    assert pending["root_cx_generation_id"] == "cx-gen-001"
+    assert pending["repair_cx_generation_id"] is None
+    assert pending["debug_paths"]["repair_generation_path"] is None
+    assert pending["diagnostics"]["lineage_consistent"] is True
+
+    succeeded = {
+        **accepted,
+        "execution_status": "SUCCEEDED",
+        "root_cx_generation_id": "cx-gen-root-001",
+        "repair_cx_generation_id": "cx-gen-repair-001",
+        "attempt_no": 2,
+        "result_ref": {
+            "source_service": "nex-cx",
+            "ref_type": "repair_execution",
+            "ref_id": "ag-remediation-action-001",
+            "relation": "result_of",
+            "api_key": "do-not-leak",
+        },
+    }
+    linked = build_cx_repaired_generation_lineage(succeeded)
+
+    assert linked["lineage_status"] == "LINKED"
+    assert linked["attempt_no"] == 2
+    assert linked["root_cx_generation_id"] == "cx-gen-root-001"
+    assert linked["debug_paths"]["repair_generation_path"] == (
+        "/api/v1/generations/cx-gen-repair-001"
+    )
+    assert linked["result_ref"] == {
+        "source_service": "nex-cx",
+        "ref_type": "repair_execution",
+        "ref_id": "ag-remediation-action-001",
+        "relation": "result_of",
+    }
+    assert linked["diagnostics"]["repair_generation_linked"] is True
+    assert linked["diagnostics"]["result_ref_matches_remediation_action"] is True
+    assert "do-not-leak" not in json.dumps(linked, sort_keys=True)
+
+    missing_child = {**succeeded, "repair_cx_generation_id": None}
+    inconsistent_detail = build_cx_remediation_execution_detail_response(
+        missing_child,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        checked_at="2026-08-26T00:00:03Z",
+    )
+    assert inconsistent_detail["repaired_generation_lineage"]["lineage_status"] == (
+        "INCONSISTENT"
+    )
+    assert inconsistent_detail["attention_required"] is True
+
+    self_link = {**succeeded, "repair_cx_generation_id": "cx-gen-001"}
+    assert build_cx_repaired_generation_lineage(self_link)["lineage_status"] == (
+        "INCONSISTENT"
+    )
+    bad_result_ref = {
+        **succeeded,
+        "result_ref": {"source_service": "nex-cx", "ref_type": "repair_execution"},
+    }
+    without_safe_ref = build_cx_repaired_generation_lineage(bad_result_ref)
+    assert without_safe_ref["lineage_status"] == "LINKED"
+    assert without_safe_ref["result_ref"] is None
+    assert without_safe_ref["diagnostics"]["result_ref_present"] is False
+
+    non_canonical_ref = {
+        **succeeded,
+        "result_ref": {
+            "source_service": "nex-ag",
+            "ref_type": "repair_execution",
+            "ref_id": "ag-remediation-action-001",
+            "relation": "result_of",
+        },
+    }
+    assert (
+        build_cx_repaired_generation_lineage(non_canonical_ref)["result_ref"] is None
     )
 
 

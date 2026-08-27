@@ -1628,6 +1628,7 @@ paths:
                   - remediation_action_id
                   - execution_status
                   - execution
+                  - repaired_generation_lineage
                   - attention_required
                   - debug_paths
                   - redaction_summary
@@ -1677,6 +1678,142 @@ paths:
                           - SUCCEEDED
                           - FAILED
                           - CANCELLED
+                  repaired_generation_lineage:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - lineage_schema_version
+                      - lineage_status
+                      - parent_cx_generation_id
+                      - root_cx_generation_id
+                      - repair_cx_generation_id
+                      - remediation_action_id
+                      - action_type
+                      - lineage_type
+                      - execution_status
+                      - attempt_no
+                      - result_ref
+                      - diagnostics
+                      - debug_paths
+                      - redaction_summary
+                    properties:
+                      lineage_schema_version:
+                        const: cx_repaired_generation_lineage.v1
+                      lineage_status:
+                        type: string
+                        enum:
+                          - PENDING_REPAIR_GENERATION
+                          - LINKED
+                          - TERMINAL_WITHOUT_REPAIR
+                          - INCONSISTENT
+                      parent_cx_generation_id:
+                        type: string
+                      root_cx_generation_id:
+                        type: string
+                      repair_cx_generation_id:
+                        type:
+                          - string
+                          - "null"
+                      remediation_action_id:
+                        type: string
+                      action_type:
+                        type: string
+                        enum:
+                          - retry_generation
+                          - retrieval_repair
+                          - citation_repair
+                      lineage_type:
+                        type: string
+                        enum:
+                          - retry
+                          - fresh_retrieval_regenerate
+                          - repair
+                      execution_status:
+                        type: string
+                        enum:
+                          - ACCEPTED
+                          - RUNNING
+                          - SUCCEEDED
+                          - FAILED
+                          - CANCELLED
+                      attempt_no:
+                        type: integer
+                        minimum: 1
+                      result_ref:
+                        type:
+                          - object
+                          - "null"
+                        additionalProperties: false
+                        required:
+                          - source_service
+                          - ref_type
+                          - ref_id
+                          - relation
+                        properties:
+                          source_service:
+                            const: nex-cx
+                          ref_type:
+                            const: repair_execution
+                          ref_id:
+                            type: string
+                          relation:
+                            const: result_of
+                      diagnostics:
+                        type: object
+                        additionalProperties: false
+                        required:
+                          - lineage_consistent
+                          - repair_generation_linked
+                          - result_ref_present
+                          - result_ref_matches_remediation_action
+                          - parent_generation_mutated
+                        properties:
+                          lineage_consistent:
+                            type: boolean
+                          repair_generation_linked:
+                            type: boolean
+                          result_ref_present:
+                            type: boolean
+                          result_ref_matches_remediation_action:
+                            type: boolean
+                          parent_generation_mutated:
+                            const: false
+                      debug_paths:
+                        type: object
+                        additionalProperties: false
+                        required:
+                          - parent_generation_path
+                          - root_generation_path
+                          - repair_generation_path
+                          - cx_remediation_execution_path
+                        properties:
+                          parent_generation_path:
+                            type: string
+                          root_generation_path:
+                            type: string
+                          repair_generation_path:
+                            type:
+                              - string
+                              - "null"
+                          cx_remediation_execution_path:
+                            type: string
+                      redaction_summary:
+                        type: object
+                        additionalProperties: false
+                        required:
+                          - raw_content_included
+                          - prompt_text_included
+                          - evidence_text_included
+                          - provider_detail_included
+                        properties:
+                          raw_content_included:
+                            const: false
+                          prompt_text_included:
+                            const: false
+                          evidence_text_included:
+                            const: false
+                          provider_detail_included:
+                            const: false
                   attention_required:
                     type: boolean
                   debug_paths:

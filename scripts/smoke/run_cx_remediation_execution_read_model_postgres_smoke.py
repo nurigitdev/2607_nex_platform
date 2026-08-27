@@ -27,6 +27,7 @@ from nex_cx.remediation_execution import (  # noqa: E402
     CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION,
     CX_REMEDIATION_EXECUTION_LIST_SCHEMA_VERSION,
     CX_REMEDIATION_EXECUTION_REQUEST_SCHEMA_VERSION,
+    CX_REPAIRED_GENERATION_LINEAGE_SCHEMA_VERSION,
     RemediationExecutionError,
     SqlAlchemyRemediationExecutionStore,
     build_cx_remediation_execution_result,
@@ -176,6 +177,7 @@ def _execute_read_model_smoke(
         detail_response.raise_for_status()
         listed = list_response.json()
         detail = detail_response.json()
+        lineage = detail["repaired_generation_lineage"]
         observations = _db_observations(engine, remediation_action_id=action_id)
         checks = {
             "seed_saved": saved["execution_status"] == "ACCEPTED",
@@ -198,6 +200,19 @@ def _execute_read_model_smoke(
                 detail["execution"]["remediation_action_id"] == action_id
                 and detail["execution_status"] == "ACCEPTED"
             ),
+            "lineage_schema": (
+                lineage["lineage_schema_version"]
+                == CX_REPAIRED_GENERATION_LINEAGE_SCHEMA_VERSION
+            ),
+            "lineage_pending": (
+                lineage["lineage_status"] == "PENDING_REPAIR_GENERATION"
+            ),
+            "lineage_parent_independent": (
+                lineage["parent_cx_generation_id"] == parent_id
+                and lineage["remediation_action_id"] == action_id
+                and lineage["debug_paths"]["repair_generation_path"] is None
+            ),
+            "lineage_redaction_safe": _redaction_safe(lineage),
             "read_model_parent_independent": listed["summary"]["count"] == 1
             and detail["parent_cx_generation_id"] == parent_id,
             "row_count": observations["row_count"] == 1,
@@ -226,6 +241,7 @@ def _execute_read_model_smoke(
                 "detail_schema_version": detail["detail_schema_version"],
                 "list_count": listed["summary"]["count"],
                 "detail_execution_status": detail["execution_status"],
+                "lineage_status": lineage["lineage_status"],
                 "missing_status": missing_response.status_code,
             },
             "observations": observations,
@@ -436,6 +452,7 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"service={evidence['service_id']} db_env={evidence['database_env']} "
             f"list_count={evidence['api']['list_count']} "
             f"detail_status={evidence['api']['detail_execution_status']} "
+            f"lineage_status={evidence['api']['lineage_status']} "
             f"row_status={evidence['observations']['execution_status']} "
             f"cleanup={evidence['cleanup']['cx_remediation_execution_attempts']}"
         )
