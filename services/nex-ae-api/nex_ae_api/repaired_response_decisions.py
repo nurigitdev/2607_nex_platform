@@ -8,18 +8,31 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
+from fastapi import FastAPI, Header, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_runtime import (
+    DEFAULT_SERVICE_SCOPE,
+    problem_response,
+    request_id_from_headers,
+    trace_id_from_headers,
+    validate_authorization_header,
+)
 from nex_ae_api.repaired_responses import (
     RepairedResponseHandoffError,
+    default_repaired_response_handoff_store,
     optional_text,
     validate_repaired_response_handoff_record,
 )
 
 
 AE_REPAIRED_RESPONSE_DECISION_SCHEMA_VERSION = "ae_repaired_response_decision.v1"
+AE_REPAIRED_RESPONSE_DECISION_COLLECTION_SCHEMA_VERSION = (
+    "ae_repaired_response_decision_collection.v1"
+)
 DEFAULT_DECISION_STATUS = "RECORDED"
 DECISION_ACTION_ACCEPT_REPAIR = "accept_repair"
 DECISION_ACTION_KEEP_ORIGINAL = "keep_original"
@@ -263,6 +276,121 @@ def default_repaired_response_decision_store(app: Any) -> Any:
     return DEFAULT_REPAIRED_RESPONSE_DECISION_STORE
 
 
+def register_repaired_response_decision_routes(
+    app: FastAPI,
+    *,
+    handoff_store: Any | None = None,
+    decision_store: Any | None = None,
+) -> None:
+    selected_handoff_store = handoff_store or default_repaired_response_handoff_store(app)
+    selected_decision_store = decision_store or default_repaired_response_decision_store(app)
+
+    @app.post(
+        "/api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs/"
+        "{repaired_response_handoff_id}/decisions",
+        response_model=None,
+        status_code=202,
+    )
+    def create_repaired_response_decision(
+        interaction_id: str,
+        repaired_response_handoff_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            handoff = _handoff_for_decision_route(
+                selected_handoff_store,
+                interaction_id=interaction_id,
+                repaired_response_handoff_id=repaired_response_handoff_id,
+            )
+            record = build_repaired_response_decision_record(
+                handoff_record=handoff,
+                decision_payload=payload,
+                request_id=request_id_from_headers(request),
+                trace_id=payload.get("trace_id") or trace_id_from_headers(request),
+            )
+            return selected_decision_store.save(record)
+        except (RepairedResponseDecisionError, RepairedResponseHandoffError) as exc:
+            return _decision_problem_response(request, exc)
+
+    @app.get(
+        "/api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs/"
+        "{repaired_response_handoff_id}/decisions",
+        response_model=None,
+    )
+    def list_repaired_response_decisions(
+        interaction_id: str,
+        repaired_response_handoff_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            _handoff_for_decision_route(
+                selected_handoff_store,
+                interaction_id=interaction_id,
+                repaired_response_handoff_id=repaired_response_handoff_id,
+            )
+            records = selected_decision_store.list_for_handoff(
+                repaired_response_handoff_id
+            )
+            return build_repaired_response_decision_collection(
+                records,
+                interaction_id=interaction_id,
+                repaired_response_handoff_id=repaired_response_handoff_id,
+            )
+        except (RepairedResponseDecisionError, RepairedResponseHandoffError) as exc:
+            return _decision_problem_response(request, exc)
+
+    @app.get(
+        "/api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs/"
+        "{repaired_response_handoff_id}/decisions/{repaired_response_decision_id}",
+        response_model=None,
+    )
+    def get_repaired_response_decision(
+        interaction_id: str,
+        repaired_response_handoff_id: str,
+        repaired_response_decision_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            _handoff_for_decision_route(
+                selected_handoff_store,
+                interaction_id=interaction_id,
+                repaired_response_handoff_id=repaired_response_handoff_id,
+            )
+            record = selected_decision_store.get(repaired_response_decision_id)
+            if (
+                record is None
+                or record["interaction_id"] != interaction_id
+                or record["repaired_response_handoff_id"] != repaired_response_handoff_id
+            ):
+                raise RepairedResponseDecisionError(
+                    status_code=404,
+                    error_code="ae.repaired_response_decision_not_found",
+                    detail=(
+                        "Repaired response decision was not found: "
+                        f"{repaired_response_decision_id}"
+                    ),
+                )
+            return record
+        except (RepairedResponseDecisionError, RepairedResponseHandoffError) as exc:
+            return _decision_problem_response(request, exc)
+
+
 def build_repaired_response_decision_record(
     *,
     handoff_record: Mapping[str, Any],
@@ -360,6 +488,45 @@ def build_repaired_response_decision_record(
         "updated_at": now,
     }
     return validate_repaired_response_decision_record(record)
+
+
+def build_repaired_response_decision_collection(
+    records: list[Mapping[str, Any]],
+    *,
+    interaction_id: str,
+    repaired_response_handoff_id: str,
+    checked_at: str | None = None,
+) -> dict[str, Any]:
+    path_interaction_id = _required_text(
+        {"interaction_id": interaction_id},
+        "interaction_id",
+        "ae.repaired_response_decision_interaction_id_required",
+    )
+    path_handoff_id = _required_text(
+        {"repaired_response_handoff_id": repaired_response_handoff_id},
+        "repaired_response_handoff_id",
+        "ae.repaired_response_decision_handoff_id_required",
+    )
+    items = [
+        validate_repaired_response_decision_record(record)
+        for record in records
+        if record.get("interaction_id") == path_interaction_id
+        and record.get("repaired_response_handoff_id") == path_handoff_id
+    ]
+    items.sort(
+        key=lambda item: (str(item.get("created_at", "")), item["repaired_response_decision_id"]),
+        reverse=True,
+    )
+    return {
+        "collection_schema_version": (
+            AE_REPAIRED_RESPONSE_DECISION_COLLECTION_SCHEMA_VERSION
+        ),
+        "interaction_id": path_interaction_id,
+        "repaired_response_handoff_id": path_handoff_id,
+        "items": items,
+        "item_count": len(items),
+        "checked_at": checked_at or _utc_now(),
+    }
 
 
 def validate_repaired_response_decision_record(record: Mapping[str, Any]) -> dict[str, Any]:
@@ -803,6 +970,65 @@ def _append_unique(values: list[str], value: str) -> None:
 
 def _mapping(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _handoff_for_decision_route(
+    handoff_store: Any,
+    *,
+    interaction_id: str,
+    repaired_response_handoff_id: str,
+) -> dict[str, Any]:
+    path_interaction_id = _required_text(
+        {"interaction_id": interaction_id},
+        "interaction_id",
+        "ae.repaired_response_decision_interaction_id_required",
+    )
+    path_handoff_id = _required_text(
+        {"repaired_response_handoff_id": repaired_response_handoff_id},
+        "repaired_response_handoff_id",
+        "ae.repaired_response_decision_handoff_id_required",
+    )
+    record = handoff_store.get(path_handoff_id)
+    if record is None or record["interaction_id"] != path_interaction_id:
+        raise RepairedResponseDecisionError(
+            status_code=404,
+            error_code="ae.repaired_response_handoff_not_found",
+            detail=f"Repaired response handoff was not found: {path_handoff_id}",
+        )
+    return validate_repaired_response_handoff_record(record)
+
+
+def _authorize_ae_request(
+    request: Request,
+    authorization: str | None,
+) -> JSONResponse | None:
+    validation = validate_authorization_header(
+        authorization,
+        expected_audience="nex-ae-api",
+        required_scopes=[DEFAULT_SERVICE_SCOPE],
+    )
+    if validation.ok:
+        return None
+    return problem_response(
+        request,
+        status_code=401,
+        error_code=validation.error_code or "SERVICE_CLAIM_INVALID",
+        title="Authentication failed",
+        detail=validation.detail or "AE API requires a valid service claim.",
+        type_uri="https://nex-platform.local/problems/authentication-failed",
+    )
+
+
+def _decision_problem_response(request: Request, exc: Any) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=int(getattr(exc, "status_code", 500)),
+        error_code=str(getattr(exc, "error_code", "ae.repaired_response_decision_error")),
+        title="Repaired response decision failed",
+        detail=str(getattr(exc, "detail", str(exc))),
+        type_uri="https://nex-platform.local/problems/repaired-response-decision",
+        retryable=bool(getattr(exc, "retryable", False)),
+    )
 
 
 def _utc_now() -> str:

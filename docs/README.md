@@ -491,6 +491,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0385`](slices/0385_ae_repaired_handoff_postgresql_smoke_evidence.md) | `S39-005` AE repaired handoff PostgreSQL smoke evidence. |
 | [`Slice 0386`](slices/0386_ae_repaired_handoff_user_review_projection.md) | `S39-006` AE repaired handoff user review projection. |
 | [`Slice 0387`](slices/0387_ae_repaired_handoff_user_decision_contract_persistence.md) | `S39-007` AE repaired handoff user decision contract/persistence. |
+| [`Slice 0388`](slices/0388_ae_repaired_handoff_user_decision_service_api_wiring.md) | `S39-008` AE repaired handoff user decision service API wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

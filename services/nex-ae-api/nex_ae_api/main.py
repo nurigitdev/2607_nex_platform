@@ -19,6 +19,9 @@ from nex_ae_api.documents import register_document_library_routes
 from nex_ae_api.generation_feedback import register_generation_feedback_routes
 from nex_ae_api.prompts import DEFAULT_AE_PROMPT_STORE
 from nex_ae_api.recovery_requests import register_generation_recovery_request_routes
+from nex_ae_api.repaired_response_decisions import (
+    register_repaired_response_decision_routes,
+)
 from nex_ae_api.repaired_responses import register_repaired_response_handoff_routes
 from nex_ae_api.retrieval import register_retrieval_routes
 from nex_ae_api.uploads import register_upload_routes
@@ -49,6 +52,7 @@ register_generation_recovery_request_routes(app)
 register_chat_routes(app, analytics_store=DEFAULT_PROMPT_ANALYTICS_STORE)
 register_generation_feedback_routes(app)
 register_repaired_response_handoff_routes(app)
+register_repaired_response_decision_routes(app)
 register_retrieval_routes(app)
 register_prompt_analytics_routes(app, store=DEFAULT_PROMPT_ANALYTICS_STORE)
 register_prompt_registry_routes(

@@ -239,6 +239,10 @@ Repaired response handoff:
   foundation. Decisions record `accept_repair` or `keep_original`, selected and
   rejected CX generation ids, reason codes, comment hash/preview, actor scope,
   and redaction metadata in `ae_repaired_response_decisions`.
+- Slice 0388 wires repaired response decisions into AE API routes. The handoff
+  path now supports decision POST/list/detail operations, enforces service-token
+  authorization and interaction scope, and returns problem responses for missing
+  handoffs, invalid payloads, and missing decisions.
 
 Chat artifact links:
 

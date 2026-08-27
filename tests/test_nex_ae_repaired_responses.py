@@ -15,6 +15,7 @@ from sqlalchemy.orm import sessionmaker
 import nex_ae_api.repaired_responses as repaired_module
 import nex_ae_api.repaired_response_decisions as decision_module
 from nex_ae_api.repaired_response_decisions import (
+    AE_REPAIRED_RESPONSE_DECISION_COLLECTION_SCHEMA_VERSION,
     AE_REPAIRED_RESPONSE_DECISION_SCHEMA_VERSION,
     DECISION_ACTION_ACCEPT_REPAIR,
     DECISION_ACTION_KEEP_ORIGINAL,
@@ -23,11 +24,13 @@ from nex_ae_api.repaired_response_decisions import (
     SqlAlchemyRepairedResponseDecisionStore,
     actor_claims_ref_from_decision_payload,
     assert_repaired_response_decision_payload_redaction_safe,
+    build_repaired_response_decision_collection,
     build_repaired_response_decision_record,
     decision_action_from_payload,
     decision_reason_codes_from_payload,
     default_repaired_response_decision_store,
     find_sensitive_repaired_response_decision_keys,
+    register_repaired_response_decision_routes,
     selected_cx_generation_id_for_action,
     submitted_via_from_payload,
     validate_repaired_response_decision_record,
@@ -331,6 +334,30 @@ def build_handoff_test_client(
         cx_client=selected_client,
     )
     return TestClient(app), selected_store, selected_client
+
+
+def build_decision_test_client(
+    *,
+    handoff_store: RepairedResponseHandoffStore | None = None,
+    decision_store: RepairedResponseDecisionStore | None = None,
+    handoff: dict[str, Any] | None = None,
+) -> tuple[
+    TestClient,
+    dict[str, Any],
+    RepairedResponseHandoffStore,
+    RepairedResponseDecisionStore,
+]:
+    app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    selected_handoff_store = handoff_store or RepairedResponseHandoffStore()
+    selected_decision_store = decision_store or RepairedResponseDecisionStore()
+    selected_handoff = handoff or build_handoff()
+    selected_handoff_store.save(selected_handoff)
+    register_repaired_response_decision_routes(
+        app,
+        handoff_store=selected_handoff_store,
+        decision_store=selected_decision_store,
+    )
+    return TestClient(app), selected_handoff, selected_handoff_store, selected_decision_store
 
 
 def sqlite_handoff_session_factory():
@@ -1271,6 +1298,162 @@ def test_repaired_response_decision_store_indexes_unique_decisions() -> None:
     assert store.list_for_interaction(decision["interaction_id"]) == [decision]
     assert store.list_for_handoff("missing") == []
     assert store.list_for_interaction("missing") == []
+
+
+def test_repaired_response_decision_collection_filters_sorts_and_defaults_time() -> None:
+    older = build_decision()
+    newer = deepcopy(older)
+    newer["repaired_response_decision_id"] = "decision-newer"
+    newer["decision_request_id"] = "decision-request-newer"
+    newer["created_at"] = "2026-08-27T00:04:00Z"
+    other_handoff = deepcopy(older)
+    other_handoff["repaired_response_decision_id"] = "decision-other-handoff"
+    other_handoff["repaired_response_handoff_id"] = "other-handoff"
+    other_interaction = deepcopy(older)
+    other_interaction["repaired_response_decision_id"] = "decision-other-interaction"
+    other_interaction["interaction_id"] = "other-interaction"
+
+    collection = build_repaired_response_decision_collection(
+        [older, other_handoff, newer, other_interaction],
+        interaction_id="interaction-001",
+        repaired_response_handoff_id=older["repaired_response_handoff_id"],
+        checked_at="2026-08-27T00:05:00Z",
+    )
+
+    assert collection["collection_schema_version"] == (
+        AE_REPAIRED_RESPONSE_DECISION_COLLECTION_SCHEMA_VERSION
+    )
+    assert collection["item_count"] == 2
+    assert collection["checked_at"] == "2026-08-27T00:05:00Z"
+    assert [
+        item["repaired_response_decision_id"] for item in collection["items"]
+    ] == ["decision-newer", older["repaired_response_decision_id"]]
+
+
+def test_repaired_response_decision_routes_create_list_and_read_record() -> None:
+    client, handoff, _handoff_store, decision_store = build_decision_test_client()
+    decision_path = (
+        f"/api/v1/chat/interactions/{handoff['interaction_id']}/"
+        f"repaired-response-handoffs/{handoff['repaired_response_handoff_id']}/"
+        "decisions"
+    )
+
+    create_response = client.post(
+        decision_path,
+        json=decision_payload(
+            interaction_id=handoff["interaction_id"],
+            repaired_response_handoff_id=handoff["repaired_response_handoff_id"],
+        ),
+        headers=auth_headers(),
+    )
+
+    assert create_response.status_code == 202
+    created = create_response.json()
+    Draft202012Validator(repaired_response_decision_schema()).validate(created)
+    assert created["decision_schema_version"] == (
+        AE_REPAIRED_RESPONSE_DECISION_SCHEMA_VERSION
+    )
+    assert created["selected_cx_generation_id"] == "cx-gen-repair-001"
+    assert decision_store.get(created["repaired_response_decision_id"]) == created
+
+    list_response = client.get(decision_path, headers=auth_headers())
+    assert list_response.status_code == 200
+    listed = list_response.json()
+    assert listed["collection_schema_version"] == (
+        AE_REPAIRED_RESPONSE_DECISION_COLLECTION_SCHEMA_VERSION
+    )
+    assert listed["item_count"] == 1
+    assert listed["items"] == [created]
+
+    detail_response = client.get(
+        f"{decision_path}/{created['repaired_response_decision_id']}",
+        headers=auth_headers(),
+    )
+    assert detail_response.status_code == 200
+    assert detail_response.json() == created
+
+
+def test_repaired_response_decision_routes_map_auth_scope_and_payload_errors() -> None:
+    client, handoff, _handoff_store, decision_store = build_decision_test_client()
+    decision_path = (
+        f"/api/v1/chat/interactions/{handoff['interaction_id']}/"
+        f"repaired-response-handoffs/{handoff['repaired_response_handoff_id']}/"
+        "decisions"
+    )
+
+    unauthorized = client.post(decision_path, json=decision_payload())
+    wrong_interaction = client.post(
+        decision_path.replace("interaction-001", "other-interaction", 1),
+        json=decision_payload(),
+        headers=auth_headers(),
+    )
+    invalid_payload = client.post(
+        decision_path,
+        json=decision_payload(decision_action="archive"),
+        headers=auth_headers(),
+    )
+    sensitive_payload = client.post(
+        decision_path,
+        json=decision_payload(raw_prompt="hidden"),
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert unauthorized.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert wrong_interaction.status_code == 404
+    assert wrong_interaction.json()["error_code"] == (
+        "ae.repaired_response_handoff_not_found"
+    )
+    assert invalid_payload.status_code == 422
+    assert invalid_payload.json()["error_code"] == (
+        "ae.repaired_response_decision_action_invalid"
+    )
+    assert sensitive_payload.status_code == 422
+    assert sensitive_payload.json()["error_code"] == (
+        "ae.repaired_response_decision_sensitive_payload"
+    )
+    assert decision_store.list_for_handoff(handoff["repaired_response_handoff_id"]) == []
+
+
+def test_repaired_response_decision_routes_enforce_detail_scope() -> None:
+    client, handoff, _handoff_store, decision_store = build_decision_test_client()
+    decision = decision_store.save(build_decision(handoff=handoff))
+    decision_path = (
+        f"/api/v1/chat/interactions/{handoff['interaction_id']}/"
+        f"repaired-response-handoffs/{handoff['repaired_response_handoff_id']}/"
+        "decisions"
+    )
+    missing_path = (
+        f"/api/v1/chat/interactions/{handoff['interaction_id']}/"
+        f"repaired-response-handoffs/{handoff['repaired_response_handoff_id']}/"
+        "decisions/missing-decision"
+    )
+    other_handoff_path = (
+        f"/api/v1/chat/interactions/{handoff['interaction_id']}/"
+        "repaired-response-handoffs/missing-handoff/"
+        f"decisions/{decision['repaired_response_decision_id']}"
+    )
+
+    missing = client.get(missing_path, headers=auth_headers())
+    wrong_handoff = client.get(other_handoff_path, headers=auth_headers())
+    list_wrong_handoff = client.get(
+        other_handoff_path.rsplit("/", 1)[0],
+        headers=auth_headers(),
+    )
+    unauthorized_list = client.get(decision_path)
+    unauthorized_detail = client.get(
+        f"{decision_path}/{decision['repaired_response_decision_id']}"
+    )
+
+    assert missing.status_code == 404
+    assert missing.json()["error_code"] == "ae.repaired_response_decision_not_found"
+    assert wrong_handoff.status_code == 404
+    assert wrong_handoff.json()["error_code"] == (
+        "ae.repaired_response_handoff_not_found"
+    )
+    assert list_wrong_handoff.status_code == 404
+    assert unauthorized_list.status_code == 401
+    assert unauthorized_detail.status_code == 401
 
 
 def test_sqlalchemy_repaired_response_decision_store_round_trips_with_sqlite() -> None:
