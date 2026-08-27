@@ -73,6 +73,7 @@ mkdir -p "$REPORT_DIR"
 "$PYTHON_BIN" scripts/smoke/run_ae_repaired_response_handoff_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_repaired_response_decision_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_repaired_response_decision_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_web_repaired_response_review_diagnostics_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_credential_login_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_credential_login_browser_operator_profile.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_same_origin_runtime_boundary.py --summary

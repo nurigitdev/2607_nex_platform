@@ -547,5 +547,14 @@ Slice 0398 wires repaired response review read-model diagnostics:
 - `src/main.js` derives those counters from current chat message review
   surfaces before rendering runtime diagnostics.
 
+Slice 0399 adds protected PostgreSQL smoke evidence for repaired response review
+diagnostics:
+
+- `scripts/smoke/run_ae_web_repaired_response_review_diagnostics_postgres_smoke.py`
+  checks the AE Web diagnostics/read-model anchors before delegating to the
+  protected repaired response decision PostgreSQL smoke.
+- The smoke is skipped by default and writes to `nex_ae_test` only when
+  `NEX_AE_WEB_REPAIRED_RESPONSE_REVIEW_DIAGNOSTICS_POSTGRES_SMOKE=1` is set.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
