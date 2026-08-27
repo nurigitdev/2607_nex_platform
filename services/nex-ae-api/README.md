@@ -235,6 +235,10 @@ Repaired response handoff:
   converts a validated handoff into a redaction-safe review card with owner
   scope, generation refs, short repaired preview, lineage summary, primary
   user actions, and the future `/decisions` submit path.
+- Slice 0387 adds the repaired response user decision contract and persistence
+  foundation. Decisions record `accept_repair` or `keep_original`, selected and
+  rejected CX generation ids, reason codes, comment hash/preview, actor scope,
+  and redaction metadata in `ae_repaired_response_decisions`.
 
 Chat artifact links:
 

@@ -13,6 +13,25 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 import nex_ae_api.repaired_responses as repaired_module
+import nex_ae_api.repaired_response_decisions as decision_module
+from nex_ae_api.repaired_response_decisions import (
+    AE_REPAIRED_RESPONSE_DECISION_SCHEMA_VERSION,
+    DECISION_ACTION_ACCEPT_REPAIR,
+    DECISION_ACTION_KEEP_ORIGINAL,
+    RepairedResponseDecisionError,
+    RepairedResponseDecisionStore,
+    SqlAlchemyRepairedResponseDecisionStore,
+    actor_claims_ref_from_decision_payload,
+    assert_repaired_response_decision_payload_redaction_safe,
+    build_repaired_response_decision_record,
+    decision_action_from_payload,
+    decision_reason_codes_from_payload,
+    default_repaired_response_decision_store,
+    find_sensitive_repaired_response_decision_keys,
+    selected_cx_generation_id_for_action,
+    submitted_via_from_payload,
+    validate_repaired_response_decision_record,
+)
 from nex_ae_api.repaired_responses import (
     AE_REPAIRED_RESPONSE_HANDOFF_SCHEMA_VERSION,
     DEFAULT_HANDOFF_STATUS,
@@ -70,6 +89,19 @@ def repaired_response_review_schema() -> dict[str, Any]:
             / "service"
             / "nex_ae_api"
             / "repaired_response_review_projection.v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+
+
+def repaired_response_decision_schema() -> dict[str, Any]:
+    return json.loads(
+        (
+            ROOT
+            / "contracts"
+            / "schemas"
+            / "service"
+            / "nex_ae_api"
+            / "repaired_response_decision.v1.schema.json"
         ).read_text(encoding="utf-8")
     )
 
@@ -331,6 +363,46 @@ def sqlite_handoff_session_factory():
                     user_surface TEXT NOT NULL,
                     links TEXT NOT NULL,
                     redaction_summary TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+    return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+
+def sqlite_decision_session_factory():
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ae_repaired_response_decisions (
+                    repaired_response_decision_id TEXT PRIMARY KEY,
+                    decision_schema_version TEXT NOT NULL,
+                    decision_request_id TEXT NOT NULL UNIQUE,
+                    decision_status TEXT NOT NULL,
+                    decision_action TEXT NOT NULL,
+                    repaired_response_handoff_id TEXT NOT NULL,
+                    handoff_request_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL,
+                    owner_user_id TEXT NOT NULL,
+                    chat_document_id TEXT NOT NULL,
+                    interaction_id TEXT NOT NULL,
+                    parent_cx_generation_id TEXT NOT NULL,
+                    repair_cx_generation_id TEXT NOT NULL,
+                    selected_cx_generation_id TEXT NOT NULL,
+                    rejected_cx_generation_id TEXT NOT NULL,
+                    remediation_action_id TEXT NOT NULL,
+                    trace_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    actor_claims_ref TEXT NOT NULL,
+                    decision_reason_codes TEXT NOT NULL,
+                    decision_comment_hash TEXT,
+                    decision_comment_preview TEXT,
+                    metadata TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
@@ -1085,3 +1157,379 @@ def test_repaired_response_review_helpers_reject_invalid_inputs() -> None:
         "ae.repaired_response_review.sensitive_key"
     )
     assert str(sensitive_error.value) == sensitive_error.value.detail
+
+
+def decision_payload(**overrides: Any) -> dict[str, Any]:
+    payload = {
+        "decision_action": DECISION_ACTION_ACCEPT_REPAIR,
+        "decision_request_id": "decision-request-001",
+        "decision_reason_codes": [
+            "citation_fixed",
+            "prefer_repaired",
+            "citation_fixed",
+        ],
+        "decision_comment": "The repaired response now matches the cited source.",
+        "submitted_via": "chat_review",
+        "actor_claims_ref": {
+            "actor_type": "user",
+            "actor_id": "user-001",
+            "tenant_id": "tenant-001",
+        },
+    }
+    payload.update(overrides)
+    return payload
+
+
+def build_decision(
+    *,
+    handoff: dict[str, Any] | None = None,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return build_repaired_response_decision_record(
+        handoff_record=handoff or build_handoff(),
+        decision_payload=payload or decision_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        created_at="2026-08-27T00:03:00Z",
+    )
+
+
+def test_repaired_response_decision_record_accepts_repair_and_matches_schema() -> None:
+    decision = build_decision()
+
+    Draft202012Validator(repaired_response_decision_schema()).validate(decision)
+    assert decision["decision_schema_version"] == (
+        AE_REPAIRED_RESPONSE_DECISION_SCHEMA_VERSION
+    )
+    assert decision["decision_status"] == "RECORDED"
+    assert decision["decision_action"] == DECISION_ACTION_ACCEPT_REPAIR
+    assert decision["selected_cx_generation_id"] == "cx-gen-repair-001"
+    assert decision["rejected_cx_generation_id"] == "cx-gen-001"
+    assert decision["decision_reason_codes"] == [
+        "citation_fixed",
+        "prefer_repaired",
+    ]
+    assert decision["decision_comment_hash"] == (
+        "bc016b480c3730112c20228619d60639f03a9099cbe9d7be"
+        "07c9ac01d8afcc6f"
+    )
+    assert decision["decision_comment_preview"] == (
+        "The repaired response now matches the cited source."
+    )
+    assert "decision_comment" not in decision
+    assert decision["metadata"] == {
+        "submitted_via": "chat_review",
+        "raw_prompt_stored": False,
+        "raw_generation_output_stored": False,
+        "raw_source_text_stored": False,
+        "raw_evidence_stored": False,
+        "free_text_comment_storage": "hash_and_short_preview_only",
+        "parent_generation_mutated": False,
+    }
+
+
+def test_repaired_response_decision_record_keeps_original_with_defaults() -> None:
+    decision = build_decision(
+        payload=decision_payload(
+            decision_action=DECISION_ACTION_KEEP_ORIGINAL,
+            decision_request_id=None,
+            decision_reason_codes=None,
+            decision_comment=None,
+            submitted_via="document_detail",
+            actor_claims_ref=None,
+        )
+    )
+
+    assert decision["decision_action"] == DECISION_ACTION_KEEP_ORIGINAL
+    assert decision["selected_cx_generation_id"] == "cx-gen-001"
+    assert decision["rejected_cx_generation_id"] == "cx-gen-repair-001"
+    assert decision["decision_reason_codes"] == ["prefer_original"]
+    assert decision["decision_comment_hash"] is None
+    assert decision["decision_comment_preview"] is None
+    assert decision["actor_claims_ref"] == {
+        "actor_type": "user",
+        "actor_id": "user-001",
+        "tenant_id": "tenant-001",
+    }
+    assert decision["metadata"]["submitted_via"] == "document_detail"
+    assert decision["decision_request_id"] != ""
+
+
+def test_repaired_response_decision_store_indexes_unique_decisions() -> None:
+    store = RepairedResponseDecisionStore()
+    decision = build_decision()
+
+    saved = store.save(decision)
+    duplicate = store.save(decision)
+
+    assert saved == decision
+    assert duplicate == decision
+    assert store.get(decision["repaired_response_decision_id"]) == decision
+    assert store.list_for_handoff(decision["repaired_response_handoff_id"]) == [
+        decision
+    ]
+    assert store.list_for_interaction(decision["interaction_id"]) == [decision]
+    assert store.list_for_handoff("missing") == []
+    assert store.list_for_interaction("missing") == []
+
+
+def test_sqlalchemy_repaired_response_decision_store_round_trips_with_sqlite() -> None:
+    store = SqlAlchemyRepairedResponseDecisionStore(sqlite_decision_session_factory())
+    decision = build_decision()
+
+    saved = store.save(decision)
+    loaded = store.get(decision["repaired_response_decision_id"])
+    by_handoff = store.list_for_handoff(decision["repaired_response_handoff_id"])
+    by_interaction = store.list_for_interaction(decision["interaction_id"])
+    updated = deepcopy(decision)
+    updated["decision_reason_codes"] = ["prefer_repaired", "answer_improved"]
+    updated["updated_at"] = "2026-08-27T00:04:00Z"
+    store.save(updated)
+    loaded_after_update = store.get(decision["repaired_response_decision_id"])
+    deleted_rows = store.delete(decision["repaired_response_decision_id"])
+
+    assert saved == decision
+    assert loaded == decision
+    assert by_handoff == [decision]
+    assert by_interaction == [decision]
+    assert loaded_after_update == updated
+    assert deleted_rows == 1
+    assert store.get(decision["repaired_response_decision_id"]) is None
+
+
+@pytest.mark.parametrize("operation", ["save", "get", "list_handoff", "list_interaction", "delete"])
+def test_sqlalchemy_repaired_response_decision_store_maps_database_errors(
+    operation: str,
+) -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    store = SqlAlchemyRepairedResponseDecisionStore(
+        sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    )
+    decision = build_decision()
+
+    with pytest.raises(RepairedResponseDecisionError) as exc_info:
+        if operation == "save":
+            store.save(decision)
+        elif operation == "get":
+            store.get(decision["repaired_response_decision_id"])
+        elif operation == "list_handoff":
+            store.list_for_handoff(decision["repaired_response_handoff_id"])
+        elif operation == "list_interaction":
+            store.list_for_interaction(decision["interaction_id"])
+        else:
+            store.delete(decision["repaired_response_decision_id"])
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.error_code == "ae.repaired_response_decision_store_unavailable"
+    assert exc_info.value.retryable is True
+
+
+def test_default_repaired_response_decision_store_selects_runtime_store() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    app.state.nex_persistence = SimpleNamespace(
+        api_session_factory=sqlite_decision_session_factory()
+    )
+
+    assert isinstance(
+        default_repaired_response_decision_store(app),
+        SqlAlchemyRepairedResponseDecisionStore,
+    )
+    app_without_db = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    assert isinstance(
+        default_repaired_response_decision_store(app_without_db),
+        RepairedResponseDecisionStore,
+    )
+
+
+@pytest.mark.parametrize(
+    ("candidate", "error_code"),
+    [
+        (
+            {"decision_schema_version": "old"},
+            "ae.repaired_response_decision_schema_invalid",
+        ),
+        (
+            {"decision_status": "PENDING"},
+            "ae.repaired_response_decision_status_invalid",
+        ),
+        (
+            {"decision_action": "archive"},
+            "ae.repaired_response_decision_action_invalid",
+        ),
+        (
+            {"selected_cx_generation_id": "cx-gen-001"},
+            "ae.repaired_response_decision_generation_mismatch",
+        ),
+        (
+            {"selected_cx_generation_id": None},
+            "ae.repaired_response_decision_generation_required",
+        ),
+        (
+            {
+                "metadata": {
+                    "submitted_via": "raw_console",
+                    "raw_prompt_stored": False,
+                    "raw_generation_output_stored": False,
+                    "raw_source_text_stored": False,
+                    "raw_evidence_stored": False,
+                    "parent_generation_mutated": False,
+                }
+            },
+            "ae.repaired_response_decision_submitter_invalid",
+        ),
+        (
+            {"metadata": {"submitted_via": "chat_review", "raw_prompt_stored": True}},
+            "ae.repaired_response_decision_metadata_invalid",
+        ),
+        (
+            {
+                "metadata": {
+                    "submitted_via": "chat_review",
+                    "raw_prompt_stored": False,
+                    "raw_generation_output_stored": False,
+                    "raw_source_text_stored": False,
+                    "raw_evidence_stored": False,
+                    "parent_generation_mutated": True,
+                }
+            },
+            "ae.repaired_response_decision_parent_mutation_forbidden",
+        ),
+    ],
+)
+def test_validate_repaired_response_decision_record_rejects_invalid_shapes(
+    candidate: dict[str, Any],
+    error_code: str,
+) -> None:
+    decision = build_decision()
+    decision.update(candidate)
+
+    with pytest.raises(RepairedResponseDecisionError) as exc_info:
+        validate_repaired_response_decision_record(decision)
+
+    assert exc_info.value.error_code == error_code
+
+
+def test_repaired_response_decision_helpers_reject_invalid_inputs() -> None:
+    handoff = build_handoff()
+    with pytest.raises(RepairedResponseDecisionError) as missing_action:
+        decision_action_from_payload({})
+    assert missing_action.value.error_code == (
+        "ae.repaired_response_decision_action_required"
+    )
+
+    with pytest.raises(RepairedResponseDecisionError) as invalid_payload_action:
+        decision_action_from_payload({"decision_action": "archive"})
+    assert invalid_payload_action.value.error_code == (
+        "ae.repaired_response_decision_action_invalid"
+    )
+
+    with pytest.raises(RepairedResponseDecisionError) as bad_reason_list:
+        decision_reason_codes_from_payload(
+            {"decision_reason_codes": "prefer_repaired"},
+            action=DECISION_ACTION_ACCEPT_REPAIR,
+        )
+    assert bad_reason_list.value.error_code == (
+        "ae.repaired_response_decision_reason_codes_invalid"
+    )
+
+    with pytest.raises(RepairedResponseDecisionError) as bad_reason_code:
+        decision_reason_codes_from_payload(
+            {"decision_reason_codes": ["unsafe_raw"]},
+            action=DECISION_ACTION_ACCEPT_REPAIR,
+        )
+    assert bad_reason_code.value.error_code == (
+        "ae.repaired_response_decision_reason_code_invalid"
+    )
+    assert decision_reason_codes_from_payload(
+        {"decision_reason_codes": [None, "", "prefer_repaired", "prefer_repaired"]},
+        action=DECISION_ACTION_ACCEPT_REPAIR,
+    ) == ["prefer_repaired"]
+
+    with pytest.raises(RepairedResponseDecisionError) as bad_submitter:
+        submitted_via_from_payload({"submitted_via": "raw_console"})
+    assert bad_submitter.value.error_code == (
+        "ae.repaired_response_decision_submitter_invalid"
+    )
+
+    with pytest.raises(RepairedResponseDecisionError) as bad_actor:
+        actor_claims_ref_from_decision_payload(
+            {"actor_claims_ref": {"tenant_id": "other-tenant"}},
+            handoff,
+        )
+    assert bad_actor.value.error_code == (
+        "ae.repaired_response_decision_actor_scope_mismatch"
+    )
+
+    with pytest.raises(RepairedResponseDecisionError) as bad_action:
+        selected_cx_generation_id_for_action(
+            "archive",
+            parent_cx_generation_id="parent",
+            repair_cx_generation_id="repair",
+        )
+    assert bad_action.value.error_code == (
+        "ae.repaired_response_decision_action_invalid"
+    )
+
+    with pytest.raises(RepairedResponseDecisionError) as scope_mismatch:
+        build_decision(payload=decision_payload(interaction_id="other-interaction"))
+    assert scope_mismatch.value.error_code == (
+        "ae.repaired_response_decision_scope_mismatch"
+    )
+
+    bad_handoff = deepcopy(handoff)
+    bad_handoff["handoff_schema_version"] = "old"
+    with pytest.raises(RepairedResponseDecisionError) as handoff_error:
+        build_decision(handoff=bad_handoff)
+    assert handoff_error.value.error_code == (
+        "ae.repaired_response_decision_handoff_invalid"
+    )
+
+    payload = {"nested": [{"raw_prompt": "hidden"}]}
+    assert find_sensitive_repaired_response_decision_keys(payload) == [
+        "nested[0].raw_prompt"
+    ]
+    with pytest.raises(RepairedResponseDecisionError) as sensitive_error:
+        assert_repaired_response_decision_payload_redaction_safe(payload)
+    assert sensitive_error.value.error_code == (
+        "ae.repaired_response_decision_sensitive_payload"
+    )
+    assert_repaired_response_decision_payload_redaction_safe(
+        {"usage": {"input_tokens": 1, "output_tokens": 2, "total_tokens": 3}}
+    )
+    assert str(sensitive_error.value) == sensitive_error.value.detail
+
+
+def test_repaired_response_decision_storage_helpers_and_migration() -> None:
+    decision = build_decision()
+    params = decision_module._decision_record_params(decision)
+    migration = (
+        ROOT
+        / "database"
+        / "nex-ae-api"
+        / "migrations"
+        / "0387_ae_repaired_response_decision_persistence.sql"
+    ).read_text(encoding="utf-8")
+
+    assert params["actor_claims_ref"].startswith("{")
+    assert params["decision_reason_codes"].startswith("[")
+    assert decision_module._json_param_expr("metadata", "postgresql") == (
+        "CAST(:metadata AS jsonb)"
+    )
+    assert decision_module._json_param_expr("metadata", "sqlite") == ":metadata"
+    assert decision_module._json_value(None, []) == []
+    assert decision_module._json_value('["prefer_repaired"]', []) == [
+        "prefer_repaired"
+    ]
+    assert decision_module._json_value({"ok": True}, {}) == {"ok": True}
+    assert isinstance(decision_module._datetime_value(None), str)
+    assert decision_module._datetime_value(
+        decision_module.datetime(2026, 8, 27, 0, 0, tzinfo=decision_module.UTC)
+    ) == "2026-08-27T00:00:00Z"
+    assert decision_module._datetime_value(
+        SimpleNamespace(isoformat=lambda: "2026-08-27T00:00:00+00:00")
+    ) == "2026-08-27T00:00:00Z"
+    assert "CREATE TABLE IF NOT EXISTS ae_repaired_response_decisions" in migration
+    assert "decision_action IN ('accept_repair', 'keep_original')" in migration
+    assert "idx_ae_repaired_response_decisions_handoff_time" in migration
+    assert "idx_ae_repaired_response_decisions_owner_time" in migration
+    assert "raw_generation_output" not in migration

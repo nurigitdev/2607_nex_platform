@@ -1,0 +1,234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/repaired_response_decision.v1.schema.json",
+  "title": "NeX AE Repaired Response Decision",
+  "type": "object",
+  "additionalProperties": false,
+  "propertyNames": {
+    "not": {
+      "enum": [
+        "raw_prompt",
+        "raw_generation_output",
+        "raw_output",
+        "raw_source_text",
+        "source_text",
+        "messages",
+        "provider_endpoint",
+        "provider_url",
+        "model_path",
+        "storage_path",
+        "authorization",
+        "access_token",
+        "refresh_token",
+        "api_key",
+        "password",
+        "secret"
+      ]
+    }
+  },
+  "required": [
+    "decision_schema_version",
+    "repaired_response_decision_id",
+    "decision_request_id",
+    "decision_status",
+    "decision_action",
+    "repaired_response_handoff_id",
+    "handoff_request_id",
+    "trace_id",
+    "request_id",
+    "tenant_id",
+    "workspace_id",
+    "owner_user_id",
+    "chat_document_id",
+    "interaction_id",
+    "actor_claims_ref",
+    "parent_cx_generation_id",
+    "repair_cx_generation_id",
+    "selected_cx_generation_id",
+    "rejected_cx_generation_id",
+    "remediation_action_id",
+    "decision_reason_codes",
+    "decision_comment_hash",
+    "decision_comment_preview",
+    "metadata",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "decision_schema_version": {
+      "const": "ae_repaired_response_decision.v1"
+    },
+    "repaired_response_decision_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decision_request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decision_status": {
+      "const": "RECORDED"
+    },
+    "decision_action": {
+      "$ref": "#/$defs/decisionAction"
+    },
+    "repaired_response_handoff_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "handoff_request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "$ref": "#/$defs/traceId"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspace_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner_user_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "chat_document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "interaction_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "actor_claims_ref": {
+      "$ref": "#/$defs/actorClaimsRef"
+    },
+    "parent_cx_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repair_cx_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "selected_cx_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rejected_cx_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "remediation_action_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decision_reason_codes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/decisionReasonCode"
+      }
+    },
+    "decision_comment_hash": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "decision_comment_preview": {
+      "type": ["string", "null"],
+      "maxLength": 240
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "traceId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "decisionAction": {
+      "enum": ["accept_repair", "keep_original"]
+    },
+    "decisionReasonCode": {
+      "enum": [
+        "citation_fixed",
+        "answer_improved",
+        "prefer_repaired",
+        "prefer_original",
+        "repair_not_needed",
+        "repair_unsatisfactory",
+        "other"
+      ]
+    },
+    "actorClaimsRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_type", "actor_id", "tenant_id"],
+      "properties": {
+        "actor_type": {
+          "enum": ["user", "service"]
+        },
+        "actor_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenant_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "submitted_via",
+        "raw_prompt_stored",
+        "raw_generation_output_stored",
+        "raw_source_text_stored",
+        "raw_evidence_stored",
+        "free_text_comment_storage",
+        "parent_generation_mutated"
+      ],
+      "properties": {
+        "submitted_via": {
+          "enum": ["chat_review", "document_detail", "operator_replay"]
+        },
+        "raw_prompt_stored": {
+          "const": false
+        },
+        "raw_generation_output_stored": {
+          "const": false
+        },
+        "raw_source_text_stored": {
+          "const": false
+        },
+        "raw_evidence_stored": {
+          "const": false
+        },
+        "free_text_comment_storage": {
+          "const": "hash_and_short_preview_only"
+        },
+        "parent_generation_mutated": {
+          "const": false
+        }
+      }
+    }
+  }
+}
