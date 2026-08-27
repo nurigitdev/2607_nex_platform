@@ -208,6 +208,13 @@ Unified operations:
   keeps CX as the owner of execution attempts and repair lineage, and freezes
   the `0372` through `0377` gap order before adding new operations APIs or
   status-sync workers.
+- `nex_ag.remediation_execution_operations` builds
+  `ag_remediation_execution_operations_projection.v1`, a read-only AG
+  operations projection that merges AG remediation tasks with CX remediation
+  execution attempts by `remediation_action_id`. It reports safe sync states
+  such as `NO_EXECUTION`, `ORPHAN_EXECUTION`, `IN_SYNC`, and `SYNC_REQUIRED`
+  without exposing raw prompt/output/source/evidence text or credential
+  material.
 - `GET /admin/v1/operations/retrieval-packages` returns
   `ag_retrieval_package_operations_projection.v1`, a CX-sourced read-only
   projection of persisted retrieval packages for debugging grounded retrieval
