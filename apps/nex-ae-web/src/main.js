@@ -65,6 +65,9 @@ import {
   renderRepairedResponseReviewCard
 } from "./repairedResponseReviewCard.js";
 import {
+  buildRepairedResponseReviewReadModel
+} from "./repairedResponseReviewReadModel.js";
+import {
   buildRepairedResponseDecisionRequest
 } from "./repairedResponseDecisionClient.js";
 import {
@@ -1824,7 +1827,9 @@ function renderRuntimeDiagnostics() {
     authBoundary: workspaceState.authBoundary,
     clientRegistry: workspaceState.clientRegistry,
     sessionRouteGuard: workspaceState.sessionRouteGuard,
-    operations: workspaceState.operations
+    operations: workspaceState.operations,
+    repairedResponseReviewReadModel:
+      buildWorkspaceRepairedResponseReviewReadModel()
   });
   const summary = buildRuntimeDiagnosticsSummary(diagnostics);
   const diagnosticsStatus =
@@ -1865,8 +1870,23 @@ function renderRuntimeDiagnostics() {
       <dt>operations</dt>
       <dd>${escapeHtml(summary.operation_count)} total · ${escapeHtml(summary.failed_operation_count)} failed · ${escapeHtml(summary.retryable_operation_count)} retryable</dd>
     </div>
+    <div>
+      <dt>repairs</dt>
+      <dd>${escapeHtml(summary.repaired_response_review_count)} total · ${escapeHtml(summary.repaired_response_actionable_count)} actionable · ${escapeHtml(summary.repaired_response_failed_count)} failed</dd>
+    </div>
   `;
   runtimeDiagnosticsPreview.textContent = JSON.stringify(diagnostics, null, 2);
+}
+
+function buildWorkspaceRepairedResponseReviewReadModel() {
+  return buildRepairedResponseReviewReadModel(
+    workspaceState.messages
+      .map(message => message.repairedResponseReview)
+      .filter(Boolean),
+    {
+      decisionEnabled: Boolean(workspaceState.repairedResponseDecisionClient)
+    }
+  );
 }
 
 function renderOperationFeedback(container, retryButton, operationState, copy) {

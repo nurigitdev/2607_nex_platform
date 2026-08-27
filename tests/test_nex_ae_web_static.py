@@ -968,6 +968,33 @@ def test_ae_web_repaired_response_decision_ux_wiring() -> None:
         assert forbidden not in javascript
 
 
+def test_ae_web_repaired_response_read_model_runtime_wiring() -> None:
+    javascript = read_web_file("src/main.js")
+    read_model = read_web_file("src/repairedResponseReviewReadModel.js")
+    diagnostics = read_web_file("src/runtimeDiagnostics.js")
+
+    for expected in [
+        "buildRepairedResponseReviewReadModel",
+        "buildWorkspaceRepairedResponseReviewReadModel",
+        "repairedResponseReviewReadModel",
+        "repaired_response_review_count",
+        "repaired_response_actionable_count",
+        "repaired_response_failed_count",
+    ]:
+        assert expected in javascript or expected in diagnostics
+
+    for expected in [
+        "ae_web_repaired_response_review_read_model.v1",
+        "REPAIRED_RESPONSE_REVIEW_FILTERS",
+        "filterRepairedResponseReviewReadModel",
+        "buildRepairedResponseReviewReadModelSummary",
+        "findSensitiveRepairedResponseReviewReadModelKeys",
+    ]:
+        assert expected in read_model
+
+    assert "buildRepairedResponseReviewReadModelSummary" in diagnostics
+
+
 def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     styles = read_web_file("src/styles.css")
 

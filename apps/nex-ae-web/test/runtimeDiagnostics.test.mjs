@@ -25,6 +25,16 @@ import {
 import {
   buildSessionRouteGuard
 } from "../src/sessionRouteGuard.js";
+import {
+  AE_REPAIRED_RESPONSE_REVIEW_PROJECTION_SCHEMA_VERSION,
+  buildRepairedResponseReviewSurfaceFromProjection
+} from "../src/repairedResponseReviewClient.js";
+import {
+  buildRepairedResponseReviewReadModel
+} from "../src/repairedResponseReviewReadModel.js";
+import {
+  createRepairedResponseDecisionState
+} from "../src/repairedResponseDecisionState.js";
 
 function runtimeConfig({ mode = "mock" } = {}) {
   return normalizeRuntimeConfig({
@@ -68,6 +78,90 @@ function operations() {
   return { documentDetail, upload };
 }
 
+function repairedReviewSurface({ status = "READY_FOR_DECISION" } = {}) {
+  return {
+    ...buildRepairedResponseReviewSurfaceFromProjection({
+      projection_schema_version:
+        AE_REPAIRED_RESPONSE_REVIEW_PROJECTION_SCHEMA_VERSION,
+      projection_status: "READY_FOR_DECISION",
+      repaired_response_handoff_id: `handoff-${status.toLowerCase()}`,
+      handoff_request_id: `request-${status.toLowerCase()}`,
+      owner_scope: {
+        tenant_id: "tenant-local",
+        workspace_id: "workspace-local",
+        owner_user_id: "owner-local"
+      },
+      conversation_scope: {
+        chat_document_id: "chat-doc-local",
+        interaction_id: "interaction-001"
+      },
+      review_card: {
+        title: "수정 응답 검토",
+        presentation_mode: "side_by_side_review"
+      },
+      original_response_ref: {
+        cx_generation_id: `cx-gen-parent-${status.toLowerCase()}`,
+        link: "/api/v1/generations/parent",
+        parent_generation_mutated: false
+      },
+      repaired_response_summary: {
+        cx_generation_id: `cx-gen-repair-${status.toLowerCase()}`,
+        status: "SUCCEEDED",
+        output_hash: "a".repeat(64),
+        output_preview: "근거 누락 지점을 보강했습니다.",
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+        quality_summary: {
+          grounding_required: true,
+          retrieval_package_id: "cx-ret-001",
+          grounded_response_quality_status: "PASS"
+        }
+      },
+      lineage_summary: {
+        remediation_action_id: `remediation-${status.toLowerCase()}`,
+        lineage_status: "REPAIRED",
+        action_type: "regenerate_answer",
+        lineage_type: "repair",
+        attempt_no: 1,
+        result_ref: { kind: "cx_generation", id: "cx-gen-repair" }
+      },
+      decision_controls: {
+        available_actions: [
+          "view_original",
+          "view_repaired",
+          "accept_repair",
+          "keep_original",
+          "view_lineage"
+        ],
+        primary_actions: ["accept_repair", "keep_original"],
+        secondary_actions: ["view_original", "view_repaired", "view_lineage"],
+        decision_submit_path:
+          `/api/v1/chat/interactions/interaction-001/repaired-response-handoffs/handoff-${status.toLowerCase()}/decisions`
+      },
+      links: {
+        handoff: "/api/v1/handoff",
+        original_generation: "/api/v1/generations/parent",
+        repaired_generation: "/api/v1/generations/repair",
+        remediation_execution: "/api/v1/remediation"
+      },
+      redaction_summary: {
+        raw_output_included: false,
+        raw_prompt_included: false,
+        raw_source_text_included: false,
+        evidence_text_included: false,
+        provider_detail_included: false,
+        storage_path_included: false
+      }
+    }),
+    decisionState:
+      status === "READY_FOR_DECISION"
+        ? null
+        : createRepairedResponseDecisionState({
+            status,
+            action: status === "FAILED" ? "keep_original" : "accept_repair"
+          })
+  };
+}
+
 describe("AE Web runtime diagnostics", () => {
   it("summarizes mock runtime, registry, and operations safely", () => {
     const bootstrap = composeAuthenticatedSessionRuntime({
@@ -96,7 +190,11 @@ describe("AE Web runtime diagnostics", () => {
       sessionRouteGuard,
       authBoundary: runtime.authBoundary,
       clientRegistry: runtime.clientRegistry,
-      operations: operations()
+      operations: operations(),
+      repairedResponseReviewReadModel: buildRepairedResponseReviewReadModel([
+        repairedReviewSurface(),
+        repairedReviewSurface({ status: "FAILED" })
+      ])
     });
     const summary = buildRuntimeDiagnosticsSummary(diagnostics);
 
@@ -113,11 +211,17 @@ describe("AE Web runtime diagnostics", () => {
     assert.equal(diagnostics.operation_count, 2);
     assert.equal(diagnostics.failed_operation_count, 1);
     assert.equal(diagnostics.retryable_operation_count, 1);
+    assert.equal(diagnostics.repaired_response_review_count, 2);
+    assert.equal(diagnostics.repaired_response_actionable_count, 2);
+    assert.equal(diagnostics.repaired_response_failed_count, 1);
     assert.equal(diagnostics.registry.clients.upload, "mock");
     assert.equal(diagnostics.auth_boundary.owner_scope_source, "mock-local");
     assert.equal(diagnostics.session_bootstrap.active_client_mode, "mock");
     assert.equal(diagnostics.session_route_guard.guard_status, "mock_preview");
     assert.equal(summary.operation_count, 2);
+    assert.equal(summary.repaired_response_review_count, 2);
+    assert.equal(summary.repaired_response_actionable_count, 2);
+    assert.equal(summary.repaired_response_failed_count, 1);
     assert.equal(summary.session_state, "anonymous");
     assert.equal(summary.session_bootstrap_phase, "ready");
     assert.equal(summary.route_guard_status, "mock_preview");

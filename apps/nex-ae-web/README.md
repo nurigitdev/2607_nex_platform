@@ -540,5 +540,12 @@ Slice 0397 adds a repaired response review read-model:
   output, source text, service tokens, provider endpoints, database endpoints,
   or storage paths.
 
+Slice 0398 wires repaired response review read-model diagnostics:
+
+- `src/runtimeDiagnostics.js` accepts the safe read-model summary and reports
+  total, actionable, and failed repaired response review counts.
+- `src/main.js` derives those counters from current chat message review
+  surfaces before rendering runtime diagnostics.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

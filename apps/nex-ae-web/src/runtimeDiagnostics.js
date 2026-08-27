@@ -19,6 +19,9 @@ import {
 import {
   buildSessionRouteGuardSummary
 } from "./sessionRouteGuard.js";
+import {
+  buildRepairedResponseReviewReadModelSummary
+} from "./repairedResponseReviewReadModel.js";
 
 export const AE_WEB_RUNTIME_DIAGNOSTICS_SCHEMA_VERSION =
   "ae_web_runtime_diagnostics.v1";
@@ -38,7 +41,8 @@ export function buildRuntimeDiagnostics({
   sessionRouteGuard = null,
   authBoundary = null,
   clientRegistry,
-  operations = {}
+  operations = {},
+  repairedResponseReviewReadModel = null
 } = {}) {
   const runtime = buildRuntimeConfigSummary(runtimeConfig);
   const session = sessionState ? buildSessionStateSummary(sessionState) : null;
@@ -51,6 +55,9 @@ export function buildRuntimeDiagnostics({
     : null;
   const registry = buildClientRegistrySummary(clientRegistry);
   const operationSummaries = summarizeOperations(operations);
+  const repairedReviewSummary = repairedResponseReviewReadModel
+    ? buildRepairedResponseReviewReadModelSummary(repairedResponseReviewReadModel)
+    : null;
 
   return {
     runtime_diagnostics_schema_version: AE_WEB_RUNTIME_DIAGNOSTICS_SCHEMA_VERSION,
@@ -68,6 +75,11 @@ export function buildRuntimeDiagnostics({
     auth_boundary: auth,
     registry,
     operations: operationSummaries,
+    repaired_response_reviews: repairedReviewSummary,
+    repaired_response_review_count: repairedReviewSummary?.total_count || 0,
+    repaired_response_actionable_count:
+      repairedReviewSummary?.actionable_count || 0,
+    repaired_response_failed_count: repairedReviewSummary?.failed_count || 0,
     operation_count: operationSummaries.length,
     failed_operation_count: operationSummaries.filter(
       operation => operation.phase === "failed"
@@ -113,6 +125,10 @@ export function buildRuntimeDiagnosticsSummary(diagnostics) {
     operation_count: diagnostics.operation_count,
     failed_operation_count: diagnostics.failed_operation_count,
     retryable_operation_count: diagnostics.retryable_operation_count,
+    repaired_response_review_count: diagnostics.repaired_response_review_count,
+    repaired_response_actionable_count:
+      diagnostics.repaired_response_actionable_count,
+    repaired_response_failed_count: diagnostics.repaired_response_failed_count,
     metadata: diagnostics.metadata
   };
 }
