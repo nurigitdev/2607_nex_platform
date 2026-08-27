@@ -211,6 +211,9 @@ Repaired response handoff:
 - The handoff contract forbids raw prompt text, raw generation output, source
   text, evidence text, provider details, credentials, storage paths, and local
   filesystem paths. Runtime route and persistence wiring remain deferred.
+- Slice 0381 freezes the runtime boundary before route/persistence wiring: AE
+  API is the handoff system of record, AE Web owns the review surface, CX owns
+  repaired lineage/source records, and AG owns remediation orchestration.
 
 Chat artifact links:
 
