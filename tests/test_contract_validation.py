@@ -348,6 +348,9 @@ def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:
     processing_run_detail = spec["paths"][
         "/admin/v1/operations/cx-processing-runs/{pipeline_run_id}"
     ]["get"]
+    remediation_executions = spec["paths"][
+        "/admin/v1/operations/remediation-executions"
+    ]["get"]
     parameter_names = {parameter["name"] for parameter in worker_detail["parameters"]}
     parameters = spec["components"]["parameters"]
     service_log_query_names = {
@@ -361,6 +364,12 @@ def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:
         if "$ref" in parameter
         else parameter["name"]
         for parameter in processing_runs["parameters"]
+    }
+    remediation_execution_query_names = {
+        parameters[parameter["$ref"].rsplit("/", 1)[-1]]["name"]
+        if "$ref" in parameter
+        else parameter["name"]
+        for parameter in remediation_executions["parameters"]
     }
     projection_versions = spec["components"]["schemas"]["AgOperationsProjection"][
         "properties"
@@ -434,6 +443,24 @@ def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:
     } == processing_run_query_names
     assert "ag_cx_processing_run_operations_projection.v1" in projection_versions
     assert "ag_cx_processing_run_detail_projection.v1" in projection_versions
+    assert (
+        remediation_executions["operationId"]
+        == "getAgRemediationExecutionOperationsProjection"
+    )
+    assert {
+        "cx_generation_id",
+        "remediation_action_id",
+        "action_status",
+        "execution_status",
+        "trace_id",
+        "request_id",
+        "since",
+        "until",
+        "sort",
+        "cursor",
+        "limit",
+    } == remediation_execution_query_names
+    assert "ag_remediation_execution_operations_projection.v1" in projection_versions
 
 
 def test_nex_ag_openapi_includes_retrieval_calibration_and_decision_contracts() -> None:

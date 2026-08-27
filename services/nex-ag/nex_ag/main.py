@@ -30,6 +30,10 @@ from nex_ag.processing_operations import (
     register_cx_processing_run_operation_routes,
 )
 from nex_ag.readiness import register_readiness_routes
+from nex_ag.remediation_execution_operations import (
+    build_remediation_execution_operation_stores,
+    register_remediation_execution_operation_routes,
+)
 from nex_ag.retrieval_policies import register_retrieval_policy_routes
 from nex_ag.retrieval_operations import (
     build_retrieval_package_operation_stores,
@@ -57,6 +61,9 @@ RETRIEVAL_PACKAGE_OPERATION_STORES = build_retrieval_package_operation_stores(
 )
 CX_PROCESSING_RUN_OPERATION_STORES = build_cx_processing_run_operation_stores(
     runtime=OPERATIONS_SOURCE_RUNTIME
+)
+REMEDIATION_EXECUTION_OPERATION_STORES = (
+    build_remediation_execution_operation_stores(runtime=OPERATIONS_SOURCE_RUNTIME)
 )
 GENERATION_REMEDIATION_TASK_STORE = default_generation_remediation_task_store(app)
 GENERATION_REMEDIATION_TASK_STORES = {
@@ -86,6 +93,12 @@ register_cx_processing_run_operation_routes(
 register_retrieval_package_operation_routes(
     app,
     stores=RETRIEVAL_PACKAGE_OPERATION_STORES,
+    runtime=OPERATIONS_SOURCE_RUNTIME,
+)
+register_remediation_execution_operation_routes(
+    app,
+    task_stores=GENERATION_REMEDIATION_TASK_STORES,
+    execution_stores=REMEDIATION_EXECUTION_OPERATION_STORES,
     runtime=OPERATIONS_SOURCE_RUNTIME,
 )
 register_operation_source_readiness_routes(app, runtime=OPERATIONS_SOURCE_RUNTIME)

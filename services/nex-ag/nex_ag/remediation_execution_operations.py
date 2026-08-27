@@ -1,19 +1,45 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+from fastapi import FastAPI, Header, Query, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from nex_ag.generation_remediation_execution import (
     TARGET_STATUS_BY_CX_EXECUTION_STATUS,
 )
-from nex_ag.operations import OperationQueryOptions, build_operation_query_options
+from nex_ag.operations import (
+    AG_OPERATIONS_SOURCE_MODE_ENV,
+    AG_OPERATIONS_SOURCE_PROFILE_ENV,
+    AG_OPERATIONS_SOURCE_SERVICES_ENV,
+    AgOperationsSourceRuntime,
+    OperationQueryOptions,
+    OperationsQueryError,
+    ag_operations_source_database_env,
+    build_operation_query_options,
+    normalize_ag_operations_source_mode,
+    normalize_ag_operations_source_profile,
+    select_ag_operations_source_service_ids,
+)
+from nex_runtime import (
+    DEFAULT_SERVICE_SCOPE,
+    build_engine,
+    build_session_factory,
+    database_pool_settings,
+    problem_response,
+    redact_database_url,
+    required_database_url,
+    trace_id_from_headers,
+    validate_authorization_header,
+)
 
 
 AG_REMEDIATION_EXECUTION_OPERATIONS_PROJECTION_SCHEMA_VERSION = (
@@ -25,6 +51,14 @@ DEFAULT_REMEDIATION_EXECUTION_OPERATION_LIMIT = 50
 MAX_REMEDIATION_EXECUTION_OPERATION_SCAN_LIMIT = 500
 AG_TASK_TERMINAL_STATUSES = ("COMPLETED", "FAILED", "CANCELLED")
 CX_EXECUTION_TERMINAL_STATUSES = ("SUCCEEDED", "FAILED", "CANCELLED")
+AG_REMEDIATION_TASK_STATUSES = (
+    "PROPOSED",
+    "ASSIGNED",
+    "IN_PROGRESS",
+    "WAITING_ON_CX",
+    *AG_TASK_TERMINAL_STATUSES,
+)
+CX_REMEDIATION_EXECUTION_STATUSES = tuple(TARGET_STATUS_BY_CX_EXECUTION_STATUS)
 
 
 class RemediationTaskOperationsStore(Protocol):
@@ -190,6 +224,129 @@ class SqlAlchemyRemediationExecutionOperationsStore:
         return [_execution_record_from_row(row) for row in rows]
 
 
+def build_remediation_execution_operation_stores(
+    *,
+    runtime: AgOperationsSourceRuntime | None = None,
+    environ: Mapping[str, str] | None = None,
+    engine_factory: Any = build_engine,
+    session_factory_builder: Any = build_session_factory,
+) -> dict[str, RemediationExecutionOperationsStore]:
+    selected_runtime = runtime or _remediation_execution_runtime_from_environment(
+        environ or os.environ
+    )
+    if (
+        CX_REMEDIATION_EXECUTION_SOURCE_SERVICE_ID
+        not in selected_runtime.selected_service_ids
+    ):
+        return {}
+    if selected_runtime.mode == "memory":
+        return {
+            CX_REMEDIATION_EXECUTION_SOURCE_SERVICE_ID: (
+                InMemoryRemediationExecutionOperationsStore()
+            )
+        }
+    env = environ or os.environ
+    database_env = ag_operations_source_database_env(
+        CX_REMEDIATION_EXECUTION_SOURCE_SERVICE_ID,
+        profile=selected_runtime.profile,
+    )
+    database_url = required_database_url(database_env, env)
+    engine = engine_factory(
+        database_url,
+        pool_settings=database_pool_settings(
+            CX_REMEDIATION_EXECUTION_SOURCE_SERVICE_ID,
+            workload="api",
+            environ=env,
+        ),
+    )
+    return {
+        CX_REMEDIATION_EXECUTION_SOURCE_SERVICE_ID: (
+            SqlAlchemyRemediationExecutionOperationsStore(
+                session_factory_builder(engine),
+                database_env=database_env,
+                redacted_database_url=redact_database_url(database_url),
+            )
+        )
+    }
+
+
+def register_remediation_execution_operation_routes(
+    app: FastAPI,
+    *,
+    task_stores: Mapping[str, RemediationTaskOperationsStore] | None = None,
+    execution_stores: Mapping[str, RemediationExecutionOperationsStore] | None = None,
+    runtime: AgOperationsSourceRuntime | None = None,
+) -> None:
+    configured_task_stores = dict(task_stores) if task_stores is not None else {}
+    configured_execution_stores = (
+        dict(execution_stores) if execution_stores is not None else None
+    )
+
+    @app.get("/admin/v1/operations/remediation-executions", response_model=None)
+    def list_remediation_execution_operations(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        cx_generation_id: str | None = None,
+        remediation_action_id: str | None = None,
+        action_status: str | None = None,
+        execution_status: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        sort: str | None = None,
+        cursor: str | None = None,
+        limit: int = Query(
+            default=DEFAULT_REMEDIATION_EXECUTION_OPERATION_LIMIT,
+            ge=1,
+        ),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        filter_problem = _validate_remediation_execution_operation_filters(
+            request,
+            action_status=action_status,
+            execution_status=execution_status,
+        )
+        if filter_problem is not None:
+            return filter_problem
+        query_options = _build_query_options_or_problem(
+            request,
+            limit=limit,
+            since=since,
+            until=until,
+            sort=sort,
+            cursor=cursor,
+        )
+        if isinstance(query_options, JSONResponse):
+            return query_options
+        selected_execution_stores = configured_execution_stores
+        if selected_execution_stores is None:
+            selected_runtime = runtime or getattr(
+                request.app.state,
+                "nex_ag_operations_source_runtime",
+                None,
+            )
+            selected_execution_stores = build_remediation_execution_operation_stores(
+                runtime=selected_runtime
+            )
+        return build_remediation_execution_operations_projection(
+            task_stores=configured_task_stores,
+            execution_stores=selected_execution_stores,
+            cx_generation_id=cx_generation_id,
+            remediation_action_id=remediation_action_id,
+            action_status=action_status.upper() if action_status is not None else None,
+            execution_status=(
+                execution_status.upper() if execution_status is not None else None
+            ),
+            trace_id=trace_id,
+            request_id=request_id,
+            query_options=query_options,
+            request_trace_id=trace_id_from_headers(request),
+        )
+
+
 def build_remediation_execution_operations_projection(
     *,
     task_stores: Mapping[str, RemediationTaskOperationsStore],
@@ -295,6 +452,115 @@ def summarize_remediation_execution_operations(
             1 for item in operations if item["attention_required"] is True
         ),
     }
+
+
+def _remediation_execution_runtime_from_environment(
+    env: Mapping[str, str],
+) -> AgOperationsSourceRuntime:
+    mode = normalize_ag_operations_source_mode(env.get(AG_OPERATIONS_SOURCE_MODE_ENV))
+    profile = normalize_ag_operations_source_profile(
+        env.get(AG_OPERATIONS_SOURCE_PROFILE_ENV)
+    )
+    selected_service_ids = select_ag_operations_source_service_ids(
+        env.get(AG_OPERATIONS_SOURCE_SERVICES_ENV)
+    )
+    return AgOperationsSourceRuntime(
+        mode=mode,
+        profile=profile,
+        selected_service_ids=selected_service_ids,
+        registry=None,
+    )
+
+
+def _validate_remediation_execution_operation_filters(
+    request: Request,
+    *,
+    action_status: str | None,
+    execution_status: str | None,
+) -> JSONResponse | None:
+    if (
+        action_status is not None
+        and action_status.upper() not in AG_REMEDIATION_TASK_STATUSES
+    ):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.remediation_execution_action_status_invalid",
+            title="Invalid remediation execution action status filter",
+            detail=f"Unsupported AG remediation task status: {action_status}",
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "remediation-execution-action-status-invalid"
+            ),
+        )
+    if (
+        execution_status is not None
+        and execution_status.upper() not in CX_REMEDIATION_EXECUTION_STATUSES
+    ):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.remediation_execution_execution_status_invalid",
+            title="Invalid remediation execution status filter",
+            detail=f"Unsupported CX remediation execution status: {execution_status}",
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "remediation-execution-status-invalid"
+            ),
+        )
+    return None
+
+
+def _build_query_options_or_problem(
+    request: Request,
+    *,
+    limit: int,
+    since: str | None,
+    until: str | None,
+    sort: str | None,
+    cursor: str | None,
+) -> OperationQueryOptions | JSONResponse:
+    try:
+        return build_operation_query_options(
+            limit=limit,
+            since=since,
+            until=until,
+            sort=sort,
+            cursor=cursor,
+        )
+    except OperationsQueryError as exc:
+        return problem_response(
+            request,
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            title="Invalid remediation execution operations query",
+            detail=exc.detail,
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "remediation-execution-query-invalid"
+            ),
+        )
+
+
+def _authorize_ag_request(
+    request: Request,
+    authorization: str | None,
+) -> JSONResponse | None:
+    result = validate_authorization_header(
+        authorization,
+        expected_audience="nex-ag",
+        required_scopes=[DEFAULT_SERVICE_SCOPE],
+    )
+    if result.ok:
+        return None
+    return problem_response(
+        request,
+        status_code=401,
+        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
+        title="Authentication failed",
+        detail=result.detail or "AG requires a valid service claim.",
+        type_uri="https://nex-platform.local/problems/authentication-failed",
+    )
 
 
 def _read_task_records(

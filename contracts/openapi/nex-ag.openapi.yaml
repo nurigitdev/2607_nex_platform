@@ -1174,6 +1174,75 @@ paths:
           description: Invalid CX processing run query or filter.
         "401":
           description: Service claim is missing or invalid.
+  /admin/v1/operations/remediation-executions:
+    get:
+      operationId: getAgRemediationExecutionOperationsProjection
+      tags:
+        - Operations
+      parameters:
+        - name: cx_generation_id
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+        - name: remediation_action_id
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+        - name: action_status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - PROPOSED
+              - ASSIGNED
+              - IN_PROGRESS
+              - WAITING_ON_CX
+              - COMPLETED
+              - FAILED
+              - CANCELLED
+        - name: execution_status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - ACCEPTED
+              - RUNNING
+              - SUCCEEDED
+              - FAILED
+              - CANCELLED
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TraceId"
+        - name: request_id
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+        - $ref: "#/components/parameters/since"
+        - $ref: "#/components/parameters/until"
+        - $ref: "#/components/parameters/sort"
+        - $ref: "#/components/parameters/cursor"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only AG remediation execution operations projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperationsProjection"
+        "400":
+          description: Invalid remediation execution query or filter.
+        "401":
+          description: Service claim is missing or invalid.
   /admin/v1/operations/cx-processing-runs/{pipeline_run_id}:
     get:
       operationId: getAgCxProcessingRunDetailProjection
@@ -2271,6 +2340,7 @@ components:
             - ag_retrieval_threshold_decision_projection.v1
             - ag_cx_processing_run_operations_projection.v1
             - ag_cx_processing_run_detail_projection.v1
+            - ag_remediation_execution_operations_projection.v1
             - ag_unified_operations_projection.v1
             - ag_operations_rollup_metrics_projection.v1
             - ag_operations_dashboard_snapshot_projection.v1

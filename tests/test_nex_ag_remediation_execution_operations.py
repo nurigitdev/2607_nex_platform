@@ -4,10 +4,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from nex_ag.generation_remediation import GenerationRemediationTaskStore
-from nex_ag.operations import build_operation_query_options
+from nex_ag.operations import AgOperationsSourceRuntime, build_operation_query_options
 from nex_ag.remediation_execution_operations import (
     AG_REMEDIATION_EXECUTION_OPERATIONS_PROJECTION_SCHEMA_VERSION,
     CX_REMEDIATION_EXECUTION_SOURCE_SERVICE_ID,
@@ -15,10 +16,18 @@ from nex_ag.remediation_execution_operations import (
     InMemoryRemediationExecutionOperationsStore,
     RemediationExecutionOperationsError,
     SqlAlchemyRemediationExecutionOperationsStore,
+    build_remediation_execution_operation_stores,
     build_remediation_execution_operations_projection,
+    register_remediation_execution_operation_routes,
 )
 import nex_ag.remediation_execution_operations as remediation_ops
-from nex_runtime import build_engine, build_session_factory
+from nex_runtime import (
+    SERVICE_SPECS,
+    build_engine,
+    build_service_app,
+    build_session_factory,
+    issue_mock_service_token,
+)
 
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
@@ -26,6 +35,39 @@ REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
 CX_GENERATION_ID = "11111111-1111-4111-8111-111111111111"
 REPAIR_GENERATION_ID = "22222222-2222-4222-8222-222222222222"
 REMEDIATION_ACTION_ID = "33333333-3333-4333-8333-333333333333"
+
+
+def auth_headers(*, trace_id: str = TRACE_ID, request_id: str = REQUEST_ID) -> dict[str, str]:
+    issued = issue_mock_service_token(service_id="nex-oa", audience="nex-ag")
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": request_id,
+        "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
+    }
+
+
+def client_for_stores(
+    *,
+    task_store: GenerationRemediationTaskStore | None = None,
+    execution_store: InMemoryRemediationExecutionOperationsStore | None = None,
+) -> TestClient:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    task_stores = (
+        {AG_REMEDIATION_EXECUTION_SOURCE_SERVICE_ID: task_store}
+        if task_store is not None
+        else {}
+    )
+    execution_stores = (
+        {CX_REMEDIATION_EXECUTION_SOURCE_SERVICE_ID: execution_store}
+        if execution_store is not None
+        else {}
+    )
+    register_remediation_execution_operation_routes(
+        app,
+        task_stores=task_stores,
+        execution_stores=execution_stores,
+    )
+    return TestClient(app)
 
 
 def task_record(
@@ -561,6 +603,146 @@ def test_sqlalchemy_remediation_execution_operations_store_wraps_sql_errors(
 
     assert exc_info.value.error_code == "ag.remediation_execution_source_unavailable"
     assert str(exc_info.value)
+
+
+def test_remediation_execution_operation_route_returns_protected_projection() -> None:
+    task_store = GenerationRemediationTaskStore()
+    task_store.save(task_record())
+    client = client_for_stores(
+        task_store=task_store,
+        execution_store=InMemoryRemediationExecutionOperationsStore(
+            records=[execution_record()]
+        ),
+    )
+
+    response = client.get(
+        "/admin/v1/operations/remediation-executions",
+        params={
+            "cx_generation_id": CX_GENERATION_ID,
+            "action_status": "waiting_on_cx",
+            "execution_status": "succeeded",
+            "limit": "5",
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["projection_schema_version"] == (
+        AG_REMEDIATION_EXECUTION_OPERATIONS_PROJECTION_SCHEMA_VERSION
+    )
+    assert body["filters"]["action_status"] == "WAITING_ON_CX"
+    assert body["filters"]["execution_status"] == "SUCCEEDED"
+    assert body["operations"][0]["status_sync_state"] == "SYNC_REQUIRED"
+
+
+def test_remediation_execution_operation_route_requires_auth_and_valid_filters() -> None:
+    client = client_for_stores()
+
+    unauthorized = client.get("/admin/v1/operations/remediation-executions")
+    bad_action = client.get(
+        "/admin/v1/operations/remediation-executions?action_status=bad",
+        headers=auth_headers(),
+    )
+    bad_execution = client.get(
+        "/admin/v1/operations/remediation-executions?execution_status=bad",
+        headers=auth_headers(),
+    )
+    bad_query = client.get(
+        "/admin/v1/operations/remediation-executions?sort=sideways",
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert bad_action.status_code == 400
+    assert bad_action.json()["error_code"] == (
+        "ag.remediation_execution_action_status_invalid"
+    )
+    assert bad_execution.status_code == 400
+    assert bad_execution.json()["error_code"] == (
+        "ag.remediation_execution_execution_status_invalid"
+    )
+    assert bad_query.status_code == 400
+
+
+def test_remediation_execution_operation_route_builds_runtime_execution_store() -> None:
+    task_store = GenerationRemediationTaskStore()
+    task_store.save(task_record())
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_remediation_execution_operation_routes(
+        app,
+        task_stores={AG_REMEDIATION_EXECUTION_SOURCE_SERVICE_ID: task_store},
+        runtime=AgOperationsSourceRuntime(
+            mode="memory",
+            profile="test",
+            selected_service_ids={CX_REMEDIATION_EXECUTION_SOURCE_SERVICE_ID},
+            registry=None,
+        ),
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/admin/v1/operations/remediation-executions",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["projection_status"] == "READY"
+    assert body["operations"][0]["status_sync_state"] == "NO_EXECUTION"
+
+
+def test_build_remediation_execution_operation_stores_respects_runtime_modes() -> None:
+    memory = build_remediation_execution_operation_stores(
+        environ={
+            "NEX_AG_OPERATIONS_SOURCE_MODE": "memory",
+            "NEX_AG_OPERATIONS_SOURCE_SERVICES": "nex-cx",
+        }
+    )
+    unselected = build_remediation_execution_operation_stores(
+        environ={
+            "NEX_AG_OPERATIONS_SOURCE_MODE": "memory",
+            "NEX_AG_OPERATIONS_SOURCE_SERVICES": "nex-ag",
+        }
+    )
+
+    assert isinstance(
+        memory["nex-cx"],
+        InMemoryRemediationExecutionOperationsStore,
+    )
+    assert unselected == {}
+
+
+def test_build_remediation_execution_operation_stores_builds_postgres_store() -> None:
+    engine = object()
+    seen: dict[str, object] = {}
+
+    def fake_engine_factory(database_url: str, *, pool_settings: object) -> object:
+        seen["database_url"] = database_url
+        seen["pool_settings"] = pool_settings
+        return engine
+
+    def fake_session_factory_builder(received_engine: object) -> object:
+        seen["engine"] = received_engine
+        return lambda: None
+
+    stores = build_remediation_execution_operation_stores(
+        environ={
+            "NEX_AG_OPERATIONS_SOURCE_MODE": "postgres",
+            "NEX_AG_OPERATIONS_SOURCE_PROFILE": "test",
+            "NEX_AG_OPERATIONS_SOURCE_SERVICES": "nex-cx",
+            "NEX_CX_TEST_DATABASE_URL": "postgresql://user:secret@localhost/db",
+        },
+        engine_factory=fake_engine_factory,
+        session_factory_builder=fake_session_factory_builder,
+    )
+
+    store = stores["nex-cx"]
+    assert isinstance(store, SqlAlchemyRemediationExecutionOperationsStore)
+    assert seen["database_url"] == "postgresql://user:secret@localhost/db"
+    assert seen["engine"] is engine
+    assert store.database_env == "NEX_CX_TEST_DATABASE_URL"
+    assert store.redacted_database_url == "postgresql://user:***@localhost/db"
 
 
 def test_remediation_execution_operations_helpers_cover_scalar_edges() -> None:

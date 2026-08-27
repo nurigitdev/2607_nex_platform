@@ -215,6 +215,11 @@ Unified operations:
   such as `NO_EXECUTION`, `ORPHAN_EXECUTION`, `IN_SYNC`, and `SYNC_REQUIRED`
   without exposing raw prompt/output/source/evidence text or credential
   material.
+- `GET /admin/v1/operations/remediation-executions` exposes that projection
+  through the protected AG operations API. It supports filters for
+  `cx_generation_id`, `remediation_action_id`, AG `action_status`, CX
+  `execution_status`, trace/request ids, and the shared time/pagination
+  controls.
 - `GET /admin/v1/operations/retrieval-packages` returns
   `ag_retrieval_package_operations_projection.v1`, a CX-sourced read-only
   projection of persisted retrieval packages for debugging grounded retrieval
