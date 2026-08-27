@@ -482,6 +482,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0376`](slices/0376_ag_remediation_execution_status_sync_worker_mock_runtime.md) | `S38-006` AG remediation execution status sync worker mock runtime. |
 | [`Slice 0377`](slices/0377_ag_remediation_execution_status_sync_postgresql_smoke_evidence.md) | `S38-007` AG remediation execution status sync PostgreSQL smoke evidence. |
 | [`Slice 0378`](slices/0378_cx_repaired_generation_lineage_read_model_hardening.md) | `S38-008` CX repaired generation lineage read-model hardening. |
+| [`Slice 0379`](slices/0379_ae_repaired_response_handoff_contract_foundation.md) | `S38-009` AE repaired response handoff contract foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -729,6 +729,162 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: AE chat interaction was not found.
+  /api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs:
+    post:
+      operationId: createAeRepairedResponseHandoff
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: >
+                AE repaired response handoff request built from a CX remediation
+                execution detail and completed repaired generation record. AE
+                stores safe lineage refs, hashes, preview, actor scope, and user
+                review mode only.
+      responses:
+        "202":
+          description: AE repaired response handoff is ready for user review.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                required:
+                  - handoff_schema_version
+                  - repaired_response_handoff_id
+                  - handoff_status
+                  - source
+                  - repaired_response
+                  - lineage
+                  - redaction_summary
+                properties:
+                  handoff_schema_version:
+                    const: ae_repaired_response_handoff.v1
+                  repaired_response_handoff_id:
+                    type: string
+                  handoff_status:
+                    const: READY_FOR_USER_REVIEW
+                  source:
+                    type: object
+                    additionalProperties: true
+                    required:
+                      - detail_schema_version
+                      - parent_cx_generation_id
+                      - repair_cx_generation_id
+                    properties:
+                      detail_schema_version:
+                        const: cx_remediation_execution_detail.v1
+                      parent_cx_generation_id:
+                        type: string
+                      repair_cx_generation_id:
+                        type: string
+                  repaired_response:
+                    type: object
+                    additionalProperties: true
+                    required:
+                      - cx_generation_id
+                      - output_preview
+                      - output_hash
+                    properties:
+                      cx_generation_id:
+                        type: string
+                      output_preview:
+                        type: string
+                        maxLength: 120
+                      output_hash:
+                        oneOf:
+                          - type: string
+                            pattern: "^[a-f0-9]{64}$"
+                          - type: "null"
+                  lineage:
+                    type: object
+                    additionalProperties: true
+                    required:
+                      - source_lineage_schema_version
+                      - lineage_status
+                      - parent_generation_mutated
+                    properties:
+                      source_lineage_schema_version:
+                        const: cx_repaired_generation_lineage.v1
+                      lineage_status:
+                        const: LINKED
+                      parent_generation_mutated:
+                        const: false
+                  redaction_summary:
+                    type: object
+                    additionalProperties: true
+                    required:
+                      - raw_output_included
+                      - raw_prompt_included
+                      - raw_source_text_included
+                      - provider_detail_included
+                    properties:
+                      raw_output_included:
+                        const: false
+                      raw_prompt_included:
+                        const: false
+                      raw_source_text_included:
+                        const: false
+                      provider_detail_included:
+                        const: false
+        "401":
+          description: Service claim or browser user session is missing or invalid.
+        "409":
+          description: CX remediation lineage or generation ids are inconsistent.
+        "422":
+          description: Handoff payload is invalid or contains sensitive fields.
+        "503":
+          description: CX remediation or generation read model is unavailable.
+  /api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs/{repaired_response_handoff_id}:
+    get:
+      operationId: getAeRepairedResponseHandoff
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repaired_response_handoff_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Safe AE repaired response handoff record.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                required:
+                  - handoff_schema_version
+                  - repaired_response_handoff_id
+                  - interaction_id
+                properties:
+                  handoff_schema_version:
+                    const: ae_repaired_response_handoff.v1
+                  repaired_response_handoff_id:
+                    type: string
+                  interaction_id:
+                    type: string
+        "401":
+          description: Service claim or browser user session is missing or invalid.
+        "404":
+          description: Repaired response handoff was not found for the interaction.
   /api/v1/chat/interactions/{interaction_id}/feedback:
     post:
       operationId: createAeGenerationFeedback

@@ -1,0 +1,88 @@
+{
+  "handoff_schema_version": "ae_repaired_response_handoff.v1",
+  "repaired_response_handoff_id": "ae-repaired-handoff-001",
+  "handoff_request_id": "ae-repaired-request-001",
+  "handoff_status": "READY_FOR_USER_REVIEW",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "tenant_id": "tenant-001",
+  "workspace_id": "workspace-001",
+  "owner_user_id": "user-001",
+  "chat_document_id": "chat-doc-001",
+  "interaction_id": "interaction-001",
+  "actor_claims_ref": {
+    "actor_type": "user",
+    "actor_id": "user-001",
+    "tenant_id": "tenant-001"
+  },
+  "raw_output": "The full repaired answer must never be stored in this handoff.",
+  "source": {
+    "source_service": "nex-cx",
+    "detail_schema_version": "cx_remediation_execution_detail.v1",
+    "remediation_action_id": "ag-remediation-action-001",
+    "parent_cx_generation_id": "cx-gen-001",
+    "root_cx_generation_id": "cx-gen-001",
+    "repair_cx_generation_id": "cx-gen-repair-001",
+    "result_ref": null
+  },
+  "repaired_response": {
+    "cx_generation_id": "cx-gen-repair-001",
+    "status": "COMPLETED",
+    "alias": "general-llm-default",
+    "provider_capability": "generation",
+    "mo_generation_id": "mo-gen-repair-001",
+    "finish_reason": "STOP",
+    "output_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "output_preview": "Repaired answer with citation support.",
+    "usage": {},
+    "quality_summary": {
+      "grounding_required": true,
+      "retrieval_package_id": "cx-ret-001",
+      "retrieval_package_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "structured_draft_id": "draft-repair-001",
+      "draft_validation_status": "VALIDATED",
+      "grounded_response_quality_status": "PASS",
+      "grounded_response_quality_issue_count": 0
+    }
+  },
+  "lineage": {
+    "source_lineage_schema_version": "cx_repaired_generation_lineage.v1",
+    "lineage_status": "LINKED",
+    "parent_cx_generation_id": "cx-gen-001",
+    "root_cx_generation_id": "cx-gen-001",
+    "repair_cx_generation_id": "cx-gen-repair-001",
+    "remediation_action_id": "ag-remediation-action-001",
+    "action_type": "citation_repair",
+    "lineage_type": "repair",
+    "attempt_no": 1,
+    "parent_generation_mutated": false
+  },
+  "user_surface": {
+    "presentation_mode": "side_by_side_review",
+    "default_action": "review_repair",
+    "available_actions": [
+      "view_original",
+      "view_repaired",
+      "accept_repair",
+      "keep_original",
+      "view_lineage"
+    ]
+  },
+  "links": {
+    "handoff": "/api/v1/chat/interactions/interaction-001/repaired-response-handoffs/ae-repaired-handoff-001",
+    "original_generation": "/api/v1/generations/cx-gen-001",
+    "repaired_generation": "/api/v1/generations/cx-gen-repair-001",
+    "remediation_execution": "/api/v1/generations/cx-gen-001/remediation-executions/ag-remediation-action-001"
+  },
+  "redaction_summary": {
+    "raw_output_included": false,
+    "raw_prompt_included": false,
+    "raw_source_text_included": false,
+    "evidence_text_included": false,
+    "provider_detail_included": false,
+    "storage_path_included": false,
+    "free_text_storage": "hash_and_short_preview_only"
+  },
+  "created_at": "2026-08-27T00:00:00Z",
+  "updated_at": "2026-08-27T00:00:00Z"
+}

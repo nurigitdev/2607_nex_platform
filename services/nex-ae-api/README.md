@@ -39,6 +39,8 @@ Current endpoints:
 - `GET /api/v1/recovery/generation-requests/{recovery_request_id}`
 - `POST /api/v1/chat/interactions`
 - `GET /api/v1/chat/interactions/{interaction_id}`
+- `POST /api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs`
+- `GET /api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs/{repaired_response_handoff_id}`
 - `POST /api/v1/chat/interactions/{interaction_id}/artifact-links`
 - `GET /api/v1/chat/interactions/{interaction_id}/artifact-links`
 - `POST /api/v1/retrieval/contexts`
@@ -198,6 +200,17 @@ Chat interactions can include a `retrieval` object. When enabled, AE asks CX for
 a retrieval context package first, injects cited evidence into the CX generation
 request, records a compact retrieval summary, and returns `NO_ANSWER` without
 calling generation when CX has no supporting evidence.
+
+Repaired response handoff:
+
+- Slice 0379 adds the `ae_repaired_response_handoff.v1` contract foundation for
+  presenting a CX remediation result back to the chat user. AE accepts only
+  linked `cx_repaired_generation_lineage.v1` details and completed repaired
+  generation records, then keeps response hash, short preview, usage metadata,
+  quality summary, actor scope, links, and redaction flags.
+- The handoff contract forbids raw prompt text, raw generation output, source
+  text, evidence text, provider details, credentials, storage paths, and local
+  filesystem paths. Runtime route and persistence wiring remain deferred.
 
 Chat artifact links:
 

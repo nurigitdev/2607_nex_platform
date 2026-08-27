@@ -793,6 +793,80 @@ def test_nex_ae_openapi_hardens_document_detail_contract() -> None:
     assert root_metadata_schema["properties"]["cx_detail_passthrough"]["const"] is False
 
 
+def test_nex_ae_repaired_response_handoff_contract_preserves_safe_lineage() -> None:
+    root = Path(__file__).parents[1]
+    schema = json.loads(
+        (
+            root
+            / "contracts"
+            / "schemas"
+            / "service"
+            / "nex_ae_api"
+            / "repaired_response_handoff.v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    example = json.loads(
+        (
+            root
+            / "contracts"
+            / "examples"
+            / "generation"
+            / "ae_repaired_response_handoff.ready_for_review.json"
+        ).read_text(encoding="utf-8")
+    )
+    spec = yaml.safe_load(
+        (root / "contracts" / "openapi" / "nex-ae-api.openapi.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    source = schema["$defs"]["source"]["properties"]
+    repaired_response = schema["$defs"]["repairedResponse"]["properties"]
+    lineage = schema["$defs"]["lineage"]["properties"]
+    redaction = schema["$defs"]["redactionSummary"]["properties"]
+    post_operation = spec["paths"][
+        "/api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs"
+    ]["post"]
+    get_operation = spec["paths"][
+        "/api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs/"
+        "{repaired_response_handoff_id}"
+    ]["get"]
+    response_schema = post_operation["responses"]["202"]["content"][
+        "application/json"
+    ]["schema"]
+
+    assert schema["properties"]["handoff_schema_version"]["const"] == (
+        "ae_repaired_response_handoff.v1"
+    )
+    assert source["detail_schema_version"]["const"] == (
+        "cx_remediation_execution_detail.v1"
+    )
+    assert repaired_response["provider_capability"]["const"] == "generation"
+    assert repaired_response["output_preview"]["maxLength"] == 120
+    assert lineage["source_lineage_schema_version"]["const"] == (
+        "cx_repaired_generation_lineage.v1"
+    )
+    assert lineage["lineage_status"]["const"] == "LINKED"
+    assert lineage["parent_generation_mutated"]["const"] is False
+    assert redaction["raw_output_included"]["const"] is False
+    assert redaction["raw_prompt_included"]["const"] is False
+    assert redaction["raw_source_text_included"]["const"] is False
+    assert example["source"]["detail_schema_version"] == (
+        "cx_remediation_execution_detail.v1"
+    )
+    assert example["lineage"]["source_lineage_schema_version"] == (
+        "cx_repaired_generation_lineage.v1"
+    )
+    assert post_operation["operationId"] == "createAeRepairedResponseHandoff"
+    assert get_operation["operationId"] == "getAeRepairedResponseHandoff"
+    assert response_schema["properties"]["handoff_schema_version"]["const"] == (
+        "ae_repaired_response_handoff.v1"
+    )
+    assert response_schema["properties"]["lineage"]["properties"][
+        "parent_generation_mutated"
+    ]["const"] is False
+
+
 def test_load_structured_file_rejects_unsupported_suffix(tmp_path: Path) -> None:
     unsupported = tmp_path / "payload.txt"
     unsupported.write_text("hello", encoding="utf-8")
