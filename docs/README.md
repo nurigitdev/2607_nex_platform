@@ -477,6 +477,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0371`](slices/0371_remediation_runtime_operations_gap_audit.md) | `S38-001` Remediation runtime operations gap audit. |
 | [`Slice 0372`](slices/0372_ag_remediation_execution_operations_projection_foundation.md) | `S38-002` AG remediation execution operations projection foundation. |
 | [`Slice 0373`](slices/0373_ag_remediation_execution_operations_api_wiring.md) | `S38-003` AG remediation execution operations API wiring. |
+| [`Slice 0374`](slices/0374_ag_remediation_execution_dashboard_issue_candidate_integration.md) | `S38-004` AG remediation execution dashboard/issue candidate integration. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

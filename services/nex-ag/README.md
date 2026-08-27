@@ -259,6 +259,11 @@ Unified operations:
   `GET /admin/v1/operations/cx-processing-runs/{pipeline_run_id}` are the
   read-only AG APIs for the same projection family. In PostgreSQL source mode,
   AG reads CX processing run and step rows without writing to the CX database.
+- `GET /admin/v1/operations/remediation-executions` exposes the read-only AG/CX
+  remediation execution projection, and the unified dashboard now includes a
+  `remediation_executions` section plus
+  `remediation_execution_attention_required.v1` issue candidates for failed,
+  orphan, missing, unknown, or status-sync-required execution records.
 - `scripts/smoke/run_ag_cx_processing_run_postgres_smoke.py` is the guarded
   PostgreSQL test-profile evidence path for the CX processing run list/detail
   APIs. It is skipped unless `NEX_AG_CX_PROCESSING_RUN_POSTGRES_SMOKE=1` and is

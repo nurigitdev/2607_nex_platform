@@ -193,6 +193,9 @@ class GenerationRemediationTaskDashboardStore(Protocol):
     def list_recent(self, *, limit: int = 500) -> list[dict[str, Any]]: ...
 
 
+RemediationExecutionOperationsProjectionBuilder = Callable[..., dict[str, Any]]
+
+
 MIN_SERVICE_LOG_RETENTION_DAYS = 7
 MAX_SERVICE_LOG_RETENTION_DAYS = 365
 MAX_OPERATION_EVENT_QUERY_LENGTH = 128
@@ -342,6 +345,17 @@ OPERATIONS_ISSUE_CANDIDATE_RULES = (
         "description": "One or more generation remediation tasks need operator review.",
         "enabled": True,
         "signal_type": "generation_remediation",
+    },
+    {
+        "rule_id": "remediation_execution_attention_required.v1",
+        "severity": "WARNING",
+        "title": "Remediation execution attention required",
+        "description": (
+            "One or more remediation execution records need task/execution "
+            "reconciliation."
+        ),
+        "enabled": True,
+        "signal_type": "remediation_execution",
     },
 )
 RETRIEVAL_THRESHOLD_ISSUE_RULES_BY_READINESS = {
@@ -1931,6 +1945,13 @@ def register_unified_operation_routes(
     generation_remediation_task_stores: (
         Mapping[str, GenerationRemediationTaskDashboardStore] | None
     ) = None,
+    remediation_execution_task_stores: (
+        Mapping[str, GenerationRemediationTaskDashboardStore] | None
+    ) = None,
+    remediation_execution_stores: Mapping[str, Any] | None = None,
+    remediation_execution_projection_builder: (
+        RemediationExecutionOperationsProjectionBuilder | None
+    ) = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -2073,6 +2094,15 @@ def register_unified_operation_routes(
             runtime=selected_runtime,
             cx_processing_run_stores=cx_processing_run_stores,
             generation_remediation_task_stores=generation_remediation_task_stores,
+            remediation_execution_task_stores=(
+                remediation_execution_task_stores
+                if remediation_execution_task_stores is not None
+                else generation_remediation_task_stores
+            ),
+            remediation_execution_stores=remediation_execution_stores,
+            remediation_execution_projection_builder=(
+                remediation_execution_projection_builder
+            ),
             service_id=service_id,
             recent_limit=recent_limit,
             query_options=query_options,
@@ -2124,6 +2154,15 @@ def register_unified_operation_routes(
             service_log_stores=service_log_stores,
             retrieval_package_stores=retrieval_package_stores,
             generation_remediation_task_stores=generation_remediation_task_stores,
+            remediation_execution_task_stores=(
+                remediation_execution_task_stores
+                if remediation_execution_task_stores is not None
+                else generation_remediation_task_stores
+            ),
+            remediation_execution_stores=remediation_execution_stores,
+            remediation_execution_projection_builder=(
+                remediation_execution_projection_builder
+            ),
             worker_heartbeat_stores=worker_heartbeat_stores,
             registry=registry,
             runtime=selected_runtime,
@@ -2980,6 +3019,13 @@ def build_operations_issue_candidate_projection(
     generation_remediation_task_stores: (
         Mapping[str, GenerationRemediationTaskDashboardStore] | None
     ) = None,
+    remediation_execution_task_stores: (
+        Mapping[str, GenerationRemediationTaskDashboardStore] | None
+    ) = None,
+    remediation_execution_stores: Mapping[str, Any] | None = None,
+    remediation_execution_projection_builder: (
+        RemediationExecutionOperationsProjectionBuilder | None
+    ) = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -3001,6 +3047,13 @@ def build_operations_issue_candidate_projection(
         service_log_stores=service_log_stores,
         retrieval_package_stores=retrieval_package_stores,
         generation_remediation_task_stores=generation_remediation_task_stores,
+        remediation_execution_task_stores=(
+            remediation_execution_task_stores
+            if remediation_execution_task_stores is not None
+            else generation_remediation_task_stores
+        ),
+        remediation_execution_stores=remediation_execution_stores,
+        remediation_execution_projection_builder=remediation_execution_projection_builder,
         registry=registry,
         runtime=runtime,
         service_id=service_id,
@@ -3353,6 +3406,13 @@ def build_operations_dashboard_snapshot_projection(
     generation_remediation_task_stores: (
         Mapping[str, GenerationRemediationTaskDashboardStore] | None
     ) = None,
+    remediation_execution_task_stores: (
+        Mapping[str, GenerationRemediationTaskDashboardStore] | None
+    ) = None,
+    remediation_execution_stores: Mapping[str, Any] | None = None,
+    remediation_execution_projection_builder: (
+        RemediationExecutionOperationsProjectionBuilder | None
+    ) = None,
     service_id: str | None = None,
     recent_limit: int = 5,
     limit: int = 500,
@@ -3445,6 +3505,18 @@ def build_operations_dashboard_snapshot_projection(
         options=options,
         limit=normalized_recent_limit,
     )
+    remediation_executions = _dashboard_remediation_execution_section(
+        remediation_execution_projection_builder,
+        task_stores=(
+            remediation_execution_task_stores
+            if remediation_execution_task_stores is not None
+            else generation_remediation_task_stores
+        ),
+        execution_stores=remediation_execution_stores,
+        service_id=service_id,
+        options=options,
+        limit=normalized_recent_limit,
+    )
     degraded_sources = _dashboard_degraded_sources(
         operation_sources=readiness_projection["sources"],
         job_source_statuses=rollup_projection["job_source_statuses"],
@@ -3456,6 +3528,9 @@ def build_operations_dashboard_snapshot_projection(
         ),
         generation_remediation_source_statuses=(
             generation_remediation["source_statuses"]
+        ),
+        remediation_execution_source_statuses=(
+            remediation_executions["source_statuses"]
         ),
     )
     projection = {
@@ -3479,6 +3554,7 @@ def build_operations_dashboard_snapshot_projection(
         "retrieval_threshold_decisions": retrieval_threshold_decisions,
         "generation_quality": generation_quality,
         "generation_remediation": generation_remediation,
+        "remediation_executions": remediation_executions,
         "degraded_sources": degraded_sources,
         "job_source_statuses": rollup_projection["job_source_statuses"],
         "event_source_statuses": rollup_projection["event_source_statuses"],
@@ -4073,6 +4149,11 @@ def build_operations_issue_candidates(
     candidates.extend(
         _issue_candidates_from_generation_remediation(
             dashboard_snapshot.get("generation_remediation")
+        )
+    )
+    candidates.extend(
+        _issue_candidates_from_remediation_executions(
+            dashboard_snapshot.get("remediation_executions")
         )
     )
     if worker_runtime_projection is not None:
@@ -5878,6 +5959,230 @@ def _dashboard_generation_remediation_source_status(
     return source
 
 
+def _dashboard_remediation_execution_section(
+    projection_builder: RemediationExecutionOperationsProjectionBuilder | None,
+    *,
+    task_stores: Mapping[str, GenerationRemediationTaskDashboardStore] | None,
+    execution_stores: Mapping[str, Any] | None,
+    service_id: str | None,
+    options: OperationQueryOptions,
+    limit: int,
+) -> dict[str, Any]:
+    if service_id not in {None, "nex-ag", "nex-cx"} or projection_builder is None:
+        return _empty_dashboard_remediation_execution_section({})
+
+    dashboard_options = OperationQueryOptions(
+        limit=options.limit,
+        since=options.since,
+        until=options.until,
+        sort="desc",
+        cursor=None,
+    )
+    try:
+        projection = projection_builder(
+            task_stores=dict(task_stores or {}),
+            execution_stores=dict(execution_stores or {}),
+            query_options=dashboard_options,
+        )
+    except Exception as exc:
+        source_statuses = {
+            "nex-ag": _dashboard_remediation_execution_source_error(
+                service_id="nex-ag",
+                error=exc,
+            ),
+            "nex-cx": _dashboard_remediation_execution_source_error(
+                service_id="nex-cx",
+                error=exc,
+            ),
+        }
+        return {
+            **_empty_dashboard_remediation_execution_section(source_statuses),
+            "projection_status": "DEGRADED",
+        }
+
+    operations = [
+        _dashboard_remediation_execution_item(item)
+        for item in projection.get("operations", [])
+        if isinstance(item, Mapping)
+    ]
+    recent = operations[:limit]
+    attention = [
+        item for item in recent if _remediation_execution_needs_attention(item)
+    ]
+    return {
+        "projection_schema_version": "ag_remediation_execution_dashboard_section.v1",
+        "projection_status": str(projection.get("projection_status") or "READY"),
+        "summary": _dashboard_remediation_execution_summary(projection, operations),
+        "recent": recent,
+        "attention": attention,
+        "source_statuses": _dashboard_remediation_execution_source_statuses(
+            projection
+        ),
+        "operations_path": "/admin/v1/operations/remediation-executions",
+    }
+
+
+def _empty_dashboard_remediation_execution_section(
+    source_statuses: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "projection_schema_version": "ag_remediation_execution_dashboard_section.v1",
+        "projection_status": "READY",
+        "summary": {
+            "total": 0,
+            "by_task_status": {},
+            "by_execution_status": {},
+            "by_status_sync_state": {},
+            "sync_required_count": 0,
+            "missing_execution_count": 0,
+            "orphan_execution_count": 0,
+            "failed_execution_count": 0,
+            "attention_required_count": 0,
+        },
+        "recent": [],
+        "attention": [],
+        "source_statuses": source_statuses,
+        "operations_path": "/admin/v1/operations/remediation-executions",
+    }
+
+
+def _dashboard_remediation_execution_item(
+    item: Mapping[str, Any],
+) -> dict[str, Any]:
+    remediation_action_id = str(item.get("remediation_action_id") or "")
+    cx_generation_id = str(item.get("cx_generation_id") or "UNKNOWN")
+    task_detail_path = None
+    if remediation_action_id and cx_generation_id != "UNKNOWN":
+        task_detail_path = (
+            f"/admin/v1/generation-audit/generations/{cx_generation_id}"
+            f"/remediation-tasks/{remediation_action_id}"
+        )
+    execution_detail_path = (
+        f"/admin/v1/operations/remediation-executions"
+        f"?remediation_action_id={remediation_action_id}"
+        if remediation_action_id
+        else "/admin/v1/operations/remediation-executions"
+    )
+    return {
+        "service_id": "nex-ag",
+        "operation_type": "remediation_execution",
+        "operation_timestamp": _dashboard_timestamp(item.get("operation_timestamp")),
+        "remediation_action_id": remediation_action_id,
+        "cx_generation_id": cx_generation_id,
+        "trace_id": _nullable_string(item.get("trace_id")),
+        "request_id": _nullable_string(item.get("request_id")),
+        "tenant_id": _nullable_string(item.get("tenant_id")),
+        "action_type": str(item.get("action_type") or "unknown"),
+        "priority": _nullable_string(item.get("priority")),
+        "task_status": _nullable_string(item.get("task_status")),
+        "execution_status": _nullable_string(item.get("execution_status")),
+        "target_task_status": _nullable_string(item.get("target_task_status")),
+        "status_sync_state": str(item.get("status_sync_state") or "UNKNOWN"),
+        "attention_required": item.get("attention_required") is True,
+        "attempt_no": _safe_optional_int(item.get("attempt_no")),
+        "lineage_type": _nullable_string(item.get("lineage_type")),
+        "repair_cx_generation_id": _nullable_string(
+            item.get("repair_cx_generation_id")
+        ),
+        "failure": _dashboard_remediation_execution_failure(item.get("failure")),
+        "evidence_hash_count": _safe_int(item.get("evidence_hash_count")),
+        "source_ref_count": _safe_int(item.get("source_ref_count")),
+        "task_updated_at": _dashboard_optional_timestamp(item.get("task_updated_at")),
+        "execution_updated_at": _dashboard_optional_timestamp(
+            item.get("execution_updated_at")
+        ),
+        "task_detail_path": task_detail_path,
+        "execution_detail_path": execution_detail_path,
+    }
+
+
+def _dashboard_remediation_execution_failure(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+    return {
+        "error_code": _nullable_string(value.get("error_code")),
+        "error_detail_sha256": _nullable_string(value.get("error_detail_sha256")),
+        "retryable": value.get("retryable") is True,
+    }
+
+
+def _dashboard_remediation_execution_source_statuses(
+    projection: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    source_statuses = projection.get("source_statuses")
+    if not isinstance(source_statuses, Mapping):
+        return {}
+    return {
+        str(service_id): dict(status)
+        for service_id, status in source_statuses.items()
+        if isinstance(service_id, str) and isinstance(status, Mapping)
+    }
+
+
+def _dashboard_remediation_execution_summary(
+    projection: Mapping[str, Any],
+    operations: list[dict[str, Any]],
+) -> dict[str, Any]:
+    summary = projection.get("summary")
+    if isinstance(summary, Mapping):
+        result = dict(summary)
+        result.setdefault(
+            "by_status_sync_state",
+            _dashboard_count_by(operations, "status_sync_state"),
+        )
+        return result
+    return {
+        "total": len(operations),
+        "by_task_status": _dashboard_count_by(operations, "task_status"),
+        "by_execution_status": _dashboard_count_by(operations, "execution_status"),
+        "by_status_sync_state": _dashboard_count_by(operations, "status_sync_state"),
+        "sync_required_count": sum(
+            1 for item in operations if item["status_sync_state"] == "SYNC_REQUIRED"
+        ),
+        "missing_execution_count": sum(
+            1 for item in operations if item["execution_status"] is None
+        ),
+        "orphan_execution_count": sum(
+            1 for item in operations if item["task_status"] is None
+        ),
+        "failed_execution_count": sum(
+            1 for item in operations if item["execution_status"] == "FAILED"
+        ),
+        "attention_required_count": sum(
+            1 for item in operations if item["attention_required"] is True
+        ),
+    }
+
+
+def _dashboard_remediation_execution_source_error(
+    *,
+    service_id: str,
+    error: Exception,
+) -> dict[str, Any]:
+    return {
+        "status": "UNAVAILABLE",
+        "service_id": service_id,
+        "source_kind": "projection_builder",
+        "record_count": 0,
+        "database_env": None,
+        "redacted_database_url": None,
+        "error_code": getattr(
+            error,
+            "error_code",
+            "ag.remediation_execution_dashboard_source_unavailable",
+        ),
+        "detail": getattr(
+            error,
+            "detail",
+            "Remediation execution dashboard source could not be read.",
+        ),
+    }
+
+
+def _remediation_execution_needs_attention(item: Mapping[str, Any]) -> bool:
+    return item.get("attention_required") is True
+
+
 def _dashboard_generation_quality_section(
     generation_audit_projections: list[Mapping[str, Any]] | None,
     *,
@@ -6278,6 +6583,7 @@ def _dashboard_degraded_sources(
         Mapping[str, dict[str, Any]] | None
     ) = None,
     generation_remediation_source_statuses: Mapping[str, dict[str, Any]] | None = None,
+    remediation_execution_source_statuses: Mapping[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     degraded: list[dict[str, Any]] = []
     for source in operation_sources:
@@ -6301,6 +6607,7 @@ def _dashboard_degraded_sources(
             retrieval_threshold_decision_source_statuses or {},
         ),
         ("generation_remediation", generation_remediation_source_statuses or {}),
+        ("remediation_executions", remediation_execution_source_statuses or {}),
     ):
         for service_id, source_status in statuses.items():
             status = str(source_status["status"])
@@ -6842,6 +7149,159 @@ def _generation_remediation_issue_operator_actions(
             actions.add("review_active_remediation_task")
         if action_type == "prompt_policy_review":
             actions.add("prepare_prompt_policy_review")
+    return sorted(actions)
+
+
+def _issue_candidates_from_remediation_executions(
+    section: object,
+) -> list[dict[str, Any]]:
+    if not isinstance(section, Mapping):
+        return []
+    attention = section.get("attention")
+    if not isinstance(attention, list):
+        return []
+    items = [
+        dict(item)
+        for item in attention
+        if isinstance(item, Mapping)
+        and str(item.get("service_id") or "") in SERVICE_SPECS
+        and _remediation_execution_needs_attention(item)
+    ]
+    if not items:
+        return []
+    return [_remediation_execution_issue_candidate(items)]
+
+
+def _remediation_execution_issue_candidate(
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    failed_execution_count = sum(
+        1
+        for item in items
+        if str(item.get("execution_status") or "UNKNOWN") == "FAILED"
+    )
+    failed_task_count = sum(
+        1 for item in items if str(item.get("task_status") or "UNKNOWN") == "FAILED"
+    )
+    orphan_count = sum(
+        1
+        for item in items
+        if str(item.get("status_sync_state") or "UNKNOWN") == "ORPHAN_EXECUTION"
+    )
+    severity = (
+        "ERROR"
+        if failed_execution_count > 0 or failed_task_count > 0 or orphan_count > 0
+        else "WARNING"
+    )
+    return _operations_issue_candidate(
+        rule_id="remediation_execution_attention_required.v1",
+        service_id="nex-ag",
+        severity=severity,
+        title="Remediation execution attention required",
+        detail=(
+            f"{len(items)} remediation execution operation(s) need "
+            "task/execution reconciliation."
+        ),
+        signal={
+            "source_type": "remediation_execution",
+            "status": "FAILED" if severity == "ERROR" else "SYNC_REQUIRED",
+            "count": len(items),
+            "threshold": 1,
+            "failed_execution_count": failed_execution_count,
+            "failed_task_count": failed_task_count,
+            "orphan_execution_count": orphan_count,
+            "missing_execution_count": sum(
+                1 for item in items if item.get("execution_status") is None
+            ),
+            "sync_required_count": sum(
+                1
+                for item in items
+                if str(item.get("status_sync_state") or "UNKNOWN") == "SYNC_REQUIRED"
+            ),
+            "status_sync_states": sorted(
+                {str(item.get("status_sync_state") or "UNKNOWN") for item in items}
+            ),
+            "task_statuses": sorted(
+                {str(item.get("task_status") or "UNKNOWN") for item in items}
+            ),
+            "execution_statuses": sorted(
+                {str(item.get("execution_status") or "UNKNOWN") for item in items}
+            ),
+            "remediation_action_ids": sorted(
+                {
+                    str(item["remediation_action_id"])
+                    for item in items
+                    if item.get("remediation_action_id")
+                }
+            ),
+            "cx_generation_ids": sorted(
+                {
+                    str(item["cx_generation_id"])
+                    for item in items
+                    if item.get("cx_generation_id")
+                }
+            ),
+            "execution_detail_paths": sorted(
+                {
+                    str(item["execution_detail_path"])
+                    for item in items
+                    if item.get("execution_detail_path")
+                }
+            ),
+            "task_detail_paths": sorted(
+                {
+                    str(item["task_detail_path"])
+                    for item in items
+                    if item.get("task_detail_path")
+                }
+            ),
+            "runbook_ids": _remediation_execution_issue_runbook_ids(items),
+            "recommended_operator_actions": (
+                _remediation_execution_issue_operator_actions(items)
+            ),
+        },
+    )
+
+
+def _remediation_execution_issue_runbook_ids(
+    items: list[dict[str, Any]],
+) -> list[str]:
+    runbook_ids: set[str] = set()
+    for item in items:
+        sync_state = str(item.get("status_sync_state") or "")
+        execution_status = str(item.get("execution_status") or "")
+        task_status = str(item.get("task_status") or "")
+        if execution_status == "FAILED" or task_status == "FAILED":
+            runbook_ids.add("ag.remediation_execution.failed_execution_triage.v1")
+        if sync_state == "ORPHAN_EXECUTION":
+            runbook_ids.add("ag.remediation_execution.orphan_execution_review.v1")
+        elif sync_state == "NO_EXECUTION":
+            runbook_ids.add("ag.remediation_execution.missing_execution_followup.v1")
+        elif sync_state in {"SYNC_REQUIRED", "TERMINAL_TASK_DIVERGED"}:
+            runbook_ids.add("ag.remediation_execution.status_sync_review.v1")
+        elif sync_state == "UNKNOWN_EXECUTION_STATUS":
+            runbook_ids.add("ag.remediation_execution.unknown_status_review.v1")
+    return sorted(runbook_ids)
+
+
+def _remediation_execution_issue_operator_actions(
+    items: list[dict[str, Any]],
+) -> list[str]:
+    actions: set[str] = set()
+    for item in items:
+        sync_state = str(item.get("status_sync_state") or "")
+        execution_status = str(item.get("execution_status") or "")
+        task_status = str(item.get("task_status") or "")
+        if execution_status == "FAILED" or task_status == "FAILED":
+            actions.add("triage_failed_remediation_execution")
+        if sync_state == "ORPHAN_EXECUTION":
+            actions.add("review_orphan_remediation_execution")
+        elif sync_state == "NO_EXECUTION":
+            actions.add("follow_up_missing_remediation_execution")
+        elif sync_state in {"SYNC_REQUIRED", "TERMINAL_TASK_DIVERGED"}:
+            actions.add("reconcile_remediation_task_status")
+        elif sync_state == "UNKNOWN_EXECUTION_STATUS":
+            actions.add("inspect_unknown_remediation_execution_status")
     return sorted(actions)
 
 

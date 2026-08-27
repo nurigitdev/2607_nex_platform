@@ -515,6 +515,25 @@
     "attention": [],
     "source_statuses": {}
   },
+  "remediation_executions": {
+    "projection_schema_version": "ag_remediation_execution_dashboard_section.v1",
+    "projection_status": "READY",
+    "summary": {
+      "total": 0,
+      "by_task_status": {},
+      "by_execution_status": {},
+      "by_status_sync_state": {},
+      "sync_required_count": 0,
+      "missing_execution_count": 0,
+      "orphan_execution_count": 0,
+      "failed_execution_count": 0,
+      "attention_required_count": 0
+    },
+    "recent": [],
+    "attention": [],
+    "source_statuses": {},
+    "operations_path": "/admin/v1/operations/remediation-executions"
+  },
   "degraded_sources": [],
   "job_source_statuses": {
     "nex-cx": {

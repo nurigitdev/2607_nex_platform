@@ -81,9 +81,11 @@ from nex_ag.operations import (
     _filter_records_by_operation_time,
     _dashboard_generation_remediation_section,
     _dashboard_generation_quality_section,
+    _dashboard_remediation_execution_section,
     _dashboard_replay_candidates,
     _dashboard_timestamp,
     _issue_candidates_from_generation_quality,
+    _issue_candidates_from_remediation_executions,
     _job_error_code,
     _nullable_string,
     _operational_event_matches_query,
@@ -101,6 +103,10 @@ from nex_ag.retrieval_operations import (
 from nex_ag.processing_operations import (
     CxProcessingRunOperationsError,
     InMemoryCxProcessingRunOperationsStore,
+)
+from nex_ag.remediation_execution_operations import (
+    InMemoryRemediationExecutionOperationsStore,
+    build_remediation_execution_operations_projection,
 )
 from nex_ag.service_log_retention import AgServiceLogRetentionError
 from nex_runtime import (
@@ -304,6 +310,53 @@ def generation_remediation_task_record(
         "result_ref": None,
         "metadata": {"source": "unit_test"},
         "created_at": "2026-08-05T00:00:08Z",
+        "updated_at": updated_at,
+    }
+
+
+def remediation_execution_record(
+    *,
+    remediation_action_id: str = "ag-remediation-dashboard-001",
+    parent_cx_generation_id: str = "cx-gen-remediation",
+    execution_status: str = "SUCCEEDED",
+    attempt_no: int = 1,
+    updated_at: str = "2026-08-05T00:00:10Z",
+) -> dict[str, object]:
+    return {
+        "result_schema_version": "cx_remediation_execution_result.v1",
+        "remediation_action_id": remediation_action_id,
+        "parent_cx_generation_id": parent_cx_generation_id,
+        "root_cx_generation_id": parent_cx_generation_id,
+        "repair_cx_generation_id": f"{parent_cx_generation_id}-repair",
+        "tenant_id": "local-tenant",
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "action_type": "citation_repair",
+        "lineage_type": "repair",
+        "execution_status": execution_status,
+        "attempt_no": attempt_no,
+        "result_ref": {
+            "artifact_type": "structured_draft",
+            "artifact_id": "draft-repair-001",
+            "uri": "memory://draft-repair-001",
+        },
+        "failure": (
+            {
+                "error_code": "cx.remediation.execution_failed",
+                "error_detail_sha256": "b" * 64,
+                "retryable": True,
+            }
+            if execution_status == "FAILED"
+            else None
+        ),
+        "redaction_summary": {
+            "raw_content_included": False,
+            "prompt_text_included": False,
+            "evidence_text_included": False,
+            "provider_detail_included": False,
+        },
+        "metadata": {"source": "unit_test"},
+        "created_at": "2026-08-05T00:00:09Z",
         "updated_at": updated_at,
     }
 
@@ -2704,6 +2757,147 @@ def test_operations_dashboard_snapshot_includes_generation_remediation_tasks() -
     assert_ag_operations_projection_contract(projection)
 
 
+def test_operations_dashboard_snapshot_includes_remediation_executions() -> None:
+    task_store = GenerationRemediationTaskStore()
+    task_store.save(
+        generation_remediation_task_record(
+            remediation_action_id="ag-remediation-sync",
+            cx_generation_id="cx-gen-sync",
+            action_status="ASSIGNED",
+            updated_at="2026-08-05T00:00:10Z",
+        )
+    )
+    task_store.save(
+        generation_remediation_task_record(
+            remediation_action_id="ag-remediation-completed",
+            cx_generation_id="cx-gen-completed",
+            action_status="COMPLETED",
+            updated_at="2026-08-05T00:00:11Z",
+        )
+    )
+    task_store.save(
+        generation_remediation_task_record(
+            remediation_action_id="ag-remediation-failed-exec",
+            cx_generation_id="cx-gen-failed-exec",
+            action_status="WAITING_ON_CX",
+            updated_at="2026-08-05T00:00:12Z",
+        )
+    )
+    execution_store = InMemoryRemediationExecutionOperationsStore(
+        records=[
+            remediation_execution_record(
+                remediation_action_id="ag-remediation-sync",
+                parent_cx_generation_id="cx-gen-sync",
+                execution_status="SUCCEEDED",
+                updated_at="2026-08-05T00:00:10Z",
+            ),
+            remediation_execution_record(
+                remediation_action_id="ag-remediation-completed",
+                parent_cx_generation_id="cx-gen-completed",
+                execution_status="SUCCEEDED",
+                updated_at="2026-08-05T00:00:11Z",
+            ),
+            remediation_execution_record(
+                remediation_action_id="ag-remediation-failed-exec",
+                parent_cx_generation_id="cx-gen-failed-exec",
+                execution_status="FAILED",
+                updated_at="2026-08-05T00:00:12Z",
+            ),
+        ]
+    )
+
+    projection = build_operations_dashboard_snapshot_projection(
+        generation_remediation_task_stores={"nex-ag": GenerationRemediationTaskStore()},
+        remediation_execution_task_stores={"nex-ag": task_store},
+        remediation_execution_stores={"nex-cx": execution_store},
+        remediation_execution_projection_builder=(
+            build_remediation_execution_operations_projection
+        ),
+        recent_limit=3,
+    )
+
+    executions = projection["remediation_executions"]
+    assert executions["projection_status"] == "READY"
+    assert executions["summary"] == {
+        "total": 3,
+        "by_task_status": {
+            "ASSIGNED": 1,
+            "COMPLETED": 1,
+            "WAITING_ON_CX": 1,
+        },
+        "by_execution_status": {"FAILED": 1, "SUCCEEDED": 2},
+        "sync_required_count": 2,
+        "missing_execution_count": 0,
+        "orphan_execution_count": 0,
+        "failed_execution_count": 1,
+        "attention_required_count": 2,
+        "by_status_sync_state": {"IN_SYNC": 1, "SYNC_REQUIRED": 2},
+    }
+    assert [
+        item["remediation_action_id"] for item in executions["recent"]
+    ] == [
+        "ag-remediation-failed-exec",
+        "ag-remediation-completed",
+        "ag-remediation-sync",
+    ]
+    assert [
+        item["remediation_action_id"] for item in executions["attention"]
+    ] == ["ag-remediation-failed-exec", "ag-remediation-sync"]
+    assert executions["attention"][0]["failure"] == {
+        "error_code": "cx.remediation.execution_failed",
+        "error_detail_sha256": "b" * 64,
+        "retryable": True,
+    }
+    assert executions["attention"][1]["task_detail_path"] == (
+        "/admin/v1/generation-audit/generations/cx-gen-sync"
+        "/remediation-tasks/ag-remediation-sync"
+    )
+    assert executions["source_statuses"]["nex-ag"]["status"] == "READY"
+    assert executions["source_statuses"]["nex-cx"]["status"] == "READY"
+    assert projection["degraded_sources"] == []
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_dashboard_remediation_execution_section_handles_empty_filtered_and_broken_builder() -> (
+    None
+):
+    def broken_builder(**_: object) -> dict[str, object]:
+        raise RuntimeError("projection down")
+
+    empty = _dashboard_remediation_execution_section(
+        None,
+        task_stores=None,
+        execution_stores=None,
+        service_id=None,
+        options=build_operation_query_options(limit=500),
+        limit=3,
+    )
+    filtered = _dashboard_remediation_execution_section(
+        build_remediation_execution_operations_projection,
+        task_stores={"nex-ag": GenerationRemediationTaskStore()},
+        execution_stores={"nex-cx": InMemoryRemediationExecutionOperationsStore()},
+        service_id="nex-oa",
+        options=build_operation_query_options(limit=500),
+        limit=3,
+    )
+    broken = _dashboard_remediation_execution_section(
+        broken_builder,
+        task_stores=None,
+        execution_stores=None,
+        service_id="nex-cx",
+        options=build_operation_query_options(limit=500),
+        limit=3,
+    )
+
+    assert empty["source_statuses"] == {}
+    assert filtered["source_statuses"] == {}
+    assert broken["projection_status"] == "DEGRADED"
+    assert broken["source_statuses"]["nex-ag"]["status"] == "UNAVAILABLE"
+    assert broken["source_statuses"]["nex-cx"]["error_code"] == (
+        "ag.remediation_execution_dashboard_source_unavailable"
+    )
+
+
 def test_dashboard_generation_remediation_section_handles_missing_and_broken_sources() -> (
     None
 ):
@@ -3160,6 +3354,7 @@ def test_build_operations_issue_candidate_projection_flags_service_scope() -> No
         "retrieval_threshold_policy_review_ready.v1",
         "generation_quality_attention_required.v1",
         "generation_remediation_attention_required.v1",
+        "remediation_execution_attention_required.v1",
     ]
     assert [
         (candidate["rule_id"], candidate["service_id"], candidate["severity"])
@@ -3444,6 +3639,111 @@ def test_operations_issue_candidate_projection_flags_generation_remediation_atte
     }
     assert projection["summary"]["by_rule"] == {
         "generation_remediation_attention_required.v1": 1
+    }
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_issue_candidate_projection_flags_remediation_execution_attention() -> (
+    None
+):
+    task_store = GenerationRemediationTaskStore()
+    task_store.save(
+        generation_remediation_task_record(
+            remediation_action_id="ag-remediation-sync",
+            cx_generation_id="cx-gen-sync",
+            action_status="ASSIGNED",
+            updated_at="2026-08-05T00:00:10Z",
+        )
+    )
+    task_store.save(
+        generation_remediation_task_record(
+            remediation_action_id="ag-remediation-failed-exec",
+            cx_generation_id="cx-gen-failed-exec",
+            action_status="WAITING_ON_CX",
+            updated_at="2026-08-05T00:00:12Z",
+        )
+    )
+    execution_store = InMemoryRemediationExecutionOperationsStore(
+        records=[
+            remediation_execution_record(
+                remediation_action_id="ag-remediation-sync",
+                parent_cx_generation_id="cx-gen-sync",
+                execution_status="SUCCEEDED",
+                updated_at="2026-08-05T00:00:10Z",
+            ),
+            remediation_execution_record(
+                remediation_action_id="ag-remediation-failed-exec",
+                parent_cx_generation_id="cx-gen-failed-exec",
+                execution_status="FAILED",
+                updated_at="2026-08-05T00:00:12Z",
+            ),
+        ]
+    )
+
+    projection = build_operations_issue_candidate_projection(
+        job_queues={"nex-ag": InMemoryJobQueue()},
+        event_store=InMemoryOperationalEventStore(),
+        service_log_stores={"nex-ag": InMemoryServiceLogStore()},
+        remediation_execution_task_stores={"nex-ag": task_store},
+        remediation_execution_stores={"nex-cx": execution_store},
+        remediation_execution_projection_builder=(
+            build_remediation_execution_operations_projection
+        ),
+        service_id="nex-ag",
+        recent_limit=5,
+    )
+
+    assert projection["projection_status"] == "READY"
+    assert [candidate["rule_id"] for candidate in projection["issue_candidates"]] == [
+        "remediation_execution_attention_required.v1"
+    ]
+    candidate = projection["issue_candidates"][0]
+    assert candidate["candidate_id"] == (
+        "nex-ag:remediation_execution:"
+        "remediation_execution_attention_required.v1"
+    )
+    assert candidate["severity"] == "ERROR"
+    assert candidate["signal"] == {
+        "source_type": "remediation_execution",
+        "status": "FAILED",
+        "count": 2,
+        "threshold": 1,
+        "failed_execution_count": 1,
+        "failed_task_count": 0,
+        "orphan_execution_count": 0,
+        "missing_execution_count": 0,
+        "sync_required_count": 2,
+        "status_sync_states": ["SYNC_REQUIRED"],
+        "task_statuses": ["ASSIGNED", "WAITING_ON_CX"],
+        "execution_statuses": ["FAILED", "SUCCEEDED"],
+        "remediation_action_ids": [
+            "ag-remediation-failed-exec",
+            "ag-remediation-sync",
+        ],
+        "cx_generation_ids": ["cx-gen-failed-exec", "cx-gen-sync"],
+        "execution_detail_paths": [
+            "/admin/v1/operations/remediation-executions"
+            "?remediation_action_id=ag-remediation-failed-exec",
+            "/admin/v1/operations/remediation-executions"
+            "?remediation_action_id=ag-remediation-sync",
+        ],
+        "task_detail_paths": [
+            "/admin/v1/generation-audit/generations/cx-gen-failed-exec"
+            "/remediation-tasks/ag-remediation-failed-exec",
+            "/admin/v1/generation-audit/generations/cx-gen-sync"
+            "/remediation-tasks/ag-remediation-sync",
+        ],
+        "runbook_ids": [
+            "ag.remediation_execution.failed_execution_triage.v1",
+            "ag.remediation_execution.status_sync_review.v1",
+        ],
+        "recommended_operator_actions": [
+            "reconcile_remediation_task_status",
+            "triage_failed_remediation_execution",
+        ],
+    }
+    assert projection["summary"]["by_rule"] == {
+        "remediation_execution_attention_required.v1": 1
     }
     assert_ag_operations_projection_contract(projection)
 
@@ -3884,6 +4184,18 @@ def test_operations_issue_candidates_group_threshold_decision_readiness() -> Non
         )
         == []
     )
+    assert (
+        build_operations_issue_candidates(
+            {**base_dashboard, "remediation_executions": "bad"}
+        )
+        == []
+    )
+    assert (
+        build_operations_issue_candidates(
+            {**base_dashboard, "remediation_executions": {"attention": "bad"}}
+        )
+        == []
+    )
     remediation_candidates = build_operations_issue_candidates(
         {
             **base_dashboard,
@@ -3922,6 +4234,57 @@ def test_operations_issue_candidates_group_threshold_decision_readiness() -> Non
     assert remediation_candidates[0]["signal"]["runbook_ids"] == [
         "ag.generation_remediation.active_task_review.v1",
         "ag.generation_remediation.urgent_task_review.v1",
+    ]
+    remediation_execution_candidates = _issue_candidates_from_remediation_executions(
+        {
+            "attention": [
+                {
+                    "service_id": "nex-ag",
+                    "remediation_action_id": "ag-remediation-orphan",
+                    "cx_generation_id": "cx-gen-orphan",
+                    "task_status": None,
+                    "execution_status": "SUCCEEDED",
+                    "status_sync_state": "ORPHAN_EXECUTION",
+                    "attention_required": True,
+                    "execution_detail_path": (
+                        "/admin/v1/operations/remediation-executions"
+                        "?remediation_action_id=ag-remediation-orphan"
+                    ),
+                    "task_detail_path": None,
+                },
+                {
+                    "service_id": "nex-ag",
+                    "remediation_action_id": "ag-remediation-missing",
+                    "cx_generation_id": "cx-gen-missing",
+                    "task_status": "ASSIGNED",
+                    "execution_status": None,
+                    "status_sync_state": "NO_EXECUTION",
+                    "attention_required": True,
+                    "execution_detail_path": (
+                        "/admin/v1/operations/remediation-executions"
+                        "?remediation_action_id=ag-remediation-missing"
+                    ),
+                    "task_detail_path": (
+                        "/admin/v1/generation-audit/generations/cx-gen-missing"
+                        "/remediation-tasks/ag-remediation-missing"
+                    ),
+                },
+                {"service_id": "nex-unknown", "attention_required": True},
+                {"service_id": "nex-ag", "attention_required": False},
+                "malformed",
+            ]
+        }
+    )
+
+    assert len(remediation_execution_candidates) == 1
+    assert remediation_execution_candidates[0]["severity"] == "ERROR"
+    assert remediation_execution_candidates[0]["signal"]["status_sync_states"] == [
+        "NO_EXECUTION",
+        "ORPHAN_EXECUTION",
+    ]
+    assert remediation_execution_candidates[0]["signal"]["runbook_ids"] == [
+        "ag.remediation_execution.missing_execution_followup.v1",
+        "ag.remediation_execution.orphan_execution_review.v1",
     ]
 
 

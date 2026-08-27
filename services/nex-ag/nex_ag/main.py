@@ -31,6 +31,7 @@ from nex_ag.processing_operations import (
 )
 from nex_ag.readiness import register_readiness_routes
 from nex_ag.remediation_execution_operations import (
+    build_remediation_execution_operations_projection,
     build_remediation_execution_operation_stores,
     register_remediation_execution_operation_routes,
 )
@@ -108,6 +109,11 @@ register_unified_operation_routes(
     retrieval_package_stores=RETRIEVAL_PACKAGE_OPERATION_STORES,
     cx_processing_run_stores=CX_PROCESSING_RUN_OPERATION_STORES,
     generation_remediation_task_stores=GENERATION_REMEDIATION_TASK_STORES,
+    remediation_execution_task_stores=GENERATION_REMEDIATION_TASK_STORES,
+    remediation_execution_stores=REMEDIATION_EXECUTION_OPERATION_STORES,
+    remediation_execution_projection_builder=(
+        build_remediation_execution_operations_projection
+    ),
     registry=OPERATIONS_SOURCE_REGISTRY,
     runtime=OPERATIONS_SOURCE_RUNTIME,
 )

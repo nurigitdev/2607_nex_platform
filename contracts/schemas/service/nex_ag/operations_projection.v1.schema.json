@@ -257,6 +257,9 @@
     "generation_remediation": {
       "$ref": "#/$defs/dashboard_generation_remediation"
     },
+    "remediation_executions": {
+      "$ref": "#/$defs/dashboard_remediation_executions"
+    },
     "replay_candidates": {
       "type": "array",
       "items": {
@@ -729,6 +732,7 @@
           "retrieval_threshold_decisions",
           "generation_quality",
           "generation_remediation",
+          "remediation_executions",
           "degraded_sources",
           "job_source_statuses",
           "event_source_statuses",
@@ -2064,6 +2068,321 @@
         "detail_path": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "dashboard_remediation_executions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "projection_status",
+        "summary",
+        "recent",
+        "attention",
+        "source_statuses",
+        "operations_path"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "const": "ag_remediation_execution_dashboard_section.v1"
+        },
+        "projection_status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "DEGRADED"
+          ]
+        },
+        "summary": {
+          "$ref": "#/$defs/dashboard_remediation_execution_summary"
+        },
+        "recent": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dashboard_remediation_execution_item"
+          }
+        },
+        "attention": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dashboard_remediation_execution_item"
+          }
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/source_status"
+          }
+        },
+        "operations_path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "dashboard_remediation_execution_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "by_task_status",
+        "by_execution_status",
+        "by_status_sync_state",
+        "sync_required_count",
+        "missing_execution_count",
+        "orphan_execution_count",
+        "failed_execution_count",
+        "attention_required_count"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_task_status": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_execution_status": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_status_sync_state": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "sync_required_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing_execution_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "orphan_execution_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_execution_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attention_required_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "dashboard_remediation_execution_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service_id",
+        "operation_type",
+        "operation_timestamp",
+        "remediation_action_id",
+        "cx_generation_id",
+        "trace_id",
+        "request_id",
+        "tenant_id",
+        "action_type",
+        "priority",
+        "task_status",
+        "execution_status",
+        "target_task_status",
+        "status_sync_state",
+        "attention_required",
+        "attempt_no",
+        "lineage_type",
+        "repair_cx_generation_id",
+        "failure",
+        "evidence_hash_count",
+        "source_ref_count",
+        "task_updated_at",
+        "execution_updated_at",
+        "task_detail_path",
+        "execution_detail_path"
+      ],
+      "properties": {
+        "service_id": {
+          "$ref": "#/$defs/service_id"
+        },
+        "operation_type": {
+          "const": "remediation_execution"
+        },
+        "operation_timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "remediation_action_id": {
+          "type": "string"
+        },
+        "cx_generation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/trace_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tenant_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "action_type": {
+          "type": "string"
+        },
+        "priority": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "task_status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "execution_status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target_task_status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status_sync_state": {
+          "type": "string",
+          "enum": [
+            "IN_SYNC",
+            "SYNC_REQUIRED",
+            "NO_EXECUTION",
+            "ORPHAN_EXECUTION",
+            "TERMINAL_TASK_DIVERGED",
+            "UNKNOWN_EXECUTION_STATUS",
+            "UNKNOWN"
+          ]
+        },
+        "attention_required": {
+          "type": "boolean"
+        },
+        "attempt_no": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "lineage_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "repair_cx_generation_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failure": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/dashboard_remediation_execution_failure"
+            }
+          ]
+        },
+        "evidence_hash_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source_ref_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "task_updated_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "execution_updated_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "task_detail_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "execution_detail_path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "dashboard_remediation_execution_failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "error_code",
+        "error_detail_sha256",
+        "retryable"
+      ],
+      "properties": {
+        "error_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error_detail_sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
         }
       }
     },
