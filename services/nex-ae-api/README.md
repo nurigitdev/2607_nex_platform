@@ -227,6 +227,10 @@ Repaired response handoff:
   response handoffs. POST fetches sanitized CX source material, builds the
   handoff record, and persists it; GET enforces interaction scope before
   returning the safe record.
+- Slice 0385 adds protected PostgreSQL smoke evidence for the repaired handoff
+  store. Set `NEX_AE_REPAIRED_RESPONSE_HANDOFF_POSTGRES_SMOKE=1` with
+  `NEX_AE_TEST_DATABASE_URL` to run test-profile migration, insert/select/list
+  checks, JSONB/index observations, and cleanup against the real AE test DB.
 
 Chat artifact links:
 
