@@ -473,5 +473,15 @@ Slice 0320 adds default smoke evidence for that surface:
 - The runner is part of the default quality gate and does not require live
   providers or PostgreSQL test DB access.
 
+Slice 0391 starts the repaired response review surface:
+
+- `src/repairedResponseReviewBoundary.js` freezes chat interaction detail as
+  the primary repaired response review surface.
+- Document detail remains a secondary link/drill-down surface while repaired
+  response decisions are submitted as `chat_review` actions.
+- The boundary keeps raw prompts, raw generation output, raw source text,
+  service tokens, provider endpoints, database endpoints, and storage locations
+  out of browser state.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
