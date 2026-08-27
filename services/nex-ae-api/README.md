@@ -219,6 +219,10 @@ Repaired response handoff:
   versions, sanitizes source material into
   `ae_cx_repaired_response_source_package.v1`, and uses
   `NEX_AE_CX_REPAIRED_RESPONSE_TIMEOUT_SECONDS` for timeout tuning.
+- Slice 0383 adds the repaired handoff store and PostgreSQL migration
+  `ae_repaired_response_handoffs`. The table indexes owner/time,
+  interaction/time, parent generation, repair generation, and remediation
+  action while storing only sanitized handoff JSON fields.
 
 Chat artifact links:
 

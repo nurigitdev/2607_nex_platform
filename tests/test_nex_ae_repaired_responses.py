@@ -3,22 +3,30 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from jsonschema import Draft202012Validator
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 
+import nex_ae_api.repaired_responses as repaired_module
 from nex_ae_api.repaired_responses import (
     AE_REPAIRED_RESPONSE_HANDOFF_SCHEMA_VERSION,
     DEFAULT_HANDOFF_STATUS,
     RepairedResponseHandoffError,
+    RepairedResponseHandoffStore,
+    SqlAlchemyRepairedResponseHandoffStore,
     actor_claims_ref_from_payload,
     assert_repaired_response_handoff_redaction_safe,
     build_repaired_response_handoff_record,
+    default_repaired_response_handoff_store,
     find_sensitive_repaired_response_handoff_keys,
     presentation_mode_from_payload,
     validate_repaired_response_handoff_record,
 )
+from nex_runtime import SERVICE_SPECS, build_service_app
 
 
 ROOT = Path(__file__).parents[1]
@@ -192,6 +200,45 @@ def build_handoff(
     )
 
 
+def sqlite_handoff_session_factory():
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ae_repaired_response_handoffs (
+                    repaired_response_handoff_id TEXT PRIMARY KEY,
+                    handoff_schema_version TEXT NOT NULL,
+                    handoff_request_id TEXT NOT NULL,
+                    handoff_status TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL,
+                    owner_user_id TEXT NOT NULL,
+                    chat_document_id TEXT NOT NULL,
+                    interaction_id TEXT NOT NULL,
+                    original_cx_generation_id TEXT NOT NULL,
+                    parent_cx_generation_id TEXT NOT NULL,
+                    root_cx_generation_id TEXT NOT NULL,
+                    repair_cx_generation_id TEXT NOT NULL,
+                    remediation_action_id TEXT NOT NULL,
+                    trace_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    actor_claims_ref TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    repaired_response TEXT NOT NULL,
+                    lineage TEXT NOT NULL,
+                    user_surface TEXT NOT NULL,
+                    links TEXT NOT NULL,
+                    redaction_summary TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+    return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+
 def test_build_repaired_response_handoff_record_is_schema_valid_and_raw_safe() -> None:
     record = build_handoff()
 
@@ -218,6 +265,129 @@ def test_build_repaired_response_handoff_record_is_schema_valid_and_raw_safe() -
     assert "raw answer body" not in serialized
     assert "hidden prompt" not in serialized
     assert "/data/nex-platform" not in serialized
+
+
+def test_repaired_response_handoff_store_indexes_unique_handoff_ids() -> None:
+    store = RepairedResponseHandoffStore()
+    record = build_handoff()
+
+    saved = store.save(record)
+    duplicate = store.save(record)
+
+    assert saved == record
+    assert duplicate == record
+    assert store.get(record["repaired_response_handoff_id"]) == record
+    assert store.list_for_interaction(record["interaction_id"]) == [record]
+    assert store.list_for_interaction("missing-interaction") == []
+
+
+def test_sqlalchemy_repaired_response_handoff_store_round_trips_with_sqlite() -> None:
+    store = SqlAlchemyRepairedResponseHandoffStore(sqlite_handoff_session_factory())
+    record = build_handoff()
+
+    saved = store.save(record)
+    loaded = store.get(record["repaired_response_handoff_id"])
+    listed = store.list_for_interaction(record["interaction_id"])
+
+    updated = deepcopy(record)
+    updated["repaired_response"]["output_preview"] = "Updated safe preview."
+    updated["updated_at"] = "2026-08-27T00:01:00Z"
+    store.save(updated)
+    loaded_after_update = store.get(record["repaired_response_handoff_id"])
+    deleted_rows = store.delete(record["repaired_response_handoff_id"])
+
+    assert saved == record
+    assert loaded == record
+    assert listed == [record]
+    assert loaded_after_update == updated
+    assert deleted_rows == 1
+    assert store.get(record["repaired_response_handoff_id"]) is None
+
+
+@pytest.mark.parametrize(
+    "operation",
+    ["save", "get", "list", "delete"],
+)
+def test_sqlalchemy_repaired_response_handoff_store_maps_database_errors(
+    operation: str,
+) -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    store = SqlAlchemyRepairedResponseHandoffStore(
+        sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    )
+    record = build_handoff()
+
+    with pytest.raises(RepairedResponseHandoffError) as exc_info:
+        if operation == "save":
+            store.save(record)
+        elif operation == "get":
+            store.get(record["repaired_response_handoff_id"])
+        elif operation == "list":
+            store.list_for_interaction(record["interaction_id"])
+        else:
+            store.delete(record["repaired_response_handoff_id"])
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.error_code == (
+        "ae.repaired_response_handoff_store_unavailable"
+    )
+    assert exc_info.value.retryable is True
+
+
+def test_default_repaired_response_handoff_store_uses_persistence_session_factory() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    app.state.nex_persistence = SimpleNamespace(
+        api_session_factory=sqlite_handoff_session_factory()
+    )
+
+    store = default_repaired_response_handoff_store(app)
+
+    assert isinstance(store, SqlAlchemyRepairedResponseHandoffStore)
+
+
+def test_default_repaired_response_handoff_store_falls_back_to_memory() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+
+    store = default_repaired_response_handoff_store(app)
+
+    assert isinstance(store, RepairedResponseHandoffStore)
+
+
+def test_repaired_response_handoff_storage_helpers_cover_json_and_dates() -> None:
+    record = build_handoff()
+    params = repaired_module._handoff_record_params(record)
+
+    assert params["parent_cx_generation_id"] == "cx-gen-001"
+    assert params["repair_cx_generation_id"] == "cx-gen-repair-001"
+    assert params["remediation_action_id"] == "ag-remediation-action-001"
+    assert repaired_module._json_param_expr("source", "postgresql") == (
+        "CAST(:source AS jsonb)"
+    )
+    assert repaired_module._json_param_expr("source", "sqlite") == ":source"
+    assert repaired_module._json_value(None, {}) == {}
+    assert repaired_module._json_value({"ok": True}, {}) == {"ok": True}
+    assert repaired_module._datetime_value(
+        repaired_module.datetime(2026, 8, 27, 0, 0, tzinfo=repaired_module.UTC)
+    ) == "2026-08-27T00:00:00Z"
+    assert repaired_module._datetime_value(
+        SimpleNamespace(isoformat=lambda: "2026-08-27T00:00:00+00:00")
+    ) == "2026-08-27T00:00:00Z"
+
+
+def test_repaired_response_handoff_migration_declares_safe_indexes() -> None:
+    migration = (
+        ROOT
+        / "database"
+        / "nex-ae-api"
+        / "migrations"
+        / "0383_ae_repaired_response_handoff_persistence.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "CREATE TABLE IF NOT EXISTS ae_repaired_response_handoffs" in migration
+    assert "JSONB" in migration
+    assert "raw_generation_output" not in migration
+    assert "idx_ae_repaired_response_handoffs_owner_time" in migration
+    assert "idx_ae_repaired_response_handoffs_interaction_time" in migration
 
 
 def test_repaired_response_handoff_defaults_ids_actor_and_nullable_refs() -> None:

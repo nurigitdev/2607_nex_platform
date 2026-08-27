@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
+
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
 
 AE_REPAIRED_RESPONSE_HANDOFF_SCHEMA_VERSION = "ae_repaired_response_handoff.v1"
@@ -49,6 +53,146 @@ SENSITIVE_KEY_PARTS = (
     "storage_path",
     "refresh_token",
 )
+JSON_STORAGE_FIELDS = (
+    "actor_claims_ref",
+    "source",
+    "repaired_response",
+    "lineage",
+    "user_surface",
+    "links",
+    "redaction_summary",
+)
+
+
+@dataclass
+class RepairedResponseHandoffStore:
+    records: dict[str, dict[str, Any]] = field(default_factory=dict)
+    handoff_ids_by_interaction: dict[str, list[str]] = field(default_factory=dict)
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        validated = validate_repaired_response_handoff_record(record)
+        handoff_id = validated["repaired_response_handoff_id"]
+        self.records[handoff_id] = validated
+        interaction_ids = self.handoff_ids_by_interaction.setdefault(
+            validated["interaction_id"],
+            [],
+        )
+        if handoff_id not in interaction_ids:
+            interaction_ids.append(handoff_id)
+        return validated
+
+    def get(self, repaired_response_handoff_id: str) -> dict[str, Any] | None:
+        return self.records.get(repaired_response_handoff_id)
+
+    def list_for_interaction(self, interaction_id: str) -> list[dict[str, Any]]:
+        return [
+            self.records[handoff_id]
+            for handoff_id in self.handoff_ids_by_interaction.get(interaction_id, [])
+            if handoff_id in self.records
+        ]
+
+
+class SqlAlchemyRepairedResponseHandoffStore:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        validated = validate_repaired_response_handoff_record(record)
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    text(_handoff_upsert_sql(_dialect_name(session))),
+                    _handoff_record_params(validated),
+                )
+                session.commit()
+            return validated
+        except SQLAlchemyError as exc:
+            raise RepairedResponseHandoffError(
+                status_code=503,
+                error_code="ae.repaired_response_handoff_store_unavailable",
+                detail="AE repaired response handoff store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def get(self, repaired_response_handoff_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _handoff_select_sql(
+                                "repaired_response_handoff_id = "
+                                ":repaired_response_handoff_id"
+                            )
+                        ),
+                        {
+                            "repaired_response_handoff_id": (
+                                repaired_response_handoff_id
+                            )
+                        },
+                    )
+                    .mappings()
+                    .first()
+                )
+            return _handoff_record_from_row(row) if row is not None else None
+        except SQLAlchemyError as exc:
+            raise RepairedResponseHandoffError(
+                status_code=503,
+                error_code="ae.repaired_response_handoff_store_unavailable",
+                detail="AE repaired response handoff store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def list_for_interaction(self, interaction_id: str) -> list[dict[str, Any]]:
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            _handoff_select_sql(
+                                "interaction_id = :interaction_id "
+                                "ORDER BY created_at DESC, "
+                                "repaired_response_handoff_id ASC"
+                            )
+                        ),
+                        {"interaction_id": interaction_id},
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [_handoff_record_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise RepairedResponseHandoffError(
+                status_code=503,
+                error_code="ae.repaired_response_handoff_store_unavailable",
+                detail="AE repaired response handoff store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def delete(self, repaired_response_handoff_id: str) -> int:
+        try:
+            with self._session_factory() as session:
+                result = session.execute(
+                    text(
+                        "DELETE FROM ae_repaired_response_handoffs "
+                        "WHERE repaired_response_handoff_id = "
+                        ":repaired_response_handoff_id"
+                    ),
+                    {
+                        "repaired_response_handoff_id": (
+                            repaired_response_handoff_id
+                        )
+                    },
+                )
+                session.commit()
+                return int(result.rowcount or 0)
+        except SQLAlchemyError as exc:
+            raise RepairedResponseHandoffError(
+                status_code=503,
+                error_code="ae.repaired_response_handoff_store_unavailable",
+                detail="AE repaired response handoff store is unavailable.",
+                retryable=True,
+            ) from exc
 
 
 @dataclass(frozen=True)
@@ -60,6 +204,17 @@ class RepairedResponseHandoffError(Exception):
 
     def __str__(self) -> str:
         return self.detail
+
+
+DEFAULT_REPAIRED_RESPONSE_HANDOFF_STORE = RepairedResponseHandoffStore()
+
+
+def default_repaired_response_handoff_store(app: Any) -> Any:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is not None:
+        return SqlAlchemyRepairedResponseHandoffStore(session_factory)
+    return DEFAULT_REPAIRED_RESPONSE_HANDOFF_STORE
 
 
 def build_repaired_response_handoff_record(
@@ -501,6 +656,183 @@ def _redaction_summary() -> dict[str, Any]:
         "storage_path_included": False,
         "free_text_storage": "hash_and_short_preview_only",
     }
+
+
+def _handoff_upsert_sql(dialect_name: str) -> str:
+    json_exprs = {
+        field_name: _json_param_expr(field_name, dialect_name)
+        for field_name in JSON_STORAGE_FIELDS
+    }
+    return f"""
+        INSERT INTO ae_repaired_response_handoffs (
+            repaired_response_handoff_id,
+            handoff_schema_version,
+            handoff_request_id,
+            handoff_status,
+            tenant_id,
+            workspace_id,
+            owner_user_id,
+            chat_document_id,
+            interaction_id,
+            original_cx_generation_id,
+            parent_cx_generation_id,
+            root_cx_generation_id,
+            repair_cx_generation_id,
+            remediation_action_id,
+            trace_id,
+            request_id,
+            actor_claims_ref,
+            source,
+            repaired_response,
+            lineage,
+            user_surface,
+            links,
+            redaction_summary,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :repaired_response_handoff_id,
+            :handoff_schema_version,
+            :handoff_request_id,
+            :handoff_status,
+            :tenant_id,
+            :workspace_id,
+            :owner_user_id,
+            :chat_document_id,
+            :interaction_id,
+            :original_cx_generation_id,
+            :parent_cx_generation_id,
+            :root_cx_generation_id,
+            :repair_cx_generation_id,
+            :remediation_action_id,
+            :trace_id,
+            :request_id,
+            {json_exprs["actor_claims_ref"]},
+            {json_exprs["source"]},
+            {json_exprs["repaired_response"]},
+            {json_exprs["lineage"]},
+            {json_exprs["user_surface"]},
+            {json_exprs["links"]},
+            {json_exprs["redaction_summary"]},
+            :created_at,
+            :updated_at
+        )
+        ON CONFLICT (repaired_response_handoff_id) DO UPDATE SET
+            handoff_status = excluded.handoff_status,
+            actor_claims_ref = excluded.actor_claims_ref,
+            source = excluded.source,
+            repaired_response = excluded.repaired_response,
+            lineage = excluded.lineage,
+            user_surface = excluded.user_surface,
+            links = excluded.links,
+            redaction_summary = excluded.redaction_summary,
+            updated_at = excluded.updated_at
+    """
+
+
+def _handoff_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            repaired_response_handoff_id,
+            handoff_schema_version,
+            handoff_request_id,
+            handoff_status,
+            tenant_id,
+            workspace_id,
+            owner_user_id,
+            chat_document_id,
+            interaction_id,
+            original_cx_generation_id,
+            parent_cx_generation_id,
+            root_cx_generation_id,
+            repair_cx_generation_id,
+            remediation_action_id,
+            trace_id,
+            request_id,
+            actor_claims_ref,
+            source,
+            repaired_response,
+            lineage,
+            user_surface,
+            links,
+            redaction_summary,
+            created_at,
+            updated_at
+        FROM ae_repaired_response_handoffs
+        WHERE {where_clause}
+    """
+
+
+def _handoff_record_params(record: dict[str, Any]) -> dict[str, Any]:
+    source = _mapping(record.get("source"))
+    lineage = _mapping(record.get("lineage"))
+    params = {
+        **record,
+        "original_cx_generation_id": source.get("parent_cx_generation_id"),
+        "parent_cx_generation_id": source.get("parent_cx_generation_id"),
+        "root_cx_generation_id": source.get("root_cx_generation_id"),
+        "repair_cx_generation_id": source.get("repair_cx_generation_id"),
+        "remediation_action_id": (
+            source.get("remediation_action_id")
+            or lineage.get("remediation_action_id")
+        ),
+    }
+    for field_name in JSON_STORAGE_FIELDS:
+        params[field_name] = json.dumps(record[field_name])
+    return params
+
+
+def _handoff_record_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return {
+        "handoff_schema_version": data["handoff_schema_version"],
+        "repaired_response_handoff_id": data["repaired_response_handoff_id"],
+        "handoff_request_id": data["handoff_request_id"],
+        "handoff_status": data["handoff_status"],
+        "trace_id": data["trace_id"],
+        "request_id": data["request_id"],
+        "tenant_id": data["tenant_id"],
+        "workspace_id": data["workspace_id"],
+        "owner_user_id": data["owner_user_id"],
+        "chat_document_id": data["chat_document_id"],
+        "interaction_id": data["interaction_id"],
+        "actor_claims_ref": _json_value(data["actor_claims_ref"], {}),
+        "source": _json_value(data["source"], {}),
+        "repaired_response": _json_value(data["repaired_response"], {}),
+        "lineage": _json_value(data["lineage"], {}),
+        "user_surface": _json_value(data["user_surface"], {}),
+        "links": _json_value(data["links"], {}),
+        "redaction_summary": _json_value(data["redaction_summary"], {}),
+        "created_at": _datetime_value(data["created_at"]),
+        "updated_at": _datetime_value(data["updated_at"]),
+    }
+
+
+def _json_param_expr(name: str, dialect_name: str) -> str:
+    if dialect_name == "postgresql":
+        return f"CAST(:{name} AS jsonb)"
+    return f":{name}"
+
+
+def _dialect_name(session: Session) -> str:
+    return session.get_bind().dialect.name
+
+
+def _json_value(value: Any, default: Any) -> Any:
+    if isinstance(value, str):
+        return json.loads(value)
+    if value is None:
+        return default
+    return value
+
+
+def _datetime_value(value: Any) -> str:
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    if hasattr(value, "isoformat"):
+        return value.isoformat().replace("+00:00", "Z")
+    return str(value)
 
 
 def _sensitive_key_forbidden(key_lower: str, value: Any) -> bool:
