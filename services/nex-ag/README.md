@@ -201,6 +201,13 @@ Unified operations:
   quality gate checker covering CX execution evidence, AG dispatch, CX
   read-model follow-up, AG status sync, and optional PostgreSQL smoke suite
   wiring.
+- `nex_ag.remediation_runtime_audit` records
+  `ag_remediation_runtime_operations_gap_audit.v1`, the S38 entry checkpoint
+  for remediation execution operations. It keeps AG as the owner of
+  operator-facing remediation execution operations and status-sync scheduling,
+  keeps CX as the owner of execution attempts and repair lineage, and freezes
+  the `0372` through `0377` gap order before adding new operations APIs or
+  status-sync workers.
 - `GET /admin/v1/operations/retrieval-packages` returns
   `ag_retrieval_package_operations_projection.v1`, a CX-sourced read-only
   projection of persisted retrieval packages for debugging grounded retrieval

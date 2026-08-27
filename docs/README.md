@@ -474,6 +474,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0368`](slices/0368_ag_remediation_execution_status_sync_client_facade.md) | `S37-008` AG remediation execution status sync client/facade. |
 | [`Slice 0369`](slices/0369_ag_remediation_execution_status_sync_api_evidence.md) | `S37-009` AG remediation execution status sync API/evidence. |
 | [`Slice 0370`](slices/0370_s37_remediation_runtime_integration_closure.md) | `S37-010` S37 remediation runtime integration closure. |
+| [`Slice 0371`](slices/0371_remediation_runtime_operations_gap_audit.md) | `S38-001` Remediation runtime operations gap audit. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
