@@ -126,6 +126,7 @@ const workspaceState = {
   lastRetrievalRequest: null,
   lastRetrievalResult: null,
   generationFeedbackClient: null,
+  repairedResponseDecisionClient: null,
   uploadSubmission: null,
   uploadFileMetadata: defaultUploadFileMetadata,
   uploadDraft: buildUploadSurfaceDraftFromFileMetadata({
@@ -464,6 +465,8 @@ function applySessionBootstrap(sessionBootstrap) {
     workspaceState.clientRegistry.generationFeedbackClient;
   workspaceState.repairedResponseReviewClient =
     workspaceState.clientRegistry.repairedResponseReviewClient;
+  workspaceState.repairedResponseDecisionClient =
+    workspaceState.clientRegistry.repairedResponseDecisionClient;
 }
 
 function syncOwnerScopeFromSessionClaims() {

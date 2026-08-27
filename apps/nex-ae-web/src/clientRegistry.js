@@ -15,6 +15,10 @@ import {
   createMockRepairedResponseReviewClient
 } from "./repairedResponseReviewClient.js";
 import {
+  createFetchRepairedResponseDecisionClient,
+  createMockRepairedResponseDecisionClient
+} from "./repairedResponseDecisionClient.js";
+import {
   createFetchUploadClient,
   createMockUploadClient
 } from "./uploadClient.js";
@@ -56,6 +60,9 @@ export function createAeWebClients({
           repairedResponseReviewClient: createMockRepairedResponseReviewClient({
             projections: responseFactories.repairedResponseReviewProjections || [],
             responseFactory: responseFactories.repairedResponseReview
+          }),
+          repairedResponseDecisionClient: createMockRepairedResponseDecisionClient({
+            responseFactory: responseFactories.repairedResponseDecision
           })
         }
       : {
@@ -65,7 +72,9 @@ export function createAeWebClients({
           generationFeedbackClient:
             createFetchGenerationFeedbackClient(commonFetchOptions),
           repairedResponseReviewClient:
-            createFetchRepairedResponseReviewClient(commonFetchOptions)
+            createFetchRepairedResponseReviewClient(commonFetchOptions),
+          repairedResponseDecisionClient:
+            createFetchRepairedResponseDecisionClient(commonFetchOptions)
         };
 
   return {
@@ -98,7 +107,8 @@ export function buildClientRegistrySummary(registry) {
       upload: registry.uploadClient.clientMode,
       retrieval: registry.retrievalClient.clientMode,
       generation_feedback: registry.generationFeedbackClient.clientMode,
-      repaired_response_review: registry.repairedResponseReviewClient.clientMode
+      repaired_response_review: registry.repairedResponseReviewClient.clientMode,
+      repaired_response_decision: registry.repairedResponseDecisionClient.clientMode
     },
     metadata: registry.metadata
   };
@@ -131,6 +141,7 @@ function isRegistry(value) {
     value.uploadClient &&
     value.retrievalClient &&
     value.generationFeedbackClient &&
-    value.repairedResponseReviewClient
+    value.repairedResponseReviewClient &&
+    value.repairedResponseDecisionClient
   );
 }

@@ -497,6 +497,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0391`](slices/0391_ae_web_repaired_response_review_surface_boundary.md) | `S40-001` AE Web repaired response review surface boundary. |
 | [`Slice 0392`](slices/0392_ae_web_repaired_response_handoff_client_adapter.md) | `S40-002` AE Web repaired response handoff client adapter. |
 | [`Slice 0393`](slices/0393_ae_web_repaired_response_review_card_rendering.md) | `S40-003` AE Web repaired response review card rendering. |
+| [`Slice 0394`](slices/0394_ae_web_repaired_response_decision_submit_adapter.md) | `S40-004` AE Web repaired response decision submit adapter. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -504,5 +504,14 @@ Slice 0393 renders repaired response review cards in chat:
 - Primary accept/keep buttons are visible but disabled until the decision
   submit adapter and click handling are wired in the following slices.
 
+Slice 0394 adds the repaired response decision submit adapter:
+
+- `src/repairedResponseDecisionClient.js` builds safe accept/keep decision
+  requests from repaired response review surfaces.
+- Mock and fetch clients submit to the existing AE API decision route with
+  same-origin credentials in fetch mode.
+- `src/clientRegistry.js` exposes `repairedResponseDecisionClient` for the
+  following chat-card click wiring Slice.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
