@@ -531,5 +531,14 @@ decisions:
 - The smoke is skipped by default and writes to `nex_ae_test` only when
   `NEX_AE_WEB_REPAIRED_RESPONSE_DECISION_POSTGRES_SMOKE=1` is set.
 
+Slice 0397 adds a repaired response review read-model:
+
+- `src/repairedResponseReviewReadModel.js` derives safe browser counters and
+  filters from repaired response review card summaries.
+- The read-model supports `all`, `actionable`, `ready`, `submitting`,
+  `recorded`, and `failed` filters without storing raw prompts, raw generation
+  output, source text, service tokens, provider endpoints, database endpoints,
+  or storage paths.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
