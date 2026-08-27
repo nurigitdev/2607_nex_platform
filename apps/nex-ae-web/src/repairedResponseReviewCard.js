@@ -114,7 +114,7 @@ export function renderRepairedResponseReviewCard(surface, options = {}) {
         </div>
         <div>
           <dt>decision</dt>
-          <dd>${escapeHtml(viewModel.decisionState.status)} · ${escapeHtml(viewModel.decisionRoute)}</dd>
+          <dd>${escapeHtml(decisionStateDisplay(viewModel))}</dd>
         </div>
       </dl>
     </section>
@@ -197,6 +197,16 @@ function renderSecondaryLink(link) {
       data-repaired-response-review-link="${escapeAttribute(link.action)}"
     >${escapeHtml(link.label)}</a>
   `;
+}
+
+function decisionStateDisplay(viewModel) {
+  if (viewModel.decisionState.errorStatus) {
+    return `${viewModel.decisionState.status} · ${viewModel.decisionState.errorStatus}`;
+  }
+  if (viewModel.decisionState.decisionId) {
+    return `${viewModel.decisionState.status} · ${viewModel.decisionState.decisionId}`;
+  }
+  return `${viewModel.decisionState.status} · ${viewModel.decisionRoute}`;
 }
 
 function normalizeDecisionState(decisionState) {

@@ -65,6 +65,15 @@ import {
   renderRepairedResponseReviewCard
 } from "./repairedResponseReviewCard.js";
 import {
+  buildRepairedResponseDecisionRequest
+} from "./repairedResponseDecisionClient.js";
+import {
+  createRepairedResponseDecisionState,
+  markRepairedResponseDecisionFailed,
+  markRepairedResponseDecisionRecorded,
+  markRepairedResponseDecisionSubmitting
+} from "./repairedResponseDecisionState.js";
+import {
   buildUploadFileMetadata,
   buildUploadHandoffPayload,
   buildUploadSurfaceDraftFromFileMetadata
@@ -221,8 +230,10 @@ const workspaceState = {
         chatDocumentId: "chat-doc-local",
         cxGenerationId: "cx-gen-local"
       }),
-      repairedResponseReview: buildRepairedResponseReviewSurfaceFromProjection(
-        buildMockRepairedResponseReviewProjection()
+      repairedResponseReview: withRepairedResponseDecisionState(
+        buildRepairedResponseReviewSurfaceFromProjection(
+          buildMockRepairedResponseReviewProjection()
+        )
       )
     }
   ],
@@ -348,6 +359,15 @@ retrievalRetryButton.addEventListener("click", () => {
 });
 
 messageList.addEventListener("click", event => {
+  const decisionTarget = event.target.closest("[data-repaired-response-decision-action]");
+  if (decisionTarget) {
+    void submitRepairedResponseDecision(
+      decisionTarget.dataset.interactionId,
+      decisionTarget.dataset.handoffId,
+      decisionTarget.dataset.repairedResponseDecisionAction
+    );
+    return;
+  }
   const target = event.target.closest("[data-generation-feedback-value]");
   if (!target) return;
   const interactionId = target.closest("[data-interaction-id]")?.dataset.interactionId;
@@ -1030,7 +1050,8 @@ function renderMessageGenerationFeedback(surface) {
 function renderMessageRepairedResponseReview(surface) {
   if (!surface) return "";
   return renderRepairedResponseReviewCard(surface, {
-    decisionEnabled: false
+    decisionEnabled: Boolean(workspaceState.repairedResponseDecisionClient),
+    decisionState: surface.decisionState
   });
 }
 
@@ -1461,19 +1482,21 @@ async function appendPromptInteraction() {
       clientMode: workspaceState.generationFeedbackClient.clientMode
     }),
     repairedResponseReview: grounded
-      ? buildRepairedResponseReviewSurfaceFromProjection(
-          buildMockRepairedResponseReviewProjection({
-            interactionId: workspaceState.interactionId,
-            chatDocumentId: workspaceState.chatDocumentId,
-            originalGenerationId: workspaceState.cxGenerationId,
-            repairedGenerationId: `${workspaceState.cxGenerationId}-repair`,
-            retrievalPackageId:
-              retrievalResult.cxRetrievalPackageId || workspaceState.retrievalPackageId,
-            clientMode: workspaceState.repairedResponseReviewClient.clientMode
-          }),
-          {
-            clientMode: workspaceState.repairedResponseReviewClient.clientMode
-          }
+      ? withRepairedResponseDecisionState(
+          buildRepairedResponseReviewSurfaceFromProjection(
+            buildMockRepairedResponseReviewProjection({
+              interactionId: workspaceState.interactionId,
+              chatDocumentId: workspaceState.chatDocumentId,
+              originalGenerationId: workspaceState.cxGenerationId,
+              repairedGenerationId: `${workspaceState.cxGenerationId}-repair`,
+              retrievalPackageId:
+                retrievalResult.cxRetrievalPackageId || workspaceState.retrievalPackageId,
+              clientMode: workspaceState.repairedResponseReviewClient.clientMode
+            }),
+            {
+              clientMode: workspaceState.repairedResponseReviewClient.clientMode
+            }
+          )
         )
       : null
   });
@@ -1561,6 +1584,78 @@ async function submitGenerationFeedback(interactionId, feedbackValue) {
   }
   renderMessages();
   renderRuntimeDiagnostics();
+}
+
+async function submitRepairedResponseDecision(interactionId, handoffId, action) {
+  const targetMessage = workspaceState.messages.find(
+    message =>
+      message.repairedResponseReview?.interactionId === interactionId &&
+      message.repairedResponseReview?.repairedResponseHandoffId === handoffId
+  );
+  if (!targetMessage || !workspaceState.repairedResponseDecisionClient) return;
+
+  const reviewSurface = targetMessage.repairedResponseReview;
+  const ownerScope =
+    ownerScopeFromSessionState(workspaceState.sessionState) || localOwnerScope;
+  targetMessage.repairedResponseReview = updateRepairedResponseDecisionState(
+    reviewSurface,
+    markRepairedResponseDecisionSubmitting(
+      reviewSurface.decisionState || createRepairedResponseDecisionState(),
+      action,
+      workspaceState.repairedResponseDecisionClient.clientMode
+    )
+  );
+  renderMessages();
+
+  try {
+    const decisionRequest = buildRepairedResponseDecisionRequest({
+      reviewSurface,
+      action,
+      reasonCodes: decisionReasonsForRepairedResponseAction(action),
+      submittedVia: "chat_review",
+      actorClaimsRef: {
+        actor_type: "user",
+        actor_id: ownerScope.ownerUserId,
+        tenant_id: ownerScope.tenantId
+      }
+    });
+    const result =
+      await workspaceState.repairedResponseDecisionClient.submitRepairedResponseDecision(
+        decisionRequest
+      );
+    targetMessage.repairedResponseReview = updateRepairedResponseDecisionState(
+      targetMessage.repairedResponseReview,
+      markRepairedResponseDecisionRecorded(
+        targetMessage.repairedResponseReview.decisionState,
+        result
+      )
+    );
+  } catch (error) {
+    targetMessage.repairedResponseReview = updateRepairedResponseDecisionState(
+      targetMessage.repairedResponseReview,
+      markRepairedResponseDecisionFailed(
+        targetMessage.repairedResponseReview.decisionState,
+        action,
+        error,
+        workspaceState.repairedResponseDecisionClient.clientMode
+      )
+    );
+  }
+  renderMessages();
+  renderRuntimeDiagnostics();
+}
+
+function updateRepairedResponseDecisionState(surface, decisionState) {
+  return {
+    ...surface,
+    decisionState
+  };
+}
+
+function decisionReasonsForRepairedResponseAction(action) {
+  if (action === "accept_repair") return ["prefer_repaired"];
+  if (action === "keep_original") return ["prefer_original"];
+  return ["other"];
 }
 
 function updateGenerationFeedbackSurface(surface, overrides = {}) {
@@ -1931,6 +2026,15 @@ function buildMockGroundedResponseQualityContract(grounded, overrides = {}) {
     prompt_text_included: false,
     provider_detail_included: false,
     ...overrides
+  };
+}
+
+function withRepairedResponseDecisionState(surface) {
+  return {
+    ...surface,
+    decisionState: createRepairedResponseDecisionState({
+      clientMode: surface.clientMode
+    })
   };
 }
 

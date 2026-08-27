@@ -902,6 +902,72 @@ def test_ae_web_mock_state_links_generation_artifact_and_audit_contracts() -> No
     assert "/data/nex-platform" not in javascript
 
 
+def test_ae_web_repaired_response_decision_ux_wiring() -> None:
+    javascript = read_web_file("src/main.js")
+    decision_client = read_web_file("src/repairedResponseDecisionClient.js")
+    decision_state = read_web_file("src/repairedResponseDecisionState.js")
+    review_card = read_web_file("src/repairedResponseReviewCard.js")
+    client_registry = read_web_file("src/clientRegistry.js")
+
+    for expected in [
+        "submitRepairedResponseDecision",
+        "buildRepairedResponseDecisionRequest",
+        "markRepairedResponseDecisionSubmitting",
+        "markRepairedResponseDecisionRecorded",
+        "markRepairedResponseDecisionFailed",
+        "withRepairedResponseDecisionState",
+        "data-repaired-response-decision-action",
+        "decisionReasonsForRepairedResponseAction",
+        "repairedResponseDecisionClient",
+    ]:
+        assert expected in javascript
+
+    for expected in [
+        "ae_web_repaired_response_decision_client.v1",
+        "createMockRepairedResponseDecisionClient",
+        "createFetchRepairedResponseDecisionClient",
+        "submitRepairedResponseDecision",
+        "credentials: \"same-origin\"",
+        "\"Content-Type\": \"application/json\"",
+        "NETWORK_ERROR",
+        "DECISION_RESPONSE_INVALID",
+        "DECISION_COMMENT_TOO_LONG",
+    ]:
+        assert expected in decision_client
+
+    for expected in [
+        "ae_web_repaired_response_decision_state.v1",
+        "READY_FOR_DECISION",
+        "SUBMITTING",
+        "RECORDED",
+        "FAILED",
+        "buildRepairedResponseDecisionStateSummary",
+    ]:
+        assert expected in decision_state
+
+    for expected in [
+        "decisionStateDisplay",
+        "decisionEnabled",
+        "data-repaired-response-decision-action",
+    ]:
+        assert expected in review_card
+
+    assert "repairedResponseDecisionClient" in client_registry
+
+    for forbidden in [
+        "raw_prompt",
+        "raw_generation_output",
+        "source_text",
+        "service_token",
+        "api_key",
+        "database_url",
+        "provider_url",
+        "storage_path",
+        "/data/nex-platform",
+    ]:
+        assert forbidden not in javascript
+
+
 def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     styles = read_web_file("src/styles.css")
 

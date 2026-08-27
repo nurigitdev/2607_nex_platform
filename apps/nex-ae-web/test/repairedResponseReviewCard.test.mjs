@@ -155,6 +155,22 @@ describe("AE Web repaired response review card", () => {
         decisionId: "decision-001"
       }
     });
+    const recordedHtml = renderRepairedResponseReviewCard(surface(), {
+      decisionEnabled: true,
+      decisionState: {
+        status: "RECORDED",
+        action: "accept_repair",
+        decisionId: "decision-001"
+      }
+    });
+    const failedHtml = renderRepairedResponseReviewCard(surface(), {
+      decisionEnabled: true,
+      decisionState: {
+        status: "FAILED",
+        action: "keep_original",
+        errorStatus: "NETWORK_ERROR"
+      }
+    });
 
     assert.deepEqual(
       ready.primaryActions.map(action => action.disabled),
@@ -163,6 +179,8 @@ describe("AE Web repaired response review card", () => {
     assert.equal(submitting.primaryActions.every(action => action.disabled), true);
     assert.equal(recorded.primaryActions.every(action => action.disabled), true);
     assert.equal(recorded.primaryActions[0].selected, true);
+    assert.match(recordedHtml, /RECORDED · decision-001/);
+    assert.match(failedHtml, /FAILED · NETWORK_ERROR/);
   });
 
   it("handles missing optional links, unavailable actions, and empty previews", () => {

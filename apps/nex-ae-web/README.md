@@ -513,5 +513,14 @@ Slice 0394 adds the repaired response decision submit adapter:
 - `src/clientRegistry.js` exposes `repairedResponseDecisionClient` for the
   following chat-card click wiring Slice.
 
+Slice 0395 wires repaired response decision UX:
+
+- `src/repairedResponseDecisionState.js` owns
+  `READY_FOR_DECISION -> SUBMITTING -> RECORDED/FAILED` browser state.
+- `src/main.js` routes review-card accept/keep clicks through
+  `repairedResponseDecisionClient.submitRepairedResponseDecision`.
+- `src/repairedResponseReviewCard.js` renders recorded decision IDs or failure
+  statuses without exposing server-only details.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
