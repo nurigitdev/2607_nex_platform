@@ -243,6 +243,11 @@ Repaired response handoff:
   path now supports decision POST/list/detail operations, enforces service-token
   authorization and interaction scope, and returns problem responses for missing
   handoffs, invalid payloads, and missing decisions.
+- Slice 0389 adds protected PostgreSQL smoke evidence for repaired response
+  decisions. Set `NEX_AE_REPAIRED_RESPONSE_DECISION_POSTGRES_SMOKE=1` with
+  `NEX_AE_TEST_DATABASE_URL` to run test-profile migration, DB-backed route
+  POST/list/detail checks, JSONB/index observations, and cleanup against the
+  real AE test DB.
 
 Chat artifact links:
 
