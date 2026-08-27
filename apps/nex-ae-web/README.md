@@ -522,5 +522,14 @@ Slice 0395 wires repaired response decision UX:
 - `src/repairedResponseReviewCard.js` renders recorded decision IDs or failure
   statuses without exposing server-only details.
 
+Slice 0396 adds protected PostgreSQL smoke evidence for repaired response
+decisions:
+
+- `scripts/smoke/run_ae_web_repaired_response_decision_postgres_smoke.py`
+  checks AE Web decision wiring anchors before delegating to the persisted AE API
+  decision smoke.
+- The smoke is skipped by default and writes to `nex_ae_test` only when
+  `NEX_AE_WEB_REPAIRED_RESPONSE_DECISION_POSTGRES_SMOKE=1` is set.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

@@ -499,6 +499,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0393`](slices/0393_ae_web_repaired_response_review_card_rendering.md) | `S40-003` AE Web repaired response review card rendering. |
 | [`Slice 0394`](slices/0394_ae_web_repaired_response_decision_submit_adapter.md) | `S40-004` AE Web repaired response decision submit adapter. |
 | [`Slice 0395`](slices/0395_ae_web_repaired_response_decision_ux_wiring.md) | `S40-005` AE Web repaired response decision UX wiring. |
+| [`Slice 0396`](slices/0396_ae_web_repaired_response_decision_postgresql_smoke_evidence.md) | `S40-006` AE Web repaired response decision PostgreSQL smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
