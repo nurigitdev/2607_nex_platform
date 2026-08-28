@@ -203,6 +203,10 @@ Artifact records:
   `SqlAlchemyArtifactRecordStore` with SQLite regression coverage. The adapters
   round-trip the same record family shape as the in-memory stores; default API
   wiring and durable rendered payload storage remain deferred.
+- Slice 0404 adds the rendered artifact storage adapter boundary. The default
+  mock path can remain in memory, while `NEX_AE_ARTIFACT_STORAGE_ROOT` enables
+  private local Markdown payload storage behind logical `ae://artifacts/...`
+  refs. Local paths stay out of API records and evidence.
 
 Prompt analytics:
 

@@ -6,6 +6,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
@@ -74,6 +75,14 @@ class CxArtifactSourceClient(Protocol):
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
+        ...
+
+
+class RenderedArtifactStorage(Protocol):
+    def save_markdown(self, artifact_file: dict[str, Any], markdown: str) -> str:
+        ...
+
+    def get_markdown(self, artifact_file: dict[str, Any]) -> str | None:
         ...
 
 
@@ -230,6 +239,57 @@ class ArtifactRecordStore:
         return record
 
 
+@dataclass
+class InMemoryRenderedArtifactStorage:
+    rendered_markdown: dict[str, str] = field(default_factory=dict)
+
+    def save_markdown(self, artifact_file: dict[str, Any], markdown: str) -> str:
+        self.rendered_markdown[artifact_file["artifact_version_id"]] = markdown
+        return artifact_file["storage_ref"]
+
+    def get_markdown(self, artifact_file: dict[str, Any]) -> str | None:
+        return self.rendered_markdown.get(artifact_file["artifact_version_id"])
+
+
+@dataclass(frozen=True)
+class LocalRenderedArtifactStorage:
+    root: Path
+
+    def save_markdown(self, artifact_file: dict[str, Any], markdown: str) -> str:
+        path = self.path_for_storage_ref(artifact_file["storage_ref"])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(markdown, encoding="utf-8")
+        return artifact_file["storage_ref"]
+
+    def get_markdown(self, artifact_file: dict[str, Any]) -> str | None:
+        path = self.path_for_storage_ref(artifact_file["storage_ref"])
+        if not path.exists():
+            return None
+        return path.read_text(encoding="utf-8")
+
+    def path_for_storage_ref(self, storage_ref: str) -> Path:
+        relative = _storage_ref_relative_path(storage_ref)
+        root = self.root.resolve()
+        path = root.joinpath(*relative.split("/")).resolve(strict=False)
+        if not path.is_relative_to(root):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_storage_ref_invalid",
+                detail="Artifact storage ref escapes the configured storage root.",
+            )
+        return path
+
+
+def build_default_rendered_artifact_storage(
+    environ: dict[str, str] | None = None,
+) -> RenderedArtifactStorage:
+    env = environ if environ is not None else os.environ
+    root = optional_text(env.get("NEX_AE_ARTIFACT_STORAGE_ROOT"))
+    if root is None:
+        return InMemoryRenderedArtifactStorage()
+    return LocalRenderedArtifactStorage(Path(root))
+
+
 class SqlAlchemyArtifactHandoffStore:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
@@ -296,9 +356,15 @@ class SqlAlchemyArtifactHandoffStore:
 
 
 class SqlAlchemyArtifactRecordStore:
-    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        rendered_storage: RenderedArtifactStorage | None = None,
+    ) -> None:
         self._session_factory = session_factory
-        self.rendered_markdown: dict[str, str] = {}
+        self._rendered_storage = rendered_storage or InMemoryRenderedArtifactStorage()
+        self.rendered_markdown = getattr(self._rendered_storage, "rendered_markdown", {})
 
     def create(self, record: dict[str, Any]) -> dict[str, Any]:
         existing = self.get(record["artifact_id"])
@@ -359,7 +425,10 @@ class SqlAlchemyArtifactRecordStore:
             ) from exc
 
     def get_rendered_markdown(self, artifact_version_id: str) -> str | None:
-        return self.rendered_markdown.get(artifact_version_id)
+        artifact_file = self._get_markdown_file_for_version(artifact_version_id)
+        if artifact_file is None:
+            return None
+        return self._rendered_storage.get_markdown(artifact_file)
 
     def get_file(self, artifact_file_id: str) -> dict[str, Any] | None:
         try:
@@ -437,7 +506,9 @@ class SqlAlchemyArtifactRecordStore:
         record["artifact_status"] = "READY"
         record["current_version_id"] = artifact_version["artifact_version_id"]
         record["updated_at"] = render_job["completed_at"]
-        self.rendered_markdown[artifact_version["artifact_version_id"]] = markdown
+        for artifact_file in artifact_files:
+            if artifact_file["format"] == "MD":
+                self._rendered_storage.save_markdown(artifact_file, markdown)
         return self.save(record)
 
     def delete(self, artifact_id: str) -> int:
@@ -454,6 +525,34 @@ class SqlAlchemyArtifactRecordStore:
                 )
                 session.commit()
                 return int(result.rowcount or 0)
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_store_unavailable",
+                detail="AE artifact store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def _get_markdown_file_for_version(
+        self,
+        artifact_version_id: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _artifact_file_select_sql(
+                                "artifact_version_id = :artifact_version_id "
+                                "AND format = 'MD'"
+                            )
+                        ),
+                        {"artifact_version_id": artifact_version_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+            return _artifact_file_from_row(row) if row is not None else None
         except SQLAlchemyError as exc:
             raise ArtifactHandoffError(
                 status_code=503,
@@ -2405,6 +2504,25 @@ def _json_value(value: Any, default: Any) -> Any:
     if isinstance(value, str):
         return json.loads(value)
     return value
+
+
+def _storage_ref_relative_path(storage_ref: str) -> str:
+    prefix = "ae://artifacts/"
+    if not isinstance(storage_ref, str) or not storage_ref.startswith(prefix):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_storage_ref_invalid",
+            detail="Artifact storage ref must use the ae://artifacts scheme.",
+        )
+    relative = storage_ref.removeprefix(prefix)
+    parts = relative.split("/")
+    if not relative or any(part in {"", ".", ".."} for part in parts):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_storage_ref_invalid",
+            detail="Artifact storage ref contains an unsafe path segment.",
+        )
+    return relative
 
 
 def _datetime_value(value: Any) -> str:

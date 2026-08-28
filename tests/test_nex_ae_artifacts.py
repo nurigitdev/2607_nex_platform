@@ -14,12 +14,15 @@ from nex_ae_api.artifacts import (
     ArtifactHandoffStore,
     ArtifactRecordStore,
     HttpCxArtifactSourceClient,
+    InMemoryRenderedArtifactStorage,
+    LocalRenderedArtifactStorage,
     SqlAlchemyArtifactHandoffStore,
     SqlAlchemyArtifactRecordStore,
     actor_claims_ref_from_payload,
     artifact_intent_from_payload,
     artifact_type_from_payload,
     build_artifact_links,
+    build_default_rendered_artifact_storage,
     build_artifact_handoff_record,
     build_markdown_artifact_files,
     build_markdown_render_result,
@@ -885,6 +888,76 @@ def test_artifact_file_payload_resolution_requires_link_and_private_content() ->
     assert content_exc.value.error_code == "ae.artifact_file_not_ready"
 
 
+def test_local_rendered_artifact_storage_writes_under_configured_root(
+    tmp_path,
+) -> None:
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-create-001"},
+        handoff_record=sample_handoff_record(),
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    render_result = build_markdown_render_result(
+        artifact_record=artifact_record,
+        structured_draft=sample_structured_draft(),
+        target_formats=["MD"],
+        render_request_id="render-request-001",
+        render_job_id=deterministic_render_job_id(
+            artifact_record["artifact_id"],
+            "render-request-001",
+        ),
+    )
+    artifact_file = render_result["artifact_files"][0]
+    storage = LocalRenderedArtifactStorage(tmp_path / "ae-artifacts")
+
+    assert storage.get_markdown(artifact_file) is None
+    returned_ref = storage.save_markdown(artifact_file, render_result["markdown"])
+    loaded = storage.get_markdown(artifact_file)
+    private_path = storage.path_for_storage_ref(artifact_file["storage_ref"])
+
+    assert returned_ref == artifact_file["storage_ref"]
+    assert loaded == render_result["markdown"]
+    assert private_path.is_relative_to((tmp_path / "ae-artifacts").resolve())
+    assert private_path.read_text(encoding="utf-8") == render_result["markdown"]
+    assert str(tmp_path) not in str(artifact_file)
+    assert artifact_file["storage_ref"].startswith("ae://artifacts/")
+
+
+@pytest.mark.parametrize(
+    "storage_ref",
+    [
+        "/data/nex-platform/ae/artifact.md",
+        "s3://bucket/artifact.md",
+        "ae://artifacts/",
+        "ae://artifacts/../escape.md",
+        "ae://artifacts/artifact//file.md",
+    ],
+)
+def test_local_rendered_artifact_storage_rejects_unsafe_storage_refs(
+    tmp_path,
+    storage_ref: str,
+) -> None:
+    storage = LocalRenderedArtifactStorage(tmp_path)
+
+    with pytest.raises(ArtifactHandoffError) as exc_info:
+        storage.path_for_storage_ref(storage_ref)
+
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.error_code == "ae.artifact_storage_ref_invalid"
+
+
+def test_default_rendered_artifact_storage_uses_env_root_or_memory(tmp_path) -> None:
+    memory_storage = build_default_rendered_artifact_storage({})
+    local_storage = build_default_rendered_artifact_storage(
+        {"NEX_AE_ARTIFACT_STORAGE_ROOT": str(tmp_path / "configured")}
+    )
+
+    assert isinstance(memory_storage, InMemoryRenderedArtifactStorage)
+    assert isinstance(local_storage, LocalRenderedArtifactStorage)
+    assert local_storage.root == tmp_path / "configured"
+
+
 def test_sqlalchemy_artifact_handoff_store_round_trips_with_sqlite() -> None:
     store = SqlAlchemyArtifactHandoffStore(sqlite_artifact_session_factory())
     handoff = sample_handoff_record()
@@ -961,6 +1034,70 @@ def test_sqlalchemy_artifact_record_store_round_trips_render_metadata_with_sqlit
     assert store.get(created["artifact_id"]) is None
 
 
+def test_sqlalchemy_artifact_record_store_reports_missing_render_target() -> None:
+    store = SqlAlchemyArtifactRecordStore(sqlite_artifact_session_factory())
+
+    with pytest.raises(ArtifactHandoffError) as exc_info:
+        store.apply_markdown_render(
+            artifact_id="missing",
+            artifact_version={"artifact_version_id": "version-missing"},
+            render_job={"completed_at": "2026-08-28T00:00:00Z"},
+            markdown="# Missing\n",
+            artifact_files=[],
+            artifact_links=[],
+        )
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.error_code == "ae.artifact_not_found"
+
+
+def test_sqlalchemy_artifact_record_store_reads_markdown_from_local_storage(
+    tmp_path,
+) -> None:
+    session_factory = sqlite_artifact_session_factory()
+    handoff = sample_handoff_record()
+    SqlAlchemyArtifactHandoffStore(session_factory).save(handoff)
+    storage = LocalRenderedArtifactStorage(tmp_path / "artifact-storage")
+    store = SqlAlchemyArtifactRecordStore(
+        session_factory,
+        rendered_storage=storage,
+    )
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-create-001"},
+        handoff_record=handoff,
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    created = store.create(artifact_record)
+    render_result = build_markdown_render_result(
+        artifact_record=created,
+        structured_draft=sample_structured_draft(),
+        target_formats=["MD"],
+        render_request_id="render-request-001",
+        render_job_id=deterministic_render_job_id(
+            created["artifact_id"],
+            "render-request-001",
+        ),
+    )
+
+    updated = store.apply_markdown_render(
+        artifact_id=created["artifact_id"],
+        artifact_version=render_result["artifact_version"],
+        render_job=render_result["render_job"],
+        markdown=render_result["markdown"],
+        artifact_files=render_result["artifact_files"],
+        artifact_links=render_result["artifact_links"],
+    )
+    markdown = store.get_rendered_markdown(updated["current_version_id"])
+
+    assert markdown == render_result["markdown"]
+    assert store.rendered_markdown == {}
+    assert storage.get_markdown(updated["files"][0]) == render_result["markdown"]
+    assert store.get_rendered_markdown("missing-version") is None
+    assert str(tmp_path) not in str(updated)
+
+
 @pytest.mark.parametrize(
     ("store_type", "operation"),
     [
@@ -1030,6 +1167,7 @@ def test_artifact_sqlalchemy_storage_helpers_cover_dialects_and_nulls() -> None:
     assert ae_artifacts._json_value(None, []) == []
     assert ae_artifacts._json_value({"ok": True}, {}) == {"ok": True}
     assert ae_artifacts._nullable_datetime_value(None) is None
+    assert ae_artifacts._datetime_value(None).endswith("Z")
     assert ae_artifacts._datetime_value(
         ae_artifacts.datetime(2026, 8, 28, 0, 0, tzinfo=ae_artifacts.UTC)
     ) == "2026-08-28T00:00:00Z"
