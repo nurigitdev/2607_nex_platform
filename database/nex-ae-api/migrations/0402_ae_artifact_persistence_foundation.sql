@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS ae_artifact_handoffs (
     tenant_id TEXT NOT NULL,
     workspace_id TEXT NOT NULL,
     owner_user_id TEXT NOT NULL,
+    trace_id TEXT NOT NULL CHECK (trace_id ~ '^[0-9a-f]{32}$'),
+    request_id TEXT NOT NULL,
     chat_document_id TEXT NOT NULL,
     interaction_id TEXT NOT NULL,
     cx_generation_id TEXT NOT NULL,

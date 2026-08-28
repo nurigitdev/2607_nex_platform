@@ -591,6 +591,8 @@ def test_ae_artifact_persistence_foundation_tracks_records_without_payload_paths
         "tenant_id text not null",
         "workspace_id text not null",
         "owner_user_id text not null",
+        "trace_id text not null check (trace_id ~ '^[0-9a-f]{32}$')",
+        "request_id text not null",
         "chat_document_id text not null",
         "interaction_id text not null",
     ):
@@ -631,3 +633,20 @@ def test_ae_artifact_persistence_foundation_tracks_records_without_payload_paths
     assert "raw_prompt" not in compact
     assert "source_text" not in compact
     assert "0402_ae_artifact_persistence_foundation" in compact
+
+
+def test_ae_artifact_handoff_trace_request_backfill_migration_exists() -> None:
+    compact = normalized(
+        read_migration_named(
+            "nex-ae-api",
+            "0406_ae_artifact_handoff_trace_request_columns.sql",
+        )
+    )
+
+    assert "alter table ae_artifact_handoffs" in compact
+    assert "add column if not exists trace_id text not null" in compact
+    assert "check (trace_id ~ '^[0-9a-f]{32}$')" in compact
+    assert "add column if not exists request_id text not null" in compact
+    assert "alter column trace_id drop default" in compact
+    assert "alter column request_id drop default" in compact
+    assert "0406_ae_artifact_handoff_trace_request_columns" in compact
