@@ -189,6 +189,11 @@ Artifact records:
 - AE materializes rendered Markdown as safe artifact file metadata with
   `ae://` storage refs and AE-owned preview/download routes. Public metadata
   never exposes local filesystem paths.
+- Slice 0401 freezes the runtime persistence/storage boundary before durable
+  artifact work. Current artifact records, render jobs, files, links, and
+  rendered Markdown payloads are process-local memory; the next S41 slices move
+  metadata to `nex_ae` PostgreSQL and payloads behind
+  `NEX_AE_ARTIFACT_STORAGE_ROOT`.
 
 Prompt analytics:
 
