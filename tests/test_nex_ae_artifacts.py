@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -7,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 import nex_ae_api.artifacts as ae_artifacts
 from nex_ae_api.artifacts import (
@@ -22,6 +24,8 @@ from nex_ae_api.artifacts import (
     artifact_intent_from_payload,
     artifact_type_from_payload,
     build_artifact_links,
+    build_default_artifact_handoff_store,
+    build_default_artifact_record_store,
     build_default_rendered_artifact_storage,
     build_artifact_handoff_record,
     build_markdown_artifact_files,
@@ -225,7 +229,12 @@ def sample_handoff_record() -> dict[str, Any]:
 
 
 def sqlite_artifact_session_factory():
-    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        future=True,
+        poolclass=StaticPool,
+    )
     with engine.begin() as connection:
         connection.execute(
             text(
@@ -956,6 +965,77 @@ def test_default_rendered_artifact_storage_uses_env_root_or_memory(tmp_path) -> 
     assert isinstance(memory_storage, InMemoryRenderedArtifactStorage)
     assert isinstance(local_storage, LocalRenderedArtifactStorage)
     assert local_storage.root == tmp_path / "configured"
+
+
+def test_default_artifact_stores_use_persistence_session_factory(tmp_path, monkeypatch) -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    session_factory = sqlite_artifact_session_factory()
+    app.state.nex_persistence = SimpleNamespace(api_session_factory=session_factory)
+    monkeypatch.setenv(
+        "NEX_AE_ARTIFACT_STORAGE_ROOT",
+        str(tmp_path / "artifact-storage"),
+    )
+
+    handoff_store = build_default_artifact_handoff_store(app)
+    artifact_store = build_default_artifact_record_store(app)
+
+    assert isinstance(handoff_store, SqlAlchemyArtifactHandoffStore)
+    assert isinstance(artifact_store, SqlAlchemyArtifactRecordStore)
+    assert isinstance(artifact_store._rendered_storage, LocalRenderedArtifactStorage)
+
+
+def test_artifact_routes_use_sqlalchemy_defaults_with_local_storage(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    app.state.nex_persistence = SimpleNamespace(
+        api_session_factory=sqlite_artifact_session_factory()
+    )
+    storage_root = tmp_path / "artifact-storage"
+    monkeypatch.setenv("NEX_AE_ARTIFACT_STORAGE_ROOT", str(storage_root))
+    register_artifact_handoff_routes(app, cx_client=FakeCxArtifactSourceClient())
+    client = TestClient(app)
+
+    handoff_response = client.post(
+        "/api/v1/artifact-handoffs",
+        json=artifact_payload(),
+        headers=auth_headers(),
+    )
+    handoff = handoff_response.json()
+    artifact_response = client.post(
+        "/api/v1/artifacts",
+        json={"artifact_handoff_id": handoff["artifact_handoff_id"]},
+        headers={**auth_headers(), "Idempotency-Key": "artifact-create-001"},
+    )
+    artifact_id = artifact_response.json()["artifact_id"]
+    render_response = client.post(
+        f"/api/v1/artifacts/{artifact_id}/render-jobs",
+        json={},
+        headers={**auth_headers(), "Idempotency-Key": "render-request-001"},
+    )
+    rendered = render_response.json()
+    artifact_file = rendered["artifact"]["files"][0]
+    preview = client.get(
+        f"/api/v1/artifact-files/{artifact_file['artifact_file_id']}/preview",
+        headers=auth_headers(),
+    )
+    download = client.get(
+        f"/api/v1/artifact-files/{artifact_file['artifact_file_id']}/download",
+        headers=auth_headers(),
+    )
+
+    assert handoff_response.status_code == 200
+    assert artifact_response.status_code == 200
+    assert render_response.status_code == 200
+    assert rendered["artifact"]["artifact_status"] == "READY"
+    assert preview.status_code == 200
+    assert "Grounded answer [1]." in preview.json()["text_preview"]
+    assert download.status_code == 200
+    assert download.json()["content"].startswith("# Grounded report")
+    assert list(storage_root.rglob("*.md"))
+    assert str(storage_root) not in str(rendered)
+    assert str(storage_root) not in str(preview.json())
 
 
 def test_sqlalchemy_artifact_handoff_store_round_trips_with_sqlite() -> None:

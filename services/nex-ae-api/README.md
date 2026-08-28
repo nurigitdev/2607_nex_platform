@@ -207,6 +207,10 @@ Artifact records:
   mock path can remain in memory, while `NEX_AE_ARTIFACT_STORAGE_ROOT` enables
   private local Markdown payload storage behind logical `ae://artifacts/...`
   refs. Local paths stay out of API records and evidence.
+- Slice 0405 wires artifact routes to SQLAlchemy stores when
+  `app.state.nex_persistence.api_session_factory` is attached. Explicit test
+  stores still override defaults, and the public API shape is unchanged across
+  in-memory and persisted modes.
 
 Prompt analytics:
 

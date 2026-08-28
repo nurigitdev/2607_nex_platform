@@ -574,6 +574,25 @@ DEFAULT_ARTIFACT_HANDOFF_STORE = ArtifactHandoffStore()
 DEFAULT_ARTIFACT_RECORD_STORE = ArtifactRecordStore()
 
 
+def build_default_artifact_handoff_store(app: Any) -> Any:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is not None:
+        return SqlAlchemyArtifactHandoffStore(session_factory)
+    return DEFAULT_ARTIFACT_HANDOFF_STORE
+
+
+def build_default_artifact_record_store(app: Any) -> Any:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is not None:
+        return SqlAlchemyArtifactRecordStore(
+            session_factory,
+            rendered_storage=build_default_rendered_artifact_storage(),
+        )
+    return DEFAULT_ARTIFACT_RECORD_STORE
+
+
 def build_default_cx_artifact_source_client() -> HttpCxArtifactSourceClient:
     return HttpCxArtifactSourceClient(
         base_url=os.getenv("NEX_CX_BASE_URL", "http://127.0.0.1:8104"),
@@ -584,12 +603,12 @@ def build_default_cx_artifact_source_client() -> HttpCxArtifactSourceClient:
 def register_artifact_handoff_routes(
     app: FastAPI,
     *,
-    store: ArtifactHandoffStore | None = None,
-    artifact_store: ArtifactRecordStore | None = None,
+    store: Any | None = None,
+    artifact_store: Any | None = None,
     cx_client: CxArtifactSourceClient | None = None,
 ) -> None:
-    handoff_store = store or DEFAULT_ARTIFACT_HANDOFF_STORE
-    artifact_record_store = artifact_store or DEFAULT_ARTIFACT_RECORD_STORE
+    handoff_store = store or build_default_artifact_handoff_store(app)
+    artifact_record_store = artifact_store or build_default_artifact_record_store(app)
     client = cx_client or build_default_cx_artifact_source_client()
 
     @app.post("/api/v1/artifact-handoffs", response_model=None)
