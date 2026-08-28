@@ -12,6 +12,9 @@ from uuid import NAMESPACE_URL, uuid5
 import httpx
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
@@ -29,6 +32,22 @@ DEFAULT_TARGET_FORMATS = ["MD", "HTML_PREVIEW"]
 DEFAULT_RETENTION_POLICY_REF = "generated-artifact-retention-local-v1"
 DEFAULT_ARTIFACT_TYPE = "generated_document"
 MARKDOWN_RENDERER_POLICY_ID = "ae-markdown-renderer-v1"
+ARTIFACT_HANDOFF_JSON_FIELDS = (
+    "actor_claims_ref",
+    "workspace_ref",
+    "target_formats",
+    "quality_summary",
+)
+ARTIFACT_RECORD_JSON_FIELDS = (
+    "owner_actor_ref",
+    "workspace_ref",
+    "target_formats",
+    "template_ref",
+    "handoff_ref",
+)
+ARTIFACT_SOURCE_REF_JSON_FIELDS = ("quality_summary",)
+ARTIFACT_VERSION_JSON_FIELDS = ("rendered_formats", "validation_snapshot")
+ARTIFACT_LINK_JSON_FIELDS = ("created_by_actor_ref",)
 SUPPORTED_ARTIFACT_INTENTS = {
     "preview_only",
     "create_artifact",
@@ -209,6 +228,239 @@ class ArtifactRecordStore:
         for artifact_link in artifact_links:
             self.artifact_links[artifact_link["artifact_link_id"]] = artifact_link
         return record
+
+
+class SqlAlchemyArtifactHandoffStore:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        validate_artifact_handoff_record(record)
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    text(_artifact_handoff_upsert_sql(_dialect_name(session))),
+                    _artifact_handoff_params(record),
+                )
+                session.commit()
+            return record
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_handoff_store_unavailable",
+                detail="AE artifact handoff store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def get(self, artifact_handoff_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(_artifact_handoff_select_sql()),
+                        {"artifact_handoff_id": artifact_handoff_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+            return _artifact_handoff_from_row(row) if row is not None else None
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_handoff_store_unavailable",
+                detail="AE artifact handoff store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def delete(self, artifact_handoff_id: str) -> int:
+        try:
+            with self._session_factory() as session:
+                result = session.execute(
+                    text(
+                        """
+                        DELETE FROM ae_artifact_handoffs
+                        WHERE artifact_handoff_id = :artifact_handoff_id
+                        """
+                    ),
+                    {"artifact_handoff_id": artifact_handoff_id},
+                )
+                session.commit()
+                return int(result.rowcount or 0)
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_handoff_store_unavailable",
+                detail="AE artifact handoff store is unavailable.",
+                retryable=True,
+            ) from exc
+
+
+class SqlAlchemyArtifactRecordStore:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+        self.rendered_markdown: dict[str, str] = {}
+
+    def create(self, record: dict[str, Any]) -> dict[str, Any]:
+        existing = self.get(record["artifact_id"])
+        if existing is not None:
+            return existing
+        return self.save(record)
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        try:
+            with self._session_factory() as session:
+                _persist_artifact_record(session, record)
+                session.commit()
+            return record
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_store_unavailable",
+                detail="AE artifact store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def get(self, artifact_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return _load_artifact_record(session, artifact_id)
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_store_unavailable",
+                detail="AE artifact store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def list_versions(self, artifact_id: str) -> list[dict[str, Any]] | None:
+        record = self.get(artifact_id)
+        if record is None:
+            return None
+        return list(record["versions"])
+
+    def get_render_job(self, render_job_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(_artifact_render_job_select_sql("render_job_id = :render_job_id")),
+                        {"render_job_id": render_job_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+            return _artifact_render_job_from_row(row) if row is not None else None
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_store_unavailable",
+                detail="AE artifact store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def get_rendered_markdown(self, artifact_version_id: str) -> str | None:
+        return self.rendered_markdown.get(artifact_version_id)
+
+    def get_file(self, artifact_file_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(_artifact_file_select_sql("artifact_file_id = :artifact_file_id")),
+                        {"artifact_file_id": artifact_file_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+            return _artifact_file_from_row(row) if row is not None else None
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_store_unavailable",
+                detail="AE artifact store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def get_file_link(
+        self,
+        artifact_file_id: str,
+        link_type: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _artifact_link_select_sql(
+                                "artifact_file_id = :artifact_file_id "
+                                "AND link_type = :link_type"
+                            )
+                        ),
+                        {
+                            "artifact_file_id": artifact_file_id,
+                            "link_type": link_type,
+                        },
+                    )
+                    .mappings()
+                    .first()
+                )
+            return _artifact_link_from_row(row) if row is not None else None
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_store_unavailable",
+                detail="AE artifact store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def apply_markdown_render(
+        self,
+        *,
+        artifact_id: str,
+        artifact_version: dict[str, Any],
+        render_job: dict[str, Any],
+        markdown: str,
+        artifact_files: list[dict[str, Any]],
+        artifact_links: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        record = self.get(artifact_id)
+        if record is None:
+            raise ArtifactHandoffError(
+                status_code=404,
+                error_code="ae.artifact_not_found",
+                detail=f"Artifact was not found: {artifact_id}",
+            )
+        record["versions"].append(artifact_version)
+        record["render_jobs"].append(render_job)
+        record["files"].extend(artifact_files)
+        record["links"].extend(artifact_links)
+        record["artifact_status"] = "READY"
+        record["current_version_id"] = artifact_version["artifact_version_id"]
+        record["updated_at"] = render_job["completed_at"]
+        self.rendered_markdown[artifact_version["artifact_version_id"]] = markdown
+        return self.save(record)
+
+    def delete(self, artifact_id: str) -> int:
+        try:
+            with self._session_factory() as session:
+                result = session.execute(
+                    text(
+                        """
+                        DELETE FROM ae_artifacts
+                        WHERE artifact_id = :artifact_id
+                        """
+                    ),
+                    {"artifact_id": artifact_id},
+                )
+                session.commit()
+                return int(result.rowcount or 0)
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_store_unavailable",
+                detail="AE artifact store is unavailable.",
+                retryable=True,
+            ) from exc
 
 
 @dataclass(frozen=True)
@@ -1272,6 +1524,903 @@ def _safe_response_json(response: httpx.Response) -> dict[str, Any]:
     if isinstance(payload, dict):
         return payload
     return {}
+
+
+def _artifact_handoff_upsert_sql(dialect_name: str) -> str:
+    json_exprs = _json_param_exprs(ARTIFACT_HANDOFF_JSON_FIELDS, dialect_name)
+    return f"""
+        INSERT INTO ae_artifact_handoffs (
+            artifact_handoff_id,
+            handoff_schema_version,
+            artifact_request_id,
+            handoff_status,
+            trace_id,
+            request_id,
+            tenant_id,
+            workspace_id,
+            owner_user_id,
+            chat_document_id,
+            interaction_id,
+            cx_generation_id,
+            structured_draft_id,
+            draft_schema_version,
+            structured_draft_content_hash,
+            citation_claims_hash,
+            validation_result_hash,
+            template_id,
+            template_version,
+            rendering_template_id,
+            artifact_intent,
+            target_formats,
+            artifact_title,
+            language,
+            retention_policy_ref,
+            actor_claims_ref,
+            workspace_ref,
+            quality_summary,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :artifact_handoff_id,
+            :handoff_schema_version,
+            :artifact_request_id,
+            :handoff_status,
+            :trace_id,
+            :request_id,
+            :tenant_id,
+            :workspace_id,
+            :owner_user_id,
+            :chat_document_id,
+            :interaction_id,
+            :cx_generation_id,
+            :structured_draft_id,
+            :draft_schema_version,
+            :structured_draft_content_hash,
+            :citation_claims_hash,
+            :validation_result_hash,
+            :template_id,
+            :template_version,
+            :rendering_template_id,
+            :artifact_intent,
+            {json_exprs["target_formats"]},
+            :artifact_title,
+            :language,
+            :retention_policy_ref,
+            {json_exprs["actor_claims_ref"]},
+            {json_exprs["workspace_ref"]},
+            {json_exprs["quality_summary"]},
+            :created_at,
+            :updated_at
+        )
+        ON CONFLICT (artifact_handoff_id) DO UPDATE SET
+            artifact_request_id = excluded.artifact_request_id,
+            handoff_status = excluded.handoff_status,
+            target_formats = excluded.target_formats,
+            artifact_title = excluded.artifact_title,
+            retention_policy_ref = excluded.retention_policy_ref,
+            actor_claims_ref = excluded.actor_claims_ref,
+            workspace_ref = excluded.workspace_ref,
+            quality_summary = excluded.quality_summary,
+            updated_at = excluded.updated_at
+    """
+
+
+def _artifact_handoff_select_sql() -> str:
+    return """
+        SELECT
+            artifact_handoff_id,
+            handoff_schema_version,
+            artifact_request_id,
+            handoff_status,
+            trace_id,
+            request_id,
+            chat_document_id,
+            interaction_id,
+            actor_claims_ref,
+            workspace_ref,
+            cx_generation_id,
+            structured_draft_id,
+            draft_schema_version,
+            structured_draft_content_hash,
+            citation_claims_hash,
+            validation_result_hash,
+            template_id,
+            template_version,
+            rendering_template_id,
+            artifact_intent,
+            target_formats,
+            artifact_title,
+            language,
+            retention_policy_ref,
+            quality_summary,
+            created_at,
+            updated_at
+        FROM ae_artifact_handoffs
+        WHERE artifact_handoff_id = :artifact_handoff_id
+    """
+
+
+def _artifact_handoff_params(record: dict[str, Any]) -> dict[str, Any]:
+    actor = dict(record["actor_claims_ref"])
+    workspace = dict(record["workspace_ref"])
+    params = dict(record)
+    params["tenant_id"] = actor["tenant_id"]
+    params["workspace_id"] = workspace["workspace_id"]
+    params["owner_user_id"] = actor["actor_id"]
+    return _json_params(params, ARTIFACT_HANDOFF_JSON_FIELDS)
+
+
+def _artifact_handoff_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return {
+        "handoff_schema_version": data["handoff_schema_version"],
+        "artifact_handoff_id": data["artifact_handoff_id"],
+        "artifact_request_id": data["artifact_request_id"],
+        "handoff_status": data["handoff_status"],
+        "trace_id": data["trace_id"],
+        "request_id": data["request_id"],
+        "chat_document_id": data["chat_document_id"],
+        "interaction_id": data["interaction_id"],
+        "actor_claims_ref": _json_value(data["actor_claims_ref"], {}),
+        "workspace_ref": _json_value(data["workspace_ref"], {}),
+        "cx_generation_id": data["cx_generation_id"],
+        "structured_draft_id": data["structured_draft_id"],
+        "draft_schema_version": data["draft_schema_version"],
+        "structured_draft_content_hash": data["structured_draft_content_hash"],
+        "citation_claims_hash": data["citation_claims_hash"],
+        "validation_result_hash": data["validation_result_hash"],
+        "template_id": data["template_id"],
+        "template_version": data["template_version"],
+        "rendering_template_id": data["rendering_template_id"],
+        "artifact_intent": data["artifact_intent"],
+        "target_formats": _json_value(data["target_formats"], []),
+        "artifact_title": data["artifact_title"],
+        "language": data["language"],
+        "retention_policy_ref": data["retention_policy_ref"],
+        "quality_summary": _json_value(data["quality_summary"], {}),
+        "created_at": _datetime_value(data["created_at"]),
+        "updated_at": _datetime_value(data["updated_at"]),
+    }
+
+
+def _persist_artifact_record(session: Session, record: dict[str, Any]) -> None:
+    dialect_name = _dialect_name(session)
+    session.execute(
+        text(_artifact_upsert_sql(dialect_name)),
+        _artifact_params(record),
+    )
+    for source_ref in record.get("source_refs", []):
+        session.execute(
+            text(_artifact_source_ref_upsert_sql(dialect_name)),
+            _artifact_source_ref_params(record["artifact_id"], source_ref),
+        )
+    for version in record.get("versions", []):
+        session.execute(
+            text(_artifact_version_upsert_sql(dialect_name)),
+            _artifact_version_params(version),
+        )
+    for render_job in record.get("render_jobs", []):
+        session.execute(
+            text(_artifact_render_job_upsert_sql()),
+            _artifact_render_job_params(render_job),
+        )
+    for artifact_file in record.get("files", []):
+        session.execute(
+            text(_artifact_file_upsert_sql()),
+            _artifact_file_params(record["artifact_id"], artifact_file),
+        )
+    for artifact_link in record.get("links", []):
+        session.execute(
+            text(_artifact_link_upsert_sql(dialect_name)),
+            _artifact_link_params(artifact_link),
+        )
+
+
+def _artifact_upsert_sql(dialect_name: str) -> str:
+    json_exprs = _json_param_exprs(ARTIFACT_RECORD_JSON_FIELDS, dialect_name)
+    return f"""
+        INSERT INTO ae_artifacts (
+            artifact_id,
+            artifact_schema_version,
+            artifact_type,
+            artifact_status,
+            current_version_id,
+            artifact_handoff_id,
+            artifact_request_id,
+            tenant_id,
+            workspace_id,
+            owner_user_id,
+            chat_document_id,
+            interaction_id,
+            trace_id,
+            request_id,
+            display_title,
+            language,
+            artifact_intent,
+            target_formats,
+            retention_policy_ref,
+            owner_actor_ref,
+            workspace_ref,
+            template_ref,
+            handoff_ref,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :artifact_id,
+            :artifact_schema_version,
+            :artifact_type,
+            :artifact_status,
+            :current_version_id,
+            :artifact_handoff_id,
+            :artifact_request_id,
+            :tenant_id,
+            :workspace_id,
+            :owner_user_id,
+            :chat_document_id,
+            :interaction_id,
+            :trace_id,
+            :request_id,
+            :display_title,
+            :language,
+            :artifact_intent,
+            {json_exprs["target_formats"]},
+            :retention_policy_ref,
+            {json_exprs["owner_actor_ref"]},
+            {json_exprs["workspace_ref"]},
+            {json_exprs["template_ref"]},
+            {json_exprs["handoff_ref"]},
+            :created_at,
+            :updated_at
+        )
+        ON CONFLICT (artifact_id) DO UPDATE SET
+            artifact_type = excluded.artifact_type,
+            artifact_status = excluded.artifact_status,
+            current_version_id = excluded.current_version_id,
+            display_title = excluded.display_title,
+            target_formats = excluded.target_formats,
+            retention_policy_ref = excluded.retention_policy_ref,
+            owner_actor_ref = excluded.owner_actor_ref,
+            workspace_ref = excluded.workspace_ref,
+            template_ref = excluded.template_ref,
+            handoff_ref = excluded.handoff_ref,
+            updated_at = excluded.updated_at
+    """
+
+
+def _artifact_params(record: dict[str, Any]) -> dict[str, Any]:
+    owner = dict(record["owner_actor_ref"])
+    workspace = dict(record["workspace_ref"])
+    handoff_ref = dict(record["handoff_ref"])
+    params = dict(record)
+    params["artifact_handoff_id"] = handoff_ref["artifact_handoff_id"]
+    params["artifact_request_id"] = handoff_ref["artifact_request_id"]
+    params["tenant_id"] = owner["tenant_id"]
+    params["workspace_id"] = workspace["workspace_id"]
+    params["owner_user_id"] = owner["actor_id"]
+    return _json_params(params, ARTIFACT_RECORD_JSON_FIELDS)
+
+
+def _load_artifact_record(session: Session, artifact_id: str) -> dict[str, Any] | None:
+    artifact_row = (
+        session.execute(
+            text(_artifact_select_sql("artifact_id = :artifact_id")),
+            {"artifact_id": artifact_id},
+        )
+        .mappings()
+        .first()
+    )
+    if artifact_row is None:
+        return None
+    return _artifact_record_from_row(
+        artifact_row,
+        source_refs=[
+            _artifact_source_ref_from_row(row)
+            for row in session.execute(
+                text(
+                    _artifact_source_ref_select_sql(
+                        "artifact_id = :artifact_id ORDER BY source_ref_id ASC"
+                    )
+                ),
+                {"artifact_id": artifact_id},
+            )
+            .mappings()
+            .all()
+        ],
+        versions=[
+            _artifact_version_from_row(row)
+            for row in session.execute(
+                text(
+                    _artifact_version_select_sql(
+                        "artifact_id = :artifact_id ORDER BY version_no ASC"
+                    )
+                ),
+                {"artifact_id": artifact_id},
+            )
+            .mappings()
+            .all()
+        ],
+        render_jobs=[
+            _artifact_render_job_from_row(row)
+            for row in session.execute(
+                text(
+                    _artifact_render_job_select_sql(
+                        "artifact_id = :artifact_id "
+                        "ORDER BY created_at ASC, render_job_id ASC"
+                    )
+                ),
+                {"artifact_id": artifact_id},
+            )
+            .mappings()
+            .all()
+        ],
+        files=[
+            _artifact_file_from_row(row)
+            for row in session.execute(
+                text(
+                    _artifact_file_select_sql(
+                        "artifact_id = :artifact_id "
+                        "ORDER BY created_at ASC, artifact_file_id ASC"
+                    )
+                ),
+                {"artifact_id": artifact_id},
+            )
+            .mappings()
+            .all()
+        ],
+        links=[
+            _artifact_link_from_row(row)
+            for row in session.execute(
+                text(
+                    _artifact_link_select_sql(
+                        "artifact_file_id IN ("
+                        "SELECT artifact_file_id FROM ae_artifact_files "
+                        "WHERE artifact_id = :artifact_id"
+                        ") ORDER BY CASE link_type "
+                        "WHEN 'preview' THEN 0 ELSE 1 END, artifact_link_id ASC"
+                    )
+                ),
+                {"artifact_id": artifact_id},
+            )
+            .mappings()
+            .all()
+        ],
+    )
+
+
+def _artifact_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            artifact_id,
+            artifact_schema_version,
+            artifact_type,
+            artifact_status,
+            current_version_id,
+            trace_id,
+            request_id,
+            chat_document_id,
+            interaction_id,
+            owner_actor_ref,
+            workspace_ref,
+            display_title,
+            language,
+            artifact_intent,
+            target_formats,
+            retention_policy_ref,
+            template_ref,
+            handoff_ref,
+            created_at,
+            updated_at
+        FROM ae_artifacts
+        WHERE {where_clause}
+    """
+
+
+def _artifact_record_from_row(
+    row: Any,
+    *,
+    source_refs: list[dict[str, Any]],
+    versions: list[dict[str, Any]],
+    render_jobs: list[dict[str, Any]],
+    files: list[dict[str, Any]],
+    links: list[dict[str, Any]],
+) -> dict[str, Any]:
+    data = dict(row)
+    return {
+        "artifact_schema_version": data["artifact_schema_version"],
+        "artifact_id": data["artifact_id"],
+        "artifact_type": data["artifact_type"],
+        "artifact_status": data["artifact_status"],
+        "current_version_id": data["current_version_id"],
+        "trace_id": data["trace_id"],
+        "request_id": data["request_id"],
+        "chat_document_id": data["chat_document_id"],
+        "interaction_id": data["interaction_id"],
+        "owner_actor_ref": _json_value(data["owner_actor_ref"], {}),
+        "workspace_ref": _json_value(data["workspace_ref"], {}),
+        "display_title": data["display_title"],
+        "language": data["language"],
+        "artifact_intent": data["artifact_intent"],
+        "target_formats": _json_value(data["target_formats"], []),
+        "retention_policy_ref": data["retention_policy_ref"],
+        "template_ref": _json_value(data["template_ref"], {}),
+        "handoff_ref": _json_value(data["handoff_ref"], {}),
+        "source_refs": source_refs,
+        "versions": versions,
+        "render_jobs": render_jobs,
+        "files": files,
+        "links": links,
+        "created_at": _datetime_value(data["created_at"]),
+        "updated_at": _datetime_value(data["updated_at"]),
+    }
+
+
+def _artifact_source_ref_upsert_sql(dialect_name: str) -> str:
+    json_exprs = _json_param_exprs(ARTIFACT_SOURCE_REF_JSON_FIELDS, dialect_name)
+    return f"""
+        INSERT INTO ae_artifact_source_refs (
+            source_ref_id,
+            artifact_id,
+            cx_generation_id,
+            structured_draft_id,
+            draft_schema_version,
+            structured_draft_content_hash,
+            citation_claims_hash,
+            validation_result_hash,
+            retrieval_package_id,
+            retrieval_package_hash,
+            evidence_ref_count,
+            source_anchor_count,
+            quality_summary,
+            created_at
+        )
+        VALUES (
+            :source_ref_id,
+            :artifact_id,
+            :cx_generation_id,
+            :structured_draft_id,
+            :draft_schema_version,
+            :structured_draft_content_hash,
+            :citation_claims_hash,
+            :validation_result_hash,
+            :retrieval_package_id,
+            :retrieval_package_hash,
+            :evidence_ref_count,
+            :source_anchor_count,
+            {json_exprs["quality_summary"]},
+            :created_at
+        )
+        ON CONFLICT (source_ref_id) DO UPDATE SET
+            retrieval_package_id = excluded.retrieval_package_id,
+            retrieval_package_hash = excluded.retrieval_package_hash,
+            evidence_ref_count = excluded.evidence_ref_count,
+            source_anchor_count = excluded.source_anchor_count,
+            quality_summary = excluded.quality_summary
+    """
+
+
+def _artifact_source_ref_params(
+    artifact_id: str,
+    source_ref: dict[str, Any],
+) -> dict[str, Any]:
+    params = dict(source_ref)
+    params["artifact_id"] = artifact_id
+    params["created_at"] = params.get("created_at") or _utc_now()
+    return _json_params(params, ARTIFACT_SOURCE_REF_JSON_FIELDS)
+
+
+def _artifact_source_ref_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            source_ref_id,
+            cx_generation_id,
+            structured_draft_id,
+            draft_schema_version,
+            structured_draft_content_hash,
+            citation_claims_hash,
+            validation_result_hash,
+            retrieval_package_id,
+            retrieval_package_hash,
+            evidence_ref_count,
+            source_anchor_count,
+            quality_summary
+        FROM ae_artifact_source_refs
+        WHERE {where_clause}
+    """
+
+
+def _artifact_source_ref_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return {
+        "source_ref_id": data["source_ref_id"],
+        "cx_generation_id": data["cx_generation_id"],
+        "structured_draft_id": data["structured_draft_id"],
+        "draft_schema_version": data["draft_schema_version"],
+        "structured_draft_content_hash": data["structured_draft_content_hash"],
+        "citation_claims_hash": data["citation_claims_hash"],
+        "validation_result_hash": data["validation_result_hash"],
+        "retrieval_package_id": data["retrieval_package_id"],
+        "retrieval_package_hash": data["retrieval_package_hash"],
+        "evidence_ref_count": data["evidence_ref_count"],
+        "source_anchor_count": data["source_anchor_count"],
+        "quality_summary": _json_value(data["quality_summary"], {}),
+    }
+
+
+def _artifact_version_upsert_sql(dialect_name: str) -> str:
+    json_exprs = _json_param_exprs(ARTIFACT_VERSION_JSON_FIELDS, dialect_name)
+    return f"""
+        INSERT INTO ae_artifact_versions (
+            artifact_version_id,
+            artifact_id,
+            version_no,
+            version_reason,
+            source_generation_id,
+            source_structured_draft_id,
+            source_content_hash,
+            source_citation_claims_hash,
+            render_policy_hash,
+            artifact_content_hash,
+            rendered_formats,
+            validation_snapshot,
+            created_at
+        )
+        VALUES (
+            :artifact_version_id,
+            :artifact_id,
+            :version_no,
+            :version_reason,
+            :source_generation_id,
+            :source_structured_draft_id,
+            :source_content_hash,
+            :source_citation_claims_hash,
+            :render_policy_hash,
+            :artifact_content_hash,
+            {json_exprs["rendered_formats"]},
+            {json_exprs["validation_snapshot"]},
+            :created_at
+        )
+        ON CONFLICT (artifact_version_id) DO UPDATE SET
+            artifact_content_hash = excluded.artifact_content_hash,
+            rendered_formats = excluded.rendered_formats,
+            validation_snapshot = excluded.validation_snapshot
+    """
+
+
+def _artifact_version_params(version: dict[str, Any]) -> dict[str, Any]:
+    return _json_params(dict(version), ARTIFACT_VERSION_JSON_FIELDS)
+
+
+def _artifact_version_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            artifact_version_id,
+            artifact_id,
+            version_no,
+            version_reason,
+            source_generation_id,
+            source_structured_draft_id,
+            source_content_hash,
+            source_citation_claims_hash,
+            render_policy_hash,
+            artifact_content_hash,
+            rendered_formats,
+            validation_snapshot,
+            created_at
+        FROM ae_artifact_versions
+        WHERE {where_clause}
+    """
+
+
+def _artifact_version_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return {
+        "artifact_version_id": data["artifact_version_id"],
+        "artifact_id": data["artifact_id"],
+        "version_no": data["version_no"],
+        "version_reason": data["version_reason"],
+        "source_generation_id": data["source_generation_id"],
+        "source_structured_draft_id": data["source_structured_draft_id"],
+        "source_content_hash": data["source_content_hash"],
+        "source_citation_claims_hash": data["source_citation_claims_hash"],
+        "render_policy_hash": data["render_policy_hash"],
+        "artifact_content_hash": data["artifact_content_hash"],
+        "rendered_formats": _json_value(data["rendered_formats"], []),
+        "validation_snapshot": _json_value(data["validation_snapshot"], {}),
+        "created_at": _datetime_value(data["created_at"]),
+    }
+
+
+def _artifact_render_job_upsert_sql() -> str:
+    return """
+        INSERT INTO ae_artifact_render_jobs (
+            render_job_id,
+            artifact_id,
+            artifact_version_id,
+            job_status,
+            current_stage,
+            progress_mode,
+            progress_percent,
+            retryable,
+            failure_code,
+            started_at,
+            completed_at,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :render_job_id,
+            :artifact_id,
+            :artifact_version_id,
+            :job_status,
+            :current_stage,
+            :progress_mode,
+            :progress_percent,
+            :retryable,
+            :failure_code,
+            :started_at,
+            :completed_at,
+            :created_at,
+            :updated_at
+        )
+        ON CONFLICT (render_job_id) DO UPDATE SET
+            artifact_version_id = excluded.artifact_version_id,
+            job_status = excluded.job_status,
+            current_stage = excluded.current_stage,
+            progress_percent = excluded.progress_percent,
+            retryable = excluded.retryable,
+            failure_code = excluded.failure_code,
+            completed_at = excluded.completed_at,
+            updated_at = excluded.updated_at
+    """
+
+
+def _artifact_render_job_params(render_job: dict[str, Any]) -> dict[str, Any]:
+    params = dict(render_job)
+    params["created_at"] = params.get("created_at") or params.get("started_at") or _utc_now()
+    params["updated_at"] = params.get("updated_at") or params.get("completed_at") or _utc_now()
+    return params
+
+
+def _artifact_render_job_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            render_job_id,
+            artifact_id,
+            artifact_version_id,
+            job_status,
+            current_stage,
+            progress_mode,
+            progress_percent,
+            retryable,
+            failure_code,
+            started_at,
+            completed_at
+        FROM ae_artifact_render_jobs
+        WHERE {where_clause}
+    """
+
+
+def _artifact_render_job_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return {
+        "render_job_id": data["render_job_id"],
+        "artifact_id": data["artifact_id"],
+        "artifact_version_id": data["artifact_version_id"],
+        "job_status": data["job_status"],
+        "current_stage": data["current_stage"],
+        "progress_mode": data["progress_mode"],
+        "progress_percent": data["progress_percent"],
+        "retryable": bool(data["retryable"]),
+        "failure_code": data["failure_code"],
+        "started_at": _datetime_value(data["started_at"]),
+        "completed_at": _datetime_value(data["completed_at"]),
+    }
+
+
+def _artifact_file_upsert_sql() -> str:
+    return """
+        INSERT INTO ae_artifact_files (
+            artifact_file_id,
+            artifact_version_id,
+            artifact_id,
+            format,
+            mime_type,
+            file_name,
+            storage_ref,
+            file_size_bytes,
+            file_hash,
+            source_version_hash,
+            created_at
+        )
+        VALUES (
+            :artifact_file_id,
+            :artifact_version_id,
+            :artifact_id,
+            :format,
+            :mime_type,
+            :file_name,
+            :storage_ref,
+            :file_size_bytes,
+            :file_hash,
+            :source_version_hash,
+            :created_at
+        )
+        ON CONFLICT (artifact_file_id) DO UPDATE SET
+            storage_ref = excluded.storage_ref,
+            file_size_bytes = excluded.file_size_bytes,
+            file_hash = excluded.file_hash,
+            source_version_hash = excluded.source_version_hash
+    """
+
+
+def _artifact_file_params(
+    artifact_id: str,
+    artifact_file: dict[str, Any],
+) -> dict[str, Any]:
+    params = dict(artifact_file)
+    params["artifact_id"] = artifact_id
+    return params
+
+
+def _artifact_file_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            artifact_file_id,
+            artifact_version_id,
+            format,
+            mime_type,
+            file_name,
+            storage_ref,
+            file_size_bytes,
+            file_hash,
+            source_version_hash,
+            created_at
+        FROM ae_artifact_files
+        WHERE {where_clause}
+    """
+
+
+def _artifact_file_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return {
+        "artifact_file_id": data["artifact_file_id"],
+        "artifact_version_id": data["artifact_version_id"],
+        "format": data["format"],
+        "mime_type": data["mime_type"],
+        "file_name": data["file_name"],
+        "storage_ref": data["storage_ref"],
+        "file_size_bytes": data["file_size_bytes"],
+        "file_hash": data["file_hash"],
+        "source_version_hash": data["source_version_hash"],
+        "created_at": _datetime_value(data["created_at"]),
+    }
+
+
+def _artifact_link_upsert_sql(dialect_name: str) -> str:
+    json_exprs = _json_param_exprs(ARTIFACT_LINK_JSON_FIELDS, dialect_name)
+    return f"""
+        INSERT INTO ae_artifact_links (
+            artifact_link_id,
+            artifact_file_id,
+            link_type,
+            access_policy,
+            link_route,
+            expires_at,
+            created_by_actor_ref,
+            download_count,
+            revoked_at,
+            created_at
+        )
+        VALUES (
+            :artifact_link_id,
+            :artifact_file_id,
+            :link_type,
+            :access_policy,
+            :link_route,
+            :expires_at,
+            {json_exprs["created_by_actor_ref"]},
+            :download_count,
+            :revoked_at,
+            :created_at
+        )
+        ON CONFLICT (artifact_link_id) DO UPDATE SET
+            access_policy = excluded.access_policy,
+            link_route = excluded.link_route,
+            expires_at = excluded.expires_at,
+            created_by_actor_ref = excluded.created_by_actor_ref,
+            download_count = excluded.download_count,
+            revoked_at = excluded.revoked_at
+    """
+
+
+def _artifact_link_params(artifact_link: dict[str, Any]) -> dict[str, Any]:
+    params = dict(artifact_link)
+    params["created_at"] = params.get("created_at") or _utc_now()
+    return _json_params(params, ARTIFACT_LINK_JSON_FIELDS)
+
+
+def _artifact_link_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            artifact_link_id,
+            artifact_file_id,
+            link_type,
+            access_policy,
+            link_route,
+            expires_at,
+            created_by_actor_ref,
+            download_count,
+            revoked_at
+        FROM ae_artifact_links
+        WHERE {where_clause}
+    """
+
+
+def _artifact_link_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return {
+        "artifact_link_id": data["artifact_link_id"],
+        "artifact_file_id": data["artifact_file_id"],
+        "link_type": data["link_type"],
+        "access_policy": data["access_policy"],
+        "link_route": data["link_route"],
+        "expires_at": _nullable_datetime_value(data["expires_at"]),
+        "created_by_actor_ref": _json_value(data["created_by_actor_ref"], {}),
+        "download_count": data["download_count"],
+        "revoked_at": _nullable_datetime_value(data["revoked_at"]),
+    }
+
+
+def _json_param_exprs(
+    field_names: tuple[str, ...],
+    dialect_name: str,
+) -> dict[str, str]:
+    return {
+        field_name: _json_param_expr(field_name, dialect_name)
+        for field_name in field_names
+    }
+
+
+def _json_param_expr(name: str, dialect_name: str) -> str:
+    if dialect_name == "postgresql":
+        return f"CAST(:{name} AS jsonb)"
+    return f":{name}"
+
+
+def _json_params(
+    params: dict[str, Any],
+    field_names: tuple[str, ...],
+) -> dict[str, Any]:
+    updated = dict(params)
+    for field_name in field_names:
+        updated[field_name] = json.dumps(updated[field_name])
+    return updated
+
+
+def _json_value(value: Any, default: Any) -> Any:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
+
+
+def _datetime_value(value: Any) -> str:
+    if value is None:
+        return _utc_now()
+    if hasattr(value, "isoformat"):
+        return value.isoformat().replace("+00:00", "Z")
+    return str(value)
+
+
+def _nullable_datetime_value(value: Any) -> str | None:
+    return None if value is None else _datetime_value(value)
+
+
+def _dialect_name(session: Session) -> str:
+    return session.get_bind().dialect.name
 
 
 def _utc_now() -> str:

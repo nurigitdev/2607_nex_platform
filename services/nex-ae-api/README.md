@@ -199,6 +199,10 @@ Artifact records:
   files, and links with owner/workspace/time indexes. The schema stores only
   safe metadata and logical `ae://` refs; rendered payload bytes remain outside
   the database.
+- Slice 0403 adds `SqlAlchemyArtifactHandoffStore` and
+  `SqlAlchemyArtifactRecordStore` with SQLite regression coverage. The adapters
+  round-trip the same record family shape as the in-memory stores; default API
+  wiring and durable rendered payload storage remain deferred.
 
 Prompt analytics:
 

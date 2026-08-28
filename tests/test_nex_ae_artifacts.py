@@ -5,6 +5,8 @@ from typing import Any
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 
 import nex_ae_api.artifacts as ae_artifacts
 from nex_ae_api.artifacts import (
@@ -12,6 +14,8 @@ from nex_ae_api.artifacts import (
     ArtifactHandoffStore,
     ArtifactRecordStore,
     HttpCxArtifactSourceClient,
+    SqlAlchemyArtifactHandoffStore,
+    SqlAlchemyArtifactRecordStore,
     actor_claims_ref_from_payload,
     artifact_intent_from_payload,
     artifact_type_from_payload,
@@ -215,6 +219,184 @@ def sample_handoff_record() -> dict[str, Any]:
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     )
+
+
+def sqlite_artifact_session_factory():
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ae_artifact_handoffs (
+                    artifact_handoff_id TEXT PRIMARY KEY,
+                    handoff_schema_version TEXT NOT NULL,
+                    artifact_request_id TEXT NOT NULL UNIQUE,
+                    handoff_status TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL,
+                    owner_user_id TEXT NOT NULL,
+                    trace_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    chat_document_id TEXT NOT NULL,
+                    interaction_id TEXT NOT NULL,
+                    cx_generation_id TEXT NOT NULL,
+                    structured_draft_id TEXT NOT NULL,
+                    draft_schema_version TEXT NOT NULL,
+                    structured_draft_content_hash TEXT NOT NULL,
+                    citation_claims_hash TEXT NOT NULL,
+                    validation_result_hash TEXT NOT NULL,
+                    template_id TEXT,
+                    template_version TEXT,
+                    rendering_template_id TEXT,
+                    artifact_intent TEXT NOT NULL,
+                    target_formats TEXT NOT NULL,
+                    artifact_title TEXT NOT NULL,
+                    language TEXT NOT NULL,
+                    retention_policy_ref TEXT NOT NULL,
+                    actor_claims_ref TEXT NOT NULL,
+                    workspace_ref TEXT NOT NULL,
+                    quality_summary TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ae_artifacts (
+                    artifact_id TEXT PRIMARY KEY,
+                    artifact_schema_version TEXT NOT NULL,
+                    artifact_type TEXT NOT NULL,
+                    artifact_status TEXT NOT NULL,
+                    current_version_id TEXT,
+                    artifact_handoff_id TEXT NOT NULL,
+                    artifact_request_id TEXT NOT NULL UNIQUE,
+                    tenant_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL,
+                    owner_user_id TEXT NOT NULL,
+                    chat_document_id TEXT NOT NULL,
+                    interaction_id TEXT NOT NULL,
+                    trace_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    display_title TEXT NOT NULL,
+                    language TEXT NOT NULL,
+                    artifact_intent TEXT NOT NULL,
+                    target_formats TEXT NOT NULL,
+                    retention_policy_ref TEXT NOT NULL,
+                    owner_actor_ref TEXT NOT NULL,
+                    workspace_ref TEXT NOT NULL,
+                    template_ref TEXT NOT NULL,
+                    handoff_ref TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ae_artifact_source_refs (
+                    source_ref_id TEXT PRIMARY KEY,
+                    artifact_id TEXT NOT NULL,
+                    cx_generation_id TEXT NOT NULL,
+                    structured_draft_id TEXT NOT NULL,
+                    draft_schema_version TEXT NOT NULL,
+                    structured_draft_content_hash TEXT NOT NULL,
+                    citation_claims_hash TEXT NOT NULL,
+                    validation_result_hash TEXT NOT NULL,
+                    retrieval_package_id TEXT,
+                    retrieval_package_hash TEXT,
+                    evidence_ref_count INTEGER NOT NULL,
+                    source_anchor_count INTEGER NOT NULL,
+                    quality_summary TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ae_artifact_versions (
+                    artifact_version_id TEXT PRIMARY KEY,
+                    artifact_id TEXT NOT NULL,
+                    version_no INTEGER NOT NULL,
+                    version_reason TEXT NOT NULL,
+                    source_generation_id TEXT NOT NULL,
+                    source_structured_draft_id TEXT NOT NULL,
+                    source_content_hash TEXT NOT NULL,
+                    source_citation_claims_hash TEXT NOT NULL,
+                    render_policy_hash TEXT NOT NULL,
+                    artifact_content_hash TEXT NOT NULL,
+                    rendered_formats TEXT NOT NULL,
+                    validation_snapshot TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ae_artifact_render_jobs (
+                    render_job_id TEXT PRIMARY KEY,
+                    artifact_id TEXT NOT NULL,
+                    artifact_version_id TEXT,
+                    job_status TEXT NOT NULL,
+                    current_stage TEXT NOT NULL,
+                    progress_mode TEXT NOT NULL,
+                    progress_percent INTEGER NOT NULL,
+                    retryable INTEGER NOT NULL,
+                    failure_code TEXT,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ae_artifact_files (
+                    artifact_file_id TEXT PRIMARY KEY,
+                    artifact_version_id TEXT NOT NULL,
+                    artifact_id TEXT NOT NULL,
+                    format TEXT NOT NULL,
+                    mime_type TEXT NOT NULL,
+                    file_name TEXT NOT NULL,
+                    storage_ref TEXT NOT NULL,
+                    file_size_bytes INTEGER NOT NULL,
+                    file_hash TEXT NOT NULL,
+                    source_version_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ae_artifact_links (
+                    artifact_link_id TEXT PRIMARY KEY,
+                    artifact_file_id TEXT NOT NULL,
+                    link_type TEXT NOT NULL,
+                    access_policy TEXT NOT NULL,
+                    link_route TEXT NOT NULL,
+                    expires_at TEXT,
+                    created_by_actor_ref TEXT NOT NULL,
+                    download_count INTEGER NOT NULL,
+                    revoked_at TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+    return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
 def test_build_artifact_handoff_record_copies_only_safe_lineage() -> None:
@@ -699,8 +881,161 @@ def test_artifact_file_payload_resolution_requires_link_and_private_content() ->
             store,
             artifact_file_id=artifact_file["artifact_file_id"],
             link_type="download",
-        )
+    )
     assert content_exc.value.error_code == "ae.artifact_file_not_ready"
+
+
+def test_sqlalchemy_artifact_handoff_store_round_trips_with_sqlite() -> None:
+    store = SqlAlchemyArtifactHandoffStore(sqlite_artifact_session_factory())
+    handoff = sample_handoff_record()
+
+    saved = store.save(handoff)
+    loaded = store.get(handoff["artifact_handoff_id"])
+    saved_again = store.save({**handoff, "artifact_title": "Generated report v2"})
+    loaded_again = store.get(handoff["artifact_handoff_id"])
+    deleted_rows = store.delete(handoff["artifact_handoff_id"])
+
+    assert saved == handoff
+    assert loaded == handoff
+    assert saved_again["artifact_title"] == "Generated report v2"
+    assert loaded_again is not None
+    assert loaded_again["artifact_title"] == "Generated report v2"
+    assert loaded_again["target_formats"] == ["MD", "HTML_PREVIEW", "PDF"]
+    assert deleted_rows == 1
+    assert store.get(handoff["artifact_handoff_id"]) is None
+
+
+def test_sqlalchemy_artifact_record_store_round_trips_render_metadata_with_sqlite() -> None:
+    session_factory = sqlite_artifact_session_factory()
+    handoff = sample_handoff_record()
+    SqlAlchemyArtifactHandoffStore(session_factory).save(handoff)
+    store = SqlAlchemyArtifactRecordStore(session_factory)
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-create-001"},
+        handoff_record=handoff,
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    created = store.create(artifact_record)
+    repeated = store.create(artifact_record)
+    render_result = build_markdown_render_result(
+        artifact_record=created,
+        structured_draft=sample_structured_draft(),
+        target_formats=["MD"],
+        render_request_id="render-request-001",
+        render_job_id=deterministic_render_job_id(
+            created["artifact_id"],
+            "render-request-001",
+        ),
+    )
+    updated = store.apply_markdown_render(
+        artifact_id=created["artifact_id"],
+        artifact_version=render_result["artifact_version"],
+        render_job=render_result["render_job"],
+        markdown=render_result["markdown"],
+        artifact_files=render_result["artifact_files"],
+        artifact_links=render_result["artifact_links"],
+    )
+    artifact_file = render_result["artifact_files"][0]
+
+    assert created == artifact_record
+    assert repeated == artifact_record
+    assert store.get(created["artifact_id"]) == updated
+    assert updated["artifact_status"] == "READY"
+    assert store.list_versions(created["artifact_id"]) == [render_result["artifact_version"]]
+    assert store.list_versions("missing") is None
+    assert store.get_render_job(render_result["render_job"]["render_job_id"]) == (
+        render_result["render_job"]
+    )
+    assert store.get_file(artifact_file["artifact_file_id"]) == artifact_file
+    assert store.get_file_link(artifact_file["artifact_file_id"], "preview") == (
+        render_result["artifact_links"][0]
+    )
+    assert store.get_rendered_markdown(
+        render_result["artifact_version"]["artifact_version_id"]
+    ) == render_result["markdown"]
+    assert "/data/nex-platform" not in str(updated)
+    assert store.delete(created["artifact_id"]) == 1
+    assert store.get(created["artifact_id"]) is None
+
+
+@pytest.mark.parametrize(
+    ("store_type", "operation"),
+    [
+        ("handoff", "save"),
+        ("handoff", "get"),
+        ("handoff", "delete"),
+        ("record", "save"),
+        ("record", "get"),
+        ("record", "render_job"),
+        ("record", "file"),
+        ("record", "file_link"),
+        ("record", "delete"),
+    ],
+)
+def test_sqlalchemy_artifact_stores_map_database_errors(
+    store_type: str,
+    operation: str,
+) -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    handoff = sample_handoff_record()
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-create-001"},
+        handoff_record=handoff,
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    with pytest.raises(ArtifactHandoffError) as exc_info:
+        if store_type == "handoff":
+            store = SqlAlchemyArtifactHandoffStore(session_factory)
+            if operation == "save":
+                store.save(handoff)
+            elif operation == "get":
+                store.get(handoff["artifact_handoff_id"])
+            else:
+                store.delete(handoff["artifact_handoff_id"])
+        else:
+            store = SqlAlchemyArtifactRecordStore(session_factory)
+            if operation == "save":
+                store.save(artifact_record)
+            elif operation == "get":
+                store.get(artifact_record["artifact_id"])
+            elif operation == "render_job":
+                store.get_render_job("missing")
+            elif operation == "file":
+                store.get_file("missing")
+            elif operation == "file_link":
+                store.get_file_link("missing", "preview")
+            else:
+                store.delete(artifact_record["artifact_id"])
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.retryable is True
+    assert exc_info.value.error_code in {
+        "ae.artifact_handoff_store_unavailable",
+        "ae.artifact_store_unavailable",
+    }
+
+
+def test_artifact_sqlalchemy_storage_helpers_cover_dialects_and_nulls() -> None:
+    assert ae_artifacts._json_param_expr("target_formats", "postgresql") == (
+        "CAST(:target_formats AS jsonb)"
+    )
+    assert ae_artifacts._json_param_expr("target_formats", "sqlite") == ":target_formats"
+    assert ae_artifacts._json_value(None, []) == []
+    assert ae_artifacts._json_value({"ok": True}, {}) == {"ok": True}
+    assert ae_artifacts._nullable_datetime_value(None) is None
+    assert ae_artifacts._datetime_value(
+        ae_artifacts.datetime(2026, 8, 28, 0, 0, tzinfo=ae_artifacts.UTC)
+    ) == "2026-08-28T00:00:00Z"
+    assert ae_artifacts._datetime_value(
+        type("FakeDate", (), {"isoformat": lambda self: "2026-08-28T00:00:00+00:00"})()
+    ) == "2026-08-28T00:00:00Z"
 
 
 def test_artifact_route_requires_auth_and_reports_missing_records() -> None:
