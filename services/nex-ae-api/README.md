@@ -194,6 +194,11 @@ Artifact records:
   rendered Markdown payloads are process-local memory; the next S41 slices move
   metadata to `nex_ae` PostgreSQL and payloads behind
   `NEX_AE_ARTIFACT_STORAGE_ROOT`.
+- Slice 0402 adds the AE artifact PostgreSQL schema foundation. Durable metadata
+  is split across handoffs, artifacts, source refs, versions, render jobs,
+  files, and links with owner/workspace/time indexes. The schema stores only
+  safe metadata and logical `ae://` refs; rendered payload bytes remain outside
+  the database.
 
 Prompt analytics:
 

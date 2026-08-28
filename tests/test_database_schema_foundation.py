@@ -559,3 +559,75 @@ def test_ae_schema_supports_prompt_analytics_and_recommendations_without_raw_pro
     assert "recommendation_type text not null" in compact
     assert "raw_prompt" not in compact
     assert "raw_user_message" not in compact
+
+
+def test_ae_artifact_persistence_foundation_tracks_records_without_payload_paths() -> None:
+    compact = normalized(
+        read_migration_named(
+            "nex-ae-api",
+            "0402_ae_artifact_persistence_foundation.sql",
+        )
+    )
+
+    for table in (
+        "ae_artifact_handoffs",
+        "ae_artifacts",
+        "ae_artifact_source_refs",
+        "ae_artifact_versions",
+        "ae_artifact_render_jobs",
+        "ae_artifact_files",
+        "ae_artifact_links",
+    ):
+        assert f"create table if not exists {table}" in compact
+
+    for schema_version in (
+        "handoff_schema_version text not null default 'ae_artifact_handoff.v1'",
+        "artifact_schema_version text not null default 'ae_artifact_record.v1'",
+        "draft_schema_version text not null",
+    ):
+        assert schema_version in compact
+
+    for owner_column in (
+        "tenant_id text not null",
+        "workspace_id text not null",
+        "owner_user_id text not null",
+        "chat_document_id text not null",
+        "interaction_id text not null",
+    ):
+        assert owner_column in compact
+
+    for jsonb_column in (
+        "target_formats jsonb not null default '[]'::jsonb",
+        "actor_claims_ref jsonb not null default '{}'::jsonb",
+        "workspace_ref jsonb not null default '{}'::jsonb",
+        "quality_summary jsonb not null default '{}'::jsonb",
+        "owner_actor_ref jsonb not null default '{}'::jsonb",
+        "template_ref jsonb not null default '{}'::jsonb",
+        "handoff_ref jsonb not null default '{}'::jsonb",
+        "rendered_formats jsonb not null default '[]'::jsonb",
+        "validation_snapshot jsonb not null default '{}'::jsonb",
+        "created_by_actor_ref jsonb not null default '{}'::jsonb",
+    ):
+        assert jsonb_column in compact
+
+    for index_name in (
+        "ux_ae_artifact_handoffs_request",
+        "idx_ae_artifact_handoffs_owner_time",
+        "idx_ae_artifact_handoffs_generation",
+        "ux_ae_artifacts_request",
+        "idx_ae_artifacts_owner_time",
+        "idx_ae_artifacts_status_time",
+        "ux_ae_artifact_versions_artifact_no",
+        "idx_ae_artifact_files_hash",
+        "ux_ae_artifact_links_file_type",
+    ):
+        assert index_name in compact
+
+    assert "storage_ref text not null check (storage_ref like 'ae://artifacts/%')" in compact
+    assert "content text" not in compact
+    assert "markdown text" not in compact
+    assert "local_path" not in compact
+    assert "/data/nex-platform" not in compact
+    assert "raw_prompt" not in compact
+    assert "source_text" not in compact
+    assert "0402_ae_artifact_persistence_foundation" in compact
