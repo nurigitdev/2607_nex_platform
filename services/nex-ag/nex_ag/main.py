@@ -25,6 +25,7 @@ from nex_ag.operations import (
     register_service_log_routes,
     register_unified_operation_routes,
 )
+from nex_ag.artifact_operations import register_artifact_operation_routes
 from nex_ag.processing_operations import (
     build_cx_processing_run_operation_stores,
     register_cx_processing_run_operation_routes,
@@ -102,6 +103,7 @@ register_remediation_execution_operation_routes(
     execution_stores=REMEDIATION_EXECUTION_OPERATION_STORES,
     runtime=OPERATIONS_SOURCE_RUNTIME,
 )
+register_artifact_operation_routes(app)
 register_operation_source_readiness_routes(app, runtime=OPERATIONS_SOURCE_RUNTIME)
 register_unified_operation_routes(
     app,

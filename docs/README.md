@@ -512,6 +512,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0406`](slices/0406_ae_artifact_postgresql_smoke_evidence.md) | `S41-006` AE artifact PostgreSQL smoke evidence. |
 | [`Slice 0407`](slices/0407_ae_chat_artifact_refs_persistence_foundation.md) | `S41-007` AE chat artifact refs persistence foundation. |
 | [`Slice 0408`](slices/0408_ae_chat_artifact_postgresql_smoke_evidence.md) | `S41-008` AE chat artifact refs PostgreSQL smoke evidence. |
+| [`Slice 0409`](slices/0409_ag_artifact_operations_read_model_foundation.md) | `S41-009` AG artifact operations read-model foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
