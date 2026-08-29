@@ -451,6 +451,83 @@ h2 {
   color: var(--nex-muted);
 }
 
+.artifact-version-feedback {
+  border-top: 1px solid var(--nex-border);
+}
+
+.artifact-version-summary {
+  min-width: 0;
+}
+
+.artifact-version-list-surface {
+  min-width: 0;
+}
+
+.artifact-version-list,
+.artifact-file-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.artifact-version-list > li {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--nex-border);
+  border-radius: 6px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.artifact-version-list > li[data-current="true"] {
+  border-color: #7c9c2d;
+}
+
+.artifact-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.artifact-version-row strong,
+.artifact-file-list span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.artifact-version-row span {
+  flex: 0 0 auto;
+  color: var(--nex-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.artifact-file-list {
+  gap: 6px;
+}
+
+.artifact-file-list li {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  color: var(--nex-text);
+}
+
+.artifact-file-list em,
+.artifact-version-empty {
+  color: var(--nex-muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.artifact-version-empty {
+  margin: 0;
+}
+
 .credential-login-form,
 .upload-metadata-form {
   display: grid;

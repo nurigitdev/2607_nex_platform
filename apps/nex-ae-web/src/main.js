@@ -8,6 +8,7 @@ import {
   buildArtifactCardCollectionReadModel
 } from "./artifactCardReadModel.js";
 import {
+  artifactVersionsRoute,
   createMockArtifactClient
 } from "./artifactClient.js";
 import {
@@ -22,6 +23,13 @@ import {
   createRunningArtifactPreviewPanelState,
   renderArtifactPreviewPanel
 } from "./artifactPreviewPanel.js";
+import {
+  buildArtifactVersionPanelState,
+  buildArtifactVersionPanelStateFromError,
+  createArtifactVersionPanelState,
+  createRunningArtifactVersionPanelState,
+  renderArtifactVersionPanel
+} from "./artifactVersionPanel.js";
 import {
   bootstrapAuthenticatedSessionRuntime,
   buildSessionBootstrapSummary,
@@ -159,6 +167,7 @@ const workspaceState = {
   lastRetrievalRequest: null,
   lastRetrievalResult: null,
   artifactPreviewPanel: createArtifactPreviewPanelState(),
+  artifactVersionPanel: createArtifactVersionPanelState(),
   generationFeedbackClient: null,
   repairedResponseDecisionClient: null,
   uploadSubmission: null,
@@ -350,8 +359,12 @@ const artifactSummary = document.querySelector("#artifact-summary");
 const artifactPreviewFeedback = document.querySelector("#artifact-preview-feedback");
 const artifactPreviewSummary = document.querySelector("#artifact-preview-summary");
 const artifactPreviewContent = document.querySelector("#artifact-preview-content");
+const artifactVersionFeedback = document.querySelector("#artifact-version-feedback");
+const artifactVersionSummary = document.querySelector("#artifact-version-summary");
+const artifactVersionList = document.querySelector("#artifact-version-list");
 const auditSummary = document.querySelector("#audit-summary");
 let documentDetailRequestSequence = 0;
+let artifactVersionPanelRequestSequence = 0;
 
 refreshButton.addEventListener("click", () => {
   renderServiceStatuses();
@@ -443,6 +456,7 @@ documentList.addEventListener("click", event => {
 renderWorkspace();
 renderServiceStatuses();
 void refreshBrowserSessionRuntime();
+void refreshArtifactVersionPanel();
 
 function renderWorkspace() {
   workspaceId.textContent = workspaceState.workspaceId;
@@ -462,6 +476,7 @@ function renderWorkspace() {
   renderTimeline();
   renderArtifactSummary();
   renderArtifactPreviewPanelSurface();
+  renderArtifactVersionPanelSurface();
   renderAuditSummary();
   renderRuntimeDiagnostics();
 }
@@ -564,6 +579,7 @@ async function refreshBrowserSessionRuntime() {
   renderCredentialLoginSurface();
   renderUploadSurface();
   renderRetrievalScope();
+  void refreshArtifactVersionPanel();
 }
 
 async function submitCredentialLogin() {
@@ -605,6 +621,7 @@ async function submitCredentialLogin() {
     applySessionBootstrap(nextBootstrap);
     workspaceState.operations = initializeOperationStates();
     renderWorkspace();
+    void refreshArtifactVersionPanel();
   } catch (error) {
     credentialPasswordInput.value = "";
     workspaceState.credentialLogin = createCredentialLoginSurfaceState({
@@ -785,6 +802,13 @@ function initializeOperationStates() {
       status: "READY",
       clientMode: workspaceState.artifactClient.clientMode,
       route: workspaceState.artifact.previewRoute
+    }),
+    artifactVersions: createOperationState({
+      operationId: "artifact_versions",
+      label: "Artifact versions/files",
+      status: "READY",
+      clientMode: workspaceState.artifactClient.clientMode,
+      route: artifactVersionsRoute(workspaceState.artifactRef.artifactId)
     })
   };
 }
@@ -1446,6 +1470,83 @@ function renderArtifactPreviewPanelSurface() {
   artifactPreviewContent.dataset.status = view.status;
 }
 
+function renderArtifactVersionPanelSurface() {
+  const view = renderArtifactVersionPanel(workspaceState.artifactVersionPanel);
+  artifactVersionFeedback.textContent = view.feedback;
+  artifactVersionFeedback.dataset.severity = view.severity;
+  artifactVersionSummary.innerHTML = view.summaryHtml;
+  artifactVersionList.innerHTML = view.listHtml;
+  artifactVersionList.dataset.status = view.status;
+}
+
+async function refreshArtifactVersionPanel() {
+  if (!workspaceState.artifactClient || !workspaceState.artifactRef?.artifactId) {
+    workspaceState.artifactVersionPanel = createArtifactVersionPanelState({
+      status: "EMPTY",
+      clientMode: workspaceState.artifactClient?.clientMode || "mock"
+    });
+    renderArtifactVersionPanelSurface();
+    return;
+  }
+
+  const artifactId = workspaceState.artifactRef.artifactId;
+  const route = artifactVersionsRoute(artifactId);
+  const requestSequence = ++artifactVersionPanelRequestSequence;
+  const context = {
+    artifactId,
+    displayTitle: workspaceState.artifactRef.displayTitle,
+    currentVersionId: workspaceState.artifactRef.artifactVersionId,
+    route,
+    clientMode: workspaceState.artifactClient.clientMode
+  };
+  workspaceState.operations.artifactVersions = markOperationRunning(
+    workspaceState.operations.artifactVersions,
+    {
+      clientMode: context.clientMode,
+      route
+    }
+  );
+  workspaceState.artifactVersionPanel =
+    createRunningArtifactVersionPanelState(context);
+  renderArtifactVersionPanelSurface();
+
+  try {
+    const [artifactSurface, versionsSurface] = await Promise.all([
+      workspaceState.artifactClient.getArtifact(artifactId),
+      workspaceState.artifactClient.listArtifactVersions(artifactId)
+    ]);
+    if (requestSequence !== artifactVersionPanelRequestSequence) return;
+    workspaceState.artifactVersionPanel = buildArtifactVersionPanelState({
+      artifactSurface,
+      versionsSurface
+    });
+    workspaceState.operations.artifactVersions = markOperationSucceeded(
+      workspaceState.operations.artifactVersions,
+      {
+        status: workspaceState.artifactVersionPanel.status,
+        resultStatus: workspaceState.artifactVersionPanel.status,
+        clientMode: workspaceState.artifactVersionPanel.clientMode,
+        route
+      }
+    );
+  } catch (error) {
+    if (requestSequence !== artifactVersionPanelRequestSequence) return;
+    workspaceState.artifactVersionPanel =
+      buildArtifactVersionPanelStateFromError(error, context);
+    workspaceState.operations.artifactVersions = markOperationFailed(
+      workspaceState.operations.artifactVersions,
+      {
+        error,
+        clientMode: context.clientMode,
+        route
+      }
+    );
+  }
+
+  renderArtifactVersionPanelSurface();
+  renderRuntimeDiagnostics();
+}
+
 function renderAuditSummary() {
   auditSummary.innerHTML = `
     <div>
@@ -1562,8 +1663,19 @@ async function appendPromptInteraction() {
     clientMode: workspaceState.artifactClient.clientMode,
     route: workspaceState.artifact.previewRoute
   });
+  workspaceState.artifactVersionPanel = createArtifactVersionPanelState({
+    clientMode: workspaceState.artifactClient.clientMode
+  });
+  workspaceState.operations.artifactVersions = createOperationState({
+    operationId: "artifact_versions",
+    label: "Artifact versions/files",
+    status: "READY",
+    clientMode: workspaceState.artifactClient.clientMode,
+    route: artifactVersionsRoute(workspaceState.artifactRef.artifactId)
+  });
   workspaceState.progressEvents = buildProgressEvents(grounded);
   renderWorkspace();
+  void refreshArtifactVersionPanel();
 }
 
 async function submitArtifactPreviewAction(target) {
