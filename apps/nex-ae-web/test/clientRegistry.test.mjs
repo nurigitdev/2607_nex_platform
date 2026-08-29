@@ -37,12 +37,14 @@ describe("AE Web client registry", () => {
     );
     assert.equal(registry.clientMode, "mock");
     assert.equal(registry.baseUrl, "");
+    assert.equal(registry.artifactClient.clientMode, "mock");
     assert.equal(registry.documentDetailClient.clientMode, "mock");
     assert.equal(registry.uploadClient.clientMode, "mock");
     assert.equal(registry.retrievalClient.clientMode, "mock");
     assert.equal(registry.generationFeedbackClient.clientMode, "mock");
     assert.equal(registry.repairedResponseReviewClient.clientMode, "mock");
     assert.equal(registry.repairedResponseDecisionClient.clientMode, "mock");
+    assert.equal(summary.clients.artifact, "mock");
     assert.equal(summary.clients.document_detail, "mock");
     assert.equal(summary.clients.generation_feedback, "mock");
     assert.equal(summary.clients.repaired_response_review, "mock");
@@ -130,6 +132,54 @@ describe("AE Web client registry", () => {
             }
           };
         }
+        if (String(url).includes("/artifacts/artifact-001")) {
+          return {
+            ok: true,
+            status: 200,
+            async json() {
+              return {
+                artifact_schema_version: "ae_artifact_record.v1",
+                artifact_id: "artifact-001",
+                artifact_type: "generated_document",
+                artifact_status: "READY",
+                current_version_id: "artifact-version-001",
+                display_title: "Generated report",
+                target_formats: ["MD"],
+                source_refs: [
+                  {
+                    cx_generation_id: "cx-gen-001",
+                    structured_draft_content_hash: "c".repeat(64),
+                    quality_summary: {
+                      citation_status: "VALIDATED",
+                      evidence_ref_count: 1,
+                      grounding_required: true
+                    }
+                  }
+                ],
+                versions: [
+                  {
+                    artifact_version_id: "artifact-version-001",
+                    source_content_hash: "c".repeat(64)
+                  }
+                ],
+                files: [
+                  {
+                    artifact_file_id: "artifact-file-001",
+                    artifact_version_id: "artifact-version-001",
+                    format: "MD"
+                  }
+                ],
+                links: [
+                  {
+                    artifact_file_id: "artifact-file-001",
+                    link_type: "preview",
+                    link_route: "/api/v1/artifact-files/artifact-file-001/preview"
+                  }
+                ]
+              };
+            }
+          };
+        }
         return {
           ok: true,
           status: 200,
@@ -151,6 +201,7 @@ describe("AE Web client registry", () => {
       }
     });
 
+    await registry.artifactClient.getArtifact("artifact-001");
     await registry.documentDetailClient.getDocumentDetail("doc-001");
     await registry.generationFeedbackClient.submitGenerationFeedback({
       route: "/api/v1/chat/interactions/interaction-001/feedback",
@@ -192,21 +243,26 @@ describe("AE Web client registry", () => {
 
     assert.equal(registry.clientMode, "fetch");
     assert.equal(registry.baseUrl, "https://ae.local");
-    assert.equal(calls[0].url, "https://ae.local/api/v1/documents/doc-001");
+    assert.equal(calls[0].url, "https://ae.local/api/v1/artifacts/artifact-001");
     assert.equal(
       calls[1].url,
-      "https://ae.local/api/v1/chat/interactions/interaction-001/feedback"
+      "https://ae.local/api/v1/documents/doc-001"
     );
     assert.equal(
       calls[2].url,
-      "https://ae.local/api/v1/chat/interactions/interaction-001/repaired-response-handoffs/review"
+      "https://ae.local/api/v1/chat/interactions/interaction-001/feedback"
     );
     assert.equal(
       calls[3].url,
+      "https://ae.local/api/v1/chat/interactions/interaction-001/repaired-response-handoffs/review"
+    );
+    assert.equal(
+      calls[4].url,
       "https://ae.local/api/v1/chat/interactions/interaction-001/repaired-response-handoffs/handoff-001/decisions"
     );
-    assert.equal(calls[3].options.method, "POST");
+    assert.equal(calls[4].options.method, "POST");
     assert.equal(summary.base_url, "https://ae.local");
+    assert.equal(summary.clients.artifact, "fetch");
     assert.equal(summary.clients.upload, "fetch");
     assert.equal(summary.clients.retrieval, "fetch");
     assert.equal(summary.clients.generation_feedback, "fetch");

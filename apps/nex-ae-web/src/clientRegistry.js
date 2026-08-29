@@ -1,4 +1,8 @@
 import {
+  createFetchArtifactClient,
+  createMockArtifactClient
+} from "./artifactClient.js";
+import {
   createFetchDocumentDetailClient,
   createMockDocumentDetailClient
 } from "./documentDetailClient.js";
@@ -39,6 +43,7 @@ export function createAeWebClients({
   baseUrl = "",
   fetchImpl,
   documents = [],
+  artifacts = [],
   responseFactories = {}
 } = {}) {
   const clientMode = normalizeClientMode(mode);
@@ -47,6 +52,11 @@ export function createAeWebClients({
   const clients =
     clientMode === "mock"
       ? {
+          artifactClient: createMockArtifactClient({
+            artifacts,
+            previews: responseFactories.artifactPreviews || {},
+            downloads: responseFactories.artifactDownloads || {}
+          }),
           documentDetailClient: createMockDocumentDetailClient({ documents }),
           uploadClient: createMockUploadClient({
             responseFactory: responseFactories.upload
@@ -66,6 +76,7 @@ export function createAeWebClients({
           })
         }
       : {
+          artifactClient: createFetchArtifactClient(commonFetchOptions),
           documentDetailClient: createFetchDocumentDetailClient(commonFetchOptions),
           uploadClient: createFetchUploadClient(commonFetchOptions),
           retrievalClient: createFetchRetrievalClient(commonFetchOptions),
@@ -103,6 +114,7 @@ export function buildClientRegistrySummary(registry) {
     client_mode: registry.clientMode,
     base_url: registry.clientMode === "fetch" ? registry.baseUrl : "",
     clients: {
+      artifact: registry.artifactClient.clientMode,
       document_detail: registry.documentDetailClient.clientMode,
       upload: registry.uploadClient.clientMode,
       retrieval: registry.retrievalClient.clientMode,
@@ -137,6 +149,7 @@ function isRegistry(value) {
   return (
     Boolean(value) &&
     value.client_registry_schema_version === AE_WEB_CLIENT_REGISTRY_SCHEMA_VERSION &&
+    value.artifactClient &&
     value.documentDetailClient &&
     value.uploadClient &&
     value.retrievalClient &&

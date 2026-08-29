@@ -574,5 +574,15 @@ Slice 0411 audits the artifact browser surface before persisted wiring:
 - Browser state and diagnostics must not expose raw prompts, source text,
   service tokens, provider endpoints, database endpoints, or storage paths.
 
+Slice 0412 adds the artifact client adapter foundation:
+
+- `src/artifactClient.js` owns mock and fetch adapters for AE artifact record,
+  version, file metadata, preview, and download read paths.
+- `src/clientRegistry.js` composes `artifactClient` beside document, upload,
+  retrieval, feedback, and repaired-response clients.
+- The adapter strips backend `storage_ref` metadata from browser surfaces and
+  keeps registry summaries free of downloaded artifact content.
+- Fetch mode uses same-origin browser credentials and AE facade routes only.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

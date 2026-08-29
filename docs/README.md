@@ -515,6 +515,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0409`](slices/0409_ag_artifact_operations_read_model_foundation.md) | `S41-009` AG artifact operations read-model foundation. |
 | [`Slice 0410`](slices/0410_s41_artifact_runtime_closure.md) | `S41-010` S41 artifact runtime closure checkpoint. |
 | [`Slice 0411`](slices/0411_ae_web_artifact_surface_boundary_audit.md) | `S42-001` AE Web artifact surface boundary audit and refactoring checkpoint. |
+| [`Slice 0412`](slices/0412_ae_web_artifact_client_adapter_foundation.md) | `S42-002` AE Web artifact client adapter foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

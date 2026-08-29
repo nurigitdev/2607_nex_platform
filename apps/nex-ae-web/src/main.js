@@ -482,6 +482,7 @@ function applySessionBootstrap(sessionBootstrap) {
   });
   syncOwnerScopeFromSessionClaims();
   workspaceState.documentDetailClient = workspaceState.clientRegistry.documentDetailClient;
+  workspaceState.artifactClient = workspaceState.clientRegistry.artifactClient;
   workspaceState.uploadClient = workspaceState.clientRegistry.uploadClient;
   workspaceState.retrievalClient = workspaceState.clientRegistry.retrievalClient;
   workspaceState.generationFeedbackClient =
