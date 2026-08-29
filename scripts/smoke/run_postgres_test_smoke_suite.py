@@ -108,6 +108,11 @@ from run_ae_document_detail_postgres_smoke import (  # noqa: E402
     SMOKE_PROFILE_ENV as AE_DOCUMENT_DETAIL_PROFILE_ENV,
     run_ae_document_detail_postgres_smoke,
 )
+from run_ae_chat_artifact_postgres_smoke import (  # noqa: E402
+    SMOKE_ENV as AE_CHAT_ARTIFACT_POSTGRES_SMOKE_ENV,
+    SMOKE_PROFILE_ENV as AE_CHAT_ARTIFACT_POSTGRES_PROFILE_ENV,
+    run_ae_chat_artifact_postgres_smoke,
+)
 from run_ae_credential_login_postgres_smoke import (  # noqa: E402
     SMOKE_ENV as AE_CREDENTIAL_LOGIN_SMOKE_ENV,
     SMOKE_PROFILE_ENV as AE_CREDENTIAL_LOGIN_PROFILE_ENV,
@@ -197,6 +202,7 @@ SUITE_STAGE_ORDER = (
     "cx_document_library",
     "cx_document_detail",
     "ae_document_detail",
+    "ae_chat_artifact_refs",
     "ae_credential_login",
     "ae_web_credential_login",
     "ag_retrieval_package_postgres",
@@ -302,6 +308,8 @@ def run_postgres_test_smoke_suite(
         CX_DOCUMENT_DETAIL_PROFILE_ENV: profile,
         AE_DOCUMENT_DETAIL_SMOKE_ENV: "1",
         AE_DOCUMENT_DETAIL_PROFILE_ENV: profile,
+        AE_CHAT_ARTIFACT_POSTGRES_SMOKE_ENV: "1",
+        AE_CHAT_ARTIFACT_POSTGRES_PROFILE_ENV: profile,
         AE_CREDENTIAL_LOGIN_SMOKE_ENV: "1",
         AE_CREDENTIAL_LOGIN_PROFILE_ENV: profile,
         AE_WEB_CREDENTIAL_LOGIN_SMOKE_ENV: "1",
@@ -370,6 +378,9 @@ def run_postgres_test_smoke_suite(
     )
     stages["ae_document_detail"] = _stage_from_child_smoke(
         run_ae_document_detail_postgres_smoke(environ=smoke_env)
+    )
+    stages["ae_chat_artifact_refs"] = _stage_from_child_smoke(
+        run_ae_chat_artifact_postgres_smoke(environ=smoke_env)
     )
     stages["ae_credential_login"] = _stage_from_child_smoke(
         run_ae_credential_login_postgres_smoke(environ=smoke_env)
