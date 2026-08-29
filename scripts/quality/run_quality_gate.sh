@@ -113,5 +113,6 @@ mkdir -p "$REPORT_DIR"
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_runtime_persistence_storage_boundary_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_chat_artifact_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s41_artifact_runtime_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_remediation_execution_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_remediation_execution_read_model_postgres_smoke.py --summary
