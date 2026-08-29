@@ -424,6 +424,33 @@ h2 {
   line-height: 1.45;
 }
 
+.artifact-preview-feedback {
+  border-top: 1px solid var(--nex-border);
+}
+
+.artifact-preview-summary {
+  min-width: 0;
+}
+
+.artifact-preview-content {
+  min-height: 118px;
+  max-height: 240px;
+  white-space: pre-wrap;
+  overflow: auto;
+}
+
+.artifact-preview-content[data-mode="download"] {
+  color: var(--nex-primary);
+}
+
+.artifact-preview-content[data-mode="error"] {
+  color: var(--nex-danger);
+}
+
+.artifact-preview-content[data-mode="empty"] {
+  color: var(--nex-muted);
+}
+
 .credential-login-form,
 .upload-metadata-form {
   display: grid;

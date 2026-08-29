@@ -606,5 +606,19 @@ Slice 0414 renders artifact cards in chat:
 - Card HTML escapes display text and continues to hide server-only fields and
   downloaded artifact content.
 
+Slice 0415 wires artifact preview/download interactions:
+
+- `src/artifactPreviewPanel.js` owns preview/download panel state, summaries,
+  safe rendering metadata, and route parsing for
+  `/api/v1/artifact-files/{artifact_file_id}/preview|download`.
+- `src/artifactMockRecord.js` turns local chat artifact refs into deterministic
+  mock records consumed by `artifactClient`.
+- `src/main.js` handles artifact card preview/download clicks through
+  `artifactClient`, updates `artifact_preview` operation state, and syncs mock
+  artifact records when local chat artifacts change.
+- The Artifact panel now shows request feedback, compact file/link metadata, and
+  preview text; download actions show metadata only and do not render downloaded
+  artifact content.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

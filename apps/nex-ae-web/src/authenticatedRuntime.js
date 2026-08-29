@@ -41,6 +41,7 @@ export function createAuthenticatedAeWebRuntime({
   sessionClient = null,
   sessionSnapshot = null,
   documents = [],
+  artifacts = [],
   fetchImpl,
   responseFactories = {}
 } = {}) {
@@ -81,6 +82,7 @@ export function createAuthenticatedAeWebRuntime({
     baseUrl: normalizedRuntimeConfig.aeBaseUrl,
     fetchImpl,
     documents,
+    artifacts,
     responseFactories
   });
 

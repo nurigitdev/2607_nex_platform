@@ -8,6 +8,21 @@ import {
   buildArtifactCardCollectionReadModel
 } from "./artifactCardReadModel.js";
 import {
+  createMockArtifactClient
+} from "./artifactClient.js";
+import {
+  buildMockArtifactRecordFromRef
+} from "./artifactMockRecord.js";
+import {
+  artifactFileIdFromRoute,
+  buildArtifactPreviewPanelStateFromDownload,
+  buildArtifactPreviewPanelStateFromError,
+  buildArtifactPreviewPanelStateFromPreview,
+  createArtifactPreviewPanelState,
+  createRunningArtifactPreviewPanelState,
+  renderArtifactPreviewPanel
+} from "./artifactPreviewPanel.js";
+import {
   bootstrapAuthenticatedSessionRuntime,
   buildSessionBootstrapSummary,
   composeAuthenticatedSessionRuntime
@@ -143,6 +158,7 @@ const workspaceState = {
   documentScope: null,
   lastRetrievalRequest: null,
   lastRetrievalResult: null,
+  artifactPreviewPanel: createArtifactPreviewPanelState(),
   generationFeedbackClient: null,
   repairedResponseDecisionClient: null,
   uploadSubmission: null,
@@ -270,7 +286,8 @@ const workspaceState = {
 workspaceState.messages[1].artifactRefs = [workspaceState.artifactRef];
 workspaceState.sessionBootstrap = composeAuthenticatedSessionRuntime({
   runtimeConfig: loadRuntimeConfig(),
-  documents: workspaceState.documents
+  documents: workspaceState.documents,
+  artifacts: buildCurrentMockArtifactRecords()
 });
 applySessionBootstrap(workspaceState.sessionBootstrap);
 workspaceState.documentScope = buildCurrentDocumentScope();
@@ -330,6 +347,9 @@ const generationStage = document.querySelector("#generation-stage");
 const artifactStatus = document.querySelector("#artifact-status");
 const handoffBadge = document.querySelector("#handoff-badge");
 const artifactSummary = document.querySelector("#artifact-summary");
+const artifactPreviewFeedback = document.querySelector("#artifact-preview-feedback");
+const artifactPreviewSummary = document.querySelector("#artifact-preview-summary");
+const artifactPreviewContent = document.querySelector("#artifact-preview-content");
 const auditSummary = document.querySelector("#audit-summary");
 let documentDetailRequestSequence = 0;
 
@@ -368,6 +388,18 @@ retrievalRetryButton.addEventListener("click", () => {
 });
 
 messageList.addEventListener("click", event => {
+  const previewTarget = event.target.closest("[data-artifact-preview-route]");
+  if (previewTarget) {
+    event.preventDefault();
+    void submitArtifactPreviewAction(previewTarget);
+    return;
+  }
+  const downloadTarget = event.target.closest("[data-artifact-download-route]");
+  if (downloadTarget) {
+    event.preventDefault();
+    void submitArtifactDownloadAction(downloadTarget);
+    return;
+  }
   const decisionTarget = event.target.closest("[data-repaired-response-decision-action]");
   if (decisionTarget) {
     void submitRepairedResponseDecision(
@@ -429,6 +461,7 @@ function renderWorkspace() {
   void renderDocumentDetail();
   renderTimeline();
   renderArtifactSummary();
+  renderArtifactPreviewPanelSurface();
   renderAuditSummary();
   renderRuntimeDiagnostics();
 }
@@ -522,7 +555,8 @@ async function refreshBrowserSessionRuntime() {
   const nextBootstrap = await bootstrapAuthenticatedSessionRuntime({
     runtimeConfig: workspaceState.runtimeConfig,
     sessionClient: workspaceState.sessionClient,
-    documents: workspaceState.documents
+    documents: workspaceState.documents,
+    artifacts: buildCurrentMockArtifactRecords()
   });
   applySessionBootstrap(nextBootstrap);
   workspaceState.operations = initializeOperationStates();
@@ -565,7 +599,8 @@ async function submitCredentialLogin() {
       runtimeConfig: workspaceState.runtimeConfig,
       sessionState,
       sessionClient: workspaceState.sessionClient,
-      documents: workspaceState.documents
+      documents: workspaceState.documents,
+      artifacts: buildCurrentMockArtifactRecords()
     });
     applySessionBootstrap(nextBootstrap);
     workspaceState.operations = initializeOperationStates();
@@ -604,7 +639,8 @@ async function logoutCredentialSession() {
       runtimeConfig: workspaceState.runtimeConfig,
       sessionState,
       sessionClient: workspaceState.sessionClient,
-      documents: workspaceState.documents
+      documents: workspaceState.documents,
+      artifacts: buildCurrentMockArtifactRecords()
     });
     applySessionBootstrap(nextBootstrap);
     workspaceState.operations = initializeOperationStates();
@@ -742,6 +778,13 @@ function initializeOperationStates() {
       status: "READY",
       clientMode: workspaceState.generationFeedbackClient.clientMode,
       route: "/api/v1/chat/interactions/{interaction_id}/feedback"
+    }),
+    artifactPreview: createOperationState({
+      operationId: "artifact_preview",
+      label: "Artifact preview/download",
+      status: "READY",
+      clientMode: workspaceState.artifactClient.clientMode,
+      route: workspaceState.artifact.previewRoute
     })
   };
 }
@@ -1393,6 +1436,16 @@ function renderArtifactSummary() {
   `;
 }
 
+function renderArtifactPreviewPanelSurface() {
+  const view = renderArtifactPreviewPanel(workspaceState.artifactPreviewPanel);
+  artifactPreviewFeedback.textContent = view.feedback;
+  artifactPreviewFeedback.dataset.severity = view.severity;
+  artifactPreviewSummary.innerHTML = view.summaryHtml;
+  artifactPreviewContent.textContent = view.bodyText;
+  artifactPreviewContent.dataset.mode = view.bodyMode;
+  artifactPreviewContent.dataset.status = view.status;
+}
+
 function renderAuditSummary() {
   auditSummary.innerHTML = `
     <div>
@@ -1430,6 +1483,8 @@ async function appendPromptInteraction() {
     grounded
   });
   const retrievalResult = await submitRetrievalRequest(retrievalRequest);
+  const artifactRef = buildMockArtifactRef(format, grounded);
+  syncMockArtifactClientFromArtifactRef();
   workspaceState.messages.push({
     role: "user",
     label: "사용자",
@@ -1441,7 +1496,7 @@ async function appendPromptInteraction() {
     text: grounded
       ? `${documentScopeLabel(workspaceState.documentScope)} 범위로 ${retrievalResult.cxStatus} retrieval 결과와 ${format} handoff를 연결했습니다.`
       : `${format} 생성 요청을 일반 답변 흐름으로 연결했습니다.`,
-    artifactRefs: [buildMockArtifactRef(format, grounded)],
+    artifactRefs: [artifactRef],
     retrievalScope: grounded ? workspaceState.documentScope : null,
     retrievalResult: grounded ? retrievalResult : null,
     retrievalQualityWarning: grounded
@@ -1497,8 +1552,109 @@ async function appendPromptInteraction() {
   workspaceState.artifact.currentVersionId = workspaceState.artifactRef.artifactVersionId;
   workspaceState.artifact.previewRoute = workspaceState.artifactRef.previewRoute;
   workspaceState.artifact.downloadRoutes = workspaceState.artifactRef.downloadRoutes;
+  workspaceState.artifactPreviewPanel = createArtifactPreviewPanelState({
+    clientMode: workspaceState.artifactClient.clientMode
+  });
+  workspaceState.operations.artifactPreview = createOperationState({
+    operationId: "artifact_preview",
+    label: "Artifact preview/download",
+    status: "READY",
+    clientMode: workspaceState.artifactClient.clientMode,
+    route: workspaceState.artifact.previewRoute
+  });
   workspaceState.progressEvents = buildProgressEvents(grounded);
   renderWorkspace();
+}
+
+async function submitArtifactPreviewAction(target) {
+  await submitArtifactFileAction(target, "preview");
+}
+
+async function submitArtifactDownloadAction(target) {
+  await submitArtifactFileAction(target, "download");
+}
+
+async function submitArtifactFileAction(target, action) {
+  let context = {
+    action,
+    artifactId: null,
+    artifactFileId: null,
+    route: null,
+    clientMode: workspaceState.artifactClient.clientMode
+  };
+
+  try {
+    context = artifactActionContext(target, action);
+    workspaceState.operations.artifactPreview = markOperationRunning(
+      workspaceState.operations.artifactPreview,
+      {
+        clientMode: context.clientMode,
+        route: context.route
+      }
+    );
+    workspaceState.artifactPreviewPanel = createRunningArtifactPreviewPanelState(
+      context
+    );
+    renderArtifactPreviewPanelSurface();
+
+    if (action === "preview") {
+      const preview = await workspaceState.artifactClient.previewArtifactFile(
+        context.artifactFileId
+      );
+      workspaceState.artifactPreviewPanel =
+        buildArtifactPreviewPanelStateFromPreview(preview, context);
+    } else {
+      const download = await workspaceState.artifactClient.downloadArtifactFile(
+        context.artifactFileId
+      );
+      workspaceState.artifactPreviewPanel =
+        buildArtifactPreviewPanelStateFromDownload(download, context);
+    }
+    workspaceState.operations.artifactPreview = markOperationSucceeded(
+      workspaceState.operations.artifactPreview,
+      {
+        status:
+          action === "preview" ? "PREVIEW_READY" : "DOWNLOAD_READY",
+        resultStatus: "READY",
+        clientMode: context.clientMode,
+        route: context.route
+      }
+    );
+  } catch (error) {
+    workspaceState.artifactPreviewPanel = buildArtifactPreviewPanelStateFromError(
+      error,
+      context
+    );
+    workspaceState.operations.artifactPreview = markOperationFailed(
+      workspaceState.operations.artifactPreview,
+      {
+        error,
+        clientMode: context.clientMode,
+        route: context.route || workspaceState.artifact.previewRoute || ""
+      }
+    );
+  }
+
+  renderArtifactPreviewPanelSurface();
+  renderRuntimeDiagnostics();
+}
+
+function artifactActionContext(target, action) {
+  const route =
+    action === "preview"
+      ? target.dataset.artifactPreviewRoute
+      : target.dataset.artifactDownloadRoute;
+  const card = target.closest("[data-artifact-card]");
+  return {
+    action,
+    artifactId:
+      card?.dataset.artifactId ||
+      target.dataset.artifactPreviewAction ||
+      null,
+    artifactFileId: artifactFileIdFromRoute(route, action),
+    route,
+    clientMode: workspaceState.artifactClient.clientMode
+  };
 }
 
 async function submitGenerationFeedback(interactionId, feedbackValue) {
@@ -1992,6 +2148,39 @@ function safeRetrievalPreview(retrievalRequest, currentScope, retrievalResult) {
   return preview;
 }
 
+function syncMockArtifactClientFromArtifactRef() {
+  if (!workspaceState.clientRegistry || workspaceState.clientRegistry.clientMode !== "mock") {
+    return;
+  }
+  const artifactClient = createMockArtifactClient({
+    artifacts: buildCurrentMockArtifactRecords()
+  });
+  const clientRegistry = {
+    ...workspaceState.clientRegistry,
+    artifactClient
+  };
+  workspaceState.artifactClient = artifactClient;
+  workspaceState.clientRegistry = clientRegistry;
+  workspaceState.authenticatedRuntime = {
+    ...workspaceState.authenticatedRuntime,
+    clientRegistry
+  };
+  workspaceState.sessionBootstrap = {
+    ...workspaceState.sessionBootstrap,
+    runtime: workspaceState.authenticatedRuntime
+  };
+}
+
+function buildCurrentMockArtifactRecords() {
+  return [
+    buildMockArtifactRecordFromRef(workspaceState.artifactRef, {
+      chatDocumentId: workspaceState.chatDocumentId,
+      interactionId: workspaceState.interactionId,
+      cxGenerationId: workspaceState.cxGenerationId
+    })
+  ];
+}
+
 function buildMockArtifactRef(format, grounded) {
   const artifactFileId = `artifact-file-local-${format.toLowerCase()}`;
   const artifactRef = {
@@ -2180,7 +2369,18 @@ function createStatusDot(result) {
 }
 
 function badgeClass(status) {
-  if (["HEALTHY", "READY", "VALIDATED", "SUCCEEDED", "HIGH", "COMPLETED"].includes(status)) {
+  if (
+    [
+      "HEALTHY",
+      "READY",
+      "VALIDATED",
+      "SUCCEEDED",
+      "HIGH",
+      "COMPLETED",
+      "PREVIEW_READY",
+      "DOWNLOAD_READY"
+    ].includes(status)
+  ) {
     return "success";
   }
   if ([
@@ -2214,6 +2414,8 @@ function statusLabel(status) {
     READY_FOR_SUBMIT: "전송 준비",
     READY_FOR_RENDERING: "렌더링 준비",
     READY_FOR_LOGIN: "로그인 준비",
+    PREVIEW_READY: "미리보기 준비",
+    DOWNLOAD_READY: "다운로드 준비",
     SUBMITTING: "전송 중",
     AUTHENTICATED: "인증됨",
     FAILED: "실패",

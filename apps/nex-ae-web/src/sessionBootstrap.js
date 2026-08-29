@@ -44,6 +44,7 @@ export async function bootstrapAuthenticatedSessionRuntime({
   sessionClient = null,
   sessionSnapshot = null,
   documents = [],
+  artifacts = [],
   fetchImpl,
   responseFactories = {}
 } = {}) {
@@ -72,6 +73,7 @@ export async function bootstrapAuthenticatedSessionRuntime({
     sessionState,
     sessionClient: resolvedSessionClient,
     documents,
+    artifacts,
     fetchImpl,
     responseFactories
   });
@@ -95,6 +97,7 @@ export function composeAuthenticatedSessionRuntime({
   sessionState = null,
   sessionClient = null,
   documents = [],
+  artifacts = [],
   fetchImpl,
   responseFactories = {}
 } = {}) {
@@ -114,6 +117,7 @@ export function composeAuthenticatedSessionRuntime({
       sessionState: normalizedSessionState,
       sessionClient: resolvedSessionClient,
       documents,
+      artifacts,
       fetchImpl,
       responseFactories
     });
@@ -134,6 +138,7 @@ export function composeAuthenticatedSessionRuntime({
         sessionState: normalizedSessionState,
         sessionClient: resolvedSessionClient,
         documents,
+        artifacts,
         responseFactories
       });
       return buildSessionBootstrapState({
@@ -209,6 +214,7 @@ function buildBlockedFetchRuntime({
   sessionState,
   sessionClient,
   documents,
+  artifacts,
   responseFactories
 }) {
   const fallbackRuntimeConfig = {
@@ -220,6 +226,7 @@ function buildBlockedFetchRuntime({
     sessionState,
     sessionClient,
     documents,
+    artifacts,
     responseFactories
   });
   return {
@@ -238,6 +245,7 @@ function buildBlockedFetchRuntime({
     clientRegistry: createAeWebClients({
       mode: "mock",
       documents,
+      artifacts,
       responseFactories
     }),
     metadata: {

@@ -518,6 +518,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0412`](slices/0412_ae_web_artifact_client_adapter_foundation.md) | `S42-002` AE Web artifact client adapter foundation. |
 | [`Slice 0413`](slices/0413_ae_web_artifact_card_read_model.md) | `S42-003` AE Web artifact card read-model. |
 | [`Slice 0414`](slices/0414_ae_web_artifact_card_rendering.md) | `S42-004` AE Web artifact card rendering in chat. |
+| [`Slice 0415`](slices/0415_ae_web_artifact_preview_download_panel.md) | `S42-005` AE Web artifact preview/download panel. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -56,6 +56,9 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "retrieval-scope-preview",
         "ae-web-runtime-config",
         "artifact-panel",
+        "artifact-preview-feedback",
+        "artifact-preview-summary",
+        "artifact-preview-content",
         "audit-panel",
         "retrieval-toggle",
         "format-select",
@@ -904,6 +907,67 @@ def test_ae_web_mock_state_links_generation_artifact_and_audit_contracts() -> No
     assert "/data/nex-platform" not in javascript
 
 
+def test_ae_web_artifact_preview_download_panel_wiring() -> None:
+    html = read_web_file("index.html")
+    javascript = read_web_file("src/main.js")
+    panel = read_web_file("src/artifactPreviewPanel.js")
+    session_bootstrap = read_web_file("src/sessionBootstrap.js")
+    authenticated_runtime = read_web_file("src/authenticatedRuntime.js")
+
+    for expected in [
+        "artifact-preview-feedback",
+        "artifact-preview-summary",
+        "artifact-preview-content",
+        "AE artifact preview download summary",
+        "AE artifact preview content",
+    ]:
+        assert expected in html
+
+    for expected in [
+        "renderArtifactPreviewPanel",
+        "artifactFileIdFromRoute",
+        "submitArtifactPreviewAction",
+        "submitArtifactDownloadAction",
+        "createRunningArtifactPreviewPanelState",
+        "buildArtifactPreviewPanelStateFromPreview",
+        "buildArtifactPreviewPanelStateFromDownload",
+        "buildArtifactPreviewPanelStateFromError",
+        "buildCurrentMockArtifactRecords",
+        "syncMockArtifactClientFromArtifactRef",
+        "createMockArtifactClient",
+        "data-artifact-preview-route",
+        "data-artifact-download-route",
+        "artifactPreview",
+    ]:
+        assert expected in javascript
+
+    for expected in [
+        "ae_web_artifact_preview_panel.v1",
+        "PREVIEW_READY",
+        "DOWNLOAD_READY",
+        "downloadedContentRendered",
+        "findSensitiveArtifactPreviewPanelKeys",
+        "Artifact file route action does not match",
+    ]:
+        assert expected in panel
+
+    assert "artifacts = []" in session_bootstrap
+    assert "artifacts = []" in authenticated_runtime
+    for forbidden in [
+        "raw_prompt",
+        "raw_generation_output",
+        "source_text",
+        "service_token",
+        "api_key",
+        "database_url",
+        "provider_url",
+        "storage_ref",
+        "storage_path",
+        "/data/nex-platform",
+    ]:
+        assert forbidden not in javascript
+
+
 def test_ae_web_repaired_response_decision_ux_wiring() -> None:
     javascript = read_web_file("src/main.js")
     decision_client = read_web_file("src/repairedResponseDecisionClient.js")
@@ -1018,6 +1082,10 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert ".artifact-card" in styles
     assert ".artifact-actions" in styles
     assert ".artifact-card-warnings" in styles
+    assert ".artifact-preview-feedback" in styles
+    assert ".artifact-preview-summary" in styles
+    assert ".artifact-preview-content" in styles
+    assert ".artifact-preview-content[data-mode=\"download\"]" in styles
     assert "letter-spacing: 0" in styles
     assert "letter-spacing: -" not in styles
     assert "linear-gradient" not in styles
