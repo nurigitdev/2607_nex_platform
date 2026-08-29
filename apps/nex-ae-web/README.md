@@ -584,5 +584,16 @@ Slice 0412 adds the artifact client adapter foundation:
   keeps registry summaries free of downloaded artifact content.
 - Fetch mode uses same-origin browser credentials and AE facade routes only.
 
+Slice 0413 adds the artifact card read-model:
+
+- `src/artifactCardReadModel.js` converts chat artifact refs and optional
+  persisted artifact client surfaces into `ae_web_artifact_card_read_model.v1`.
+- The read-model normalizes preview, download, source, lineage, retry, warning,
+  and collection summary state before any DOM rendering occurs.
+- It accepts both AE API snake_case chat refs and browser camelCase artifact
+  client surfaces.
+- Summaries remain content-free and do not expose raw prompts, source text,
+  service tokens, provider/database endpoints, storage refs, or storage paths.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
