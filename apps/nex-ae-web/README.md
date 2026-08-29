@@ -563,5 +563,16 @@ Slice 0400 closes S40:
   read-model diagnostics, protected PostgreSQL smoke evidence, and slice docs
   remain registered together.
 
+Slice 0411 audits the artifact browser surface before persisted wiring:
+
+- `scripts/smoke/run_ae_web_artifact_surface_boundary_audit.py` freezes the
+  current mock-first, inline-rendered artifact refs as the pre-S42 baseline.
+- `nex-ae-web` remains the browser artifact surface owner while `nex-ae-api`
+  remains the artifact system of record.
+- The next browser work is ordered as artifact client adapter, safe card
+  read-model, chat card renderer, and preview/download panel.
+- Browser state and diagnostics must not expose raw prompts, source text,
+  service tokens, provider endpoints, database endpoints, or storage paths.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
