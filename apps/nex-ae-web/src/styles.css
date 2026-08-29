@@ -370,6 +370,10 @@ h2 {
   gap: 8px;
 }
 
+.artifact-card {
+  min-width: 0;
+}
+
 .artifact-link-heading {
   display: flex;
   align-items: center;
@@ -388,7 +392,8 @@ h2 {
   gap: 6px;
 }
 
-.artifact-actions a {
+.artifact-actions a,
+.artifact-actions button {
   min-height: 30px;
   border: 1px solid var(--nex-border);
   border-radius: 6px;
@@ -398,6 +403,25 @@ h2 {
   text-decoration: none;
   font-size: 12px;
   font-weight: 800;
+}
+
+.artifact-actions button {
+  cursor: pointer;
+}
+
+.artifact-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.artifact-card-warnings {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--nex-danger);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .credential-login-form,

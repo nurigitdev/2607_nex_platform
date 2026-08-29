@@ -595,5 +595,16 @@ Slice 0413 adds the artifact card read-model:
 - Summaries remain content-free and do not expose raw prompts, source text,
   service tokens, provider/database endpoints, storage refs, or storage paths.
 
+Slice 0414 renders artifact cards in chat:
+
+- `src/artifactCard.js` owns the safe HTML renderer for artifact card
+  view-models.
+- `src/main.js` now renders chat artifact refs through the read-model and
+  renderer instead of building inline artifact link HTML.
+- Artifact cards expose stable `data-artifact-*` anchors for preview,
+  download, source, lineage, and future retry wiring.
+- Card HTML escapes display text and continues to hide server-only fields and
+  downloaded artifact content.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

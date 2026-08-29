@@ -2,6 +2,12 @@ import {
   buildAuthenticatedRuntimeSummary
 } from "./authenticatedRuntime.js";
 import {
+  renderArtifactCard
+} from "./artifactCard.js";
+import {
+  buildArtifactCardCollectionReadModel
+} from "./artifactCardReadModel.js";
+import {
   bootstrapAuthenticatedSessionRuntime,
   buildSessionBootstrapSummary,
   composeAuthenticatedSessionRuntime
@@ -1145,35 +1151,14 @@ function renderGroundedResponseQuality(
 
 function renderArtifactRefs(artifactRefs) {
   if (!artifactRefs.length) return "";
+  const collection = buildArtifactCardCollectionReadModel(artifactRefs);
   return `
-    <div class="artifact-link-list" aria-label="연결된 아티팩트">
-      ${artifactRefs.map(renderArtifactRef).join("")}
-    </div>
-  `;
-}
-
-function renderArtifactRef(artifactRef) {
-  const downloadFormats = Object.keys(artifactRef.downloadRoutes || {});
-  return `
-    <div class="artifact-link" data-artifact-id="${escapeHtml(artifactRef.artifactId)}">
-      <div class="artifact-link-heading">
-        <strong>${escapeHtml(artifactRef.displayTitle)}</strong>
-        <span class="badge ${badgeClass(artifactRef.artifactStatus)}">${statusLabel(artifactRef.artifactStatus)}</span>
-      </div>
-      <dl class="inline-meta slim">
-        <div>
-          <dt>version</dt>
-          <dd>${escapeHtml(artifactRef.artifactVersionId)}</dd>
-        </div>
-        <div>
-          <dt>source</dt>
-          <dd>${escapeHtml(artifactRef.sourceGenerationId)}</dd>
-        </div>
-      </dl>
-      <div class="artifact-actions">
-        ${artifactRef.previewRoute ? `<a href="${escapeHtml(artifactRef.previewRoute)}">Preview</a>` : ""}
-        ${downloadFormats.map(format => `<a href="${escapeHtml(artifactRef.downloadRoutes[format])}">${escapeHtml(format)}</a>`).join("")}
-      </div>
+    <div
+      class="artifact-link-list"
+      aria-label="연결된 아티팩트"
+      data-artifact-card-collection="${escapeHtml(collection.itemCount)}"
+    >
+      ${collection.items.map(renderArtifactCard).join("")}
     </div>
   `;
 }

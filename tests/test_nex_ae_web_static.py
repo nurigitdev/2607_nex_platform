@@ -893,6 +893,8 @@ def test_ae_web_mock_state_links_generation_artifact_and_audit_contracts() -> No
         "handoff-local",
         "artifact-version-local-001",
         "artifactRefs",
+        "renderArtifactCard",
+        "buildArtifactCardCollectionReadModel",
         "download_md",
         "general-llm-default",
     ]:
@@ -1013,7 +1015,9 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert ".document-row.is-selected" in styles
     assert ".document-action-row" in styles
     assert ".artifact-link" in styles
+    assert ".artifact-card" in styles
     assert ".artifact-actions" in styles
+    assert ".artifact-card-warnings" in styles
     assert "letter-spacing: 0" in styles
     assert "letter-spacing: -" not in styles
     assert "linear-gradient" not in styles
