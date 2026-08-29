@@ -11,6 +11,9 @@ from uuid import NAMESPACE_URL, uuid5
 import httpx
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
@@ -43,10 +46,23 @@ AE_CHAT_GROUNDED_RESPONSE_QUALITY_CONTRACT_VERSION = (
     "ae_chat_grounded_response_quality.v1"
 )
 DEFAULT_LOW_CONFIDENCE_THRESHOLD = 0.2
+DEFAULT_TENANT_ID = "local-tenant"
+DEFAULT_USER_ID = "local-user"
 GENERATION_QUALITY_REJECTION_ERROR_CODES = {
     "cx.retrieval_package_not_ready",
     "cx.retrieval_package_quality_blocked",
 }
+CHAT_INTERACTION_JSON_FIELDS = (
+    "retrieval_summary",
+    "generation_summary",
+    "failure_summary",
+)
+CHAT_ARTIFACT_REF_JSON_FIELDS = (
+    "available_formats",
+    "download_routes",
+    "quality_summary",
+    "actions",
+)
 
 
 class CxGenerationClient(Protocol):
@@ -132,6 +148,91 @@ class ChatInteractionStore:
         return record
 
 
+class SqlAlchemyChatInteractionStore:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        try:
+            with self._session_factory() as session:
+                _persist_chat_interaction_record(session, record)
+                session.commit()
+            return record
+        except SQLAlchemyError as exc:
+            raise ChatInteractionError(
+                status_code=503,
+                error_code="ae.chat_store_unavailable",
+                detail="AE chat interaction store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def get(self, interaction_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return _load_chat_interaction_record(session, interaction_id)
+        except SQLAlchemyError as exc:
+            raise ChatInteractionError(
+                status_code=503,
+                error_code="ae.chat_store_unavailable",
+                detail="AE chat interaction store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def attach_artifact_ref(
+        self,
+        *,
+        interaction_id: str,
+        artifact_ref: dict[str, Any],
+        updated_at: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                record = _load_chat_interaction_record(session, interaction_id)
+                if record is None:
+                    return None
+                for existing_ref in record["artifact_refs"]:
+                    if (
+                        existing_ref["artifact_id"] == artifact_ref["artifact_id"]
+                        and existing_ref["artifact_version_id"]
+                        == artifact_ref["artifact_version_id"]
+                    ):
+                        return record
+                record["artifact_refs"].append(artifact_ref)
+                record["updated_at"] = updated_at
+                _persist_chat_interaction_record(session, record)
+                session.commit()
+                return record
+        except SQLAlchemyError as exc:
+            raise ChatInteractionError(
+                status_code=503,
+                error_code="ae.chat_store_unavailable",
+                detail="AE chat interaction store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def delete(self, interaction_id: str) -> int:
+        try:
+            with self._session_factory() as session:
+                result = session.execute(
+                    text(
+                        """
+                        DELETE FROM ae_chat_interactions
+                        WHERE chat_interaction_id = :interaction_id
+                        """
+                    ),
+                    {"interaction_id": interaction_id},
+                )
+                session.commit()
+                return int(result.rowcount or 0)
+        except SQLAlchemyError as exc:
+            raise ChatInteractionError(
+                status_code=503,
+                error_code="ae.chat_store_unavailable",
+                detail="AE chat interaction store is unavailable.",
+                retryable=True,
+            ) from exc
+
+
 @dataclass(frozen=True)
 class ChatInteractionError(Exception):
     status_code: int
@@ -141,6 +242,14 @@ class ChatInteractionError(Exception):
 
 
 DEFAULT_CHAT_STORE = ChatInteractionStore()
+
+
+def build_default_chat_store(app: Any) -> Any:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is not None:
+        return SqlAlchemyChatInteractionStore(session_factory)
+    return DEFAULT_CHAT_STORE
 
 
 def build_default_cx_client() -> HttpCxGenerationClient:
@@ -160,12 +269,12 @@ def build_default_cx_retrieval_client() -> HttpCxRetrievalClient:
 def register_chat_routes(
     app: FastAPI,
     *,
-    store: ChatInteractionStore | None = None,
+    store: Any | None = None,
     cx_client: CxGenerationClient | None = None,
     retrieval_client: CxRetrievalClient | None = None,
     analytics_store: PromptAnalyticsStore | None = None,
 ) -> None:
-    chat_store = store or DEFAULT_CHAT_STORE
+    chat_store = store or build_default_chat_store(app)
     client = cx_client or build_default_cx_client()
     retrieval = retrieval_client or build_default_cx_retrieval_client()
 
@@ -441,11 +550,14 @@ def build_chat_interaction_record(
     trace_id: str,
 ) -> dict[str, Any]:
     user_message = user_message_from_payload(source_payload)
+    tenant_id, user_id = chat_owner_scope_from_payload(source_payload)
     now = _utc_now()
     return {
         "interaction_schema_version": "ae_chat_interaction.v1",
         "interaction_id": cx_payload["client_request_id"],
         "chat_document_id": cx_payload["metadata"]["chat_document_id"],
+        "tenant_id": tenant_id,
+        "user_id": user_id,
         "status": "COMPLETED",
         "trace_id": trace_id,
         "request_id": request_id,
@@ -478,11 +590,14 @@ def build_no_answer_chat_interaction_record(
     trace_id: str,
 ) -> dict[str, Any]:
     user_message = user_message_from_payload(source_payload)
+    tenant_id, user_id = chat_owner_scope_from_payload(source_payload)
     now = _utc_now()
     return {
         "interaction_schema_version": "ae_chat_interaction.v1",
         "interaction_id": retrieval_payload["metadata"]["ae_retrieval_interaction_id"],
         "chat_document_id": retrieval_payload["metadata"]["chat_document_id"],
+        "tenant_id": tenant_id,
+        "user_id": user_id,
         "status": "NO_ANSWER",
         "trace_id": trace_id,
         "request_id": request_id,
@@ -508,11 +623,14 @@ def build_generation_quality_rejected_chat_interaction_record(
     trace_id: str,
 ) -> dict[str, Any]:
     user_message = user_message_from_payload(source_payload)
+    tenant_id, user_id = chat_owner_scope_from_payload(source_payload)
     now = _utc_now()
     return {
         "interaction_schema_version": "ae_chat_interaction.v1",
         "interaction_id": cx_payload["client_request_id"],
         "chat_document_id": cx_payload["metadata"]["chat_document_id"],
+        "tenant_id": tenant_id,
+        "user_id": user_id,
         "status": "FAILED",
         "trace_id": trace_id,
         "request_id": request_id,
@@ -1022,6 +1140,401 @@ def user_message_from_payload(payload: dict[str, Any]) -> str:
             detail="user_message is required.",
         )
     return user_message.strip()
+
+
+def chat_owner_scope_from_payload(payload: dict[str, Any]) -> tuple[str, str]:
+    tenant_id = _optional_text(payload.get("tenant_id")) or DEFAULT_TENANT_ID
+    user_id = _optional_text(payload.get("user_id")) or DEFAULT_USER_ID
+    return tenant_id, user_id
+
+
+def _persist_chat_interaction_record(
+    session: Session,
+    record: dict[str, Any],
+) -> None:
+    dialect_name = _dialect_name(session)
+    session.execute(
+        text(_chat_interaction_upsert_sql(dialect_name)),
+        _chat_interaction_params(record),
+    )
+    session.execute(
+        text(
+            """
+            DELETE FROM ae_chat_artifact_refs
+            WHERE chat_interaction_id = :interaction_id
+            """
+        ),
+        {"interaction_id": record["interaction_id"]},
+    )
+    for artifact_ref in record.get("artifact_refs", []):
+        session.execute(
+            text(_chat_artifact_ref_insert_sql(dialect_name)),
+            _chat_artifact_ref_params(record, artifact_ref),
+        )
+
+
+def _load_chat_interaction_record(
+    session: Session,
+    interaction_id: str,
+) -> dict[str, Any] | None:
+    row = (
+        session.execute(
+            text(_chat_interaction_select_sql("chat_interaction_id = :interaction_id")),
+            {"interaction_id": interaction_id},
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        return None
+    ref_rows = (
+        session.execute(
+            text(
+                """
+                SELECT
+                    artifact_id,
+                    artifact_version_id,
+                    display_title,
+                    artifact_type,
+                    artifact_status,
+                    primary_format,
+                    available_formats,
+                    preview_route,
+                    download_routes,
+                    source_generation_id,
+                    source_content_hash,
+                    quality_summary,
+                    actions
+                FROM ae_chat_artifact_refs
+                WHERE chat_interaction_id = :interaction_id
+                ORDER BY created_at ASC, artifact_id ASC, artifact_version_id ASC
+                """
+            ),
+            {"interaction_id": interaction_id},
+        )
+        .mappings()
+        .all()
+    )
+    return _chat_interaction_from_row(row, [_chat_artifact_ref_from_row(ref) for ref in ref_rows])
+
+
+def _chat_interaction_upsert_sql(dialect_name: str) -> str:
+    json_exprs = _json_param_exprs(CHAT_INTERACTION_JSON_FIELDS, dialect_name)
+    return f"""
+        INSERT INTO ae_chat_interactions (
+            chat_interaction_id,
+            interaction_schema_version,
+            tenant_id,
+            user_id,
+            chat_document_id,
+            status,
+            trace_id,
+            request_id,
+            user_message_hash,
+            user_message_preview,
+            cx_retrieval_package_id,
+            cx_retrieval_package_hash,
+            cx_generation_id,
+            cx_generation_status,
+            retrieval_summary,
+            generation_summary,
+            failure_summary,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :interaction_id,
+            :interaction_schema_version,
+            :tenant_id,
+            :user_id,
+            :chat_document_id,
+            :status,
+            :trace_id,
+            :request_id,
+            :user_message_hash,
+            :user_message_preview,
+            :cx_retrieval_package_id,
+            :cx_retrieval_package_hash,
+            :cx_generation_id,
+            :cx_status,
+            {json_exprs["retrieval_summary"]},
+            {json_exprs["generation_summary"]},
+            {json_exprs["failure_summary"]},
+            :created_at,
+            :updated_at
+        )
+        ON CONFLICT (chat_interaction_id) DO UPDATE SET
+            interaction_schema_version = excluded.interaction_schema_version,
+            tenant_id = excluded.tenant_id,
+            user_id = excluded.user_id,
+            chat_document_id = excluded.chat_document_id,
+            status = excluded.status,
+            trace_id = excluded.trace_id,
+            request_id = excluded.request_id,
+            user_message_hash = excluded.user_message_hash,
+            user_message_preview = excluded.user_message_preview,
+            cx_retrieval_package_id = excluded.cx_retrieval_package_id,
+            cx_retrieval_package_hash = excluded.cx_retrieval_package_hash,
+            cx_generation_id = excluded.cx_generation_id,
+            cx_generation_status = excluded.cx_generation_status,
+            retrieval_summary = excluded.retrieval_summary,
+            generation_summary = excluded.generation_summary,
+            failure_summary = excluded.failure_summary,
+            updated_at = excluded.updated_at
+    """
+
+
+def _chat_interaction_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            interaction_schema_version,
+            chat_interaction_id,
+            tenant_id,
+            user_id,
+            chat_document_id,
+            status,
+            trace_id,
+            request_id,
+            user_message_hash,
+            user_message_preview,
+            cx_retrieval_package_id,
+            cx_retrieval_package_hash,
+            cx_generation_id,
+            cx_generation_status,
+            retrieval_summary,
+            generation_summary,
+            failure_summary,
+            created_at,
+            updated_at
+        FROM ae_chat_interactions
+        WHERE {where_clause}
+    """
+
+
+def _chat_artifact_ref_insert_sql(dialect_name: str) -> str:
+    json_exprs = _json_param_exprs(CHAT_ARTIFACT_REF_JSON_FIELDS, dialect_name)
+    return f"""
+        INSERT INTO ae_chat_artifact_refs (
+            chat_artifact_ref_id,
+            chat_interaction_id,
+            chat_document_id,
+            tenant_id,
+            user_id,
+            artifact_id,
+            artifact_version_id,
+            display_title,
+            artifact_type,
+            artifact_status,
+            primary_format,
+            available_formats,
+            preview_route,
+            download_routes,
+            source_generation_id,
+            source_content_hash,
+            quality_summary,
+            actions,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :chat_artifact_ref_id,
+            :interaction_id,
+            :chat_document_id,
+            :tenant_id,
+            :user_id,
+            :artifact_id,
+            :artifact_version_id,
+            :display_title,
+            :artifact_type,
+            :artifact_status,
+            :primary_format,
+            {json_exprs["available_formats"]},
+            :preview_route,
+            {json_exprs["download_routes"]},
+            :source_generation_id,
+            :source_content_hash,
+            {json_exprs["quality_summary"]},
+            {json_exprs["actions"]},
+            :created_at,
+            :updated_at
+        )
+        ON CONFLICT (chat_interaction_id, artifact_id, artifact_version_id)
+        DO UPDATE SET
+            display_title = excluded.display_title,
+            artifact_type = excluded.artifact_type,
+            artifact_status = excluded.artifact_status,
+            primary_format = excluded.primary_format,
+            available_formats = excluded.available_formats,
+            preview_route = excluded.preview_route,
+            download_routes = excluded.download_routes,
+            source_generation_id = excluded.source_generation_id,
+            source_content_hash = excluded.source_content_hash,
+            quality_summary = excluded.quality_summary,
+            actions = excluded.actions,
+            updated_at = excluded.updated_at
+    """
+
+
+def _chat_interaction_params(record: dict[str, Any]) -> dict[str, Any]:
+    retrieval = record.get("retrieval")
+    generation = record.get("generation")
+    failure = record.get("failure")
+    return {
+        "interaction_schema_version": record.get(
+            "interaction_schema_version",
+            "ae_chat_interaction.v1",
+        ),
+        "interaction_id": record["interaction_id"],
+        "tenant_id": record.get("tenant_id") or DEFAULT_TENANT_ID,
+        "user_id": record.get("user_id") or DEFAULT_USER_ID,
+        "chat_document_id": record["chat_document_id"],
+        "status": record["status"],
+        "trace_id": record["trace_id"],
+        "request_id": record["request_id"],
+        "user_message_hash": record["user_message_hash"],
+        "user_message_preview": record["user_message_preview"],
+        "cx_retrieval_package_id": retrieval.get("cx_retrieval_package_id")
+        if isinstance(retrieval, dict)
+        else None,
+        "cx_retrieval_package_hash": retrieval.get("cx_package_hash")
+        if isinstance(retrieval, dict)
+        else None,
+        "cx_generation_id": record.get("cx_generation_id"),
+        "cx_status": record.get("cx_status"),
+        "retrieval_summary": json.dumps(retrieval or {}, ensure_ascii=False, sort_keys=True),
+        "generation_summary": json.dumps(generation or {}, ensure_ascii=False, sort_keys=True),
+        "failure_summary": json.dumps(failure or {}, ensure_ascii=False, sort_keys=True),
+        "created_at": record["created_at"],
+        "updated_at": record["updated_at"],
+    }
+
+
+def _chat_artifact_ref_params(
+    record: dict[str, Any],
+    artifact_ref: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "chat_artifact_ref_id": str(
+            uuid5(
+                NAMESPACE_URL,
+                "ae-chat-artifact-ref:"
+                f"{record['interaction_id']}:{artifact_ref['artifact_id']}:"
+                f"{artifact_ref['artifact_version_id']}",
+            )
+        ),
+        "interaction_id": record["interaction_id"],
+        "chat_document_id": record["chat_document_id"],
+        "tenant_id": record.get("tenant_id") or DEFAULT_TENANT_ID,
+        "user_id": record.get("user_id") or DEFAULT_USER_ID,
+        "artifact_id": artifact_ref["artifact_id"],
+        "artifact_version_id": artifact_ref["artifact_version_id"],
+        "display_title": artifact_ref["display_title"],
+        "artifact_type": artifact_ref["artifact_type"],
+        "artifact_status": artifact_ref["artifact_status"],
+        "primary_format": artifact_ref["primary_format"],
+        "available_formats": json.dumps(
+            artifact_ref["available_formats"],
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        "preview_route": artifact_ref.get("preview_route"),
+        "download_routes": json.dumps(
+            artifact_ref["download_routes"],
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        "source_generation_id": artifact_ref["source_generation_id"],
+        "source_content_hash": artifact_ref["source_content_hash"],
+        "quality_summary": json.dumps(
+            artifact_ref["quality_summary"],
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        "actions": json.dumps(artifact_ref["actions"], ensure_ascii=False, sort_keys=True),
+        "created_at": record["updated_at"],
+        "updated_at": record["updated_at"],
+    }
+
+
+def _chat_interaction_from_row(
+    row: Any,
+    artifact_refs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    data = dict(row)
+    retrieval = _json_value(data["retrieval_summary"], {})
+    generation = _json_value(data["generation_summary"], {})
+    failure = _json_value(data["failure_summary"], {})
+    record = {
+        "interaction_schema_version": data["interaction_schema_version"],
+        "interaction_id": str(data["chat_interaction_id"]),
+        "chat_document_id": str(data["chat_document_id"]),
+        "tenant_id": data["tenant_id"],
+        "user_id": data["user_id"],
+        "status": data["status"],
+        "trace_id": data["trace_id"],
+        "request_id": data["request_id"],
+        "user_message_hash": data["user_message_hash"],
+        "user_message_preview": data["user_message_preview"],
+        "cx_generation_id": data["cx_generation_id"],
+        "cx_status": data["cx_generation_status"],
+        "generation": generation or None,
+        "retrieval": retrieval or None,
+        "artifact_refs": artifact_refs,
+        "created_at": _datetime_value(data["created_at"]),
+        "updated_at": _datetime_value(data["updated_at"]),
+    }
+    if failure:
+        record["failure"] = failure
+    return record
+
+
+def _chat_artifact_ref_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return {
+        "artifact_id": data["artifact_id"],
+        "artifact_version_id": data["artifact_version_id"],
+        "display_title": data["display_title"],
+        "artifact_type": data["artifact_type"],
+        "artifact_status": data["artifact_status"],
+        "primary_format": data["primary_format"],
+        "available_formats": _json_value(data["available_formats"], []),
+        "preview_route": data["preview_route"],
+        "download_routes": _json_value(data["download_routes"], {}),
+        "source_generation_id": data["source_generation_id"],
+        "source_content_hash": data["source_content_hash"],
+        "quality_summary": _json_value(data["quality_summary"], {}),
+        "actions": _json_value(data["actions"], []),
+    }
+
+
+def _json_param_exprs(names: tuple[str, ...], dialect_name: str) -> dict[str, str]:
+    return {name: _json_param_expr(name, dialect_name) for name in names}
+
+
+def _json_param_expr(name: str, dialect_name: str) -> str:
+    if dialect_name == "postgresql":
+        return f"CAST(:{name} AS jsonb)"
+    return f":{name}"
+
+
+def _dialect_name(session: Session) -> str:
+    return session.get_bind().dialect.name
+
+
+def _json_value(value: Any, default: Any) -> Any:
+    if isinstance(value, str):
+        return json.loads(value)
+    if value is None:
+        return default
+    return value
+
+
+def _datetime_value(value: Any) -> str:
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    if hasattr(value, "isoformat"):
+        return value.isoformat().replace("+00:00", "Z")
+    return str(value)
 
 
 def sha256_text(value: str) -> str:

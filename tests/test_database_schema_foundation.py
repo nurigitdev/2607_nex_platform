@@ -650,3 +650,24 @@ def test_ae_artifact_handoff_trace_request_backfill_migration_exists() -> None:
     assert "alter column trace_id drop default" in compact
     assert "alter column request_id drop default" in compact
     assert "0406_ae_artifact_handoff_trace_request_columns" in compact
+
+
+def test_ae_chat_artifact_refs_persistence_migration_exists() -> None:
+    compact = normalized(
+        read_migration_named(
+            "nex-ae-api",
+            "0407_ae_chat_artifact_refs_foundation.sql",
+        )
+    )
+
+    assert "alter table ae_chat_interactions" in compact
+    assert "add column if not exists interaction_schema_version text not null" in compact
+    assert "add column if not exists failure_summary jsonb not null" in compact
+    assert "create table if not exists ae_chat_artifact_refs" in compact
+    assert "chat_interaction_id uuid not null references ae_chat_interactions" in compact
+    assert "unique (chat_interaction_id, artifact_id, artifact_version_id)" in compact
+    assert "idx_ae_chat_artifact_refs_owner_time" in compact
+    assert "idx_ae_chat_artifact_refs_artifact" in compact
+    assert "source_content_hash text not null check" in compact
+    assert "download_routes jsonb not null default '{}'::jsonb" in compact
+    assert "0407_ae_chat_artifact_refs_foundation" in compact

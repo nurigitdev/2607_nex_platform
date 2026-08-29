@@ -1,18 +1,24 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 import nex_ae_api.chat as ae_chat
 from nex_ae_api.chat import (
     ChatInteractionError,
     ChatInteractionStore,
     HttpCxGenerationClient,
+    SqlAlchemyChatInteractionStore,
     attach_retrieval_package_to_generation_payload,
     artifact_actions_for_record,
     artifact_record_from_payload,
+    build_default_chat_store,
     build_chat_artifact_ref,
     build_chat_interaction_record,
     build_cx_generation_payload,
@@ -234,6 +240,73 @@ def build_grounded_test_client(
     return TestClient(app), cx_client, retrieval, store
 
 
+def sqlite_chat_session_factory():
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        future=True,
+        poolclass=StaticPool,
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ae_chat_interactions (
+                    chat_interaction_id TEXT PRIMARY KEY,
+                    interaction_schema_version TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    chat_document_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    trace_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    user_message_hash TEXT NOT NULL,
+                    user_message_preview TEXT NOT NULL,
+                    cx_retrieval_package_id TEXT,
+                    cx_retrieval_package_hash TEXT,
+                    cx_generation_id TEXT,
+                    cx_generation_status TEXT,
+                    retrieval_summary TEXT NOT NULL,
+                    generation_summary TEXT NOT NULL,
+                    failure_summary TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ae_chat_artifact_refs (
+                    chat_artifact_ref_id TEXT PRIMARY KEY,
+                    chat_interaction_id TEXT NOT NULL,
+                    chat_document_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    artifact_id TEXT NOT NULL,
+                    artifact_version_id TEXT NOT NULL,
+                    display_title TEXT NOT NULL,
+                    artifact_type TEXT NOT NULL,
+                    artifact_status TEXT NOT NULL,
+                    primary_format TEXT NOT NULL,
+                    available_formats TEXT NOT NULL,
+                    preview_route TEXT,
+                    download_routes TEXT NOT NULL,
+                    source_generation_id TEXT NOT NULL,
+                    source_content_hash TEXT NOT NULL,
+                    quality_summary TEXT NOT NULL,
+                    actions TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE (chat_interaction_id, artifact_id, artifact_version_id)
+                )
+                """
+            )
+        )
+    return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+
 def sample_artifact_record(
     *,
     chat_document_id: str = "chat-001",
@@ -398,6 +471,310 @@ def test_chat_artifact_link_route_attaches_and_lists_refs() -> None:
     assert store.get(created["interaction_id"])["artifact_refs"] == attached.json()[
         "artifact_refs"
     ]
+
+
+def test_chat_store_attach_handles_missing_and_same_artifact_new_version() -> None:
+    store = ChatInteractionStore()
+    record = {
+        "interaction_id": "interaction-001",
+        "chat_document_id": "chat-001",
+        "artifact_refs": [
+            {
+                "artifact_id": "artifact-001",
+                "artifact_version_id": "artifact-version-old",
+            }
+        ],
+        "updated_at": "2026-08-29T00:00:00Z",
+    }
+    artifact_ref = {
+        "artifact_id": "artifact-001",
+        "artifact_version_id": "artifact-version-new",
+    }
+
+    assert store.attach_artifact_ref(
+        interaction_id="missing",
+        artifact_ref=artifact_ref,
+        updated_at="2026-08-29T00:00:01Z",
+    ) is None
+    store.save(record)
+    updated = store.attach_artifact_ref(
+        interaction_id="interaction-001",
+        artifact_ref=artifact_ref,
+        updated_at="2026-08-29T00:00:01Z",
+    )
+
+    assert updated["artifact_refs"][-1] == artifact_ref
+    assert updated["updated_at"] == "2026-08-29T00:00:01Z"
+
+
+def test_sqlalchemy_chat_store_persists_interaction_and_artifact_refs() -> None:
+    session_factory = sqlite_chat_session_factory()
+    store = SqlAlchemyChatInteractionStore(session_factory)
+    interaction_id = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
+    chat_document_id = "62cbb468-147e-5e66-9bd8-4551a5807cf6"
+    record = build_chat_interaction_record(
+        source_payload={
+            "interaction_id": interaction_id,
+            "chat_document_id": chat_document_id,
+            "tenant_id": "tenant-a",
+            "user_id": "user-a",
+            "user_message": "Summarize the rendered artifact.",
+        },
+        cx_payload={
+            "client_request_id": interaction_id,
+            "metadata": {
+                "chat_document_id": chat_document_id,
+                "user_message_hash": "a" * 64,
+            },
+        },
+        cx_record={
+            "cx_generation_id": "cx-gen-001",
+            "status": "COMPLETED",
+            "alias": "general-llm-default",
+            "provider_capability": "generation",
+            "mo_generation_id": "mo-gen-001",
+            "response_metadata": {
+                "finish_reason": "STOP",
+                "output_preview": "answer",
+            },
+            "usage": {"total_tokens": 5},
+        },
+        request_id="request-001",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    )
+    artifact_record = sample_artifact_record(
+        chat_document_id=chat_document_id,
+        interaction_id=interaction_id,
+    )
+    artifact_ref = build_chat_artifact_ref(artifact_record)
+
+    assert store.save(record) == record
+    assert store.get(interaction_id)["artifact_refs"] == []
+
+    attached = store.attach_artifact_ref(
+        interaction_id=interaction_id,
+        artifact_ref=artifact_ref,
+        updated_at="2026-08-29T00:00:00Z",
+    )
+    repeated = store.attach_artifact_ref(
+        interaction_id=interaction_id,
+        artifact_ref=artifact_ref,
+        updated_at="2026-08-29T00:00:01Z",
+    )
+    artifact_ref_new_version = {
+        **artifact_ref,
+        "artifact_version_id": "artifact-version-002",
+    }
+    expanded = store.attach_artifact_ref(
+        interaction_id=interaction_id,
+        artifact_ref=artifact_ref_new_version,
+        updated_at="2026-08-29T00:00:02Z",
+    )
+
+    assert attached is not None
+    assert attached["tenant_id"] == "tenant-a"
+    assert attached["user_id"] == "user-a"
+    assert attached["generation"]["usage"] == {"total_tokens": 5}
+    assert attached["artifact_refs"] == [artifact_ref]
+    assert repeated == attached
+    assert expanded["artifact_refs"] == [artifact_ref, artifact_ref_new_version]
+    assert store.get(interaction_id)["artifact_refs"] == [
+        artifact_ref,
+        artifact_ref_new_version,
+    ]
+
+
+def test_sqlalchemy_chat_store_persists_failed_record_and_missing_attach() -> None:
+    session_factory = sqlite_chat_session_factory()
+    store = SqlAlchemyChatInteractionStore(session_factory)
+    interaction_id = "aaaaaaaa-8f22-4f72-9b47-b481dc21bb21"
+    chat_document_id = "bbbbbbbb-147e-5e66-9bd8-4551a5807cf6"
+    record = build_generation_quality_rejected_chat_interaction_record(
+        source_payload={
+            "interaction_id": interaction_id,
+            "chat_document_id": chat_document_id,
+            "tenant_id": "tenant-a",
+            "user_id": "user-a",
+            "user_message": "Summarize trace evidence.",
+        },
+        cx_payload={
+            "client_request_id": interaction_id,
+            "metadata": {
+                "chat_document_id": chat_document_id,
+                "user_message_hash": "b" * 64,
+            },
+        },
+        retrieval_package={
+            "retrieval_package_id": "cx-ret-001",
+            "package_hash": "c" * 64,
+            "status": "READY",
+            "evidence_items": [],
+            "score_summary": {"best_score": 0.1, "confidence_bucket": "READY"},
+            "warnings": [],
+        },
+        failure=ChatInteractionError(
+            status_code=409,
+            error_code="cx.retrieval_package_quality_blocked",
+            detail="blocked private details",
+        ),
+        request_id="request-002",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    )
+
+    store.save(record)
+    loaded = store.get(interaction_id)
+
+    assert loaded["generation"] is None
+    assert loaded["failure"]["error_code"] == "cx.retrieval_package_quality_blocked"
+    assert loaded["retrieval"]["cx_retrieval_package_id"] == "cx-ret-001"
+    assert store.attach_artifact_ref(
+        interaction_id="missing",
+        artifact_ref=build_chat_artifact_ref(
+            sample_artifact_record(
+                chat_document_id=chat_document_id,
+                interaction_id=interaction_id,
+            )
+        ),
+        updated_at="2026-08-29T00:00:02Z",
+    ) is None
+    assert store.delete(interaction_id) == 1
+    assert store.get(interaction_id) is None
+
+
+def test_chat_routes_use_sqlalchemy_default_store_when_persistence_attached() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    session_factory = sqlite_chat_session_factory()
+    app.state.nex_persistence = SimpleNamespace(api_session_factory=session_factory)
+    cx_client = FakeCxClient()
+    register_chat_routes(app, cx_client=cx_client)
+    client = TestClient(app)
+    interaction_id = "cccccccc-8f22-4f72-9b47-b481dc21bb21"
+    chat_document_id = "dddddddd-147e-5e66-9bd8-4551a5807cf6"
+
+    created = client.post(
+        "/api/v1/chat/interactions",
+        json={
+            "interaction_id": interaction_id,
+            "chat_document_id": chat_document_id,
+            "tenant_id": "tenant-a",
+            "user_id": "user-a",
+            "user_message": "Create a report artifact.",
+        },
+        headers=auth_headers(),
+    )
+    attached = client.post(
+        f"/api/v1/chat/interactions/{interaction_id}/artifact-links",
+        json={
+            "artifact": sample_artifact_record(
+                chat_document_id=chat_document_id,
+                interaction_id=interaction_id,
+            )
+        },
+        headers=auth_headers(),
+    )
+    readback = client.get(
+        f"/api/v1/chat/interactions/{interaction_id}",
+        headers=auth_headers(),
+    )
+
+    assert created.status_code == 200
+    assert build_default_chat_store(app).__class__ is SqlAlchemyChatInteractionStore
+    assert attached.status_code == 200
+    assert len(attached.json()["artifact_refs"]) == 1
+    assert readback.json()["artifact_refs"] == attached.json()["artifact_refs"]
+
+
+def test_default_chat_store_falls_back_to_in_memory_without_persistence() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+
+    assert build_default_chat_store(app) is ae_chat.DEFAULT_CHAT_STORE
+
+
+def test_chat_artifact_link_list_requires_auth() -> None:
+    client, _, _ = build_test_client()
+
+    response = client.get("/api/v1/chat/interactions/interaction-001/artifact-links")
+
+    assert response.status_code == 401
+    assert response.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+
+
+def test_chat_artifact_ref_rejects_missing_required_text_fields() -> None:
+    missing_title = sample_artifact_record()
+    missing_title["display_title"] = " "
+
+    try:
+        build_chat_artifact_ref(missing_title)
+    except ChatInteractionError as exc:
+        assert exc.error_code == "ae.artifact_record_invalid"
+        assert "display_title" in exc.detail
+    else:
+        raise AssertionError("expected ChatInteractionError")
+
+
+def test_chat_sql_helpers_cover_postgresql_json_and_datetime_branches() -> None:
+    assert ae_chat._json_param_expr("payload", "postgresql") == "CAST(:payload AS jsonb)"
+    assert ae_chat._json_param_expr("payload", "sqlite") == ":payload"
+    assert ae_chat._json_value(None, {"fallback": True}) == {"fallback": True}
+    assert ae_chat._json_value({"already": "decoded"}, {}) == {"already": "decoded"}
+    assert ae_chat._datetime_value(ae_chat.datetime(2026, 8, 29, tzinfo=ae_chat.UTC)) == (
+        "2026-08-29T00:00:00Z"
+    )
+
+
+def test_sqlalchemy_chat_store_wraps_database_errors() -> None:
+    engine = create_engine("sqlite+pysqlite://", future=True)
+    store = SqlAlchemyChatInteractionStore(
+        sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    )
+    record = build_chat_interaction_record(
+        source_payload={"user_message": "hello"},
+        cx_payload={
+            "client_request_id": "eeeeeeee-8f22-4f72-9b47-b481dc21bb21",
+            "metadata": {
+                "chat_document_id": "ffffffff-147e-5e66-9bd8-4551a5807cf6",
+                "user_message_hash": "a" * 64,
+            },
+        },
+        cx_record={
+            "cx_generation_id": "cx-gen-001",
+            "status": "COMPLETED",
+            "alias": "general-llm-default",
+            "provider_capability": "generation",
+            "mo_generation_id": "mo-gen-001",
+            "response_metadata": {
+                "finish_reason": "STOP",
+                "output_preview": "answer",
+            },
+            "usage": {},
+        },
+        request_id="request-003",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    )
+
+    for action in (
+        lambda: store.save(record),
+        lambda: store.get(record["interaction_id"]),
+        lambda: store.attach_artifact_ref(
+            interaction_id=record["interaction_id"],
+            artifact_ref=build_chat_artifact_ref(
+                sample_artifact_record(
+                    chat_document_id=record["chat_document_id"],
+                    interaction_id=record["interaction_id"],
+                )
+            ),
+            updated_at="2026-08-29T00:00:03Z",
+        ),
+        lambda: store.delete(record["interaction_id"]),
+    ):
+        try:
+            action()
+        except ChatInteractionError as exc:
+            assert exc.status_code == 503
+            assert exc.error_code == "ae.chat_store_unavailable"
+            assert exc.retryable is True
+        else:
+            raise AssertionError("expected ChatInteractionError")
 
 
 def test_chat_interaction_read_requires_auth() -> None:

@@ -510,6 +510,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0404`](slices/0404_ae_rendered_artifact_local_storage_adapter.md) | `S41-004` AE rendered artifact local storage adapter. |
 | [`Slice 0405`](slices/0405_ae_artifact_service_api_persisted_wiring.md) | `S41-005` AE artifact service API persisted wiring. |
 | [`Slice 0406`](slices/0406_ae_artifact_postgresql_smoke_evidence.md) | `S41-006` AE artifact PostgreSQL smoke evidence. |
+| [`Slice 0407`](slices/0407_ae_chat_artifact_refs_persistence_foundation.md) | `S41-007` AE chat artifact refs persistence foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
