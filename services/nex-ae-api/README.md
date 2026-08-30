@@ -217,6 +217,13 @@ Artifact records:
   through the Markdown renderer. S43 should add export/transform adapters behind
   the existing AE render job, artifact file, link, and private payload storage
   boundary instead of moving conversion responsibility to CX or the browser.
+- Slice 0422 adds the AE export/transform catalog and format-neutral rendered
+  payload storage contract. `ARTIFACT_TRANSFORMER_CATALOG` now centralizes
+  target format, MIME type, extension, render stage, content kind, and current
+  implementation state for `MD`, `HTML_PREVIEW`, `DOCX`, and `PDF`.
+  Rendered payload storage now supports typed bytes through
+  `save_rendered_artifact_file(...)` and `get_rendered_artifact_file(...)`
+  while keeping the older Markdown helper methods as compatibility wrappers.
 
 Prompt analytics:
 

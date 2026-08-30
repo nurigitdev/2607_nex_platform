@@ -21,7 +21,12 @@ from nex_ae_api.artifacts import (
     SqlAlchemyArtifactHandoffStore,
     SqlAlchemyArtifactRecordStore,
     actor_claims_ref_from_payload,
+    artifact_content_kind,
+    artifact_file_extension,
+    artifact_file_name_for_format,
     artifact_intent_from_payload,
+    artifact_mime_type,
+    artifact_format_spec,
     artifact_type_from_payload,
     build_artifact_links,
     build_default_artifact_handoff_store,
@@ -30,6 +35,7 @@ from nex_ae_api.artifacts import (
     build_artifact_handoff_record,
     build_markdown_artifact_files,
     build_markdown_render_result,
+    build_rendered_artifact_file,
     build_artifact_record_from_handoff,
     deterministic_render_job_id,
     language_from_payload,
@@ -37,7 +43,9 @@ from nex_ae_api.artifacts import (
     register_artifact_handoff_routes,
     render_markdown_from_structured_draft,
     resolve_artifact_file_payload,
+    resolve_rendered_artifact_file_payload,
     safe_file_stem,
+    sha256_bytes,
     target_formats_from_payload,
     validate_artifact_handoff_record,
     validate_structured_draft_for_markdown_render,
@@ -577,6 +585,205 @@ def test_artifact_file_metadata_helpers_create_safe_routes_and_refs() -> None:
     assert {link["link_type"] for link in links} == {"preview", "download"}
     assert all(link["link_route"].startswith("/api/v1/artifact-files/") for link in links)
     assert all(link["access_policy"] == "owner_only" for link in links)
+
+
+def test_artifact_transformer_catalog_and_format_helpers_are_explicit() -> None:
+    assert set(ae_artifacts.ARTIFACT_TRANSFORMER_CATALOG) == {
+        "MD",
+        "HTML_PREVIEW",
+        "DOCX",
+        "PDF",
+    }
+    assert ae_artifacts.IMPLEMENTED_RENDER_FORMATS == {"MD"}
+    assert artifact_format_spec("MD")["render_stage"] == "MARKDOWN_RENDERING"
+    assert artifact_format_spec("DOCX")["content_kind"] == "binary"
+    assert artifact_mime_type("HTML_PREVIEW") == "text/html"
+    assert artifact_file_extension("PDF") == "pdf"
+    assert artifact_content_kind("DOCX") == "binary"
+    assert artifact_file_name_for_format("Generated Report: 2026/08", "DOCX") == (
+        "generated-report-2026-08.docx"
+    )
+
+    with pytest.raises(ArtifactHandoffError) as exc_info:
+        artifact_format_spec("TXT")
+    assert exc_info.value.error_code == "ae.render_format_unsupported"
+
+
+def test_build_rendered_artifact_file_uses_format_catalog_and_bytes_hash() -> None:
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={
+            "artifact_request_id": "artifact-create-001",
+            "display_title": "Generated Report: 2026/08",
+        },
+        handoff_record=sample_handoff_record(),
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    render_result = build_markdown_render_result(
+        artifact_record=artifact_record,
+        structured_draft=sample_structured_draft(),
+        target_formats=["MD"],
+        render_request_id="render-request-001",
+        render_job_id=deterministic_render_job_id(
+            artifact_record["artifact_id"],
+            "render-request-001",
+        ),
+    )
+    payload = b"%PDF-safe-future-export"
+
+    artifact_file = build_rendered_artifact_file(
+        artifact_record=artifact_record,
+        artifact_version=render_result["artifact_version"],
+        target_format="PDF",
+        payload=payload,
+    )
+
+    assert artifact_file["format"] == "PDF"
+    assert artifact_file["mime_type"] == "application/pdf"
+    assert artifact_file["file_name"] == "generated-report-2026-08.pdf"
+    assert artifact_file["file_size_bytes"] == len(payload)
+    assert artifact_file["file_hash"] == sha256_bytes(payload)
+    assert artifact_file["source_version_hash"] == render_result["artifact_version"][
+        "artifact_content_hash"
+    ]
+    assert artifact_file["storage_ref"].endswith("/generated-report-2026-08.pdf")
+    assert "/data/nex-platform" not in artifact_file["storage_ref"]
+
+
+def test_format_neutral_storage_round_trips_text_and_binary_payloads(tmp_path) -> None:
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-create-001"},
+        handoff_record=sample_handoff_record(),
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    render_result = build_markdown_render_result(
+        artifact_record=artifact_record,
+        structured_draft=sample_structured_draft(),
+        target_formats=["MD"],
+        render_request_id="render-request-001",
+        render_job_id=deterministic_render_job_id(
+            artifact_record["artifact_id"],
+            "render-request-001",
+        ),
+    )
+    markdown_file = render_result["artifact_files"][0]
+    pdf_file = build_rendered_artifact_file(
+        artifact_record=artifact_record,
+        artifact_version=render_result["artifact_version"],
+        target_format="PDF",
+        payload=b"%PDF-safe",
+    )
+    memory_storage = InMemoryRenderedArtifactStorage()
+    local_storage = LocalRenderedArtifactStorage(tmp_path / "artifact-storage")
+
+    assert memory_storage.save_rendered_artifact_file(pdf_file, b"%PDF-safe") == (
+        pdf_file["storage_ref"]
+    )
+    assert memory_storage.get_rendered_artifact_file(pdf_file) == b"%PDF-safe"
+    assert memory_storage.save_markdown(markdown_file, render_result["markdown"]) == (
+        markdown_file["storage_ref"]
+    )
+    assert memory_storage.get_rendered_artifact_file(markdown_file) == (
+        render_result["markdown"].encode("utf-8")
+    )
+    assert memory_storage.get_markdown(markdown_file) == render_result["markdown"]
+
+    assert local_storage.get_rendered_artifact_file(pdf_file) is None
+    assert local_storage.save_rendered_artifact_file(pdf_file, b"%PDF-safe") == (
+        pdf_file["storage_ref"]
+    )
+    assert local_storage.get_rendered_artifact_file(pdf_file) == b"%PDF-safe"
+    assert local_storage.save_markdown(markdown_file, render_result["markdown"]) == (
+        markdown_file["storage_ref"]
+    )
+    assert local_storage.get_markdown(markdown_file) == render_result["markdown"]
+    assert list((tmp_path / "artifact-storage").rglob("*.pdf"))
+    assert list((tmp_path / "artifact-storage").rglob("*.md"))
+
+
+def test_artifact_record_store_keeps_format_neutral_payloads_private() -> None:
+    store = ArtifactRecordStore()
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-create-001"},
+        handoff_record=sample_handoff_record(),
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.create(artifact_record)
+    render_result = build_markdown_render_result(
+        artifact_record=artifact_record,
+        structured_draft=sample_structured_draft(),
+        target_formats=["MD"],
+        render_request_id="render-request-001",
+        render_job_id=deterministic_render_job_id(
+            artifact_record["artifact_id"],
+            "render-request-001",
+        ),
+    )
+    artifact_file = render_result["artifact_files"][0]
+
+    updated = store.apply_markdown_render(
+        artifact_id=artifact_record["artifact_id"],
+        artifact_version=render_result["artifact_version"],
+        render_job=render_result["render_job"],
+        markdown=render_result["markdown"],
+        artifact_files=render_result["artifact_files"],
+        artifact_links=render_result["artifact_links"],
+        rendered_payloads={"MD": render_result["markdown"].encode("utf-8")},
+    )
+    file_payload = resolve_rendered_artifact_file_payload(
+        store,
+        artifact_file_id=artifact_file["artifact_file_id"],
+        link_type="download",
+    )
+
+    assert updated["files"][0] == artifact_file
+    assert store.get_rendered_artifact_file(artifact_file) == (
+        render_result["markdown"].encode("utf-8")
+    )
+    assert file_payload[2] == render_result["markdown"].encode("utf-8")
+    assert render_result["markdown"] not in str(updated)
+
+
+def test_resolve_rendered_artifact_file_payload_reports_missing_payload() -> None:
+    store = ArtifactRecordStore()
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-create-001"},
+        handoff_record=sample_handoff_record(),
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store.create(artifact_record)
+    render_result = build_markdown_render_result(
+        artifact_record=artifact_record,
+        structured_draft=sample_structured_draft(),
+        target_formats=["MD"],
+        render_request_id="render-request-001",
+        render_job_id=deterministic_render_job_id(
+            artifact_record["artifact_id"],
+            "render-request-001",
+        ),
+    )
+    artifact_file = render_result["artifact_files"][0]
+    store.artifact_files[artifact_file["artifact_file_id"]] = artifact_file
+    store.artifact_links[render_result["artifact_links"][1]["artifact_link_id"]] = (
+        render_result["artifact_links"][1]
+    )
+
+    with pytest.raises(ArtifactHandoffError) as exc_info:
+        resolve_rendered_artifact_file_payload(
+            store,
+            artifact_file_id=artifact_file["artifact_file_id"],
+            link_type="download",
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.error_code == "ae.artifact_file_not_ready"
 
 
 def test_markdown_render_guards_reject_invalid_sources_and_formats() -> None:

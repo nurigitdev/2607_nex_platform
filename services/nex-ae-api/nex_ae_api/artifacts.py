@@ -33,6 +33,51 @@ DEFAULT_TARGET_FORMATS = ["MD", "HTML_PREVIEW"]
 DEFAULT_RETENTION_POLICY_REF = "generated-artifact-retention-local-v1"
 DEFAULT_ARTIFACT_TYPE = "generated_document"
 MARKDOWN_RENDERER_POLICY_ID = "ae-markdown-renderer-v1"
+ARTIFACT_TRANSFORMER_CATALOG = {
+    "MD": {
+        "format": "MD",
+        "mime_type": "text/markdown",
+        "extension": "md",
+        "render_stage": "MARKDOWN_RENDERING",
+        "content_kind": "text",
+        "materializer": "markdown_renderer",
+        "implemented": True,
+    },
+    "HTML_PREVIEW": {
+        "format": "HTML_PREVIEW",
+        "mime_type": "text/html",
+        "extension": "html",
+        "render_stage": "HTML_PREVIEW_RENDERING",
+        "content_kind": "text",
+        "materializer": "html_preview_transformer",
+        "implemented": False,
+    },
+    "DOCX": {
+        "format": "DOCX",
+        "mime_type": (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ),
+        "extension": "docx",
+        "render_stage": "DOCX_RENDERING",
+        "content_kind": "binary",
+        "materializer": "docx_export_transformer",
+        "implemented": False,
+    },
+    "PDF": {
+        "format": "PDF",
+        "mime_type": "application/pdf",
+        "extension": "pdf",
+        "render_stage": "PDF_RENDERING",
+        "content_kind": "binary",
+        "materializer": "pdf_export_transformer",
+        "implemented": False,
+    },
+}
+IMPLEMENTED_RENDER_FORMATS = {
+    target_format
+    for target_format, spec in ARTIFACT_TRANSFORMER_CATALOG.items()
+    if spec["implemented"]
+}
 ARTIFACT_HANDOFF_JSON_FIELDS = (
     "actor_claims_ref",
     "workspace_ref",
@@ -79,6 +124,19 @@ class CxArtifactSourceClient(Protocol):
 
 
 class RenderedArtifactStorage(Protocol):
+    def save_rendered_artifact_file(
+        self,
+        artifact_file: dict[str, Any],
+        payload: bytes,
+    ) -> str:
+        ...
+
+    def get_rendered_artifact_file(
+        self,
+        artifact_file: dict[str, Any],
+    ) -> bytes | None:
+        ...
+
     def save_markdown(self, artifact_file: dict[str, Any], markdown: str) -> str:
         ...
 
@@ -167,6 +225,7 @@ class ArtifactRecordStore:
     records: dict[str, dict[str, Any]] = field(default_factory=dict)
     render_jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
     rendered_markdown: dict[str, str] = field(default_factory=dict)
+    rendered_artifact_files: dict[str, bytes] = field(default_factory=dict)
     artifact_files: dict[str, dict[str, Any]] = field(default_factory=dict)
     artifact_links: dict[str, dict[str, Any]] = field(default_factory=dict)
 
@@ -196,6 +255,18 @@ class ArtifactRecordStore:
     def get_rendered_markdown(self, artifact_version_id: str) -> str | None:
         return self.rendered_markdown.get(artifact_version_id)
 
+    def get_rendered_artifact_file(
+        self,
+        artifact_file: dict[str, Any],
+    ) -> bytes | None:
+        payload = self.rendered_artifact_files.get(artifact_file["artifact_file_id"])
+        if payload is not None:
+            return payload
+        markdown = self.get_rendered_markdown(artifact_file["artifact_version_id"])
+        if artifact_file["format"] == "MD" and markdown is not None:
+            return markdown.encode("utf-8")
+        return None
+
     def get_file(self, artifact_file_id: str) -> dict[str, Any] | None:
         return self.artifact_files.get(artifact_file_id)
 
@@ -221,8 +292,10 @@ class ArtifactRecordStore:
         markdown: str,
         artifact_files: list[dict[str, Any]],
         artifact_links: list[dict[str, Any]],
+        rendered_payloads: dict[str, bytes] | None = None,
     ) -> dict[str, Any]:
         record = self.records[artifact_id]
+        payloads = rendered_payloads or {"MD": markdown.encode("utf-8")}
         record["versions"].append(artifact_version)
         record["render_jobs"].append(render_job)
         record["files"].extend(artifact_files)
@@ -234,6 +307,9 @@ class ArtifactRecordStore:
         self.rendered_markdown[artifact_version["artifact_version_id"]] = markdown
         for artifact_file in artifact_files:
             self.artifact_files[artifact_file["artifact_file_id"]] = artifact_file
+            payload = rendered_payload_for_file(artifact_file, payloads)
+            if payload is not None:
+                self.rendered_artifact_files[artifact_file["artifact_file_id"]] = payload
         for artifact_link in artifact_links:
             self.artifact_links[artifact_link["artifact_link_id"]] = artifact_link
         return record
@@ -242,30 +318,76 @@ class ArtifactRecordStore:
 @dataclass
 class InMemoryRenderedArtifactStorage:
     rendered_markdown: dict[str, str] = field(default_factory=dict)
+    rendered_artifact_files: dict[str, bytes] = field(default_factory=dict)
 
-    def save_markdown(self, artifact_file: dict[str, Any], markdown: str) -> str:
-        self.rendered_markdown[artifact_file["artifact_version_id"]] = markdown
+    def save_rendered_artifact_file(
+        self,
+        artifact_file: dict[str, Any],
+        payload: bytes,
+    ) -> str:
+        self.rendered_artifact_files[artifact_file["artifact_file_id"]] = payload
+        if artifact_file["format"] == "MD":
+            self.rendered_markdown[artifact_file["artifact_version_id"]] = (
+                payload.decode("utf-8")
+            )
         return artifact_file["storage_ref"]
 
+    def get_rendered_artifact_file(
+        self,
+        artifact_file: dict[str, Any],
+    ) -> bytes | None:
+        payload = self.rendered_artifact_files.get(artifact_file["artifact_file_id"])
+        if payload is not None:
+            return payload
+        markdown = self.rendered_markdown.get(artifact_file["artifact_version_id"])
+        if artifact_file["format"] == "MD" and markdown is not None:
+            return markdown.encode("utf-8")
+        return None
+
+    def save_markdown(self, artifact_file: dict[str, Any], markdown: str) -> str:
+        return self.save_rendered_artifact_file(artifact_file, markdown.encode("utf-8"))
+
     def get_markdown(self, artifact_file: dict[str, Any]) -> str | None:
-        return self.rendered_markdown.get(artifact_file["artifact_version_id"])
+        payload = self.get_rendered_artifact_file(artifact_file)
+        if payload is None:
+            return None
+        return payload.decode("utf-8")
 
 
 @dataclass(frozen=True)
 class LocalRenderedArtifactStorage:
     root: Path
 
-    def save_markdown(self, artifact_file: dict[str, Any], markdown: str) -> str:
+    def save_rendered_artifact_file(
+        self,
+        artifact_file: dict[str, Any],
+        payload: bytes,
+    ) -> str:
         path = self.path_for_storage_ref(artifact_file["storage_ref"])
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(markdown, encoding="utf-8")
+        path.write_bytes(payload)
         return artifact_file["storage_ref"]
 
-    def get_markdown(self, artifact_file: dict[str, Any]) -> str | None:
+    def get_rendered_artifact_file(
+        self,
+        artifact_file: dict[str, Any],
+    ) -> bytes | None:
         path = self.path_for_storage_ref(artifact_file["storage_ref"])
         if not path.exists():
             return None
-        return path.read_text(encoding="utf-8")
+        return path.read_bytes()
+
+    def save_markdown(self, artifact_file: dict[str, Any], markdown: str) -> str:
+        return self.save_rendered_artifact_file(
+            artifact_file,
+            markdown.encode("utf-8"),
+        )
+
+    def get_markdown(self, artifact_file: dict[str, Any]) -> str | None:
+        payload = self.get_rendered_artifact_file(artifact_file)
+        if payload is None:
+            return None
+        return payload.decode("utf-8")
 
     def path_for_storage_ref(self, storage_ref: str) -> Path:
         relative = _storage_ref_relative_path(storage_ref)
@@ -365,6 +487,11 @@ class SqlAlchemyArtifactRecordStore:
         self._session_factory = session_factory
         self._rendered_storage = rendered_storage or InMemoryRenderedArtifactStorage()
         self.rendered_markdown = getattr(self._rendered_storage, "rendered_markdown", {})
+        self.rendered_artifact_files = getattr(
+            self._rendered_storage,
+            "rendered_artifact_files",
+            {},
+        )
 
     def create(self, record: dict[str, Any]) -> dict[str, Any]:
         existing = self.get(record["artifact_id"])
@@ -430,6 +557,12 @@ class SqlAlchemyArtifactRecordStore:
             return None
         return self._rendered_storage.get_markdown(artifact_file)
 
+    def get_rendered_artifact_file(
+        self,
+        artifact_file: dict[str, Any],
+    ) -> bytes | None:
+        return self._rendered_storage.get_rendered_artifact_file(artifact_file)
+
     def get_file(self, artifact_file_id: str) -> dict[str, Any] | None:
         try:
             with self._session_factory() as session:
@@ -491,6 +624,7 @@ class SqlAlchemyArtifactRecordStore:
         markdown: str,
         artifact_files: list[dict[str, Any]],
         artifact_links: list[dict[str, Any]],
+        rendered_payloads: dict[str, bytes] | None = None,
     ) -> dict[str, Any]:
         record = self.get(artifact_id)
         if record is None:
@@ -506,9 +640,14 @@ class SqlAlchemyArtifactRecordStore:
         record["artifact_status"] = "READY"
         record["current_version_id"] = artifact_version["artifact_version_id"]
         record["updated_at"] = render_job["completed_at"]
+        payloads = rendered_payloads or {"MD": markdown.encode("utf-8")}
         for artifact_file in artifact_files:
-            if artifact_file["format"] == "MD":
-                self._rendered_storage.save_markdown(artifact_file, markdown)
+            payload = rendered_payload_for_file(artifact_file, payloads)
+            if payload is not None:
+                self._rendered_storage.save_rendered_artifact_file(
+                    artifact_file,
+                    payload,
+                )
         return self.save(record)
 
     def delete(self, artifact_id: str) -> int:
@@ -1182,31 +1321,80 @@ def build_markdown_artifact_files(
     artifact_version: dict[str, Any],
     markdown: str,
 ) -> list[dict[str, Any]]:
+    return [
+        build_rendered_artifact_file(
+            artifact_record=artifact_record,
+            artifact_version=artifact_version,
+            target_format="MD",
+            payload=markdown.encode("utf-8"),
+        )
+    ]
+
+
+def build_rendered_artifact_file(
+    *,
+    artifact_record: dict[str, Any],
+    artifact_version: dict[str, Any],
+    target_format: str,
+    payload: bytes,
+) -> dict[str, Any]:
+    spec = artifact_format_spec(target_format)
     artifact_file_id = str(
         uuid5(
             NAMESPACE_URL,
-            f"ae-artifact-file:{artifact_version['artifact_version_id']}:MD",
+            (
+                "ae-artifact-file:"
+                f"{artifact_version['artifact_version_id']}:{spec['format']}"
+            ),
         )
     )
-    file_name = f"{safe_file_stem(artifact_record['display_title'])}.md"
-    return [
-        {
-            "artifact_file_id": artifact_file_id,
-            "artifact_version_id": artifact_version["artifact_version_id"],
-            "format": "MD",
-            "mime_type": "text/markdown",
-            "file_name": file_name,
-            "storage_ref": (
-                "ae://artifacts/"
-                f"{artifact_record['artifact_id']}/versions/"
-                f"{artifact_version['artifact_version_id']}/{file_name}"
-            ),
-            "file_size_bytes": len(markdown.encode("utf-8")),
-            "file_hash": sha256_text(markdown),
-            "source_version_hash": artifact_version["artifact_content_hash"],
-            "created_at": artifact_version["created_at"],
-        }
-    ]
+    file_name = artifact_file_name_for_format(
+        artifact_record["display_title"],
+        spec["format"],
+    )
+    return {
+        "artifact_file_id": artifact_file_id,
+        "artifact_version_id": artifact_version["artifact_version_id"],
+        "format": spec["format"],
+        "mime_type": spec["mime_type"],
+        "file_name": file_name,
+        "storage_ref": (
+            "ae://artifacts/"
+            f"{artifact_record['artifact_id']}/versions/"
+            f"{artifact_version['artifact_version_id']}/{file_name}"
+        ),
+        "file_size_bytes": len(payload),
+        "file_hash": sha256_bytes(payload),
+        "source_version_hash": artifact_version["artifact_content_hash"],
+        "created_at": artifact_version["created_at"],
+    }
+
+
+def artifact_format_spec(target_format: str) -> dict[str, Any]:
+    spec = ARTIFACT_TRANSFORMER_CATALOG.get(target_format)
+    if spec is None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.render_format_unsupported",
+            detail=f"Unsupported render format: {target_format}",
+        )
+    return dict(spec)
+
+
+def artifact_mime_type(target_format: str) -> str:
+    return str(artifact_format_spec(target_format)["mime_type"])
+
+
+def artifact_file_extension(target_format: str) -> str:
+    return str(artifact_format_spec(target_format)["extension"])
+
+
+def artifact_content_kind(target_format: str) -> str:
+    return str(artifact_format_spec(target_format)["content_kind"])
+
+
+def artifact_file_name_for_format(title: str, target_format: str) -> str:
+    return f"{safe_file_stem(title)}.{artifact_file_extension(target_format)}"
 
 
 def build_artifact_links(
@@ -1282,6 +1470,46 @@ def resolve_artifact_file_payload(
             detail="Artifact file content is not ready.",
         )
     return artifact_file, artifact_link, markdown
+
+
+def resolve_rendered_artifact_file_payload(
+    store: ArtifactRecordStore,
+    *,
+    artifact_file_id: str,
+    link_type: str,
+) -> tuple[dict[str, Any], dict[str, Any], bytes]:
+    artifact_file = store.get_file(artifact_file_id)
+    if artifact_file is None:
+        raise ArtifactHandoffError(
+            status_code=404,
+            error_code="ae.artifact_file_not_found",
+            detail=f"Artifact file was not found: {artifact_file_id}",
+        )
+    artifact_link = store.get_file_link(artifact_file_id, link_type)
+    if artifact_link is None:
+        raise ArtifactHandoffError(
+            status_code=404,
+            error_code="ae.artifact_link_not_found",
+            detail=f"Artifact {link_type} link was not found: {artifact_file_id}",
+        )
+    payload = store.get_rendered_artifact_file(artifact_file)
+    if payload is None:
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.artifact_file_not_ready",
+            detail="Artifact file content is not ready.",
+        )
+    return artifact_file, artifact_link, payload
+
+
+def rendered_payload_for_file(
+    artifact_file: dict[str, Any],
+    rendered_payloads: dict[str, bytes],
+) -> bytes | None:
+    return (
+        rendered_payloads.get(artifact_file["artifact_file_id"])
+        or rendered_payloads.get(artifact_file["format"])
+    )
 
 
 def safe_file_stem(value: str) -> str:
@@ -1595,6 +1823,10 @@ def sha256_json(value: dict[str, Any]) -> str:
 
 def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
 
 
 def _authorize_ae_request(
