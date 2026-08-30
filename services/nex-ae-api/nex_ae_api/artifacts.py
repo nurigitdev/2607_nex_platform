@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import html
 import json
@@ -7,11 +8,13 @@ import os
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
 import httpx
+from docx import Document
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -62,7 +65,7 @@ ARTIFACT_TRANSFORMER_CATALOG = {
         "render_stage": "DOCX_RENDERING",
         "content_kind": "binary",
         "materializer": "docx_export_transformer",
-        "implemented": False,
+        "implemented": True,
     },
     "PDF": {
         "format": "PDF",
@@ -1053,7 +1056,6 @@ def register_artifact_handoff_routes(
                 artifact_file_id=artifact_file_id,
                 link_type="download",
             )
-            rendered_text = rendered_text_from_payload(artifact_file, payload)
             return {
                 "download_schema_version": "ae_artifact_file_download.v1",
                 "artifact_file": artifact_file,
@@ -1061,7 +1063,7 @@ def register_artifact_handoff_routes(
                 "download_file_name": artifact_file["file_name"],
                 "content_type": artifact_file["mime_type"],
                 "content_hash": artifact_file["file_hash"],
-                "content": rendered_text,
+                **rendered_download_fields_from_payload(artifact_file, payload),
             }
         except ArtifactHandoffError as exc:
             return _artifact_problem_response(request, exc)
@@ -1333,6 +1335,8 @@ def build_rendered_payloads_from_markdown(
         payloads["HTML_PREVIEW"] = render_html_preview_from_markdown(markdown).encode(
             "utf-8"
         )
+    if "DOCX" in target_formats:
+        payloads["DOCX"] = render_docx_export_from_markdown(markdown)
     return payloads
 
 
@@ -1390,6 +1394,20 @@ def build_html_preview_artifact_file(
         artifact_version=artifact_version,
         target_format="HTML_PREVIEW",
         payload=html_preview.encode("utf-8"),
+    )
+
+
+def build_docx_export_artifact_file(
+    *,
+    artifact_record: dict[str, Any],
+    artifact_version: dict[str, Any],
+    docx_payload: bytes,
+) -> dict[str, Any]:
+    return build_rendered_artifact_file(
+        artifact_record=artifact_record,
+        artifact_version=artifact_version,
+        target_format="DOCX",
+        payload=docx_payload,
     )
 
 
@@ -1597,6 +1615,18 @@ def rendered_text_from_payload(
         ) from exc
 
 
+def rendered_download_fields_from_payload(
+    artifact_file: dict[str, Any],
+    payload: bytes,
+) -> dict[str, str]:
+    if artifact_content_kind(artifact_file["format"]) == "text":
+        return {"content": rendered_text_from_payload(artifact_file, payload)}
+    return {
+        "content_encoding": "base64",
+        "content_base64": base64.b64encode(payload).decode("ascii"),
+    }
+
+
 def safe_file_stem(value: str) -> str:
     normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip().lower())
     return normalized.strip(".-_")[:64] or "artifact"
@@ -1689,6 +1719,29 @@ def render_html_preview_from_markdown(markdown: str) -> str:
         "</body>\n"
         "</html>\n"
     )
+
+
+def render_docx_export_from_markdown(markdown: str) -> bytes:
+    document = Document()
+    emitted = False
+    for raw_line in markdown.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        emitted = True
+        if line.startswith("# "):
+            document.add_heading(line[2:].strip(), level=1)
+        elif line.startswith("## "):
+            document.add_heading(line[3:].strip(), level=2)
+        elif line.startswith("- "):
+            document.add_paragraph(line[2:].strip(), style="List Bullet")
+        else:
+            document.add_paragraph(line)
+    if not emitted:
+        document.add_paragraph("")
+    buffer = BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
 
 
 def validate_structured_draft_for_markdown_render(

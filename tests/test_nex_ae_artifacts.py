@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
+from io import BytesIO
 from types import SimpleNamespace
 from typing import Any
+from zipfile import ZipFile
 
 import httpx
 import pytest
@@ -34,6 +37,7 @@ from nex_ae_api.artifacts import (
     build_default_artifact_record_store,
     build_default_rendered_artifact_storage,
     build_artifact_handoff_record,
+    build_docx_export_artifact_file,
     build_html_preview_artifact_file,
     build_markdown_artifact_files,
     build_markdown_render_result,
@@ -44,9 +48,11 @@ from nex_ae_api.artifacts import (
     language_from_payload,
     markdown_target_formats_from_payload,
     register_artifact_handoff_routes,
+    render_docx_export_from_markdown,
     render_html_preview_from_markdown,
     render_markdown_from_structured_draft,
     render_target_formats_from_payload,
+    rendered_download_fields_from_payload,
     rendered_text_from_payload,
     resolve_artifact_file_payload,
     resolve_rendered_artifact_file_payload,
@@ -192,7 +198,7 @@ def artifact_payload() -> dict[str, Any]:
         "tenant_id": "tenant-001",
         "owner_user_id": "user-001",
         "artifact_intent": "create_and_export",
-        "target_formats": ["MD", "HTML_PREVIEW", "PDF", "MD"],
+        "target_formats": ["MD", "HTML_PREVIEW", "DOCX", "PDF", "MD"],
         "artifact_title": "Generated report",
         "language": "ko",
         "actor_claims_ref": {
@@ -438,7 +444,7 @@ def test_build_artifact_handoff_record_copies_only_safe_lineage() -> None:
     assert record["handoff_schema_version"] == "ae_artifact_handoff.v1"
     assert record["handoff_status"] == "READY_FOR_RENDERING"
     assert record["artifact_title"] == "Generated report"
-    assert record["target_formats"] == ["MD", "HTML_PREVIEW", "PDF"]
+    assert record["target_formats"] == ["MD", "HTML_PREVIEW", "DOCX", "PDF"]
     assert record["structured_draft_content_hash"] == "c" * 64
     assert len(record["citation_claims_hash"]) == 64
     assert len(record["validation_result_hash"]) == 64
@@ -600,7 +606,7 @@ def test_artifact_transformer_catalog_and_format_helpers_are_explicit() -> None:
         "DOCX",
         "PDF",
     }
-    assert ae_artifacts.IMPLEMENTED_RENDER_FORMATS == {"MD", "HTML_PREVIEW"}
+    assert ae_artifacts.IMPLEMENTED_RENDER_FORMATS == {"MD", "HTML_PREVIEW", "DOCX"}
     assert artifact_format_spec("MD")["render_stage"] == "MARKDOWN_RENDERING"
     assert artifact_format_spec("DOCX")["content_kind"] == "binary"
     assert artifact_mime_type("HTML_PREVIEW") == "text/html"
@@ -615,7 +621,7 @@ def test_artifact_transformer_catalog_and_format_helpers_are_explicit() -> None:
     assert exc_info.value.error_code == "ae.render_format_unsupported"
 
 
-def test_render_target_formats_allows_html_preview_and_defers_exports() -> None:
+def test_render_target_formats_allows_html_preview_docx_and_defers_pdf() -> None:
     artifact_record = build_artifact_record_from_handoff(
         source_payload={"artifact_request_id": "artifact-create-001"},
         handoff_record=sample_handoff_record(),
@@ -629,6 +635,10 @@ def test_render_target_formats_allows_html_preview_and_defers_exports() -> None:
         {"target_formats": ["MD", "HTML_PREVIEW", "MD"]},
         artifact_record,
     ) == ["MD", "HTML_PREVIEW"]
+    assert render_target_formats_from_payload(
+        {"target_formats": ["DOCX", "HTML_PREVIEW"]},
+        artifact_record,
+    ) == ["DOCX", "HTML_PREVIEW"]
 
     with pytest.raises(ArtifactHandoffError) as empty_exc:
         render_target_formats_from_payload({"target_formats": []}, artifact_record)
@@ -727,6 +737,71 @@ def test_markdown_render_result_materializes_html_preview_file() -> None:
     assert "<article class=\"ae-artifact-preview\">" in html_preview
 
 
+def test_docx_export_materializer_builds_ooxml_bytes() -> None:
+    docx_payload = render_docx_export_from_markdown(
+        "# Report <x>\n"
+        "\n"
+        "Intro paragraph.\n"
+        "\n"
+        "## Findings\n"
+        "\n"
+        "- first item\n"
+        "- second item\n"
+    )
+
+    assert docx_payload.startswith(b"PK")
+    with ZipFile(BytesIO(docx_payload)) as archive:
+        names = set(archive.namelist())
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+
+    assert "word/document.xml" in names
+    assert "Report &lt;x&gt;" in document_xml
+    assert "Intro paragraph." in document_xml
+    assert "Findings" in document_xml
+    assert "first item" in document_xml
+    assert "/data/nex-platform" not in document_xml
+
+
+def test_markdown_render_result_materializes_docx_file() -> None:
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-create-001"},
+        handoff_record=sample_handoff_record(),
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    result = build_markdown_render_result(
+        artifact_record=artifact_record,
+        structured_draft=sample_structured_draft(),
+        target_formats=["MD", "DOCX"],
+        render_request_id="render-request-001",
+        render_job_id=deterministic_render_job_id(
+            artifact_record["artifact_id"],
+            "render-request-001",
+        ),
+    )
+    docx_file = next(
+        artifact_file
+        for artifact_file in result["artifact_files"]
+        if artifact_file["format"] == "DOCX"
+    )
+    helper_file = build_docx_export_artifact_file(
+        artifact_record=artifact_record,
+        artifact_version=result["artifact_version"],
+        docx_payload=result["rendered_payloads"]["DOCX"],
+    )
+
+    assert result["artifact_version"]["rendered_formats"] == ["MD", "DOCX"]
+    assert set(result["rendered_payloads"]) == {"MD", "DOCX"}
+    assert docx_file["mime_type"] == (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    assert docx_file["file_name"].endswith(".docx")
+    assert docx_file["file_size_bytes"] == len(result["rendered_payloads"]["DOCX"])
+    assert docx_file["file_hash"] == sha256_bytes(result["rendered_payloads"]["DOCX"])
+    assert helper_file == docx_file
+
+
 def test_rendered_payload_builders_report_unimplemented_format() -> None:
     artifact_record = build_artifact_record_from_handoff(
         source_payload={"artifact_request_id": "artifact-create-001"},
@@ -750,7 +825,7 @@ def test_rendered_payload_builders_report_unimplemented_format() -> None:
         ae_artifacts.build_rendered_artifact_files_from_payloads(
             artifact_record=artifact_record,
             artifact_version=render_result["artifact_version"],
-            target_formats=["DOCX"],
+            target_formats=["PDF"],
             rendered_payloads=build_rendered_payloads_from_markdown(
                 render_result["markdown"],
                 ["MD"],
@@ -960,6 +1035,31 @@ def test_rendered_text_from_payload_rejects_binary_and_invalid_utf8() -> None:
     with pytest.raises(ArtifactHandoffError) as utf8_exc:
         rendered_text_from_payload(markdown_file, b"\xff\xfe")
     assert utf8_exc.value.error_code == "ae.artifact_file_not_ready"
+
+
+def test_rendered_download_fields_encode_binary_payloads() -> None:
+    markdown_file = {
+        "format": "MD",
+        "mime_type": "text/markdown",
+        "artifact_file_id": "file-md",
+    }
+    docx_file = {
+        "format": "DOCX",
+        "mime_type": (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ),
+        "artifact_file_id": "file-docx",
+    }
+    docx_payload = b"PK-docx-bytes"
+
+    assert rendered_download_fields_from_payload(markdown_file, b"# Safe\n") == {
+        "content": "# Safe\n"
+    }
+    encoded = rendered_download_fields_from_payload(docx_file, docx_payload)
+
+    assert encoded["content_encoding"] == "base64"
+    assert base64.b64decode(encoded["content_base64"]) == docx_payload
+    assert "content" not in encoded
 
 
 def test_markdown_render_guards_reject_invalid_sources_and_formats() -> None:
@@ -1226,6 +1326,50 @@ def test_html_preview_render_route_updates_artifact_and_private_storage() -> Non
     assert download.json()["content_hash"] == html_file["file_hash"]
 
 
+def test_docx_render_route_stores_binary_and_downloads_base64() -> None:
+    client, handoff_store, artifact_store, _ = build_client_with_artifact_store()
+    handoff = handoff_store.save(sample_handoff_record())
+    created = client.post(
+        "/api/v1/artifacts",
+        json={"artifact_handoff_id": handoff["artifact_handoff_id"]},
+        headers={**auth_headers(), "Idempotency-Key": "artifact-create-001"},
+    )
+    artifact_id = created.json()["artifact_id"]
+
+    rendered = client.post(
+        f"/api/v1/artifacts/{artifact_id}/render-jobs",
+        json={"target_formats": ["DOCX"]},
+        headers={**auth_headers(), "Idempotency-Key": "render-request-docx-001"},
+    )
+    artifact = rendered.json()["artifact"]
+    docx_file = artifact["files"][0]
+    preview = client.get(
+        f"/api/v1/artifact-files/{docx_file['artifact_file_id']}/preview",
+        headers=auth_headers(),
+    )
+    download = client.get(
+        f"/api/v1/artifact-files/{docx_file['artifact_file_id']}/download",
+        headers=auth_headers(),
+    )
+    stored_payload = artifact_store.get_rendered_artifact_file(docx_file)
+
+    assert rendered.status_code == 200
+    assert artifact["versions"][0]["rendered_formats"] == ["DOCX"]
+    assert docx_file["format"] == "DOCX"
+    assert docx_file["file_name"].endswith(".docx")
+    assert stored_payload is not None
+    assert stored_payload.startswith(b"PK")
+    assert preview.status_code == 409
+    assert preview.json()["error_code"] == "ae.artifact_file_preview_unavailable"
+    assert download.status_code == 200
+    assert download.json()["content_type"] == docx_file["mime_type"]
+    assert download.json()["download_file_name"] == docx_file["file_name"]
+    assert download.json()["content_hash"] == docx_file["file_hash"]
+    assert download.json()["content_encoding"] == "base64"
+    assert base64.b64decode(download.json()["content_base64"]) == stored_payload
+    assert "content" not in download.json()
+
+
 def test_markdown_render_route_reports_missing_and_invalid_requests() -> None:
     client, handoff_store, _, source_client = build_client_with_artifact_store()
     handoff = handoff_store.save(sample_handoff_record())
@@ -1489,7 +1633,7 @@ def test_sqlalchemy_artifact_handoff_store_round_trips_with_sqlite() -> None:
     assert saved_again["artifact_title"] == "Generated report v2"
     assert loaded_again is not None
     assert loaded_again["artifact_title"] == "Generated report v2"
-    assert loaded_again["target_formats"] == ["MD", "HTML_PREVIEW", "PDF"]
+    assert loaded_again["target_formats"] == ["MD", "HTML_PREVIEW", "DOCX", "PDF"]
     assert deleted_rows == 1
     assert store.get(handoff["artifact_handoff_id"]) is None
 

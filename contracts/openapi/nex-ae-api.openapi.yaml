@@ -536,7 +536,7 @@ paths:
             type: string
       responses:
         "200":
-          description: Markdown render job completed and artifact version metadata recorded.
+          description: AE render job completed and artifact version/file metadata recorded.
         "401":
           description: Service claim is missing or invalid.
         "404":
@@ -596,7 +596,7 @@ paths:
             type: string
       responses:
         "200":
-          description: Authorized Markdown artifact preview payload.
+          description: Authorized text artifact preview payload.
         "401":
           description: Service claim is missing or invalid.
         "404":
@@ -616,7 +616,7 @@ paths:
             type: string
       responses:
         "200":
-          description: Authorized Markdown artifact download payload.
+          description: Authorized rendered artifact download payload. Text formats return content; binary formats return base64 content.
         "401":
           description: Service claim is missing or invalid.
         "404":

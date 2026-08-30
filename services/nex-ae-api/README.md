@@ -229,6 +229,11 @@ Artifact records:
   privately, emits separate file/link metadata, and decodes only text formats
   for preview/download JSON responses. `DOCX` and `PDF` remain cataloged but
   intentionally rejected until their export adapters are implemented.
+- Slice 0424 implements the AE-owned `DOCX` export adapter using `python-docx`.
+  Render jobs can now request `DOCX` when the handoff allowed it. AE stores the
+  generated DOCX bytes privately, emits deterministic `.docx` file metadata,
+  keeps preview unavailable for binary files, and returns base64 content from
+  the existing download JSON boundary. `PDF` remains cataloged but deferred.
 
 Prompt analytics:
 
