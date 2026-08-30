@@ -811,5 +811,14 @@ Slice 0439 adds protected multi-format artifact delivery evidence:
   `NEX_AE_WEB_ARTIFACT_MULTIFORMAT_PLAYWRIGHT_POSTGRES_SMOKE=1` is explicitly
   set with `NEX_AE_TEST_DATABASE_URL`.
 
+Slice 0440 closes S44:
+
+- `scripts/smoke/run_s44_ae_web_artifact_delivery_closure.py` checks that the
+  delivery boundary audit, file-save adapter, action-state module, export result
+  read-model, download format selector, accessibility smoke, and protected
+  PostgreSQL/Playwright smokes remain connected.
+- S44 now treats multi-format artifact export from S43 as an input contract and
+  AE Web artifact delivery as a metadata-safe browser surface.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

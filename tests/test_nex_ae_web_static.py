@@ -911,6 +911,7 @@ def test_ae_web_artifact_preview_download_panel_wiring() -> None:
     html = read_web_file("index.html")
     javascript = read_web_file("src/main.js")
     panel = read_web_file("src/artifactPreviewPanel.js")
+    delivery_action_state = read_web_file("src/artifactDeliveryActionState.js")
     session_bootstrap = read_web_file("src/sessionBootstrap.js")
     authenticated_runtime = read_web_file("src/authenticatedRuntime.js")
 
@@ -925,13 +926,8 @@ def test_ae_web_artifact_preview_download_panel_wiring() -> None:
 
     for expected in [
         "renderArtifactPreviewPanel",
-        "artifactFileIdFromRoute",
         "submitArtifactPreviewAction",
         "submitArtifactDownloadAction",
-        "createRunningArtifactPreviewPanelState",
-        "buildArtifactPreviewPanelStateFromPreview",
-        "buildArtifactPreviewPanelStateFromDownload",
-        "buildArtifactPreviewPanelStateFromError",
         "buildCurrentMockArtifactRecords",
         "syncMockArtifactClientFromArtifactRef",
         "createMockArtifactClient",
@@ -940,6 +936,16 @@ def test_ae_web_artifact_preview_download_panel_wiring() -> None:
         "artifactPreview",
     ]:
         assert expected in javascript
+
+    for expected in [
+        "artifactFileIdFromRoute",
+        "createRunningArtifactPreviewPanelState",
+        "buildArtifactPreviewPanelStateFromPreview",
+        "buildArtifactPreviewPanelStateFromDownload",
+        "buildArtifactPreviewPanelStateFromError",
+        "buildArtifactDeliveryActionSummary",
+    ]:
+        assert expected in delivery_action_state
 
     for expected in [
         "ae_web_artifact_preview_panel.v1",
