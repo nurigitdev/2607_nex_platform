@@ -23,6 +23,10 @@ import {
   createArtifactDeliveryActionContext
 } from "./artifactDeliveryActionState.js";
 import {
+  buildArtifactDownloadFormatSelector,
+  renderArtifactDownloadFormatSelector
+} from "./artifactDownloadFormatSelector.js";
+import {
   buildArtifactExportResultReadModel,
   renderArtifactExportResultReadModel
 } from "./artifactExportResultReadModel.js";
@@ -178,6 +182,7 @@ const workspaceState = {
   lastRetrievalResult: null,
   artifactPreviewPanel: createArtifactPreviewPanelState(),
   artifactDownloadSaveResult: null,
+  selectedArtifactDownloadFormat: "MD",
   artifactExportResult: null,
   artifactVersionPanel: createArtifactVersionPanelState(),
   generationFeedbackClient: null,
@@ -440,6 +445,16 @@ messageList.addEventListener("click", event => {
   const interactionId = target.closest("[data-interaction-id]")?.dataset.interactionId;
   if (!interactionId) return;
   void submitGenerationFeedback(interactionId, target.dataset.generationFeedbackValue);
+});
+
+artifactSummary.addEventListener("click", event => {
+  const downloadTarget = event.target.closest("[data-artifact-download-route]");
+  if (!downloadTarget) return;
+  event.preventDefault();
+  workspaceState.selectedArtifactDownloadFormat =
+    downloadTarget.dataset.artifactDownloadFormat ||
+    workspaceState.selectedArtifactDownloadFormat;
+  void submitArtifactDownloadAction(downloadTarget);
 });
 
 uploadMetadataForm.addEventListener("submit", event => {
@@ -1442,6 +1457,13 @@ function renderTimeline() {
 
 function renderArtifactSummary() {
   const downloadFormats = Object.keys(workspaceState.artifact.downloadRoutes || {});
+  const downloadSelector = buildArtifactDownloadFormatSelector({
+    artifactRef: workspaceState.artifactRef,
+    selectedFormat: workspaceState.selectedArtifactDownloadFormat,
+    clientMode: workspaceState.artifactClient?.clientMode || "mock"
+  });
+  const downloadSelectorView =
+    renderArtifactDownloadFormatSelector(downloadSelector);
   const exportResult =
     workspaceState.artifactExportResult ||
     buildArtifactExportResultReadModel({
@@ -1487,6 +1509,7 @@ function renderArtifactSummary() {
     >
       ${exportView.summaryHtml}
     </dl>
+    ${downloadSelectorView.html}
   `;
 }
 
@@ -1685,6 +1708,7 @@ async function appendPromptInteraction() {
   workspaceState.artifact.currentVersionId = workspaceState.artifactRef.artifactVersionId;
   workspaceState.artifact.previewRoute = workspaceState.artifactRef.previewRoute;
   workspaceState.artifact.downloadRoutes = workspaceState.artifactRef.downloadRoutes;
+  workspaceState.selectedArtifactDownloadFormat = format;
   workspaceState.artifactPreviewPanel = createArtifactPreviewPanelState({
     clientMode: workspaceState.artifactClient.clientMode
   });

@@ -540,6 +540,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0434`](slices/0434_ae_web_export_result_ux_read_model.md) | `S44-004` AE Web export result UX read-model. |
 | [`Slice 0435`](slices/0435_ae_web_artifact_download_playwright_postgresql_smoke.md) | `S44-005` AE Web artifact download Playwright/PostgreSQL protected smoke. |
 | [`Slice 0436`](slices/0436_ae_web_artifact_delivery_action_state.md) | `S44-006` AE Web artifact delivery action state and retry boundary. |
+| [`Slice 0437`](slices/0437_ae_web_artifact_download_format_selector.md) | `S44-007` AE Web artifact download format selector. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -438,6 +438,24 @@ h2 {
   padding-top: 8px;
 }
 
+.artifact-download-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.artifact-download-selector a,
+.artifact-download-selector button {
+  min-height: 34px;
+  padding: 7px 10px;
+}
+
+.artifact-download-selector a[aria-pressed="true"] {
+  border-color: var(--nex-primary);
+  background: rgba(36, 88, 166, 0.08);
+}
+
 .artifact-preview-content {
   min-height: 118px;
   max-height: 240px;

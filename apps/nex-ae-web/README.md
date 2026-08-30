@@ -778,5 +778,16 @@ Slice 0436 consolidates artifact delivery action state:
   error messages, download payloads, storage refs, credentials, database URLs,
   and provider endpoints.
 
+Slice 0437 adds a download format selector:
+
+- `src/artifactDownloadFormatSelector.js` builds browser-safe MD/DOCX/PDF
+  option state from artifact refs and validates enabled routes with the
+  artifact-file download route parser.
+- The artifact summary renders compact download format controls and routes
+  clicks through the same `submitArtifactDownloadAction` path used by artifact
+  cards.
+- Selector summaries keep route and payload details out of diagnostics while
+  rendered action controls carry only same-origin artifact download routes.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
