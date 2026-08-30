@@ -9,6 +9,7 @@
     "smoke:authenticated-upload-fetch": "node scripts/runAuthenticatedUploadFetchSmoke.mjs --summary",
     "smoke:authenticated-upload-playwright": "node scripts/runAuthenticatedUploadPlaywrightSmoke.mjs --summary",
     "smoke:artifact-fetch": "node scripts/runArtifactFetchModeSmoke.mjs --summary",
+    "smoke:artifact-delivery-accessibility": "node scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary",
     "smoke:artifact-playwright": "node scripts/runArtifactPlaywrightSmoke.mjs --summary",
     "smoke:credential-login-harness": "node scripts/runCredentialLoginBrowserHarnessSmoke.mjs --summary",
     "smoke:credential-login-playwright": "node scripts/runCredentialLoginPlaywrightSmoke.mjs --summary",

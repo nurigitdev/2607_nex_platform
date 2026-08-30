@@ -789,5 +789,14 @@ Slice 0437 adds a download format selector:
 - Selector summaries keep route and payload details out of diagnostics while
   rendered action controls carry only same-origin artifact download routes.
 
+Slice 0438 adds artifact delivery accessibility smoke evidence:
+
+- `scripts/runArtifactDeliveryAccessibilitySmoke.mjs` renders artifact cards and
+  download format selectors through real browser-side modules, then checks
+  keyboard-reachable preview/download anchors, selected state, disabled format
+  state, same-origin routes, focus-visible styling, and redaction.
+- The smoke is deterministic and PostgreSQL-free; protected persisted browser
+  evidence stays in the Playwright/PostgreSQL smoke path.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
