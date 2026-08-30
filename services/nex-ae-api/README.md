@@ -354,3 +354,7 @@ Artifact library management:
   and SQLAlchemy stores can list artifact summaries by tenant/workspace/owner,
   optionally filter by status, and return bounded metadata-only collection
   items before the API route is exposed.
+- Slice 0443 exposes `GET /api/v1/artifacts` for authenticated collection
+  queries. The route requires tenant/workspace/owner scope, accepts optional
+  status and limit filters, and returns the same metadata-only read-model used
+  by the stores.

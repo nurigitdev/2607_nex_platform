@@ -1517,6 +1517,15 @@ def test_artifact_route_creates_record_from_handoff_and_allows_readback() -> Non
         f"/api/v1/artifacts/{payload['artifact_id']}",
         headers=auth_headers(),
     )
+    collection = client.get(
+        "/api/v1/artifacts",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+        },
+        headers=auth_headers(),
+    )
     versions = client.get(
         f"/api/v1/artifacts/{payload['artifact_id']}/versions",
         headers=auth_headers(),
@@ -1526,6 +1535,12 @@ def test_artifact_route_creates_record_from_handoff_and_allows_readback() -> Non
     assert repeat.json() == payload
     assert readback.status_code == 200
     assert readback.json() == payload
+    assert collection.status_code == 200
+    assert collection.json()["artifact_collection_schema_version"] == (
+        ARTIFACT_COLLECTION_SCHEMA_VERSION
+    )
+    assert collection.json()["count"] == 1
+    assert collection.json()["items"][0]["artifact_id"] == payload["artifact_id"]
     assert versions.status_code == 200
     assert versions.json() == {
         "artifact_id": payload["artifact_id"],
@@ -1538,6 +1553,98 @@ def test_artifact_route_creates_record_from_handoff_and_allows_readback() -> Non
     assert payload["source_refs"][0]["structured_draft_content_hash"] == "c" * 64
     assert "Safe summary." not in str(payload)
     assert "/data/nex-platform" not in str(payload)
+
+
+def test_artifact_collection_route_filters_owner_scope_status_and_limit() -> None:
+    client, _, artifact_store, _ = build_client_with_artifact_store()
+    ready = sample_collection_artifact_record(
+        artifact_request_id="route-ready-001",
+        artifact_status="READY",
+        display_title="Route ready report",
+        updated_at="2026-08-30T09:00:00Z",
+    )
+    draft = sample_collection_artifact_record(
+        artifact_request_id="route-draft-001",
+        artifact_status="DRAFT",
+        display_title="Route draft report",
+        updated_at="2026-08-30T08:00:00Z",
+    )
+    other = sample_collection_artifact_record(
+        artifact_request_id="route-other-001",
+        owner_user_id="user-002",
+        display_title="Route other report",
+        updated_at="2026-08-30T10:00:00Z",
+    )
+    for record in (draft, other, ready):
+        artifact_store.create(record)
+
+    response = client.get(
+        "/api/v1/artifacts",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "limit": "10",
+        },
+        headers=auth_headers(),
+    )
+    ready_only = client.get(
+        "/api/v1/artifacts",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "status": "ready",
+            "limit": "1",
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert [item["display_title"] for item in response.json()["items"]] == [
+        "Route ready report",
+        "Route draft report",
+    ]
+    assert "storage_ref" not in json.dumps(response.json(), ensure_ascii=False)
+    assert ready_only.status_code == 200
+    assert ready_only.json()["filter"]["status"] == "READY"
+    assert ready_only.json()["count"] == 1
+    assert ready_only.json()["items"][0]["display_title"] == "Route ready report"
+
+
+def test_artifact_collection_route_reports_auth_scope_and_query_errors() -> None:
+    client, _, _, _ = build_client_with_artifact_store()
+
+    unauthorized = client.get("/api/v1/artifacts")
+    missing_scope = client.get("/api/v1/artifacts", headers=auth_headers())
+    invalid_status = client.get(
+        "/api/v1/artifacts",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "status": "bad",
+        },
+        headers=auth_headers(),
+    )
+    invalid_limit = client.get(
+        "/api/v1/artifacts",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "limit": "many",
+        },
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert missing_scope.status_code == 422
+    assert missing_scope.json()["error_code"] == "ae.artifact_collection_scope_required"
+    assert invalid_status.status_code == 422
+    assert invalid_status.json()["error_code"] == "ae.artifact_collection_status_invalid"
+    assert invalid_limit.status_code == 422
+    assert invalid_limit.json()["error_code"] == "ae.artifact_collection_limit_invalid"
 
 
 def test_markdown_render_route_updates_artifact_and_preserves_private_content() -> None:
@@ -1985,6 +2092,16 @@ def test_artifact_routes_use_sqlalchemy_defaults_with_local_storage(
         f"/api/v1/artifact-files/{artifact_file['artifact_file_id']}/download",
         headers=auth_headers(),
     )
+    collection = client.get(
+        "/api/v1/artifacts",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "status": "READY",
+        },
+        headers=auth_headers(),
+    )
 
     assert handoff_response.status_code == 200
     assert artifact_response.status_code == 200
@@ -1994,9 +2111,14 @@ def test_artifact_routes_use_sqlalchemy_defaults_with_local_storage(
     assert "Grounded answer [1]." in preview.json()["text_preview"]
     assert download.status_code == 200
     assert download.json()["content"].startswith("# Grounded report")
+    assert collection.status_code == 200
+    assert collection.json()["count"] == 1
+    assert collection.json()["items"][0]["artifact_id"] == artifact_id
+    assert collection.json()["items"][0]["downloadable_formats"] == ["MD"]
     assert list(storage_root.rglob("*.md"))
     assert str(storage_root) not in str(rendered)
     assert str(storage_root) not in str(preview.json())
+    assert str(storage_root) not in str(collection.json())
 
 
 def test_sqlalchemy_artifact_handoff_store_round_trips_with_sqlite() -> None:

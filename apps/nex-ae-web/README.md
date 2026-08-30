@@ -829,6 +829,9 @@ Slice 0441 starts S45:
   paths, database URLs, or provider secrets.
 - Slice 0442 adds the AE API collection read-model foundation that the future
   browser library panel will consume after route/client wiring.
+- Slice 0443 exposes the authenticated AE API collection route. AE Web client
+  wiring remains deferred, but the browser library now has a stable API target:
+  `GET /api/v1/artifacts`.
 
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

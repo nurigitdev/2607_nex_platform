@@ -472,6 +472,54 @@ paths:
         "404":
           description: Artifact handoff was not found.
   /api/v1/artifacts:
+    get:
+      operationId: listAeArtifacts
+      tags:
+        - Artifacts
+      parameters:
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: workspace_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: owner_user_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - DRAFT
+              - RENDERING
+              - READY
+              - FAILED
+              - ARCHIVED
+              - DELETED
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Owner-scoped AE artifact collection metadata.
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Artifact collection query is invalid.
+        "503":
+          description: Artifact store is unavailable.
     post:
       operationId: createAeArtifact
       tags:
