@@ -798,5 +798,18 @@ Slice 0438 adds artifact delivery accessibility smoke evidence:
 - The smoke is deterministic and PostgreSQL-free; protected persisted browser
   evidence stays in the Playwright/PostgreSQL smoke path.
 
+Slice 0439 adds protected multi-format artifact delivery evidence:
+
+- `scripts/smoke/run_ae_web_artifact_multiformat_playwright_postgres_smoke.py`
+  prepares a real `MD/HTML_PREVIEW/DOCX/PDF` artifact in `nex_ae_test`, serves
+  AE API and AE Web locally, and verifies the browser download selector through
+  Playwright.
+- The browser still previews/downloads the MD file for safe text inspection,
+  while the selector and version panel must show four persisted downloadable
+  formats.
+- The smoke is skipped by default and only runs when
+  `NEX_AE_WEB_ARTIFACT_MULTIFORMAT_PLAYWRIGHT_POSTGRES_SMOKE=1` is explicitly
+  set with `NEX_AE_TEST_DATABASE_URL`.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

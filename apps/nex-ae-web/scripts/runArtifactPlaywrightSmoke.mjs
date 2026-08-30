@@ -95,6 +95,7 @@ export async function runArtifactPlaywrightSmoke({
           clientModule,
           saveAdapterModule,
           exportResultModule,
+          downloadSelectorModule,
           previewPanelModule,
           versionPanelModule
         ] = await Promise.all([
@@ -102,6 +103,7 @@ export async function runArtifactPlaywrightSmoke({
           import(moduleUrl("/src/artifactClient.js")),
           import(moduleUrl("/src/artifactDownloadSaveAdapter.js")),
           import(moduleUrl("/src/artifactExportResultReadModel.js")),
+          import(moduleUrl("/src/artifactDownloadFormatSelector.js")),
           import(moduleUrl("/src/artifactPreviewPanel.js")),
           import(moduleUrl("/src/artifactVersionPanel.js"))
         ]);
@@ -149,6 +151,20 @@ export async function runArtifactPlaywrightSmoke({
         const exportResultSummary =
           exportResultModule.buildArtifactExportResultSummary(
             exportResultReadModel
+          );
+        const downloadSelector =
+          downloadSelectorModule.buildArtifactDownloadFormatSelector({
+            artifactRef: artifactSurface,
+            selectedFormat: artifactSurface.primaryFormat,
+            clientMode: artifactClient.clientMode
+          });
+        const downloadSelectorView =
+          downloadSelectorModule.renderArtifactDownloadFormatSelector(
+            downloadSelector
+          );
+        const downloadSelectorSummary =
+          downloadSelectorModule.buildArtifactDownloadFormatSelectorSummary(
+            downloadSelector
           );
         const versionPanel = versionPanelModule.buildArtifactVersionPanelState({
           artifactSurface,
@@ -198,6 +214,14 @@ export async function runArtifactPlaywrightSmoke({
               previewPanelModule.buildArtifactPreviewPanelSummary(downloadPanel),
             download_save: downloadSaveSummary,
             export_result: exportResultSummary,
+            download_selector: downloadSelectorSummary,
+            download_selector_view: {
+              status: downloadSelectorView.status,
+              selected_format: downloadSelectorView.selectedFormat,
+              option_count: downloadSelectorView.optionCount,
+              enabled_option_count: downloadSelectorView.enabledOptionCount,
+              html_escaped: downloadSelectorView.metadata.htmlEscaped
+            },
             browser_save_events: browserSaveHarness.events,
             raw_download_observed:
               typeof downloadSurface.content === "string" &&
@@ -280,6 +304,11 @@ export async function runArtifactPlaywrightSmoke({
       browser_export_result_saved:
         browserResult.artifact.export_result.status === "SAVED" &&
         browserResult.artifact.export_result.latest_save_status === "SAVED",
+      artifact_download_selector_ready:
+        browserResult.artifact.download_selector.status === "READY" &&
+        browserResult.artifact.download_selector.enabled_option_count >= 1 &&
+        browserResult.artifact.download_selector.selected_route_present === true &&
+        browserResult.artifact.download_selector_view.html_escaped === true,
       artifact_version_panel_ready:
         browserResult.artifact.version_panel.status === "VERSION_READY",
       artifact_version_file_linked:
@@ -315,6 +344,9 @@ export async function runArtifactPlaywrightSmoke({
         download_panel_status: browserResult.artifact.download_panel.status,
         download_save_status: browserResult.artifact.download_save.status,
         export_result_status: browserResult.artifact.export_result.status,
+        download_selector_status: browserResult.artifact.download_selector.status,
+        download_selector_enabled_options:
+          browserResult.artifact.download_selector.enabled_option_count,
         raw_download_retrieved: browserResult.artifact.raw_download_observed,
         raw_download_length: browserResult.artifact.raw_download_length,
         downloaded_content_rendered: false
@@ -326,6 +358,7 @@ export async function runArtifactPlaywrightSmoke({
         download_panel: browserResult.artifact.download_panel,
         download_save: browserResult.artifact.download_save,
         export_result: browserResult.artifact.export_result,
+        download_selector: browserResult.artifact.download_selector,
         version_panel: browserResult.artifact.version_panel
       },
       request_observations: {

@@ -4,16 +4,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, Callable, Mapping
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -24,16 +23,9 @@ sys.path.insert(0, str(SHARED_PATH))
 sys.path.insert(0, str(SMOKE_PATH))
 sys.path.insert(0, str(AE_PATH))
 
-from nex_ae_api.artifacts import (  # noqa: E402
-    LocalRenderedArtifactStorage,
-    register_artifact_handoff_routes,
-)
 from nex_runtime import (  # noqa: E402
-    SERVICE_SPECS,
     build_engine,
-    build_service_app,
     build_session_factory,
-    issue_mock_service_token,
     load_env_file,
     redact_database_url,
 )
@@ -44,36 +36,28 @@ from run_ae_web_same_origin_runtime_boundary import PROXY_TARGET_ENV  # noqa: E4
 from run_ae_web_same_origin_runtime_boundary import (  # noqa: E402
     run_ae_web_same_origin_runtime_boundary,
 )
+import run_ae_artifact_export_postgres_smoke as export_pg  # noqa: E402
 import run_ae_artifact_postgres_smoke as artifact_pg  # noqa: E402
 import run_ae_oa_auth_postgres_smoke as base_auth  # noqa: E402
-import run_ae_web_artifact_postgres_smoke as web_artifact_pg  # noqa: E402
+import run_ae_web_artifact_playwright_postgres_smoke as base_playwright  # noqa: E402
 import run_ae_web_credential_login_playwright_postgres_smoke as login_pg  # noqa: E402
 
 
-SCHEMA_VERSION = "ae_web_artifact_playwright_postgres_smoke.v1"
-NODE_SMOKE_SCHEMA_VERSION = "ae_web_artifact_playwright_smoke.v1"
-SMOKE_ENV = "NEX_AE_WEB_ARTIFACT_PLAYWRIGHT_POSTGRES_SMOKE"
-PROFILE_ENV = "NEX_AE_WEB_ARTIFACT_PLAYWRIGHT_POSTGRES_SMOKE_PROFILE"
-CHROMIUM_EXECUTABLE_ENV = "NEX_AE_WEB_PLAYWRIGHT_CHROMIUM_EXECUTABLE"
-TIMEOUT_MS_ENV = "NEX_AE_WEB_ARTIFACT_PLAYWRIGHT_SMOKE_TIMEOUT_MS"
-DEFAULT_PROFILE = "test"
+SCHEMA_VERSION = "ae_web_artifact_multiformat_playwright_postgres_smoke.v1"
+SMOKE_ENV = "NEX_AE_WEB_ARTIFACT_MULTIFORMAT_PLAYWRIGHT_POSTGRES_SMOKE"
+PROFILE_ENV = "NEX_AE_WEB_ARTIFACT_MULTIFORMAT_PLAYWRIGHT_POSTGRES_SMOKE_PROFILE"
+DEFAULT_PROFILE = artifact_pg.DEFAULT_PROFILE
 SERVICE_ID = artifact_pg.SERVICE_ID
-SERVICE_SPEC = SERVICE_SPECS[SERVICE_ID]
-WEB_ROOT = ROOT / "apps" / "nex-ae-web"
-NODE_SMOKE_SCRIPT = WEB_ROOT / "scripts" / "runArtifactPlaywrightSmoke.mjs"
+EXPORT_FORMATS = export_pg.EXPORT_FORMATS
 
 ProtectedRunner = Callable[[dict[str, str]], dict[str, Any]]
 NodeRunner = Callable[[Mapping[str, str]], dict[str, Any]]
 PortAllocator = Callable[[], int]
-
-PROTECTED_ENV_KEYS = (
-    artifact_pg.service_database_env(SERVICE_ID, profile=DEFAULT_PROFILE),
-    PROXY_TARGET_ENV,
-)
+ArtifactObserver = Callable[..., dict[str, Any]]
 
 
 @dataclass
-class PreparedArtifactPlaywrightPostgresSmoke:
+class PreparedArtifactMultiformatPlaywrightPostgresSmoke:
     profile: str
     request_id: str
     trace_id: str
@@ -86,9 +70,12 @@ class PreparedArtifactPlaywrightPostgresSmoke:
     artifact_id: str
     artifact_version_id: str
     render_job_id: str
-    artifact_file_id: str
-    markdown_file_count: int
+    primary_artifact_file_id: str
+    file_ids_by_format: dict[str, str]
+    materialized_file_count: int
+    materialized_extensions: list[str]
     db_observations: dict[str, Any]
+    read_model_observations: dict[str, Any]
     storage_tempdir: tempfile.TemporaryDirectory[str]
 
     def cleanup(self) -> dict[str, Any]:
@@ -101,33 +88,32 @@ class PreparedArtifactPlaywrightPostgresSmoke:
         return deleted
 
 
-def run_ae_web_artifact_playwright_postgres_smoke(
+def run_ae_web_artifact_multiformat_playwright_postgres_smoke(
     environ: dict[str, str] | None = None,
     *,
     readiness_runner: ProtectedRunner = run_ae_web_playwright_readiness,
-    web_postgres_runner: ProtectedRunner = (
-        web_artifact_pg.run_ae_web_artifact_postgres_smoke
-    ),
+    api_export_runner: ProtectedRunner = export_pg.run_ae_artifact_export_postgres_smoke,
     boundary_runner: ProtectedRunner = run_ae_web_same_origin_runtime_boundary,
     prepare_runner: Callable[
         [dict[str, str], str],
-        PreparedArtifactPlaywrightPostgresSmoke,
-    ] = lambda env, profile: prepare_artifact_playwright_postgres_smoke(
+        PreparedArtifactMultiformatPlaywrightPostgresSmoke,
+    ] = lambda env, profile: prepare_artifact_multiformat_playwright_postgres_smoke(
         env,
         profile=profile,
     ),
     node_runner: NodeRunner | None = None,
-    artifact_observer: Callable[..., dict[str, Any]] | None = None,
+    artifact_observer: ArtifactObserver | None = None,
     port_allocator: PortAllocator | None = None,
     api_server_starter: Callable[[Any, int], login_pg.StartedServer] | None = None,
     web_server_starter: Callable[[int, str], login_pg.StartedServer] | None = None,
 ) -> dict[str, Any]:
-    node_runner = node_runner or run_node_playwright_artifact_smoke
-    artifact_observer = artifact_observer or latest_artifact_observations
+    env = environ if environ is not None else os.environ
+    node_runner = node_runner or base_playwright.run_node_playwright_artifact_smoke
+    artifact_observer = artifact_observer or latest_multiformat_artifact_observations
     port_allocator = port_allocator or login_pg.find_free_port
     api_server_starter = api_server_starter or login_pg.start_api_server
     web_server_starter = web_server_starter or login_pg.start_web_server
-    env = environ if environ is not None else os.environ
+
     if env.get(SMOKE_ENV) != "1":
         return {
             "smoke_schema_version": SCHEMA_VERSION,
@@ -141,28 +127,32 @@ def run_ae_web_artifact_playwright_postgres_smoke(
         return _failure("profile_not_allowed", profile=profile, env=env)
 
     readiness = readiness_runner(env)
-    if readiness["status"] != "PASS":
-        return _failure("readiness_failed", profile=profile, env=env, readiness=readiness)
-
-    web_postgres_env = dict(env)
-    web_postgres_env[web_artifact_pg.SMOKE_ENV] = "1"
-    web_postgres_env[web_artifact_pg.SMOKE_PROFILE_ENV] = profile
-    web_postgres = web_postgres_runner(web_postgres_env)
-    if web_postgres["status"] != "PASS":
+    if readiness.get("status") != "PASS":
         return _failure(
-            "web_artifact_postgres_failed",
+            "readiness_failed",
             profile=profile,
-            env=web_postgres_env,
+            env=env,
             readiness=readiness,
-            web_postgres=web_postgres,
-            detail=_safe_source_detail(web_postgres),
         )
 
-    prepared: PreparedArtifactPlaywrightPostgresSmoke | None = None
+    api_export_env = dict(env)
+    api_export_env[export_pg.SMOKE_ENV] = "1"
+    api_export_env[export_pg.SMOKE_PROFILE_ENV] = profile
+    api_export = api_export_runner(api_export_env)
+    if api_export.get("status") != "PASS":
+        return _failure(
+            "api_export_postgres_failed",
+            profile=profile,
+            env=api_export_env,
+            readiness=readiness,
+            api_export=api_export,
+            detail=_safe_source_detail(api_export),
+        )
+
+    prepared: PreparedArtifactMultiformatPlaywrightPostgresSmoke | None = None
     api_server: login_pg.StartedServer | None = None
     web_server: login_pg.StartedServer | None = None
     evidence: dict[str, Any] | None = None
-    cleanup_observations: dict[str, Any] = {}
     try:
         prepared = prepare_runner(dict(env), profile)
         api_port = port_allocator()
@@ -171,37 +161,36 @@ def run_ae_web_artifact_playwright_postgres_smoke(
         web_server = web_server_starter(web_port, api_server.url)
         boundary_env = {**env, PROXY_TARGET_ENV: api_server.url}
         boundary = boundary_runner(boundary_env)
-        if boundary["status"] != "PASS":
+        if boundary.get("status") != "PASS":
             return _failure(
                 "same_origin_boundary_failed",
                 profile=profile,
                 env=boundary_env,
                 readiness=readiness,
-                web_postgres=web_postgres,
+                api_export=api_export,
                 boundary=boundary,
             )
 
         node_smoke = node_runner(
-            _node_environ(
+            base_playwright._node_environ(
                 env,
                 web_url=web_server.url,
                 artifact_id=prepared.artifact_id,
-                artifact_file_id=prepared.artifact_file_id,
+                artifact_file_id=prepared.primary_artifact_file_id,
             )
         )
         artifact_observations = artifact_observer(
             prepared.engine,
-            artifact_id=prepared.artifact_id,
             artifact_handoff_id=prepared.artifact_handoff_id,
+            artifact_id=prepared.artifact_id,
             artifact_version_id=prepared.artifact_version_id,
             render_job_id=prepared.render_job_id,
-            artifact_file_id=prepared.artifact_file_id,
         )
         evidence = _pass_or_fail_evidence(
             profile=profile,
             env={**env, PROXY_TARGET_ENV: api_server.url},
             readiness=readiness,
-            web_postgres=web_postgres,
+            api_export=api_export,
             boundary=boundary,
             prepared=prepared,
             node_smoke=node_smoke,
@@ -215,7 +204,7 @@ def run_ae_web_artifact_playwright_postgres_smoke(
             env=env,
             detail=exc.__class__.__name__,
             readiness=readiness,
-            web_postgres=web_postgres,
+            api_export=api_export,
         )
     except Exception as exc:
         return _failure(
@@ -224,7 +213,7 @@ def run_ae_web_artifact_playwright_postgres_smoke(
             env=env,
             detail=exc.__class__.__name__,
             readiness=readiness,
-            web_postgres=web_postgres,
+            api_export=api_export,
         )
     finally:
         if web_server is not None:
@@ -238,11 +227,11 @@ def run_ae_web_artifact_playwright_postgres_smoke(
             prepared.engine.dispose()
 
 
-def prepare_artifact_playwright_postgres_smoke(
+def prepare_artifact_multiformat_playwright_postgres_smoke(
     env: dict[str, str],
     *,
     profile: str,
-) -> PreparedArtifactPlaywrightPostgresSmoke:  # pragma: no cover
+) -> PreparedArtifactMultiformatPlaywrightPostgresSmoke:  # pragma: no cover
     database_env = artifact_pg.service_database_env(SERVICE_ID, profile=profile)
     database_url = artifact_pg.service_database_url(
         SERVICE_ID,
@@ -259,7 +248,7 @@ def prepare_artifact_playwright_postgres_smoke(
     trace_id = uuid4().hex
     suffix = request_id.replace("-", "")[:12]
     storage_tempdir = tempfile.TemporaryDirectory(
-        prefix="nex-ae-web-artifact-playwright-smoke-"
+        prefix="nex-ae-web-artifact-multiformat-playwright-smoke-"
     )
     storage_root = Path(storage_tempdir.name) / "artifact-storage"
     engine = build_engine(database_url)
@@ -267,7 +256,7 @@ def prepare_artifact_playwright_postgres_smoke(
     artifact_id: str | None = None
     try:
         session_factory = build_session_factory(engine)
-        ae_app = build_ae_artifact_app(
+        ae_app = base_playwright.build_ae_artifact_app(
             env=env,
             session_factory=session_factory,
             storage_root=storage_root,
@@ -280,31 +269,36 @@ def prepare_artifact_playwright_postgres_smoke(
 
         handoff_response = client.post(
             "/api/v1/artifact-handoffs",
-            json=artifact_pg._artifact_handoff_payload(suffix),
+            json={
+                **artifact_pg._artifact_handoff_payload(suffix),
+                "target_formats": list(EXPORT_FORMATS),
+            },
             headers={
                 **headers,
-                "Idempotency-Key": f"artifact-handoff-playwright-{suffix}",
+                "Idempotency-Key": f"artifact-multiformat-handoff-{suffix}",
             },
         )
         handoff_response.raise_for_status()
         artifact_handoff_id = handoff_response.json()["artifact_handoff_id"]
+
         artifact_response = client.post(
             "/api/v1/artifacts",
             json={"artifact_handoff_id": artifact_handoff_id},
             headers={
                 **headers,
-                "Idempotency-Key": f"artifact-playwright-{suffix}",
+                "Idempotency-Key": f"artifact-multiformat-create-{suffix}",
             },
         )
         artifact_response.raise_for_status()
         artifact = artifact_response.json()
         artifact_id = artifact["artifact_id"]
+
         render_response = client.post(
             f"/api/v1/artifacts/{artifact_id}/render-jobs",
-            json={},
+            json={"target_formats": list(EXPORT_FORMATS)},
             headers={
                 **headers,
-                "Idempotency-Key": f"artifact-render-playwright-{suffix}",
+                "Idempotency-Key": f"artifact-multiformat-render-{suffix}",
             },
         )
         render_response.raise_for_status()
@@ -312,17 +306,42 @@ def prepare_artifact_playwright_postgres_smoke(
         rendered_artifact = rendered["artifact"]
         render_job = rendered["render_job"]
         artifact_version_id = rendered_artifact["current_version_id"]
-        artifact_file_id = rendered_artifact["files"][0]["artifact_file_id"]
-        db_observations = latest_artifact_observations(
+        file_ids_by_format = {
+            str(artifact_file["format"]): str(artifact_file["artifact_file_id"])
+            for artifact_file in rendered_artifact["files"]
+        }
+        primary_artifact_file_id = file_ids_by_format.get("MD") or next(
+            iter(file_ids_by_format.values())
+        )
+        artifact_readback = client.get(f"/api/v1/artifacts/{artifact_id}", headers=headers)
+        versions_readback = client.get(
+            f"/api/v1/artifacts/{artifact_id}/versions",
+            headers=headers,
+        )
+        render_job_readback = client.get(
+            f"/api/v1/artifact-render-jobs/{render_job['render_job_id']}",
+            headers=headers,
+        )
+        read_model_observations = export_pg._read_model_observations(
+            artifact_payload=export_pg._response_payload(artifact_readback),
+            versions_payload=export_pg._response_payload(versions_readback),
+            render_job_payload=export_pg._response_payload(render_job_readback),
+            artifact_status_code=artifact_readback.status_code,
+            versions_status_code=versions_readback.status_code,
+            render_job_status_code=render_job_readback.status_code,
+            artifact_version_id=artifact_version_id,
+        )
+        db_observations = latest_multiformat_artifact_observations(
             engine,
-            artifact_id=artifact_id,
             artifact_handoff_id=artifact_handoff_id,
+            artifact_id=artifact_id,
             artifact_version_id=artifact_version_id,
             render_job_id=render_job["render_job_id"],
-            artifact_file_id=artifact_file_id,
         )
-        markdown_file_count = sum(1 for _ in storage_root.rglob("*.md"))
-        return PreparedArtifactPlaywrightPostgresSmoke(
+        storage_files = [
+            path for path in storage_root.rglob("*") if path.is_file() and path.suffix
+        ]
+        return PreparedArtifactMultiformatPlaywrightPostgresSmoke(
             profile=profile,
             request_id=request_id,
             trace_id=trace_id,
@@ -335,9 +354,12 @@ def prepare_artifact_playwright_postgres_smoke(
             artifact_id=artifact_id,
             artifact_version_id=artifact_version_id,
             render_job_id=render_job["render_job_id"],
-            artifact_file_id=artifact_file_id,
-            markdown_file_count=markdown_file_count,
+            primary_artifact_file_id=primary_artifact_file_id,
+            file_ids_by_format=file_ids_by_format,
+            materialized_file_count=len(storage_files),
+            materialized_extensions=sorted(path.suffix.lstrip(".") for path in storage_files),
             db_observations=db_observations,
+            read_model_observations=read_model_observations,
             storage_tempdir=storage_tempdir,
         )
     except Exception:
@@ -351,110 +373,135 @@ def prepare_artifact_playwright_postgres_smoke(
         raise
 
 
-def build_ae_artifact_app(
-    *,
-    env: Mapping[str, str],
-    session_factory: Any,
-    storage_root: Path,
-    suffix: str,
-    request_id: str,
-    trace_id: str,
-) -> Any:  # pragma: no cover
-    app = build_service_app(SERVICE_SPEC)
-    app.state.nex_persistence = SimpleNamespace(api_session_factory=session_factory)
-    cx_client = artifact_pg.FakeCxArtifactSourceClient(
-        suffix=suffix,
-        request_id=request_id,
-        trace_id=trace_id,
-    )
-    install_playwright_service_auth_middleware(app)
-    with artifact_pg._temporary_env("NEX_AE_ARTIFACT_STORAGE_ROOT", str(storage_root)):
-        register_artifact_handoff_routes(app, cx_client=cx_client, artifact_store=None)
-    return app
-
-
-def install_playwright_service_auth_middleware(app: Any) -> None:
-    token = issue_mock_service_token(service_id="nex-ag", audience=SERVICE_ID).access_token
-
-    @app.middleware("http")
-    async def add_artifact_service_auth(request, call_next):  # type: ignore[no-untyped-def]
-        path = request.scope.get("path", "")
-        if _is_artifact_browser_path(path) and not _has_header(
-            request.scope.get("headers", []),
-            b"authorization",
-        ):
-            request.scope["headers"] = [
-                *request.scope.get("headers", []),
-                (b"authorization", f"Bearer {token}".encode("latin-1")),
-                (b"x-service-id", b"nex-ag"),
-            ]
-        return await call_next(request)
-
-
-def latest_artifact_observations(
+def latest_multiformat_artifact_observations(
     engine: Any,
     *,
-    artifact_id: str,
     artifact_handoff_id: str,
+    artifact_id: str,
     artifact_version_id: str,
     render_job_id: str,
-    artifact_file_id: str,
 ) -> dict[str, Any]:
-    raw = artifact_pg._db_observations(
-        engine,
-        artifact_handoff_id=artifact_handoff_id,
-        artifact_id=artifact_id,
-        artifact_version_id=artifact_version_id,
-        render_job_id=render_job_id,
-        artifact_file_id=artifact_file_id,
-    )
-    return {
-        "row_counts": dict(raw.get("row_counts", {})),
-        "migration_recorded": raw.get("migration_recorded") is True,
-        "tables_present_count": len(raw.get("tables_present", [])),
-        "indexes_present_count": len(raw.get("indexes_present", [])),
-        "logical_storage_ref_present": bool(raw.get("storage_ref")),
-        "jsonb_column_count": len(raw.get("jsonb_columns", {})),
-        "handoff_correlation_columns_present": raw.get(
-            "handoff_correlation_columns"
-        )
-        == list(artifact_pg.EXPECTED_HANDOFF_CORRELATION_COLUMNS),
-    }
-
-
-def run_node_playwright_artifact_smoke(env: Mapping[str, str]) -> dict[str, Any]:
-    completed = subprocess.run(
-        ["node", str(NODE_SMOKE_SCRIPT)],
-        cwd=ROOT,
-        env={**os.environ, **env},
-        capture_output=True,
-        text=True,
-        timeout=120,
-        check=False,
-    )
-    try:
-        payload = json.loads(completed.stdout)
-    except json.JSONDecodeError:
-        if completed.returncode != 0:
-            return {
-                "smoke_schema_version": NODE_SMOKE_SCHEMA_VERSION,
-                "status": "FAIL",
-                "failure_code": "node_playwright_failed",
-                "returncode": completed.returncode,
-            }
-        return {
-            "smoke_schema_version": NODE_SMOKE_SCHEMA_VERSION,
-            "status": "FAIL",
-            "failure_code": "node_json_invalid",
-            "returncode": completed.returncode,
+    with engine.connect() as connection:
+        row_counts = {
+            "handoffs": _scalar_count(
+                connection,
+                """
+                SELECT count(*) FROM ae_artifact_handoffs
+                WHERE artifact_handoff_id = :artifact_handoff_id
+                """,
+                {"artifact_handoff_id": artifact_handoff_id},
+            ),
+            "artifacts": _scalar_count(
+                connection,
+                "SELECT count(*) FROM ae_artifacts WHERE artifact_id = :artifact_id",
+                {"artifact_id": artifact_id},
+            ),
+            "source_refs": _scalar_count(
+                connection,
+                "SELECT count(*) FROM ae_artifact_source_refs WHERE artifact_id = :artifact_id",
+                {"artifact_id": artifact_id},
+            ),
+            "versions": _scalar_count(
+                connection,
+                """
+                SELECT count(*) FROM ae_artifact_versions
+                WHERE artifact_version_id = :artifact_version_id
+                """,
+                {"artifact_version_id": artifact_version_id},
+            ),
+            "render_jobs": _scalar_count(
+                connection,
+                """
+                SELECT count(*) FROM ae_artifact_render_jobs
+                WHERE render_job_id = :render_job_id
+                """,
+                {"render_job_id": render_job_id},
+            ),
+            "files": _scalar_count(
+                connection,
+                """
+                SELECT count(*) FROM ae_artifact_files
+                WHERE artifact_version_id = :artifact_version_id
+                """,
+                {"artifact_version_id": artifact_version_id},
+            ),
+            "links": _scalar_count(
+                connection,
+                """
+                SELECT count(*)
+                FROM ae_artifact_links
+                WHERE artifact_file_id IN (
+                    SELECT artifact_file_id
+                    FROM ae_artifact_files
+                    WHERE artifact_version_id = :artifact_version_id
+                )
+                """,
+                {"artifact_version_id": artifact_version_id},
+            ),
         }
-    if isinstance(payload, dict):
-        payload.setdefault("returncode", completed.returncode)
-        return payload
+        rendered_formats = connection.execute(
+            text(
+                """
+                SELECT rendered_formats
+                FROM ae_artifact_versions
+                WHERE artifact_version_id = :artifact_version_id
+                """
+            ),
+            {"artifact_version_id": artifact_version_id},
+        ).scalar_one()
+        file_rows = (
+            connection.execute(
+                text(
+                    """
+                    SELECT format, artifact_file_id, mime_type, file_size_bytes
+                    FROM ae_artifact_files
+                    WHERE artifact_version_id = :artifact_version_id
+                    ORDER BY CASE format
+                        WHEN 'MD' THEN 1
+                        WHEN 'HTML_PREVIEW' THEN 2
+                        WHEN 'DOCX' THEN 3
+                        WHEN 'PDF' THEN 4
+                        ELSE 99
+                    END
+                    """
+                ),
+                {"artifact_version_id": artifact_version_id},
+            )
+            .mappings()
+            .all()
+        )
+        link_type_counts = dict(
+            connection.execute(
+                text(
+                    """
+                    SELECT link_type, count(*) AS count
+                    FROM ae_artifact_links
+                    WHERE artifact_file_id IN (
+                        SELECT artifact_file_id
+                        FROM ae_artifact_files
+                        WHERE artifact_version_id = :artifact_version_id
+                    )
+                    GROUP BY link_type
+                    """
+                ),
+                {"artifact_version_id": artifact_version_id},
+            ).all()
+        )
     return {
-        "smoke_schema_version": NODE_SMOKE_SCHEMA_VERSION,
-        "status": "FAIL",
-        "failure_code": "node_payload_invalid",
+        "row_counts": row_counts,
+        "rendered_formats": _json_array(rendered_formats),
+        "file_formats": [str(row["format"]) for row in file_rows],
+        "file_count": len(file_rows),
+        "link_count": row_counts["links"],
+        "download_link_count": int(link_type_counts.get("download", 0)),
+        "preview_link_count": int(link_type_counts.get("preview", 0)),
+        "file_ids_by_format": {
+            str(row["format"]): str(row["artifact_file_id"]) for row in file_rows
+        },
+        "mime_types": {str(row["format"]): str(row["mime_type"]) for row in file_rows},
+        "file_size_bytes": {
+            str(row["format"]): int(row["file_size_bytes"]) for row in file_rows
+        },
     }
 
 
@@ -463,17 +510,31 @@ def _pass_or_fail_evidence(
     profile: str,
     env: Mapping[str, str],
     readiness: Mapping[str, Any],
-    web_postgres: Mapping[str, Any],
+    api_export: Mapping[str, Any],
     boundary: Mapping[str, Any],
-    prepared: PreparedArtifactPlaywrightPostgresSmoke,
+    prepared: PreparedArtifactMultiformatPlaywrightPostgresSmoke,
     node_smoke: Mapping[str, Any],
     artifact_observations: Mapping[str, Any],
 ) -> dict[str, Any]:
     node_checks = _mapping(node_smoke.get("checks"))
+    node_artifact = _mapping(node_smoke.get("artifact"))
+    browser_summary = _mapping(node_artifact.get("summary"))
+    version_panel = _mapping(node_artifact.get("version_panel"))
+    download_selector = _mapping(node_artifact.get("download_selector"))
+    export_result = _mapping(node_artifact.get("export_result"))
     row_counts = dict(artifact_observations.get("row_counts", {}))
+    expected_row_counts = {
+        "handoffs": 1,
+        "artifacts": 1,
+        "source_refs": 1,
+        "versions": 1,
+        "render_jobs": 1,
+        "files": len(EXPORT_FORMATS),
+        "links": len(EXPORT_FORMATS) * 2,
+    }
     checks = {
         "playwright_readiness_passed": readiness.get("status") == "PASS",
-        "web_artifact_postgres_passed": web_postgres.get("status") == "PASS",
+        "api_export_postgres_passed": api_export.get("status") == "PASS",
         "same_origin_boundary_passed": boundary.get("status") == "PASS",
         "node_playwright_smoke_passed": node_smoke.get("status") == "PASS",
         "playwright_browser_launched": (
@@ -497,49 +558,52 @@ def _pass_or_fail_evidence(
         "browser_request_secret_header_absent": (
             node_checks.get("browser_request_secret_header_absent") is True
         ),
-        "browser_artifact_version_panel_ready": (
-            node_checks.get("artifact_version_panel_ready") is True
-        ),
-        "browser_artifact_preview_panel_ready": (
-            node_checks.get("artifact_preview_panel_ready") is True
-        ),
-        "browser_artifact_download_panel_ready": (
-            node_checks.get("artifact_download_panel_ready") is True
-        ),
         "browser_file_save_prepared": (
             node_checks.get("browser_file_save_prepared") is True
-        ),
-        "browser_export_result_saved": (
-            node_checks.get("browser_export_result_saved") is True
-        ),
-        "browser_download_selector_ready": (
-            node_checks.get("artifact_download_selector_ready") is True
         ),
         "browser_download_body_not_rendered": (
             node_checks.get("raw_download_retrieved_but_not_rendered") is True
         ),
-        "ae_test_database_connected": sum(row_counts.values()) >= 8,
-        "postgres_artifact_rows_persisted": row_counts
-        == {
-            "handoffs": 1,
-            "artifacts": 1,
-            "source_refs": 1,
-            "versions": 1,
-            "render_jobs": 1,
-            "files": 1,
-            "links": 2,
-        },
-        "postgres_migration_recorded": (
-            artifact_observations.get("migration_recorded") is True
+        "browser_download_selector_ready": (
+            node_checks.get("artifact_download_selector_ready") is True
         ),
-        "postgres_indexes_present": (
-            artifact_observations.get("indexes_present_count")
-            == len(artifact_pg.EXPECTED_INDEXES)
+        "browser_download_selector_multiformat": (
+            int(download_selector.get("enabled_option_count") or 0)
+            >= len(EXPORT_FORMATS)
+            and download_selector.get("selected_route_present") is True
         ),
-        "local_payload_written": prepared.markdown_file_count == 1,
-        "logical_storage_ref_not_exposed": (
-            artifact_observations.get("logical_storage_ref_present") is True
+        "browser_artifact_summary_multiformat": (
+            int(browser_summary.get("download_route_count") or 0) >= len(EXPORT_FORMATS)
+            and int(browser_summary.get("available_format_count") or 0)
+            >= len(EXPORT_FORMATS)
         ),
+        "browser_version_panel_multiformat": (
+            int(version_panel.get("file_count") or 0) >= len(EXPORT_FORMATS)
+            and int(version_panel.get("download_route_count") or 0)
+            >= len(EXPORT_FORMATS)
+            and int(version_panel.get("format_count") or 0) >= len(EXPORT_FORMATS)
+        ),
+        "browser_export_result_multiformat": (
+            int(export_result.get("downloadable_format_count") or 0)
+            >= len(EXPORT_FORMATS)
+        ),
+        "ae_test_database_connected": sum(row_counts.values()) >= 17,
+        "postgres_multiformat_rows_persisted": row_counts == expected_row_counts,
+        "postgres_rendered_formats_persisted": artifact_observations.get(
+            "rendered_formats"
+        )
+        == list(EXPORT_FORMATS),
+        "postgres_file_formats_persisted": artifact_observations.get("file_formats")
+        == list(EXPORT_FORMATS),
+        "postgres_download_links_persisted": artifact_observations.get(
+            "download_link_count"
+        )
+        == len(EXPORT_FORMATS),
+        "postgres_preview_links_persisted": artifact_observations.get(
+            "preview_link_count"
+        )
+        == len(EXPORT_FORMATS),
+        "local_payloads_written": prepared.materialized_file_count == len(EXPORT_FORMATS),
         "redacted_evidence": True,
     }
     status = "PASS" if all(checks.values()) else "FAIL"
@@ -553,20 +617,18 @@ def _pass_or_fail_evidence(
                 readiness,
                 version_key="readiness_schema_version",
             ),
-            "web_artifact_postgres": _source_status(
-                web_postgres,
+            "api_export_postgres": _source_status(
+                api_export,
                 version_key="smoke_schema_version",
             ),
             "same_origin_boundary": _source_status(
                 boundary,
                 version_key="boundary_schema_version",
             ),
-            "node_playwright": {
-                "schema_version": node_smoke.get("smoke_schema_version"),
-                "status": node_smoke.get("status"),
-                "failure_code": node_smoke.get("failure_code"),
-                "detail": _mapping(node_smoke.get("detail")),
-            },
+            "node_playwright": _source_status(
+                node_smoke,
+                version_key="smoke_schema_version",
+            ),
         },
         "database_env": prepared.database_env,
         "redacted_database_url": prepared.redacted_database_url,
@@ -575,52 +637,33 @@ def _pass_or_fail_evidence(
             "artifact_id": prepared.artifact_id,
             "artifact_version_id": prepared.artifact_version_id,
             "render_job_id": prepared.render_job_id,
-            "artifact_file_id": prepared.artifact_file_id,
-            "browser_summary": _mapping(_mapping(node_smoke.get("artifact")).get("summary")),
-            "version_panel": _mapping(
-                _mapping(node_smoke.get("artifact")).get("version_panel")
-            ),
-            "preview_panel": _mapping(
-                _mapping(node_smoke.get("artifact")).get("preview_panel")
-            ),
-            "download_panel": _mapping(
-                _mapping(node_smoke.get("artifact")).get("download_panel")
-            ),
-            "download_save": _mapping(
-                _mapping(node_smoke.get("artifact")).get("download_save")
-            ),
-            "export_result": _mapping(
-                _mapping(node_smoke.get("artifact")).get("export_result")
-            ),
-            "download_selector": _mapping(
-                _mapping(node_smoke.get("artifact")).get("download_selector")
-            ),
+            "primary_artifact_file_id": prepared.primary_artifact_file_id,
+            "formats": list(EXPORT_FORMATS),
+            "file_ids_by_format": dict(prepared.file_ids_by_format),
+            "browser_summary": browser_summary,
+            "version_panel": version_panel,
+            "download_selector": download_selector,
+            "download_save": _mapping(node_artifact.get("download_save")),
+            "export_result": export_result,
         },
         "browser_observations": _mapping(node_smoke.get("browser_observations")),
-        "request_observations": _public_request_observations(
+        "request_observations": base_playwright._public_request_observations(
             _mapping(node_smoke.get("request_observations"))
         ),
         "db_observations": {
             "row_counts": row_counts,
-            "migration_recorded": artifact_observations.get("migration_recorded")
-            is True,
-            "tables_present_count": artifact_observations.get(
-                "tables_present_count",
-                0,
-            ),
-            "indexes_present_count": artifact_observations.get(
-                "indexes_present_count",
-                0,
-            ),
-            "jsonb_column_count": artifact_observations.get(
-                "jsonb_column_count",
-                0,
-            ),
+            "rendered_formats": artifact_observations.get("rendered_formats", []),
+            "file_formats": artifact_observations.get("file_formats", []),
+            "file_count": artifact_observations.get("file_count", 0),
+            "link_count": artifact_observations.get("link_count", 0),
+            "download_link_count": artifact_observations.get("download_link_count", 0),
+            "preview_link_count": artifact_observations.get("preview_link_count", 0),
         },
+        "read_model_observations": dict(prepared.read_model_observations),
         "storage": {
             "storage_mode": "local",
-            "markdown_file_count": prepared.markdown_file_count,
-            "logical_storage_ref_present": True,
+            "materialized_file_count": prepared.materialized_file_count,
+            "materialized_extensions": list(prepared.materialized_extensions),
         },
         "checks": checks,
         "issues": [
@@ -631,7 +674,7 @@ def _pass_or_fail_evidence(
         "redaction": {
             "raw_download_body_in_evidence": False,
             "browser_service_secret_in_evidence": False,
-            "database_endpoint_in_evidence": False,
+            "database_password_in_evidence": False,
             "provider_endpoint_in_evidence": False,
             "storage_location_in_evidence": False,
         },
@@ -650,7 +693,7 @@ def _failure(
     env: Mapping[str, str],
     detail: str | None = None,
     readiness: Mapping[str, Any] | None = None,
-    web_postgres: Mapping[str, Any] | None = None,
+    api_export: Mapping[str, Any] | None = None,
     boundary: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     evidence = {
@@ -664,8 +707,8 @@ def _failure(
                 readiness,
                 version_key="readiness_schema_version",
             ),
-            "web_artifact_postgres": _source_status(
-                web_postgres,
+            "api_export_postgres": _source_status(
+                api_export,
                 version_key="smoke_schema_version",
             ),
             "same_origin_boundary": _source_status(
@@ -682,34 +725,6 @@ def _failure(
     return evidence
 
 
-def _node_environ(
-    env: Mapping[str, str],
-    *,
-    web_url: str,
-    artifact_id: str,
-    artifact_file_id: str,
-) -> dict[str, str]:
-    node_env = {
-        "NEX_AE_WEB_ARTIFACT_PLAYWRIGHT_SMOKE_WEB_URL": web_url,
-        "NEX_AE_WEB_ARTIFACT_PLAYWRIGHT_SMOKE_ARTIFACT_ID": artifact_id,
-        "NEX_AE_WEB_ARTIFACT_PLAYWRIGHT_SMOKE_ARTIFACT_FILE_ID": artifact_file_id,
-    }
-    if env.get(CHROMIUM_EXECUTABLE_ENV):
-        node_env[CHROMIUM_EXECUTABLE_ENV] = env[CHROMIUM_EXECUTABLE_ENV]
-    if env.get(TIMEOUT_MS_ENV):
-        node_env[TIMEOUT_MS_ENV] = env[TIMEOUT_MS_ENV]
-    return node_env
-
-
-def _public_request_observations(observations: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        "ae_api_request_count": observations.get("ae_api_request_count", 0),
-        "ae_api_response_count": observations.get("ae_api_response_count", 0),
-        "request_routes": observations.get("request_routes", []),
-        "response_routes": observations.get("response_routes", []),
-    }
-
-
 def _source_status(
     evidence: Mapping[str, Any] | None,
     *,
@@ -720,6 +735,8 @@ def _source_status(
     source = {"status": evidence.get("status", "UNKNOWN")}
     if version_key in evidence:
         source["schema_version"] = evidence.get(version_key)
+    if evidence.get("failure_code"):
+        source["failure_code"] = evidence.get("failure_code")
     return source
 
 
@@ -729,52 +746,29 @@ def _safe_source_detail(evidence: Mapping[str, Any]) -> str:
     return f"source_status={status} source_failure_code={failure_code}"
 
 
+def _scalar_count(connection: Any, sql: str, params: dict[str, str]) -> int:
+    return int(connection.execute(text(sql), params).scalar() or 0)
+
+
+def _json_array(value: Any) -> list[str]:
+    if isinstance(value, str):
+        parsed = json.loads(value)
+    else:
+        parsed = value
+    if not isinstance(parsed, list):
+        return []
+    return [str(item) for item in parsed]
+
+
 def _mapping(value: object) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
-
-
-def _is_artifact_browser_path(path: object) -> bool:
-    return isinstance(path, str) and (
-        path.startswith("/api/v1/artifacts")
-        or path.startswith("/api/v1/artifact-files")
-        or path.startswith("/api/v1/artifact-render-jobs")
-    )
-
-
-def _has_header(headers: object, name: bytes) -> bool:
-    if not isinstance(headers, list):
-        return False
-    return any(key.lower() == name for key, _value in headers)
 
 
 def assert_smoke_evidence_redacted(
     serialized_evidence: str,
     environ: Mapping[str, str],
 ) -> None:
-    leaked = [
-        key
-        for key in PROTECTED_ENV_KEYS
-        if _protected_env_value_leaked(serialized_evidence, environ.get(key))
-    ]
-    if leaked:
-        raise ValueError(
-            "AE Web artifact Playwright PostgreSQL smoke evidence contains "
-            f"unredacted environment value: {leaked[0]}"
-        )
-    for fragment in (
-        "".join(("nuri", "1004")),
-        "".join(("ed6", "@", "c496em")),
-        "/data/" "nex-platform",
-    ):
-        if fragment in serialized_evidence:
-            raise ValueError(
-                "AE Web artifact Playwright PostgreSQL smoke evidence contains "
-                "server-only material."
-            )
-
-
-def _protected_env_value_leaked(serialized: str, value: str | None) -> bool:
-    return bool(value and value not in {DEFAULT_PROFILE, "1"} and value in serialized)
+    base_playwright.assert_smoke_evidence_redacted(serialized_evidence, environ)
 
 
 def write_smoke_evidence(output_path: Path, evidence: dict[str, Any]) -> None:
@@ -787,35 +781,37 @@ def write_smoke_evidence(output_path: Path, evidence: dict[str, Any]) -> None:
 def summary_line(evidence: dict[str, Any]) -> str:
     if evidence["status"] == "SKIPPED":
         return (
-            "ae_web_artifact_playwright_postgres_smoke=skipped "
+            "ae_web_artifact_multiformat_playwright_postgres_smoke=skipped "
             f"reason={SMOKE_ENV}"
         )
     if evidence["status"] == "PASS":
         artifact = _mapping(evidence.get("artifact"))
-        browser = _mapping(evidence.get("browser_observations"))
+        selector = _mapping(artifact.get("download_selector"))
         db = _mapping(evidence.get("db_observations"))
+        row_counts = _mapping(db.get("row_counts"))
         return (
-            "ae_web_artifact_playwright_postgres_smoke=pass "
+            "ae_web_artifact_multiformat_playwright_postgres_smoke=pass "
             f"profile={evidence['profile']} "
             f"artifact={artifact.get('artifact_id')} "
-            f"version_panel={browser.get('version_panel_status')} "
-            f"preview_panel={browser.get('preview_panel_status')} "
-            f"download_panel={browser.get('download_panel_status')} "
-            f"download_save={browser.get('download_save_status')} "
-            f"export_result={browser.get('export_result_status')} "
-            f"selector={browser.get('download_selector_status')} "
-            f"rows={sum(_mapping(db.get('row_counts')).values())} "
+            f"selector={selector.get('status')} "
+            f"enabled={selector.get('enabled_option_count')} "
+            f"formats={len(artifact.get('formats', []))} "
+            f"files={db.get('file_count')} "
+            f"links={db.get('link_count')} "
+            f"rows={sum(row_counts.values())} "
             "live_db=true browser=playwright"
         )
     return (
-        "ae_web_artifact_playwright_postgres_smoke=fail "
+        "ae_web_artifact_multiformat_playwright_postgres_smoke=fail "
         f"reason={evidence.get('failure_code', 'checks_failed')}"
     )
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run protected AE Web artifact Playwright PostgreSQL smoke."
+        description=(
+            "Run protected AE Web multi-format artifact Playwright PostgreSQL smoke."
+        )
     )
     parser.add_argument("--summary", action="store_true", help="Print a short result line.")
     parser.add_argument("--output", type=Path, help="Optional JSON evidence output path.")
@@ -826,18 +822,14 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         load_env_file(ROOT / ".env.local")
-        evidence = run_ae_web_artifact_playwright_postgres_smoke()
+        evidence = run_ae_web_artifact_multiformat_playwright_postgres_smoke()
         if args.output:
             write_smoke_evidence(args.output, evidence)
-        print(
-            summary_line(evidence)
-            if args.summary
-            else json.dumps(evidence, ensure_ascii=False, indent=2, default=str)
-        )
+        print(summary_line(evidence) if args.summary else json.dumps(evidence, default=str))
         return 1 if evidence["status"] == "FAIL" else 0
-    except ValueError as exc:
+    except Exception as exc:
         print(
-            "ae_web_artifact_playwright_postgres_smoke=fail "
+            "ae_web_artifact_multiformat_playwright_postgres_smoke=fail "
             f"error={exc.__class__.__name__}"
         )
         return 1

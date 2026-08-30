@@ -30,6 +30,11 @@ DEFAULT_PROFILE = api_smoke.DEFAULT_PROFILE
 
 WEB_BOUNDARY_FILES = {
     "main": ROOT / "apps" / "nex-ae-web" / "src" / "main.js",
+    "delivery_action_state": ROOT
+    / "apps"
+    / "nex-ae-web"
+    / "src"
+    / "artifactDeliveryActionState.js",
     "client": ROOT / "apps" / "nex-ae-web" / "src" / "artifactClient.js",
     "preview_panel": ROOT
     / "apps"
@@ -56,12 +61,15 @@ WEB_BOUNDARY_ANCHORS = {
         "refreshArtifactVersionPanel",
         "renderArtifactVersionPanelSurface",
         "submitArtifactFileAction",
-        "artifactFileIdFromRoute",
         "artifactVersionsRoute",
         "artifact_versions",
         "buildArtifactVersionPanelState",
+    ),
+    "delivery_action_state": (
+        "artifactFileIdFromRoute",
         "buildArtifactPreviewPanelStateFromPreview",
         "buildArtifactPreviewPanelStateFromDownload",
+        "buildArtifactDeliveryActionSummary",
     ),
     "client": (
         "createFetchArtifactClient",

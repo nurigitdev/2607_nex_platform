@@ -129,6 +129,39 @@ function fakeBrowserResult(overrides = {}) {
           rawBase64PayloadIncluded: false
         }
       },
+      download_selector: {
+        artifact_download_format_selector_schema_version:
+          "ae_web_artifact_download_format_selector.v1",
+        status: "READY",
+        artifact_id: "artifact-playwright-0419",
+        artifact_version_id: "artifact-version-playwright-0419",
+        primary_format: "MD",
+        selected_format: "MD",
+        option_count: 1,
+        enabled_option_count: 1,
+        disabled_option_count: 0,
+        selected_route_present: true,
+        selected_artifact_file_id: "artifact-file-playwright-0419",
+        client_mode: "fetch",
+        metadata: {
+          rawPromptIncluded: false,
+          rawSourceIncluded: false,
+          rawDownloadContentIncluded: false,
+          rawBase64PayloadIncluded: false,
+          browserServiceTokenIncluded: false,
+          databaseEndpointIncluded: false,
+          providerEndpointIncluded: false,
+          storageLocationIncluded: false,
+          htmlEscaped: false
+        }
+      },
+      download_selector_view: {
+        status: "READY",
+        selected_format: "MD",
+        option_count: 1,
+        enabled_option_count: 1,
+        html_escaped: true
+      },
       raw_download_observed: true,
       raw_download_length: 128
     },
@@ -180,8 +213,11 @@ describe("AE Web artifact Playwright smoke", () => {
     assert.equal(evidence.checks.browser_request_secret_header_absent, true);
     assert.equal(evidence.checks.browser_file_save_prepared, true);
     assert.equal(evidence.checks.browser_export_result_saved, true);
+    assert.equal(evidence.checks.artifact_download_selector_ready, true);
     assert.equal(evidence.browser_observations.download_save_status, "SAVED");
     assert.equal(evidence.browser_observations.export_result_status, "SAVED");
+    assert.equal(evidence.browser_observations.download_selector_status, "READY");
+    assert.equal(evidence.artifact.download_selector.enabled_option_count, 1);
     assert.equal(evidence.request_observations.ae_api_request_count, 5);
     assert.equal(
       formatSummary(evidence),

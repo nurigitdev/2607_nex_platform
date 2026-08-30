@@ -102,6 +102,8 @@ def node_pass(_env: dict[str, str]) -> dict[str, Any]:
             "download_panel_status": "DOWNLOAD_READY",
             "download_save_status": "SAVED",
             "export_result_status": "SAVED",
+            "download_selector_status": "READY",
+            "download_selector_enabled_options": 1,
             "raw_download_retrieved": True,
             "downloaded_content_rendered": False,
         },
@@ -137,6 +139,12 @@ def node_pass(_env: dict[str, str]) -> dict[str, Any]:
                 "status": "SAVED",
                 "latest_save_status": "SAVED",
                 "downloadable_format_count": 1,
+            },
+            "download_selector": {
+                "status": "READY",
+                "enabled_option_count": 1,
+                "selected_route_present": True,
+                "selected_artifact_file_id": "artifact-file-0419",
             },
         },
         "request_observations": {
@@ -176,6 +184,7 @@ def node_pass(_env: dict[str, str]) -> dict[str, Any]:
             "artifact_download_panel_ready": True,
             "browser_file_save_prepared": True,
             "browser_export_result_saved": True,
+            "artifact_download_selector_ready": True,
             "raw_download_retrieved_but_not_rendered": True,
         },
     }
@@ -230,6 +239,8 @@ def test_artifact_playwright_postgres_smoke_passes_with_injected_runtime() -> No
     assert evidence["checks"]["browser_file_save_prepared"] is True
     assert evidence["artifact"]["download_save"]["status"] == "SAVED"
     assert evidence["artifact"]["export_result"]["status"] == "SAVED"
+    assert evidence["checks"]["browser_download_selector_ready"] is True
+    assert evidence["artifact"]["download_selector"]["status"] == "READY"
     assert evidence["checks"]["postgres_artifact_rows_persisted"] is True
     assert evidence["cleanup_observations"] == {"artifacts": 1, "handoffs": 1}
     assert prepared.cleaned is True
@@ -241,6 +252,7 @@ def test_artifact_playwright_postgres_smoke_passes_with_injected_runtime() -> No
         "profile=test artifact=artifact-0419 version_panel=VERSION_READY "
         "preview_panel=PREVIEW_READY download_panel=DOWNLOAD_READY "
         "download_save=SAVED export_result=SAVED "
+        "selector=READY "
         "rows=8 live_db=true browser=playwright"
     )
 
