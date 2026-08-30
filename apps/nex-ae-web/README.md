@@ -736,5 +736,15 @@ Slice 0432 adds the browser file-save adapter:
   safe `PREPARED` result so tests and non-browser harnesses can verify the
   boundary without writing files.
 
+Slice 0433 wires download clicks to browser save:
+
+- `src/main.js` now calls `saveArtifactDownload` after a successful
+  `downloadArtifactFile` response and metadata-only panel update.
+- The artifact preview/download operation keeps the visible panel status as
+  `DOWNLOAD_READY` while recording the save result status as safe operation
+  result metadata.
+- Main download wiring remains free of raw download payload fields and
+  server-only storage or credential material.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

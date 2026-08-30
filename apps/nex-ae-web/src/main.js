@@ -13,6 +13,10 @@ import {
   createMockArtifactClient
 } from "./artifactClient.js";
 import {
+  buildArtifactDownloadSaveSummary,
+  saveArtifactDownload
+} from "./artifactDownloadSaveAdapter.js";
+import {
   buildMockArtifactRecordFromRef
 } from "./artifactMockRecord.js";
 import {
@@ -168,6 +172,7 @@ const workspaceState = {
   lastRetrievalRequest: null,
   lastRetrievalResult: null,
   artifactPreviewPanel: createArtifactPreviewPanelState(),
+  artifactDownloadSaveResult: null,
   artifactVersionPanel: createArtifactVersionPanelState(),
   generationFeedbackClient: null,
   repairedResponseDecisionClient: null,
@@ -1659,6 +1664,7 @@ async function appendPromptInteraction() {
   workspaceState.artifactPreviewPanel = createArtifactPreviewPanelState({
     clientMode: workspaceState.artifactClient.clientMode
   });
+  workspaceState.artifactDownloadSaveResult = null;
   workspaceState.operations.artifactPreview = createOperationState({
     operationId: "artifact_preview",
     label: "Artifact preview/download",
@@ -1804,18 +1810,26 @@ async function submitArtifactFileAction(target, action) {
       );
       workspaceState.artifactPreviewPanel =
         buildArtifactPreviewPanelStateFromDownload(download, context);
+      workspaceState.artifactDownloadSaveResult = saveArtifactDownload(download);
     }
+    const downloadSaveSummary =
+      action === "download" && workspaceState.artifactDownloadSaveResult
+        ? buildArtifactDownloadSaveSummary(workspaceState.artifactDownloadSaveResult)
+        : null;
     workspaceState.operations.artifactPreview = markOperationSucceeded(
       workspaceState.operations.artifactPreview,
       {
         status:
           action === "preview" ? "PREVIEW_READY" : "DOWNLOAD_READY",
-        resultStatus: "READY",
+        resultStatus: downloadSaveSummary?.status || "READY",
         clientMode: context.clientMode,
         route: context.route
       }
     );
   } catch (error) {
+    if (action === "download") {
+      workspaceState.artifactDownloadSaveResult = null;
+    }
     workspaceState.artifactPreviewPanel = buildArtifactPreviewPanelStateFromError(
       error,
       context
