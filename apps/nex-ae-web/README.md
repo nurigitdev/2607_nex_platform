@@ -882,6 +882,9 @@ Slice 0441 starts S45:
   Web artifact panel.
 - Slice 0448 adds protected PostgreSQL/Playwright evidence for the library
   surface against `nex_ae_test`.
+- Slice 0450 closes S45 by checking the AE API collection contract, AE Web
+  library UX, Playwright/PostgreSQL evidence, and AG collection operations
+  projection stay wired as metadata-only artifact library surfaces.
 
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

@@ -167,6 +167,9 @@ Unified operations:
   `ag_artifact_operation_detail_projection.v1` for one AE artifact and optional
   handoff/chat artifact link context without exposing rendered content or local
   storage paths.
+- Slice 0450 closes S45 by checking the AG artifact collection projection
+  remains connected to the AE-owned collection API and AE Web library evidence
+  without crossing the metadata-only operations boundary.
 - AG remediation execution handoff planning is centralized in
   `nex_ag.generation_remediation_execution`. The planner maps CX remediation
   execution statuses back to AG task updates without bypassing the existing

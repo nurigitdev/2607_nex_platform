@@ -362,3 +362,6 @@ Artifact library management:
   When explicitly enabled against `nex_ae_test`, it migrates the real test DB,
   creates owner-scoped artifacts, verifies list/status/limit behavior, checks
   collection indexes, and cleans up inserted rows.
+- Slice 0450 closes S45 by checking the AE collection read-model, API route,
+  PostgreSQL smoke evidence, AE Web library surface, and AG operations
+  projection remain connected as metadata-only artifact library contracts.
