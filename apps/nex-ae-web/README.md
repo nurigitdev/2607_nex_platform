@@ -746,5 +746,15 @@ Slice 0433 wires download clicks to browser save:
 - Main download wiring remains free of raw download payload fields and
   server-only storage or credential material.
 
+Slice 0434 adds the export result read-model:
+
+- `src/artifactExportResultReadModel.js` summarizes export status,
+  downloadable formats, render job metadata, and latest browser save status.
+- The artifact panel renders the export result read-model as compact metadata
+  beside the existing preview/download and version panels.
+- Route strings, raw text bodies, base64 payloads, storage refs, credentials,
+  database URLs, and provider endpoints remain out of the export result
+  read-model and rendered HTML.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

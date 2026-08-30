@@ -17,6 +17,10 @@ import {
   saveArtifactDownload
 } from "./artifactDownloadSaveAdapter.js";
 import {
+  buildArtifactExportResultReadModel,
+  renderArtifactExportResultReadModel
+} from "./artifactExportResultReadModel.js";
+import {
   buildMockArtifactRecordFromRef
 } from "./artifactMockRecord.js";
 import {
@@ -173,6 +177,7 @@ const workspaceState = {
   lastRetrievalResult: null,
   artifactPreviewPanel: createArtifactPreviewPanelState(),
   artifactDownloadSaveResult: null,
+  artifactExportResult: null,
   artifactVersionPanel: createArtifactVersionPanelState(),
   generationFeedbackClient: null,
   repairedResponseDecisionClient: null,
@@ -307,6 +312,7 @@ workspaceState.sessionBootstrap = composeAuthenticatedSessionRuntime({
 applySessionBootstrap(workspaceState.sessionBootstrap);
 workspaceState.documentScope = buildCurrentDocumentScope();
 workspaceState.operations = initializeOperationStates();
+refreshArtifactExportResult();
 
 const serviceList = document.querySelector("#service-list");
 const statusStrip = document.querySelector("#status-strip");
@@ -1435,6 +1441,13 @@ function renderTimeline() {
 
 function renderArtifactSummary() {
   const downloadFormats = Object.keys(workspaceState.artifact.downloadRoutes || {});
+  const exportResult =
+    workspaceState.artifactExportResult ||
+    buildArtifactExportResultReadModel({
+      artifactRef: workspaceState.artifactRef,
+      clientMode: workspaceState.artifactClient?.clientMode || "mock"
+    });
+  const exportView = renderArtifactExportResultReadModel(exportResult);
   artifactSummary.innerHTML = `
     <strong>${escapeHtml(workspaceState.artifact.title)}</strong>
     <dl class="inline-meta">
@@ -1462,6 +1475,16 @@ function renderArtifactSummary() {
         <dt>download</dt>
         <dd>${downloadFormats.map(format => `${format}: ${workspaceState.artifact.downloadRoutes[format]}`).map(escapeHtml).join(", ")}</dd>
       </div>
+      <div>
+        <dt>delivery</dt>
+        <dd>${escapeHtml(exportView.feedback)}</dd>
+      </div>
+    </dl>
+    <dl
+      class="inline-meta artifact-export-result"
+      data-artifact-export-result-status="${escapeHtml(exportView.status)}"
+    >
+      ${exportView.summaryHtml}
     </dl>
   `;
 }
@@ -1665,6 +1688,9 @@ async function appendPromptInteraction() {
     clientMode: workspaceState.artifactClient.clientMode
   });
   workspaceState.artifactDownloadSaveResult = null;
+  refreshArtifactExportResult({
+    exportSurface: artifactExport?.exportSurface || null
+  });
   workspaceState.operations.artifactPreview = createOperationState({
     operationId: "artifact_preview",
     label: "Artifact preview/download",
@@ -1727,6 +1753,7 @@ async function submitArtifactExportRequest(format, artifactRef) {
       exportSurface
     );
     workspaceState.artifactRef = exportedArtifactRef;
+    refreshArtifactExportResult({ exportSurface });
     workspaceState.operations.artifactVersions = markOperationSucceeded(
       workspaceState.operations.artifactVersions,
       {
@@ -1811,6 +1838,7 @@ async function submitArtifactFileAction(target, action) {
       workspaceState.artifactPreviewPanel =
         buildArtifactPreviewPanelStateFromDownload(download, context);
       workspaceState.artifactDownloadSaveResult = saveArtifactDownload(download);
+      refreshArtifactExportResult();
     }
     const downloadSaveSummary =
       action === "download" && workspaceState.artifactDownloadSaveResult
@@ -1829,6 +1857,7 @@ async function submitArtifactFileAction(target, action) {
   } catch (error) {
     if (action === "download") {
       workspaceState.artifactDownloadSaveResult = null;
+      refreshArtifactExportResult();
     }
     workspaceState.artifactPreviewPanel = buildArtifactPreviewPanelStateFromError(
       error,
@@ -1845,7 +1874,20 @@ async function submitArtifactFileAction(target, action) {
   }
 
   renderArtifactPreviewPanelSurface();
+  renderArtifactSummary();
   renderRuntimeDiagnostics();
+}
+
+function refreshArtifactExportResult({ exportSurface = null } = {}) {
+  workspaceState.artifactExportResult = buildArtifactExportResultReadModel({
+    artifactRef: workspaceState.artifactRef,
+    exportSurface,
+    downloadSaveSummary: workspaceState.artifactDownloadSaveResult
+      ? buildArtifactDownloadSaveSummary(workspaceState.artifactDownloadSaveResult)
+      : null,
+    clientMode: workspaceState.artifactClient?.clientMode || "mock"
+  });
+  return workspaceState.artifactExportResult;
 }
 
 function artifactActionContext(target, action) {
@@ -2584,8 +2626,10 @@ function badgeClass(status) {
       "READY",
       "VALIDATED",
       "SUCCEEDED",
+      "SAVED",
       "HIGH",
       "COMPLETED",
+      "EXPORT_READY",
       "PREVIEW_READY",
       "DOWNLOAD_READY"
     ].includes(status)
@@ -2605,7 +2649,9 @@ function badgeClass(status) {
   ].includes(status)) {
     return "warning";
   }
-  if (["RUNNING", "READY_FOR_RENDERING"].includes(status)) return "running";
+  if (["RUNNING", "READY_FOR_RENDERING", "EXPORT_PENDING"].includes(status)) {
+    return "running";
+  }
   if (["PENDING", "UNKNOWN", "NOT_REQUIRED"].includes(status)) return "pending";
   return "danger";
 }
@@ -2632,6 +2678,9 @@ function statusLabel(status) {
     PREVIEW_ONLY: "미리보기",
     VALIDATED: "검증됨",
     SUCCEEDED: "성공",
+    SAVED: "저장됨",
+    EXPORT_READY: "내보내기 준비",
+    EXPORT_PENDING: "내보내기 진행",
     NOT_REQUIRED: "불필요",
     NOT_READY: "미준비",
     UNHEALTHY: "비정상",

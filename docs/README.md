@@ -537,6 +537,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0431`](slices/0431_ae_web_artifact_delivery_boundary_audit.md) | `S44-001` AE Web artifact delivery boundary audit and refactoring checkpoint. |
 | [`Slice 0432`](slices/0432_ae_web_browser_file_save_adapter_foundation.md) | `S44-002` AE Web browser file-save adapter foundation. |
 | [`Slice 0433`](slices/0433_ae_web_artifact_download_action_wiring.md) | `S44-003` AE Web artifact download action wiring. |
+| [`Slice 0434`](slices/0434_ae_web_export_result_ux_read_model.md) | `S44-004` AE Web export result UX read-model. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
