@@ -176,7 +176,10 @@ export function buildArtifactPreviewPanelStateFromDownload(
       format: file.format,
       contentType: downloadSurface.contentType,
       contentHash: downloadSurface.contentHash || file.fileHash,
-      contentLength: downloadSurface.contentLength
+      contentLength: downloadSurface.contentLength,
+      encodedContentLength: downloadSurface.encodedContentLength,
+      contentEncoding: downloadSurface.contentEncoding,
+      downloadPayloadKind: downloadSurface.downloadPayloadKind
     },
     clientMode: downloadSurface.clientMode
   });
@@ -215,6 +218,9 @@ export function buildArtifactPreviewPanelSummary(state) {
     truncated: current.preview?.truncated || false,
     content_hash_present: Boolean(current.download?.contentHash),
     content_length: current.download?.contentLength ?? null,
+    encoded_content_length: current.download?.encodedContentLength ?? null,
+    content_encoding: current.download?.contentEncoding || null,
+    download_payload_kind: current.download?.downloadPayloadKind || null,
     client_mode: current.clientMode,
     error_status: current.errorStatus,
     retryable: current.retryable,
@@ -323,13 +329,19 @@ function normalizePreview(preview) {
 }
 
 function normalizeDownload(download) {
+  const downloadPayloadKind = normalizeDownloadPayloadKind(download.downloadPayloadKind);
   return {
     fileName: normalizeOptionalText(download.fileName) || "artifact",
     format: normalizeOptionalText(download.format) || "UNKNOWN",
     contentType:
       normalizeOptionalText(download.contentType) || "application/octet-stream",
     contentHash: normalizeOptionalText(download.contentHash),
-    contentLength: normalizeContentLength(download.contentLength)
+    contentLength: normalizeContentLength(download.contentLength),
+    encodedContentLength: normalizeContentLength(download.encodedContentLength),
+    contentEncoding:
+      normalizeOptionalText(download.contentEncoding) ||
+      (downloadPayloadKind === "base64" ? "base64" : "utf-8"),
+    downloadPayloadKind
   };
 }
 
@@ -348,6 +360,16 @@ function normalizeContentLength(value) {
     });
   }
   return Math.trunc(numeric);
+}
+
+function normalizeDownloadPayloadKind(value) {
+  const normalized = normalizeOptionalText(value) || "text";
+  if (!["text", "base64"].includes(normalized)) {
+    throw new ArtifactPreviewPanelError("Download payload kind is unsupported.", {
+      status: "ARTIFACT_DOWNLOAD_PAYLOAD_KIND_UNSUPPORTED"
+    });
+  }
+  return normalized;
 }
 
 function normalizeStatus(status) {
@@ -424,7 +446,9 @@ function panelBodyText(state) {
   if (state.status === "DOWNLOAD_READY") {
     const fileName = state.download?.fileName || "artifact";
     const length = state.download?.contentLength ?? 0;
-    return `Download prepared: ${fileName}\nContent length: ${length} bytes\nDownloaded content is not rendered in the browser panel.`;
+    const payloadKind = state.download?.downloadPayloadKind || "text";
+    const encoding = state.download?.contentEncoding || "utf-8";
+    return `Download prepared: ${fileName}\nPayload: ${payloadKind} (${encoding})\nContent length: ${length} bytes\nDownloaded content is not rendered in the browser panel.`;
   }
   if (state.status === "RUNNING") return "Loading artifact surface...";
   if (state.status === "UNAVAILABLE") {
@@ -452,7 +476,9 @@ function renderSummary(summary) {
     [
       "content",
       summary.action === "download"
-        ? `${summary.content_hash_present ? "hash present" : "hash empty"} · ${
+        ? `${summary.download_payload_kind || "text"} · ${
+            summary.content_hash_present ? "hash present" : "hash empty"
+          } · ${
             summary.content_length ?? 0
           } bytes`
         : summary.truncated

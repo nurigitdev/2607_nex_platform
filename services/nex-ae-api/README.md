@@ -246,6 +246,10 @@ Artifact records:
   route checks, persisted version/file/link selects, text/base64 download shape
   checks, local rendered payload verification, and cleanup against the real
   `nex_ae_test` database.
+- Slice 0427 updates the AE Web download surface for S43 binary exports. The AE
+  API download contract remains unchanged: text formats return inline text, and
+  DOCX/PDF return base64 content through the protected download boundary. AE Web
+  now keeps only binary metadata in panel and evidence surfaces.
 
 Prompt analytics:
 

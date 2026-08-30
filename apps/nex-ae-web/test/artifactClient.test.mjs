@@ -122,6 +122,24 @@ function downloadPayload(overrides = {}) {
   };
 }
 
+function binaryArtifactFile(format = "PDF", overrides = {}) {
+  return {
+    artifact_file_id: `artifact-file-${format.toLowerCase()}-001`,
+    artifact_id: "artifact-001",
+    artifact_version_id: "artifact-version-001",
+    format,
+    mime_type:
+      format === "DOCX"
+        ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        : "application/pdf",
+    file_name: `generated-report.${format.toLowerCase()}`,
+    file_size_bytes: 512,
+    file_hash: "b".repeat(64),
+    source_version_hash: "e".repeat(64),
+    ...overrides
+  };
+}
+
 function jsonResponse({ ok = true, status = 200, payload }) {
   return {
     ok,
@@ -184,7 +202,11 @@ describe("AE Web artifact client adapter", () => {
     assert.equal(preview.truncated, true);
     assert.match(preview.textPreview, /요약 미리보기/);
     assert.equal(download.content.includes("다운로드 본문"), true);
+    assert.equal(download.downloadPayloadKind, "text");
+    assert.equal(download.contentEncoding, "utf-8");
+    assert.equal(download.contentBase64, null);
     assert.equal(download.metadata.contentIncluded, true);
+    assert.equal(download.metadata.binaryContentIncluded, false);
     assert.equal(buildArtifactClientSummary(download).download_route_count, 1);
   });
 
@@ -285,12 +307,53 @@ describe("AE Web artifact client adapter", () => {
     assert.equal(preview.previewSchemaVersion, AE_ARTIFACT_FILE_PREVIEW_SCHEMA_VERSION);
     assert.equal(preview.metadata.previewTextIncluded, true);
     assert.equal(download.downloadSchemaVersion, AE_ARTIFACT_FILE_DOWNLOAD_SCHEMA_VERSION);
+    assert.equal(download.downloadPayloadKind, "text");
+    assert.equal(download.contentEncoding, "utf-8");
     assert.equal(download.contentLength, download.content.length);
+    assert.equal(buildArtifactClientSummary(download).binary_content_included, false);
     assert.equal(serializedSummary.includes(download.content), false);
     assert.doesNotMatch(
       JSON.stringify({ preview, summary: buildArtifactClientSummary(download) }),
       /storage_ref|storage_path|service_token|database_url|provider_url|\/data\/nex-platform/
     );
+  });
+
+  it("normalizes binary base64 downloads without putting payload bytes in summaries", () => {
+    const contentBase64 = "JVBERi0xLjQKJQ==";
+    const download = buildArtifactDownloadSurface(
+      downloadPayload({
+        artifact_file: binaryArtifactFile("PDF"),
+        artifact_link: {
+          artifact_link_id: "artifact-link-pdf-download-001",
+          artifact_file_id: "artifact-file-pdf-001",
+          link_type: "download",
+          access_policy: "owner_only",
+          link_route: "/api/v1/artifact-files/artifact-file-pdf-001/download"
+        },
+        download_file_name: "generated-report.pdf",
+        content_type: "application/pdf",
+        content_hash: "b".repeat(64),
+        content: undefined,
+        content_encoding: "base64",
+        content_base64: contentBase64
+      })
+    );
+    const summary = buildArtifactClientSummary(download);
+
+    assert.equal(download.downloadPayloadKind, "base64");
+    assert.equal(download.contentEncoding, "base64");
+    assert.equal(download.content, "");
+    assert.equal(download.contentBase64, contentBase64);
+    assert.equal(download.contentLength, 10);
+    assert.equal(download.encodedContentLength, contentBase64.length);
+    assert.equal(download.metadata.contentIncluded, false);
+    assert.equal(download.metadata.binaryContentIncluded, true);
+    assert.equal(summary.binary_content_included, true);
+    assert.equal(summary.download_payload_kind, "base64");
+    assert.equal(summary.content_encoding, "base64");
+    assert.equal(summary.content_length, 10);
+    assert.equal(summary.encoded_content_length, contentBase64.length);
+    assert.equal(JSON.stringify(summary).includes(contentBase64), false);
   });
 
   it("reports HTTP, network, missing, invalid, and unsafe failures as typed errors", async () => {
@@ -352,6 +415,49 @@ describe("AE Web artifact client adapter", () => {
     assert.throws(
       () => buildArtifactDownloadSurface({ download_schema_version: "wrong" }),
       error => error instanceof ArtifactClientError && error.status === "ARTIFACT_DOWNLOAD_INVALID"
+    );
+    assert.throws(
+      () =>
+        buildArtifactDownloadSurface(
+          downloadPayload({ content_encoding: "gzip" })
+        ),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_DOWNLOAD_ENCODING_UNSUPPORTED"
+    );
+    assert.throws(
+      () =>
+        buildArtifactDownloadSurface(
+          downloadPayload({ content_base64: "YWJjZA==" })
+        ),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_DOWNLOAD_CONTENT_AMBIGUOUS"
+    );
+    assert.throws(
+      () =>
+        buildArtifactDownloadSurface(
+          downloadPayload({
+            content: undefined,
+            content_encoding: "base64",
+            content_base64: "not-base64"
+          })
+        ),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_DOWNLOAD_BASE64_INVALID"
+    );
+    assert.throws(
+      () =>
+        buildArtifactDownloadSurface(
+          downloadPayload({
+            content: undefined,
+            content_encoding: "base64"
+          })
+        ),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_DOWNLOAD_BASE64_INVALID"
     );
     assert.throws(
       () =>
@@ -472,6 +578,12 @@ describe("AE Web artifact client adapter", () => {
     assert.deepEqual(mockResult.requestedFormats, ["DOCX", "PDF"]);
     assert.equal(refreshed.availableFormats.includes("PDF"), true);
     assert.equal(versions.versionCount, 2);
+    const pdfFile = refreshed.files.find(file => file.format === "PDF");
+    const pdfDownload = await mockClient.downloadArtifactFile(pdfFile.artifactFileId);
+    assert.equal(pdfDownload.downloadPayloadKind, "base64");
+    assert.equal(pdfDownload.contentEncoding, "base64");
+    assert.equal(pdfDownload.contentBase64, "JVBERi0xLjQKJQ==");
+    assert.equal(pdfDownload.metadata.binaryContentIncluded, true);
 
     const calls = [];
     const fetchClient = createFetchArtifactClient({

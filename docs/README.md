@@ -530,6 +530,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0424`](slices/0424_ae_docx_export_adapter.md) | `S43-004` AE DOCX export adapter. |
 | [`Slice 0425`](slices/0425_ae_pdf_export_adapter_multi_format_stage_policy.md) | `S43-005` AE PDF export adapter and multi-format stage policy. |
 | [`Slice 0426`](slices/0426_ae_web_export_submit_adapter_postgres_smoke.md) | `S43-006` AE Web export submit adapter and protected PostgreSQL smoke evidence. |
+| [`Slice 0427`](slices/0427_ae_web_binary_artifact_download_surface.md) | `S43-007` AE Web binary artifact download surface. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

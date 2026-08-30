@@ -688,5 +688,17 @@ Slice 0426 wires export submit intent to the artifact client:
 - `scripts/smoke/run_ae_artifact_export_postgres_smoke.py` is the protected
   test-database evidence point for multi-format export files.
 
+Slice 0427 hardens binary artifact downloads:
+
+- `src/artifactClient.js` separates text downloads from base64 binary downloads
+  with `downloadPayloadKind`, `contentEncoding`, decoded `contentLength`, and
+  `encodedContentLength`.
+- Mock DOCX/PDF export downloads now use deterministic base64 payloads so
+  browser regression can exercise the binary boundary without live network or
+  PostgreSQL access.
+- `src/artifactPreviewPanel.js` keeps download panels metadata-only. Raw text
+  content and base64 payload bytes stay out of panel state, summaries, rendered
+  HTML, and smoke evidence.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

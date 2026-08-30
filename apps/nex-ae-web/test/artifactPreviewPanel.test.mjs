@@ -176,6 +176,45 @@ describe("AE Web artifact preview/download panel", () => {
     assert.equal(view.metadata.downloadedContentRendered, false);
   });
 
+  it("keeps binary base64 downloads as metadata-only panel state", () => {
+    const contentBase64 = "JVBERi0xLjQKJQ==";
+    const state = buildArtifactPreviewPanelStateFromDownload(
+      downloadSurface({
+        artifact_file: artifactFile({
+          artifact_file_id: "artifact-file-pdf-001",
+          format: "PDF",
+          mime_type: "application/pdf",
+          file_name: "generated-report.pdf",
+          file_hash: "b".repeat(64)
+        }),
+        artifact_link: artifactLink("download", {
+          artifact_file_id: "artifact-file-pdf-001",
+          link_route: "/api/v1/artifact-files/artifact-file-pdf-001/download"
+        }),
+        download_file_name: "generated-report.pdf",
+        content_type: "application/pdf",
+        content_hash: "b".repeat(64),
+        content: undefined,
+        content_encoding: "base64",
+        content_base64: contentBase64
+      }),
+      { artifactId: "artifact-001" }
+    );
+    const summary = buildArtifactPreviewPanelSummary(state);
+    const view = renderArtifactPreviewPanel(state);
+    const serialized = JSON.stringify({ state, summary, view });
+
+    assert.equal(state.download.downloadPayloadKind, "base64");
+    assert.equal(state.download.contentEncoding, "base64");
+    assert.equal(summary.download_payload_kind, "base64");
+    assert.equal(summary.content_encoding, "base64");
+    assert.equal(summary.content_length, 10);
+    assert.equal(summary.encoded_content_length, contentBase64.length);
+    assert.match(view.bodyText, /Payload: base64/);
+    assert.doesNotMatch(serialized, new RegExp(contentBase64));
+    assert.equal(view.metadata.downloadedContentRendered, false);
+  });
+
   it("normalizes failures as retryable unavailable states", () => {
     const error = new Error("offline");
     error.status = "NETWORK_ERROR";
@@ -218,6 +257,16 @@ describe("AE Web artifact preview/download panel", () => {
       error =>
         error instanceof ArtifactPreviewPanelError &&
         error.status === "ARTIFACT_DOWNLOAD_LENGTH_INVALID"
+    );
+    assert.throws(
+      () => createArtifactPreviewPanelState({
+        status: "DOWNLOAD_READY",
+        action: "download",
+        download: { downloadPayloadKind: "zip" }
+      }),
+      error =>
+        error instanceof ArtifactPreviewPanelError &&
+        error.status === "ARTIFACT_DOWNLOAD_PAYLOAD_KIND_UNSUPPORTED"
     );
     assert.throws(
       () => buildArtifactPreviewPanelSummary({}),

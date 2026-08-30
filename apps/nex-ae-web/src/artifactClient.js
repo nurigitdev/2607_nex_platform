@@ -11,6 +11,8 @@ export const AE_WEB_ARTIFACT_EXPORT_SURFACE_SCHEMA_VERSION =
   "ae_web_artifact_export_surface.v1";
 
 const SUPPORTED_ARTIFACT_EXPORT_FORMATS = ["MD", "HTML_PREVIEW", "DOCX", "PDF"];
+const TEXT_DOWNLOAD_CONTENT_ENCODING = "utf-8";
+const BASE64_DOWNLOAD_CONTENT_ENCODING = "base64";
 
 const SENSITIVE_KEY_PARTS = [
   "api_key",
@@ -426,7 +428,7 @@ export function buildArtifactDownloadSurface(
       status: "ARTIFACT_DOWNLOAD_INVALID"
     });
   }
-  const content = optionalText(payload.content) || "";
+  const downloadContent = normalizeDownloadContent(payload);
   const surface = {
     artifact_client_schema_version: AE_WEB_ARTIFACT_CLIENT_SCHEMA_VERSION,
     downloadSchemaVersion: payload.download_schema_version,
@@ -438,11 +440,19 @@ export function buildArtifactDownloadSurface(
     downloadFileName: optionalText(payload.download_file_name) || "artifact.md",
     contentType: optionalText(payload.content_type) || "application/octet-stream",
     contentHash: optionalText(payload.content_hash) || null,
-    content,
-    contentLength: content.length,
+    content: downloadContent.content,
+    contentBase64: downloadContent.contentBase64,
+    contentEncoding: downloadContent.contentEncoding,
+    downloadPayloadKind: downloadContent.downloadPayloadKind,
+    contentLength: downloadContent.contentLength,
+    encodedContentLength: downloadContent.encodedContentLength,
     route,
     clientMode: clientMode === "fetch" ? "fetch" : "mock",
-    metadata: safeArtifactMetadata({ contentIncluded: true, previewTextIncluded: false })
+    metadata: safeArtifactMetadata({
+      contentIncluded: downloadContent.downloadPayloadKind === "text",
+      binaryContentIncluded: downloadContent.downloadPayloadKind === "base64",
+      previewTextIncluded: false
+    })
   };
   assertArtifactClientSurfaceSafe(surface);
   return surface;
@@ -548,6 +558,11 @@ export function buildArtifactClientSummary(surface) {
         : 0,
     client_mode: surface.clientMode,
     content_included: Boolean(surface.metadata?.contentIncluded),
+    binary_content_included: Boolean(surface.metadata?.binaryContentIncluded),
+    download_payload_kind: surface.downloadPayloadKind || null,
+    content_encoding: surface.contentEncoding || null,
+    content_length: surface.contentLength ?? null,
+    encoded_content_length: surface.encodedContentLength ?? null,
     metadata: {
       browserServiceTokenIncluded: false,
       databaseEndpointIncluded: false,
@@ -766,6 +781,20 @@ function buildMockPreviewPayload(artifactFile, artifactLink) {
 }
 
 function buildMockDownloadPayload(artifactFile, artifactLink) {
+  const format = optionalText(artifactFile.format)?.toUpperCase();
+  const binaryContent = mockBinaryDownloadContentBase64(format);
+  if (binaryContent) {
+    return {
+      download_schema_version: AE_ARTIFACT_FILE_DOWNLOAD_SCHEMA_VERSION,
+      artifact_file: artifactFile,
+      artifact_link: artifactLink,
+      download_file_name: artifactFile.file_name || "artifact",
+      content_type: artifactFile.mime_type || "application/octet-stream",
+      content_hash: artifactFile.file_hash || null,
+      content_encoding: BASE64_DOWNLOAD_CONTENT_ENCODING,
+      content_base64: binaryContent
+    };
+  }
   return {
     download_schema_version: AE_ARTIFACT_FILE_DOWNLOAD_SCHEMA_VERSION,
     artifact_file: artifactFile,
@@ -851,10 +880,12 @@ function materializeMockArtifactExport(record, exportRequest) {
 
 function safeArtifactMetadata({
   contentIncluded = false,
+  binaryContentIncluded = false,
   previewTextIncluded = false
 } = {}) {
   return {
     contentIncluded: Boolean(contentIncluded),
+    binaryContentIncluded: Boolean(binaryContentIncluded),
     previewTextIncluded: Boolean(previewTextIncluded),
     browserServiceTokenIncluded: false,
     databaseEndpointIncluded: false,
@@ -863,6 +894,77 @@ function safeArtifactMetadata({
     rawSourceIncluded: false,
     storageLocationIncluded: false
   };
+}
+
+function normalizeDownloadContent(payload) {
+  const content = optionalText(payload.content) || "";
+  const encodedContent = optionalText(payload.content_base64);
+  const declaredEncoding = optionalText(payload.content_encoding)?.toLowerCase() || null;
+  const wantsBase64 =
+    declaredEncoding === BASE64_DOWNLOAD_CONTENT_ENCODING || Boolean(encodedContent);
+
+  if (
+    declaredEncoding &&
+    ![TEXT_DOWNLOAD_CONTENT_ENCODING, "text", BASE64_DOWNLOAD_CONTENT_ENCODING].includes(
+      declaredEncoding
+    )
+  ) {
+    throw new ArtifactClientError("Artifact download content encoding is unsupported.", {
+      status: "ARTIFACT_DOWNLOAD_ENCODING_UNSUPPORTED"
+    });
+  }
+
+  if (content && encodedContent) {
+    throw new ArtifactClientError("Artifact download content is ambiguous.", {
+      status: "ARTIFACT_DOWNLOAD_CONTENT_AMBIGUOUS"
+    });
+  }
+
+  if (wantsBase64) {
+    const contentBase64 = normalizeBase64DownloadContent(encodedContent);
+    return {
+      content: "",
+      contentBase64,
+      contentEncoding: BASE64_DOWNLOAD_CONTENT_ENCODING,
+      downloadPayloadKind: "base64",
+      contentLength: decodedBase64Length(contentBase64),
+      encodedContentLength: contentBase64.length
+    };
+  }
+
+  return {
+    content,
+    contentBase64: null,
+    contentEncoding: TEXT_DOWNLOAD_CONTENT_ENCODING,
+    downloadPayloadKind: "text",
+    contentLength: content.length,
+    encodedContentLength: null
+  };
+}
+
+function normalizeBase64DownloadContent(value) {
+  const compact = optionalText(value)?.replace(/\s+/g, "") || null;
+  if (
+    !compact ||
+    compact.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(compact)
+  ) {
+    throw new ArtifactClientError("Artifact download base64 content is invalid.", {
+      status: "ARTIFACT_DOWNLOAD_BASE64_INVALID"
+    });
+  }
+  return compact;
+}
+
+function decodedBase64Length(value) {
+  const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+  return Math.trunc((value.length * 3) / 4) - padding;
+}
+
+function mockBinaryDownloadContentBase64(format) {
+  if (format === "DOCX") return "UEsDBAoAAAAAAERPQ1g=";
+  if (format === "PDF") return "JVBERi0xLjQKJQ==";
+  return null;
 }
 
 function safeRoute(value) {
