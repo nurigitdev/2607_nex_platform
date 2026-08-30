@@ -714,5 +714,16 @@ Slice 0430 closes S43 from the browser side:
   submit adapter, binary download surface, fetch-mode export smoke, and panel
   redaction guard registered with the backend export/transform closure.
 
+Slice 0431 audits the artifact delivery boundary:
+
+- `run_ae_web_artifact_delivery_boundary_audit.py` freezes the S44 handoff
+  between normalized artifact download surfaces and the future browser save
+  adapter.
+- `nex-ae-api` stays the download authorization owner, while `nex-ae-web`
+  remains responsible for the browser delivery surface.
+- Preview panels, runtime diagnostics, and smoke evidence stay metadata-only;
+  raw text bodies and base64 payloads are only allowed inside the normalized
+  download surface until the save adapter materializes them.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
