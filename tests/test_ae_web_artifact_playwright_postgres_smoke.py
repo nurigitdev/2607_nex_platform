@@ -100,6 +100,8 @@ def node_pass(_env: dict[str, str]) -> dict[str, Any]:
             "version_panel_status": "VERSION_READY",
             "preview_panel_status": "PREVIEW_READY",
             "download_panel_status": "DOWNLOAD_READY",
+            "download_save_status": "SAVED",
+            "export_result_status": "SAVED",
             "raw_download_retrieved": True,
             "downloaded_content_rendered": False,
         },
@@ -121,6 +123,20 @@ def node_pass(_env: dict[str, str]) -> dict[str, Any]:
             "download_panel": {
                 "status": "DOWNLOAD_READY",
                 "metadata": {"downloadedContentRendered": False},
+            },
+            "download_save": {
+                "status": "SAVED",
+                "blob_created": True,
+                "object_url_created": True,
+                "anchor_clicked": True,
+                "object_url_revoked": True,
+                "browser_save_available": True,
+                "payload_kind": "text",
+            },
+            "export_result": {
+                "status": "SAVED",
+                "latest_save_status": "SAVED",
+                "downloadable_format_count": 1,
             },
         },
         "request_observations": {
@@ -158,6 +174,8 @@ def node_pass(_env: dict[str, str]) -> dict[str, Any]:
             "artifact_version_panel_ready": True,
             "artifact_preview_panel_ready": True,
             "artifact_download_panel_ready": True,
+            "browser_file_save_prepared": True,
+            "browser_export_result_saved": True,
             "raw_download_retrieved_but_not_rendered": True,
         },
     }
@@ -209,6 +227,9 @@ def test_artifact_playwright_postgres_smoke_passes_with_injected_runtime() -> No
     assert evidence["status"] == "PASS"
     assert evidence["checks"]["web_artifact_postgres_passed"] is True
     assert evidence["checks"]["browser_artifact_download_called"] is True
+    assert evidence["checks"]["browser_file_save_prepared"] is True
+    assert evidence["artifact"]["download_save"]["status"] == "SAVED"
+    assert evidence["artifact"]["export_result"]["status"] == "SAVED"
     assert evidence["checks"]["postgres_artifact_rows_persisted"] is True
     assert evidence["cleanup_observations"] == {"artifacts": 1, "handoffs": 1}
     assert prepared.cleaned is True
@@ -219,6 +240,7 @@ def test_artifact_playwright_postgres_smoke_passes_with_injected_runtime() -> No
         "ae_web_artifact_playwright_postgres_smoke=pass "
         "profile=test artifact=artifact-0419 version_panel=VERSION_READY "
         "preview_panel=PREVIEW_READY download_panel=DOWNLOAD_READY "
+        "download_save=SAVED export_result=SAVED "
         "rows=8 live_db=true browser=playwright"
     )
 
@@ -445,4 +467,5 @@ def test_artifact_playwright_prepared_cleanup_and_docs_are_wired(
         "run_ae_web_artifact_playwright_postgres_smoke.py --summary" in quality_gate
     )
     assert "0419_ae_web_artifact_playwright_postgresql_smoke.md" in docs_index
+    assert "0435_ae_web_artifact_download_playwright_postgresql_smoke.md" in docs_index
     assert package["scripts"]["smoke:artifact-playwright"]

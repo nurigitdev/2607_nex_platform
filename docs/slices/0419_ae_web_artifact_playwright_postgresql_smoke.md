@@ -47,5 +47,5 @@ NEX_AE_TEST_DATABASE_URL='postgresql+psycopg://.../nex_ae_test' \
 Expected protected summary shape:
 
 ```text
-ae_web_artifact_playwright_postgres_smoke=pass profile=test version_panel=VERSION_READY preview_panel=PREVIEW_READY download_panel=DOWNLOAD_READY rows=8 live_db=true browser=playwright
+ae_web_artifact_playwright_postgres_smoke=pass profile=test artifact=<artifact-id> version_panel=VERSION_READY preview_panel=PREVIEW_READY download_panel=DOWNLOAD_READY download_save=SAVED export_result=SAVED rows=8 live_db=true browser=playwright
 ```

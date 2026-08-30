@@ -93,11 +93,15 @@ export async function runArtifactPlaywrightSmoke({
         const [
           runtimeModule,
           clientModule,
+          saveAdapterModule,
+          exportResultModule,
           previewPanelModule,
           versionPanelModule
         ] = await Promise.all([
           import(moduleUrl("/src/authenticatedRuntime.js")),
           import(moduleUrl("/src/artifactClient.js")),
+          import(moduleUrl("/src/artifactDownloadSaveAdapter.js")),
+          import(moduleUrl("/src/artifactExportResultReadModel.js")),
           import(moduleUrl("/src/artifactPreviewPanel.js")),
           import(moduleUrl("/src/artifactVersionPanel.js"))
         ]);
@@ -117,6 +121,35 @@ export async function runArtifactPlaywrightSmoke({
         const downloadSurface = await artifactClient.downloadArtifactFile(
           requestedFileId
         );
+        const browserSaveHarness = createBrowserSaveHarness();
+        const downloadSaveResult = saveAdapterModule.saveArtifactDownload(
+          downloadSurface,
+          {
+            BlobCtor: Blob,
+            documentRef: browserSaveHarness.documentRef,
+            urlRef: browserSaveHarness.urlRef
+          }
+        );
+        const downloadSaveSummary =
+          saveAdapterModule.buildArtifactDownloadSaveSummary(downloadSaveResult);
+        const exportResultReadModel =
+          exportResultModule.buildArtifactExportResultReadModel({
+            artifactRef: {
+              artifactId: artifactSurface.artifactId,
+              artifactVersionId: artifactSurface.artifactVersionId,
+              displayTitle: artifactSurface.displayTitle,
+              artifactStatus: artifactSurface.artifactStatus,
+              primaryFormat: artifactSurface.primaryFormat,
+              availableFormats: artifactSurface.availableFormats,
+              downloadRoutes: artifactSurface.downloadRoutes
+            },
+            downloadSaveSummary,
+            clientMode: artifactClient.clientMode
+          });
+        const exportResultSummary =
+          exportResultModule.buildArtifactExportResultSummary(
+            exportResultReadModel
+          );
         const versionPanel = versionPanelModule.buildArtifactVersionPanelState({
           artifactSurface,
           versionsSurface
@@ -163,12 +196,48 @@ export async function runArtifactPlaywrightSmoke({
               previewPanelModule.buildArtifactPreviewPanelSummary(previewPanel),
             download_panel:
               previewPanelModule.buildArtifactPreviewPanelSummary(downloadPanel),
+            download_save: downloadSaveSummary,
+            export_result: exportResultSummary,
+            browser_save_events: browserSaveHarness.events,
             raw_download_observed:
               typeof downloadSurface.content === "string" &&
               downloadSurface.content.length > 0,
             raw_download_length: downloadSurface.contentLength || 0
           }
         };
+
+        function createBrowserSaveHarness() {
+          const events = [];
+          const documentRef = {
+            body: {
+              appendChild(anchor) {
+                events.push(["append", anchor.download]);
+              },
+              removeChild(anchor) {
+                events.push(["remove", anchor.download]);
+              }
+            },
+            createElement(tagName) {
+              events.push(["create", tagName]);
+              return {
+                style: {},
+                click() {
+                  events.push(["click", this.download]);
+                }
+              };
+            }
+          };
+          const urlRef = {
+            createObjectURL(blob) {
+              events.push(["object_url", blob.type, blob.size]);
+              return "blob://ae-web-artifact-playwright-smoke";
+            },
+            revokeObjectURL(url) {
+              events.push(["revoke", url]);
+            }
+          };
+          return { documentRef, urlRef, events };
+        }
       },
       { artifactId, artifactFileId, runtimeConfig, sessionState }
     );
@@ -202,6 +271,15 @@ export async function runArtifactPlaywrightSmoke({
         browserResult.artifact.preview_panel.status === "PREVIEW_READY",
       artifact_download_panel_ready:
         browserResult.artifact.download_panel.status === "DOWNLOAD_READY",
+      browser_file_save_prepared:
+        browserResult.artifact.download_save.status === "SAVED" &&
+        browserResult.artifact.download_save.blob_created === true &&
+        browserResult.artifact.download_save.object_url_created === true &&
+        browserResult.artifact.download_save.anchor_clicked === true &&
+        browserResult.artifact.download_save.object_url_revoked === true,
+      browser_export_result_saved:
+        browserResult.artifact.export_result.status === "SAVED" &&
+        browserResult.artifact.export_result.latest_save_status === "SAVED",
       artifact_version_panel_ready:
         browserResult.artifact.version_panel.status === "VERSION_READY",
       artifact_version_file_linked:
@@ -235,6 +313,8 @@ export async function runArtifactPlaywrightSmoke({
         version_panel_status: browserResult.artifact.version_panel.status,
         preview_panel_status: browserResult.artifact.preview_panel.status,
         download_panel_status: browserResult.artifact.download_panel.status,
+        download_save_status: browserResult.artifact.download_save.status,
+        export_result_status: browserResult.artifact.export_result.status,
         raw_download_retrieved: browserResult.artifact.raw_download_observed,
         raw_download_length: browserResult.artifact.raw_download_length,
         downloaded_content_rendered: false
@@ -244,6 +324,8 @@ export async function runArtifactPlaywrightSmoke({
         file_summary: browserResult.artifact.file_summary,
         preview_panel: browserResult.artifact.preview_panel,
         download_panel: browserResult.artifact.download_panel,
+        download_save: browserResult.artifact.download_save,
+        export_result: browserResult.artifact.export_result,
         version_panel: browserResult.artifact.version_panel
       },
       request_observations: {

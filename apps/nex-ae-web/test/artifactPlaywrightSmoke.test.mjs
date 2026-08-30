@@ -107,6 +107,28 @@ function fakeBrowserResult(overrides = {}) {
         status: "DOWNLOAD_READY",
         metadata: { downloadedContentRendered: false }
       },
+      download_save: {
+        status: "SAVED",
+        blob_created: true,
+        object_url_created: true,
+        anchor_clicked: true,
+        object_url_revoked: true,
+        browser_save_available: true,
+        payload_kind: "text",
+        metadata: {
+          rawDownloadContentIncluded: false,
+          rawBase64PayloadIncluded: false
+        }
+      },
+      export_result: {
+        status: "SAVED",
+        latest_save_status: "SAVED",
+        downloadable_format_count: 1,
+        metadata: {
+          rawDownloadContentIncluded: false,
+          rawBase64PayloadIncluded: false
+        }
+      },
       raw_download_observed: true,
       raw_download_length: 128
     },
@@ -156,6 +178,10 @@ describe("AE Web artifact Playwright smoke", () => {
     assert.equal(evidence.browser_observations.version_panel_status, "VERSION_READY");
     assert.equal(evidence.checks.artifact_download_called, true);
     assert.equal(evidence.checks.browser_request_secret_header_absent, true);
+    assert.equal(evidence.checks.browser_file_save_prepared, true);
+    assert.equal(evidence.checks.browser_export_result_saved, true);
+    assert.equal(evidence.browser_observations.download_save_status, "SAVED");
+    assert.equal(evidence.browser_observations.export_result_status, "SAVED");
     assert.equal(evidence.request_observations.ae_api_request_count, 5);
     assert.equal(
       formatSummary(evidence),

@@ -506,6 +506,12 @@ def _pass_or_fail_evidence(
         "browser_artifact_download_panel_ready": (
             node_checks.get("artifact_download_panel_ready") is True
         ),
+        "browser_file_save_prepared": (
+            node_checks.get("browser_file_save_prepared") is True
+        ),
+        "browser_export_result_saved": (
+            node_checks.get("browser_export_result_saved") is True
+        ),
         "browser_download_body_not_rendered": (
             node_checks.get("raw_download_retrieved_but_not_rendered") is True
         ),
@@ -576,6 +582,12 @@ def _pass_or_fail_evidence(
             ),
             "download_panel": _mapping(
                 _mapping(node_smoke.get("artifact")).get("download_panel")
+            ),
+            "download_save": _mapping(
+                _mapping(node_smoke.get("artifact")).get("download_save")
+            ),
+            "export_result": _mapping(
+                _mapping(node_smoke.get("artifact")).get("export_result")
             ),
         },
         "browser_observations": _mapping(node_smoke.get("browser_observations")),
@@ -783,6 +795,8 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"version_panel={browser.get('version_panel_status')} "
             f"preview_panel={browser.get('preview_panel_status')} "
             f"download_panel={browser.get('download_panel_status')} "
+            f"download_save={browser.get('download_save_status')} "
+            f"export_result={browser.get('export_result_status')} "
             f"rows={sum(_mapping(db.get('row_counts')).values())} "
             "live_db=true browser=playwright"
         )

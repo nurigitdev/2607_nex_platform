@@ -756,5 +756,17 @@ Slice 0434 adds the export result read-model:
   database URLs, and provider endpoints remain out of the export result
   read-model and rendered HTML.
 
+Slice 0435 hardens protected browser/PostgreSQL artifact delivery evidence:
+
+- `scripts/runArtifactPlaywrightSmoke.mjs` now exercises the browser file-save
+  adapter inside the Chromium page context with native `Blob` support and a
+  fake document/URL harness, so smoke evidence proves save materialization
+  without triggering host OS downloads.
+- `scripts/smoke/run_ae_web_artifact_playwright_postgres_smoke.py` carries the
+  browser save status and export result status into redacted protected evidence.
+- The protected smoke remains opt-in with
+  `NEX_AE_WEB_ARTIFACT_PLAYWRIGHT_POSTGRES_SMOKE=1` and must use
+  `NEX_AE_TEST_DATABASE_URL` against the `nex_ae_test` database.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
