@@ -700,5 +700,13 @@ Slice 0427 hardens binary artifact downloads:
   content and base64 payload bytes stay out of panel state, summaries, rendered
   HTML, and smoke evidence.
 
+Slice 0428 hardens the fetch-mode export smoke:
+
+- `scripts/runArtifactFetchModeSmoke.mjs` now covers same-origin export submit,
+  safe request body observations, exported PDF file metadata readback, and PDF
+  base64 download panel redaction in one deterministic fake-fetch run.
+- The smoke remains live-network and PostgreSQL free. Protected persisted export
+  evidence stays in the Slice 0426 test-database smoke.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

@@ -26,8 +26,12 @@ export const AE_WEB_ARTIFACT_FETCH_MODE_SMOKE_SCHEMA_VERSION =
 const ARTIFACT_ID = "artifact-slice-0417";
 const ARTIFACT_VERSION_ID = "artifact-version-slice-0417";
 const ARTIFACT_FILE_ID = "artifact-file-slice-0417";
+const EXPORT_RENDER_REQUEST_ID = "artifact-export-slice-0428-pdf";
+const EXPORT_ARTIFACT_VERSION_ID = "artifact-version-slice-0428-pdf";
+const PDF_ARTIFACT_FILE_ID = "artifact-file-slice-0428-pdf";
 const RAW_DOWNLOAD_CONTENT =
   "# Artifact Slice 0417\n\nThis private artifact body must not appear in evidence.";
+const RAW_BINARY_DOWNLOAD_CONTENT_BASE64 = "JVBERi0xLjQKJQ==";
 
 export async function runArtifactFetchModeSmoke() {
   const fakeFetch = createFakeArtifactFetch();
@@ -49,6 +53,15 @@ export async function runArtifactFetchModeSmoke() {
   const artifactFile = await artifactClient.getArtifactFile(ARTIFACT_FILE_ID);
   const previewSurface = await artifactClient.previewArtifactFile(ARTIFACT_FILE_ID);
   const downloadSurface = await artifactClient.downloadArtifactFile(ARTIFACT_FILE_ID);
+  const exportSurface = await artifactClient.submitArtifactExportRequest({
+    artifactId: ARTIFACT_ID,
+    renderRequestId: EXPORT_RENDER_REQUEST_ID,
+    targetFormats: ["PDF"]
+  });
+  const pdfFile = await artifactClient.getArtifactFile(PDF_ARTIFACT_FILE_ID);
+  const binaryDownloadSurface = await artifactClient.downloadArtifactFile(
+    PDF_ARTIFACT_FILE_ID
+  );
 
   const versionPanel = buildArtifactVersionPanelState({
     artifactSurface,
@@ -60,6 +73,10 @@ export async function runArtifactFetchModeSmoke() {
   const downloadPanel = buildArtifactPreviewPanelStateFromDownload(downloadSurface, {
     artifactId: ARTIFACT_ID
   });
+  const binaryDownloadPanel =
+    buildArtifactPreviewPanelStateFromDownload(binaryDownloadSurface, {
+      artifactId: ARTIFACT_ID
+    });
   const checks = {
     runtime_fetch_mode_allowed: runtime.authBoundary.fetch_mode.allowed === true,
     runtime_uses_fetch_artifact_client: artifactClient.clientMode === "fetch",
@@ -77,6 +94,19 @@ export async function runArtifactFetchModeSmoke() {
     download_panel_metadata_only:
       buildArtifactPreviewPanelSummary(downloadPanel).status === "DOWNLOAD_READY" &&
       !JSON.stringify(downloadPanel).includes(RAW_DOWNLOAD_CONTENT),
+    export_submit_route_same_origin: exportSubmitRouteMatches(fakeFetch.calls),
+    export_result_ready:
+      buildArtifactClientSummary(exportSurface.artifactSurface).available_format_count === 2,
+    binary_file_metadata_readback: pdfFile.artifactFileId === PDF_ARTIFACT_FILE_ID,
+    binary_download_surface_base64:
+      binaryDownloadSurface.downloadPayloadKind === "base64" &&
+      binaryDownloadSurface.contentEncoding === "base64" &&
+      binaryDownloadSurface.contentLength === 10 &&
+      binaryDownloadSurface.encodedContentLength === RAW_BINARY_DOWNLOAD_CONTENT_BASE64.length,
+    binary_download_panel_metadata_only:
+      buildArtifactPreviewPanelSummary(binaryDownloadPanel).status === "DOWNLOAD_READY" &&
+      buildArtifactPreviewPanelSummary(binaryDownloadPanel).download_payload_kind === "base64" &&
+      !JSON.stringify(binaryDownloadPanel).includes(RAW_BINARY_DOWNLOAD_CONTENT_BASE64),
     live_network_not_used: true,
     postgresql_not_used: true
   };
@@ -98,9 +128,11 @@ export async function runArtifactFetchModeSmoke() {
     },
     artifact: {
       summary: buildArtifactClientSummary(artifactSurface),
+      export_summary: buildArtifactClientSummary(exportSurface.artifactSurface),
       version_panel: buildArtifactVersionPanelSummary(versionPanel),
       preview_panel: buildArtifactPreviewPanelSummary(previewPanel),
-      download_panel: buildArtifactPreviewPanelSummary(downloadPanel)
+      download_panel: buildArtifactPreviewPanelSummary(downloadPanel),
+      binary_download_panel: buildArtifactPreviewPanelSummary(binaryDownloadPanel)
     },
     request_observations: {
       fetch_call_count: fakeFetch.calls.length,
@@ -117,7 +149,8 @@ export async function runArtifactFetchModeSmoke() {
     }
   };
   assertArtifactFetchModeSmokeEvidenceRedacted(evidence, {
-    rawDownloadContent: RAW_DOWNLOAD_CONTENT
+    rawDownloadContent: RAW_DOWNLOAD_CONTENT,
+    rawBinaryDownloadContentBase64: RAW_BINARY_DOWNLOAD_CONTENT_BASE64
   });
   return evidence;
 }
@@ -129,6 +162,7 @@ export function formatSummary(evidence) {
       `mode=${evidence.runner.mode} ` +
       `artifact=${evidence.artifact.summary.artifact_id} ` +
       `versions=${evidence.artifact.version_panel.version_count} ` +
+      `export_formats=${evidence.artifact.export_summary.available_format_count} ` +
       `fetch_calls=${evidence.request_observations.fetch_call_count}`
     );
   }
@@ -137,11 +171,17 @@ export function formatSummary(evidence) {
 
 export function assertArtifactFetchModeSmokeEvidenceRedacted(
   evidence,
-  { rawDownloadContent } = {}
+  { rawDownloadContent, rawBinaryDownloadContentBase64 } = {}
 ) {
   const serialized = JSON.stringify(evidence);
   if (rawDownloadContent && serialized.includes(rawDownloadContent)) {
     throw new Error("artifact fetch-mode smoke leaked raw download content");
+  }
+  if (
+    rawBinaryDownloadContentBase64 &&
+    serialized.includes(rawBinaryDownloadContentBase64)
+  ) {
+    throw new Error("artifact fetch-mode smoke leaked raw binary download content");
   }
   for (const fragment of [
     "storage_" + "ref",
@@ -187,7 +227,8 @@ function createFakeArtifactFetch() {
       method,
       url,
       credentials: options.credentials || "same-origin",
-      headers: Object.fromEntries(Object.entries(headers).sort())
+      headers: Object.fromEntries(Object.entries(headers).sort()),
+      body: safeRequestObservationBody(options.body)
     });
     if (url === `/ae-api/api/v1/artifacts/${ARTIFACT_ID}` && method === "GET") {
       return jsonResponse({ payload: artifactRecord() });
@@ -221,6 +262,24 @@ function createFakeArtifactFetch() {
       method === "GET"
     ) {
       return jsonResponse({ payload: downloadPayload() });
+    }
+    if (
+      url === `/ae-api/api/v1/artifacts/${ARTIFACT_ID}/render-jobs` &&
+      method === "POST"
+    ) {
+      return jsonResponse({ payload: exportPayload() });
+    }
+    if (
+      url === `/ae-api/api/v1/artifact-files/${PDF_ARTIFACT_FILE_ID}` &&
+      method === "GET"
+    ) {
+      return jsonResponse({ payload: exportedArtifactRecord().files.at(-1) });
+    }
+    if (
+      url === `/ae-api/api/v1/artifact-files/${PDF_ARTIFACT_FILE_ID}/download` &&
+      method === "GET"
+    ) {
+      return jsonResponse({ payload: binaryDownloadPayload() });
     }
     return jsonResponse({
       ok: false,
@@ -295,6 +354,62 @@ function artifactRecord() {
   };
 }
 
+function exportedArtifactRecord() {
+  const record = artifactRecord();
+  const pdfFile = {
+    artifact_file_id: PDF_ARTIFACT_FILE_ID,
+    artifact_id: ARTIFACT_ID,
+    artifact_version_id: EXPORT_ARTIFACT_VERSION_ID,
+    format: "PDF",
+    mime_type: "application/pdf",
+    file_name: "artifact-slice-0428.pdf",
+    storage_ref: "ae://artifacts/slice-0428/private-storage-ref.pdf",
+    file_size_bytes: 4096,
+    file_hash: "b".repeat(64),
+    source_version_hash: "d".repeat(64)
+  };
+  return {
+    ...record,
+    current_version_id: EXPORT_ARTIFACT_VERSION_ID,
+    target_formats: ["MD", "PDF"],
+    versions: [
+      ...record.versions,
+      {
+        artifact_version_id: EXPORT_ARTIFACT_VERSION_ID,
+        version_no: 2,
+        source_content_hash: "c".repeat(64),
+        artifact_content_hash: "b".repeat(64),
+        rendered_formats: ["PDF"]
+      }
+    ],
+    files: [...record.files, pdfFile],
+    links: [
+      ...record.links,
+      {
+        artifact_file_id: PDF_ARTIFACT_FILE_ID,
+        link_type: "download",
+        link_route: `/api/v1/artifact-files/${PDF_ARTIFACT_FILE_ID}/download`,
+        access_policy: "owner_only"
+      }
+    ]
+  };
+}
+
+function exportPayload() {
+  return {
+    render_result_schema_version: "ae_markdown_render_result.v1",
+    render_job: {
+      render_job_id: "artifact-render-job-slice-0428-pdf",
+      artifact_id: ARTIFACT_ID,
+      artifact_version_id: EXPORT_ARTIFACT_VERSION_ID,
+      job_status: "COMPLETED",
+      current_stage: "FINALIZING",
+      progress_percent: 100
+    },
+    artifact: exportedArtifactRecord()
+  };
+}
+
 function previewPayload() {
   return {
     preview_schema_version: "ae_artifact_file_preview.v1",
@@ -315,6 +430,19 @@ function downloadPayload() {
     content_type: "text/markdown",
     content_hash: "f".repeat(64),
     content: RAW_DOWNLOAD_CONTENT
+  };
+}
+
+function binaryDownloadPayload() {
+  return {
+    download_schema_version: "ae_artifact_file_download.v1",
+    artifact_file: exportedArtifactRecord().files.at(-1),
+    artifact_link: exportedArtifactRecord().links.at(-1),
+    download_file_name: "artifact-slice-0428.pdf",
+    content_type: "application/pdf",
+    content_hash: "b".repeat(64),
+    content_encoding: "base64",
+    content_base64: RAW_BINARY_DOWNLOAD_CONTENT_BASE64
   };
 }
 
@@ -352,10 +480,40 @@ function artifactRouteSequence(calls) {
         `GET /ae-api/api/v1/artifacts/${ARTIFACT_ID}/versions`,
         `GET /ae-api/api/v1/artifact-files/${ARTIFACT_FILE_ID}`,
         `GET /ae-api/api/v1/artifact-files/${ARTIFACT_FILE_ID}/preview`,
-        `GET /ae-api/api/v1/artifact-files/${ARTIFACT_FILE_ID}/download`
+        `GET /ae-api/api/v1/artifact-files/${ARTIFACT_FILE_ID}/download`,
+        `POST /ae-api/api/v1/artifacts/${ARTIFACT_ID}/render-jobs`,
+        `GET /ae-api/api/v1/artifact-files/${PDF_ARTIFACT_FILE_ID}`,
+        `GET /ae-api/api/v1/artifact-files/${PDF_ARTIFACT_FILE_ID}/download`
       ].join("|") &&
     calls.every(call => call.credentials === "same-origin")
   );
+}
+
+function exportSubmitRouteMatches(calls) {
+  const call = calls.find(item => item.method === "POST");
+  return (
+    call?.url === `/ae-api/api/v1/artifacts/${ARTIFACT_ID}/render-jobs` &&
+    call.headers["Content-Type"] === "application/json" &&
+    call.headers["Idempotency-Key"] === EXPORT_RENDER_REQUEST_ID &&
+    call.body?.render_request_id_present === true &&
+    Array.isArray(call.body?.target_formats) &&
+    call.body.target_formats.join(",") === "PDF"
+  );
+}
+
+function safeRequestObservationBody(body) {
+  if (typeof body !== "string" || !body.trim()) return null;
+  try {
+    const payload = JSON.parse(body);
+    return {
+      render_request_id_present: typeof payload.render_request_id === "string",
+      target_formats: Array.isArray(payload.target_formats)
+        ? payload.target_formats.map(String)
+        : []
+    };
+  } catch {
+    return { parse_error: true, target_formats: [] };
+  }
 }
 
 function jsonResponse({ ok = true, status = 200, payload }) {
