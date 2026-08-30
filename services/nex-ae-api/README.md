@@ -358,3 +358,7 @@ Artifact library management:
   queries. The route requires tenant/workspace/owner scope, accepts optional
   status and limit filters, and returns the same metadata-only read-model used
   by the stores.
+- Slice 0444 adds protected PostgreSQL smoke evidence for the collection route.
+  When explicitly enabled against `nex_ae_test`, it migrates the real test DB,
+  creates owner-scoped artifacts, verifies list/status/limit behavior, checks
+  collection indexes, and cleans up inserted rows.
