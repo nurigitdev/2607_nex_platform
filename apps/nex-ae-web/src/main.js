@@ -13,9 +13,15 @@ import {
   createMockArtifactClient
 } from "./artifactClient.js";
 import {
-  buildArtifactDownloadSaveSummary,
-  saveArtifactDownload
+  buildArtifactDownloadSaveSummary
 } from "./artifactDownloadSaveAdapter.js";
+import {
+  buildArtifactDeliveryActionRunningState,
+  buildArtifactDeliveryDownloadSuccess,
+  buildArtifactDeliveryFailure,
+  buildArtifactDeliveryPreviewSuccess,
+  createArtifactDeliveryActionContext
+} from "./artifactDeliveryActionState.js";
 import {
   buildArtifactExportResultReadModel,
   renderArtifactExportResultReadModel
@@ -24,12 +30,7 @@ import {
   buildMockArtifactRecordFromRef
 } from "./artifactMockRecord.js";
 import {
-  artifactFileIdFromRoute,
-  buildArtifactPreviewPanelStateFromDownload,
-  buildArtifactPreviewPanelStateFromError,
-  buildArtifactPreviewPanelStateFromPreview,
   createArtifactPreviewPanelState,
-  createRunningArtifactPreviewPanelState,
   renderArtifactPreviewPanel
 } from "./artifactPreviewPanel.js";
 import {
@@ -1813,15 +1814,11 @@ async function submitArtifactFileAction(target, action) {
 
   try {
     context = artifactActionContext(target, action);
-    workspaceState.operations.artifactPreview = markOperationRunning(
-      workspaceState.operations.artifactPreview,
-      {
-        clientMode: context.clientMode,
-        route: context.route
-      }
-    );
-    workspaceState.artifactPreviewPanel = createRunningArtifactPreviewPanelState(
-      context
+    applyArtifactDeliveryActionState(
+      buildArtifactDeliveryActionRunningState(
+        workspaceState.operations.artifactPreview,
+        context
+      )
     );
     renderArtifactPreviewPanelSurface();
 
@@ -1829,53 +1826,51 @@ async function submitArtifactFileAction(target, action) {
       const preview = await workspaceState.artifactClient.previewArtifactFile(
         context.artifactFileId
       );
-      workspaceState.artifactPreviewPanel =
-        buildArtifactPreviewPanelStateFromPreview(preview, context);
+      applyArtifactDeliveryActionState(
+        buildArtifactDeliveryPreviewSuccess(
+          workspaceState.operations.artifactPreview,
+          preview,
+          context
+        )
+      );
     } else {
       const download = await workspaceState.artifactClient.downloadArtifactFile(
         context.artifactFileId
       );
-      workspaceState.artifactPreviewPanel =
-        buildArtifactPreviewPanelStateFromDownload(download, context);
-      workspaceState.artifactDownloadSaveResult = saveArtifactDownload(download);
+      applyArtifactDeliveryActionState(
+        buildArtifactDeliveryDownloadSuccess(
+          workspaceState.operations.artifactPreview,
+          download,
+          context
+        )
+      );
       refreshArtifactExportResult();
     }
-    const downloadSaveSummary =
-      action === "download" && workspaceState.artifactDownloadSaveResult
-        ? buildArtifactDownloadSaveSummary(workspaceState.artifactDownloadSaveResult)
-        : null;
-    workspaceState.operations.artifactPreview = markOperationSucceeded(
-      workspaceState.operations.artifactPreview,
-      {
-        status:
-          action === "preview" ? "PREVIEW_READY" : "DOWNLOAD_READY",
-        resultStatus: downloadSaveSummary?.status || "READY",
-        clientMode: context.clientMode,
-        route: context.route
-      }
-    );
   } catch (error) {
+    applyArtifactDeliveryActionState(
+      buildArtifactDeliveryFailure(
+        workspaceState.operations.artifactPreview,
+        error,
+        context,
+        { fallbackRoute: workspaceState.artifact.previewRoute }
+      )
+    );
     if (action === "download") {
-      workspaceState.artifactDownloadSaveResult = null;
       refreshArtifactExportResult();
     }
-    workspaceState.artifactPreviewPanel = buildArtifactPreviewPanelStateFromError(
-      error,
-      context
-    );
-    workspaceState.operations.artifactPreview = markOperationFailed(
-      workspaceState.operations.artifactPreview,
-      {
-        error,
-        clientMode: context.clientMode,
-        route: context.route || workspaceState.artifact.previewRoute || ""
-      }
-    );
   }
 
   renderArtifactPreviewPanelSurface();
   renderArtifactSummary();
   renderRuntimeDiagnostics();
+}
+
+function applyArtifactDeliveryActionState(actionState) {
+  workspaceState.operations.artifactPreview = actionState.operation;
+  workspaceState.artifactPreviewPanel = actionState.panel;
+  if (Object.hasOwn(actionState, "downloadSaveResult")) {
+    workspaceState.artifactDownloadSaveResult = actionState.downloadSaveResult;
+  }
 }
 
 function refreshArtifactExportResult({ exportSurface = null } = {}) {
@@ -1896,16 +1891,15 @@ function artifactActionContext(target, action) {
       ? target.dataset.artifactPreviewRoute
       : target.dataset.artifactDownloadRoute;
   const card = target.closest("[data-artifact-card]");
-  return {
+  return createArtifactDeliveryActionContext({
     action,
     artifactId:
       card?.dataset.artifactId ||
       target.dataset.artifactPreviewAction ||
       null,
-    artifactFileId: artifactFileIdFromRoute(route, action),
     route,
     clientMode: workspaceState.artifactClient.clientMode
-  };
+  });
 }
 
 async function submitGenerationFeedback(interactionId, feedbackValue) {

@@ -10,19 +10,18 @@ const MAIN_SOURCE = readFileSync(
 describe("AE Web artifact download action wiring", () => {
   it("routes successful download actions through the browser save adapter", () => {
     const downloadFetchIndex = MAIN_SOURCE.indexOf("downloadArtifactFile(");
-    const panelStateIndex = MAIN_SOURCE.indexOf(
-      "buildArtifactPreviewPanelStateFromDownload(download, context)"
+    const deliveryStateIndex = MAIN_SOURCE.indexOf(
+      "buildArtifactDeliveryDownloadSuccess("
     );
-    const saveIndex = MAIN_SOURCE.indexOf("saveArtifactDownload(download)");
     const summaryIndex = MAIN_SOURCE.indexOf("buildArtifactDownloadSaveSummary");
 
     assert.match(MAIN_SOURCE, /from "\.\/artifactDownloadSaveAdapter\.js"/);
+    assert.match(MAIN_SOURCE, /from "\.\/artifactDeliveryActionState\.js"/);
     assert.ok(downloadFetchIndex > 0);
-    assert.ok(panelStateIndex > downloadFetchIndex);
-    assert.ok(saveIndex > panelStateIndex);
+    assert.ok(deliveryStateIndex > downloadFetchIndex);
     assert.ok(summaryIndex > 0);
     assert.match(MAIN_SOURCE, /artifactDownloadSaveResult: null/);
-    assert.match(MAIN_SOURCE, /resultStatus: downloadSaveSummary\?\.status \|\| "READY"/);
+    assert.match(MAIN_SOURCE, /applyArtifactDeliveryActionState/);
   });
 
   it("keeps main download wiring free of raw payload literals and server-only fields", () => {

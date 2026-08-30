@@ -70,6 +70,9 @@ AE_WEB_ARTIFACT_CLIENT = ROOT / "apps" / "nex-ae-web" / "src" / "artifactClient.
 AE_WEB_PREVIEW_PANEL = (
     ROOT / "apps" / "nex-ae-web" / "src" / "artifactPreviewPanel.js"
 )
+AE_WEB_DELIVERY_ACTION_STATE = (
+    ROOT / "apps" / "nex-ae-web" / "src" / "artifactDeliveryActionState.js"
+)
 AE_WEB_MAIN = ROOT / "apps" / "nex-ae-web" / "src" / "main.js"
 AE_WEB_INDEX = ROOT / "apps" / "nex-ae-web" / "index.html"
 AE_WEB_FETCH_SMOKE = (
@@ -104,6 +107,11 @@ REQUIRED_PATHS = (
         "ae_web_preview_panel",
         AE_WEB_PREVIEW_PANEL,
         "Preview/download panel owns metadata-only rendering.",
+    ),
+    RequiredPath(
+        "ae_web_delivery_action_state",
+        AE_WEB_DELIVERY_ACTION_STATE,
+        "Delivery action state owns preview/download UI transitions.",
     ),
     RequiredPath(
         "ae_web_main",
@@ -200,10 +208,10 @@ REQUIRED_SOURCE_TOKENS = (
     ),
     TokenRequirement(
         "browser_action_boundary",
-        AE_WEB_MAIN,
+        AE_WEB_DELIVERY_ACTION_STATE,
         "download_panel_state",
         "buildArtifactPreviewPanelStateFromDownload",
-        "Browser action updates metadata-only panel state after download fetch.",
+        "Delivery action state updates metadata-only panel state after download fetch.",
     ),
     TokenRequirement(
         "smoke_evidence_boundary",
@@ -259,7 +267,7 @@ PLANNED_GAPS = (
     ),
     PlannedDeliveryGap(
         "download_action_save_wiring",
-        AE_WEB_MAIN,
+        AE_WEB_DELIVERY_ACTION_STATE,
         "saveArtifactDownload",
         "Slice_0433",
         "Wire successful download surfaces to the browser save adapter.",

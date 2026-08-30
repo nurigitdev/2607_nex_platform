@@ -768,5 +768,15 @@ Slice 0435 hardens protected browser/PostgreSQL artifact delivery evidence:
   `NEX_AE_WEB_ARTIFACT_PLAYWRIGHT_POSTGRES_SMOKE=1` and must use
   `NEX_AE_TEST_DATABASE_URL` against the `nex_ae_test` database.
 
+Slice 0436 consolidates artifact delivery action state:
+
+- `src/artifactDeliveryActionState.js` now owns preview/download running,
+  success, failure, retry, panel, and browser save result transitions.
+- `src/main.js` delegates artifact file action state changes to that module, so
+  the UI shell stays focused on event wiring and rendering.
+- Delivery action summaries preserve retry/error status while excluding raw
+  error messages, download payloads, storage refs, credentials, database URLs,
+  and provider endpoints.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
