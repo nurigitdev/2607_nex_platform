@@ -342,3 +342,11 @@ Generation recovery policies:
   record and store a separate safe recovery request envelope. The request fixes
   policy hash status, next attempt number, dispatch target, and retrieval reuse
   intent without mutating the failed chat or generation record.
+
+Artifact library management:
+
+- Slice 0441 starts S45 by freezing the artifact library boundary before list
+  APIs are added. AE API remains the artifact system of record, collection
+  scope is tenant/workspace/owner, and future list responses must stay
+  metadata-only without rendered payloads, storage roots, provider secrets, or
+  database URLs.

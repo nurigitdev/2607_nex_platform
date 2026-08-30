@@ -820,5 +820,13 @@ Slice 0440 closes S44:
 - S44 now treats multi-format artifact export from S43 as an input contract and
   AE Web artifact delivery as a metadata-safe browser surface.
 
+Slice 0441 starts S45:
+
+- The artifact library/management boundary is frozen before collection APIs and
+  browser library panels are added.
+- AE Web owns the browser library surface, but it must keep using AE API route
+  metadata and metadata-only read-models without rendered payloads, storage
+  paths, database URLs, or provider secrets.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

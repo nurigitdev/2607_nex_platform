@@ -544,6 +544,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0438`](slices/0438_ae_web_artifact_delivery_accessibility_smoke.md) | `S44-008` AE Web artifact delivery accessibility smoke. |
 | [`Slice 0439`](slices/0439_ae_web_multiformat_artifact_playwright_postgresql_smoke.md) | `S44-009` AE Web multi-format artifact Playwright/PostgreSQL smoke evidence. |
 | [`Slice 0440`](slices/0440_s44_ae_web_artifact_delivery_closure.md) | `S44-010` S44 AE Web artifact delivery closure checkpoint. |
+| [`Slice 0441`](slices/0441_ae_artifact_library_management_boundary_audit.md) | `S45-001` AE artifact library/management boundary audit. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
