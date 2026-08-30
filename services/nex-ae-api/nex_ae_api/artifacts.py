@@ -114,7 +114,19 @@ SUPPORTED_ARTIFACT_INTENTS = {
     "create_and_export",
 }
 SUPPORTED_ARTIFACT_TYPES = {"generated_document", "summary", "answer_export"}
+SUPPORTED_ARTIFACT_STATUSES = {
+    "DRAFT",
+    "RENDERING",
+    "READY",
+    "FAILED",
+    "ARCHIVED",
+    "DELETED",
+}
 SUPPORTED_TARGET_FORMATS = {"MD", "HTML_PREVIEW", "DOCX", "PDF"}
+ARTIFACT_COLLECTION_SCHEMA_VERSION = "ae_artifact_collection.v1"
+ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION = "ae_artifact_collection_item.v1"
+DEFAULT_ARTIFACT_COLLECTION_LIMIT = 20
+MAX_ARTIFACT_COLLECTION_LIMIT = 100
 
 
 class CxArtifactSourceClient(Protocol):
@@ -262,6 +274,39 @@ class ArtifactRecordStore:
         if record is None:
             return None
         return list(record["versions"])
+
+    def list_artifacts(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        status: str | None = None,
+        limit: int | str | None = None,
+    ) -> dict[str, Any]:
+        collection_filter = build_artifact_collection_filter(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            status=status,
+            limit=limit,
+        )
+        records = [
+            record
+            for record in self.records.values()
+            if artifact_record_matches_collection_filter(record, collection_filter)
+        ]
+        records.sort(
+            key=lambda record: (
+                str(record.get("updated_at") or ""),
+                str(record.get("artifact_id") or ""),
+            ),
+            reverse=True,
+        )
+        return build_artifact_collection(
+            records[: collection_filter["limit"]],
+            collection_filter=collection_filter,
+        )
 
     def get_render_job(self, render_job_id: str) -> dict[str, Any] | None:
         return self.render_jobs.get(render_job_id)
@@ -544,6 +589,40 @@ class SqlAlchemyArtifactRecordStore:
         if record is None:
             return None
         return list(record["versions"])
+
+    def list_artifacts(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        status: str | None = None,
+        limit: int | str | None = None,
+    ) -> dict[str, Any]:
+        collection_filter = build_artifact_collection_filter(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            status=status,
+            limit=limit,
+        )
+        try:
+            with self._session_factory() as session:
+                records = _load_artifact_records_for_collection(
+                    session,
+                    collection_filter,
+                )
+            return build_artifact_collection(
+                records,
+                collection_filter=collection_filter,
+            )
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_store_unavailable",
+                detail="AE artifact store is unavailable.",
+                retryable=True,
+            ) from exc
 
     def get_render_job(self, render_job_id: str) -> dict[str, Any] | None:
         try:
@@ -1250,6 +1329,305 @@ def artifact_source_ref_from_handoff(
         "source_anchor_count": evidence_ref_count,
         "quality_summary": quality_summary,
     }
+
+
+def build_artifact_collection_filter(
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    owner_user_id: str,
+    status: str | None = None,
+    limit: int | str | None = None,
+) -> dict[str, Any]:
+    normalized_status = optional_text(status)
+    if normalized_status is not None:
+        normalized_status = normalized_status.upper()
+        if normalized_status not in SUPPORTED_ARTIFACT_STATUSES:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_collection_status_invalid",
+                detail=f"Unsupported artifact collection status: {status}",
+            )
+    return {
+        "tenant_id": _required_collection_scope_text(
+            tenant_id,
+            "tenant_id",
+        ),
+        "workspace_id": _required_collection_scope_text(
+            workspace_id,
+            "workspace_id",
+        ),
+        "owner_user_id": _required_collection_scope_text(
+            owner_user_id,
+            "owner_user_id",
+        ),
+        "status": normalized_status,
+        "limit": normalize_artifact_collection_limit(limit),
+    }
+
+
+def normalize_artifact_collection_limit(limit: int | str | None) -> int:
+    if limit is None:
+        return DEFAULT_ARTIFACT_COLLECTION_LIMIT
+    if isinstance(limit, bool):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_collection_limit_invalid",
+            detail="Artifact collection limit must be an integer.",
+        )
+    try:
+        normalized = int(limit)
+    except (TypeError, ValueError) as exc:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_collection_limit_invalid",
+            detail="Artifact collection limit must be an integer.",
+        ) from exc
+    if normalized < 1 or normalized > MAX_ARTIFACT_COLLECTION_LIMIT:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_collection_limit_invalid",
+            detail=(
+                "Artifact collection limit must be between 1 and "
+                f"{MAX_ARTIFACT_COLLECTION_LIMIT}."
+            ),
+        )
+    return normalized
+
+
+def artifact_record_matches_collection_filter(
+    record: dict[str, Any],
+    collection_filter: dict[str, Any],
+) -> bool:
+    owner = record.get("owner_actor_ref", {})
+    workspace = record.get("workspace_ref", {})
+    return (
+        isinstance(owner, dict)
+        and isinstance(workspace, dict)
+        and owner.get("tenant_id") == collection_filter["tenant_id"]
+        and owner.get("actor_id") == collection_filter["owner_user_id"]
+        and workspace.get("workspace_id") == collection_filter["workspace_id"]
+        and (
+            collection_filter["status"] is None
+            or record.get("artifact_status") == collection_filter["status"]
+        )
+    )
+
+
+def build_artifact_collection(
+    records: list[dict[str, Any]],
+    *,
+    collection_filter: dict[str, Any],
+) -> dict[str, Any]:
+    items = [build_artifact_collection_item(record) for record in records]
+    collection = {
+        "artifact_collection_schema_version": ARTIFACT_COLLECTION_SCHEMA_VERSION,
+        "filter": dict(collection_filter),
+        "count": len(items),
+        "limit": collection_filter["limit"],
+        "next_cursor": None,
+        "items": items,
+    }
+    assert_artifact_collection_payload_safe(collection)
+    return collection
+
+
+def build_artifact_collection_item(record: dict[str, Any]) -> dict[str, Any]:
+    owner = record.get("owner_actor_ref", {})
+    workspace = record.get("workspace_ref", {})
+    source_ref = _first_mapping(record.get("source_refs"))
+    versions = _list_of_mappings(record.get("versions"))
+    render_jobs = _list_of_mappings(record.get("render_jobs"))
+    files = _list_of_mappings(record.get("files"))
+    links = _list_of_mappings(record.get("links"))
+    item = {
+        "artifact_collection_item_schema_version": (
+            ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION
+        ),
+        "artifact_id": record["artifact_id"],
+        "artifact_type": record["artifact_type"],
+        "artifact_status": record["artifact_status"],
+        "display_title": record["display_title"],
+        "language": record["language"],
+        "artifact_intent": record["artifact_intent"],
+        "target_formats": list(record.get("target_formats", [])),
+        "available_formats": _available_artifact_formats(files),
+        "downloadable_formats": _linked_artifact_formats(files, links, "download"),
+        "previewable_formats": _linked_artifact_formats(files, links, "preview"),
+        "current_version_id": record.get("current_version_id"),
+        "current_version_no": _current_version_no(
+            versions,
+            record.get("current_version_id"),
+        ),
+        "version_count": len(versions),
+        "file_count": len(files),
+        "link_count": len(links),
+        "render_job_count": len(render_jobs),
+        "latest_render_job": _latest_render_job_summary(render_jobs),
+        "source_summary": _artifact_collection_source_summary(source_ref),
+        "quality_summary": _artifact_collection_quality_summary(
+            source_ref.get("quality_summary"),
+        ),
+        "routes": {
+            "detail": f"/api/v1/artifacts/{record['artifact_id']}",
+            "versions": f"/api/v1/artifacts/{record['artifact_id']}/versions",
+        },
+        "tenant_id": owner.get("tenant_id") if isinstance(owner, dict) else None,
+        "workspace_id": (
+            workspace.get("workspace_id") if isinstance(workspace, dict) else None
+        ),
+        "owner_user_id": owner.get("actor_id") if isinstance(owner, dict) else None,
+        "chat_document_id": record["chat_document_id"],
+        "interaction_id": record["interaction_id"],
+        "created_at": record["created_at"],
+        "updated_at": record["updated_at"],
+    }
+    assert_artifact_collection_payload_safe(item)
+    return item
+
+
+def assert_artifact_collection_payload_safe(payload: dict[str, Any]) -> None:
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    blocked_tokens = (
+        "storage_ref",
+        "storage_root",
+        "content_base64",
+        "rendered_payloads",
+        "rendered_markdown",
+        "/data/nex-platform",
+        "postgresql://",
+        "postgresql+psycopg://",
+        "nuri1004",
+    )
+    for token in blocked_tokens:
+        if token in serialized:
+            raise ArtifactHandoffError(
+                status_code=500,
+                error_code="ae.artifact_collection_payload_unsafe",
+                detail="Artifact collection payload contains private material.",
+            )
+
+
+def _required_collection_scope_text(value: str, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_collection_scope_required",
+            detail=f"{field_name} is required for artifact collection queries.",
+        )
+    return value.strip()
+
+
+def _first_mapping(raw_value: Any) -> dict[str, Any]:
+    values = _list_of_mappings(raw_value)
+    return values[0] if values else {}
+
+
+def _list_of_mappings(raw_value: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_value, list):
+        return []
+    return [dict(value) for value in raw_value if isinstance(value, dict)]
+
+
+def _available_artifact_formats(files: list[dict[str, Any]]) -> list[str]:
+    return sorted(
+        {
+            str(artifact_file["format"])
+            for artifact_file in files
+            if artifact_file.get("format")
+        }
+    )
+
+
+def _linked_artifact_formats(
+    files: list[dict[str, Any]],
+    links: list[dict[str, Any]],
+    link_type: str,
+) -> list[str]:
+    linked_file_ids = {
+        link.get("artifact_file_id")
+        for link in links
+        if link.get("link_type") == link_type and link.get("link_route")
+    }
+    return sorted(
+        {
+            str(artifact_file["format"])
+            for artifact_file in files
+            if artifact_file.get("artifact_file_id") in linked_file_ids
+            and artifact_file.get("format")
+        }
+    )
+
+
+def _current_version_no(
+    versions: list[dict[str, Any]],
+    current_version_id: Any,
+) -> int | None:
+    for version in versions:
+        if version.get("artifact_version_id") == current_version_id:
+            return int(version["version_no"])
+    return None
+
+
+def _latest_render_job_summary(
+    render_jobs: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    if not render_jobs:
+        return None
+    render_job = render_jobs[-1]
+    return {
+        "render_job_id": render_job.get("render_job_id"),
+        "job_status": render_job.get("job_status"),
+        "current_stage": render_job.get("current_stage"),
+        "progress_percent": render_job.get("progress_percent"),
+        "retryable": bool(render_job.get("retryable")),
+        "failure_code": render_job.get("failure_code"),
+    }
+
+
+def _artifact_collection_source_summary(
+    source_ref: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "cx_generation_id": source_ref.get("cx_generation_id"),
+        "structured_draft_id": source_ref.get("structured_draft_id"),
+        "retrieval_package_id": source_ref.get("retrieval_package_id"),
+        "retrieval_package_hash": source_ref.get("retrieval_package_hash"),
+        "evidence_ref_count": int(source_ref.get("evidence_ref_count") or 0),
+        "source_anchor_count": int(source_ref.get("source_anchor_count") or 0),
+    }
+
+
+def _artifact_collection_quality_summary(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, dict):
+        return {}
+    allowed_keys = (
+        "citation_status",
+        "citation_count",
+        "validation_error_count",
+        "warning_count",
+        "grounding_required",
+        "evidence_ref_count",
+    )
+    return {
+        key: _collection_json_safe_value(raw_value.get(key))
+        for key in allowed_keys
+        if raw_value.get(key) is not None
+    }
+
+
+def _collection_json_safe_value(raw_value: Any) -> Any:
+    if isinstance(raw_value, (str, int, float, bool)) or raw_value is None:
+        return raw_value
+    if isinstance(raw_value, list):
+        return [_collection_json_safe_value(value) for value in raw_value]
+    if isinstance(raw_value, dict):
+        return {
+            str(key): _collection_json_safe_value(value)
+            for key, value in raw_value.items()
+            if value is not None
+        }
+    return str(raw_value)
 
 
 def build_markdown_render_result(
@@ -2621,6 +2999,56 @@ def _load_artifact_record(session: Session, artifact_id: str) -> dict[str, Any] 
             .all()
         ],
     )
+
+
+def _load_artifact_records_for_collection(
+    session: Session,
+    collection_filter: dict[str, Any],
+) -> list[dict[str, Any]]:
+    rows = (
+        session.execute(
+            text(_artifact_collection_select_ids_sql(collection_filter)),
+            _artifact_collection_params(collection_filter),
+        )
+        .mappings()
+        .all()
+    )
+    records = []
+    for row in rows:
+        record = _load_artifact_record(session, row["artifact_id"])
+        if record is not None:
+            records.append(record)
+    return records
+
+
+def _artifact_collection_select_ids_sql(collection_filter: dict[str, Any]) -> str:
+    where_clauses = [
+        "tenant_id = :tenant_id",
+        "workspace_id = :workspace_id",
+        "owner_user_id = :owner_user_id",
+    ]
+    if collection_filter.get("status") is not None:
+        where_clauses.append("artifact_status = :status")
+    where_sql = " AND ".join(where_clauses)
+    return f"""
+        SELECT artifact_id
+        FROM ae_artifacts
+        WHERE {where_sql}
+        ORDER BY updated_at DESC, artifact_id ASC
+        LIMIT :limit
+    """
+
+
+def _artifact_collection_params(collection_filter: dict[str, Any]) -> dict[str, Any]:
+    params = {
+        "tenant_id": collection_filter["tenant_id"],
+        "workspace_id": collection_filter["workspace_id"],
+        "owner_user_id": collection_filter["owner_user_id"],
+        "limit": collection_filter["limit"],
+    }
+    if collection_filter.get("status") is not None:
+        params["status"] = collection_filter["status"]
+    return params
 
 
 def _artifact_select_sql(where_clause: str) -> str:

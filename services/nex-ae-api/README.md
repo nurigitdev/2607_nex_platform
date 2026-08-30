@@ -350,3 +350,7 @@ Artifact library management:
   scope is tenant/workspace/owner, and future list responses must stay
   metadata-only without rendered payloads, storage roots, provider secrets, or
   database URLs.
+- Slice 0442 adds the service-side artifact collection read-model. In-memory
+  and SQLAlchemy stores can list artifact summaries by tenant/workspace/owner,
+  optionally filter by status, and return bounded metadata-only collection
+  items before the API route is exposed.

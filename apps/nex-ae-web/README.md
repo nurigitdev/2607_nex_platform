@@ -827,6 +827,8 @@ Slice 0441 starts S45:
 - AE Web owns the browser library surface, but it must keep using AE API route
   metadata and metadata-only read-models without rendered payloads, storage
   paths, database URLs, or provider secrets.
+- Slice 0442 adds the AE API collection read-model foundation that the future
+  browser library panel will consume after route/client wiring.
 
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

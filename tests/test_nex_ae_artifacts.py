@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 from io import BytesIO
 from types import SimpleNamespace
 from typing import Any
@@ -19,6 +20,8 @@ from nex_ae_api.artifacts import (
     ArtifactHandoffError,
     ArtifactHandoffStore,
     ArtifactRecordStore,
+    ARTIFACT_COLLECTION_SCHEMA_VERSION,
+    ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION,
     HttpCxArtifactSourceClient,
     InMemoryRenderedArtifactStorage,
     LocalRenderedArtifactStorage,
@@ -34,6 +37,8 @@ from nex_ae_api.artifacts import (
     artifact_type_from_payload,
     build_artifact_links,
     build_artifact_links_for_files,
+    build_artifact_collection_filter,
+    build_artifact_collection_item,
     build_default_artifact_handoff_store,
     build_default_artifact_record_store,
     build_default_rendered_artifact_storage,
@@ -47,6 +52,7 @@ from nex_ae_api.artifacts import (
     build_rendered_payloads_from_markdown,
     build_artifact_record_from_handoff,
     deterministic_render_job_id,
+    normalize_artifact_collection_limit,
     language_from_payload,
     markdown_target_formats_from_payload,
     register_artifact_handoff_routes,
@@ -250,6 +256,46 @@ def sample_handoff_record() -> dict[str, Any]:
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     )
+
+
+def sample_collection_artifact_record(
+    *,
+    artifact_request_id: str,
+    artifact_status: str = "DRAFT",
+    tenant_id: str = "tenant-001",
+    workspace_id: str = "workspace-001",
+    owner_user_id: str = "user-001",
+    display_title: str = "Generated report",
+    updated_at: str = "2026-08-30T00:00:00Z",
+) -> dict[str, Any]:
+    handoff = {
+        **sample_handoff_record(),
+        "artifact_handoff_id": f"handoff-{artifact_request_id}",
+        "artifact_request_id": f"handoff-request-{artifact_request_id}",
+        "artifact_title": display_title,
+        "actor_claims_ref": {
+            "actor_type": "user",
+            "actor_id": owner_user_id,
+            "tenant_id": tenant_id,
+        },
+        "workspace_ref": {
+            "workspace_id": workspace_id,
+            "tenant_id": tenant_id,
+        },
+    }
+    record = build_artifact_record_from_handoff(
+        source_payload={
+            "artifact_request_id": artifact_request_id,
+            "display_title": display_title,
+        },
+        handoff_record=handoff,
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    record["artifact_status"] = artifact_status
+    record["updated_at"] = updated_at
+    return record
 
 
 def sqlite_artifact_session_factory():
@@ -1081,6 +1127,192 @@ def test_artifact_record_store_keeps_format_neutral_payloads_private() -> None:
     assert render_result["markdown"] not in str(updated)
 
 
+def test_artifact_collection_item_summarizes_rendered_record_without_payloads() -> None:
+    store = ArtifactRecordStore()
+    artifact_record = sample_collection_artifact_record(
+        artifact_request_id="collection-ready-001",
+        display_title="Ready collection report",
+    )
+    store.create(artifact_record)
+    render_result = build_markdown_render_result(
+        artifact_record=artifact_record,
+        structured_draft=sample_structured_draft(),
+        target_formats=["MD", "HTML_PREVIEW", "DOCX"],
+        render_request_id="render-request-collection-001",
+        render_job_id=deterministic_render_job_id(
+            artifact_record["artifact_id"],
+            "render-request-collection-001",
+        ),
+    )
+    updated = store.apply_markdown_render(
+        artifact_id=artifact_record["artifact_id"],
+        artifact_version=render_result["artifact_version"],
+        render_job=render_result["render_job"],
+        markdown=render_result["markdown"],
+        artifact_files=render_result["artifact_files"],
+        artifact_links=render_result["artifact_links"],
+        rendered_payloads=render_result["rendered_payloads"],
+    )
+
+    item = build_artifact_collection_item(updated)
+    serialized = json.dumps(item, ensure_ascii=False)
+
+    assert item["artifact_collection_item_schema_version"] == (
+        ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION
+    )
+    assert item["artifact_id"] == updated["artifact_id"]
+    assert item["artifact_status"] == "READY"
+    assert item["available_formats"] == ["DOCX", "HTML_PREVIEW", "MD"]
+    assert item["downloadable_formats"] == ["DOCX", "HTML_PREVIEW", "MD"]
+    assert item["previewable_formats"] == ["DOCX", "HTML_PREVIEW", "MD"]
+    assert item["current_version_no"] == 1
+    assert item["version_count"] == 1
+    assert item["file_count"] == 3
+    assert item["link_count"] == 6
+    assert item["render_job_count"] == 1
+    assert item["latest_render_job"]["job_status"] == "COMPLETED"
+    assert item["source_summary"]["cx_generation_id"] == "cx-gen-001"
+    assert item["quality_summary"]["citation_status"] == "VALIDATED"
+    assert item["routes"] == {
+        "detail": f"/api/v1/artifacts/{updated['artifact_id']}",
+        "versions": f"/api/v1/artifacts/{updated['artifact_id']}/versions",
+    }
+    assert "storage_ref" not in serialized
+    assert "rendered_payloads" not in serialized
+    assert render_result["markdown"] not in serialized
+
+
+def test_artifact_collection_filter_normalizes_scope_status_and_limit() -> None:
+    collection_filter = build_artifact_collection_filter(
+        tenant_id=" tenant-001 ",
+        workspace_id=" workspace-001 ",
+        owner_user_id=" user-001 ",
+        status="ready",
+        limit="2",
+    )
+
+    assert collection_filter == {
+        "tenant_id": "tenant-001",
+        "workspace_id": "workspace-001",
+        "owner_user_id": "user-001",
+        "status": "READY",
+        "limit": 2,
+    }
+    assert normalize_artifact_collection_limit(None) == 20
+
+    with pytest.raises(ArtifactHandoffError) as scope_exc:
+        build_artifact_collection_filter(
+            tenant_id="",
+            workspace_id="workspace-001",
+            owner_user_id="user-001",
+        )
+    assert scope_exc.value.error_code == "ae.artifact_collection_scope_required"
+
+    with pytest.raises(ArtifactHandoffError) as status_exc:
+        build_artifact_collection_filter(
+            tenant_id="tenant-001",
+            workspace_id="workspace-001",
+            owner_user_id="user-001",
+            status="MISSING",
+        )
+    assert status_exc.value.error_code == "ae.artifact_collection_status_invalid"
+
+    for bad_limit in (0, 101, True, "many"):
+        with pytest.raises(ArtifactHandoffError) as limit_exc:
+            normalize_artifact_collection_limit(bad_limit)
+        assert limit_exc.value.error_code == "ae.artifact_collection_limit_invalid"
+
+
+def test_artifact_collection_read_model_guards_private_and_sparse_payloads() -> None:
+    sparse_record = sample_collection_artifact_record(
+        artifact_request_id="collection-sparse-001",
+        display_title="Sparse report",
+    )
+    sparse_record["source_refs"] = "not-a-list"
+    sparse_record["versions"] = "not-a-list"
+    sparse_record["render_jobs"] = []
+    sparse_record["files"] = []
+    sparse_record["links"] = []
+
+    item = build_artifact_collection_item(sparse_record)
+
+    assert item["source_summary"]["evidence_ref_count"] == 0
+    assert item["quality_summary"] == {}
+    assert item["current_version_no"] is None
+    assert item["latest_render_job"] is None
+    assert item["available_formats"] == []
+
+    nested_safe_value = ae_artifacts._collection_json_safe_value(
+        [{"keep": object(), "drop": None}]
+    )
+    assert "object" in nested_safe_value[0]["keep"]
+    assert "drop" not in nested_safe_value[0]
+
+    with pytest.raises(ArtifactHandoffError) as unsafe_exc:
+        ae_artifacts.assert_artifact_collection_payload_safe(
+            {"storage_ref": "ae://artifacts/private"}
+        )
+    assert unsafe_exc.value.error_code == "ae.artifact_collection_payload_unsafe"
+
+
+def test_in_memory_artifact_store_lists_owner_scoped_collection_items() -> None:
+    store = ArtifactRecordStore()
+    ready = sample_collection_artifact_record(
+        artifact_request_id="collection-ready-001",
+        artifact_status="READY",
+        display_title="Ready report",
+        updated_at="2026-08-30T09:00:00Z",
+    )
+    draft = sample_collection_artifact_record(
+        artifact_request_id="collection-draft-001",
+        artifact_status="DRAFT",
+        display_title="Draft report",
+        updated_at="2026-08-30T08:00:00Z",
+    )
+    other_owner = sample_collection_artifact_record(
+        artifact_request_id="collection-other-001",
+        owner_user_id="user-002",
+        display_title="Other owner report",
+        updated_at="2026-08-30T10:00:00Z",
+    )
+    for record in (draft, other_owner, ready):
+        store.create(record)
+
+    collection = store.list_artifacts(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        limit=10,
+    )
+    ready_only = store.list_artifacts(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        status="ready",
+    )
+    limited = store.list_artifacts(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        limit=1,
+    )
+
+    assert collection["artifact_collection_schema_version"] == (
+        ARTIFACT_COLLECTION_SCHEMA_VERSION
+    )
+    assert collection["count"] == 2
+    assert collection["next_cursor"] is None
+    assert [item["display_title"] for item in collection["items"]] == [
+        "Ready report",
+        "Draft report",
+    ]
+    assert all(item["owner_user_id"] == "user-001" for item in collection["items"])
+    assert ready_only["count"] == 1
+    assert ready_only["items"][0]["artifact_status"] == "READY"
+    assert limited["count"] == 1
+    assert limited["items"][0]["display_title"] == "Ready report"
+
+
 def test_resolve_rendered_artifact_file_payload_reports_missing_payload() -> None:
     store = ArtifactRecordStore()
     artifact_record = build_artifact_record_from_handoff(
@@ -1843,6 +2075,72 @@ def test_sqlalchemy_artifact_record_store_round_trips_render_metadata_with_sqlit
     assert store.get(created["artifact_id"]) is None
 
 
+def test_sqlalchemy_artifact_record_store_lists_owner_scoped_collection_with_sqlite() -> None:
+    session_factory = sqlite_artifact_session_factory()
+    handoff_store = SqlAlchemyArtifactHandoffStore(session_factory)
+    store = SqlAlchemyArtifactRecordStore(session_factory)
+    ready = sample_collection_artifact_record(
+        artifact_request_id="sql-collection-ready-001",
+        artifact_status="READY",
+        display_title="SQL ready report",
+        updated_at="2026-08-30T09:00:00Z",
+    )
+    draft = sample_collection_artifact_record(
+        artifact_request_id="sql-collection-draft-001",
+        artifact_status="DRAFT",
+        display_title="SQL draft report",
+        updated_at="2026-08-30T08:00:00Z",
+    )
+    other_workspace = sample_collection_artifact_record(
+        artifact_request_id="sql-collection-other-001",
+        workspace_id="workspace-002",
+        display_title="SQL other workspace report",
+        updated_at="2026-08-30T10:00:00Z",
+    )
+    for record in (draft, other_workspace, ready):
+        handoff_store.save(
+            {
+                **sample_handoff_record(),
+                "artifact_handoff_id": record["handoff_ref"]["artifact_handoff_id"],
+                "artifact_request_id": record["handoff_ref"]["artifact_request_id"],
+                "artifact_title": record["display_title"],
+                "actor_claims_ref": record["owner_actor_ref"],
+                "workspace_ref": record["workspace_ref"],
+            }
+        )
+        store.save(record)
+
+    collection = store.list_artifacts(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        limit="10",
+    )
+    ready_only = store.list_artifacts(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        status="READY",
+        limit=10,
+    )
+    empty = store.list_artifacts(
+        tenant_id="tenant-001",
+        workspace_id="workspace-999",
+        owner_user_id="user-001",
+    )
+
+    assert collection["count"] == 2
+    assert [item["display_title"] for item in collection["items"]] == [
+        "SQL ready report",
+        "SQL draft report",
+    ]
+    assert all(item["workspace_id"] == "workspace-001" for item in collection["items"])
+    assert ready_only["count"] == 1
+    assert ready_only["items"][0]["artifact_status"] == "READY"
+    assert empty["count"] == 0
+    assert "storage_ref" not in json.dumps(collection, ensure_ascii=False)
+
+
 def test_sqlalchemy_artifact_record_store_reports_missing_render_target() -> None:
     store = SqlAlchemyArtifactRecordStore(sqlite_artifact_session_factory())
 
@@ -1918,6 +2216,7 @@ def test_sqlalchemy_artifact_record_store_reads_markdown_from_local_storage(
         ("record", "render_job"),
         ("record", "file"),
         ("record", "file_link"),
+        ("record", "list"),
         ("record", "delete"),
     ],
 )
@@ -1957,6 +2256,12 @@ def test_sqlalchemy_artifact_stores_map_database_errors(
                 store.get_file("missing")
             elif operation == "file_link":
                 store.get_file_link("missing", "preview")
+            elif operation == "list":
+                store.list_artifacts(
+                    tenant_id="tenant-001",
+                    workspace_id="workspace-001",
+                    owner_user_id="user-001",
+                )
             else:
                 store.delete(artifact_record["artifact_id"])
 
