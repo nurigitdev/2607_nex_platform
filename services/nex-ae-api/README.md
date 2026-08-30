@@ -211,6 +211,12 @@ Artifact records:
   `app.state.nex_persistence.api_session_factory` is attached. Explicit test
   stores still override defaults, and the public API shape is unchanged across
   in-memory and persisted modes.
+- Slice 0421 audits the export/transform boundary before S43 multi-format
+  rendering begins. Contracts and AE Web already name `HTML_PREVIEW`, `DOCX`,
+  and `PDF`, but the current AE runtime intentionally materializes only `MD`
+  through the Markdown renderer. S43 should add export/transform adapters behind
+  the existing AE render job, artifact file, link, and private payload storage
+  boundary instead of moving conversion responsibility to CX or the browser.
 
 Prompt analytics:
 

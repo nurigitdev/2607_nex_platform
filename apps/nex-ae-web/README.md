@@ -664,5 +664,16 @@ Slice 0420 closes S42:
   panel, versions/files panel, fetch smoke, PostgreSQL smoke, Playwright smoke,
   docs, and quality-gate hooks remain registered together.
 
+Slice 0421 starts S43 from the export/transform boundary:
+
+- The browser format selector remains request-surface intent, not the
+  multi-format materializer.
+- AE Web may show `HTML_PREVIEW`, `DOCX`, and `PDF` choices, but AE API owns
+  render job execution, artifact file metadata, preview/download links, and
+  private rendered payload storage.
+- Until S43 export adapters are wired, the live AE runtime remains
+  Markdown-only while mock browser surfaces can still display future format
+  metadata safely.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
