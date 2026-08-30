@@ -2,19 +2,27 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  AE_ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION,
+  AE_ARTIFACT_COLLECTION_SCHEMA_VERSION,
   AE_ARTIFACT_FILE_DOWNLOAD_SCHEMA_VERSION,
   AE_ARTIFACT_FILE_PREVIEW_SCHEMA_VERSION,
   AE_ARTIFACT_RECORD_SCHEMA_VERSION,
+  AE_WEB_ARTIFACT_COLLECTION_SURFACE_SCHEMA_VERSION,
   AE_WEB_ARTIFACT_EXPORT_REQUEST_SCHEMA_VERSION,
   AE_WEB_ARTIFACT_EXPORT_SURFACE_SCHEMA_VERSION,
   AE_WEB_ARTIFACT_CLIENT_SCHEMA_VERSION,
   ArtifactClientError,
+  artifactCollectionRoute,
   artifactDetailRoute,
   artifactFileDownloadRoute,
   artifactFileMetadataRoute,
   artifactFilePreviewRoute,
   artifactRenderJobRoute,
   artifactVersionsRoute,
+  buildArtifactCollectionItemSurface,
+  buildArtifactCollectionQuery,
+  buildArtifactCollectionSummary,
+  buildArtifactCollectionSurface,
   buildArtifactExportRequest,
   buildArtifactExportSummary,
   buildArtifactExportSurface,
@@ -38,16 +46,32 @@ function artifactRecord(overrides = {}) {
     chat_document_id: "chat-doc-001",
     interaction_id: "interaction-001",
     display_title: "Generated report",
+    language: "ko",
+    artifact_intent: "create_and_export",
     target_formats: ["MD", "HTML_PREVIEW"],
+    owner_actor_ref: {
+      actor_type: "user",
+      actor_id: "user-001",
+      tenant_id: "tenant-001"
+    },
+    workspace_ref: {
+      workspace_id: "workspace-001",
+      workspace_name: "Default workspace"
+    },
     source_refs: [
       {
         cx_generation_id: "cx-gen-001",
+        structured_draft_id: "structured-draft-001",
         structured_draft_content_hash: "c".repeat(64),
         retrieval_package_id: "cx-ret-001",
+        retrieval_package_hash: "r".repeat(64),
         evidence_ref_count: 2,
+        source_anchor_count: 2,
         quality_summary: {
           citation_status: "VALIDATED",
           citation_count: 2,
+          validation_error_count: 0,
+          warning_count: 1,
           grounding_required: true,
           retrieval_package_id: "cx-ret-001",
           evidence_ref_count: 2
@@ -93,6 +117,95 @@ function artifactRecord(overrides = {}) {
         link_route: "/api/v1/artifact-files/artifact-file-001/download"
       }
     ],
+    render_jobs: [
+      {
+        render_job_id: "render-job-001",
+        job_status: "COMPLETED",
+        current_stage: "FINALIZING",
+        progress_percent: 100,
+        retryable: false,
+        failure_code: null
+      }
+    ],
+    created_at: "2026-08-30T08:00:00Z",
+    updated_at: "2026-08-30T09:00:00Z",
+    ...overrides
+  };
+}
+
+function artifactCollectionItem(overrides = {}) {
+  return {
+    artifact_collection_item_schema_version:
+      AE_ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION,
+    artifact_id: "artifact-001",
+    artifact_type: "generated_document",
+    artifact_status: "READY",
+    display_title: "Generated report",
+    language: "ko",
+    artifact_intent: "create_and_export",
+    target_formats: ["MD", "HTML_PREVIEW"],
+    available_formats: ["HTML_PREVIEW", "MD"],
+    downloadable_formats: ["HTML_PREVIEW", "MD"],
+    previewable_formats: ["HTML_PREVIEW", "MD"],
+    current_version_id: "artifact-version-001",
+    current_version_no: 1,
+    version_count: 1,
+    file_count: 2,
+    link_count: 4,
+    render_job_count: 1,
+    latest_render_job: {
+      render_job_id: "render-job-001",
+      job_status: "COMPLETED",
+      current_stage: "FINALIZING",
+      progress_percent: 100,
+      retryable: false,
+      failure_code: null
+    },
+    source_summary: {
+      cx_generation_id: "cx-gen-001",
+      structured_draft_id: "structured-draft-001",
+      retrieval_package_id: "cx-ret-001",
+      retrieval_package_hash: "r".repeat(64),
+      evidence_ref_count: 2,
+      source_anchor_count: 2
+    },
+    quality_summary: {
+      citation_status: "VALIDATED",
+      citation_count: 2,
+      validation_error_count: 0,
+      warning_count: 1,
+      grounding_required: true,
+      evidence_ref_count: 2
+    },
+    routes: {
+      detail: "/api/v1/artifacts/artifact-001",
+      versions: "/api/v1/artifacts/artifact-001/versions"
+    },
+    tenant_id: "tenant-001",
+    workspace_id: "workspace-001",
+    owner_user_id: "user-001",
+    chat_document_id: "chat-doc-001",
+    interaction_id: "interaction-001",
+    created_at: "2026-08-30T08:00:00Z",
+    updated_at: "2026-08-30T09:00:00Z",
+    ...overrides
+  };
+}
+
+function artifactCollectionPayload(overrides = {}) {
+  return {
+    artifact_collection_schema_version: AE_ARTIFACT_COLLECTION_SCHEMA_VERSION,
+    filter: {
+      tenant_id: "tenant-001",
+      workspace_id: "workspace-001",
+      owner_user_id: "user-001",
+      status: null,
+      limit: 20
+    },
+    count: 1,
+    limit: 20,
+    next_cursor: null,
+    items: [artifactCollectionItem()],
     ...overrides
   };
 }
@@ -189,6 +302,11 @@ describe("AE Web artifact client adapter", () => {
       downloads: { "artifact-file-001": downloadPayload() }
     });
 
+    const collection = await client.listArtifacts({
+      tenantId: "tenant-001",
+      workspaceId: "workspace-001",
+      ownerUserId: "user-001"
+    });
     const artifact = await client.getArtifact("artifact-001");
     const versions = await client.listArtifactVersions("artifact-001");
     const file = await client.getArtifactFile("artifact-file-001");
@@ -196,6 +314,8 @@ describe("AE Web artifact client adapter", () => {
     const download = await client.downloadArtifactFile("artifact-file-001");
 
     assert.equal(client.clientMode, "mock");
+    assert.equal(collection.itemCount, 1);
+    assert.equal(collection.items[0].artifactId, "artifact-001");
     assert.equal(artifact.clientMode, "mock");
     assert.equal(versions.versionCount, 1);
     assert.equal(file.fileName, "generated-report.md");
@@ -210,12 +330,126 @@ describe("AE Web artifact client adapter", () => {
     assert.equal(buildArtifactClientSummary(download).download_route_count, 1);
   });
 
+  it("normalizes artifact collection query, route, surface, and summary", () => {
+    const query = buildArtifactCollectionQuery({
+      tenantId: "tenant 001",
+      workspaceId: "workspace/001",
+      ownerUserId: "user 001",
+      status: "ready",
+      limit: "2"
+    });
+    const route = artifactCollectionRoute(query);
+    const surface = buildArtifactCollectionSurface(
+      artifactCollectionPayload({
+        filter: {
+          tenant_id: "tenant-001",
+          workspace_id: "workspace-001",
+          owner_user_id: "user-001",
+          status: "ready",
+          limit: "1"
+        },
+        count: 1,
+        limit: "1",
+        items: [artifactCollectionItem()]
+      }),
+      { clientMode: "fetch", route: "/api/v1/artifacts?limit=1" }
+    );
+    const item = buildArtifactCollectionItemSurface(artifactCollectionItem());
+    const summary = buildArtifactCollectionSummary(surface);
+
+    assert.deepEqual(query, {
+      tenant_id: "tenant 001",
+      workspace_id: "workspace/001",
+      owner_user_id: "user 001",
+      status: "READY",
+      limit: 2
+    });
+    assert.equal(
+      route,
+      "/api/v1/artifacts?tenant_id=tenant+001&workspace_id=workspace%2F001&owner_user_id=user+001&status=READY&limit=2"
+    );
+    assert.equal(
+      surface.artifact_collection_surface_schema_version,
+      AE_WEB_ARTIFACT_COLLECTION_SURFACE_SCHEMA_VERSION
+    );
+    assert.equal(surface.clientMode, "fetch");
+    assert.equal(surface.filter.status, "READY");
+    assert.equal(surface.itemCount, 1);
+    assert.equal(surface.items[0].routes.detail, "/api/v1/artifacts/artifact-001");
+    assert.equal(item.sourceSummary.cxGenerationId, "cx-gen-001");
+    assert.equal(item.qualitySummary.warningCount, 1);
+    assert.equal(item.latestRenderJob.renderJobId, "render-job-001");
+    assert.equal(summary.ready_count, 1);
+    assert.equal(summary.downloadable_format_count, 2);
+    assert.equal(summary.route_present, true);
+    assert.doesNotMatch(
+      JSON.stringify({ surface, summary }),
+      /storage_ref|storage_path|content_base64|rendered_markdown|\/data\/nex-platform/
+    );
+  });
+
+  it("filters mock artifact collections by owner scope, status, and limit", async () => {
+    const ready = artifactRecord({
+      artifact_id: "artifact-ready-001",
+      artifact_status: "READY",
+      display_title: "Ready report",
+      updated_at: "2026-08-30T09:00:00Z"
+    });
+    const draft = artifactRecord({
+      artifact_id: "artifact-draft-001",
+      artifact_status: "DRAFT",
+      display_title: "Draft report",
+      updated_at: "2026-08-30T08:00:00Z"
+    });
+    const otherOwner = artifactRecord({
+      artifact_id: "artifact-other-001",
+      artifact_status: "READY",
+      display_title: "Other owner report",
+      owner_actor_ref: {
+        actor_type: "user",
+        actor_id: "user-002",
+        tenant_id: "tenant-001"
+      },
+      updated_at: "2026-08-30T10:00:00Z"
+    });
+    const client = createMockArtifactClient({
+      artifacts: [draft, otherOwner, ready]
+    });
+
+    const allOwnerItems = await client.listArtifacts({
+      tenant_id: "tenant-001",
+      workspace_id: "workspace-001",
+      owner_user_id: "user-001",
+      limit: 10
+    });
+    const readyOnly = await client.listArtifacts({
+      tenant_id: "tenant-001",
+      workspace_id: "workspace-001",
+      owner_user_id: "user-001",
+      status: "ready",
+      limit: 1
+    });
+
+    assert.deepEqual(
+      allOwnerItems.items.map(item => item.displayTitle),
+      ["Ready report", "Draft report"]
+    );
+    assert.equal(allOwnerItems.count, 2);
+    assert.equal(allOwnerItems.items.every(item => item.ownerScope.ownerUserId === "user-001"), true);
+    assert.equal(readyOnly.count, 1);
+    assert.equal(readyOnly.items[0].artifactStatus, "READY");
+    assert.equal(readyOnly.items[0].displayTitle, "Ready report");
+  });
+
   it("uses same-origin fetch routes for all artifact read paths", async () => {
     const calls = [];
     const client = createFetchArtifactClient({
       baseUrl: "https://ae.local",
       fetchImpl: async (url, options) => {
         calls.push({ url, options });
+        if (String(url).includes("/api/v1/artifacts?")) {
+          return jsonResponse({ payload: artifactCollectionPayload() });
+        }
         if (String(url).endsWith("/versions")) {
           return jsonResponse({
             payload: {
@@ -238,6 +472,11 @@ describe("AE Web artifact client adapter", () => {
       }
     });
 
+    await client.listArtifacts({
+      tenantId: "tenant-001",
+      workspaceId: "workspace-001",
+      ownerUserId: "user-001"
+    });
     await client.getArtifact("artifact-001");
     await client.listArtifactVersions("artifact-001");
     await client.getArtifactFile("artifact-file-001");
@@ -247,6 +486,7 @@ describe("AE Web artifact client adapter", () => {
     assert.deepEqual(
       calls.map(call => call.url),
       [
+        "https://ae.local/api/v1/artifacts?tenant_id=tenant-001&workspace_id=workspace-001&owner_user_id=user-001&limit=20",
         "https://ae.local/api/v1/artifacts/artifact-001",
         "https://ae.local/api/v1/artifacts/artifact-001/versions",
         "https://ae.local/api/v1/artifact-files/artifact-file-001",
@@ -291,6 +531,14 @@ describe("AE Web artifact client adapter", () => {
     assert.equal(
       artifactFileDownloadRoute("file 1"),
       "/api/v1/artifact-files/file%201/download"
+    );
+    assert.equal(
+      artifactCollectionRoute({
+        tenantId: "tenant-001",
+        workspaceId: "workspace-001",
+        ownerUserId: "user-001"
+      }),
+      "/api/v1/artifacts?tenant_id=tenant-001&workspace_id=workspace-001&owner_user_id=user-001&limit=20"
     );
     assert.equal(draft.artifactStatus, "READY");
     assert.equal(draft.primaryFormat, "MD");
@@ -407,6 +655,66 @@ describe("AE Web artifact client adapter", () => {
     assert.throws(
       () => buildArtifactSurfaceFromRecord({ artifact_id: "" }),
       error => error instanceof ArtifactClientError && error.status === "ARTIFACT_FIELD_REQUIRED"
+    );
+    assert.throws(
+      () => artifactCollectionRoute({ tenantId: "", workspaceId: "w", ownerUserId: "u" }),
+      error => error instanceof ArtifactClientError && error.status === "ARTIFACT_FIELD_REQUIRED"
+    );
+    assert.throws(
+      () =>
+        artifactCollectionRoute({
+          tenantId: "tenant-001",
+          workspaceId: "workspace-001",
+          ownerUserId: "user-001",
+          status: "missing"
+        }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_COLLECTION_STATUS_INVALID"
+    );
+    assert.throws(
+      () =>
+        artifactCollectionRoute({
+          tenantId: "tenant-001",
+          workspaceId: "workspace-001",
+          ownerUserId: "user-001",
+          limit: "0"
+        }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_COLLECTION_LIMIT_INVALID"
+    );
+    assert.throws(
+      () => buildArtifactCollectionSurface({ artifact_collection_schema_version: "wrong" }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_COLLECTION_INVALID"
+    );
+    assert.throws(
+      () =>
+        buildArtifactCollectionItemSurface({
+          ...artifactCollectionItem(),
+          artifact_collection_item_schema_version: "wrong"
+        }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_COLLECTION_ITEM_SCHEMA_INVALID"
+    );
+    assert.throws(
+      () =>
+        buildArtifactCollectionItemSurface({
+          ...artifactCollectionItem(),
+          latest_render_job: "bad"
+        }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_COLLECTION_RENDER_JOB_INVALID"
+    );
+    assert.throws(
+      () => buildArtifactCollectionSummary({ artifact_collection_surface_schema_version: "wrong" }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_COLLECTION_SUMMARY_INVALID"
     );
     assert.throws(
       () => buildArtifactPreviewSurface({ preview_schema_version: "wrong" }),

@@ -9,8 +9,23 @@ export const AE_WEB_ARTIFACT_EXPORT_REQUEST_SCHEMA_VERSION =
   "ae_web_artifact_export_request.v1";
 export const AE_WEB_ARTIFACT_EXPORT_SURFACE_SCHEMA_VERSION =
   "ae_web_artifact_export_surface.v1";
+export const AE_ARTIFACT_COLLECTION_SCHEMA_VERSION = "ae_artifact_collection.v1";
+export const AE_ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION =
+  "ae_artifact_collection_item.v1";
+export const AE_WEB_ARTIFACT_COLLECTION_SURFACE_SCHEMA_VERSION =
+  "ae_web_artifact_collection_surface.v1";
 
 const SUPPORTED_ARTIFACT_EXPORT_FORMATS = ["MD", "HTML_PREVIEW", "DOCX", "PDF"];
+const SUPPORTED_ARTIFACT_COLLECTION_STATUSES = [
+  "DRAFT",
+  "RENDERING",
+  "READY",
+  "FAILED",
+  "ARCHIVED",
+  "DELETED"
+];
+const DEFAULT_ARTIFACT_COLLECTION_LIMIT = 20;
+const MAX_ARTIFACT_COLLECTION_LIMIT = 100;
 const TEXT_DOWNLOAD_CONTENT_ENCODING = "utf-8";
 const BASE64_DOWNLOAD_CONTENT_ENCODING = "base64";
 
@@ -84,6 +99,17 @@ export function artifactFileDownloadRoute(artifactFileId) {
   return `${artifactFileMetadataRoute(artifactFileId)}/download`;
 }
 
+export function artifactCollectionRoute(query = {}) {
+  const collectionQuery = buildArtifactCollectionQuery(query);
+  const params = new URLSearchParams();
+  params.set("tenant_id", collectionQuery.tenant_id);
+  params.set("workspace_id", collectionQuery.workspace_id);
+  params.set("owner_user_id", collectionQuery.owner_user_id);
+  if (collectionQuery.status) params.set("status", collectionQuery.status);
+  params.set("limit", String(collectionQuery.limit));
+  return `/api/v1/artifacts?${params.toString()}`;
+}
+
 export function createMockArtifactClient({
   artifacts = [],
   previews = {},
@@ -98,6 +124,18 @@ export function createMockArtifactClient({
 
   return {
     clientMode: "mock",
+    async listArtifacts(query = {}) {
+      const collectionQuery = buildArtifactCollectionQuery(query);
+      const route = artifactCollectionRoute(collectionQuery);
+      const payload = buildMockArtifactCollectionPayload(
+        [...records.values()],
+        collectionQuery
+      );
+      return buildArtifactCollectionSurface(payload, {
+        clientMode: "mock",
+        route
+      });
+    },
     async getArtifact(artifactId) {
       const route = artifactDetailRoute(artifactId);
       const record = records.get(String(artifactId));
@@ -193,6 +231,14 @@ export function createFetchArtifactClient({ baseUrl = "", fetchImpl } = {}) {
 
   return {
     clientMode: "fetch",
+    async listArtifacts(query = {}) {
+      const route = artifactCollectionRoute(query);
+      const payload = await fetchArtifactJson(request, `${baseUrl}${route}`);
+      return buildArtifactCollectionSurface(payload, {
+        clientMode: "fetch",
+        route
+      });
+    },
     async getArtifact(artifactId) {
       const route = artifactDetailRoute(artifactId);
       const payload = await fetchArtifactJson(request, `${baseUrl}${route}`);
@@ -244,6 +290,25 @@ export function createFetchArtifactClient({ baseUrl = "", fetchImpl } = {}) {
   };
 }
 
+export function buildArtifactCollectionQuery({
+  tenantId,
+  tenant_id,
+  workspaceId,
+  workspace_id,
+  ownerUserId,
+  owner_user_id,
+  status = null,
+  limit = null
+} = {}) {
+  return {
+    tenant_id: requiredText(tenantId ?? tenant_id, "tenant_id"),
+    workspace_id: requiredText(workspaceId ?? workspace_id, "workspace_id"),
+    owner_user_id: requiredText(ownerUserId ?? owner_user_id, "owner_user_id"),
+    status: normalizeArtifactCollectionStatus(status),
+    limit: normalizeArtifactCollectionLimit(limit)
+  };
+}
+
 export function buildArtifactExportRequest({
   artifactId,
   artifact_id,
@@ -272,6 +337,93 @@ export function buildArtifactExportRequest({
     route: artifactRenderJobRoute(normalizedArtifactId),
     metadata: safeArtifactMetadata({ contentIncluded: false })
   };
+}
+
+export function buildArtifactCollectionSurface(
+  payload,
+  { clientMode = "mock", route = null } = {}
+) {
+  if (
+    !isObject(payload) ||
+    payload.artifact_collection_schema_version !==
+      AE_ARTIFACT_COLLECTION_SCHEMA_VERSION ||
+    !Array.isArray(payload.items)
+  ) {
+    throw new ArtifactClientError("Artifact collection response is invalid.", {
+      status: "ARTIFACT_COLLECTION_INVALID"
+    });
+  }
+  const filter = buildArtifactCollectionQuery(payload.filter || {});
+  const items = payload.items.map(buildArtifactCollectionItemSurface);
+  const surface = {
+    artifact_collection_surface_schema_version:
+      AE_WEB_ARTIFACT_COLLECTION_SURFACE_SCHEMA_VERSION,
+    artifact_client_schema_version: AE_WEB_ARTIFACT_CLIENT_SCHEMA_VERSION,
+    artifact_collection_schema_version: payload.artifact_collection_schema_version,
+    filter,
+    count: numberOrZero(payload.count),
+    itemCount: items.length,
+    limit: normalizeArtifactCollectionLimit(payload.limit ?? filter.limit),
+    nextCursor: optionalText(payload.next_cursor) || null,
+    items,
+    route,
+    clientMode: clientMode === "fetch" ? "fetch" : "mock",
+    metadata: safeArtifactMetadata({ contentIncluded: false })
+  };
+  assertArtifactClientSurfaceSafe(surface);
+  return surface;
+}
+
+export function buildArtifactCollectionItemSurface(item) {
+  if (!isObject(item)) {
+    throw new ArtifactClientError("Artifact collection item is invalid.", {
+      status: "ARTIFACT_COLLECTION_ITEM_INVALID"
+    });
+  }
+  const itemSchema =
+    optionalText(item.artifact_collection_item_schema_version) ||
+    AE_ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION;
+  if (itemSchema !== AE_ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION) {
+    throw new ArtifactClientError("Artifact collection item schema is invalid.", {
+      status: "ARTIFACT_COLLECTION_ITEM_SCHEMA_INVALID"
+    });
+  }
+  const artifactId = requiredText(item.artifact_id, "artifact_id");
+  const surface = {
+    artifact_collection_item_schema_version: itemSchema,
+    artifactId,
+    displayTitle: optionalText(item.display_title) || "Untitled artifact",
+    artifactType: optionalText(item.artifact_type) || "generated_document",
+    artifactStatus: optionalText(item.artifact_status) || "UNKNOWN",
+    language: optionalText(item.language) || null,
+    artifactIntent: optionalText(item.artifact_intent) || null,
+    targetFormats: normalizeTextList(item.target_formats),
+    availableFormats: normalizeTextList(item.available_formats),
+    downloadableFormats: normalizeTextList(item.downloadable_formats),
+    previewableFormats: normalizeTextList(item.previewable_formats),
+    currentVersionId: optionalText(item.current_version_id) || null,
+    currentVersionNo: numberOrNull(item.current_version_no),
+    versionCount: numberOrZero(item.version_count),
+    fileCount: numberOrZero(item.file_count),
+    linkCount: numberOrZero(item.link_count),
+    renderJobCount: numberOrZero(item.render_job_count),
+    latestRenderJob: normalizeArtifactCollectionRenderJob(item.latest_render_job),
+    sourceSummary: normalizeArtifactCollectionSourceSummary(item.source_summary),
+    qualitySummary: normalizeArtifactCollectionQualitySummary(item.quality_summary),
+    routes: normalizeArtifactCollectionRoutes(item.routes, artifactId),
+    ownerScope: {
+      tenantId: optionalText(item.tenant_id) || null,
+      workspaceId: optionalText(item.workspace_id) || null,
+      ownerUserId: optionalText(item.owner_user_id) || null
+    },
+    chatDocumentId: optionalText(item.chat_document_id) || null,
+    interactionId: optionalText(item.interaction_id) || null,
+    createdAt: optionalText(item.created_at) || null,
+    updatedAt: optionalText(item.updated_at) || null,
+    metadata: safeArtifactMetadata({ contentIncluded: false })
+  };
+  assertArtifactClientSurfaceSafe(surface);
+  return surface;
 }
 
 export function buildArtifactSurfaceFromRecord(
@@ -531,6 +683,42 @@ export function buildArtifactExportSummary(surface) {
   return summary;
 }
 
+export function buildArtifactCollectionSummary(surface) {
+  if (
+    !isObject(surface) ||
+    surface.artifact_collection_surface_schema_version !==
+      AE_WEB_ARTIFACT_COLLECTION_SURFACE_SCHEMA_VERSION
+  ) {
+    throw new ArtifactClientError("Artifact collection summary is invalid.", {
+      status: "ARTIFACT_COLLECTION_SUMMARY_INVALID"
+    });
+  }
+  const statusCounts = {};
+  const downloadableFormats = new Set();
+  for (const item of Array.isArray(surface.items) ? surface.items : []) {
+    statusCounts[item.artifactStatus] = (statusCounts[item.artifactStatus] || 0) + 1;
+    for (const format of item.downloadableFormats || []) {
+      downloadableFormats.add(format);
+    }
+  }
+  const summary = {
+    artifact_collection_surface_schema_version:
+      surface.artifact_collection_surface_schema_version,
+    artifact_collection_schema_version: surface.artifact_collection_schema_version,
+    count: surface.count,
+    item_count: surface.itemCount,
+    ready_count: statusCounts.READY || 0,
+    status_counts: statusCounts,
+    downloadable_format_count: downloadableFormats.size,
+    route_present: Boolean(surface.route),
+    client_mode: surface.clientMode,
+    filter: surface.filter,
+    metadata: surface.metadata
+  };
+  assertArtifactClientSurfaceSafe(summary);
+  return summary;
+}
+
 export function buildArtifactClientSummary(surface) {
   if (
     !isObject(surface) ||
@@ -615,6 +803,100 @@ export function findSensitiveArtifactClientKeys(payload) {
 
   visit(payload, "");
   return found.sort();
+}
+
+function buildMockArtifactCollectionPayload(records, collectionQuery) {
+  const matchingRecords = records
+    .filter(record => artifactRecordMatchesCollectionQuery(record, collectionQuery))
+    .sort(compareArtifactRecordsLatestFirst)
+    .slice(0, collectionQuery.limit);
+  return {
+    artifact_collection_schema_version: AE_ARTIFACT_COLLECTION_SCHEMA_VERSION,
+    filter: collectionQuery,
+    count: matchingRecords.length,
+    limit: collectionQuery.limit,
+    next_cursor: null,
+    items: matchingRecords.map(buildArtifactCollectionItemFromRecord)
+  };
+}
+
+function buildArtifactCollectionItemFromRecord(record) {
+  const files = normalizeArtifactFiles(record.files);
+  const links = normalizeArtifactLinks(record.links);
+  const versions = Array.isArray(record.versions)
+    ? record.versions.filter(isObject)
+    : [];
+  const renderJobs = Array.isArray(record.render_jobs)
+    ? record.render_jobs.filter(isObject)
+    : [];
+  const currentVersionId = optionalText(record.current_version_id);
+  const sourceRef = Array.isArray(record.source_refs) && isObject(record.source_refs[0])
+    ? record.source_refs[0]
+    : {};
+  const owner = isObject(record.owner_actor_ref) ? record.owner_actor_ref : {};
+  const workspace = isObject(record.workspace_ref) ? record.workspace_ref : {};
+  const artifactId = requiredText(record.artifact_id, "artifact_id");
+  return {
+    artifact_collection_item_schema_version:
+      AE_ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION,
+    artifact_id: artifactId,
+    artifact_type: optionalText(record.artifact_type) || "generated_document",
+    artifact_status: optionalText(record.artifact_status) || "UNKNOWN",
+    display_title: optionalText(record.display_title) || "Untitled artifact",
+    language: optionalText(record.language) || null,
+    artifact_intent: optionalText(record.artifact_intent) || null,
+    target_formats: normalizeTextList(record.target_formats),
+    available_formats: sortedUnique(files.map(file => file.format)),
+    downloadable_formats: linkedCollectionFormats(files, links, "download"),
+    previewable_formats: linkedCollectionFormats(files, links, "preview"),
+    current_version_id: currentVersionId,
+    current_version_no: currentVersionNo(versions, currentVersionId),
+    version_count: versions.length,
+    file_count: files.length,
+    link_count: links.length,
+    render_job_count: renderJobs.length,
+    latest_render_job: latestCollectionRenderJob(renderJobs),
+    source_summary: {
+      cx_generation_id: optionalText(sourceRef.cx_generation_id) || null,
+      structured_draft_id: optionalText(sourceRef.structured_draft_id) || null,
+      retrieval_package_id: optionalText(sourceRef.retrieval_package_id) || null,
+      retrieval_package_hash: optionalText(sourceRef.retrieval_package_hash) || null,
+      evidence_ref_count: numberOrZero(sourceRef.evidence_ref_count),
+      source_anchor_count: numberOrZero(sourceRef.source_anchor_count)
+    },
+    quality_summary: isObject(sourceRef.quality_summary) ? sourceRef.quality_summary : {},
+    routes: {
+      detail: artifactDetailRoute(artifactId),
+      versions: artifactVersionsRoute(artifactId)
+    },
+    tenant_id: optionalText(owner.tenant_id) || null,
+    workspace_id: optionalText(workspace.workspace_id) || null,
+    owner_user_id: optionalText(owner.actor_id) || null,
+    chat_document_id: optionalText(record.chat_document_id) || null,
+    interaction_id: optionalText(record.interaction_id) || null,
+    created_at: optionalText(record.created_at) || null,
+    updated_at: optionalText(record.updated_at) || null
+  };
+}
+
+function artifactRecordMatchesCollectionQuery(record, collectionQuery) {
+  const owner = isObject(record?.owner_actor_ref) ? record.owner_actor_ref : {};
+  const workspace = isObject(record?.workspace_ref) ? record.workspace_ref : {};
+  return (
+    owner.tenant_id === collectionQuery.tenant_id &&
+    owner.actor_id === collectionQuery.owner_user_id &&
+    workspace.workspace_id === collectionQuery.workspace_id &&
+    (
+      collectionQuery.status === null ||
+      optionalText(record.artifact_status)?.toUpperCase() === collectionQuery.status
+    )
+  );
+}
+
+function compareArtifactRecordsLatestFirst(left, right) {
+  const leftTime = optionalText(left.updated_at) || optionalText(left.created_at) || "";
+  const rightTime = optionalText(right.updated_at) || optionalText(right.created_at) || "";
+  return rightTime.localeCompare(leftTime);
 }
 
 async function fetchArtifactJson(request, url, options = {}) {
@@ -721,6 +1003,19 @@ function downloadRoutesForLinks(links, files) {
   return routes;
 }
 
+function linkedCollectionFormats(files, links, linkType) {
+  const linkedFileIds = new Set(
+    links
+      .filter(link => link.linkType === linkType && link.linkRoute)
+      .map(link => link.artifactFileId)
+  );
+  return sortedUnique(
+    files
+      .filter(file => linkedFileIds.has(file.artifactFileId))
+      .map(file => file.format)
+  );
+}
+
 function availableFormats(files, targetFormats) {
   const formats = files.map(file => file.format).filter(Boolean);
   if (formats.length === 0 && Array.isArray(targetFormats)) {
@@ -729,12 +1024,122 @@ function availableFormats(files, targetFormats) {
   return [...new Set(formats)];
 }
 
+function currentVersionNo(versions, currentVersionId) {
+  if (!currentVersionId) return null;
+  const version = versions.find(item => item.artifact_version_id === currentVersionId);
+  return numberOrNull(version?.version_no);
+}
+
+function latestCollectionRenderJob(renderJobs) {
+  const renderJob = renderJobs[renderJobs.length - 1];
+  if (!isObject(renderJob)) return null;
+  return {
+    render_job_id: optionalText(renderJob.render_job_id) || null,
+    job_status: optionalText(renderJob.job_status) || null,
+    current_stage: optionalText(renderJob.current_stage) || null,
+    progress_percent: numberOrZero(renderJob.progress_percent),
+    retryable: Boolean(renderJob.retryable),
+    failure_code: optionalText(renderJob.failure_code) || null
+  };
+}
+
 function currentVersion(versions, currentVersionId) {
   if (!Array.isArray(versions) || !currentVersionId) return null;
   return (
     versions.find(version => version.artifact_version_id === currentVersionId) ||
     null
   );
+}
+
+function normalizeArtifactCollectionStatus(status) {
+  const normalized = optionalText(status);
+  if (!normalized) return null;
+  const upper = normalized.toUpperCase();
+  if (!SUPPORTED_ARTIFACT_COLLECTION_STATUSES.includes(upper)) {
+    throw new ArtifactClientError("Artifact collection status is unsupported.", {
+      status: "ARTIFACT_COLLECTION_STATUS_INVALID"
+    });
+  }
+  return upper;
+}
+
+function normalizeArtifactCollectionLimit(limit) {
+  if (limit == null) return DEFAULT_ARTIFACT_COLLECTION_LIMIT;
+  if (typeof limit === "boolean") {
+    throw new ArtifactClientError("Artifact collection limit is invalid.", {
+      status: "ARTIFACT_COLLECTION_LIMIT_INVALID"
+    });
+  }
+  const normalized = Number(String(limit).trim());
+  if (
+    !Number.isInteger(normalized) ||
+    normalized < 1 ||
+    normalized > MAX_ARTIFACT_COLLECTION_LIMIT
+  ) {
+    throw new ArtifactClientError("Artifact collection limit is invalid.", {
+      status: "ARTIFACT_COLLECTION_LIMIT_INVALID"
+    });
+  }
+  return normalized;
+}
+
+function normalizeArtifactCollectionRenderJob(renderJob) {
+  if (renderJob == null) return null;
+  if (!isObject(renderJob)) {
+    throw new ArtifactClientError("Artifact collection render job is invalid.", {
+      status: "ARTIFACT_COLLECTION_RENDER_JOB_INVALID"
+    });
+  }
+  return {
+    renderJobId: optionalText(renderJob.render_job_id) || null,
+    jobStatus: optionalText(renderJob.job_status) || null,
+    currentStage: optionalText(renderJob.current_stage) || null,
+    progressPercent: numberOrZero(renderJob.progress_percent),
+    retryable: Boolean(renderJob.retryable),
+    failureCode: optionalText(renderJob.failure_code) || null
+  };
+}
+
+function normalizeArtifactCollectionSourceSummary(sourceSummary) {
+  const source = isObject(sourceSummary) ? sourceSummary : {};
+  return {
+    cxGenerationId: optionalText(source.cx_generation_id) || null,
+    structuredDraftId: optionalText(source.structured_draft_id) || null,
+    retrievalPackageId: optionalText(source.retrieval_package_id) || null,
+    retrievalPackageHash: optionalText(source.retrieval_package_hash) || null,
+    evidenceRefCount: numberOrZero(source.evidence_ref_count),
+    sourceAnchorCount: numberOrZero(source.source_anchor_count)
+  };
+}
+
+function normalizeArtifactCollectionQualitySummary(qualitySummary) {
+  const quality = isObject(qualitySummary) ? qualitySummary : {};
+  return {
+    citationStatus: optionalText(quality.citation_status) || "UNKNOWN",
+    citationCount: numberOrZero(quality.citation_count),
+    validationErrorCount: numberOrZero(quality.validation_error_count),
+    warningCount: numberOrZero(quality.warning_count),
+    groundingRequired: Boolean(quality.grounding_required),
+    evidenceRefCount: numberOrZero(quality.evidence_ref_count)
+  };
+}
+
+function normalizeArtifactCollectionRoutes(routes, artifactId) {
+  const rawRoutes = isObject(routes) ? routes : {};
+  return {
+    detail: rawRoutes.detail ? safeRoute(rawRoutes.detail) : artifactDetailRoute(artifactId),
+    versions: rawRoutes.versions
+      ? safeRoute(rawRoutes.versions)
+      : artifactVersionsRoute(artifactId)
+  };
+}
+
+function normalizeTextList(values) {
+  return Array.isArray(values) ? sortedUnique(values) : [];
+}
+
+function sortedUnique(values) {
+  return [...new Set(values.map(optionalText).filter(Boolean))].sort();
 }
 
 function findArtifactFile(records, artifactFileId) {

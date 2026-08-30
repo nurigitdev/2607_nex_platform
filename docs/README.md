@@ -548,6 +548,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0442`](slices/0442_ae_artifact_collection_read_model_foundation.md) | `S45-002` AE artifact collection read-model foundation. |
 | [`Slice 0443`](slices/0443_ae_artifact_collection_api_wiring.md) | `S45-003` AE artifact collection API wiring. |
 | [`Slice 0444`](slices/0444_ae_artifact_collection_postgresql_smoke_evidence.md) | `S45-004` AE artifact collection PostgreSQL smoke evidence. |
+| [`Slice 0445`](slices/0445_ae_web_artifact_collection_client_adapter.md) | `S45-005` AE Web artifact collection client adapter. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

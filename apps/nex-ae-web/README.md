@@ -219,6 +219,17 @@ Slice 0238 adds authenticated AE API fetch route-guard support:
 - Browser fetch-mode owner and actor scope is claim-derived; mismatched payload
   or stored scope is rejected by AE API before CX handoff.
 
+Slice 0445 adds the artifact collection client adapter:
+
+- `src/artifactClient.js` now includes `listArtifacts()` for mock and fetch
+  clients.
+- The fetch adapter targets `GET /api/v1/artifacts` with owner-scoped query
+  parameters and same-origin browser credentials.
+- Browser collection surfaces include metadata-only counts, formats, routes,
+  owner scope, source summary, and quality summary without rendered payloads,
+  download bytes, storage refs, database URLs, provider endpoints, or
+  credentials.
+
 Slice 0239 upgrades the protected PostgreSQL smoke:
 
 - The smoke uses browser user auth for AE facade upload, document detail, and
