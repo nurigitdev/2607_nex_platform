@@ -250,6 +250,10 @@ Artifact records:
   API download contract remains unchanged: text formats return inline text, and
   DOCX/PDF return base64 content through the protected download boundary. AE Web
   now keeps only binary metadata in panel and evidence surfaces.
+- Slice 0429 hardens the protected multi-format export PostgreSQL smoke with
+  artifact detail, versions, and render-job readbacks. The smoke summary reports
+  `read_model_files=4` when the persisted rows, download links, and service
+  read-model routes agree after rendering.
 
 Prompt analytics:
 

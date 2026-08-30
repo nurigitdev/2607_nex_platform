@@ -195,6 +195,28 @@ def _execute_ae_artifact_export_smoke(
                 files = list(rendered_artifact["files"])
                 files_by_format = {artifact_file["format"]: artifact_file for artifact_file in files}
 
+                artifact_readback = client.get(
+                    f"/api/v1/artifacts/{artifact_id}",
+                    headers=headers,
+                )
+                versions_readback = client.get(
+                    f"/api/v1/artifacts/{artifact_id}/versions",
+                    headers=headers,
+                )
+                render_job_readback = client.get(
+                    f"/api/v1/artifact-render-jobs/{render_job_id}",
+                    headers=headers,
+                )
+                read_model_observations = _read_model_observations(
+                    artifact_payload=_response_payload(artifact_readback),
+                    versions_payload=_response_payload(versions_readback),
+                    render_job_payload=_response_payload(render_job_readback),
+                    artifact_status_code=artifact_readback.status_code,
+                    versions_status_code=versions_readback.status_code,
+                    render_job_status_code=render_job_readback.status_code,
+                    artifact_version_id=artifact_version_id,
+                )
+
                 file_readbacks = {
                     export_format: client.get(
                         f"/api/v1/artifact-files/{artifact_file['artifact_file_id']}",
@@ -244,6 +266,17 @@ def _execute_ae_artifact_export_smoke(
                     == sorted(EXPORT_FORMATS),
                     "render_stage_finalized": render_job["current_stage"]
                     == "FINALIZING",
+                    "artifact_detail_readback": artifact_readback.status_code == 200
+                    and read_model_observations["artifact_detail_file_count"] == 4,
+                    "artifact_versions_readback": versions_readback.status_code == 200
+                    and read_model_observations["versions_current_rendered_formats"]
+                    == list(EXPORT_FORMATS),
+                    "render_job_readback": render_job_readback.status_code == 200
+                    and read_model_observations["render_job_status"] == "COMPLETED",
+                    "read_model_download_links": read_model_observations[
+                        "artifact_detail_download_link_count"
+                    ]
+                    == 4,
                     "file_readbacks": all(
                         response.status_code == 200
                         for response in file_readbacks.values()
@@ -276,6 +309,7 @@ def _execute_ae_artifact_export_smoke(
                     "raw_sensitive_absent": _redaction_safe(
                         rendered,
                         observations,
+                        read_model_observations,
                         download_shapes,
                         forbidden_fragments=[
                             database_url,
@@ -323,6 +357,7 @@ def _execute_ae_artifact_export_smoke(
                     },
                     "cx_client_call_count": len(cx_client.calls),
                     "db_observations": observations,
+                    "read_model_observations": read_model_observations,
                     "checks": checks,
                     "cleanup": cleanup,
                 }
@@ -439,6 +474,72 @@ def _json_array(value: Any) -> list[str]:
     return [str(item) for item in parsed]
 
 
+def _response_payload(response: Any) -> dict[str, Any]:
+    if getattr(response, "status_code", None) != 200:
+        return {}
+    payload = response.json()
+    return payload if isinstance(payload, dict) else {}
+
+
+def _read_model_observations(
+    *,
+    artifact_payload: Mapping[str, Any],
+    versions_payload: Mapping[str, Any],
+    render_job_payload: Mapping[str, Any],
+    artifact_status_code: int,
+    versions_status_code: int,
+    render_job_status_code: int,
+    artifact_version_id: str,
+) -> dict[str, Any]:
+    artifact_files = artifact_payload.get("files")
+    artifact_links = artifact_payload.get("links")
+    files = artifact_files if isinstance(artifact_files, list) else []
+    links = artifact_links if isinstance(artifact_links, list) else []
+    return {
+        "artifact_detail_status_code": artifact_status_code,
+        "versions_status_code": versions_status_code,
+        "render_job_status_code": render_job_status_code,
+        "artifact_detail_file_count": len(files),
+        "artifact_detail_formats": [
+            str(item.get("format"))
+            for item in files
+            if isinstance(item, Mapping) and item.get("format")
+        ],
+        "artifact_detail_download_link_count": len(
+            [
+                item
+                for item in links
+                if isinstance(item, Mapping) and item.get("link_type") == "download"
+            ]
+        ),
+        "versions_current_rendered_formats": _version_rendered_formats(
+            versions_payload,
+            artifact_version_id=artifact_version_id,
+        ),
+        "render_job_status": str(render_job_payload.get("job_status") or "UNKNOWN"),
+        "render_job_current_stage": str(
+            render_job_payload.get("current_stage") or "UNKNOWN"
+        ),
+    }
+
+
+def _version_rendered_formats(
+    payload: Mapping[str, Any],
+    *,
+    artifact_version_id: str,
+) -> list[str]:
+    versions = payload.get("versions")
+    if not isinstance(versions, list):
+        return []
+    for version in versions:
+        if (
+            isinstance(version, Mapping)
+            and version.get("artifact_version_id") == artifact_version_id
+        ):
+            return _json_array(version.get("rendered_formats"))
+    return []
+
+
 def _download_shape(export_format: str, payload: Mapping[str, Any]) -> str:
     if export_format in {"MD", "HTML_PREVIEW"}:
         return "text" if isinstance(payload.get("content"), str) else "invalid"
@@ -536,6 +637,7 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"formats={','.join(evidence['formats'])} "
             f"files={evidence['db_observations']['file_count']} "
             f"links={evidence['db_observations']['link_count']} "
+            f"read_model_files={evidence['read_model_observations']['artifact_detail_file_count']} "
             f"storage_files={evidence['storage']['materialized_file_count']} "
             f"deleted_artifacts={evidence['cleanup']['artifacts']} "
             f"deleted_handoffs={evidence['cleanup']['handoffs']}"

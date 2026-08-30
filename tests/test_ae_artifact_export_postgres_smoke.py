@@ -116,6 +116,17 @@ def test_ae_artifact_export_postgres_smoke_passes_multi_format_sqlite_harness(
     }
     assert evidence["db_observations"]["file_count"] == 4
     assert evidence["db_observations"]["link_count"] == 8
+    assert evidence["read_model_observations"]["artifact_detail_file_count"] == 4
+    assert (
+        evidence["read_model_observations"]["artifact_detail_download_link_count"] == 4
+    )
+    assert evidence["read_model_observations"]["versions_current_rendered_formats"] == [
+        "MD",
+        "HTML_PREVIEW",
+        "DOCX",
+        "PDF",
+    ]
+    assert evidence["read_model_observations"]["render_job_status"] == "COMPLETED"
     assert evidence["storage"]["materialized_extensions"] == [
         "docx",
         "html",
@@ -123,8 +134,9 @@ def test_ae_artifact_export_postgres_smoke_passes_multi_format_sqlite_harness(
         "pdf",
     ]
     assert all(evidence["checks"].values())
-    assert "formats=MD,HTML_PREVIEW,DOCX,PDF files=4 links=8" in smoke.summary_line(
-        evidence
+    assert (
+        "formats=MD,HTML_PREVIEW,DOCX,PDF files=4 links=8 read_model_files=4"
+        in smoke.summary_line(evidence)
     )
     assert "secret-0426" not in serialized
     assert "/data/nex-platform" not in serialized
@@ -233,6 +245,50 @@ def test_ae_artifact_export_postgres_smoke_helpers_and_redaction(
     assert smoke._json_array('["MD", "PDF"]') == ["MD", "PDF"]
     assert smoke._json_array(["DOCX"]) == ["DOCX"]
     assert smoke._json_array({"not": "array"}) == []
+    assert smoke._response_payload(SimpleNamespace(status_code=409, json=lambda: {})) == {}
+    assert smoke._response_payload(SimpleNamespace(status_code=200, json=lambda: [])) == {}
+    assert smoke._response_payload(
+        SimpleNamespace(status_code=200, json=lambda: {"ok": True})
+    ) == {"ok": True}
+    assert smoke._version_rendered_formats(
+        {"versions": [{"artifact_version_id": "v1", "rendered_formats": ["PDF"]}]},
+        artifact_version_id="v1",
+    ) == ["PDF"]
+    assert (
+        smoke._version_rendered_formats(
+            {"versions": [{"artifact_version_id": "v2", "rendered_formats": ["PDF"]}]},
+            artifact_version_id="v1",
+        )
+        == []
+    )
+    assert (
+        smoke._version_rendered_formats({"versions": "bad"}, artifact_version_id="v1")
+        == []
+    )
+    assert smoke._read_model_observations(
+        artifact_payload={
+            "files": [{"format": "PDF"}, {"missing": True}, "bad"],
+            "links": [{"link_type": "download"}, {"link_type": "preview"}, "bad"],
+        },
+        versions_payload={
+            "versions": [{"artifact_version_id": "v1", "rendered_formats": '["PDF"]'}]
+        },
+        render_job_payload={"job_status": "COMPLETED", "current_stage": "FINALIZING"},
+        artifact_status_code=200,
+        versions_status_code=200,
+        render_job_status_code=200,
+        artifact_version_id="v1",
+    ) == {
+        "artifact_detail_status_code": 200,
+        "versions_status_code": 200,
+        "render_job_status_code": 200,
+        "artifact_detail_file_count": 3,
+        "artifact_detail_formats": ["PDF"],
+        "artifact_detail_download_link_count": 1,
+        "versions_current_rendered_formats": ["PDF"],
+        "render_job_status": "COMPLETED",
+        "render_job_current_stage": "FINALIZING",
+    }
     assert smoke._download_shape("DOCX", {"content_encoding": "base64"}) == "invalid"
     assert smoke._download_shape("PDF", {"content": "plain"}) == "invalid"
     assert smoke._download_shape(
