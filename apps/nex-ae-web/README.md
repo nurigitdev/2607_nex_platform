@@ -230,6 +230,18 @@ Slice 0445 adds the artifact collection client adapter:
   download bytes, storage refs, database URLs, provider endpoints, or
   credentials.
 
+Slice 0446 adds the artifact library panel read-model:
+
+- `src/artifactLibraryPanel.js` converts artifact collection surfaces into a
+  browser-safe library panel state.
+- The panel state supports ready, running, empty, filtered, and unavailable
+  views.
+- Filter modes cover all, ready, failed, downloadable, and previewable
+  artifacts for the upcoming workspace wiring.
+- Rendered fragments are escaped and metadata-only; they exclude rendered
+  payloads, download bytes, source text, storage refs, local paths, database
+  URLs, provider endpoints, and credentials.
+
 Slice 0239 upgrades the protected PostgreSQL smoke:
 
 - The smoke uses browser user auth for AE facade upload, document detail, and
