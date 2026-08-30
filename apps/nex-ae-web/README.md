@@ -143,6 +143,15 @@ Slice 0227 adds the static browser smoke evidence runner:
 - Python tests cover pass, missing-anchor, timeout, retry, process shutdown,
   and summary output branches.
 
+Slice 0419 adds protected artifact Playwright smoke coverage:
+
+- `scripts/runArtifactPlaywrightSmoke.mjs` launches Chromium against the AE Web
+  shell and drives artifact detail, versions, file metadata, preview, and
+  download fetches through the same-origin `/ae-api` path.
+- The smoke records only safe browser/panel summaries; raw download content,
+  service tokens, database URLs, provider endpoints, and storage locations stay
+  out of evidence.
+
 Slice 0228 adds the protected fetch-mode smoke boundary:
 
 - `scripts/smoke/run_ae_web_fetch_mode_protected_smoke_boundary.py` records the
