@@ -253,6 +253,17 @@ Slice 0447 wires the artifact library into the AE Web shell:
 - Mock artifact records now carry owner/workspace refs so local regression uses
   the same collection filter boundary as fetch mode.
 
+Slice 0448 adds protected artifact library browser/PostgreSQL evidence:
+
+- `scripts/runArtifactLibraryPlaywrightSmoke.mjs` verifies the collection client
+  and library renderer from inside a Chromium page.
+- `scripts/smoke/run_ae_web_artifact_library_playwright_postgres_smoke.py`
+  prepares owner-scoped artifact rows in `nex_ae_test`, starts AE API and AE
+  Web, and records redacted Playwright evidence.
+- The smoke is skipped by default and runs only with
+  `NEX_AE_WEB_ARTIFACT_LIBRARY_PLAYWRIGHT_POSTGRES_SMOKE=1` plus
+  `NEX_AE_TEST_DATABASE_URL`.
+
 Slice 0239 upgrades the protected PostgreSQL smoke:
 
 - The smoke uses browser user auth for AE facade upload, document detail, and
@@ -869,6 +880,8 @@ Slice 0441 starts S45:
 - Slice 0445 adds the AE Web collection client adapter, Slice 0446 adds the
   browser-safe library read-model, and Slice 0447 wires that library into the AE
   Web artifact panel.
+- Slice 0448 adds protected PostgreSQL/Playwright evidence for the library
+  surface against `nex_ae_test`.
 
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

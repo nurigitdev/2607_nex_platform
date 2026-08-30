@@ -979,6 +979,11 @@ def test_ae_web_artifact_library_panel_wiring() -> None:
     javascript = read_web_file("src/main.js")
     panel = read_web_file("src/artifactLibraryPanel.js")
     mock_record = read_web_file("src/artifactMockRecord.js")
+    node_smoke = read_web_file("scripts/runArtifactLibraryPlaywrightSmoke.mjs")
+    package = read_web_file("package.json")
+    quality_gate = (
+        Path(__file__).parents[1] / "scripts" / "quality" / "run_quality_gate.sh"
+    ).read_text(encoding="utf-8")
 
     for expected in [
         "artifact-library-filter",
@@ -1018,6 +1023,20 @@ def test_ae_web_artifact_library_panel_wiring() -> None:
         "workspaceId",
     ]:
         assert expected in mock_record
+
+    for expected in [
+        "ae_web_artifact_library_playwright_smoke.v1",
+        "runArtifactLibraryPlaywrightSmoke",
+        "artifactClient.listArtifacts(query)",
+        "buildArtifactLibraryPanelState(collectionSurface)",
+        "renderArtifactLibraryPanel(panel)",
+        "artifact_collection_called",
+        "artifact_library_metadata_only",
+    ]:
+        assert expected in node_smoke
+
+    assert "smoke:artifact-library-playwright" in package
+    assert "run_ae_web_artifact_library_playwright_postgres_smoke.py --summary" in quality_gate
 
     for forbidden in [
         "raw_prompt",
