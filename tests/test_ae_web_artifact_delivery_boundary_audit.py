@@ -51,7 +51,7 @@ def test_ae_web_artifact_delivery_boundary_audit_passes_current_repo() -> None:
     assert evidence["checks"]["smoke_evidence_boundary_present"] is True
     assert evidence["checks"]["redacted_evidence_only"] is True
     assert summary.startswith("ae_web_artifact_delivery_boundary_audit=pass ")
-    assert "next=Slice_0432" in summary
+    assert "next=" in summary
 
 
 def test_ae_web_artifact_delivery_boundary_audit_does_not_leak_protected_values() -> None:

@@ -725,5 +725,16 @@ Slice 0431 audits the artifact delivery boundary:
   raw text bodies and base64 payloads are only allowed inside the normalized
   download surface until the save adapter materializes them.
 
+Slice 0432 adds the browser file-save adapter:
+
+- `src/artifactDownloadSaveAdapter.js` is the only browser module allowed to
+  materialize normalized text/base64 artifact downloads into Blob payloads.
+- Save plans and save summaries stay metadata-only and redact raw text bodies,
+  base64 bytes, storage refs, service credentials, database URLs, and provider
+  endpoints.
+- When browser download primitives are unavailable, the adapter still creates a
+  safe `PREPARED` result so tests and non-browser harnesses can verify the
+  boundary without writing files.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
