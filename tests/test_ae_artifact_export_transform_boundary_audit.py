@@ -52,7 +52,8 @@ def test_ae_artifact_export_transform_boundary_audit_passes_current_repo() -> No
     assert audit.summary_line(evidence).startswith(
         "ae_artifact_export_transform_boundary_audit=pass "
     )
-    assert "next=Slice_0422" in audit.summary_line(evidence)
+    assert "gaps_ready=3/8" in audit.summary_line(evidence)
+    assert "next=Slice 0424" in audit.summary_line(evidence)
 
 
 def test_ae_artifact_export_transform_boundary_audit_does_not_leak_protected_values() -> None:
@@ -177,6 +178,15 @@ def test_ae_artifact_export_transform_boundary_audit_helpers_output_and_main(
     assert audit.gap_ready_count(
         [{"already_present": True}, {"already_present": False}]
     ) == 1
+    assert audit.next_planned_slice(
+        [
+            {"already_present": True, "planned_slice": "Slice 0001"},
+            {"already_present": False, "planned_slice": "Slice 0002"},
+        ]
+    ) == "Slice 0002"
+    assert audit.next_planned_slice(
+        [{"already_present": True, "planned_slice": "Slice 0001"}]
+    ) == "complete"
     assert audit.grouped_token_status(
         [
             {"group": "ready", "present": True},

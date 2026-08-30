@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import os
 import re
@@ -50,7 +51,7 @@ ARTIFACT_TRANSFORMER_CATALOG = {
         "render_stage": "HTML_PREVIEW_RENDERING",
         "content_kind": "text",
         "materializer": "html_preview_transformer",
-        "implemented": False,
+        "implemented": True,
     },
     "DOCX": {
         "format": "DOCX",
@@ -932,7 +933,7 @@ def register_artifact_handoff_routes(
                     "render_job": existing_job,
                     "artifact": record,
                 }
-            target_formats = markdown_target_formats_from_payload(payload, record)
+            target_formats = render_target_formats_from_payload(payload, record)
             source_ref = record["source_refs"][0]
             structured_draft = client.get_structured_draft(
                 source_ref["cx_generation_id"],
@@ -953,6 +954,7 @@ def register_artifact_handoff_routes(
                 markdown=render_result["markdown"],
                 artifact_files=render_result["artifact_files"],
                 artifact_links=render_result["artifact_links"],
+                rendered_payloads=render_result["rendered_payloads"],
             )
             return {
                 "render_result_schema_version": "ae_markdown_render_result.v1",
@@ -1017,19 +1019,20 @@ def register_artifact_handoff_routes(
             return auth_problem
 
         try:
-            artifact_file, preview_link, markdown = resolve_artifact_file_payload(
+            artifact_file, preview_link, payload = resolve_rendered_artifact_file_payload(
                 artifact_record_store,
                 artifact_file_id=artifact_file_id,
                 link_type="preview",
             )
-            preview_text = markdown[:2000]
+            rendered_text = rendered_text_from_payload(artifact_file, payload)
+            preview_text = rendered_text[:2000]
             return {
                 "preview_schema_version": "ae_artifact_file_preview.v1",
                 "artifact_file": artifact_file,
                 "artifact_link": preview_link,
                 "content_type": artifact_file["mime_type"],
                 "text_preview": preview_text,
-                "truncated": len(markdown) > len(preview_text),
+                "truncated": len(rendered_text) > len(preview_text),
             }
         except ArtifactHandoffError as exc:
             return _artifact_problem_response(request, exc)
@@ -1045,11 +1048,12 @@ def register_artifact_handoff_routes(
             return auth_problem
 
         try:
-            artifact_file, download_link, markdown = resolve_artifact_file_payload(
+            artifact_file, download_link, payload = resolve_rendered_artifact_file_payload(
                 artifact_record_store,
                 artifact_file_id=artifact_file_id,
                 link_type="download",
             )
+            rendered_text = rendered_text_from_payload(artifact_file, payload)
             return {
                 "download_schema_version": "ae_artifact_file_download.v1",
                 "artifact_file": artifact_file,
@@ -1057,7 +1061,7 @@ def register_artifact_handoff_routes(
                 "download_file_name": artifact_file["file_name"],
                 "content_type": artifact_file["mime_type"],
                 "content_hash": artifact_file["file_hash"],
-                "content": markdown,
+                "content": rendered_text,
             }
         except ArtifactHandoffError as exc:
             return _artifact_problem_response(request, exc)
@@ -1295,13 +1299,15 @@ def build_markdown_render_result(
         "started_at": now,
         "completed_at": now,
     }
-    artifact_files = build_markdown_artifact_files(
+    rendered_payloads = build_rendered_payloads_from_markdown(markdown, target_formats)
+    artifact_files = build_rendered_artifact_files_from_payloads(
         artifact_record=artifact_record,
         artifact_version=artifact_version,
-        markdown=markdown,
+        target_formats=target_formats,
+        rendered_payloads=rendered_payloads,
     )
-    artifact_links = build_artifact_links(
-        artifact_file=artifact_files[0],
+    artifact_links = build_artifact_links_for_files(
+        artifact_files=artifact_files,
         created_by_actor_ref=artifact_record["owner_actor_ref"],
         created_at=now,
     )
@@ -1312,7 +1318,49 @@ def build_markdown_render_result(
         "artifact_files": artifact_files,
         "artifact_links": artifact_links,
         "markdown": markdown,
+        "rendered_payloads": rendered_payloads,
     }
+
+
+def build_rendered_payloads_from_markdown(
+    markdown: str,
+    target_formats: list[str],
+) -> dict[str, bytes]:
+    payloads: dict[str, bytes] = {}
+    if "MD" in target_formats:
+        payloads["MD"] = markdown.encode("utf-8")
+    if "HTML_PREVIEW" in target_formats:
+        payloads["HTML_PREVIEW"] = render_html_preview_from_markdown(markdown).encode(
+            "utf-8"
+        )
+    return payloads
+
+
+def build_rendered_artifact_files_from_payloads(
+    *,
+    artifact_record: dict[str, Any],
+    artifact_version: dict[str, Any],
+    target_formats: list[str],
+    rendered_payloads: dict[str, bytes],
+) -> list[dict[str, Any]]:
+    artifact_files: list[dict[str, Any]] = []
+    for target_format in target_formats:
+        payload = rendered_payloads.get(target_format)
+        if payload is None:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.render_format_unsupported",
+                detail=f"Render format is not implemented yet: {target_format}",
+            )
+        artifact_files.append(
+            build_rendered_artifact_file(
+                artifact_record=artifact_record,
+                artifact_version=artifact_version,
+                target_format=target_format,
+                payload=payload,
+            )
+        )
+    return artifact_files
 
 
 def build_markdown_artifact_files(
@@ -1329,6 +1377,20 @@ def build_markdown_artifact_files(
             payload=markdown.encode("utf-8"),
         )
     ]
+
+
+def build_html_preview_artifact_file(
+    *,
+    artifact_record: dict[str, Any],
+    artifact_version: dict[str, Any],
+    html_preview: str,
+) -> dict[str, Any]:
+    return build_rendered_artifact_file(
+        artifact_record=artifact_record,
+        artifact_version=artifact_version,
+        target_format="HTML_PREVIEW",
+        payload=html_preview.encode("utf-8"),
+    )
 
 
 def build_rendered_artifact_file(
@@ -1419,6 +1481,24 @@ def build_artifact_links(
     ]
 
 
+def build_artifact_links_for_files(
+    *,
+    artifact_files: list[dict[str, Any]],
+    created_by_actor_ref: dict[str, str],
+    created_at: str,
+) -> list[dict[str, Any]]:
+    links: list[dict[str, Any]] = []
+    for artifact_file in artifact_files:
+        links.extend(
+            build_artifact_links(
+                artifact_file=artifact_file,
+                created_by_actor_ref=created_by_actor_ref,
+                created_at=created_at,
+            )
+        )
+    return links
+
+
 def build_artifact_link(
     *,
     artifact_file: dict[str, Any],
@@ -1448,28 +1528,13 @@ def resolve_artifact_file_payload(
     artifact_file_id: str,
     link_type: str,
 ) -> tuple[dict[str, Any], dict[str, Any], str]:
-    artifact_file = store.get_file(artifact_file_id)
-    if artifact_file is None:
-        raise ArtifactHandoffError(
-            status_code=404,
-            error_code="ae.artifact_file_not_found",
-            detail=f"Artifact file was not found: {artifact_file_id}",
-        )
-    artifact_link = store.get_file_link(artifact_file_id, link_type)
-    if artifact_link is None:
-        raise ArtifactHandoffError(
-            status_code=404,
-            error_code="ae.artifact_link_not_found",
-            detail=f"Artifact {link_type} link was not found: {artifact_file_id}",
-        )
-    markdown = store.get_rendered_markdown(artifact_file["artifact_version_id"])
-    if markdown is None:
-        raise ArtifactHandoffError(
-            status_code=409,
-            error_code="ae.artifact_file_not_ready",
-            detail="Artifact file content is not ready.",
-        )
-    return artifact_file, artifact_link, markdown
+    artifact_file, artifact_link, payload = resolve_rendered_artifact_file_payload(
+        store,
+        artifact_file_id=artifact_file_id,
+        link_type=link_type,
+    )
+    rendered_text = rendered_text_from_payload(artifact_file, payload)
+    return artifact_file, artifact_link, rendered_text
 
 
 def resolve_rendered_artifact_file_payload(
@@ -1510,6 +1575,26 @@ def rendered_payload_for_file(
         rendered_payloads.get(artifact_file["artifact_file_id"])
         or rendered_payloads.get(artifact_file["format"])
     )
+
+
+def rendered_text_from_payload(
+    artifact_file: dict[str, Any],
+    payload: bytes,
+) -> str:
+    if artifact_content_kind(artifact_file["format"]) != "text":
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.artifact_file_preview_unavailable",
+            detail="Artifact file preview is available only for text formats.",
+        )
+    try:
+        return payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.artifact_file_not_ready",
+            detail="Artifact file text payload is not valid UTF-8.",
+        ) from exc
 
 
 def safe_file_stem(value: str) -> str:
@@ -1556,6 +1641,54 @@ def render_markdown_from_structured_draft(structured_draft: dict[str, Any]) -> s
             )
 
     return "\n".join(lines).strip() + "\n"
+
+
+def render_html_preview_from_markdown(markdown: str) -> str:
+    body_lines: list[str] = []
+    list_open = False
+    for raw_line in markdown.splitlines():
+        line = raw_line.strip()
+        if not line:
+            if list_open:
+                body_lines.append("</ul>")
+                list_open = False
+            continue
+        if line.startswith("# "):
+            if list_open:
+                body_lines.append("</ul>")
+                list_open = False
+            body_lines.append(f"<h1>{html.escape(line[2:].strip())}</h1>")
+        elif line.startswith("## "):
+            if list_open:
+                body_lines.append("</ul>")
+                list_open = False
+            body_lines.append(f"<h2>{html.escape(line[3:].strip())}</h2>")
+        elif line.startswith("- "):
+            if not list_open:
+                body_lines.append("<ul>")
+                list_open = True
+            body_lines.append(f"<li>{html.escape(line[2:].strip())}</li>")
+        else:
+            if list_open:
+                body_lines.append("</ul>")
+                list_open = False
+            body_lines.append(f"<p>{html.escape(line)}</p>")
+    if list_open:
+        body_lines.append("</ul>")
+    return (
+        "<!doctype html>\n"
+        '<html lang="ko">\n'
+        "<head>\n"
+        '<meta charset="utf-8" />\n'
+        "<title>AE Artifact Preview</title>\n"
+        "</head>\n"
+        "<body>\n"
+        '<article class="ae-artifact-preview">\n'
+        f"{chr(10).join(body_lines)}\n"
+        "</article>\n"
+        "</body>\n"
+        "</html>\n"
+    )
 
 
 def validate_structured_draft_for_markdown_render(
@@ -1623,6 +1756,47 @@ def markdown_target_formats_from_payload(
             status_code=409,
             error_code="ae.render_format_not_requested",
             detail="The artifact handoff did not request Markdown output.",
+        )
+    return normalized
+
+
+def render_target_formats_from_payload(
+    payload: dict[str, Any],
+    artifact_record: dict[str, Any],
+) -> list[str]:
+    requested_formats = (
+        payload["target_formats"] if "target_formats" in payload else ["MD"]
+    )
+    if not isinstance(requested_formats, list) or not requested_formats:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.target_formats_invalid",
+            detail="target_formats must be a non-empty list.",
+        )
+    normalized: list[str] = []
+    for value in requested_formats:
+        if not isinstance(value, str) or value not in SUPPORTED_TARGET_FORMATS:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.render_format_unsupported",
+                detail=f"Unsupported render format: {value}",
+            )
+        if value not in IMPLEMENTED_RENDER_FORMATS:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.render_format_unsupported",
+                detail=f"Render format is not implemented yet: {value}",
+            )
+        if value not in normalized:
+            normalized.append(value)
+    missing_from_handoff = [
+        value for value in normalized if value not in artifact_record["target_formats"]
+    ]
+    if missing_from_handoff:
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.render_format_not_requested",
+            detail="The artifact handoff did not request this output format.",
         )
     return normalized
 

@@ -29,19 +29,25 @@ from nex_ae_api.artifacts import (
     artifact_format_spec,
     artifact_type_from_payload,
     build_artifact_links,
+    build_artifact_links_for_files,
     build_default_artifact_handoff_store,
     build_default_artifact_record_store,
     build_default_rendered_artifact_storage,
     build_artifact_handoff_record,
+    build_html_preview_artifact_file,
     build_markdown_artifact_files,
     build_markdown_render_result,
     build_rendered_artifact_file,
+    build_rendered_payloads_from_markdown,
     build_artifact_record_from_handoff,
     deterministic_render_job_id,
     language_from_payload,
     markdown_target_formats_from_payload,
     register_artifact_handoff_routes,
+    render_html_preview_from_markdown,
     render_markdown_from_structured_draft,
+    render_target_formats_from_payload,
+    rendered_text_from_payload,
     resolve_artifact_file_payload,
     resolve_rendered_artifact_file_payload,
     safe_file_stem,
@@ -594,7 +600,7 @@ def test_artifact_transformer_catalog_and_format_helpers_are_explicit() -> None:
         "DOCX",
         "PDF",
     }
-    assert ae_artifacts.IMPLEMENTED_RENDER_FORMATS == {"MD"}
+    assert ae_artifacts.IMPLEMENTED_RENDER_FORMATS == {"MD", "HTML_PREVIEW"}
     assert artifact_format_spec("MD")["render_stage"] == "MARKDOWN_RENDERING"
     assert artifact_format_spec("DOCX")["content_kind"] == "binary"
     assert artifact_mime_type("HTML_PREVIEW") == "text/html"
@@ -606,6 +612,152 @@ def test_artifact_transformer_catalog_and_format_helpers_are_explicit() -> None:
 
     with pytest.raises(ArtifactHandoffError) as exc_info:
         artifact_format_spec("TXT")
+    assert exc_info.value.error_code == "ae.render_format_unsupported"
+
+
+def test_render_target_formats_allows_html_preview_and_defers_exports() -> None:
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-create-001"},
+        handoff_record=sample_handoff_record(),
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert render_target_formats_from_payload({}, artifact_record) == ["MD"]
+    assert render_target_formats_from_payload(
+        {"target_formats": ["MD", "HTML_PREVIEW", "MD"]},
+        artifact_record,
+    ) == ["MD", "HTML_PREVIEW"]
+
+    with pytest.raises(ArtifactHandoffError) as empty_exc:
+        render_target_formats_from_payload({"target_formats": []}, artifact_record)
+    assert empty_exc.value.error_code == "ae.target_formats_invalid"
+
+    with pytest.raises(ArtifactHandoffError) as unknown_exc:
+        render_target_formats_from_payload({"target_formats": ["TXT"]}, artifact_record)
+    assert unknown_exc.value.error_code == "ae.render_format_unsupported"
+
+    with pytest.raises(ArtifactHandoffError) as deferred_exc:
+        render_target_formats_from_payload({"target_formats": ["PDF"]}, artifact_record)
+    assert deferred_exc.value.error_code == "ae.render_format_unsupported"
+    assert "not implemented" in deferred_exc.value.detail
+
+    markdown_only_record = {**artifact_record, "target_formats": ["MD"]}
+    with pytest.raises(ArtifactHandoffError) as not_requested_exc:
+        render_target_formats_from_payload(
+            {"target_formats": ["HTML_PREVIEW"]},
+            markdown_only_record,
+        )
+    assert not_requested_exc.value.error_code == "ae.render_format_not_requested"
+
+
+def test_html_preview_materializer_escapes_markdown_and_lists() -> None:
+    html_preview = render_html_preview_from_markdown(
+        "# Report <x>\n"
+        "\n"
+        "Intro <script>bad</script>\n"
+        "\n"
+        "## Findings\n"
+        "\n"
+        "- item <one>\n"
+        "- item two\n"
+    )
+
+    assert html_preview.startswith("<!doctype html>")
+    assert '<html lang="ko">' in html_preview
+    assert "<h1>Report &lt;x&gt;</h1>" in html_preview
+    assert "<h2>Findings</h2>" in html_preview
+    assert "<ul>" in html_preview
+    assert "<li>item &lt;one&gt;</li>" in html_preview
+    assert "<script>" not in html_preview
+    assert "&lt;script&gt;bad&lt;/script&gt;" in html_preview
+    assert html_preview.endswith("</html>\n")
+
+
+def test_markdown_render_result_materializes_html_preview_file() -> None:
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-create-001"},
+        handoff_record=sample_handoff_record(),
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    result = build_markdown_render_result(
+        artifact_record=artifact_record,
+        structured_draft=sample_structured_draft(),
+        target_formats=["MD", "HTML_PREVIEW"],
+        render_request_id="render-request-001",
+        render_job_id=deterministic_render_job_id(
+            artifact_record["artifact_id"],
+            "render-request-001",
+        ),
+    )
+    html_file = next(
+        artifact_file
+        for artifact_file in result["artifact_files"]
+        if artifact_file["format"] == "HTML_PREVIEW"
+    )
+    html_preview = result["rendered_payloads"]["HTML_PREVIEW"].decode("utf-8")
+    html_helper_file = build_html_preview_artifact_file(
+        artifact_record=artifact_record,
+        artifact_version=result["artifact_version"],
+        html_preview=html_preview,
+    )
+    links = build_artifact_links_for_files(
+        artifact_files=result["artifact_files"],
+        created_by_actor_ref=artifact_record["owner_actor_ref"],
+        created_at=result["artifact_version"]["created_at"],
+    )
+
+    assert result["artifact_version"]["rendered_formats"] == ["MD", "HTML_PREVIEW"]
+    assert [artifact_file["format"] for artifact_file in result["artifact_files"]] == [
+        "MD",
+        "HTML_PREVIEW",
+    ]
+    assert set(result["rendered_payloads"]) == {"MD", "HTML_PREVIEW"}
+    assert html_file["mime_type"] == "text/html"
+    assert html_file["file_name"].endswith(".html")
+    assert html_file["file_hash"] == sha256_bytes(
+        result["rendered_payloads"]["HTML_PREVIEW"]
+    )
+    assert html_helper_file == html_file
+    assert len(result["artifact_links"]) == 4
+    assert links == result["artifact_links"]
+    assert "<article class=\"ae-artifact-preview\">" in html_preview
+
+
+def test_rendered_payload_builders_report_unimplemented_format() -> None:
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-create-001"},
+        handoff_record=sample_handoff_record(),
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    render_result = build_markdown_render_result(
+        artifact_record=artifact_record,
+        structured_draft=sample_structured_draft(),
+        target_formats=["MD"],
+        render_request_id="render-request-001",
+        render_job_id=deterministic_render_job_id(
+            artifact_record["artifact_id"],
+            "render-request-001",
+        ),
+    )
+
+    with pytest.raises(ArtifactHandoffError) as exc_info:
+        ae_artifacts.build_rendered_artifact_files_from_payloads(
+            artifact_record=artifact_record,
+            artifact_version=render_result["artifact_version"],
+            target_formats=["DOCX"],
+            rendered_payloads=build_rendered_payloads_from_markdown(
+                render_result["markdown"],
+                ["MD"],
+            ),
+        )
+
+    assert exc_info.value.status_code == 422
     assert exc_info.value.error_code == "ae.render_format_unsupported"
 
 
@@ -784,6 +936,30 @@ def test_resolve_rendered_artifact_file_payload_reports_missing_payload() -> Non
 
     assert exc_info.value.status_code == 409
     assert exc_info.value.error_code == "ae.artifact_file_not_ready"
+
+
+def test_rendered_text_from_payload_rejects_binary_and_invalid_utf8() -> None:
+    markdown_file = {
+        "format": "MD",
+        "mime_type": "text/markdown",
+        "artifact_file_id": "file-md",
+    }
+    pdf_file = {
+        "format": "PDF",
+        "mime_type": "application/pdf",
+        "artifact_file_id": "file-pdf",
+    }
+
+    assert rendered_text_from_payload(markdown_file, "# Safe\n".encode("utf-8")) == (
+        "# Safe\n"
+    )
+    with pytest.raises(ArtifactHandoffError) as binary_exc:
+        rendered_text_from_payload(pdf_file, b"%PDF-safe")
+    assert binary_exc.value.error_code == "ae.artifact_file_preview_unavailable"
+
+    with pytest.raises(ArtifactHandoffError) as utf8_exc:
+        rendered_text_from_payload(markdown_file, b"\xff\xfe")
+    assert utf8_exc.value.error_code == "ae.artifact_file_not_ready"
 
 
 def test_markdown_render_guards_reject_invalid_sources_and_formats() -> None:
@@ -995,6 +1171,59 @@ def test_markdown_render_route_updates_artifact_and_preserves_private_content() 
     assert download.json()["download_schema_version"] == "ae_artifact_file_download.v1"
     assert download.json()["download_file_name"] == artifact_file["file_name"]
     assert download.json()["content_hash"] == artifact_file["file_hash"]
+
+
+def test_html_preview_render_route_updates_artifact_and_private_storage() -> None:
+    client, handoff_store, artifact_store, _ = build_client_with_artifact_store()
+    handoff = handoff_store.save(sample_handoff_record())
+    created = client.post(
+        "/api/v1/artifacts",
+        json={"artifact_handoff_id": handoff["artifact_handoff_id"]},
+        headers={**auth_headers(), "Idempotency-Key": "artifact-create-001"},
+    )
+    artifact_id = created.json()["artifact_id"]
+
+    rendered = client.post(
+        f"/api/v1/artifacts/{artifact_id}/render-jobs",
+        json={"target_formats": ["MD", "HTML_PREVIEW"]},
+        headers={**auth_headers(), "Idempotency-Key": "render-request-html-001"},
+    )
+    artifact = rendered.json()["artifact"]
+    html_file = next(
+        artifact_file
+        for artifact_file in artifact["files"]
+        if artifact_file["format"] == "HTML_PREVIEW"
+    )
+    preview = client.get(
+        f"/api/v1/artifact-files/{html_file['artifact_file_id']}/preview",
+        headers=auth_headers(),
+    )
+    download = client.get(
+        f"/api/v1/artifact-files/{html_file['artifact_file_id']}/download",
+        headers=auth_headers(),
+    )
+
+    assert rendered.status_code == 200
+    assert artifact["versions"][0]["rendered_formats"] == ["MD", "HTML_PREVIEW"]
+    assert [artifact_file["format"] for artifact_file in artifact["files"]] == [
+        "MD",
+        "HTML_PREVIEW",
+    ]
+    assert len(artifact["links"]) == 4
+    assert html_file["mime_type"] == "text/html"
+    assert html_file["file_name"].endswith(".html")
+    assert artifact_store.get_rendered_artifact_file(html_file).startswith(
+        b"<!doctype html>"
+    )
+    assert "<article" not in str(rendered.json())
+    assert preview.status_code == 200
+    assert preview.json()["content_type"] == "text/html"
+    assert "<article class=\"ae-artifact-preview\">" in preview.json()["text_preview"]
+    assert download.status_code == 200
+    assert download.json()["content_type"] == "text/html"
+    assert download.json()["download_file_name"] == html_file["file_name"]
+    assert download.json()["content"].startswith("<!doctype html>")
+    assert download.json()["content_hash"] == html_file["file_hash"]
 
 
 def test_markdown_render_route_reports_missing_and_invalid_requests() -> None:

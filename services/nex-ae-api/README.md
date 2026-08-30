@@ -224,6 +224,11 @@ Artifact records:
   Rendered payload storage now supports typed bytes through
   `save_rendered_artifact_file(...)` and `get_rendered_artifact_file(...)`
   while keeping the older Markdown helper methods as compatibility wrappers.
+- Slice 0423 implements the AE-owned `HTML_PREVIEW` materializer. Render jobs
+  can now request `MD` and `HTML_PREVIEW` together; AE stores each payload
+  privately, emits separate file/link metadata, and decodes only text formats
+  for preview/download JSON responses. `DOCX` and `PDF` remain cataloged but
+  intentionally rejected until their export adapters are implemented.
 
 Prompt analytics:
 

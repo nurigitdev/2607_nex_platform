@@ -600,6 +600,13 @@ def gap_ready_count(items: list[dict[str, object]]) -> int:
     return sum(1 for item in items if item.get("already_present") is True)
 
 
+def next_planned_slice(items: list[dict[str, object]]) -> str:
+    for item in items:
+        if item.get("already_present") is not True:
+            return str(item["planned_slice"])
+    return "complete"
+
+
 def read_text(root_dir: Path, absolute_path: Path) -> str:
     path = path_for(root_dir, absolute_path)
     try:
@@ -659,7 +666,8 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"paths={present_count(evidence['paths'])}/{len(evidence['paths'])} "
             f"token_groups={present_count_bool(token_groups)}/{len(token_groups)} "
             f"gaps_ready={gap_ready_count(evidence['planned_gaps'])}/"
-            f"{len(evidence['planned_gaps'])} next=Slice_0422"
+            f"{len(evidence['planned_gaps'])} "
+            f"next={next_planned_slice(evidence['planned_gaps'])}"
         )
     failed_checks = ",".join(
         key for key, value in evidence["checks"].items() if value is not True
