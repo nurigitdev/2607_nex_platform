@@ -254,6 +254,11 @@ Artifact records:
   artifact detail, versions, and render-job readbacks. The smoke summary reports
   `read_model_files=4` when the persisted rows, download links, and service
   read-model routes agree after rendering.
+- Slice 0430 closes S43 with
+  `run_s43_ae_artifact_export_transform_closure.py`, a quality-gate closure
+  checkpoint covering the export boundary audit, transform catalog, HTML/DOCX/PDF
+  adapters, AE Web export submit and binary download surfaces, fetch-mode smoke,
+  and protected PostgreSQL read-model smoke.
 
 Prompt analytics:
 

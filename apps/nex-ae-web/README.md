@@ -708,5 +708,11 @@ Slice 0428 hardens the fetch-mode export smoke:
 - The smoke remains live-network and PostgreSQL free. Protected persisted export
   evidence stays in the Slice 0426 test-database smoke.
 
+Slice 0430 closes S43 from the browser side:
+
+- `run_s43_ae_artifact_export_transform_closure.py` keeps the AE Web export
+  submit adapter, binary download surface, fetch-mode export smoke, and panel
+  redaction guard registered with the backend export/transform closure.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

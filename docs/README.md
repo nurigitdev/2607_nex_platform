@@ -533,6 +533,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0427`](slices/0427_ae_web_binary_artifact_download_surface.md) | `S43-007` AE Web binary artifact download surface. |
 | [`Slice 0428`](slices/0428_ae_web_export_fetch_mode_smoke_hardening.md) | `S43-008` AE Web export fetch-mode smoke hardening. |
 | [`Slice 0429`](slices/0429_ae_artifact_export_read_model_postgres_smoke.md) | `S43-009` AE artifact export read-model PostgreSQL smoke. |
+| [`Slice 0430`](slices/0430_s43_ae_artifact_export_transform_closure.md) | `S43-010` S43 AE artifact export/transform closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
