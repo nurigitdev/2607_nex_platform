@@ -27,6 +27,8 @@ Current endpoints:
 - `GET /admin/v1/operations/retrieval-packages`
 - `GET /admin/v1/operations/retrieval-packages/{retrieval_package_id}`
 - `GET /admin/v1/operations/retrieval-score-calibration`
+- `GET /admin/v1/operations/artifacts`
+- `GET /admin/v1/operations/artifacts/{artifact_id}`
 - `POST /admin/v1/operations/jobs/{service_id}/{job_id}/cancel`
 - `POST /admin/v1/operations/jobs/{service_id}/{job_id}/retry`
 - `GET /admin/v1/operations/sources`
@@ -156,6 +158,15 @@ Unified operations:
   read-only rules to operations dashboard signals, including retrieval
   threshold decision readiness. Notification delivery, acknowledgements, and
   incident mutation are intentionally deferred.
+- `GET /admin/v1/operations/artifacts` returns
+  `ag_artifact_operation_collection_projection.v1`, reading the owner-scoped
+  AE artifact collection through the AE client boundary and preserving only
+  metadata-safe ids, statuses, routes, counts, target formats, hashes, and
+  quality summaries.
+- `GET /admin/v1/operations/artifacts/{artifact_id}` returns
+  `ag_artifact_operation_detail_projection.v1` for one AE artifact and optional
+  handoff/chat artifact link context without exposing rendered content or local
+  storage paths.
 - AG remediation execution handoff planning is centralized in
   `nex_ag.generation_remediation_execution`. The planner maps CX remediation
   execution statuses back to AG task updates without bypassing the existing

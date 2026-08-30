@@ -24,18 +24,45 @@ from nex_runtime import (
 AG_ARTIFACT_OPERATION_DETAIL_PROJECTION_SCHEMA_VERSION = (
     "ag_artifact_operation_detail_projection.v1"
 )
+AG_ARTIFACT_OPERATION_COLLECTION_PROJECTION_SCHEMA_VERSION = (
+    "ag_artifact_operation_collection_projection.v1"
+)
 AE_ARTIFACT_SOURCE_SERVICE_ID = "nex-ae-api"
 NEX_AG_AE_ARTIFACT_BASE_URL_ENV = "NEX_AG_AE_ARTIFACT_BASE_URL"
 NEX_AG_AE_ARTIFACT_SERVICE_TOKEN_ENV = "NEX_AG_AE_ARTIFACT_SERVICE_TOKEN"
 NEX_AG_AE_ARTIFACT_TIMEOUT_SECONDS_ENV = "NEX_AG_AE_ARTIFACT_TIMEOUT_SECONDS"
 DEFAULT_AE_ARTIFACT_TIMEOUT_SECONDS = 10.0
 SAFE_ARTIFACT_FILE_ROUTE_PREFIX = "/api/v1/artifact-files/"
+SAFE_ARTIFACT_ROUTE_PREFIX = "/api/v1/artifacts/"
 SAFE_STORAGE_REF_PREFIX = "ae://artifacts/"
+DEFAULT_ARTIFACT_COLLECTION_LIMIT = 20
+MAX_ARTIFACT_COLLECTION_LIMIT = 100
+SUPPORTED_ARTIFACT_STATUSES = {
+    "DRAFT",
+    "RENDERING",
+    "READY",
+    "FAILED",
+    "ARCHIVED",
+    "DELETED",
+}
 
 
 class AeArtifactOperationsClient(Protocol):
     source_kind: str
     base_url: str | None
+
+    def list_artifacts(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        status: str | None,
+        limit: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        ...
 
     def get_artifact(
         self,
@@ -75,12 +102,66 @@ class AeArtifactOperationsError(Exception):
 @dataclass
 class InMemoryAeArtifactOperationsClient:
     artifacts: dict[str, dict[str, Any]] = field(default_factory=dict)
+    artifact_collections: dict[str, dict[str, Any]] = field(default_factory=dict)
     handoffs: dict[str, dict[str, Any]] = field(default_factory=dict)
     chat_artifact_refs: dict[str, list[dict[str, Any]] | dict[str, Any]] = field(
         default_factory=dict
     )
     source_kind: str = "memory"
     base_url: str | None = None
+
+    def list_artifacts(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        status: str | None,
+        limit: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        collection_key = _artifact_collection_cache_key(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            status=status,
+            limit=limit,
+        )
+        if collection_key in self.artifact_collections:
+            return deepcopy(self.artifact_collections[collection_key])
+
+        normalized_status = _normalized_status(status)
+        records = [
+            artifact
+            for artifact in self.artifacts.values()
+            if _artifact_matches_collection_filter(
+                artifact,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
+                status=normalized_status,
+            )
+        ]
+        records.sort(
+            key=lambda artifact: str(artifact.get("updated_at") or ""),
+            reverse=True,
+        )
+        items = [_artifact_to_collection_item(artifact) for artifact in records[:limit]]
+        return {
+            "artifact_collection_schema_version": "ae_artifact_collection.v1",
+            "filter": {
+                "tenant_id": tenant_id,
+                "workspace_id": workspace_id,
+                "owner_user_id": owner_user_id,
+                "status": normalized_status,
+                "limit": limit,
+            },
+            "count": len(items),
+            "limit": limit,
+            "next_cursor": None,
+            "items": items,
+        }
 
     def get_artifact(
         self,
@@ -133,6 +214,31 @@ class HttpAeArtifactOperationsClient:
             trace_id=trace_id,
         )
 
+    def list_artifacts(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        status: str | None,
+        limit: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        payload = self._get_json(
+            "/api/v1/artifacts",
+            request_id=request_id,
+            trace_id=trace_id,
+            params={
+                "tenant_id": tenant_id,
+                "workspace_id": workspace_id,
+                "owner_user_id": owner_user_id,
+                "limit": str(limit),
+                **({"status": status} if status else {}),
+            },
+        )
+        return payload if isinstance(payload, dict) else {}
+
     def get_artifact_handoff(
         self,
         artifact_handoff_id: str,
@@ -168,11 +274,13 @@ class HttpAeArtifactOperationsClient:
         *,
         request_id: str,
         trace_id: str,
+        params: Mapping[str, str] | None = None,
     ) -> dict[str, Any] | None:
         try:
             response = httpx.get(
                 f"{self.base_url.rstrip('/')}{path}",
                 headers=self._headers(request_id=request_id, trace_id=trace_id),
+                params=dict(params or {}),
                 timeout=self.timeout_seconds,
             )
         except httpx.HTTPError as exc:
@@ -231,6 +339,56 @@ def register_artifact_operation_routes(
     client: AeArtifactOperationsClient | None = None,
 ) -> None:
     configured_client = client
+
+    @app.get("/admin/v1/operations/artifacts", response_model=None)
+    def list_artifact_operations(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        tenant_id: str | None = None,
+        workspace_id: str | None = None,
+        owner_user_id: str | None = None,
+        status: str | None = None,
+        limit: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        service_problem = _validate_artifact_service_filter(request, service_id)
+        if service_problem is not None:
+            return service_problem
+        filter_result = _validate_artifact_collection_query(
+            request,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            status=status,
+            limit=limit,
+        )
+        if isinstance(filter_result, JSONResponse):
+            return filter_result
+
+        selected_client = configured_client or build_default_ae_artifact_operations_client()
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            collection = selected_client.list_artifacts(
+                tenant_id=filter_result["tenant_id"],
+                workspace_id=filter_result["workspace_id"],
+                owner_user_id=filter_result["owner_user_id"],
+                status=filter_result["status"],
+                limit=filter_result["limit"],
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        except AeArtifactOperationsError as exc:
+            return _artifact_operations_problem_response(request, exc)
+
+        return build_artifact_operation_collection_projection(
+            collection=collection,
+            source_client=selected_client,
+            request_trace_id=trace_id,
+        )
 
     @app.get("/admin/v1/operations/artifacts/{artifact_id}", response_model=None)
     def get_artifact_operation_detail(
@@ -304,6 +462,45 @@ def register_artifact_operation_routes(
         )
 
 
+def build_artifact_operation_collection_projection(
+    *,
+    collection: Mapping[str, Any],
+    source_client: AeArtifactOperationsClient | None = None,
+    source_errors: list[AeArtifactOperationsError] | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    items = [
+        _project_artifact_collection_item(item)
+        for item in _list_value(collection.get("items"))
+        if isinstance(item, Mapping)
+    ]
+    errors = source_errors or []
+    projection = {
+        "projection_schema_version": (
+            AG_ARTIFACT_OPERATION_COLLECTION_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "DEGRADED" if errors else "READY",
+        "checked_at": _utc_now(),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "operation_type": "ae_artifact_collection",
+        "filter": _project_collection_filter(collection.get("filter")),
+        "count": _int_or_zero(collection.get("count")),
+        "limit": _int_or_zero(collection.get("limit")),
+        "next_cursor": _text_or_none(collection.get("next_cursor")),
+        "items": items,
+        "summary": summarize_artifact_operation_collection(items),
+        "source_status": _artifact_collection_source_status(
+            source_client=source_client,
+            item_count=len(items),
+            errors=errors,
+        ),
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    assert_artifact_operation_projection_redacted(projection)
+    return projection
+
+
 def build_artifact_operation_detail_projection(
     *,
     artifact: Mapping[str, Any],
@@ -374,15 +571,51 @@ def summarize_artifact_operation_detail(
     }
 
 
+def summarize_artifact_operation_collection(
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    status_counts: dict[str, int] = {}
+    downloadable_count = 0
+    previewable_count = 0
+    latest_updated_at: str | None = None
+    for item in items:
+        status = item.get("artifact_status")
+        if isinstance(status, str) and status:
+            status_counts[status] = status_counts.get(status, 0) + 1
+        if item.get("downloadable_formats"):
+            downloadable_count += 1
+        if item.get("previewable_formats"):
+            previewable_count += 1
+        updated_at = item.get("updated_at")
+        if isinstance(updated_at, str) and (
+            latest_updated_at is None or updated_at > latest_updated_at
+        ):
+            latest_updated_at = updated_at
+    return {
+        "item_count": len(items),
+        "ready_count": status_counts.get("READY", 0),
+        "draft_count": status_counts.get("DRAFT", 0),
+        "failed_count": status_counts.get("FAILED", 0),
+        "downloadable_count": downloadable_count,
+        "previewable_count": previewable_count,
+        "status_counts": status_counts,
+        "latest_updated_at": latest_updated_at,
+    }
+
+
 def assert_artifact_operation_projection_redacted(projection: Mapping[str, Any]) -> None:
     serialized = str(projection)
     forbidden_fragments = (
         "/data/nex-platform",
+        "content_base64",
+        "database_url",
         "PRIVATE_MARKDOWN",
         "SECRET_SOURCE_TEXT",
         "SECRET_SYSTEM_PROMPT",
         "hidden prompt",
+        "nuri1004",
         "raw source",
+        "rendered_markdown",
     )
     for fragment in forbidden_fragments:
         if fragment in serialized:
@@ -426,6 +659,75 @@ def _project_artifact(record: Mapping[str, Any]) -> dict[str, Any]:
         "links": [_project_link(link) for link in _list_value(record.get("links"))],
         "created_at": _text_or_none(record.get("created_at")),
         "updated_at": _text_or_none(record.get("updated_at")),
+    }
+
+
+def _project_artifact_collection_item(record: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "artifact_collection_item_schema_version": _text_or_none(
+            record.get("artifact_collection_item_schema_version")
+        ),
+        "artifact_id": _text_or_none(record.get("artifact_id")),
+        "artifact_type": _text_or_none(record.get("artifact_type")),
+        "artifact_status": _text_or_none(record.get("artifact_status")),
+        "display_title": _text_or_none(record.get("display_title")),
+        "language": _text_or_none(record.get("language")),
+        "artifact_intent": _text_or_none(record.get("artifact_intent")),
+        "target_formats": _text_list(record.get("target_formats")),
+        "available_formats": _text_list(record.get("available_formats")),
+        "downloadable_formats": _text_list(record.get("downloadable_formats")),
+        "previewable_formats": _text_list(record.get("previewable_formats")),
+        "current_version_id": _text_or_none(record.get("current_version_id")),
+        "current_version_no": _int_or_zero(record.get("current_version_no")),
+        "version_count": _int_or_zero(record.get("version_count")),
+        "file_count": _int_or_zero(record.get("file_count")),
+        "link_count": _int_or_zero(record.get("link_count")),
+        "render_job_count": _int_or_zero(record.get("render_job_count")),
+        "latest_render_job": _select_mapping(
+            record.get("latest_render_job"),
+            (
+                "render_job_id",
+                "artifact_version_id",
+                "render_status",
+                "renderer_policy_id",
+                "target_formats",
+                "started_at",
+                "completed_at",
+                "created_at",
+            ),
+        ),
+        "source_summary": _select_mapping(
+            record.get("source_summary"),
+            (
+                "cx_generation_id",
+                "structured_draft_id",
+                "structured_draft_content_hash",
+                "generation_response_hash",
+                "retrieval_package_id",
+                "retrieval_package_hash",
+            ),
+        ),
+        "quality_summary": _safe_quality_summary(record.get("quality_summary")),
+        "routes": _safe_artifact_route_mapping(record.get("routes")),
+        "tenant_id": _text_or_none(record.get("tenant_id")),
+        "workspace_id": _text_or_none(record.get("workspace_id")),
+        "owner_user_id": _text_or_none(record.get("owner_user_id")),
+        "chat_document_id": _text_or_none(record.get("chat_document_id")),
+        "interaction_id": _text_or_none(record.get("interaction_id")),
+        "created_at": _text_or_none(record.get("created_at")),
+        "updated_at": _text_or_none(record.get("updated_at")),
+    }
+
+
+def _project_collection_filter(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "tenant_id": _text_or_none(raw_value.get("tenant_id")),
+        "workspace_id": _text_or_none(raw_value.get("workspace_id")),
+        "owner_user_id": _text_or_none(raw_value.get("owner_user_id")),
+        "status": _normalized_status(raw_value.get("status")),
+        "limit": _int_or_zero(raw_value.get("limit")),
     }
 
 
@@ -580,6 +882,171 @@ def _artifact_source_status(
     return source
 
 
+def _artifact_collection_source_status(
+    *,
+    source_client: AeArtifactOperationsClient | None,
+    item_count: int,
+    errors: list[AeArtifactOperationsError],
+) -> dict[str, Any]:
+    status = "DEGRADED" if errors else "READY"
+    return {
+        "status": status,
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "source_kind": getattr(source_client, "source_kind", "provided"),
+        "base_url": getattr(source_client, "base_url", None),
+        "collection_loaded": not errors,
+        "item_count": item_count,
+        "errors": [
+            {
+                "error_code": error.error_code,
+                "detail": error.detail,
+                "status_code": error.status_code,
+            }
+            for error in errors
+        ],
+    }
+
+
+def _validate_artifact_collection_query(
+    request: Request,
+    *,
+    tenant_id: str | None,
+    workspace_id: str | None,
+    owner_user_id: str | None,
+    status: str | None,
+    limit: str | None,
+) -> dict[str, Any] | JSONResponse:
+    required = {
+        "tenant_id": tenant_id,
+        "workspace_id": workspace_id,
+        "owner_user_id": owner_user_id,
+    }
+    missing = [name for name, value in required.items() if not _present_text(value)]
+    if missing:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_collection_scope_missing",
+            title="Artifact collection scope is required",
+            detail="Artifact collection queries require tenant, workspace, and owner scope.",
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-collection-scope-missing"
+            ),
+        )
+
+    normalized_status = _normalized_status(status)
+    if normalized_status is not None and normalized_status not in SUPPORTED_ARTIFACT_STATUSES:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_collection_status_invalid",
+            title="Invalid artifact collection status",
+            detail="Artifact collection status is not supported.",
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-collection-status-invalid"
+            ),
+        )
+
+    normalized_limit = _collection_limit(limit)
+    if normalized_limit is None:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_collection_limit_invalid",
+            title="Invalid artifact collection limit",
+            detail=f"Artifact collection limit must be between 1 and {MAX_ARTIFACT_COLLECTION_LIMIT}.",
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-collection-limit-invalid"
+            ),
+        )
+
+    return {
+        "tenant_id": str(tenant_id).strip(),
+        "workspace_id": str(workspace_id).strip(),
+        "owner_user_id": str(owner_user_id).strip(),
+        "status": normalized_status,
+        "limit": normalized_limit,
+    }
+
+
+def _artifact_collection_cache_key(
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    owner_user_id: str,
+    status: str | None,
+    limit: int,
+) -> str:
+    return "|".join(
+        (tenant_id, workspace_id, owner_user_id, status or "", str(limit))
+    )
+
+
+def _artifact_matches_collection_filter(
+    artifact: Mapping[str, Any],
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    owner_user_id: str,
+    status: str | None,
+) -> bool:
+    if _owner_tenant_id(artifact) != tenant_id:
+        return False
+    if _workspace_id(artifact) != workspace_id:
+        return False
+    if _owner_user_id(artifact) != owner_user_id:
+        return False
+    return status is None or _normalized_status(artifact.get("artifact_status")) == status
+
+
+def _artifact_to_collection_item(artifact: Mapping[str, Any]) -> dict[str, Any]:
+    versions = _list_value(artifact.get("versions"))
+    files = _list_value(artifact.get("files"))
+    links = _list_value(artifact.get("links"))
+    render_jobs = _list_value(artifact.get("render_jobs"))
+    source_ref = _first_mapping(artifact.get("source_refs"))
+    artifact_id = _text_or_none(artifact.get("artifact_id"))
+    return {
+        "artifact_collection_item_schema_version": "ae_artifact_collection_item.v1",
+        "artifact_id": artifact_id,
+        "artifact_type": _text_or_none(artifact.get("artifact_type")),
+        "artifact_status": _text_or_none(artifact.get("artifact_status")),
+        "display_title": _text_or_none(artifact.get("display_title")),
+        "language": _text_or_none(artifact.get("language")),
+        "artifact_intent": _text_or_none(artifact.get("artifact_intent")),
+        "target_formats": _text_list(artifact.get("target_formats")),
+        "available_formats": _available_formats(files),
+        "downloadable_formats": _linked_formats(files, links, "download"),
+        "previewable_formats": _linked_formats(files, links, "preview"),
+        "current_version_id": _text_or_none(artifact.get("current_version_id")),
+        "current_version_no": _current_version_no(
+            versions,
+            _text_or_none(artifact.get("current_version_id")),
+        ),
+        "version_count": len(versions),
+        "file_count": len(files),
+        "link_count": len(links),
+        "render_job_count": len(render_jobs),
+        "latest_render_job": _latest_render_job_summary(render_jobs),
+        "source_summary": _source_collection_summary(source_ref),
+        "quality_summary": _safe_quality_summary(source_ref.get("quality_summary")),
+        "routes": {
+            "detail": f"/api/v1/artifacts/{artifact_id}",
+            "versions": f"/api/v1/artifacts/{artifact_id}/versions",
+        },
+        "tenant_id": _owner_tenant_id(artifact),
+        "workspace_id": _workspace_id(artifact),
+        "owner_user_id": _owner_user_id(artifact),
+        "chat_document_id": _text_or_none(artifact.get("chat_document_id")),
+        "interaction_id": _text_or_none(artifact.get("interaction_id")),
+        "created_at": _text_or_none(artifact.get("created_at")),
+        "updated_at": _text_or_none(artifact.get("updated_at")),
+    }
+
+
 def _handoff_id_from_artifact(record: Mapping[str, Any]) -> str | None:
     if record.get("artifact_handoff_id") is not None:
         return _text_or_none(record.get("artifact_handoff_id"))
@@ -652,11 +1119,29 @@ def _safe_route_mapping(raw_value: Any) -> dict[str, str]:
     return routes
 
 
+def _safe_artifact_route_mapping(raw_value: Any) -> dict[str, str]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    routes: dict[str, str] = {}
+    for key, value in raw_value.items():
+        route = _safe_artifact_route(value)
+        if route is not None:
+            routes[str(key)] = route
+    return routes
+
+
 def _safe_route(raw_value: Any) -> str | None:
     value = _text_or_none(raw_value)
     if value is None:
         return None
     return value if value.startswith(SAFE_ARTIFACT_FILE_ROUTE_PREFIX) else None
+
+
+def _safe_artifact_route(raw_value: Any) -> str | None:
+    value = _text_or_none(raw_value)
+    if value is None:
+        return None
+    return value if value.startswith(SAFE_ARTIFACT_ROUTE_PREFIX) else None
 
 
 def _safe_storage_ref(raw_value: Any) -> str | None:
@@ -703,6 +1188,23 @@ def _validate_artifact_service_filter(
     )
 
 
+def _collection_limit(raw_value: str | None) -> int | None:
+    if raw_value is None or not str(raw_value).strip():
+        return DEFAULT_ARTIFACT_COLLECTION_LIMIT
+    try:
+        limit = int(str(raw_value))
+    except ValueError:
+        return None
+    return limit if 1 <= limit <= MAX_ARTIFACT_COLLECTION_LIMIT else None
+
+
+def _normalized_status(raw_value: Any) -> str | None:
+    value = _text_or_none(raw_value)
+    if value is None or not value.strip():
+        return None
+    return value.strip().upper()
+
+
 def _artifact_operations_problem_response(
     request: Request,
     exc: AeArtifactOperationsError,
@@ -746,6 +1248,13 @@ def _list_value(raw_value: Any) -> list[Any]:
     return list(raw_value) if isinstance(raw_value, list) else []
 
 
+def _first_mapping(raw_value: Any) -> dict[str, Any]:
+    for value in _list_value(raw_value):
+        if isinstance(value, Mapping):
+            return dict(value)
+    return {}
+
+
 def _text_list(raw_value: Any) -> list[str]:
     return [str(value) for value in _list_value(raw_value) if value is not None]
 
@@ -756,11 +1265,105 @@ def _text_or_none(raw_value: Any) -> str | None:
     return str(raw_value)
 
 
+def _present_text(raw_value: Any) -> bool:
+    return bool(_text_or_none(raw_value) and str(raw_value).strip())
+
+
 def _int_or_zero(raw_value: Any) -> int:
     try:
         return int(raw_value)
     except (TypeError, ValueError):
         return 0
+
+
+def _owner_tenant_id(record: Mapping[str, Any]) -> str | None:
+    owner = record.get("owner_actor_ref")
+    if isinstance(owner, Mapping):
+        return _text_or_none(owner.get("tenant_id"))
+    return _text_or_none(record.get("tenant_id"))
+
+
+def _owner_user_id(record: Mapping[str, Any]) -> str | None:
+    owner = record.get("owner_actor_ref")
+    if isinstance(owner, Mapping):
+        return _text_or_none(owner.get("actor_id") or owner.get("user_id"))
+    return _text_or_none(record.get("owner_user_id") or record.get("user_id"))
+
+
+def _workspace_id(record: Mapping[str, Any]) -> str | None:
+    workspace = record.get("workspace_ref")
+    if isinstance(workspace, Mapping):
+        return _text_or_none(workspace.get("workspace_id"))
+    return _text_or_none(record.get("workspace_id"))
+
+
+def _available_formats(files: list[Any]) -> list[str]:
+    formats = [
+        _text_or_none(file.get("format"))
+        for file in files
+        if isinstance(file, Mapping)
+    ]
+    return sorted({value for value in formats if value})
+
+
+def _linked_formats(files: list[Any], links: list[Any], link_type: str) -> list[str]:
+    file_formats = {
+        file.get("artifact_file_id"): _text_or_none(file.get("format"))
+        for file in files
+        if isinstance(file, Mapping)
+    }
+    linked = [
+        file_formats.get(link.get("artifact_file_id"))
+        for link in links
+        if isinstance(link, Mapping)
+        and _text_or_none(link.get("link_type")) == link_type
+        and _safe_route(link.get("link_route")) is not None
+    ]
+    return sorted({value for value in linked if value})
+
+
+def _current_version_no(versions: list[Any], current_version_id: str | None) -> int:
+    for version in versions:
+        if (
+            isinstance(version, Mapping)
+            and _text_or_none(version.get("artifact_version_id")) == current_version_id
+        ):
+            return _int_or_zero(version.get("version_no"))
+    return 0
+
+
+def _latest_render_job_summary(render_jobs: list[Any]) -> dict[str, Any]:
+    candidates = [job for job in render_jobs if isinstance(job, Mapping)]
+    candidates.sort(key=lambda job: str(job.get("created_at") or ""), reverse=True)
+    if not candidates:
+        return {}
+    return _select_mapping(
+        candidates[0],
+        (
+            "render_job_id",
+            "artifact_version_id",
+            "render_status",
+            "renderer_policy_id",
+            "target_formats",
+            "started_at",
+            "completed_at",
+            "created_at",
+        ),
+    )
+
+
+def _source_collection_summary(source_ref: Mapping[str, Any]) -> dict[str, Any]:
+    return _select_mapping(
+        source_ref,
+        (
+            "cx_generation_id",
+            "structured_draft_id",
+            "structured_draft_content_hash",
+            "generation_response_hash",
+            "retrieval_package_id",
+            "retrieval_package_hash",
+        ),
+    )
 
 
 def _json_safe_value(raw_value: Any) -> Any:

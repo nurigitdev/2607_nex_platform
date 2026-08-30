@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from nex_ag.artifact_operations import (
+    AG_ARTIFACT_OPERATION_COLLECTION_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_DETAIL_PROJECTION_SCHEMA_VERSION,
     AE_ARTIFACT_SOURCE_SERVICE_ID,
     DEFAULT_AE_ARTIFACT_TIMEOUT_SECONDS,
@@ -17,9 +18,11 @@ from nex_ag.artifact_operations import (
     HttpAeArtifactOperationsClient,
     InMemoryAeArtifactOperationsClient,
     assert_artifact_operation_projection_redacted,
+    build_artifact_operation_collection_projection,
     build_artifact_operation_detail_projection,
     build_default_ae_artifact_operations_client,
     register_artifact_operation_routes,
+    summarize_artifact_operation_collection,
     summarize_artifact_operation_detail,
 )
 import nex_ag.artifact_operations as artifact_operations
@@ -217,6 +220,93 @@ def chat_artifact_ref() -> dict[str, Any]:
     }
 
 
+def artifact_collection_item(
+    *,
+    artifact_id: str = ARTIFACT_ID,
+    status: str = "READY",
+    owner_user_id: str = "user-0409",
+    display_title: str = "Generated report",
+    updated_at: str = "2026-08-29T00:00:01Z",
+) -> dict[str, Any]:
+    return {
+        "artifact_collection_item_schema_version": "ae_artifact_collection_item.v1",
+        "artifact_id": artifact_id,
+        "artifact_type": "generated_document",
+        "artifact_status": status,
+        "display_title": display_title,
+        "language": "ko",
+        "artifact_intent": "create_and_export",
+        "target_formats": ["MD", "HTML_PREVIEW"],
+        "available_formats": ["MD", "HTML_PREVIEW"],
+        "downloadable_formats": ["MD"],
+        "previewable_formats": ["HTML_PREVIEW"],
+        "current_version_id": "version-0409",
+        "current_version_no": 1,
+        "version_count": 1,
+        "file_count": 2,
+        "link_count": 2,
+        "render_job_count": 1,
+        "latest_render_job": {
+            "render_job_id": "render-job-0409",
+            "artifact_version_id": "version-0409",
+            "render_status": "SUCCEEDED",
+            "renderer_policy_id": "ae-markdown-renderer-v1",
+            "target_formats": ["MD"],
+            "created_at": updated_at,
+            "storage_ref": "/data/nex-platform/private",
+        },
+        "source_summary": {
+            "cx_generation_id": "cx-gen-0409",
+            "structured_draft_id": "draft-0409",
+            "structured_draft_content_hash": "a" * 64,
+            "raw_source": "raw source",
+        },
+        "quality_summary": {
+            "citation_status": "VALIDATED",
+            "citation_count": 2,
+            "hidden_prompt": "hidden prompt",
+        },
+        "routes": {
+            "detail": f"/api/v1/artifacts/{artifact_id}",
+            "versions": f"/api/v1/artifacts/{artifact_id}/versions",
+            "unsafe": "file:///data/nex-platform/private.md",
+        },
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+        "owner_user_id": owner_user_id,
+        "chat_document_id": "chat-doc-0409",
+        "interaction_id": INTERACTION_ID,
+        "created_at": "2026-08-29T00:00:00Z",
+        "updated_at": updated_at,
+        "content_base64": "PRIVATE_CONTENT",
+    }
+
+
+def artifact_collection_payload() -> dict[str, Any]:
+    return {
+        "artifact_collection_schema_version": "ae_artifact_collection.v1",
+        "filter": {
+            "tenant_id": "tenant-0409",
+            "workspace_id": "workspace-0409",
+            "owner_user_id": "user-0409",
+            "status": None,
+            "limit": 20,
+        },
+        "count": 2,
+        "limit": 20,
+        "next_cursor": None,
+        "items": [
+            artifact_collection_item(),
+            artifact_collection_item(
+                artifact_id="artifact-draft-0409",
+                status="DRAFT",
+                display_title="Draft report",
+                updated_at="2026-08-29T00:00:00Z",
+            ),
+        ],
+    }
+
+
 def artifact_client() -> InMemoryAeArtifactOperationsClient:
     return InMemoryAeArtifactOperationsClient(
         artifacts={ARTIFACT_ID: artifact_record()},
@@ -277,6 +367,87 @@ def test_artifact_operation_projection_summarizes_and_redacts() -> None:
     }
     assert "SECRET" not in str(projection)
     assert "/data/nex-platform" not in str(projection)
+
+
+def test_artifact_operation_collection_projection_summarizes_and_redacts() -> None:
+    projection = build_artifact_operation_collection_projection(
+        collection=artifact_collection_payload(),
+        source_client=InMemoryAeArtifactOperationsClient(),
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_COLLECTION_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["operation_type"] == "ae_artifact_collection"
+    assert projection["projection_status"] == "READY"
+    assert projection["filter"] == {
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+        "owner_user_id": "user-0409",
+        "status": None,
+        "limit": 20,
+    }
+    assert projection["summary"] == {
+        "item_count": 2,
+        "ready_count": 1,
+        "draft_count": 1,
+        "failed_count": 0,
+        "downloadable_count": 2,
+        "previewable_count": 2,
+        "status_counts": {"READY": 1, "DRAFT": 1},
+        "latest_updated_at": "2026-08-29T00:00:01Z",
+    }
+    assert projection["items"][0]["routes"] == {
+        "detail": f"/api/v1/artifacts/{ARTIFACT_ID}",
+        "versions": f"/api/v1/artifacts/{ARTIFACT_ID}/versions",
+    }
+    assert projection["items"][0]["latest_render_job"]["render_status"] == (
+        "SUCCEEDED"
+    )
+    assert projection["source_status"]["item_count"] == 2
+    assert projection["request_trace_id"] == TRACE_ID
+    assert "PRIVATE_CONTENT" not in str(projection)
+    assert "hidden prompt" not in str(projection)
+    assert "/data/nex-platform" not in str(projection)
+
+
+def test_artifact_operation_collection_projection_handles_sparse_values() -> None:
+    degraded = build_artifact_operation_collection_projection(
+        collection={
+            "filter": "not-a-mapping",
+            "count": "not-a-number",
+            "limit": None,
+            "items": [
+                {
+                    "artifact_id": "artifact-sparse",
+                    "artifact_status": "FAILED",
+                    "downloadable_formats": "bad",
+                    "previewable_formats": [],
+                    "routes": {"detail": "/unsafe"},
+                },
+                "not-a-mapping",
+            ],
+        },
+        source_errors=[
+            AeArtifactOperationsError(
+                error_code="ag.optional_collection_warning",
+                detail="partial source warning",
+                status_code=503,
+            )
+        ],
+    )
+
+    assert degraded["projection_status"] == "DEGRADED"
+    assert degraded["filter"] == {}
+    assert degraded["count"] == 0
+    assert degraded["summary"] == summarize_artifact_operation_collection(
+        degraded["items"]
+    )
+    assert degraded["items"][0]["routes"] == {}
+    assert degraded["source_status"]["errors"][0]["error_code"] == (
+        "ag.optional_collection_warning"
+    )
 
 
 def test_artifact_operation_projection_handles_sparse_values_and_errors() -> None:
@@ -374,10 +545,273 @@ def test_in_memory_artifact_operations_client_returns_copies_and_missing_values(
     assert client.chat_artifact_refs[INTERACTION_ID]["artifact_refs"][0]["artifact_status"] == "READY"
 
 
+def test_in_memory_artifact_operations_client_lists_owner_scoped_collections() -> None:
+    ready = artifact_record(include_private=False)
+    ready["owner_actor_ref"] = {
+        "tenant_id": "tenant-0409",
+        "actor_id": "user-0409",
+        "actor_type": "user",
+    }
+    ready["updated_at"] = "2026-08-29T02:00:00Z"
+    ready["files"][0]["format"] = "MD"
+    ready["links"][0]["link_route"] = "/api/v1/artifact-files/file-0409/preview"
+    ready["links"].append(
+        {
+            "artifact_link_id": "download-link-0409",
+            "artifact_file_id": "file-0409",
+            "link_type": "download",
+            "link_route": "/api/v1/artifact-files/file-0409/download",
+        }
+    )
+    draft = {
+        **artifact_record(include_private=False),
+        "artifact_id": "artifact-draft-0409",
+        "artifact_status": "DRAFT",
+        "display_title": "Draft report",
+        "updated_at": "2026-08-29T01:00:00Z",
+    }
+    other_owner = {
+        **artifact_record(include_private=False),
+        "artifact_id": "artifact-other-owner-0409",
+        "owner_actor_ref": {
+            "tenant_id": "tenant-0409",
+            "actor_id": "user-other",
+            "actor_type": "user",
+        },
+    }
+    client = InMemoryAeArtifactOperationsClient(
+        artifacts={
+            ready["artifact_id"]: ready,
+            draft["artifact_id"]: draft,
+            other_owner["artifact_id"]: other_owner,
+        }
+    )
+
+    collection = client.list_artifacts(
+        tenant_id="tenant-0409",
+        workspace_id="workspace-0409",
+        owner_user_id="user-0409",
+        status=None,
+        limit=10,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    ready_only = client.list_artifacts(
+        tenant_id="tenant-0409",
+        workspace_id="workspace-0409",
+        owner_user_id="user-0409",
+        status="ready",
+        limit=1,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert collection["count"] == 2
+    assert [item["artifact_id"] for item in collection["items"]] == [
+        ARTIFACT_ID,
+        "artifact-draft-0409",
+    ]
+    assert collection["items"][0]["downloadable_formats"] == ["MD"]
+    assert collection["items"][0]["previewable_formats"] == ["MD"]
+    assert ready_only["count"] == 1
+    assert ready_only["filter"]["status"] == "READY"
+    assert "PRIVATE_MARKDOWN" not in str(collection)
+
+
+def test_artifact_operation_collection_helper_edges() -> None:
+    key = artifact_operations._artifact_collection_cache_key(
+        tenant_id="tenant-0409",
+        workspace_id="workspace-0409",
+        owner_user_id="user-0409",
+        status=None,
+        limit=20,
+    )
+    client = InMemoryAeArtifactOperationsClient(
+        artifact_collections={key: artifact_collection_payload()}
+    )
+
+    cached = client.list_artifacts(
+        tenant_id="tenant-0409",
+        workspace_id="workspace-0409",
+        owner_user_id="user-0409",
+        status=None,
+        limit=20,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    cached["items"][0]["artifact_id"] = "mutated"
+
+    assert client.artifact_collections[key]["items"][0]["artifact_id"] == ARTIFACT_ID
+    assert artifact_operations._collection_limit("many") is None
+    assert artifact_operations._collection_limit("0") is None
+    assert artifact_operations._collection_limit(None) == 20
+    assert artifact_operations._safe_artifact_route_mapping("bad") == {}
+    assert artifact_operations._safe_artifact_route(None) is None
+    assert artifact_operations._first_mapping([]) == {}
+    assert artifact_operations._owner_tenant_id({"tenant_id": "tenant-fallback"}) == (
+        "tenant-fallback"
+    )
+    assert artifact_operations._owner_user_id({"owner_user_id": "owner-fallback"}) == (
+        "owner-fallback"
+    )
+    assert artifact_operations._workspace_id({"workspace_id": "workspace-fallback"}) == (
+        "workspace-fallback"
+    )
+    assert artifact_operations._current_version_no([], "missing") == 0
+    assert artifact_operations._latest_render_job_summary([]) == {}
+
+
+def test_in_memory_artifact_operations_client_skips_non_matching_scope() -> None:
+    tenant_mismatch = {
+        **artifact_record(include_private=False),
+        "artifact_id": "tenant-mismatch",
+        "owner_actor_ref": {
+            "tenant_id": "tenant-other",
+            "actor_id": "user-0409",
+            "actor_type": "user",
+        },
+    }
+    workspace_mismatch = {
+        **artifact_record(include_private=False),
+        "artifact_id": "workspace-mismatch",
+        "workspace_ref": {
+            "workspace_id": "workspace-other",
+            "document_group_id": "group-0409",
+            "chat_document_id": "chat-doc-0409",
+        },
+    }
+    status_mismatch = {
+        **artifact_record(include_private=False),
+        "artifact_id": "status-mismatch",
+        "artifact_status": "DRAFT",
+    }
+    client = InMemoryAeArtifactOperationsClient(
+        artifacts={
+            item["artifact_id"]: item
+            for item in (tenant_mismatch, workspace_mismatch, status_mismatch)
+        }
+    )
+
+    collection = client.list_artifacts(
+        tenant_id="tenant-0409",
+        workspace_id="workspace-0409",
+        owner_user_id="user-0409",
+        status="READY",
+        limit=20,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert collection["count"] == 0
+
+
 def build_app(source_client: object) -> TestClient:
     app = build_service_app(SERVICE_SPECS["nex-ag"])
     register_artifact_operation_routes(app, client=source_client)
     return TestClient(app)
+
+
+def test_artifact_operation_route_returns_collection_projection() -> None:
+    client = build_app(artifact_client())
+
+    response = client.get(
+        "/admin/v1/operations/artifacts",
+        params={
+            "tenant_id": "tenant-0409",
+            "workspace_id": "workspace-0409",
+            "owner_user_id": "user-0409",
+            "limit": "10",
+        },
+        headers=auth_headers(),
+    )
+    ready_only = client.get(
+        "/admin/v1/operations/artifacts",
+        params={
+            "tenant_id": "tenant-0409",
+            "workspace_id": "workspace-0409",
+            "owner_user_id": "user-0409",
+            "status": "ready",
+            "limit": "1",
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["operation_type"] == "ae_artifact_collection"
+    assert payload["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_COLLECTION_PROJECTION_SCHEMA_VERSION
+    )
+    assert payload["summary"]["item_count"] == 1
+    assert payload["summary"]["ready_count"] == 1
+    assert payload["items"][0]["artifact_id"] == ARTIFACT_ID
+    assert payload["items"][0]["owner_user_id"] == "user-0409"
+    assert payload["request_trace_id"] == TRACE_ID
+    assert ready_only.status_code == 200
+    assert ready_only.json()["filter"]["status"] == "READY"
+    assert ready_only.json()["summary"]["item_count"] == 1
+
+
+def test_artifact_operation_collection_route_auth_filter_and_error_edges() -> None:
+    client = build_app(artifact_client())
+    params = {
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+        "owner_user_id": "user-0409",
+    }
+
+    unauthorized = client.get("/admin/v1/operations/artifacts", params=params)
+    invalid_service = client.get(
+        "/admin/v1/operations/artifacts",
+        params={**params, "service_id": "nex-cx"},
+        headers=auth_headers(),
+    )
+    missing_scope = client.get(
+        "/admin/v1/operations/artifacts",
+        params={"tenant_id": "tenant-0409", "workspace_id": "workspace-0409"},
+        headers=auth_headers(),
+    )
+    invalid_status = client.get(
+        "/admin/v1/operations/artifacts",
+        params={**params, "status": "unknown"},
+        headers=auth_headers(),
+    )
+    invalid_limit = client.get(
+        "/admin/v1/operations/artifacts",
+        params={**params, "limit": "101"},
+        headers=auth_headers(),
+    )
+
+    class BrokenCollectionClient(InMemoryAeArtifactOperationsClient):
+        def list_artifacts(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            raise AeArtifactOperationsError(
+                error_code="ag.ae_artifact_collection_source_failed",
+                detail="AE collection source unavailable",
+                status_code=503,
+            )
+
+    source_failed = build_app(BrokenCollectionClient()).get(
+        "/admin/v1/operations/artifacts",
+        params=params,
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert invalid_service.status_code == 400
+    assert missing_scope.status_code == 400
+    assert missing_scope.json()["error_code"] == (
+        "ag.ae_artifact_collection_scope_missing"
+    )
+    assert invalid_status.json()["error_code"] == (
+        "ag.ae_artifact_collection_status_invalid"
+    )
+    assert invalid_limit.json()["error_code"] == (
+        "ag.ae_artifact_collection_limit_invalid"
+    )
+    assert source_failed.status_code == 503
+    assert source_failed.json()["error_code"] == (
+        "ag.ae_artifact_collection_source_failed"
+    )
 
 
 def test_artifact_operation_route_returns_detail_projection() -> None:
@@ -495,8 +929,18 @@ def test_http_artifact_operations_client_requests_expected_routes(
 ) -> None:
     calls: list[dict[str, Any]] = []
 
-    def fake_get(url: str, *, headers: dict[str, str], timeout: float) -> FakeHttpResponse:
-        calls.append({"url": url, "headers": headers, "timeout": timeout})
+    def fake_get(
+        url: str,
+        *,
+        headers: dict[str, str],
+        params: dict[str, str],
+        timeout: float,
+    ) -> FakeHttpResponse:
+        calls.append(
+            {"url": url, "headers": headers, "params": params, "timeout": timeout}
+        )
+        if url.endswith("/api/v1/artifacts") and params.get("tenant_id"):
+            return FakeHttpResponse(200, artifact_collection_payload())
         if url.endswith(f"/api/v1/artifacts/{ARTIFACT_ID}"):
             return FakeHttpResponse(200, artifact_record(include_private=False))
         if url.endswith(f"/api/v1/artifact-handoffs/{HANDOFF_ID}"):
@@ -523,14 +967,32 @@ def test_http_artifact_operations_client_requests_expected_routes(
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     )
+    collection = client.list_artifacts(
+        tenant_id="tenant-0409",
+        workspace_id="workspace-0409",
+        owner_user_id="user-0409",
+        status="READY",
+        limit=25,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
 
     assert artifact["artifact_id"] == ARTIFACT_ID
     assert handoff["artifact_handoff_id"] == HANDOFF_ID
     assert refs[0]["artifact_id"] == ARTIFACT_ID
+    assert collection["count"] == 2
     assert calls[0]["url"] == f"http://ae.example.local/api/v1/artifacts/{ARTIFACT_ID}"
     assert calls[0]["headers"]["Authorization"] == "Bearer token-0409"
     assert calls[0]["headers"]["X-Service-ID"] == "nex-ag"
     assert calls[0]["timeout"] == 12.5
+    assert calls[-1]["url"] == "http://ae.example.local/api/v1/artifacts"
+    assert calls[-1]["params"] == {
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+        "owner_user_id": "user-0409",
+        "limit": "25",
+        "status": "READY",
+    }
 
 
 def test_http_artifact_operations_client_handles_404_and_errors(
@@ -550,7 +1012,13 @@ def test_http_artifact_operations_client_handles_404_and_errors(
         FakeHttpResponse(200, []),
     ]
 
-    def fake_get(url: str, *, headers: dict[str, str], timeout: float) -> FakeHttpResponse:
+    def fake_get(
+        url: str,
+        *,
+        headers: dict[str, str],
+        params: dict[str, str],
+        timeout: float,
+    ) -> FakeHttpResponse:
         return responses.pop(0)
 
     monkeypatch.setattr(artifact_operations.httpx, "get", fake_get)
@@ -571,7 +1039,13 @@ def test_http_artifact_operations_client_handles_404_and_errors(
 def test_http_artifact_operations_client_wraps_network_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake_get(url: str, *, headers: dict[str, str], timeout: float) -> FakeHttpResponse:
+    def fake_get(
+        url: str,
+        *,
+        headers: dict[str, str],
+        params: dict[str, str],
+        timeout: float,
+    ) -> FakeHttpResponse:
         raise httpx.ConnectError("unreachable")
 
     monkeypatch.setattr(artifact_operations.httpx, "get", fake_get)
@@ -612,5 +1086,6 @@ def test_artifact_operations_registered_on_main_app() -> None:
     from nex_ag.main import app
 
     paths = {route.path for route in app.routes}
+    assert "/admin/v1/operations/artifacts" in paths
     assert "/admin/v1/operations/artifacts/{artifact_id}" in paths
     assert AE_ARTIFACT_SOURCE_SERVICE_ID == "nex-ae-api"
