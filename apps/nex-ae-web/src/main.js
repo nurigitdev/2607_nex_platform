@@ -8,6 +8,7 @@ import {
   buildArtifactCardCollectionReadModel
 } from "./artifactCardReadModel.js";
 import {
+  artifactCollectionRoute,
   artifactRenderJobRoute,
   artifactVersionsRoute,
   createMockArtifactClient
@@ -37,6 +38,15 @@ import {
   createArtifactPreviewPanelState,
   renderArtifactPreviewPanel
 } from "./artifactPreviewPanel.js";
+import {
+  buildArtifactLibraryPanelState,
+  buildArtifactLibraryPanelStateFromError,
+  buildArtifactLibraryPanelSummary,
+  createArtifactLibraryPanelState,
+  createRunningArtifactLibraryPanelState,
+  filterArtifactLibraryPanelState,
+  renderArtifactLibraryPanel
+} from "./artifactLibraryPanel.js";
 import {
   buildArtifactVersionPanelState,
   buildArtifactVersionPanelStateFromError,
@@ -184,6 +194,8 @@ const workspaceState = {
   artifactDownloadSaveResult: null,
   selectedArtifactDownloadFormat: "MD",
   artifactExportResult: null,
+  artifactLibraryPanel: createArtifactLibraryPanelState(),
+  artifactLibraryFilterMode: "all",
   artifactVersionPanel: createArtifactVersionPanelState(),
   generationFeedbackClient: null,
   repairedResponseDecisionClient: null,
@@ -373,6 +385,14 @@ const documentCount = document.querySelector("#document-count");
 const generationStage = document.querySelector("#generation-stage");
 const artifactStatus = document.querySelector("#artifact-status");
 const handoffBadge = document.querySelector("#handoff-badge");
+const artifactLibraryStatus = document.querySelector("#artifact-library-status");
+const artifactLibraryFilter = document.querySelector("#artifact-library-filter");
+const artifactLibraryRefreshButton = document.querySelector(
+  "#artifact-library-refresh-button"
+);
+const artifactLibraryFeedback = document.querySelector("#artifact-library-feedback");
+const artifactLibrarySummary = document.querySelector("#artifact-library-summary");
+const artifactLibraryList = document.querySelector("#artifact-library-list");
 const artifactSummary = document.querySelector("#artifact-summary");
 const artifactPreviewFeedback = document.querySelector("#artifact-preview-feedback");
 const artifactPreviewSummary = document.querySelector("#artifact-preview-summary");
@@ -382,6 +402,7 @@ const artifactVersionSummary = document.querySelector("#artifact-version-summary
 const artifactVersionList = document.querySelector("#artifact-version-list");
 const auditSummary = document.querySelector("#audit-summary");
 let documentDetailRequestSequence = 0;
+let artifactLibraryPanelRequestSequence = 0;
 let artifactVersionPanelRequestSequence = 0;
 
 refreshButton.addEventListener("click", () => {
@@ -416,6 +437,25 @@ documentDetailRetryButton.addEventListener("click", () => {
 
 retrievalRetryButton.addEventListener("click", () => {
   void retryLastRetrievalRequest();
+});
+
+artifactLibraryRefreshButton.addEventListener("click", () => {
+  void refreshArtifactLibraryPanel();
+});
+
+artifactLibraryFilter.addEventListener("change", () => {
+  workspaceState.artifactLibraryFilterMode = artifactLibraryFilter.value || "all";
+  renderArtifactLibraryPanelSurface();
+});
+
+artifactLibraryList.addEventListener("click", event => {
+  const target = event.target.closest("[data-artifact-library-action]");
+  if (!target || target.hasAttribute("disabled")) return;
+  event.preventDefault();
+  const item = target.closest("[data-artifact-library-item]");
+  const artifactId = item?.dataset.artifactLibraryItem;
+  if (!artifactId) return;
+  void selectArtifactFromLibrary(artifactId);
 });
 
 messageList.addEventListener("click", event => {
@@ -484,6 +524,7 @@ documentList.addEventListener("click", event => {
 renderWorkspace();
 renderServiceStatuses();
 void refreshBrowserSessionRuntime();
+void refreshArtifactLibraryPanel();
 void refreshArtifactVersionPanel();
 
 function renderWorkspace() {
@@ -502,6 +543,7 @@ function renderWorkspace() {
   renderRetrievalScope();
   void renderDocumentDetail();
   renderTimeline();
+  renderArtifactLibraryPanelSurface();
   renderArtifactSummary();
   renderArtifactPreviewPanelSurface();
   renderArtifactVersionPanelSurface();
@@ -607,6 +649,7 @@ async function refreshBrowserSessionRuntime() {
   renderCredentialLoginSurface();
   renderUploadSurface();
   renderRetrievalScope();
+  void refreshArtifactLibraryPanel();
   void refreshArtifactVersionPanel();
 }
 
@@ -649,6 +692,7 @@ async function submitCredentialLogin() {
     applySessionBootstrap(nextBootstrap);
     workspaceState.operations = initializeOperationStates();
     renderWorkspace();
+    void refreshArtifactLibraryPanel();
     void refreshArtifactVersionPanel();
   } catch (error) {
     credentialPasswordInput.value = "";
@@ -690,6 +734,7 @@ async function logoutCredentialSession() {
     applySessionBootstrap(nextBootstrap);
     workspaceState.operations = initializeOperationStates();
     renderWorkspace();
+    void refreshArtifactLibraryPanel();
   } catch (error) {
     workspaceState.credentialLogin = createCredentialLoginSurfaceState({
       tenantId: credentialTenantInput.value,
@@ -795,6 +840,7 @@ function buildCurrentDocumentScope() {
 }
 
 function initializeOperationStates() {
+  const artifactLibraryQuery = buildCurrentArtifactLibraryQuery();
   return {
     documentDetail: createOperationState({
       operationId: "document_detail",
@@ -830,6 +876,13 @@ function initializeOperationStates() {
       status: "READY",
       clientMode: workspaceState.artifactClient.clientMode,
       route: workspaceState.artifact.previewRoute
+    }),
+    artifactLibrary: createOperationState({
+      operationId: "artifact_library",
+      label: "Artifact library",
+      status: "READY",
+      clientMode: workspaceState.artifactClient.clientMode,
+      route: artifactCollectionRoute(artifactLibraryQuery)
     }),
     artifactVersions: createOperationState({
       operationId: "artifact_versions",
@@ -1523,6 +1576,23 @@ function renderArtifactPreviewPanelSurface() {
   artifactPreviewContent.dataset.status = view.status;
 }
 
+function renderArtifactLibraryPanelSurface() {
+  const filteredPanel = filterArtifactLibraryPanelState(
+    workspaceState.artifactLibraryPanel,
+    workspaceState.artifactLibraryFilterMode
+  );
+  const view = renderArtifactLibraryPanel(filteredPanel);
+  const summary = buildArtifactLibraryPanelSummary(filteredPanel);
+  artifactLibraryStatus.textContent = statusLabel(summary.status);
+  artifactLibraryStatus.className = `badge ${badgeClass(summary.status)}`;
+  artifactLibraryFilter.value = summary.filter_mode;
+  artifactLibraryFeedback.textContent = view.feedback;
+  artifactLibraryFeedback.dataset.severity = view.severity;
+  artifactLibrarySummary.innerHTML = view.summaryHtml;
+  artifactLibraryList.innerHTML = view.listHtml;
+  artifactLibraryList.dataset.status = view.status;
+}
+
 function renderArtifactVersionPanelSurface() {
   const view = renderArtifactVersionPanel(workspaceState.artifactVersionPanel);
   artifactVersionFeedback.textContent = view.feedback;
@@ -1530,6 +1600,130 @@ function renderArtifactVersionPanelSurface() {
   artifactVersionSummary.innerHTML = view.summaryHtml;
   artifactVersionList.innerHTML = view.listHtml;
   artifactVersionList.dataset.status = view.status;
+}
+
+async function refreshArtifactLibraryPanel() {
+  if (!workspaceState.artifactClient?.listArtifacts) {
+    workspaceState.artifactLibraryPanel = createArtifactLibraryPanelState({
+      status: "UNAVAILABLE",
+      clientMode: workspaceState.artifactClient?.clientMode || "mock",
+      errorStatus: "ARTIFACT_LIBRARY_CLIENT_UNAVAILABLE"
+    });
+    renderArtifactLibraryPanelSurface();
+    return;
+  }
+
+  const query = buildCurrentArtifactLibraryQuery();
+  const route = artifactCollectionRoute(query);
+  const requestSequence = ++artifactLibraryPanelRequestSequence;
+  const context = {
+    route,
+    query,
+    clientMode: workspaceState.artifactClient.clientMode
+  };
+  workspaceState.operations.artifactLibrary = markOperationRunning(
+    workspaceState.operations.artifactLibrary,
+    {
+      clientMode: context.clientMode,
+      route
+    }
+  );
+  workspaceState.artifactLibraryPanel =
+    createRunningArtifactLibraryPanelState(context);
+  renderArtifactLibraryPanelSurface();
+
+  try {
+    const collectionSurface = await workspaceState.artifactClient.listArtifacts(query);
+    if (requestSequence !== artifactLibraryPanelRequestSequence) return;
+    workspaceState.artifactLibraryPanel =
+      buildArtifactLibraryPanelState(collectionSurface);
+    workspaceState.operations.artifactLibrary = markOperationSucceeded(
+      workspaceState.operations.artifactLibrary,
+      {
+        status: workspaceState.artifactLibraryPanel.status,
+        resultStatus: workspaceState.artifactLibraryPanel.status,
+        clientMode: workspaceState.artifactLibraryPanel.clientMode,
+        route
+      }
+    );
+  } catch (error) {
+    if (requestSequence !== artifactLibraryPanelRequestSequence) return;
+    workspaceState.artifactLibraryPanel =
+      buildArtifactLibraryPanelStateFromError(error, context);
+    workspaceState.operations.artifactLibrary = markOperationFailed(
+      workspaceState.operations.artifactLibrary,
+      {
+        error,
+        clientMode: context.clientMode,
+        route
+      }
+    );
+  }
+
+  renderArtifactLibraryPanelSurface();
+  renderRuntimeDiagnostics();
+}
+
+async function selectArtifactFromLibrary(artifactId) {
+  const query = buildCurrentArtifactLibraryQuery();
+  const route = artifactCollectionRoute(query);
+  workspaceState.operations.artifactLibrary = markOperationRunning(
+    workspaceState.operations.artifactLibrary,
+    {
+      status: "SELECTING",
+      clientMode: workspaceState.artifactClient.clientMode,
+      route
+    }
+  );
+  renderRuntimeDiagnostics();
+
+  try {
+    const artifactSurface = await workspaceState.artifactClient.getArtifact(artifactId);
+    workspaceState.artifactRef = artifactRefFromSurface(artifactSurface);
+    applyWorkspaceArtifactFromRef(workspaceState.artifactRef);
+    syncMockArtifactClientFromArtifactRef();
+    workspaceState.artifactPreviewPanel = createArtifactPreviewPanelState({
+      clientMode: workspaceState.artifactClient.clientMode
+    });
+    workspaceState.artifactDownloadSaveResult = null;
+    refreshArtifactExportResult();
+    workspaceState.operations.artifactPreview = createOperationState({
+      operationId: "artifact_preview",
+      label: "Artifact preview/download",
+      status: "READY",
+      clientMode: workspaceState.artifactClient.clientMode,
+      route: workspaceState.artifact.previewRoute
+    });
+    workspaceState.operations.artifactLibrary = markOperationSucceeded(
+      workspaceState.operations.artifactLibrary,
+      {
+        status: "SELECTED",
+        resultStatus: artifactSurface.artifactStatus,
+        clientMode: artifactSurface.clientMode,
+        route
+      }
+    );
+    workspaceState.operations.artifactVersions = createOperationState({
+      operationId: "artifact_versions",
+      label: "Artifact versions/files",
+      status: "READY",
+      clientMode: workspaceState.artifactClient.clientMode,
+      route: artifactVersionsRoute(workspaceState.artifactRef.artifactId)
+    });
+    renderWorkspace();
+    void refreshArtifactVersionPanel();
+  } catch (error) {
+    workspaceState.operations.artifactLibrary = markOperationFailed(
+      workspaceState.operations.artifactLibrary,
+      {
+        error,
+        clientMode: workspaceState.artifactClient.clientMode,
+        route
+      }
+    );
+    renderArtifactLibraryPanelSurface();
+    renderRuntimeDiagnostics();
+  }
 }
 
 async function refreshArtifactVersionPanel() {
@@ -1735,6 +1929,7 @@ async function appendPromptInteraction() {
   });
   workspaceState.progressEvents = buildProgressEvents(grounded);
   renderWorkspace();
+  void refreshArtifactLibraryPanel();
   void refreshArtifactVersionPanel();
 }
 
@@ -1825,6 +2020,49 @@ function artifactRefFromExportSurface(previousRef, exportSurface) {
       ...artifactSurface.qualitySummary
     }
   };
+}
+
+function artifactRefFromSurface(artifactSurface) {
+  return {
+    ...workspaceState.artifactRef,
+    artifactId: artifactSurface.artifactId,
+    artifactVersionId: artifactSurface.artifactVersionId,
+    displayTitle: artifactSurface.displayTitle,
+    artifactType: artifactSurface.artifactType,
+    artifactStatus: artifactSurface.artifactStatus,
+    primaryFormat: artifactSurface.primaryFormat,
+    availableFormats: artifactSurface.availableFormats,
+    previewRoute: artifactSurface.previewRoute,
+    downloadRoutes: artifactSurface.downloadRoutes,
+    sourceGenerationId: artifactSurface.sourceGenerationId,
+    sourceContentHash: artifactSurface.sourceContentHash,
+    qualitySummary: {
+      ...workspaceState.artifactRef.qualitySummary,
+      ...artifactSurface.qualitySummary
+    }
+  };
+}
+
+function applyWorkspaceArtifactFromRef(artifactRef) {
+  const downloadFormats = Object.keys(artifactRef.downloadRoutes || {});
+  workspaceState.artifact = {
+    ...workspaceState.artifact,
+    handoffStatus: artifactRef.artifactStatus,
+    title: artifactRef.displayTitle,
+    targetFormats:
+      artifactRef.availableFormats.length > 0
+        ? artifactRef.availableFormats
+        : [artifactRef.primaryFormat].filter(Boolean),
+    citationStatus: artifactRef.qualitySummary?.citationStatus || "UNKNOWN",
+    evidenceRefCount: artifactRef.qualitySummary?.evidenceRefCount || 0,
+    currentVersionId: artifactRef.artifactVersionId,
+    previewRoute: artifactRef.previewRoute,
+    downloadRoutes: artifactRef.downloadRoutes
+  };
+  if (!downloadFormats.includes(workspaceState.selectedArtifactDownloadFormat)) {
+    workspaceState.selectedArtifactDownloadFormat =
+      downloadFormats[0] || artifactRef.primaryFormat || "MD";
+  }
 }
 
 async function submitArtifactFileAction(target, action) {
@@ -2445,9 +2683,24 @@ function buildCurrentMockArtifactRecords() {
     buildMockArtifactRecordFromRef(workspaceState.artifactRef, {
       chatDocumentId: workspaceState.chatDocumentId,
       interactionId: workspaceState.interactionId,
-      cxGenerationId: workspaceState.cxGenerationId
+      cxGenerationId: workspaceState.cxGenerationId,
+      workspaceId: workspaceState.workspaceId,
+      ownerScope:
+        ownerScopeFromSessionState(workspaceState.sessionState) ||
+        localOwnerScope
     })
   ];
+}
+
+function buildCurrentArtifactLibraryQuery() {
+  const ownerScope =
+    ownerScopeFromSessionState(workspaceState.sessionState) || localOwnerScope;
+  return {
+    tenantId: ownerScope.tenantId,
+    workspaceId: workspaceState.workspaceId,
+    ownerUserId: ownerScope.ownerUserId,
+    limit: 20
+  };
 }
 
 function buildMockArtifactRef(format, grounded) {
@@ -2645,6 +2898,7 @@ function badgeClass(status) {
       "VALIDATED",
       "SUCCEEDED",
       "SAVED",
+      "SELECTED",
       "HIGH",
       "COMPLETED",
       "EXPORT_READY",
@@ -2667,10 +2921,10 @@ function badgeClass(status) {
   ].includes(status)) {
     return "warning";
   }
-  if (["RUNNING", "READY_FOR_RENDERING", "EXPORT_PENDING"].includes(status)) {
+  if (["RUNNING", "SELECTING", "READY_FOR_RENDERING", "EXPORT_PENDING"].includes(status)) {
     return "running";
   }
-  if (["PENDING", "UNKNOWN", "NOT_REQUIRED"].includes(status)) return "pending";
+  if (["PENDING", "UNKNOWN", "EMPTY", "NOT_REQUIRED"].includes(status)) return "pending";
   return "danger";
 }
 
@@ -2697,8 +2951,11 @@ function statusLabel(status) {
     VALIDATED: "검증됨",
     SUCCEEDED: "성공",
     SAVED: "저장됨",
+    SELECTED: "선택됨",
+    SELECTING: "선택 중",
     EXPORT_READY: "내보내기 준비",
     EXPORT_PENDING: "내보내기 진행",
+    EMPTY: "비어 있음",
     NOT_REQUIRED: "불필요",
     NOT_READY: "미준비",
     UNHEALTHY: "비정상",

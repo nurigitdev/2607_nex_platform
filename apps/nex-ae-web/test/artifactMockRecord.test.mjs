@@ -63,6 +63,42 @@ describe("AE Web mock artifact records", () => {
     );
   });
 
+  it("adds owner and workspace refs for mock artifact collection filtering", async () => {
+    const ownerScope = {
+      tenantId: "tenant-001",
+      ownerUserId: "user-001"
+    };
+    const record = buildMockArtifactRecordFromRef(artifactRef(), {
+      workspaceId: "workspace-001",
+      ownerScope
+    });
+    const client = createMockArtifactClient({ artifacts: [record] });
+    const matching = await client.listArtifacts({
+      tenantId: "tenant-001",
+      workspaceId: "workspace-001",
+      ownerUserId: "user-001"
+    });
+    const mismatched = await client.listArtifacts({
+      tenantId: "tenant-001",
+      workspaceId: "workspace-001",
+      ownerUserId: "user-002"
+    });
+
+    assert.deepEqual(record.owner_actor_ref, {
+      actor_type: "user",
+      actor_id: "user-001",
+      tenant_id: "tenant-001"
+    });
+    assert.deepEqual(record.workspace_ref, {
+      workspace_id: "workspace-001",
+      tenant_id: "tenant-001"
+    });
+    assert.equal(matching.itemCount, 1);
+    assert.equal(matching.items[0].ownerScope.ownerUserId, "user-001");
+    assert.equal(matching.items[0].ownerScope.workspaceId, "workspace-001");
+    assert.equal(mismatched.itemCount, 0);
+  });
+
   it("adds additional download files when routes point to different file ids", () => {
     const record = buildMockArtifactRecordFromRef(
       artifactRef({

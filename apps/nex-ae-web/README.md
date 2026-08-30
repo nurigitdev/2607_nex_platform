@@ -242,6 +242,17 @@ Slice 0446 adds the artifact library panel read-model:
   payloads, download bytes, source text, storage refs, local paths, database
   URLs, provider endpoints, and credentials.
 
+Slice 0447 wires the artifact library into the AE Web shell:
+
+- The artifact panel now includes owner-scoped library filter, refresh,
+  feedback, summary, and list surfaces.
+- `src/main.js` refreshes the library through `artifactClient.listArtifacts()`
+  and records the library operation in runtime diagnostics.
+- Selecting a library item reads artifact detail metadata through the existing
+  artifact client and refreshes the current preview/version panels.
+- Mock artifact records now carry owner/workspace refs so local regression uses
+  the same collection filter boundary as fetch mode.
+
 Slice 0239 upgrades the protected PostgreSQL smoke:
 
 - The smoke uses browser user auth for AE facade upload, document detail, and
@@ -855,6 +866,9 @@ Slice 0441 starts S45:
 - Slice 0443 exposes the authenticated AE API collection route. AE Web client
   wiring remains deferred, but the browser library now has a stable API target:
   `GET /api/v1/artifacts`.
+- Slice 0445 adds the AE Web collection client adapter, Slice 0446 adds the
+  browser-safe library read-model, and Slice 0447 wires that library into the AE
+  Web artifact panel.
 
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

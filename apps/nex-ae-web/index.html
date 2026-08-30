@@ -315,6 +315,37 @@
                 <h2 id="artifact-title">Artifact</h2>
                 <span class="badge pending" id="handoff-badge">대기</span>
               </div>
+              <div class="artifact-library-toolbar">
+                <select
+                  id="artifact-library-filter"
+                  aria-label="Artifact library filter"
+                >
+                  <option value="all">All</option>
+                  <option value="ready">Ready</option>
+                  <option value="failed">Failed</option>
+                  <option value="downloadable">Download</option>
+                  <option value="previewable">Preview</option>
+                </select>
+                <button id="artifact-library-refresh-button" type="button">
+                  새로고침
+                </button>
+                <span class="badge pending" id="artifact-library-status">대기</span>
+              </div>
+              <div
+                class="operation-feedback artifact-library-feedback"
+                id="artifact-library-feedback"
+                role="status"
+              ></div>
+              <dl
+                class="meta-list client-summary artifact-library-summary"
+                id="artifact-library-summary"
+                aria-label="AE artifact library summary"
+              ></dl>
+              <div
+                class="artifact-library-list-surface"
+                id="artifact-library-list"
+                aria-label="AE artifact library"
+              ></div>
               <div class="artifact-summary" id="artifact-summary"></div>
               <div
                 class="operation-feedback artifact-preview-feedback"

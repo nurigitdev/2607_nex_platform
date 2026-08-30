@@ -974,6 +974,66 @@ def test_ae_web_artifact_preview_download_panel_wiring() -> None:
         assert forbidden not in javascript
 
 
+def test_ae_web_artifact_library_panel_wiring() -> None:
+    html = read_web_file("index.html")
+    javascript = read_web_file("src/main.js")
+    panel = read_web_file("src/artifactLibraryPanel.js")
+    mock_record = read_web_file("src/artifactMockRecord.js")
+
+    for expected in [
+        "artifact-library-filter",
+        "artifact-library-refresh-button",
+        "artifact-library-status",
+        "artifact-library-feedback",
+        "artifact-library-summary",
+        "artifact-library-list",
+        "AE artifact library summary",
+    ]:
+        assert expected in html
+
+    for expected in [
+        "artifactCollectionRoute",
+        "renderArtifactLibraryPanelSurface",
+        "refreshArtifactLibraryPanel",
+        "selectArtifactFromLibrary",
+        "buildCurrentArtifactLibraryQuery",
+        "workspaceState.operations.artifactLibrary",
+        "listArtifacts(query)",
+    ]:
+        assert expected in javascript
+
+    for expected in [
+        "ae_web_artifact_library_panel.v1",
+        "filterArtifactLibraryPanelState",
+        "renderArtifactLibraryPanel",
+        "data-artifact-library-action",
+        "data-artifact-library-item",
+    ]:
+        assert expected in panel
+
+    for expected in [
+        "owner_actor_ref",
+        "workspace_ref",
+        "ownerScope",
+        "workspaceId",
+    ]:
+        assert expected in mock_record
+
+    for forbidden in [
+        "raw_prompt",
+        "raw_generation_output",
+        "source_text",
+        "service_token",
+        "api_key",
+        "database_url",
+        "provider_url",
+        "storage_ref",
+        "storage_path",
+        "/data/nex-platform",
+    ]:
+        assert forbidden not in javascript
+
+
 def test_ae_web_repaired_response_decision_ux_wiring() -> None:
     javascript = read_web_file("src/main.js")
     decision_client = read_web_file("src/repairedResponseDecisionClient.js")
@@ -1089,6 +1149,9 @@ def test_ae_web_styles_keep_responsive_operational_layout() -> None:
     assert ".artifact-actions" in styles
     assert ".artifact-card-warnings" in styles
     assert ".artifact-preview-feedback" in styles
+    assert ".artifact-library-toolbar" in styles
+    assert ".artifact-library-list-surface" in styles
+    assert ".artifact-library-actions" in styles
     assert ".artifact-preview-summary" in styles
     assert ".artifact-preview-content" in styles
     assert ".artifact-preview-content[data-mode=\"download\"]" in styles

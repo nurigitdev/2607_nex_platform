@@ -7,7 +7,9 @@ export function buildMockArtifactRecordFromRef(
   {
     chatDocumentId = "chat-doc-local",
     interactionId = "interaction-local",
-    cxGenerationId = "cx-gen-local"
+    cxGenerationId = "cx-gen-local",
+    workspaceId = null,
+    ownerScope = null
   } = {}
 ) {
   const artifactId = artifactRef.artifactId || artifactRef.artifact_id || "artifact-local";
@@ -72,6 +74,9 @@ export function buildMockArtifactRecordFromRef(
     });
   }
 
+  const normalizedOwnerScope = normalizeOwnerScope(ownerScope);
+  const normalizedWorkspaceId =
+    optionalText(workspaceId) || normalizedOwnerScope.workspaceId || null;
   return {
     artifact_schema_version: "ae_artifact_record.v1",
     artifact_id: artifactId,
@@ -81,6 +86,19 @@ export function buildMockArtifactRecordFromRef(
     current_version_id: artifactVersionId,
     chat_document_id: chatDocumentId,
     interaction_id: interactionId,
+    owner_actor_ref: normalizedOwnerScope.ownerUserId
+      ? {
+          actor_type: "user",
+          actor_id: normalizedOwnerScope.ownerUserId,
+          tenant_id: normalizedOwnerScope.tenantId
+        }
+      : null,
+    workspace_ref: normalizedWorkspaceId
+      ? {
+          workspace_id: normalizedWorkspaceId,
+          tenant_id: normalizedOwnerScope.tenantId
+        }
+      : null,
     display_title:
       artifactRef.displayTitle || artifactRef.display_title || "Generated artifact",
     target_formats: availableFormats,
@@ -174,6 +192,21 @@ function extensionForArtifactFormat(format) {
   if (normalized === "pdf") return "pdf";
   if (normalized === "json") return "json";
   return "md";
+}
+
+function normalizeOwnerScope(ownerScope) {
+  const scope = ownerScope && typeof ownerScope === "object" ? ownerScope : {};
+  return {
+    tenantId: optionalText(scope.tenantId || scope.tenant_id),
+    workspaceId: optionalText(scope.workspaceId || scope.workspace_id),
+    ownerUserId: optionalText(scope.ownerUserId || scope.owner_user_id)
+  };
+}
+
+function optionalText(value) {
+  if (value == null) return null;
+  const text = String(value).trim();
+  return text || null;
 }
 
 function uniqueTexts(values) {
