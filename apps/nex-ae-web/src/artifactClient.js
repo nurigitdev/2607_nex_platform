@@ -5,6 +5,12 @@ export const AE_ARTIFACT_FILE_PREVIEW_SCHEMA_VERSION =
   "ae_artifact_file_preview.v1";
 export const AE_ARTIFACT_FILE_DOWNLOAD_SCHEMA_VERSION =
   "ae_artifact_file_download.v1";
+export const AE_WEB_ARTIFACT_EXPORT_REQUEST_SCHEMA_VERSION =
+  "ae_web_artifact_export_request.v1";
+export const AE_WEB_ARTIFACT_EXPORT_SURFACE_SCHEMA_VERSION =
+  "ae_web_artifact_export_surface.v1";
+
+const SUPPORTED_ARTIFACT_EXPORT_FORMATS = ["MD", "HTML_PREVIEW", "DOCX", "PDF"];
 
 const SENSITIVE_KEY_PARTS = [
   "api_key",
@@ -58,6 +64,10 @@ export function artifactDetailRoute(artifactId) {
 
 export function artifactVersionsRoute(artifactId) {
   return `${artifactDetailRoute(artifactId)}/versions`;
+}
+
+export function artifactRenderJobRoute(artifactId) {
+  return `${artifactDetailRoute(artifactId)}/render-jobs`;
 }
 
 export function artifactFileMetadataRoute(artifactFileId) {
@@ -151,6 +161,22 @@ export function createMockArtifactClient({
           findArtifactLink(records, artifactFileId, "download")
         );
       return buildArtifactDownloadSurface(payload, { clientMode: "mock", route });
+    },
+    async submitArtifactExportRequest(requestPayload) {
+      const exportRequest = buildArtifactExportRequest(requestPayload);
+      const record = records.get(exportRequest.artifact_id);
+      if (!record) {
+        throw new ArtifactClientError("Artifact was not found.", {
+          status: "NOT_FOUND"
+        });
+      }
+      const payload = materializeMockArtifactExport(record, exportRequest);
+      records.set(exportRequest.artifact_id, payload.artifact);
+      return buildArtifactExportSurface(payload, {
+        clientMode: "mock",
+        route: exportRequest.route,
+        requestedFormats: exportRequest.target_formats
+      });
     }
   };
 }
@@ -189,7 +215,60 @@ export function createFetchArtifactClient({ baseUrl = "", fetchImpl } = {}) {
       const route = artifactFileDownloadRoute(artifactFileId);
       const payload = await fetchArtifactJson(request, `${baseUrl}${route}`);
       return buildArtifactDownloadSurface(payload, { clientMode: "fetch", route });
+    },
+    async submitArtifactExportRequest(requestPayload) {
+      const exportRequest = buildArtifactExportRequest(requestPayload);
+      const payload = await fetchArtifactJson(
+        request,
+        `${baseUrl}${exportRequest.route}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": exportRequest.idempotency_key
+          },
+          body: JSON.stringify({
+            render_request_id: exportRequest.render_request_id,
+            target_formats: exportRequest.target_formats
+          })
+        }
+      );
+      return buildArtifactExportSurface(payload, {
+        clientMode: "fetch",
+        route: exportRequest.route,
+        requestedFormats: exportRequest.target_formats
+      });
     }
+  };
+}
+
+export function buildArtifactExportRequest({
+  artifactId,
+  artifact_id,
+  targetFormats,
+  target_formats,
+  renderRequestId,
+  render_request_id
+} = {}) {
+  const normalizedArtifactId = requiredText(
+    artifactId || artifact_id,
+    "artifact_id"
+  );
+  const normalizedTargetFormats = normalizeExportFormats(
+    targetFormats || target_formats || ["MD"]
+  );
+  const normalizedRenderRequestId =
+    optionalText(renderRequestId || render_request_id) ||
+    deterministicExportRequestId(normalizedArtifactId, normalizedTargetFormats);
+  return {
+    artifact_export_request_schema_version:
+      AE_WEB_ARTIFACT_EXPORT_REQUEST_SCHEMA_VERSION,
+    artifact_id: normalizedArtifactId,
+    render_request_id: normalizedRenderRequestId,
+    idempotency_key: normalizedRenderRequestId,
+    target_formats: normalizedTargetFormats,
+    route: artifactRenderJobRoute(normalizedArtifactId),
+    metadata: safeArtifactMetadata({ contentIncluded: false })
   };
 }
 
@@ -369,6 +448,79 @@ export function buildArtifactDownloadSurface(
   return surface;
 }
 
+export function buildArtifactExportSurface(
+  payload,
+  { clientMode = "mock", route = null, requestedFormats = [] } = {}
+) {
+  if (
+    !isObject(payload) ||
+    payload.render_result_schema_version !== "ae_markdown_render_result.v1" ||
+    !isObject(payload.render_job) ||
+    !isObject(payload.artifact)
+  ) {
+    throw new ArtifactClientError("Artifact export response is invalid.", {
+      status: "ARTIFACT_EXPORT_INVALID"
+    });
+  }
+  const artifactSurface = buildArtifactSurfaceFromRecord(payload.artifact, {
+    clientMode,
+    route: artifactDetailRoute(payload.artifact.artifact_id)
+  });
+  const renderJob = payload.render_job;
+  const renderedFormats =
+    currentVersion(payload.artifact.versions, payload.artifact.current_version_id)
+      ?.rendered_formats || artifactSurface.availableFormats;
+  const surface = {
+    artifact_export_schema_version:
+      AE_WEB_ARTIFACT_EXPORT_SURFACE_SCHEMA_VERSION,
+    artifact_client_schema_version: AE_WEB_ARTIFACT_CLIENT_SCHEMA_VERSION,
+    renderResultSchemaVersion: payload.render_result_schema_version,
+    artifactId: artifactSurface.artifactId,
+    artifactVersionId: artifactSurface.artifactVersionId,
+    renderJobId: requiredText(renderJob.render_job_id, "render_job_id"),
+    jobStatus: optionalText(renderJob.job_status) || "UNKNOWN",
+    currentStage: optionalText(renderJob.current_stage) || "UNKNOWN",
+    progressPercent: numberOrZero(renderJob.progress_percent),
+    requestedFormats: normalizeExportFormats(
+      requestedFormats.length > 0 ? requestedFormats : renderedFormats
+    ),
+    renderedFormats: normalizeExportFormats(renderedFormats),
+    artifactSurface,
+    route,
+    clientMode: clientMode === "fetch" ? "fetch" : "mock",
+    metadata: safeArtifactMetadata({ contentIncluded: false })
+  };
+  assertArtifactClientSurfaceSafe(surface);
+  return surface;
+}
+
+export function buildArtifactExportSummary(surface) {
+  if (
+    !isObject(surface) ||
+    surface.artifact_export_schema_version !==
+      AE_WEB_ARTIFACT_EXPORT_SURFACE_SCHEMA_VERSION
+  ) {
+    throw new ArtifactClientError("Artifact export summary is invalid.", {
+      status: "ARTIFACT_EXPORT_SUMMARY_INVALID"
+    });
+  }
+  const summary = {
+    artifact_export_schema_version: surface.artifact_export_schema_version,
+    artifact_id: surface.artifactId,
+    artifact_version_id: surface.artifactVersionId,
+    render_job_id: surface.renderJobId,
+    job_status: surface.jobStatus,
+    current_stage: surface.currentStage,
+    requested_format_count: surface.requestedFormats.length,
+    rendered_format_count: surface.renderedFormats.length,
+    route_present: Boolean(surface.route),
+    client_mode: surface.clientMode,
+    metadata: surface.metadata
+  };
+  assertArtifactClientSurfaceSafe(summary);
+  return summary;
+}
+
 export function buildArtifactClientSummary(surface) {
   if (
     !isObject(surface) ||
@@ -450,14 +602,18 @@ export function findSensitiveArtifactClientKeys(payload) {
   return found.sort();
 }
 
-async function fetchArtifactJson(request, url) {
+async function fetchArtifactJson(request, url, options = {}) {
   let response;
+  const headers = {
+    Accept: "application/json",
+    ...(options.headers || {})
+  };
   try {
     response = await request(url, {
+      method: options.method || "GET",
       credentials: "same-origin",
-      headers: {
-        Accept: "application/json"
-      }
+      headers,
+      ...(options.body ? { body: options.body } : {})
     });
   } catch {
     throw new ArtifactClientError("Artifact request failed.", {
@@ -621,6 +777,78 @@ function buildMockDownloadPayload(artifactFile, artifactLink) {
   };
 }
 
+function materializeMockArtifactExport(record, exportRequest) {
+  const targetFormats = exportRequest.target_formats;
+  const artifact = clone(record);
+  const artifactId = exportRequest.artifact_id;
+  const requestStem = safeIdStem(exportRequest.render_request_id);
+  const artifactVersionId = `artifact-version-${requestStem}`;
+  const renderJobId = `artifact-render-job-${requestStem}`;
+  const contentHash = firstText(
+    artifact.versions?.map(version => version.artifact_content_hash)
+  ) || "f".repeat(64);
+  const createdAt = new Date(0).toISOString();
+  const files = targetFormats.map(format => {
+    const artifactFileId = `artifact-file-${requestStem}-${format.toLowerCase()}`;
+    return {
+      artifact_file_id: artifactFileId,
+      artifact_version_id: artifactVersionId,
+      artifact_id: artifactId,
+      format,
+      mime_type: mimeTypeForExportFormat(format),
+      file_name: fileNameForExportFormat(format),
+      storage_ref: `ae://artifacts/${artifactId}/versions/${artifactVersionId}/${fileNameForExportFormat(format)}`,
+      file_size_bytes: format === "MD" || format === "HTML_PREVIEW" ? 2048 : 4096,
+      file_hash: contentHash,
+      source_version_hash: contentHash,
+      created_at: createdAt
+    };
+  });
+  const links = files.flatMap(file => [
+    {
+      artifact_link_id: `${file.artifact_file_id}-preview-link`,
+      artifact_file_id: file.artifact_file_id,
+      link_type: "preview",
+      access_policy: "owner_only",
+      link_route: artifactFilePreviewRoute(file.artifact_file_id)
+    },
+    {
+      artifact_link_id: `${file.artifact_file_id}-download-link`,
+      artifact_file_id: file.artifact_file_id,
+      link_type: "download",
+      access_policy: "owner_only",
+      link_route: artifactFileDownloadRoute(file.artifact_file_id)
+    }
+  ]);
+  artifact.artifact_status = "READY";
+  artifact.current_version_id = artifactVersionId;
+  artifact.target_formats = targetFormats;
+  artifact.versions = [
+    ...(Array.isArray(artifact.versions) ? artifact.versions : []),
+    {
+      artifact_version_id: artifactVersionId,
+      version_no: (artifact.versions?.length || 0) + 1,
+      source_content_hash: contentHash,
+      artifact_content_hash: contentHash,
+      rendered_formats: targetFormats
+    }
+  ];
+  artifact.files = [...(Array.isArray(artifact.files) ? artifact.files : []), ...files];
+  artifact.links = [...(Array.isArray(artifact.links) ? artifact.links : []), ...links];
+  return {
+    render_result_schema_version: "ae_markdown_render_result.v1",
+    render_job: {
+      render_job_id: renderJobId,
+      artifact_id: artifactId,
+      artifact_version_id: artifactVersionId,
+      job_status: "COMPLETED",
+      current_stage: "FINALIZING",
+      progress_percent: 100
+    },
+    artifact
+  };
+}
+
 function safeArtifactMetadata({
   contentIncluded = false,
   previewTextIncluded = false
@@ -678,6 +906,56 @@ function numberOrZero(value) {
 
 function numberOrNull(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeExportFormats(values) {
+  if (!Array.isArray(values) || values.length === 0) {
+    throw new ArtifactClientError("target_formats must be a non-empty array.", {
+      status: "ARTIFACT_EXPORT_FORMATS_INVALID"
+    });
+  }
+  const normalized = [
+    ...new Set(values.map(value => requiredText(value, "target_format").toUpperCase()))
+  ];
+  const unsupported = normalized.filter(
+    format => !SUPPORTED_ARTIFACT_EXPORT_FORMATS.includes(format)
+  );
+  if (unsupported.length > 0) {
+    throw new ArtifactClientError("Artifact export format is unsupported.", {
+      status: "ARTIFACT_EXPORT_FORMAT_UNSUPPORTED"
+    });
+  }
+  return normalized;
+}
+
+function deterministicExportRequestId(artifactId, targetFormats) {
+  return `artifact-export-${safeIdStem(artifactId)}-${targetFormats
+    .map(format => format.toLowerCase())
+    .join("-")}`;
+}
+
+function mimeTypeForExportFormat(format) {
+  if (format === "HTML_PREVIEW") return "text/html";
+  if (format === "DOCX") {
+    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  }
+  if (format === "PDF") return "application/pdf";
+  return "text/markdown";
+}
+
+function fileNameForExportFormat(format) {
+  if (format === "HTML_PREVIEW") return "generated-artifact.html";
+  if (format === "DOCX") return "generated-artifact.docx";
+  if (format === "PDF") return "generated-artifact.pdf";
+  return "generated-artifact.md";
+}
+
+function safeIdStem(value) {
+  return requiredText(value, "id")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 96);
 }
 
 function isAllowedFalseSensitiveFlag(key, value) {

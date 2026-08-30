@@ -240,6 +240,12 @@ Artifact records:
   private rendered storage, previews remain unavailable for binary files, and
   downloads use the same base64 JSON boundary introduced for DOCX. Rich layout
   and embedded Korean fonts are deferred to a later export quality slice.
+- Slice 0426 adds protected multi-format export smoke evidence for the AE test
+  database. Set `NEX_AE_ARTIFACT_EXPORT_POSTGRES_SMOKE=1` with
+  `NEX_AE_TEST_DATABASE_URL` to run test-profile migration, handoff/create/render
+  route checks, persisted version/file/link selects, text/base64 download shape
+  checks, local rendered payload verification, and cleanup against the real
+  `nex_ae_test` database.
 
 Prompt analytics:
 

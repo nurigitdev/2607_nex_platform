@@ -675,5 +675,18 @@ Slice 0421 starts S43 from the export/transform boundary:
   Markdown-only while mock browser surfaces can still display future format
   metadata safely.
 
+Slice 0426 wires export submit intent to the artifact client:
+
+- `src/artifactClient.js` exposes `submitArtifactExportRequest` for mock and
+  fetch clients. Fetch mode posts to
+  `/api/v1/artifacts/{artifact_id}/render-jobs` with same-origin credentials,
+  an `Idempotency-Key`, and explicit `target_formats`.
+- `src/main.js` routes the composer format selector through
+  `submitArtifactExportRequest` before rendering the chat artifact ref, while
+  mock mode produces deterministic export evidence without requiring a live
+  backend.
+- `scripts/smoke/run_ae_artifact_export_postgres_smoke.py` is the protected
+  test-database evidence point for multi-format export files.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

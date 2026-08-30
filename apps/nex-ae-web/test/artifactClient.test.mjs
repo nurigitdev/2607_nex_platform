@@ -5,13 +5,19 @@ import {
   AE_ARTIFACT_FILE_DOWNLOAD_SCHEMA_VERSION,
   AE_ARTIFACT_FILE_PREVIEW_SCHEMA_VERSION,
   AE_ARTIFACT_RECORD_SCHEMA_VERSION,
+  AE_WEB_ARTIFACT_EXPORT_REQUEST_SCHEMA_VERSION,
+  AE_WEB_ARTIFACT_EXPORT_SURFACE_SCHEMA_VERSION,
   AE_WEB_ARTIFACT_CLIENT_SCHEMA_VERSION,
   ArtifactClientError,
   artifactDetailRoute,
   artifactFileDownloadRoute,
   artifactFileMetadataRoute,
   artifactFilePreviewRoute,
+  artifactRenderJobRoute,
   artifactVersionsRoute,
+  buildArtifactExportRequest,
+  buildArtifactExportSummary,
+  buildArtifactExportSurface,
   buildArtifactClientSummary,
   buildArtifactDownloadSurface,
   buildArtifactPreviewSurface,
@@ -247,6 +253,10 @@ describe("AE Web artifact client adapter", () => {
     });
 
     assert.equal(artifactDetailRoute("artifact 1"), "/api/v1/artifacts/artifact%201");
+    assert.equal(
+      artifactRenderJobRoute("artifact 1"),
+      "/api/v1/artifacts/artifact%201/render-jobs"
+    );
     assert.equal(artifactVersionsRoute("artifact 1"), "/api/v1/artifacts/artifact%201/versions");
     assert.equal(
       artifactFileMetadataRoute("file 1"),
@@ -372,5 +382,166 @@ describe("AE Web artifact client adapter", () => {
     assert.deepEqual(findSensitiveArtifactClientKeys({ raw_prompt: "hidden" }), [
       "raw_prompt"
     ]);
+  });
+
+  it("builds safe export requests and summaries for multi-format render jobs", () => {
+    const request = buildArtifactExportRequest({
+      artifactId: "artifact-001",
+      targetFormats: ["pdf", "MD", "PDF"]
+    });
+    const surface = buildArtifactExportSurface(
+      {
+        render_result_schema_version: "ae_markdown_render_result.v1",
+        render_job: {
+          render_job_id: "render-job-001",
+          job_status: "COMPLETED",
+          current_stage: "FINALIZING",
+          progress_percent: 100
+        },
+        artifact: artifactRecord({
+          current_version_id: "artifact-version-002",
+          versions: [
+            ...artifactRecord().versions,
+            {
+              artifact_version_id: "artifact-version-002",
+              version_no: 2,
+              source_content_hash: "c".repeat(64),
+              artifact_content_hash: "d".repeat(64),
+              rendered_formats: ["PDF", "MD"]
+            }
+          ],
+          files: [
+            ...artifactRecord().files,
+            {
+              artifact_file_id: "artifact-file-pdf-001",
+              artifact_id: "artifact-001",
+              artifact_version_id: "artifact-version-002",
+              format: "PDF",
+              mime_type: "application/pdf",
+              file_name: "generated-report.pdf",
+              storage_ref: "ae://artifacts/artifact-001/versions/artifact-version-002/generated-report.pdf",
+              file_size_bytes: 4096,
+              file_hash: "d".repeat(64),
+              source_version_hash: "d".repeat(64)
+            }
+          ],
+          links: [
+            ...artifactRecord().links,
+            {
+              artifact_link_id: "artifact-link-pdf-download-001",
+              artifact_file_id: "artifact-file-pdf-001",
+              link_type: "download",
+              access_policy: "owner_only",
+              link_route: "/api/v1/artifact-files/artifact-file-pdf-001/download"
+            }
+          ]
+        })
+      },
+      { requestedFormats: request.target_formats, route: request.route }
+    );
+    const summary = buildArtifactExportSummary(surface);
+
+    assert.equal(
+      request.artifact_export_request_schema_version,
+      AE_WEB_ARTIFACT_EXPORT_REQUEST_SCHEMA_VERSION
+    );
+    assert.deepEqual(request.target_formats, ["PDF", "MD"]);
+    assert.equal(request.route, "/api/v1/artifacts/artifact-001/render-jobs");
+    assert.equal(
+      surface.artifact_export_schema_version,
+      AE_WEB_ARTIFACT_EXPORT_SURFACE_SCHEMA_VERSION
+    );
+    assert.equal(surface.renderJobId, "render-job-001");
+    assert.deepEqual(surface.renderedFormats, ["PDF", "MD"]);
+    assert.equal(summary.rendered_format_count, 2);
+    assert.equal(JSON.stringify(surface).includes("storage_ref"), false);
+    assert.doesNotMatch(JSON.stringify(summary), /\/data\/nex-platform|service_token/);
+  });
+
+  it("submits artifact export requests in mock and fetch modes", async () => {
+    const mockClient = createMockArtifactClient({ artifacts: [artifactRecord()] });
+    const mockResult = await mockClient.submitArtifactExportRequest({
+      artifactId: "artifact-001",
+      renderRequestId: "render-request-001",
+      targetFormats: ["DOCX", "PDF"]
+    });
+    const refreshed = await mockClient.getArtifact("artifact-001");
+    const versions = await mockClient.listArtifactVersions("artifact-001");
+
+    assert.equal(mockResult.jobStatus, "COMPLETED");
+    assert.deepEqual(mockResult.requestedFormats, ["DOCX", "PDF"]);
+    assert.equal(refreshed.availableFormats.includes("PDF"), true);
+    assert.equal(versions.versionCount, 2);
+
+    const calls = [];
+    const fetchClient = createFetchArtifactClient({
+      fetchImpl: async (url, options) => {
+        calls.push({ url, options });
+        return jsonResponse({
+          payload: {
+            render_result_schema_version: "ae_markdown_render_result.v1",
+            render_job: {
+              render_job_id: "render-job-fetch-001",
+              job_status: "COMPLETED",
+              current_stage: "FINALIZING",
+              progress_percent: 100
+            },
+            artifact: artifactRecord({
+              current_version_id: "artifact-version-fetch-001",
+              versions: [
+                {
+                  artifact_version_id: "artifact-version-fetch-001",
+                  version_no: 1,
+                  source_content_hash: "c".repeat(64),
+                  artifact_content_hash: "e".repeat(64),
+                  rendered_formats: ["HTML_PREVIEW"]
+                }
+              ]
+            })
+          }
+        });
+      }
+    });
+    const fetchResult = await fetchClient.submitArtifactExportRequest({
+      artifactId: "artifact-001",
+      renderRequestId: "render-request-fetch-001",
+      targetFormats: ["HTML_PREVIEW"]
+    });
+
+    assert.equal(fetchResult.renderJobId, "render-job-fetch-001");
+    assert.equal(calls[0].url, "/api/v1/artifacts/artifact-001/render-jobs");
+    assert.equal(calls[0].options.method, "POST");
+    assert.equal(calls[0].options.credentials, "same-origin");
+    assert.equal(calls[0].options.headers["Idempotency-Key"], "render-request-fetch-001");
+    assert.deepEqual(JSON.parse(calls[0].options.body).target_formats, [
+      "HTML_PREVIEW"
+    ]);
+  });
+
+  it("rejects malformed export requests and responses", () => {
+    assert.throws(
+      () => buildArtifactExportRequest({ artifactId: "artifact-001", targetFormats: [] }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_EXPORT_FORMATS_INVALID"
+    );
+    assert.throws(
+      () => buildArtifactExportRequest({ artifactId: "artifact-001", targetFormats: ["TXT"] }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_EXPORT_FORMAT_UNSUPPORTED"
+    );
+    assert.throws(
+      () => buildArtifactExportSurface({ render_result_schema_version: "wrong" }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_EXPORT_INVALID"
+    );
+    assert.throws(
+      () => buildArtifactExportSummary({ artifact_export_schema_version: "wrong" }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_EXPORT_SUMMARY_INVALID"
+    );
   });
 });

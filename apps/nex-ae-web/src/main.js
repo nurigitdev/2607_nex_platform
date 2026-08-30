@@ -8,6 +8,7 @@ import {
   buildArtifactCardCollectionReadModel
 } from "./artifactCardReadModel.js";
 import {
+  artifactRenderJobRoute,
   artifactVersionsRoute,
   createMockArtifactClient
 } from "./artifactClient.js";
@@ -1586,6 +1587,8 @@ async function appendPromptInteraction() {
   const retrievalResult = await submitRetrievalRequest(retrievalRequest);
   const artifactRef = buildMockArtifactRef(format, grounded);
   syncMockArtifactClientFromArtifactRef();
+  const artifactExport = await submitArtifactExportRequest(format, artifactRef);
+  const visibleArtifactRef = artifactExport?.artifactRef || artifactRef;
   workspaceState.messages.push({
     role: "user",
     label: "사용자",
@@ -1597,7 +1600,7 @@ async function appendPromptInteraction() {
     text: grounded
       ? `${documentScopeLabel(workspaceState.documentScope)} 범위로 ${retrievalResult.cxStatus} retrieval 결과와 ${format} handoff를 연결했습니다.`
       : `${format} 생성 요청을 일반 답변 흐름으로 연결했습니다.`,
-    artifactRefs: [artifactRef],
+    artifactRefs: [visibleArtifactRef],
     retrievalScope: grounded ? workspaceState.documentScope : null,
     retrievalResult: grounded ? retrievalResult : null,
     retrievalQualityWarning: grounded
@@ -1684,6 +1687,86 @@ async function submitArtifactPreviewAction(target) {
 
 async function submitArtifactDownloadAction(target) {
   await submitArtifactFileAction(target, "download");
+}
+
+async function submitArtifactExportRequest(format, artifactRef) {
+  if (!workspaceState.artifactClient?.submitArtifactExportRequest) {
+    return null;
+  }
+  const route = artifactRenderJobRoute(artifactRef.artifactId);
+  const renderRequestId = [
+    "web-artifact-export",
+    workspaceState.interactionId,
+    workspaceState.messages.length + 1,
+    String(format).toLowerCase()
+  ].join("-");
+  workspaceState.operations.artifactVersions = markOperationRunning(
+    workspaceState.operations.artifactVersions,
+    {
+      clientMode: workspaceState.artifactClient.clientMode,
+      route
+    }
+  );
+  renderArtifactVersionPanelSurface();
+
+  try {
+    const exportSurface =
+      await workspaceState.artifactClient.submitArtifactExportRequest({
+        artifactId: artifactRef.artifactId,
+        renderRequestId,
+        targetFormats: [format]
+      });
+    const exportedArtifactRef = artifactRefFromExportSurface(
+      artifactRef,
+      exportSurface
+    );
+    workspaceState.artifactRef = exportedArtifactRef;
+    workspaceState.operations.artifactVersions = markOperationSucceeded(
+      workspaceState.operations.artifactVersions,
+      {
+        status: exportSurface.jobStatus,
+        resultStatus: exportSurface.currentStage,
+        clientMode: exportSurface.clientMode,
+        route: exportSurface.route
+      }
+    );
+    return {
+      artifactRef: exportedArtifactRef,
+      exportSurface
+    };
+  } catch (error) {
+    workspaceState.operations.artifactVersions = markOperationFailed(
+      workspaceState.operations.artifactVersions,
+      {
+        error,
+        clientMode: workspaceState.artifactClient.clientMode,
+        route
+      }
+    );
+    return null;
+  }
+}
+
+function artifactRefFromExportSurface(previousRef, exportSurface) {
+  const artifactSurface = exportSurface.artifactSurface;
+  return {
+    ...previousRef,
+    artifactId: exportSurface.artifactId,
+    artifactVersionId: exportSurface.artifactVersionId,
+    artifactStatus: exportSurface.jobStatus === "COMPLETED" ? "READY" : exportSurface.jobStatus,
+    primaryFormat: exportSurface.requestedFormats[0] || previousRef.primaryFormat,
+    availableFormats: exportSurface.renderedFormats,
+    previewRoute: artifactSurface.previewRoute || previousRef.previewRoute,
+    downloadRoutes: artifactSurface.downloadRoutes,
+    sourceGenerationId:
+      artifactSurface.sourceGenerationId || previousRef.sourceGenerationId,
+    sourceContentHash:
+      artifactSurface.sourceContentHash || previousRef.sourceContentHash,
+    qualitySummary: {
+      ...previousRef.qualitySummary,
+      ...artifactSurface.qualitySummary
+    }
+  };
 }
 
 async function submitArtifactFileAction(target, action) {
