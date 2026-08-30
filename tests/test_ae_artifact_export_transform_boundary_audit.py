@@ -52,8 +52,8 @@ def test_ae_artifact_export_transform_boundary_audit_passes_current_repo() -> No
     assert audit.summary_line(evidence).startswith(
         "ae_artifact_export_transform_boundary_audit=pass "
     )
-    assert "gaps_ready=4/8" in audit.summary_line(evidence)
-    assert "next=Slice 0425" in audit.summary_line(evidence)
+    assert "gaps_ready=6/8" in audit.summary_line(evidence)
+    assert "next=Slice 0426" in audit.summary_line(evidence)
 
 
 def test_ae_artifact_export_transform_boundary_audit_does_not_leak_protected_values() -> None:

@@ -7,6 +7,7 @@ from typing import Any
 from zipfile import ZipFile
 
 import httpx
+import pypdf
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
@@ -41,6 +42,7 @@ from nex_ae_api.artifacts import (
     build_html_preview_artifact_file,
     build_markdown_artifact_files,
     build_markdown_render_result,
+    build_pdf_export_artifact_file,
     build_rendered_artifact_file,
     build_rendered_payloads_from_markdown,
     build_artifact_record_from_handoff,
@@ -51,6 +53,8 @@ from nex_ae_api.artifacts import (
     render_docx_export_from_markdown,
     render_html_preview_from_markdown,
     render_markdown_from_structured_draft,
+    render_pdf_export_from_markdown,
+    render_stage_sequence_for_formats,
     render_target_formats_from_payload,
     rendered_download_fields_from_payload,
     rendered_text_from_payload,
@@ -606,7 +610,12 @@ def test_artifact_transformer_catalog_and_format_helpers_are_explicit() -> None:
         "DOCX",
         "PDF",
     }
-    assert ae_artifacts.IMPLEMENTED_RENDER_FORMATS == {"MD", "HTML_PREVIEW", "DOCX"}
+    assert ae_artifacts.IMPLEMENTED_RENDER_FORMATS == {
+        "MD",
+        "HTML_PREVIEW",
+        "DOCX",
+        "PDF",
+    }
     assert artifact_format_spec("MD")["render_stage"] == "MARKDOWN_RENDERING"
     assert artifact_format_spec("DOCX")["content_kind"] == "binary"
     assert artifact_mime_type("HTML_PREVIEW") == "text/html"
@@ -621,7 +630,7 @@ def test_artifact_transformer_catalog_and_format_helpers_are_explicit() -> None:
     assert exc_info.value.error_code == "ae.render_format_unsupported"
 
 
-def test_render_target_formats_allows_html_preview_docx_and_defers_pdf() -> None:
+def test_render_target_formats_allows_all_materialized_formats() -> None:
     artifact_record = build_artifact_record_from_handoff(
         source_payload={"artifact_request_id": "artifact-create-001"},
         handoff_record=sample_handoff_record(),
@@ -639,6 +648,10 @@ def test_render_target_formats_allows_html_preview_docx_and_defers_pdf() -> None
         {"target_formats": ["DOCX", "HTML_PREVIEW"]},
         artifact_record,
     ) == ["DOCX", "HTML_PREVIEW"]
+    assert render_target_formats_from_payload(
+        {"target_formats": ["PDF", "MD", "PDF"]},
+        artifact_record,
+    ) == ["PDF", "MD"]
 
     with pytest.raises(ArtifactHandoffError) as empty_exc:
         render_target_formats_from_payload({"target_formats": []}, artifact_record)
@@ -648,11 +661,6 @@ def test_render_target_formats_allows_html_preview_docx_and_defers_pdf() -> None
         render_target_formats_from_payload({"target_formats": ["TXT"]}, artifact_record)
     assert unknown_exc.value.error_code == "ae.render_format_unsupported"
 
-    with pytest.raises(ArtifactHandoffError) as deferred_exc:
-        render_target_formats_from_payload({"target_formats": ["PDF"]}, artifact_record)
-    assert deferred_exc.value.error_code == "ae.render_format_unsupported"
-    assert "not implemented" in deferred_exc.value.detail
-
     markdown_only_record = {**artifact_record, "target_formats": ["MD"]}
     with pytest.raises(ArtifactHandoffError) as not_requested_exc:
         render_target_formats_from_payload(
@@ -660,6 +668,26 @@ def test_render_target_formats_allows_html_preview_docx_and_defers_pdf() -> None
             markdown_only_record,
         )
     assert not_requested_exc.value.error_code == "ae.render_format_not_requested"
+
+
+def test_render_stage_sequence_uses_canonical_multi_format_order() -> None:
+    assert ae_artifacts.MULTI_FORMAT_RENDER_STAGE_ORDER == (
+        "HANDOFF_VALIDATING",
+        "MARKDOWN_RENDERING",
+        "HTML_PREVIEW_RENDERING",
+        "DOCX_RENDERING",
+        "PDF_RENDERING",
+        "LINK_CREATING",
+        "FINALIZING",
+    )
+    assert render_stage_sequence_for_formats(["PDF", "MD", "HTML_PREVIEW"]) == [
+        "HANDOFF_VALIDATING",
+        "MARKDOWN_RENDERING",
+        "HTML_PREVIEW_RENDERING",
+        "PDF_RENDERING",
+        "LINK_CREATING",
+        "FINALIZING",
+    ]
 
 
 def test_html_preview_materializer_escapes_markdown_and_lists() -> None:
@@ -802,7 +830,84 @@ def test_markdown_render_result_materializes_docx_file() -> None:
     assert helper_file == docx_file
 
 
-def test_rendered_payload_builders_report_unimplemented_format() -> None:
+def test_pdf_export_materializer_builds_readable_pdf_bytes() -> None:
+    pdf_payload = render_pdf_export_from_markdown(
+        "# Report (Q3)\n"
+        "\n"
+        "Intro paragraph with safe ASCII text.\n"
+        "\n"
+        "## Findings\n"
+        "\n"
+        "- first item\n"
+        "- second item\n"
+    )
+    reader = pypdf.PdfReader(BytesIO(pdf_payload))
+    extracted = "\n".join(page.extract_text() or "" for page in reader.pages)
+
+    assert pdf_payload.startswith(b"%PDF-1.4")
+    assert len(reader.pages) == 1
+    assert "Report (Q3)" in extracted
+    assert "Intro paragraph" in extracted
+    assert "first item" in extracted
+    assert "/data/nex-platform" not in extracted
+
+
+def test_markdown_render_result_materializes_pdf_file() -> None:
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-create-001"},
+        handoff_record=sample_handoff_record(),
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    result = build_markdown_render_result(
+        artifact_record=artifact_record,
+        structured_draft=sample_structured_draft(),
+        target_formats=["MD", "HTML_PREVIEW", "DOCX", "PDF"],
+        render_request_id="render-request-001",
+        render_job_id=deterministic_render_job_id(
+            artifact_record["artifact_id"],
+            "render-request-001",
+        ),
+    )
+    pdf_file = next(
+        artifact_file
+        for artifact_file in result["artifact_files"]
+        if artifact_file["format"] == "PDF"
+    )
+    helper_file = build_pdf_export_artifact_file(
+        artifact_record=artifact_record,
+        artifact_version=result["artifact_version"],
+        pdf_payload=result["rendered_payloads"]["PDF"],
+    )
+    policy_hash_for_pdf_only = build_markdown_render_result(
+        artifact_record=artifact_record,
+        structured_draft=sample_structured_draft(),
+        target_formats=["PDF"],
+        render_request_id="render-request-002",
+        render_job_id=deterministic_render_job_id(
+            artifact_record["artifact_id"],
+            "render-request-002",
+        ),
+    )["artifact_version"]["render_policy_hash"]
+
+    assert result["artifact_version"]["rendered_formats"] == [
+        "MD",
+        "HTML_PREVIEW",
+        "DOCX",
+        "PDF",
+    ]
+    assert set(result["rendered_payloads"]) == {"MD", "HTML_PREVIEW", "DOCX", "PDF"}
+    assert pdf_file["mime_type"] == "application/pdf"
+    assert pdf_file["file_name"].endswith(".pdf")
+    assert pdf_file["file_size_bytes"] == len(result["rendered_payloads"]["PDF"])
+    assert pdf_file["file_hash"] == sha256_bytes(result["rendered_payloads"]["PDF"])
+    assert helper_file == pdf_file
+    assert len(result["artifact_links"]) == 8
+    assert policy_hash_for_pdf_only != result["artifact_version"]["render_policy_hash"]
+
+
+def test_rendered_payload_builders_report_missing_payload() -> None:
     artifact_record = build_artifact_record_from_handoff(
         source_payload={"artifact_request_id": "artifact-create-001"},
         handoff_record=sample_handoff_record(),
@@ -832,8 +937,8 @@ def test_rendered_payload_builders_report_unimplemented_format() -> None:
             ),
         )
 
-    assert exc_info.value.status_code == 422
-    assert exc_info.value.error_code == "ae.render_format_unsupported"
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.error_code == "ae.render_payload_missing"
 
 
 def test_build_rendered_artifact_file_uses_format_catalog_and_bytes_hash() -> None:
@@ -1370,6 +1475,50 @@ def test_docx_render_route_stores_binary_and_downloads_base64() -> None:
     assert "content" not in download.json()
 
 
+def test_pdf_render_route_stores_binary_and_downloads_base64() -> None:
+    client, handoff_store, artifact_store, _ = build_client_with_artifact_store()
+    handoff = handoff_store.save(sample_handoff_record())
+    created = client.post(
+        "/api/v1/artifacts",
+        json={"artifact_handoff_id": handoff["artifact_handoff_id"]},
+        headers={**auth_headers(), "Idempotency-Key": "artifact-create-001"},
+    )
+    artifact_id = created.json()["artifact_id"]
+
+    rendered = client.post(
+        f"/api/v1/artifacts/{artifact_id}/render-jobs",
+        json={"target_formats": ["PDF"]},
+        headers={**auth_headers(), "Idempotency-Key": "render-request-pdf-001"},
+    )
+    artifact = rendered.json()["artifact"]
+    pdf_file = artifact["files"][0]
+    preview = client.get(
+        f"/api/v1/artifact-files/{pdf_file['artifact_file_id']}/preview",
+        headers=auth_headers(),
+    )
+    download = client.get(
+        f"/api/v1/artifact-files/{pdf_file['artifact_file_id']}/download",
+        headers=auth_headers(),
+    )
+    stored_payload = artifact_store.get_rendered_artifact_file(pdf_file)
+    reader = pypdf.PdfReader(BytesIO(stored_payload or b""))
+
+    assert rendered.status_code == 200
+    assert artifact["versions"][0]["rendered_formats"] == ["PDF"]
+    assert pdf_file["format"] == "PDF"
+    assert pdf_file["mime_type"] == "application/pdf"
+    assert stored_payload is not None
+    assert stored_payload.startswith(b"%PDF-1.4")
+    assert len(reader.pages) == 1
+    assert preview.status_code == 409
+    assert preview.json()["error_code"] == "ae.artifact_file_preview_unavailable"
+    assert download.status_code == 200
+    assert download.json()["content_type"] == "application/pdf"
+    assert download.json()["content_encoding"] == "base64"
+    assert base64.b64decode(download.json()["content_base64"]) == stored_payload
+    assert "content" not in download.json()
+
+
 def test_markdown_render_route_reports_missing_and_invalid_requests() -> None:
     client, handoff_store, _, source_client = build_client_with_artifact_store()
     handoff = handoff_store.save(sample_handoff_record())
@@ -1396,7 +1545,7 @@ def test_markdown_render_route_reports_missing_and_invalid_requests() -> None:
     )
     invalid_format = client.post(
         f"/api/v1/artifacts/{artifact_id}/render-jobs",
-        json={"target_formats": ["PDF"]},
+        json={"target_formats": ["TXT"]},
         headers=auth_headers(),
     )
     missing_job = client.get(

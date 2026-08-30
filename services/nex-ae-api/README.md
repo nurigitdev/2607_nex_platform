@@ -234,6 +234,12 @@ Artifact records:
   generated DOCX bytes privately, emits deterministic `.docx` file metadata,
   keeps preview unavailable for binary files, and returns base64 content from
   the existing download JSON boundary. `PDF` remains cataloged but deferred.
+- Slice 0425 implements a deterministic text `PDF` export adapter and freezes
+  `MULTI_FORMAT_RENDER_STAGE_ORDER`. Render policy hashes now include the
+  canonical stage sequence for the requested format set. PDF bytes stay in
+  private rendered storage, previews remain unavailable for binary files, and
+  downloads use the same base64 JSON boundary introduced for DOCX. Rich layout
+  and embedded Korean fonts are deferred to a later export quality slice.
 
 Prompt analytics:
 

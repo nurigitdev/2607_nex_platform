@@ -6,6 +6,7 @@ import html
 import json
 import os
 import re
+import textwrap
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from io import BytesIO
@@ -37,6 +38,15 @@ DEFAULT_TARGET_FORMATS = ["MD", "HTML_PREVIEW"]
 DEFAULT_RETENTION_POLICY_REF = "generated-artifact-retention-local-v1"
 DEFAULT_ARTIFACT_TYPE = "generated_document"
 MARKDOWN_RENDERER_POLICY_ID = "ae-markdown-renderer-v1"
+MULTI_FORMAT_RENDER_STAGE_ORDER = (
+    "HANDOFF_VALIDATING",
+    "MARKDOWN_RENDERING",
+    "HTML_PREVIEW_RENDERING",
+    "DOCX_RENDERING",
+    "PDF_RENDERING",
+    "LINK_CREATING",
+    "FINALIZING",
+)
 ARTIFACT_TRANSFORMER_CATALOG = {
     "MD": {
         "format": "MD",
@@ -74,7 +84,7 @@ ARTIFACT_TRANSFORMER_CATALOG = {
         "render_stage": "PDF_RENDERING",
         "content_kind": "binary",
         "materializer": "pdf_export_transformer",
-        "implemented": False,
+        "implemented": True,
     },
 }
 IMPLEMENTED_RENDER_FORMATS = {
@@ -1280,6 +1290,9 @@ def build_markdown_render_result(
             {
                 "renderer_policy_id": MARKDOWN_RENDERER_POLICY_ID,
                 "target_formats": target_formats,
+                "render_stage_sequence": render_stage_sequence_for_formats(
+                    target_formats
+                ),
                 "template_ref": artifact_record["template_ref"],
             }
         ),
@@ -1337,6 +1350,8 @@ def build_rendered_payloads_from_markdown(
         )
     if "DOCX" in target_formats:
         payloads["DOCX"] = render_docx_export_from_markdown(markdown)
+    if "PDF" in target_formats:
+        payloads["PDF"] = render_pdf_export_from_markdown(markdown)
     return payloads
 
 
@@ -1352,9 +1367,9 @@ def build_rendered_artifact_files_from_payloads(
         payload = rendered_payloads.get(target_format)
         if payload is None:
             raise ArtifactHandoffError(
-                status_code=422,
-                error_code="ae.render_format_unsupported",
-                detail=f"Render format is not implemented yet: {target_format}",
+                status_code=500,
+                error_code="ae.render_payload_missing",
+                detail=f"Rendered payload is not available for format: {target_format}",
             )
         artifact_files.append(
             build_rendered_artifact_file(
@@ -1408,6 +1423,20 @@ def build_docx_export_artifact_file(
         artifact_version=artifact_version,
         target_format="DOCX",
         payload=docx_payload,
+    )
+
+
+def build_pdf_export_artifact_file(
+    *,
+    artifact_record: dict[str, Any],
+    artifact_version: dict[str, Any],
+    pdf_payload: bytes,
+) -> dict[str, Any]:
+    return build_rendered_artifact_file(
+        artifact_record=artifact_record,
+        artifact_version=artifact_version,
+        target_format="PDF",
+        payload=pdf_payload,
     )
 
 
@@ -1471,6 +1500,24 @@ def artifact_file_extension(target_format: str) -> str:
 
 def artifact_content_kind(target_format: str) -> str:
     return str(artifact_format_spec(target_format)["content_kind"])
+
+
+def render_stage_sequence_for_formats(target_formats: list[str]) -> list[str]:
+    sequence = ["HANDOFF_VALIDATING", "MARKDOWN_RENDERING"]
+    for stage in (
+        artifact_format_spec(target_format)["render_stage"]
+        for target_format in target_formats
+    ):
+        if stage not in sequence:
+            sequence.append(str(stage))
+    for stage in ("LINK_CREATING", "FINALIZING"):
+        if stage not in sequence:
+            sequence.append(stage)
+    return [
+        stage
+        for stage in MULTI_FORMAT_RENDER_STAGE_ORDER
+        if stage in set(sequence)
+    ]
 
 
 def artifact_file_name_for_format(title: str, target_format: str) -> str:
@@ -1742,6 +1789,116 @@ def render_docx_export_from_markdown(markdown: str) -> bytes:
     buffer = BytesIO()
     document.save(buffer)
     return buffer.getvalue()
+
+
+def render_pdf_export_from_markdown(markdown: str) -> bytes:
+    lines = pdf_lines_from_markdown(markdown)
+    pages = [
+        lines[index : index + 44]
+        for index in range(0, len(lines), 44)
+    ] or [[""]]
+    objects: list[bytes] = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    page_object_ids: list[int] = []
+    for page_lines in pages:
+        page_object_id = len(objects) + 1
+        content_object_id = page_object_id + 1
+        page_object_ids.append(page_object_id)
+        stream = pdf_content_stream(page_lines)
+        objects.append(
+            (
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+                "/Resources << /Font << /F1 3 0 R >> >> "
+                f"/Contents {content_object_id} 0 R >>"
+            ).encode("ascii")
+        )
+        objects.append(
+            (
+                f"<< /Length {len(stream)} >>\n"
+            ).encode("ascii")
+            + b"stream\n"
+            + stream
+            + b"\nendstream"
+        )
+    kids = " ".join(f"{object_id} 0 R" for object_id in page_object_ids)
+    objects[1] = (
+        f"<< /Type /Pages /Kids [{kids}] /Count {len(page_object_ids)} >>"
+    ).encode("ascii")
+    return build_pdf_document(objects)
+
+
+def pdf_lines_from_markdown(markdown: str) -> list[str]:
+    lines: list[str] = []
+    for raw_line in markdown.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("# "):
+            normalized = line[2:].strip()
+        elif line.startswith("## "):
+            normalized = line[3:].strip()
+        elif line.startswith("- "):
+            normalized = f"- {line[2:].strip()}"
+        else:
+            normalized = line
+        wrapped = textwrap.wrap(normalized, width=88) or [""]
+        lines.extend(wrapped)
+    return lines or [""]
+
+
+def pdf_content_stream(lines: list[str]) -> bytes:
+    commands = ["BT", "/F1 11 Tf", "50 800 Td"]
+    first = True
+    for line in lines:
+        if first:
+            first = False
+        else:
+            commands.append("0 -16 Td")
+        commands.append(f"({pdf_literal_text(line)}) Tj")
+    commands.append("ET")
+    return "\n".join(commands).encode("cp1252")
+
+
+def pdf_literal_text(value: str) -> str:
+    safe_text = value.encode("cp1252", errors="replace").decode("cp1252")
+    return (
+        safe_text.replace("\\", "\\\\")
+        .replace("(", "\\(")
+        .replace(")", "\\)")
+        .replace("\r", " ")
+        .replace("\n", " ")
+    )
+
+
+def build_pdf_document(objects: list[bytes]) -> bytes:
+    pdf = b"%PDF-1.4\n"
+    offsets: list[int] = []
+    for object_number, body in enumerate(objects, start=1):
+        offsets.append(len(pdf))
+        pdf += (
+            f"{object_number} 0 obj\n".encode("ascii")
+            + body
+            + b"\nendobj\n"
+        )
+    startxref = len(pdf)
+    xref_entries = b"".join(
+        f"{offset:010d} 00000 n \n".encode("ascii") for offset in offsets
+    )
+    return (
+        pdf
+        + f"xref\n0 {len(objects) + 1}\n".encode("ascii")
+        + b"0000000000 65535 f \n"
+        + xref_entries
+        + f"trailer\n<< /Root 1 0 R /Size {len(objects) + 1} >>\n".encode(
+            "ascii"
+        )
+        + b"startxref\n"
+        + str(startxref).encode("ascii")
+        + b"\n%%EOF\n"
+    )
 
 
 def validate_structured_draft_for_markdown_render(
