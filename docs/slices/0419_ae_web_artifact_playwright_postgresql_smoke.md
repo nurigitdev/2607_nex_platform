@@ -43,3 +43,9 @@ NEX_AE_WEB_ARTIFACT_PLAYWRIGHT_POSTGRES_SMOKE=1 \
 NEX_AE_TEST_DATABASE_URL='postgresql+psycopg://.../nex_ae_test' \
 ./.venv/bin/python scripts/smoke/run_ae_web_artifact_playwright_postgres_smoke.py --summary
 ```
+
+Expected protected summary shape:
+
+```text
+ae_web_artifact_playwright_postgres_smoke=pass profile=test version_panel=VERSION_READY preview_panel=PREVIEW_READY download_panel=DOWNLOAD_READY rows=8 live_db=true browser=playwright
+```

@@ -143,15 +143,6 @@ Slice 0227 adds the static browser smoke evidence runner:
 - Python tests cover pass, missing-anchor, timeout, retry, process shutdown,
   and summary output branches.
 
-Slice 0419 adds protected artifact Playwright smoke coverage:
-
-- `scripts/runArtifactPlaywrightSmoke.mjs` launches Chromium against the AE Web
-  shell and drives artifact detail, versions, file metadata, preview, and
-  download fetches through the same-origin `/ae-api` path.
-- The smoke records only safe browser/panel summaries; raw download content,
-  service tokens, database URLs, provider endpoints, and storage locations stay
-  out of evidence.
-
 Slice 0228 adds the protected fetch-mode smoke boundary:
 
 - `scripts/smoke/run_ae_web_fetch_mode_protected_smoke_boundary.py` records the
@@ -628,6 +619,50 @@ Slice 0415 wires artifact preview/download interactions:
 - The Artifact panel now shows request feedback, compact file/link metadata, and
   preview text; download actions show metadata only and do not render downloaded
   artifact content.
+
+Slice 0416 adds the artifact versions/files panel:
+
+- `src/artifactVersionPanel.js` builds browser-safe current version and file
+  state without rendering raw hashes or storage locations.
+- `src/main.js` refreshes artifact detail and version metadata through the
+  active artifact client and records `artifact_versions` operation state.
+- Runtime diagnostics include artifact preview and version operations without
+  copying raw artifact bodies or backend-only metadata.
+
+Slice 0417 adds deterministic artifact fetch-mode smoke:
+
+- `scripts/runArtifactFetchModeSmoke.mjs` drives artifact detail, versions, file
+  metadata, preview, and download adapters through an authenticated fake-fetch
+  runtime.
+- `npm run smoke:artifact-fetch` records same-origin route sequencing and
+  verifies that browser fetch requests do not carry service-token headers.
+
+Slice 0418 adds protected PostgreSQL smoke evidence:
+
+- `scripts/smoke/run_ae_web_artifact_postgres_smoke.py` validates the web
+  artifact surface and delegates persisted artifact read/write evidence to the
+  AE artifact PostgreSQL smoke.
+- The smoke is skipped by default and only touches `nex_ae_test` when explicitly
+  enabled with the protected smoke flag and test database URL.
+
+Slice 0419 adds protected artifact Playwright smoke coverage:
+
+- `scripts/runArtifactPlaywrightSmoke.mjs` launches Chromium against the AE Web
+  shell and drives artifact detail, versions, file metadata, preview, and
+  download fetches through the same-origin `/ae-api` path.
+- `scripts/smoke/run_ae_web_artifact_playwright_postgres_smoke.py` proves the
+  persisted artifact flow against the test database before running the browser
+  path.
+- The smoke records only safe browser/panel summaries; raw download content,
+  service tokens, database URLs, provider endpoints, and storage locations stay
+  out of evidence.
+
+Slice 0420 closes S42:
+
+- `scripts/smoke/run_s42_ae_web_artifact_experience_closure.py` verifies that
+  artifact browser boundary, client adapter, card renderer, preview/download
+  panel, versions/files panel, fetch smoke, PostgreSQL smoke, Playwright smoke,
+  docs, and quality-gate hooks remain registered together.
 
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
