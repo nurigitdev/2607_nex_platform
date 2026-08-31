@@ -904,6 +904,10 @@ Slice 0441 starts S45:
   client lifecycle endpoint, update browser operation state, and refresh the
   current artifact metadata without surfacing raw comments, rendered payloads,
   storage refs, provider endpoints, service tokens, or database URLs.
+- Slice 0458 adds protected Playwright/PostgreSQL smoke evidence for the AE Web
+  lifecycle path. The opt-in smoke prepares a rendered artifact in `nex_ae_test`,
+  runs archive, restore, and logical delete through the browser fetch runtime,
+  observes the final PostgreSQL state, and keeps evidence redacted.
 
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
