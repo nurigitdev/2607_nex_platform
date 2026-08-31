@@ -45,6 +45,8 @@ from nex_ae_api.artifacts import (
     build_artifact_collection_item,
     build_artifact_lifecycle_action_request,
     build_artifact_lifecycle_action_result,
+    build_artifact_retention_candidate_filter,
+    build_artifact_retention_candidate_collection,
     build_artifact_retention_policy,
     build_default_artifact_handoff_store,
     build_default_artifact_record_store,
@@ -79,6 +81,7 @@ from nex_ae_api.artifacts import (
     safe_file_stem,
     sha256_bytes,
     target_formats_from_payload,
+    parse_artifact_retention_timestamp,
     validate_artifact_retention_policy,
     validate_artifact_handoff_record,
     validate_structured_draft_for_markdown_render,
@@ -1640,6 +1643,174 @@ def test_artifact_retention_policy_contract_rejects_invalid_inputs() -> None:
             {"storage_ref": "ae://artifacts/private"}
         )
     assert unsafe_exc.value.error_code == "ae.artifact_retention_payload_unsafe"
+
+
+def test_artifact_retention_candidate_read_model_filters_logical_purge_age() -> None:
+    store = ArtifactRecordStore()
+    old_deleted = sample_collection_artifact_record(
+        artifact_request_id="retention-old-deleted-001",
+        artifact_status="DELETED",
+        display_title="Old deleted report",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    recent_deleted = sample_collection_artifact_record(
+        artifact_request_id="retention-recent-deleted-001",
+        artifact_status="DELETED",
+        display_title="Recent deleted report",
+        updated_at="2026-08-25T00:00:00Z",
+    )
+    ready_old = sample_collection_artifact_record(
+        artifact_request_id="retention-ready-old-001",
+        artifact_status="READY",
+        display_title="Ready old report",
+        updated_at="2026-07-01T00:00:00Z",
+    )
+    other_owner = sample_collection_artifact_record(
+        artifact_request_id="retention-other-owner-001",
+        artifact_status="DELETED",
+        owner_user_id="user-002",
+        display_title="Other owner deleted report",
+        updated_at="2026-07-01T00:00:00Z",
+    )
+    for record in (recent_deleted, old_deleted, ready_old, other_owner):
+        store.save(record)
+
+    candidates = store.list_retention_candidates(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        limit=10,
+    )
+    short_window = store.list_retention_candidates(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=1,
+        as_of="2026-09-01T00:00:00Z",
+        limit=10,
+    )
+    serialized = json.dumps(candidates, ensure_ascii=False, sort_keys=True)
+
+    assert candidates["artifact_retention_candidate_collection_schema_version"] == (
+        "ae_artifact_retention_candidate_collection.v1"
+    )
+    assert candidates["policy"]["candidate_query"]["metadata_only"] is True
+    assert candidates["filter"]["cutoff_at"] == "2026-08-02T00:00:00Z"
+    assert candidates["count"] == 1
+    assert candidates["items"][0]["artifact_id"] == old_deleted["artifact_id"]
+    assert candidates["items"][0]["logical_purged_at"] == "2026-07-31T00:00:00Z"
+    assert candidates["items"][0]["purge_eligible_at"] == "2026-08-30T00:00:00Z"
+    assert candidates["items"][0]["age_days_after_logical_purge"] == 32
+    assert candidates["items"][0]["purge_plan"] == {
+        "dry_run": True,
+        "logical_purge_already_applied": True,
+        "physical_delete_deferred": True,
+        "storage_mutation_enabled": False,
+        "database_row_delete_enabled": False,
+        "planned_execution": "scheduled_batch_after_retention",
+    }
+    assert [item["display_title"] for item in short_window["items"]] == [
+        "Old deleted report",
+        "Recent deleted report",
+    ]
+    assert "storage_ref" not in serialized
+    assert "rendered_payloads" not in serialized
+
+
+def test_artifact_retention_candidate_filter_rejects_invalid_inputs() -> None:
+    candidate_filter = build_artifact_retention_candidate_filter(
+        tenant_id=" tenant-001 ",
+        workspace_id=" workspace-001 ",
+        owner_user_id=" user-001 ",
+        retention_days="15",
+        as_of="2026-09-01T00:00:00Z",
+        limit="2",
+    )
+
+    assert candidate_filter == {
+        "tenant_id": "tenant-001",
+        "workspace_id": "workspace-001",
+        "owner_user_id": "user-001",
+        "status": "DELETED",
+        "retention_days_after_logical_purge": 15,
+        "as_of": "2026-09-01T00:00:00Z",
+        "cutoff_at": "2026-08-17T00:00:00Z",
+        "limit": 2,
+        "dry_run": True,
+    }
+    assert parse_artifact_retention_timestamp(
+        "2026-09-01T09:00:00+09:00",
+        field_name="as_of",
+    ).isoformat() == "2026-09-01T00:00:00+00:00"
+
+    for bad_kwargs, expected_code in (
+        (
+            {"tenant_id": "", "workspace_id": "workspace-001", "owner_user_id": "user-001"},
+            "ae.artifact_collection_scope_required",
+        ),
+        (
+            {
+                "tenant_id": "tenant-001",
+                "workspace_id": "workspace-001",
+                "owner_user_id": "user-001",
+                "as_of": "not-a-date",
+            },
+            "ae.artifact_retention_timestamp_invalid",
+        ),
+    ):
+        with pytest.raises(ArtifactHandoffError) as exc:
+            build_artifact_retention_candidate_filter(**bad_kwargs)
+        assert exc.value.error_code == expected_code
+
+    with pytest.raises(ArtifactHandoffError) as unsafe_exc:
+        build_artifact_retention_candidate_collection(
+            [],
+            candidate_filter={**candidate_filter, "storage_ref": "ae://artifacts/x"},
+        )
+    assert unsafe_exc.value.error_code == "ae.artifact_retention_payload_unsafe"
+
+
+def test_sqlalchemy_artifact_record_store_lists_retention_candidates_with_sqlite() -> None:
+    session_factory = sqlite_artifact_session_factory()
+    handoff_store = SqlAlchemyArtifactHandoffStore(session_factory)
+    store = SqlAlchemyArtifactRecordStore(session_factory)
+    old_deleted = sample_collection_artifact_record(
+        artifact_request_id="sql-retention-old-deleted-001",
+        artifact_status="DELETED",
+        display_title="SQL old deleted report",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    recent_deleted = sample_collection_artifact_record(
+        artifact_request_id="sql-retention-recent-deleted-001",
+        artifact_status="DELETED",
+        display_title="SQL recent deleted report",
+        updated_at="2026-08-30T00:00:00Z",
+    )
+    for record in (old_deleted, recent_deleted):
+        handoff_store.save(
+            {
+                **sample_handoff_record(),
+                "artifact_handoff_id": record["handoff_ref"]["artifact_handoff_id"],
+                "artifact_request_id": record["handoff_ref"]["artifact_request_id"],
+            }
+        )
+        store.save(record)
+
+    candidates = store.list_retention_candidates(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        limit=10,
+    )
+
+    assert candidates["count"] == 1
+    assert candidates["items"][0]["display_title"] == "SQL old deleted report"
+    assert candidates["items"][0]["file_count"] == 0
+    assert candidates["items"][0]["link_count"] == 0
 
 
 def test_sqlalchemy_artifact_record_store_applies_lifecycle_with_sqlite() -> None:

@@ -8,7 +8,7 @@ import os
 import re
 import textwrap
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Protocol
@@ -127,6 +127,12 @@ AE_ARTIFACT_LIFECYCLE_ACTION_RESULT_SCHEMA_VERSION = (
     "ae_artifact_lifecycle_action_result.v1"
 )
 AE_ARTIFACT_RETENTION_POLICY_SCHEMA_VERSION = "ae_artifact_retention_policy.v1"
+AE_ARTIFACT_RETENTION_CANDIDATE_COLLECTION_SCHEMA_VERSION = (
+    "ae_artifact_retention_candidate_collection.v1"
+)
+AE_ARTIFACT_RETENTION_CANDIDATE_ITEM_SCHEMA_VERSION = (
+    "ae_artifact_retention_candidate_item.v1"
+)
 SUPPORTED_ARTIFACT_LIFECYCLE_ACTIONS = {"ARCHIVE", "RESTORE", "MARK_DELETED"}
 ARCHIVABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED"}
 DELETABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED", "ARCHIVED"}
@@ -327,6 +333,43 @@ class ArtifactRecordStore:
         return build_artifact_collection(
             records[: collection_filter["limit"]],
             collection_filter=collection_filter,
+        )
+
+    def list_retention_candidates(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        retention_days: int | str | None = None,
+        as_of: str | None = None,
+        limit: int | str | None = None,
+    ) -> dict[str, Any]:
+        candidate_filter = build_artifact_retention_candidate_filter(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            retention_days=retention_days,
+            as_of=as_of,
+            limit=limit,
+        )
+        records = [
+            record
+            for record in self.records.values()
+            if artifact_record_matches_retention_candidate_filter(
+                record,
+                candidate_filter,
+            )
+        ]
+        records.sort(
+            key=lambda record: (
+                str(record.get("updated_at") or ""),
+                str(record.get("artifact_id") or ""),
+            )
+        )
+        return build_artifact_retention_candidate_collection(
+            records[: candidate_filter["limit"]],
+            candidate_filter=candidate_filter,
         )
 
     def get_render_job(self, render_job_id: str) -> dict[str, Any] | None:
@@ -658,6 +701,42 @@ class SqlAlchemyArtifactRecordStore:
             return build_artifact_collection(
                 records,
                 collection_filter=collection_filter,
+            )
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_store_unavailable",
+                detail="AE artifact store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def list_retention_candidates(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        retention_days: int | str | None = None,
+        as_of: str | None = None,
+        limit: int | str | None = None,
+    ) -> dict[str, Any]:
+        candidate_filter = build_artifact_retention_candidate_filter(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            retention_days=retention_days,
+            as_of=as_of,
+            limit=limit,
+        )
+        try:
+            with self._session_factory() as session:
+                records = _load_artifact_records_for_retention_candidates(
+                    session,
+                    candidate_filter,
+                )
+            return build_artifact_retention_candidate_collection(
+                records,
+                candidate_filter=candidate_filter,
             )
         except SQLAlchemyError as exc:
             raise ArtifactHandoffError(
@@ -2167,6 +2246,188 @@ def assert_artifact_retention_payload_safe(payload: dict[str, Any]) -> None:
             )
 
 
+def build_artifact_retention_candidate_filter(
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    owner_user_id: str,
+    retention_days: int | str | None = None,
+    as_of: str | None = None,
+    limit: int | str | None = None,
+) -> dict[str, Any]:
+    normalized_days = normalize_artifact_retention_days(retention_days)
+    as_of_at = parse_artifact_retention_timestamp(as_of, field_name="as_of")
+    cutoff_at = as_of_at - timedelta(days=normalized_days)
+    candidate_filter = {
+        "tenant_id": _required_collection_scope_text(tenant_id, "tenant_id"),
+        "workspace_id": _required_collection_scope_text(
+            workspace_id,
+            "workspace_id",
+        ),
+        "owner_user_id": _required_collection_scope_text(
+            owner_user_id,
+            "owner_user_id",
+        ),
+        "status": ARTIFACT_RETENTION_LOGICAL_PURGE_STATUS,
+        "retention_days_after_logical_purge": normalized_days,
+        "as_of": format_artifact_retention_timestamp(as_of_at),
+        "cutoff_at": format_artifact_retention_timestamp(cutoff_at),
+        "limit": normalize_artifact_collection_limit(limit),
+        "dry_run": True,
+    }
+    assert_artifact_retention_payload_safe(candidate_filter)
+    return candidate_filter
+
+
+def artifact_record_matches_retention_candidate_filter(
+    record: dict[str, Any],
+    candidate_filter: dict[str, Any],
+) -> bool:
+    owner = record.get("owner_actor_ref", {})
+    workspace = record.get("workspace_ref", {})
+    if not (
+        isinstance(owner, dict)
+        and isinstance(workspace, dict)
+        and owner.get("tenant_id") == candidate_filter["tenant_id"]
+        and owner.get("actor_id") == candidate_filter["owner_user_id"]
+        and workspace.get("workspace_id") == candidate_filter["workspace_id"]
+        and record.get("artifact_status") == ARTIFACT_RETENTION_LOGICAL_PURGE_STATUS
+    ):
+        return False
+    updated_at = parse_artifact_retention_timestamp(
+        record.get("updated_at"),
+        field_name="updated_at",
+    )
+    cutoff_at = parse_artifact_retention_timestamp(
+        candidate_filter["cutoff_at"],
+        field_name="cutoff_at",
+    )
+    return updated_at <= cutoff_at
+
+
+def build_artifact_retention_candidate_collection(
+    records: list[dict[str, Any]],
+    *,
+    candidate_filter: dict[str, Any],
+) -> dict[str, Any]:
+    items = [
+        build_artifact_retention_candidate_item(
+            record,
+            candidate_filter=candidate_filter,
+        )
+        for record in records
+    ]
+    collection = {
+        "artifact_retention_candidate_collection_schema_version": (
+            AE_ARTIFACT_RETENTION_CANDIDATE_COLLECTION_SCHEMA_VERSION
+        ),
+        "policy": build_artifact_retention_policy(
+            {
+                "retention_days_after_logical_purge": candidate_filter[
+                    "retention_days_after_logical_purge"
+                ]
+            }
+        ),
+        "filter": dict(candidate_filter),
+        "count": len(items),
+        "limit": candidate_filter["limit"],
+        "next_cursor": None,
+        "items": items,
+        "metadata": {
+            "dry_run": True,
+            "physical_delete_executed": False,
+            "storage_mutation_executed": False,
+            "database_row_delete_executed": False,
+        },
+    }
+    assert_artifact_retention_payload_safe(collection)
+    return collection
+
+
+def build_artifact_retention_candidate_item(
+    record: dict[str, Any],
+    *,
+    candidate_filter: dict[str, Any],
+) -> dict[str, Any]:
+    owner = record.get("owner_actor_ref", {})
+    workspace = record.get("workspace_ref", {})
+    logical_purged_at = parse_artifact_retention_timestamp(
+        record.get("updated_at"),
+        field_name="updated_at",
+    )
+    as_of_at = parse_artifact_retention_timestamp(
+        candidate_filter["as_of"],
+        field_name="as_of",
+    )
+    retention_days = int(candidate_filter["retention_days_after_logical_purge"])
+    purge_eligible_at = logical_purged_at + timedelta(days=retention_days)
+    item = {
+        "artifact_retention_candidate_item_schema_version": (
+            AE_ARTIFACT_RETENTION_CANDIDATE_ITEM_SCHEMA_VERSION
+        ),
+        "artifact_id": record["artifact_id"],
+        "artifact_status": record["artifact_status"],
+        "display_title": record["display_title"],
+        "tenant_id": owner.get("tenant_id") if isinstance(owner, dict) else None,
+        "workspace_id": (
+            workspace.get("workspace_id") if isinstance(workspace, dict) else None
+        ),
+        "owner_user_id": owner.get("actor_id") if isinstance(owner, dict) else None,
+        "retention_policy_ref": record["retention_policy_ref"],
+        "current_version_id": record.get("current_version_id"),
+        "version_count": len(_list_of_mappings(record.get("versions"))),
+        "file_count": len(_list_of_mappings(record.get("files"))),
+        "link_count": len(_list_of_mappings(record.get("links"))),
+        "render_job_count": len(_list_of_mappings(record.get("render_jobs"))),
+        "logical_purged_at": format_artifact_retention_timestamp(logical_purged_at),
+        "purge_eligible_at": format_artifact_retention_timestamp(purge_eligible_at),
+        "age_days_after_logical_purge": max(0, (as_of_at - logical_purged_at).days),
+        "routes": {
+            "artifact": f"/api/v1/artifacts/{record['artifact_id']}",
+            "lifecycle": (
+                f"/api/v1/artifacts/{record['artifact_id']}/lifecycle-actions"
+            ),
+        },
+        "purge_plan": {
+            "dry_run": True,
+            "logical_purge_already_applied": True,
+            "physical_delete_deferred": True,
+            "storage_mutation_enabled": False,
+            "database_row_delete_enabled": False,
+            "planned_execution": "scheduled_batch_after_retention",
+        },
+    }
+    assert_artifact_retention_payload_safe(item)
+    return item
+
+
+def parse_artifact_retention_timestamp(value: Any, *, field_name: str) -> datetime:
+    normalized = optional_text(value)
+    if normalized is None:
+        if field_name == "as_of":
+            return datetime.now(UTC)
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_timestamp_invalid",
+            detail=f"{field_name} must be an ISO-8601 timestamp.",
+        )
+    try:
+        parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_timestamp_invalid",
+            detail=f"{field_name} must be an ISO-8601 timestamp.",
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def format_artifact_retention_timestamp(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
 def lifecycle_actor_ref_from_payload(
     payload: dict[str, Any],
     artifact_record: dict[str, Any],
@@ -3609,6 +3870,26 @@ def _load_artifact_records_for_collection(
     return records
 
 
+def _load_artifact_records_for_retention_candidates(
+    session: Session,
+    candidate_filter: dict[str, Any],
+) -> list[dict[str, Any]]:
+    rows = (
+        session.execute(
+            text(_artifact_retention_candidate_select_ids_sql()),
+            _artifact_retention_candidate_params(candidate_filter),
+        )
+        .mappings()
+        .all()
+    )
+    records = []
+    for row in rows:
+        record = _load_artifact_record(session, row["artifact_id"])
+        if record is not None:
+            records.append(record)
+    return records
+
+
 def _artifact_collection_select_ids_sql(collection_filter: dict[str, Any]) -> str:
     where_clauses = [
         "tenant_id = :tenant_id",
@@ -3637,6 +3918,33 @@ def _artifact_collection_params(collection_filter: dict[str, Any]) -> dict[str, 
     if collection_filter.get("status") is not None:
         params["status"] = collection_filter["status"]
     return params
+
+
+def _artifact_retention_candidate_select_ids_sql() -> str:
+    return """
+        SELECT artifact_id
+        FROM ae_artifacts
+        WHERE tenant_id = :tenant_id
+          AND workspace_id = :workspace_id
+          AND owner_user_id = :owner_user_id
+          AND artifact_status = :status
+          AND updated_at <= :cutoff_at
+        ORDER BY updated_at ASC, artifact_id ASC
+        LIMIT :limit
+    """
+
+
+def _artifact_retention_candidate_params(
+    candidate_filter: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "tenant_id": candidate_filter["tenant_id"],
+        "workspace_id": candidate_filter["workspace_id"],
+        "owner_user_id": candidate_filter["owner_user_id"],
+        "status": candidate_filter["status"],
+        "cutoff_at": candidate_filter["cutoff_at"],
+        "limit": candidate_filter["limit"],
+    }
 
 
 def _artifact_select_sql(where_clause: str) -> str:

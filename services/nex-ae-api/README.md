@@ -397,3 +397,7 @@ Artifact library management:
   policy helpers. The contract keeps logical purge first, requires dry-run
   candidate scans, disables physical file and database-row deletion, and fixes
   the first scheduled batch window at 02:00-05:00 `Asia/Seoul`.
+- Slice 0463 adds the artifact retention candidate read-model behind the
+  existing in-memory and SQLAlchemy artifact stores. Candidate scans are
+  owner-scoped, dry-run only, ordered oldest-first, and currently treat
+  `updated_at` on `DELETED` artifacts as the logical purge timestamp.
