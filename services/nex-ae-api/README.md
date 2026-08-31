@@ -370,3 +370,8 @@ Artifact library management:
   the first allowed actions are reversible metadata actions (`ARCHIVE`,
   `RESTORE`, `MARK_DELETED`), and physical file deletion/storage purge remains
   deferred to a later retention or purge track.
+- Slice 0452 adds the lifecycle command/result contract foundation. The action
+  helpers normalize lifecycle commands, reject invalid transitions, hash raw
+  comments instead of carrying comment text, and return metadata-only results
+  under `ae_artifact_lifecycle_action.v1` and
+  `ae_artifact_lifecycle_action_result.v1`.

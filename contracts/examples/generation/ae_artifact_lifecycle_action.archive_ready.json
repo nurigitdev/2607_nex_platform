@@ -1,0 +1,25 @@
+{
+  "artifact_lifecycle_action_schema_version": "ae_artifact_lifecycle_action.v1",
+  "lifecycle_action_id": "7b4907b1-b36f-5401-9579-7e2a2419683b",
+  "artifact_id": "artifact-001",
+  "action": "ARCHIVE",
+  "previous_status": "READY",
+  "target_status": "ARCHIVED",
+  "restore_status": null,
+  "reason_code": "user_requested",
+  "comment_hash": null,
+  "comment_length": 0,
+  "actor_ref": {
+    "actor_type": "user",
+    "actor_id": "user-001",
+    "tenant_id": "tenant-001"
+  },
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "idempotency_key": "artifact-lifecycle-archive-001",
+  "metadata": {
+    "physical_delete_requested": false,
+    "storage_mutation_requested": false,
+    "raw_comment_included": false
+  }
+}

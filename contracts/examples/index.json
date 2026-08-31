@@ -171,6 +171,16 @@
       "schema": "schemas/generation/ae_artifact_record.v1.schema.json"
     },
     {
+      "name": "ae_artifact_lifecycle_action_archive_ready",
+      "path": "examples/generation/ae_artifact_lifecycle_action.archive_ready.json",
+      "schema": "schemas/generation/ae_artifact_lifecycle_action.v1.schema.json"
+    },
+    {
+      "name": "ae_artifact_lifecycle_action_result_archive_ready",
+      "path": "examples/generation/ae_artifact_lifecycle_action_result.archive_ready.json",
+      "schema": "schemas/generation/ae_artifact_lifecycle_action_result.v1.schema.json"
+    },
+    {
       "name": "ag_generation_audit_event_mock",
       "path": "examples/generation/ag_generation_audit_event.mock_success.json",
       "schema": "schemas/generation/ag_generation_audit_event.v1.schema.json"

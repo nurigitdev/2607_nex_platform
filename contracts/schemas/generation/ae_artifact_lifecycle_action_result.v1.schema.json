@@ -1,0 +1,253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/ae_artifact_lifecycle_action_result.v1.schema.json",
+  "title": "NeX AE Artifact Lifecycle Action Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_lifecycle_action_result_schema_version",
+    "lifecycle_action",
+    "artifact_id",
+    "artifact_status",
+    "previous_status",
+    "target_status",
+    "transition_applied",
+    "routes",
+    "updated_at",
+    "metadata"
+  ],
+  "properties": {
+    "artifact_lifecycle_action_result_schema_version": {
+      "const": "ae_artifact_lifecycle_action_result.v1"
+    },
+    "lifecycle_action": {
+      "$ref": "#/$defs/lifecycleAction"
+    },
+    "artifact_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifact_status": {
+      "$ref": "#/$defs/artifactStatus"
+    },
+    "previous_status": {
+      "$ref": "#/$defs/artifactStatus"
+    },
+    "target_status": {
+      "$ref": "#/$defs/restorableOrTerminalStatus"
+    },
+    "transition_applied": {
+      "type": "boolean"
+    },
+    "routes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact",
+        "collection"
+      ],
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "pattern": "^/api/v1/artifacts/[^/]+$"
+        },
+        "collection": {
+          "const": "/api/v1/artifacts"
+        }
+      }
+    },
+    "updated_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rendered_payload_included",
+        "storage_location_included",
+        "physical_delete_executed"
+      ],
+      "properties": {
+        "rendered_payload_included": {
+          "const": false
+        },
+        "storage_location_included": {
+          "const": false
+        },
+        "physical_delete_executed": {
+          "const": false
+        }
+      }
+    }
+  },
+  "$defs": {
+    "lifecycleAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_lifecycle_action_schema_version",
+        "lifecycle_action_id",
+        "artifact_id",
+        "action",
+        "previous_status",
+        "target_status",
+        "restore_status",
+        "reason_code",
+        "comment_hash",
+        "comment_length",
+        "actor_ref",
+        "request_id",
+        "trace_id",
+        "idempotency_key",
+        "metadata"
+      ],
+      "properties": {
+        "artifact_lifecycle_action_schema_version": {
+          "const": "ae_artifact_lifecycle_action.v1"
+        },
+        "lifecycle_action_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "ARCHIVE",
+            "RESTORE",
+            "MARK_DELETED"
+          ]
+        },
+        "previous_status": {
+          "$ref": "#/$defs/artifactStatus"
+        },
+        "target_status": {
+          "$ref": "#/$defs/restorableOrTerminalStatus"
+        },
+        "restore_status": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/restorableStatus"
+            }
+          ]
+        },
+        "reason_code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z0-9_:-]+$"
+        },
+        "comment_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "comment_length": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "actor_ref": {
+          "$ref": "#/$defs/actorRef"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "physical_delete_requested",
+            "storage_mutation_requested",
+            "raw_comment_included"
+          ],
+          "properties": {
+            "physical_delete_requested": {
+              "const": false
+            },
+            "storage_mutation_requested": {
+              "const": false
+            },
+            "raw_comment_included": {
+              "const": false
+            }
+          }
+        }
+      }
+    },
+    "artifactStatus": {
+      "type": "string",
+      "enum": [
+        "DRAFT",
+        "RENDERING",
+        "READY",
+        "FAILED",
+        "ARCHIVED",
+        "DELETED"
+      ]
+    },
+    "restorableStatus": {
+      "type": "string",
+      "enum": [
+        "DRAFT",
+        "READY",
+        "FAILED"
+      ]
+    },
+    "restorableOrTerminalStatus": {
+      "type": "string",
+      "enum": [
+        "DRAFT",
+        "READY",
+        "FAILED",
+        "ARCHIVED",
+        "DELETED"
+      ]
+    },
+    "actorRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor_type",
+        "actor_id",
+        "tenant_id"
+      ],
+      "properties": {
+        "actor_type": {
+          "type": "string",
+          "enum": [
+            "user",
+            "service",
+            "operator"
+          ]
+        },
+        "actor_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenant_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -122,6 +122,16 @@ SUPPORTED_ARTIFACT_STATUSES = {
     "ARCHIVED",
     "DELETED",
 }
+AE_ARTIFACT_LIFECYCLE_ACTION_SCHEMA_VERSION = "ae_artifact_lifecycle_action.v1"
+AE_ARTIFACT_LIFECYCLE_ACTION_RESULT_SCHEMA_VERSION = (
+    "ae_artifact_lifecycle_action_result.v1"
+)
+SUPPORTED_ARTIFACT_LIFECYCLE_ACTIONS = {"ARCHIVE", "RESTORE", "MARK_DELETED"}
+ARCHIVABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED"}
+DELETABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED", "ARCHIVED"}
+RESTORABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED"}
+ARTIFACT_LIFECYCLE_DEFAULT_RESTORE_STATUS = "READY"
+ARTIFACT_LIFECYCLE_DEFAULT_REASON_CODE = "user_requested"
 SUPPORTED_TARGET_FORMATS = {"MD", "HTML_PREVIEW", "DOCX", "PDF"}
 ARTIFACT_COLLECTION_SCHEMA_VERSION = "ae_artifact_collection.v1"
 ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION = "ae_artifact_collection_item.v1"
@@ -1653,6 +1663,280 @@ def _collection_json_safe_value(raw_value: Any) -> Any:
             if value is not None
         }
     return str(raw_value)
+
+
+def normalize_artifact_lifecycle_action(value: Any) -> str:
+    normalized = optional_text(value)
+    if normalized is None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_lifecycle_action_required",
+            detail="Artifact lifecycle action is required.",
+        )
+    normalized = normalized.replace("-", "_").upper()
+    if normalized not in SUPPORTED_ARTIFACT_LIFECYCLE_ACTIONS:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_lifecycle_action_invalid",
+            detail=f"Unsupported artifact lifecycle action: {value}",
+        )
+    return normalized
+
+
+def normalize_artifact_restore_status(value: Any) -> str | None:
+    normalized = optional_text(value)
+    if normalized is None:
+        return None
+    normalized = normalized.upper()
+    if normalized not in RESTORABLE_ARTIFACT_STATUSES:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_lifecycle_restore_status_invalid",
+            detail=f"Unsupported artifact restore status: {value}",
+        )
+    return normalized
+
+
+def artifact_lifecycle_target_status(
+    *,
+    current_status: str,
+    action: str,
+    restore_status: str | None = None,
+) -> str:
+    normalized_current_status = optional_text(current_status)
+    if normalized_current_status not in SUPPORTED_ARTIFACT_STATUSES:
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.artifact_lifecycle_current_status_invalid",
+            detail=f"Unsupported artifact current status: {current_status}",
+        )
+    normalized_action = normalize_artifact_lifecycle_action(action)
+    normalized_restore_status = normalize_artifact_restore_status(restore_status)
+
+    if normalized_action == "ARCHIVE":
+        if normalized_current_status == "ARCHIVED":
+            return "ARCHIVED"
+        if normalized_current_status not in ARCHIVABLE_ARTIFACT_STATUSES:
+            raise ArtifactHandoffError(
+                status_code=409,
+                error_code="ae.artifact_lifecycle_transition_invalid",
+                detail=f"Artifact status cannot be archived: {current_status}",
+            )
+        return "ARCHIVED"
+
+    if normalized_action == "MARK_DELETED":
+        if normalized_current_status == "DELETED":
+            return "DELETED"
+        if normalized_current_status not in DELETABLE_ARTIFACT_STATUSES:
+            raise ArtifactHandoffError(
+                status_code=409,
+                error_code="ae.artifact_lifecycle_transition_invalid",
+                detail=f"Artifact status cannot be marked deleted: {current_status}",
+            )
+        return "DELETED"
+
+    if normalized_current_status not in {"ARCHIVED", "DELETED"}:
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.artifact_lifecycle_transition_invalid",
+            detail=f"Artifact status cannot be restored: {current_status}",
+        )
+    return normalized_restore_status or ARTIFACT_LIFECYCLE_DEFAULT_RESTORE_STATUS
+
+
+def build_artifact_lifecycle_action_request(
+    *,
+    payload: dict[str, Any],
+    artifact_record: dict[str, Any],
+    request_id: str,
+    trace_id: str,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    artifact_id = required_string(
+        artifact_record,
+        "artifact_id",
+        "ae.artifact_id_required",
+    )
+    payload_artifact_id = optional_text(payload.get("artifact_id"))
+    if payload_artifact_id is not None and payload_artifact_id != artifact_id:
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.artifact_lifecycle_artifact_mismatch",
+            detail="Lifecycle action artifact id does not match the route artifact.",
+        )
+    action = normalize_artifact_lifecycle_action(
+        payload.get("action") or payload.get("lifecycle_action")
+    )
+    restore_status = normalize_artifact_restore_status(payload.get("restore_status"))
+    previous_status = required_string(
+        artifact_record,
+        "artifact_status",
+        "ae.artifact_status_required",
+    )
+    target_status = artifact_lifecycle_target_status(
+        current_status=previous_status,
+        action=action,
+        restore_status=restore_status,
+    )
+    normalized_idempotency_key = (
+        optional_text(idempotency_key)
+        or optional_text(payload.get("idempotency_key"))
+        or optional_text(payload.get("lifecycle_action_request_id"))
+        or f"{request_id}:{artifact_id}:{action}:{target_status}"
+    )
+    comment_text = optional_text(payload.get("comment"))
+    actor_ref = lifecycle_actor_ref_from_payload(payload, artifact_record)
+    request = {
+        "artifact_lifecycle_action_schema_version": (
+            AE_ARTIFACT_LIFECYCLE_ACTION_SCHEMA_VERSION
+        ),
+        "lifecycle_action_id": str(
+            uuid5(
+                NAMESPACE_URL,
+                f"ae-artifact-lifecycle-action:{artifact_id}:{normalized_idempotency_key}",
+            )
+        ),
+        "artifact_id": artifact_id,
+        "action": action,
+        "previous_status": previous_status,
+        "target_status": target_status,
+        "restore_status": restore_status,
+        "reason_code": (
+            optional_text(payload.get("reason_code"))
+            or ARTIFACT_LIFECYCLE_DEFAULT_REASON_CODE
+        ),
+        "comment_hash": sha256_text(comment_text) if comment_text else None,
+        "comment_length": len(comment_text) if comment_text else 0,
+        "actor_ref": actor_ref,
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "idempotency_key": normalized_idempotency_key,
+        "metadata": {
+            "physical_delete_requested": False,
+            "storage_mutation_requested": False,
+            "raw_comment_included": False,
+        },
+    }
+    assert_artifact_lifecycle_payload_safe(request)
+    return request
+
+
+def build_artifact_lifecycle_action_result(
+    *,
+    action_request: dict[str, Any],
+    artifact_record: dict[str, Any],
+) -> dict[str, Any]:
+    validate_artifact_lifecycle_action_request(action_request)
+    result = {
+        "artifact_lifecycle_action_result_schema_version": (
+            AE_ARTIFACT_LIFECYCLE_ACTION_RESULT_SCHEMA_VERSION
+        ),
+        "lifecycle_action": dict(action_request),
+        "artifact_id": artifact_record["artifact_id"],
+        "artifact_status": artifact_record["artifact_status"],
+        "previous_status": action_request["previous_status"],
+        "target_status": action_request["target_status"],
+        "transition_applied": artifact_record["artifact_status"]
+        == action_request["target_status"],
+        "routes": {
+            "artifact": f"/api/v1/artifacts/{artifact_record['artifact_id']}",
+            "collection": "/api/v1/artifacts",
+        },
+        "updated_at": artifact_record["updated_at"],
+        "metadata": {
+            "rendered_payload_included": False,
+            "storage_location_included": False,
+            "physical_delete_executed": False,
+        },
+    }
+    assert_artifact_lifecycle_payload_safe(result)
+    return result
+
+
+def validate_artifact_lifecycle_action_request(action_request: dict[str, Any]) -> None:
+    if (
+        action_request.get("artifact_lifecycle_action_schema_version")
+        != AE_ARTIFACT_LIFECYCLE_ACTION_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_lifecycle_schema_invalid",
+            detail="Artifact lifecycle action schema version is invalid.",
+        )
+    action = normalize_artifact_lifecycle_action(action_request.get("action"))
+    previous_status = required_string(
+        action_request,
+        "previous_status",
+        "ae.artifact_lifecycle_previous_status_required",
+    )
+    target_status = required_string(
+        action_request,
+        "target_status",
+        "ae.artifact_lifecycle_target_status_required",
+    )
+    expected_target = artifact_lifecycle_target_status(
+        current_status=previous_status,
+        action=action,
+        restore_status=action_request.get("restore_status"),
+    )
+    if target_status != expected_target:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_lifecycle_target_status_mismatch",
+            detail="Artifact lifecycle target status does not match the action.",
+        )
+    assert_artifact_lifecycle_payload_safe(action_request)
+
+
+def lifecycle_actor_ref_from_payload(
+    payload: dict[str, Any],
+    artifact_record: dict[str, Any],
+) -> dict[str, Any]:
+    raw_actor = payload.get("actor_ref")
+    owner_ref = artifact_record.get("owner_actor_ref", {})
+    owner = owner_ref if isinstance(owner_ref, dict) else {}
+    if isinstance(raw_actor, dict):
+        actor_ref = {
+            "actor_type": optional_text(raw_actor.get("actor_type")) or "user",
+            "actor_id": optional_text(raw_actor.get("actor_id")) or "unknown",
+            "tenant_id": optional_text(raw_actor.get("tenant_id"))
+            or optional_text(owner.get("tenant_id"))
+            or DEFAULT_TENANT_ID,
+        }
+    else:
+        actor_ref = {
+            "actor_type": optional_text(owner.get("actor_type")) or "user",
+            "actor_id": optional_text(owner.get("actor_id")) or DEFAULT_OWNER_USER_ID,
+            "tenant_id": optional_text(owner.get("tenant_id")) or DEFAULT_TENANT_ID,
+        }
+    assert_artifact_lifecycle_payload_safe(actor_ref)
+    return actor_ref
+
+
+def assert_artifact_lifecycle_payload_safe(payload: dict[str, Any]) -> None:
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    blocked_tokens = (
+        "raw_prompt",
+        "raw_text",
+        "raw_source",
+        "rendered_payloads",
+        "rendered_markdown",
+        "comment_text",
+        "storage_ref",
+        "storage_root",
+        "/data/nex-platform",
+        "postgresql://",
+        "postgresql+psycopg://",
+        "nuri1004",
+        "ed6@c496em",
+    )
+    for token in blocked_tokens:
+        if token in serialized:
+            raise ArtifactHandoffError(
+                status_code=500,
+                error_code="ae.artifact_lifecycle_payload_unsafe",
+                detail="Artifact lifecycle payload contains private material.",
+            )
 
 
 def build_markdown_render_result(
