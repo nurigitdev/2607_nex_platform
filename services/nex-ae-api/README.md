@@ -406,3 +406,9 @@ Artifact library management:
   `GET /api/v1/artifact-retention/candidates`. The route is authenticated,
   read-only, owner-scoped, dry-run only, and returns metadata without rendered
   payloads, storage refs, database URLs, source text, or local paths.
+- Slice 0465 adds protected PostgreSQL smoke evidence for retention candidates.
+  Set `NEX_AE_ARTIFACT_RETENTION_CANDIDATE_POSTGRES_SMOKE=1` with
+  `NEX_AE_TEST_DATABASE_URL` to migrate the real AE test DB, create two
+  rendered artifacts, mark both `DELETED`, age one beyond the 30-day cutoff,
+  verify API and direct DB candidate counts, confirm local files/DB rows remain
+  retained, and clean up smoke rows.
