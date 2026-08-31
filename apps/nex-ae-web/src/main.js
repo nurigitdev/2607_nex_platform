@@ -9,10 +9,21 @@ import {
 } from "./artifactCardReadModel.js";
 import {
   artifactCollectionRoute,
+  artifactLifecycleActionRoute,
   artifactRenderJobRoute,
   artifactVersionsRoute,
   createMockArtifactClient
 } from "./artifactClient.js";
+import {
+  buildArtifactLifecycleActionFailureState,
+  buildArtifactLifecycleActionRunningState,
+  buildArtifactLifecycleActionSet,
+  buildArtifactLifecycleActionSetSummary,
+  buildArtifactLifecycleActionStateSummary,
+  buildArtifactLifecycleActionSuccessState,
+  createArtifactLifecycleActionContext,
+  createArtifactLifecycleActionState
+} from "./artifactLifecycleActionState.js";
 import {
   buildArtifactDownloadSaveSummary
 } from "./artifactDownloadSaveAdapter.js";
@@ -194,6 +205,7 @@ const workspaceState = {
   artifactDownloadSaveResult: null,
   selectedArtifactDownloadFormat: "MD",
   artifactExportResult: null,
+  artifactLifecycleActionState: null,
   artifactLibraryPanel: createArtifactLibraryPanelState(),
   artifactLibraryFilterMode: "all",
   artifactVersionPanel: createArtifactVersionPanelState(),
@@ -330,6 +342,7 @@ workspaceState.sessionBootstrap = composeAuthenticatedSessionRuntime({
 applySessionBootstrap(workspaceState.sessionBootstrap);
 workspaceState.documentScope = buildCurrentDocumentScope();
 workspaceState.operations = initializeOperationStates();
+resetArtifactLifecycleActionState();
 refreshArtifactExportResult();
 
 const serviceList = document.querySelector("#service-list");
@@ -488,6 +501,13 @@ messageList.addEventListener("click", event => {
 });
 
 artifactSummary.addEventListener("click", event => {
+  const lifecycleTarget = event.target.closest("[data-artifact-lifecycle-action]");
+  if (lifecycleTarget) {
+    if (lifecycleTarget.hasAttribute("disabled")) return;
+    event.preventDefault();
+    void submitArtifactLifecycleAction(lifecycleTarget);
+    return;
+  }
   const downloadTarget = event.target.closest("[data-artifact-download-route]");
   if (!downloadTarget) return;
   event.preventDefault();
@@ -645,6 +665,7 @@ async function refreshBrowserSessionRuntime() {
   });
   applySessionBootstrap(nextBootstrap);
   workspaceState.operations = initializeOperationStates();
+  resetArtifactLifecycleActionState();
   renderRuntimeDiagnostics();
   renderCredentialLoginSurface();
   renderUploadSurface();
@@ -691,6 +712,7 @@ async function submitCredentialLogin() {
     });
     applySessionBootstrap(nextBootstrap);
     workspaceState.operations = initializeOperationStates();
+    resetArtifactLifecycleActionState();
     renderWorkspace();
     void refreshArtifactLibraryPanel();
     void refreshArtifactVersionPanel();
@@ -733,6 +755,7 @@ async function logoutCredentialSession() {
     });
     applySessionBootstrap(nextBootstrap);
     workspaceState.operations = initializeOperationStates();
+    resetArtifactLifecycleActionState();
     renderWorkspace();
     void refreshArtifactLibraryPanel();
   } catch (error) {
@@ -890,6 +913,13 @@ function initializeOperationStates() {
       status: "READY",
       clientMode: workspaceState.artifactClient.clientMode,
       route: artifactVersionsRoute(workspaceState.artifactRef.artifactId)
+    }),
+    artifactLifecycle: createOperationState({
+      operationId: "artifact_lifecycle",
+      label: "Artifact lifecycle",
+      status: "READY",
+      clientMode: workspaceState.artifactClient.clientMode,
+      route: artifactLifecycleActionRoute(workspaceState.artifactRef.artifactId)
     })
   };
 }
@@ -1510,6 +1540,16 @@ function renderTimeline() {
 
 function renderArtifactSummary() {
   const downloadFormats = Object.keys(workspaceState.artifact.downloadRoutes || {});
+  const lifecycleActionSet = buildCurrentArtifactLifecycleActionSet();
+  const lifecycleActionSetSummary =
+    buildArtifactLifecycleActionSetSummary(lifecycleActionSet);
+  const lifecycleState = currentArtifactLifecycleActionState(lifecycleActionSet);
+  const lifecycleStateSummary =
+    buildArtifactLifecycleActionStateSummary(lifecycleState);
+  const lifecycleControls = renderArtifactLifecycleControls(
+    lifecycleActionSet,
+    lifecycleStateSummary
+  );
   const downloadSelector = buildArtifactDownloadFormatSelector({
     artifactRef: workspaceState.artifactRef,
     selectedFormat: workspaceState.selectedArtifactDownloadFormat,
@@ -1555,7 +1595,34 @@ function renderArtifactSummary() {
         <dt>delivery</dt>
         <dd>${escapeHtml(exportView.feedback)}</dd>
       </div>
+      <div>
+        <dt>lifecycle</dt>
+        <dd>${statusLabel(workspaceState.artifactRef.artifactStatus)} · ${escapeHtml(lifecycleActionSetSummary.enabled_action_count)}</dd>
+      </div>
     </dl>
+    <dl
+      class="inline-meta slim artifact-lifecycle-summary"
+      data-artifact-lifecycle-state="${escapeHtml(lifecycleStateSummary.status)}"
+      data-artifact-lifecycle-artifact-status="${escapeHtml(lifecycleStateSummary.artifact_status || "")}"
+    >
+      <div>
+        <dt>state</dt>
+        <dd>${escapeHtml(lifecycleStateSummary.status)}</dd>
+      </div>
+      <div>
+        <dt>action</dt>
+        <dd>${escapeHtml(lifecycleStateSummary.action || lifecycleStateSummary.primary_action || "none")}</dd>
+      </div>
+      <div>
+        <dt>target</dt>
+        <dd>${escapeHtml(lifecycleStateSummary.target_status || lifecycleStateSummary.artifact_status || "UNKNOWN")}</dd>
+      </div>
+      <div>
+        <dt>route</dt>
+        <dd>${escapeHtml(lifecycleStateSummary.route_present ? "present" : "missing")}</dd>
+      </div>
+    </dl>
+    ${lifecycleControls}
     <dl
       class="inline-meta artifact-export-result"
       data-artifact-export-result-status="${escapeHtml(exportView.status)}"
@@ -1563,6 +1630,42 @@ function renderArtifactSummary() {
       ${exportView.summaryHtml}
     </dl>
     ${downloadSelectorView.html}
+  `;
+}
+
+function renderArtifactLifecycleControls(actionSet, lifecycleSummary) {
+  const isRunning = lifecycleSummary.status === "RUNNING";
+  return `
+    <div
+      class="artifact-lifecycle-actions"
+      aria-label="Artifact lifecycle actions"
+      data-artifact-lifecycle-action-count="${escapeHtml(actionSet.enabledActionCount)}"
+    >
+      ${actionSet.actions
+        .map(action => renderArtifactLifecycleActionButton(action, isRunning))
+        .join("")}
+    </div>
+  `;
+}
+
+function renderArtifactLifecycleActionButton(action, isRunning) {
+  const disabled = isRunning || !action.enabled;
+  const disabledReason = isRunning
+    ? "action_running"
+    : action.disabledReason || "";
+  const restoreStatus = action.action === "RESTORE" ? "READY" : "";
+  return `
+    <button
+      type="button"
+      data-artifact-lifecycle-action="${escapeHtml(action.action)}"
+      data-artifact-lifecycle-route="${escapeHtml(action.route)}"
+      data-artifact-lifecycle-artifact-id="${escapeHtml(action.artifactId)}"
+      data-artifact-lifecycle-artifact-status="${escapeHtml(action.artifactStatus)}"
+      data-artifact-lifecycle-target-status="${escapeHtml(action.targetStatus)}"
+      data-artifact-lifecycle-restore-status="${escapeHtml(restoreStatus)}"
+      data-artifact-lifecycle-disabled-reason="${escapeHtml(disabledReason)}"
+      ${disabled ? "disabled" : ""}
+    >${escapeHtml(action.label)}</button>
   `;
 }
 
@@ -1686,6 +1789,7 @@ async function selectArtifactFromLibrary(artifactId) {
       clientMode: workspaceState.artifactClient.clientMode
     });
     workspaceState.artifactDownloadSaveResult = null;
+    resetArtifactLifecycleActionState();
     refreshArtifactExportResult();
     workspaceState.operations.artifactPreview = createOperationState({
       operationId: "artifact_preview",
@@ -1907,6 +2011,7 @@ async function appendPromptInteraction() {
     clientMode: workspaceState.artifactClient.clientMode
   });
   workspaceState.artifactDownloadSaveResult = null;
+  resetArtifactLifecycleActionState();
   refreshArtifactExportResult({
     exportSurface: artifactExport?.exportSurface || null
   });
@@ -2000,6 +2105,112 @@ async function submitArtifactExportRequest(format, artifactRef) {
   }
 }
 
+async function submitArtifactLifecycleAction(target) {
+  if (!workspaceState.artifactClient?.submitArtifactLifecycleAction) return;
+  let context = null;
+
+  try {
+    context = artifactLifecycleActionContext(target);
+    applyArtifactLifecycleActionState(
+      buildArtifactLifecycleActionRunningState(
+        workspaceState.operations.artifactLifecycle,
+        context
+      )
+    );
+    renderArtifactSummary();
+
+    const lifecycleSurface =
+      await workspaceState.artifactClient.submitArtifactLifecycleAction({
+        artifactId: context.artifactId,
+        action: context.action,
+        restoreStatus: context.restoreStatus,
+        reasonCode: "user_requested",
+        idempotencyKey: buildArtifactLifecycleIdempotencyKey(context)
+      });
+    const nextArtifactRef = artifactRefFromLifecycleSurface(
+      workspaceState.artifactRef,
+      lifecycleSurface
+    );
+    workspaceState.artifactRef = nextArtifactRef;
+    applyWorkspaceArtifactFromRef(nextArtifactRef);
+    syncMockArtifactClientFromArtifactRef();
+    applyArtifactLifecycleActionState(
+      buildArtifactLifecycleActionSuccessState(
+        workspaceState.operations.artifactLifecycle,
+        lifecycleSurface,
+        context
+      )
+    );
+    refreshArtifactExportResult();
+    renderWorkspace();
+    void refreshArtifactLibraryPanel();
+    void refreshArtifactVersionPanel();
+  } catch (error) {
+    if (context) {
+      applyArtifactLifecycleActionState(
+        buildArtifactLifecycleActionFailureState(
+          workspaceState.operations.artifactLifecycle,
+          error,
+          context
+        )
+      );
+    } else {
+      workspaceState.artifactLifecycleActionState =
+        createArtifactLifecycleActionState({
+          status: "UNAVAILABLE",
+          errorStatus: error.status || "ARTIFACT_LIFECYCLE_ACTION_ERROR",
+          retryable: Boolean(error.retryable),
+          clientMode: workspaceState.artifactClient?.clientMode || "mock"
+        });
+    }
+    renderArtifactSummary();
+    renderRuntimeDiagnostics();
+  }
+}
+
+function applyArtifactLifecycleActionState(actionState) {
+  workspaceState.artifactLifecycleActionState = actionState;
+  workspaceState.operations.artifactLifecycle = actionState.operation;
+}
+
+function artifactLifecycleActionContext(target) {
+  return createArtifactLifecycleActionContext({
+    artifactId:
+      target.dataset.artifactLifecycleArtifactId ||
+      workspaceState.artifactRef.artifactId,
+    artifactStatus:
+      target.dataset.artifactLifecycleArtifactStatus ||
+      workspaceState.artifactRef.artifactStatus,
+    action: target.dataset.artifactLifecycleAction,
+    restoreStatus:
+      target.dataset.artifactLifecycleAction === "RESTORE"
+        ? target.dataset.artifactLifecycleRestoreStatus || "READY"
+        : null,
+    route:
+      target.dataset.artifactLifecycleRoute ||
+      artifactLifecycleActionRoute(workspaceState.artifactRef.artifactId),
+    clientMode: workspaceState.artifactClient.clientMode
+  });
+}
+
+function buildArtifactLifecycleIdempotencyKey(context) {
+  return [
+    "web-artifact-lifecycle",
+    workspaceState.interactionId,
+    context.artifactId,
+    context.action.toLowerCase(),
+    context.targetStatus.toLowerCase()
+  ].join("-");
+}
+
+function artifactRefFromLifecycleSurface(previousRef, lifecycleSurface) {
+  return {
+    ...previousRef,
+    artifactId: lifecycleSurface.artifactId,
+    artifactStatus: lifecycleSurface.artifactStatus
+  };
+}
+
 function artifactRefFromExportSurface(previousRef, exportSurface) {
   const artifactSurface = exportSurface.artifactSurface;
   return {
@@ -2063,6 +2274,39 @@ function applyWorkspaceArtifactFromRef(artifactRef) {
     workspaceState.selectedArtifactDownloadFormat =
       downloadFormats[0] || artifactRef.primaryFormat || "MD";
   }
+}
+
+function buildCurrentArtifactLifecycleActionSet() {
+  return buildArtifactLifecycleActionSet(workspaceState.artifactRef, {
+    clientMode: workspaceState.artifactClient?.clientMode || "mock"
+  });
+}
+
+function currentArtifactLifecycleActionState(actionSet) {
+  const current = workspaceState.artifactLifecycleActionState;
+  if (!current || current.status === "IDLE") {
+    return createArtifactLifecycleActionState({
+      actionSet,
+      clientMode: workspaceState.artifactClient?.clientMode || "mock"
+    });
+  }
+  return current;
+}
+
+function resetArtifactLifecycleActionState() {
+  if (workspaceState.operations) {
+    workspaceState.operations.artifactLifecycle = createOperationState({
+      operationId: "artifact_lifecycle",
+      label: "Artifact lifecycle",
+      status: "READY",
+      clientMode: workspaceState.artifactClient?.clientMode || "mock",
+      route: artifactLifecycleActionRoute(workspaceState.artifactRef.artifactId)
+    });
+  }
+  workspaceState.artifactLifecycleActionState = createArtifactLifecycleActionState({
+    actionSet: buildCurrentArtifactLifecycleActionSet(),
+    clientMode: workspaceState.artifactClient?.clientMode || "mock"
+  });
 }
 
 async function submitArtifactFileAction(target, action) {

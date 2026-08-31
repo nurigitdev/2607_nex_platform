@@ -534,6 +534,41 @@ h2 {
   padding-top: 8px;
 }
 
+.artifact-lifecycle-summary {
+  border-top: 1px dashed var(--nex-border);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.artifact-lifecycle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.artifact-lifecycle-actions button {
+  min-width: 78px;
+  min-height: 34px;
+  border: 1px solid var(--nex-border);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--nex-primary);
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.artifact-lifecycle-actions button:not(:disabled):hover {
+  border-color: var(--nex-primary);
+  background: rgba(36, 88, 166, 0.08);
+}
+
+.artifact-lifecycle-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .artifact-download-selector {
   display: flex;
   flex-wrap: wrap;

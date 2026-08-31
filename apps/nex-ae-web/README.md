@@ -899,6 +899,11 @@ Slice 0441 starts S45:
   now has status-aware action sets and running/applied/unavailable state
   summaries for archive, restore, and logical delete before the controls are
   wired into the shell.
+- Slice 0457 wires lifecycle controls into the selected artifact summary.
+  `ARCHIVE`, `RESTORE`, and logical `MARK_DELETED` now pass through the artifact
+  client lifecycle endpoint, update browser operation state, and refresh the
+  current artifact metadata without surfacing raw comments, rendered payloads,
+  storage refs, provider endpoints, service tokens, or database URLs.
 
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
