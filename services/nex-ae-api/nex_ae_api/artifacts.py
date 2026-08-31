@@ -383,6 +383,28 @@ class ArtifactRecordStore:
             self.artifact_links[artifact_link["artifact_link_id"]] = artifact_link
         return record
 
+    def apply_lifecycle_action(
+        self,
+        artifact_id: str,
+        action_request: dict[str, Any],
+    ) -> dict[str, Any]:
+        record = self.get(artifact_id)
+        if record is None:
+            raise ArtifactHandoffError(
+                status_code=404,
+                error_code="ae.artifact_not_found",
+                detail=f"Artifact was not found: {artifact_id}",
+            )
+        updated_record = apply_artifact_lifecycle_action(
+            artifact_record=record,
+            action_request=action_request,
+        )
+        self.save(updated_record)
+        return build_artifact_lifecycle_action_result(
+            action_request=action_request,
+            artifact_record=updated_record,
+        )
+
 
 @dataclass
 class InMemoryRenderedArtifactStorage:
@@ -753,6 +775,28 @@ class SqlAlchemyArtifactRecordStore:
                 )
         return self.save(record)
 
+    def apply_lifecycle_action(
+        self,
+        artifact_id: str,
+        action_request: dict[str, Any],
+    ) -> dict[str, Any]:
+        record = self.get(artifact_id)
+        if record is None:
+            raise ArtifactHandoffError(
+                status_code=404,
+                error_code="ae.artifact_not_found",
+                detail=f"Artifact was not found: {artifact_id}",
+            )
+        updated_record = apply_artifact_lifecycle_action(
+            artifact_record=record,
+            action_request=action_request,
+        )
+        self.save(updated_record)
+        return build_artifact_lifecycle_action_result(
+            action_request=action_request,
+            artifact_record=updated_record,
+        )
+
     def delete(self, artifact_id: str) -> int:
         try:
             with self._session_factory() as session:
@@ -1026,6 +1070,40 @@ def register_artifact_handoff_routes(
             "current_version_id": record["current_version_id"],
             "versions": artifact_record_store.list_versions(artifact_id) or [],
         }
+
+    @app.post("/api/v1/artifacts/{artifact_id}/lifecycle-actions", response_model=None)
+    def create_artifact_lifecycle_action(
+        artifact_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            record = artifact_record_store.get(artifact_id)
+            if record is None:
+                raise ArtifactHandoffError(
+                    status_code=404,
+                    error_code="ae.artifact_not_found",
+                    detail=f"Artifact was not found: {artifact_id}",
+                )
+            action_request = build_artifact_lifecycle_action_request(
+                payload=payload,
+                artifact_record=record,
+                request_id=request_id_from_headers(request),
+                trace_id=payload.get("trace_id") or trace_id_from_headers(request),
+                idempotency_key=idempotency_key,
+            )
+            return artifact_record_store.apply_lifecycle_action(
+                artifact_id,
+                action_request,
+            )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
 
     @app.post("/api/v1/artifacts/{artifact_id}/render-jobs", response_model=None)
     def create_artifact_render_job(
@@ -1851,6 +1929,30 @@ def build_artifact_lifecycle_action_result(
     }
     assert_artifact_lifecycle_payload_safe(result)
     return result
+
+
+def apply_artifact_lifecycle_action(
+    *,
+    artifact_record: dict[str, Any],
+    action_request: dict[str, Any],
+) -> dict[str, Any]:
+    validate_artifact_lifecycle_action_request(action_request)
+    if artifact_record["artifact_id"] != action_request["artifact_id"]:
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.artifact_lifecycle_artifact_mismatch",
+            detail="Lifecycle action artifact id does not match the artifact record.",
+        )
+    if artifact_record["artifact_status"] != action_request["previous_status"]:
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.artifact_lifecycle_status_changed",
+            detail="Artifact status changed before lifecycle action application.",
+        )
+    updated_record = dict(artifact_record)
+    updated_record["artifact_status"] = action_request["target_status"]
+    updated_record["updated_at"] = _utc_now()
+    return updated_record
 
 
 def validate_artifact_lifecycle_action_request(action_request: dict[str, Any]) -> None:

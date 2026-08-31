@@ -556,6 +556,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0450`](slices/0450_s45_ae_artifact_library_management_closure.md) | `S45-010` S45 AE artifact library management closure checkpoint. |
 | [`Slice 0451`](slices/0451_ae_artifact_lifecycle_boundary_audit.md) | `S46-001` AE artifact lifecycle boundary audit. |
 | [`Slice 0452`](slices/0452_ae_artifact_lifecycle_command_contract_schema.md) | `S46-002` AE artifact lifecycle command/result contract schema. |
+| [`Slice 0453`](slices/0453_ae_artifact_lifecycle_repository_api_wiring.md) | `S46-003` AE artifact lifecycle repository/API wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

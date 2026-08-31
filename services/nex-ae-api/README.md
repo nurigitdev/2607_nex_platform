@@ -375,3 +375,8 @@ Artifact library management:
   comments instead of carrying comment text, and return metadata-only results
   under `ae_artifact_lifecycle_action.v1` and
   `ae_artifact_lifecycle_action_result.v1`.
+- Slice 0453 wires lifecycle commands into the AE artifact stores and
+  `POST /api/v1/artifacts/{artifact_id}/lifecycle-actions`. The route is
+  authenticated, applies only metadata status transitions, rejects stale status
+  commands, and returns the lifecycle result contract without deleting rendered
+  files or exposing raw comments/storage material.

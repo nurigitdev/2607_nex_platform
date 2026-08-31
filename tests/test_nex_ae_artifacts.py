@@ -30,6 +30,7 @@ from nex_ae_api.artifacts import (
     SqlAlchemyArtifactHandoffStore,
     SqlAlchemyArtifactRecordStore,
     actor_claims_ref_from_payload,
+    apply_artifact_lifecycle_action,
     artifact_content_kind,
     artifact_file_extension,
     artifact_file_name_for_format,
@@ -1466,6 +1467,153 @@ def test_artifact_lifecycle_action_request_rejects_invalid_inputs() -> None:
             {"comment_text": "raw private reason"}
         )
     assert unsafe_exc.value.error_code == "ae.artifact_lifecycle_payload_unsafe"
+
+
+def test_artifact_lifecycle_action_applies_to_in_memory_store() -> None:
+    store = ArtifactRecordStore()
+    ready_record = sample_collection_artifact_record(
+        artifact_request_id="lifecycle-store-ready-001",
+        artifact_status="READY",
+    )
+    store.save(ready_record)
+    action_request = build_artifact_lifecycle_action_request(
+        payload={"action": "ARCHIVE"},
+        artifact_record=ready_record,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="lifecycle-store-archive-001",
+    )
+
+    result = store.apply_lifecycle_action(ready_record["artifact_id"], action_request)
+
+    assert result["artifact_status"] == "ARCHIVED"
+    assert result["transition_applied"] is True
+    assert store.get(ready_record["artifact_id"])["artifact_status"] == "ARCHIVED"
+    assert store.list_artifacts(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        status="ARCHIVED",
+    )["count"] == 1
+
+
+def test_artifact_lifecycle_action_apply_rejects_mismatch_and_missing_record() -> None:
+    store = ArtifactRecordStore()
+    ready_record = sample_collection_artifact_record(
+        artifact_request_id="lifecycle-store-mismatch-001",
+        artifact_status="READY",
+    )
+    store.save(ready_record)
+    action_request = build_artifact_lifecycle_action_request(
+        payload={"action": "ARCHIVE"},
+        artifact_record=ready_record,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    stale_record = {**ready_record, "artifact_status": "FAILED"}
+    with pytest.raises(ArtifactHandoffError) as stale_exc:
+        apply_artifact_lifecycle_action(
+            artifact_record=stale_record,
+            action_request=action_request,
+        )
+    assert stale_exc.value.error_code == "ae.artifact_lifecycle_status_changed"
+
+    mismatched_request = {**action_request, "artifact_id": "other-artifact"}
+    with pytest.raises(ArtifactHandoffError) as mismatch_exc:
+        apply_artifact_lifecycle_action(
+            artifact_record=ready_record,
+            action_request=mismatched_request,
+        )
+    assert mismatch_exc.value.error_code == "ae.artifact_lifecycle_artifact_mismatch"
+
+    with pytest.raises(ArtifactHandoffError) as missing_exc:
+        store.apply_lifecycle_action("missing-artifact", action_request)
+    assert missing_exc.value.error_code == "ae.artifact_not_found"
+
+
+def test_sqlalchemy_artifact_record_store_applies_lifecycle_with_sqlite() -> None:
+    session_factory = sqlite_artifact_session_factory()
+    store = SqlAlchemyArtifactRecordStore(session_factory)
+    ready_record = sample_collection_artifact_record(
+        artifact_request_id="sql-lifecycle-ready-001",
+        artifact_status="READY",
+    )
+    handoff_store = SqlAlchemyArtifactHandoffStore(session_factory)
+    handoff_store.save(
+        {
+            **sample_handoff_record(),
+            "artifact_handoff_id": ready_record["handoff_ref"]["artifact_handoff_id"],
+            "artifact_request_id": ready_record["handoff_ref"]["artifact_request_id"],
+        }
+    )
+    store.save(ready_record)
+    action_request = build_artifact_lifecycle_action_request(
+        payload={"action": "MARK_DELETED"},
+        artifact_record=ready_record,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    result = store.apply_lifecycle_action(ready_record["artifact_id"], action_request)
+
+    assert result["artifact_status"] == "DELETED"
+    assert store.get(ready_record["artifact_id"])["artifact_status"] == "DELETED"
+    assert store.list_artifacts(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        status="DELETED",
+    )["count"] == 1
+
+
+def test_artifact_lifecycle_route_applies_and_reports_errors() -> None:
+    client, _, artifact_store, _ = build_client_with_artifact_store()
+    ready_record = sample_collection_artifact_record(
+        artifact_request_id="route-lifecycle-ready-001",
+        artifact_status="READY",
+    )
+    artifact_store.save(ready_record)
+    headers = auth_headers()
+
+    archive = client.post(
+        f"/api/v1/artifacts/{ready_record['artifact_id']}/lifecycle-actions",
+        json={"action": "ARCHIVE", "reason_code": "user_requested"},
+        headers=headers,
+    )
+    missing = client.post(
+        "/api/v1/artifacts/missing-artifact/lifecycle-actions",
+        json={"action": "ARCHIVE"},
+        headers=headers,
+    )
+    invalid = client.post(
+        f"/api/v1/artifacts/{ready_record['artifact_id']}/lifecycle-actions",
+        json={"action": "RESTORE", "restore_status": "ARCHIVED"},
+        headers=headers,
+    )
+    unauthorized = client.post(
+        f"/api/v1/artifacts/{ready_record['artifact_id']}/lifecycle-actions",
+        json={"action": "ARCHIVE"},
+    )
+
+    assert archive.status_code == 200
+    assert archive.json()["artifact_lifecycle_action_result_schema_version"] == (
+        AE_ARTIFACT_LIFECYCLE_ACTION_RESULT_SCHEMA_VERSION
+    )
+    assert archive.json()["artifact_status"] == "ARCHIVED"
+    assert archive.json()["lifecycle_action"]["idempotency_key"] == (
+        "artifact-request-001"
+    )
+    assert artifact_store.get(ready_record["artifact_id"])["artifact_status"] == (
+        "ARCHIVED"
+    )
+    assert missing.status_code == 404
+    assert missing.json()["error_code"] == "ae.artifact_not_found"
+    assert invalid.status_code == 422
+    assert invalid.json()["error_code"] == (
+        "ae.artifact_lifecycle_restore_status_invalid"
+    )
+    assert unauthorized.status_code == 401
 
 
 def test_artifact_collection_read_model_guards_private_and_sparse_payloads() -> None:
