@@ -895,6 +895,10 @@ Slice 0441 starts S45:
   `POST /api/v1/artifacts/{artifact_id}/lifecycle-actions`, while browser
   surfaces keep raw comments out of state and expose only comment length/hash
   presence.
+- Slice 0456 adds the AE Web artifact lifecycle action state model. The browser
+  now has status-aware action sets and running/applied/unavailable state
+  summaries for archive, restore, and logical delete before the controls are
+  wired into the shell.
 
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.
