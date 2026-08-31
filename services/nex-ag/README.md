@@ -179,6 +179,9 @@ Unified operations:
   projection and issue-candidate generation. AE remains the lifecycle mutation
   owner, while AG may surface `ARCHIVE`, `RESTORE`, and logical `MARK_DELETED`
   state only through metadata-safe AE artifact projections.
+- Slice 0460 closes S46 by checking AG's lifecycle projection stays read-only,
+  metadata-only, and connected to the AE artifact lifecycle surface alongside
+  the AE Web lifecycle evidence.
 - AG remediation execution handoff planning is centralized in
   `nex_ag.generation_remediation_execution`. The planner maps CX remediation
   execution statuses back to AG task updates without bypassing the existing

@@ -563,6 +563,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0457`](slices/0457_ae_web_artifact_lifecycle_ux_wiring.md) | `S46-007` AE Web artifact lifecycle UX wiring. |
 | [`Slice 0458`](slices/0458_ae_web_artifact_lifecycle_playwright_postgresql_smoke.md) | `S46-008` AE Web artifact lifecycle Playwright/PostgreSQL smoke evidence. |
 | [`Slice 0459`](slices/0459_ag_artifact_lifecycle_operations_projection.md) | `S46-009` AG artifact lifecycle operations projection. |
+| [`Slice 0460`](slices/0460_s46_ae_artifact_lifecycle_management_closure.md) | `S46-010` S46 AE artifact lifecycle management closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

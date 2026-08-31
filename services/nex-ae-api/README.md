@@ -385,3 +385,6 @@ Artifact library management:
   `NEX_AE_TEST_DATABASE_URL` to migrate the real AE test DB, create a rendered
   artifact, execute archive/restore/logical-delete through the API, verify
   direct DB status/file/link rows, and clean up smoke records.
+- Slice 0460 closes S46 by checking the AE lifecycle contract, repository/API
+  wiring, PostgreSQL smoke evidence, AE Web lifecycle surface, and AG read-only
+  lifecycle projection remain connected without adding physical deletion.
