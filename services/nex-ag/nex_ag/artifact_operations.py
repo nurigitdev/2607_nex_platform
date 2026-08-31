@@ -27,6 +27,9 @@ AG_ARTIFACT_OPERATION_DETAIL_PROJECTION_SCHEMA_VERSION = (
 AG_ARTIFACT_OPERATION_COLLECTION_PROJECTION_SCHEMA_VERSION = (
     "ag_artifact_operation_collection_projection.v1"
 )
+AG_ARTIFACT_OPERATION_LIFECYCLE_PROJECTION_SCHEMA_VERSION = (
+    "ag_artifact_operation_lifecycle_projection.v1"
+)
 AE_ARTIFACT_SOURCE_SERVICE_ID = "nex-ae-api"
 NEX_AG_AE_ARTIFACT_BASE_URL_ENV = "NEX_AG_AE_ARTIFACT_BASE_URL"
 NEX_AG_AE_ARTIFACT_SERVICE_TOKEN_ENV = "NEX_AG_AE_ARTIFACT_SERVICE_TOKEN"
@@ -45,6 +48,11 @@ SUPPORTED_ARTIFACT_STATUSES = {
     "ARCHIVED",
     "DELETED",
 }
+SUPPORTED_ARTIFACT_LIFECYCLE_ACTIONS = ("ARCHIVE", "RESTORE", "MARK_DELETED")
+ARCHIVABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED"}
+DELETABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED", "ARCHIVED"}
+RESTORABLE_ARTIFACT_STATUSES = {"ARCHIVED", "DELETED"}
+DEFAULT_ARTIFACT_RESTORE_STATUS = "READY"
 
 
 class AeArtifactOperationsClient(Protocol):
@@ -461,6 +469,50 @@ def register_artifact_operation_routes(
             request_trace_id=trace_id,
         )
 
+    @app.get(
+        "/admin/v1/operations/artifacts/{artifact_id}/lifecycle",
+        response_model=None,
+    )
+    def get_artifact_operation_lifecycle(
+        artifact_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        service_problem = _validate_artifact_service_filter(request, service_id)
+        if service_problem is not None:
+            return service_problem
+
+        selected_client = configured_client or build_default_ae_artifact_operations_client()
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            artifact = selected_client.get_artifact(
+                artifact_id,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        except AeArtifactOperationsError as exc:
+            return _artifact_operations_problem_response(request, exc)
+        if artifact is None:
+            return problem_response(
+                request,
+                status_code=404,
+                error_code="ag.ae_artifact_not_found",
+                title="AE artifact not found",
+                detail=f"AE artifact {artifact_id} was not found.",
+                type_uri="https://nex-platform.local/problems/ae-artifact-not-found",
+            )
+
+        return build_artifact_operation_lifecycle_projection(
+            artifact=artifact,
+            source_client=selected_client,
+            request_trace_id=trace_id,
+        )
+
 
 def build_artifact_operation_collection_projection(
     *,
@@ -494,6 +546,51 @@ def build_artifact_operation_collection_projection(
             item_count=len(items),
             errors=errors,
         ),
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    assert_artifact_operation_projection_redacted(projection)
+    return projection
+
+
+def build_artifact_operation_lifecycle_projection(
+    *,
+    artifact: Mapping[str, Any],
+    source_client: AeArtifactOperationsClient | None = None,
+    source_errors: list[AeArtifactOperationsError] | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    projected_artifact = _project_lifecycle_artifact(artifact)
+    actions = _project_lifecycle_actions(projected_artifact)
+    errors = source_errors or []
+    issues = _artifact_lifecycle_issues(projected_artifact, actions)
+    projection = {
+        "projection_schema_version": (
+            AG_ARTIFACT_OPERATION_LIFECYCLE_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "DEGRADED" if errors or issues else "READY",
+        "checked_at": _utc_now(),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "operation_type": "ae_artifact_lifecycle",
+        "artifact": projected_artifact,
+        "lifecycle": {
+            "supported_actions": list(SUPPORTED_ARTIFACT_LIFECYCLE_ACTIONS),
+            "default_restore_status": DEFAULT_ARTIFACT_RESTORE_STATUS,
+            "metadata_only": True,
+            "storage_mutation_allowed": False,
+            "physical_delete_allowed": False,
+            "actions": actions,
+        },
+        "summary": summarize_artifact_operation_lifecycle(
+            projected_artifact,
+            actions,
+        ),
+        "source_status": _artifact_lifecycle_source_status(
+            source_client=source_client,
+            artifact_loaded=True,
+            errors=errors,
+        ),
+        "issues": issues,
     }
     if request_trace_id is not None:
         projection["request_trace_id"] = request_trace_id
@@ -544,6 +641,36 @@ def build_artifact_operation_detail_projection(
         projection["request_trace_id"] = request_trace_id
     assert_artifact_operation_projection_redacted(projection)
     return projection
+
+
+def summarize_artifact_operation_lifecycle(
+    artifact: Mapping[str, Any],
+    actions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    enabled_actions = [
+        str(action["action"])
+        for action in actions
+        if action.get("enabled") is True
+    ]
+    blocked_actions = [
+        str(action["action"])
+        for action in actions
+        if action.get("enabled") is not True
+    ]
+    status = _normalized_status(artifact.get("artifact_status"))
+    return {
+        "artifact_status": status,
+        "enabled_action_count": len(enabled_actions),
+        "blocked_action_count": len(blocked_actions),
+        "enabled_actions": enabled_actions,
+        "blocked_actions": blocked_actions,
+        "archive_available": "ARCHIVE" in enabled_actions,
+        "restore_available": "RESTORE" in enabled_actions,
+        "mark_deleted_available": "MARK_DELETED" in enabled_actions,
+        "is_hidden_from_active_library": status in {"ARCHIVED", "DELETED"},
+        "is_logically_deleted": status == "DELETED",
+        "metadata_only": True,
+    }
 
 
 def summarize_artifact_operation_detail(
@@ -616,6 +743,8 @@ def assert_artifact_operation_projection_redacted(projection: Mapping[str, Any])
         "nuri1004",
         "raw source",
         "rendered_markdown",
+        "comment_text",
+        "raw_comment",
     )
     for fragment in forbidden_fragments:
         if fragment in serialized:
@@ -714,6 +843,35 @@ def _project_artifact_collection_item(record: Mapping[str, Any]) -> dict[str, An
         "owner_user_id": _text_or_none(record.get("owner_user_id")),
         "chat_document_id": _text_or_none(record.get("chat_document_id")),
         "interaction_id": _text_or_none(record.get("interaction_id")),
+        "created_at": _text_or_none(record.get("created_at")),
+        "updated_at": _text_or_none(record.get("updated_at")),
+    }
+
+
+def _project_lifecycle_artifact(record: Mapping[str, Any]) -> dict[str, Any]:
+    artifact_id = _text_or_none(record.get("artifact_id"))
+    routes = {}
+    if artifact_id:
+        routes = {
+            "detail": f"/api/v1/artifacts/{artifact_id}",
+            "lifecycle_action": f"/api/v1/artifacts/{artifact_id}/lifecycle-actions",
+        }
+    return {
+        "artifact_id": artifact_id,
+        "artifact_type": _text_or_none(record.get("artifact_type")),
+        "artifact_status": _normalized_status(record.get("artifact_status")),
+        "display_title": _text_or_none(
+            record.get("display_title") or record.get("artifact_title")
+        ),
+        "current_version_id": _text_or_none(record.get("current_version_id")),
+        "owner_scope": _owner_scope(record.get("owner_actor_ref")),
+        "workspace_ref": _select_mapping(
+            record.get("workspace_ref"),
+            ("workspace_id", "document_group_id", "chat_document_id"),
+        ),
+        "file_count": len(_list_value(record.get("files"))),
+        "link_count": len(_list_value(record.get("links"))),
+        "routes": _safe_artifact_route_mapping(routes),
         "created_at": _text_or_none(record.get("created_at")),
         "updated_at": _text_or_none(record.get("updated_at")),
     }
@@ -907,6 +1065,30 @@ def _artifact_collection_source_status(
     }
 
 
+def _artifact_lifecycle_source_status(
+    *,
+    source_client: AeArtifactOperationsClient | None,
+    artifact_loaded: bool,
+    errors: list[AeArtifactOperationsError],
+) -> dict[str, Any]:
+    status = "DEGRADED" if errors else "READY"
+    return {
+        "status": status,
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "source_kind": getattr(source_client, "source_kind", "provided"),
+        "base_url": getattr(source_client, "base_url", None),
+        "artifact_loaded": artifact_loaded,
+        "errors": [
+            {
+                "error_code": error.error_code,
+                "detail": error.detail,
+                "status_code": error.status_code,
+            }
+            for error in errors
+        ],
+    }
+
+
 def _validate_artifact_collection_query(
     request: Request,
     *,
@@ -1045,6 +1227,116 @@ def _artifact_to_collection_item(artifact: Mapping[str, Any]) -> dict[str, Any]:
         "created_at": _text_or_none(artifact.get("created_at")),
         "updated_at": _text_or_none(artifact.get("updated_at")),
     }
+
+
+def _project_lifecycle_actions(
+    artifact: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    artifact_id = _text_or_none(artifact.get("artifact_id"))
+    status = _normalized_status(artifact.get("artifact_status"))
+    return [
+        _project_lifecycle_action(
+            artifact_id=artifact_id,
+            current_status=status,
+            action=action,
+        )
+        for action in SUPPORTED_ARTIFACT_LIFECYCLE_ACTIONS
+    ]
+
+
+def _project_lifecycle_action(
+    *,
+    artifact_id: str | None,
+    current_status: str | None,
+    action: str,
+) -> dict[str, Any]:
+    target_status, blocked_reason, idempotent = _artifact_lifecycle_target(
+        current_status=current_status,
+        action=action,
+    )
+    enabled = target_status is not None and artifact_id is not None
+    if target_status is not None and artifact_id is None:
+        blocked_reason = "artifact_id_missing"
+    route = (
+        f"/api/v1/artifacts/{artifact_id}/lifecycle-actions"
+        if enabled and artifact_id
+        else None
+    )
+    return {
+        "action": action,
+        "enabled": enabled,
+        "previous_status": current_status,
+        "target_status": target_status if enabled else None,
+        "restore_status": (
+            DEFAULT_ARTIFACT_RESTORE_STATUS
+            if enabled and action == "RESTORE"
+            else None
+        ),
+        "idempotent": idempotent if enabled else False,
+        "reason_code": "user_requested" if enabled else None,
+        "blocked_reason": None if enabled else blocked_reason,
+        "route": _safe_artifact_route(route),
+        "metadata_only": True,
+    }
+
+
+def _artifact_lifecycle_target(
+    *,
+    current_status: str | None,
+    action: str,
+) -> tuple[str | None, str | None, bool]:
+    if current_status not in SUPPORTED_ARTIFACT_STATUSES:
+        return None, "artifact_status_unsupported", False
+    if action == "ARCHIVE":
+        if current_status == "ARCHIVED":
+            return "ARCHIVED", None, True
+        if current_status in ARCHIVABLE_ARTIFACT_STATUSES:
+            return "ARCHIVED", None, False
+        return None, "artifact_status_not_archivable", False
+    if action == "MARK_DELETED":
+        if current_status == "DELETED":
+            return "DELETED", None, True
+        if current_status in DELETABLE_ARTIFACT_STATUSES:
+            return "DELETED", None, False
+        return None, "artifact_status_not_deletable", False
+    if action == "RESTORE":
+        if current_status in RESTORABLE_ARTIFACT_STATUSES:
+            return DEFAULT_ARTIFACT_RESTORE_STATUS, None, False
+        return None, "artifact_status_not_restorable", False
+    return None, "artifact_lifecycle_action_unsupported", False
+
+
+def _artifact_lifecycle_issues(
+    artifact: Mapping[str, Any],
+    actions: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    status = _normalized_status(artifact.get("artifact_status"))
+    issues: list[dict[str, str]] = []
+    if status not in SUPPORTED_ARTIFACT_STATUSES:
+        issues.append(
+            {
+                "category": "source_contract",
+                "subject": "artifact_status",
+                "detail": "AE artifact status is not supported by AG lifecycle projection.",
+            }
+        )
+    if not _text_or_none(artifact.get("artifact_id")):
+        issues.append(
+            {
+                "category": "source_contract",
+                "subject": "artifact_id",
+                "detail": "AE artifact id is required for lifecycle action routing.",
+            }
+        )
+    if status == "RENDERING" and not any(action["enabled"] for action in actions):
+        issues.append(
+            {
+                "category": "operator_visibility",
+                "subject": "rendering_artifact",
+                "detail": "Lifecycle actions remain blocked until rendering completes.",
+            }
+        )
+    return issues
 
 
 def _handoff_id_from_artifact(record: Mapping[str, Any]) -> str | None:

@@ -29,6 +29,7 @@ Current endpoints:
 - `GET /admin/v1/operations/retrieval-score-calibration`
 - `GET /admin/v1/operations/artifacts`
 - `GET /admin/v1/operations/artifacts/{artifact_id}`
+- `GET /admin/v1/operations/artifacts/{artifact_id}/lifecycle`
 - `POST /admin/v1/operations/jobs/{service_id}/{job_id}/cancel`
 - `POST /admin/v1/operations/jobs/{service_id}/{job_id}/retry`
 - `GET /admin/v1/operations/sources`
@@ -167,6 +168,10 @@ Unified operations:
   `ag_artifact_operation_detail_projection.v1` for one AE artifact and optional
   handoff/chat artifact link context without exposing rendered content or local
   storage paths.
+- `GET /admin/v1/operations/artifacts/{artifact_id}/lifecycle` returns
+  `ag_artifact_operation_lifecycle_projection.v1`, deriving metadata-only
+  archive, restore, and logical delete availability from the AE artifact's
+  current status without mutating AE state.
 - Slice 0450 closes S45 by checking the AG artifact collection projection
   remains connected to the AE-owned collection API and AE Web library evidence
   without crossing the metadata-only operations boundary.

@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from nex_ag.artifact_operations import (
     AG_ARTIFACT_OPERATION_COLLECTION_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_DETAIL_PROJECTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_LIFECYCLE_PROJECTION_SCHEMA_VERSION,
     AE_ARTIFACT_SOURCE_SERVICE_ID,
     DEFAULT_AE_ARTIFACT_TIMEOUT_SECONDS,
     NEX_AG_AE_ARTIFACT_BASE_URL_ENV,
@@ -20,10 +21,12 @@ from nex_ag.artifact_operations import (
     assert_artifact_operation_projection_redacted,
     build_artifact_operation_collection_projection,
     build_artifact_operation_detail_projection,
+    build_artifact_operation_lifecycle_projection,
     build_default_ae_artifact_operations_client,
     register_artifact_operation_routes,
     summarize_artifact_operation_collection,
     summarize_artifact_operation_detail,
+    summarize_artifact_operation_lifecycle,
 )
 import nex_ag.artifact_operations as artifact_operations
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
@@ -450,6 +453,126 @@ def test_artifact_operation_collection_projection_handles_sparse_values() -> Non
     )
 
 
+def test_artifact_operation_lifecycle_projection_summarizes_ready_state() -> None:
+    projection = build_artifact_operation_lifecycle_projection(
+        artifact=artifact_record(include_private=True),
+        source_client=InMemoryAeArtifactOperationsClient(),
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_LIFECYCLE_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["operation_type"] == "ae_artifact_lifecycle"
+    assert projection["projection_status"] == "READY"
+    assert projection["artifact"]["routes"] == {
+        "detail": f"/api/v1/artifacts/{ARTIFACT_ID}",
+        "lifecycle_action": f"/api/v1/artifacts/{ARTIFACT_ID}/lifecycle-actions",
+    }
+    assert projection["lifecycle"]["metadata_only"] is True
+    assert projection["lifecycle"]["physical_delete_allowed"] is False
+    assert projection["summary"] == {
+        "artifact_status": "READY",
+        "enabled_action_count": 2,
+        "blocked_action_count": 1,
+        "enabled_actions": ["ARCHIVE", "MARK_DELETED"],
+        "blocked_actions": ["RESTORE"],
+        "archive_available": True,
+        "restore_available": False,
+        "mark_deleted_available": True,
+        "is_hidden_from_active_library": False,
+        "is_logically_deleted": False,
+        "metadata_only": True,
+    }
+    assert summarize_artifact_operation_lifecycle(
+        projection["artifact"],
+        projection["lifecycle"]["actions"],
+    ) == projection["summary"]
+    assert projection["request_trace_id"] == TRACE_ID
+    assert "SECRET" not in str(projection)
+    assert "raw_comment" not in str(projection)
+    assert "/data/nex-platform" not in str(projection)
+
+
+@pytest.mark.parametrize(
+    ("status", "enabled_actions", "blocked_actions", "idempotent_action"),
+    [
+        ("ARCHIVED", ["ARCHIVE", "RESTORE", "MARK_DELETED"], [], "ARCHIVE"),
+        ("DELETED", ["RESTORE", "MARK_DELETED"], ["ARCHIVE"], "MARK_DELETED"),
+        ("FAILED", ["ARCHIVE", "MARK_DELETED"], ["RESTORE"], None),
+    ],
+)
+def test_artifact_operation_lifecycle_projection_status_matrix(
+    status: str,
+    enabled_actions: list[str],
+    blocked_actions: list[str],
+    idempotent_action: str | None,
+) -> None:
+    projection = build_artifact_operation_lifecycle_projection(
+        artifact={**artifact_record(include_private=False), "artifact_status": status}
+    )
+    actions = {
+        action["action"]: action
+        for action in projection["lifecycle"]["actions"]
+    }
+
+    assert projection["summary"]["enabled_actions"] == enabled_actions
+    assert projection["summary"]["blocked_actions"] == blocked_actions
+    assert projection["summary"]["is_hidden_from_active_library"] is (
+        status in {"ARCHIVED", "DELETED"}
+    )
+    assert projection["summary"]["is_logically_deleted"] is (status == "DELETED")
+    if idempotent_action:
+        assert actions[idempotent_action]["idempotent"] is True
+    for action in enabled_actions:
+        assert actions[action]["route"].endswith("/lifecycle-actions")
+        assert actions[action]["reason_code"] == "user_requested"
+
+
+def test_artifact_operation_lifecycle_projection_degrades_source_contract_edges() -> None:
+    rendering = build_artifact_operation_lifecycle_projection(
+        artifact={
+            **artifact_record(include_private=False),
+            "artifact_status": "RENDERING",
+            "comment_text": "raw private operator comment",
+        }
+    )
+    unknown = build_artifact_operation_lifecycle_projection(
+        artifact={
+            **artifact_record(include_private=False),
+            "artifact_id": None,
+            "artifact_status": "UNKNOWN",
+        },
+        source_errors=[
+            AeArtifactOperationsError(
+                error_code="ag.ae_artifact_lifecycle_source_warning",
+                detail="source contract changed",
+                status_code=503,
+            )
+        ],
+    )
+
+    assert rendering["projection_status"] == "DEGRADED"
+    assert rendering["issues"][0]["subject"] == "rendering_artifact"
+    assert all(
+        action["enabled"] is False
+        for action in rendering["lifecycle"]["actions"]
+    )
+    assert unknown["projection_status"] == "DEGRADED"
+    assert {issue["subject"] for issue in unknown["issues"]} == {
+        "artifact_status",
+        "artifact_id",
+    }
+    assert unknown["source_status"]["errors"][0]["error_code"] == (
+        "ag.ae_artifact_lifecycle_source_warning"
+    )
+    assert all(action["route"] is None for action in unknown["lifecycle"]["actions"])
+    assert artifact_operations._artifact_lifecycle_target(
+        current_status="READY",
+        action="PURGE",
+    ) == (None, "artifact_lifecycle_action_unsupported", False)
+
+
 def test_artifact_operation_projection_handles_sparse_values_and_errors() -> None:
     projection = build_artifact_operation_detail_projection(
         artifact={
@@ -832,6 +955,64 @@ def test_artifact_operation_route_returns_detail_projection() -> None:
     assert payload["request_trace_id"] == TRACE_ID
 
 
+def test_artifact_operation_route_returns_lifecycle_projection() -> None:
+    client = build_app(artifact_client())
+
+    response = client.get(
+        f"/admin/v1/operations/artifacts/{ARTIFACT_ID}/lifecycle",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_LIFECYCLE_PROJECTION_SCHEMA_VERSION
+    )
+    assert payload["operation_type"] == "ae_artifact_lifecycle"
+    assert payload["summary"]["enabled_actions"] == ["ARCHIVE", "MARK_DELETED"]
+    assert payload["lifecycle"]["actions"][0]["route"] == (
+        f"/api/v1/artifacts/{ARTIFACT_ID}/lifecycle-actions"
+    )
+    assert payload["request_trace_id"] == TRACE_ID
+
+
+def test_artifact_operation_lifecycle_route_auth_filter_missing_and_source_errors() -> None:
+    client = build_app(artifact_client())
+
+    unauthorized = client.get(f"/admin/v1/operations/artifacts/{ARTIFACT_ID}/lifecycle")
+    invalid_service = client.get(
+        f"/admin/v1/operations/artifacts/{ARTIFACT_ID}/lifecycle",
+        params={"service_id": "nex-cx"},
+        headers=auth_headers(),
+    )
+    missing = client.get(
+        "/admin/v1/operations/artifacts/missing/lifecycle",
+        headers=auth_headers(),
+    )
+
+    class BrokenLifecycleClient(InMemoryAeArtifactOperationsClient):
+        def get_artifact(self, *args: Any, **kwargs: Any) -> dict[str, Any] | None:
+            raise AeArtifactOperationsError(
+                error_code="ag.ae_artifact_lifecycle_source_failed",
+                detail="AE lifecycle source unavailable",
+                status_code=503,
+            )
+
+    source_failed = build_app(BrokenLifecycleClient()).get(
+        f"/admin/v1/operations/artifacts/{ARTIFACT_ID}/lifecycle",
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert invalid_service.status_code == 400
+    assert invalid_service.json()["error_code"] == "ag.ae_artifact_service_invalid"
+    assert missing.status_code == 404
+    assert source_failed.status_code == 503
+    assert source_failed.json()["error_code"] == (
+        "ag.ae_artifact_lifecycle_source_failed"
+    )
+
+
 def test_artifact_operation_route_can_disable_optional_reads() -> None:
     client = build_app(artifact_client())
 
@@ -1088,4 +1269,5 @@ def test_artifact_operations_registered_on_main_app() -> None:
     paths = {route.path for route in app.routes}
     assert "/admin/v1/operations/artifacts" in paths
     assert "/admin/v1/operations/artifacts/{artifact_id}" in paths
+    assert "/admin/v1/operations/artifacts/{artifact_id}/lifecycle" in paths
     assert AE_ARTIFACT_SOURCE_SERVICE_ID == "nex-ae-api"
