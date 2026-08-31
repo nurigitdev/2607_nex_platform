@@ -380,3 +380,8 @@ Artifact library management:
   authenticated, applies only metadata status transitions, rejects stale status
   commands, and returns the lifecycle result contract without deleting rendered
   files or exposing raw comments/storage material.
+- Slice 0454 adds protected PostgreSQL smoke evidence for lifecycle actions.
+  Set `NEX_AE_ARTIFACT_LIFECYCLE_POSTGRES_SMOKE=1` with
+  `NEX_AE_TEST_DATABASE_URL` to migrate the real AE test DB, create a rendered
+  artifact, execute archive/restore/logical-delete through the API, verify
+  direct DB status/file/link rows, and clean up smoke records.
