@@ -890,6 +890,11 @@ Slice 0441 starts S45:
   for `ARCHIVE`, `RESTORE`, and logical `MARK_DELETED`, but must continue to
   call AE API through the artifact client and keep storage paths, rendered
   payloads, credentials, and database URLs out of browser evidence.
+- Slice 0455 adds the AE Web artifact lifecycle client adapter. Mock and fetch
+  clients can now submit `ARCHIVE`, `RESTORE`, and `MARK_DELETED` through
+  `POST /api/v1/artifacts/{artifact_id}/lifecycle-actions`, while browser
+  surfaces keep raw comments out of state and expose only comment length/hash
+  presence.
 
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

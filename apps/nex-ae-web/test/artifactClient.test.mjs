@@ -6,10 +6,14 @@ import {
   AE_ARTIFACT_COLLECTION_SCHEMA_VERSION,
   AE_ARTIFACT_FILE_DOWNLOAD_SCHEMA_VERSION,
   AE_ARTIFACT_FILE_PREVIEW_SCHEMA_VERSION,
+  AE_ARTIFACT_LIFECYCLE_ACTION_RESULT_SCHEMA_VERSION,
+  AE_ARTIFACT_LIFECYCLE_ACTION_SCHEMA_VERSION,
   AE_ARTIFACT_RECORD_SCHEMA_VERSION,
   AE_WEB_ARTIFACT_COLLECTION_SURFACE_SCHEMA_VERSION,
   AE_WEB_ARTIFACT_EXPORT_REQUEST_SCHEMA_VERSION,
   AE_WEB_ARTIFACT_EXPORT_SURFACE_SCHEMA_VERSION,
+  AE_WEB_ARTIFACT_LIFECYCLE_ACTION_REQUEST_SCHEMA_VERSION,
+  AE_WEB_ARTIFACT_LIFECYCLE_ACTION_SURFACE_SCHEMA_VERSION,
   AE_WEB_ARTIFACT_CLIENT_SCHEMA_VERSION,
   ArtifactClientError,
   artifactCollectionRoute,
@@ -17,6 +21,7 @@ import {
   artifactFileDownloadRoute,
   artifactFileMetadataRoute,
   artifactFilePreviewRoute,
+  artifactLifecycleActionRoute,
   artifactRenderJobRoute,
   artifactVersionsRoute,
   buildArtifactCollectionItemSurface,
@@ -26,6 +31,9 @@ import {
   buildArtifactExportRequest,
   buildArtifactExportSummary,
   buildArtifactExportSurface,
+  buildArtifactLifecycleActionRequest,
+  buildArtifactLifecycleActionSummary,
+  buildArtifactLifecycleActionSurface,
   buildArtifactClientSummary,
   buildArtifactDownloadSurface,
   buildArtifactPreviewSurface,
@@ -231,6 +239,56 @@ function downloadPayload(overrides = {}) {
     content_type: "text/markdown",
     content_hash: "f".repeat(64),
     content: "# Generated report\n\n다운로드 본문입니다.",
+    ...overrides
+  };
+}
+
+function lifecycleResultPayload(overrides = {}) {
+  const action = {
+    artifact_lifecycle_action_schema_version:
+      AE_ARTIFACT_LIFECYCLE_ACTION_SCHEMA_VERSION,
+    lifecycle_action_id: "lifecycle-action-001",
+    artifact_id: "artifact-001",
+    action: "ARCHIVE",
+    previous_status: "READY",
+    target_status: "ARCHIVED",
+    restore_status: null,
+    reason_code: "user_requested",
+    comment_hash: "a".repeat(64),
+    comment_length: 12,
+    actor_ref: {
+      actor_type: "user",
+      actor_id: "user-001",
+      tenant_id: "tenant-001"
+    },
+    request_id: "request-001",
+    trace_id: "0".repeat(32),
+    idempotency_key: "artifact-lifecycle-001",
+    metadata: {
+      physical_delete_requested: false,
+      storage_mutation_requested: false,
+      raw_comment_included: false
+    }
+  };
+  return {
+    artifact_lifecycle_action_result_schema_version:
+      AE_ARTIFACT_LIFECYCLE_ACTION_RESULT_SCHEMA_VERSION,
+    lifecycle_action: action,
+    artifact_id: "artifact-001",
+    artifact_status: "ARCHIVED",
+    previous_status: "READY",
+    target_status: "ARCHIVED",
+    transition_applied: true,
+    routes: {
+      artifact: "/api/v1/artifacts/artifact-001",
+      collection: "/api/v1/artifacts"
+    },
+    updated_at: "2026-08-31T00:00:00Z",
+    metadata: {
+      rendered_payload_included: false,
+      storage_location_included: false,
+      physical_delete_executed: false
+    },
     ...overrides
   };
 }
@@ -936,6 +994,284 @@ describe("AE Web artifact client adapter", () => {
     assert.deepEqual(JSON.parse(calls[0].options.body).target_formats, [
       "HTML_PREVIEW"
     ]);
+  });
+
+  it("builds artifact lifecycle requests and browser-safe result surfaces", () => {
+    const archiveRequest = buildArtifactLifecycleActionRequest({
+      artifactId: "artifact 001",
+      action: "archive",
+      reasonCode: "USER_REQUESTED",
+      comment: "Hide from the active library",
+      idempotencyKey: "artifact-lifecycle-archive-001"
+    });
+    const restoreRequest = buildArtifactLifecycleActionRequest({
+      artifact_id: "artifact-001",
+      lifecycle_action: "restore"
+    });
+    const surface = buildArtifactLifecycleActionSurface(lifecycleResultPayload(), {
+      clientMode: "fetch",
+      route: "/api/v1/artifacts/artifact-001/lifecycle-actions"
+    });
+    const summary = buildArtifactLifecycleActionSummary(surface);
+    const clientSummary = buildArtifactClientSummary(surface);
+
+    assert.equal(
+      archiveRequest.artifact_lifecycle_action_request_schema_version,
+      AE_WEB_ARTIFACT_LIFECYCLE_ACTION_REQUEST_SCHEMA_VERSION
+    );
+    assert.equal(archiveRequest.action, "ARCHIVE");
+    assert.equal(archiveRequest.target_status, "ARCHIVED");
+    assert.equal(archiveRequest.restore_status, null);
+    assert.equal(archiveRequest.reason_code, "user_requested");
+    assert.equal(archiveRequest.comment_length, 28);
+    assert.equal(
+      archiveRequest.route,
+      "/api/v1/artifacts/artifact%20001/lifecycle-actions"
+    );
+    assert.deepEqual(archiveRequest.body, {
+      action: "ARCHIVE",
+      reason_code: "user_requested",
+      comment: "Hide from the active library"
+    });
+    assert.equal(restoreRequest.target_status, "READY");
+    assert.equal(restoreRequest.body.restore_status, "READY");
+    assert.equal(
+      artifactLifecycleActionRoute("artifact 001"),
+      "/api/v1/artifacts/artifact%20001/lifecycle-actions"
+    );
+
+    assert.equal(
+      surface.artifact_lifecycle_action_surface_schema_version,
+      AE_WEB_ARTIFACT_LIFECYCLE_ACTION_SURFACE_SCHEMA_VERSION
+    );
+    assert.equal(surface.artifactId, "artifact-001");
+    assert.equal(surface.action, "ARCHIVE");
+    assert.equal(surface.previousStatus, "READY");
+    assert.equal(surface.targetStatus, "ARCHIVED");
+    assert.equal(surface.artifactStatus, "ARCHIVED");
+    assert.equal(surface.commentHashPresent, true);
+    assert.equal(surface.commentLength, 12);
+    assert.equal(surface.actorScope.actorId, "user-001");
+    assert.equal(surface.metadata.rawCommentIncluded, false);
+    assert.equal(summary.transition_applied, true);
+    assert.equal(summary.comment_hash_present, true);
+    assert.equal(summary.artifact_route_present, true);
+    assert.equal(clientSummary.status, "ARCHIVED");
+    assert.doesNotMatch(
+      JSON.stringify({ surface, summary }),
+      /Hide from the active library|comment_text|storage_ref|\/data\/nex-platform|nuri1004/
+    );
+  });
+
+  it("submits artifact lifecycle actions in mock and fetch modes", async () => {
+    const mockClient = createMockArtifactClient({ artifacts: [artifactRecord()] });
+    const archive = await mockClient.submitArtifactLifecycleAction({
+      artifactId: "artifact-001",
+      action: "ARCHIVE",
+      comment: "Move out of active view",
+      idempotencyKey: "archive-001"
+    });
+    const archivedRecord = await mockClient.getArtifact("artifact-001");
+    const restore = await mockClient.submitArtifactLifecycleAction({
+      artifactId: "artifact-001",
+      action: "RESTORE",
+      restoreStatus: "failed",
+      reasonCode: "operator:repair",
+      idempotencyKey: "restore-001"
+    });
+    const deleted = await mockClient.submitArtifactLifecycleAction({
+      artifactId: "artifact-001",
+      action: "MARK_DELETED",
+      idempotencyKey: "delete-001"
+    });
+    const deletedCollection = await mockClient.listArtifacts({
+      tenantId: "tenant-001",
+      workspaceId: "workspace-001",
+      ownerUserId: "user-001",
+      status: "DELETED"
+    });
+
+    assert.equal(archive.artifactStatus, "ARCHIVED");
+    assert.equal(archive.commentLength, 23);
+    assert.equal(archive.commentHashPresent, true);
+    assert.equal(archivedRecord.artifactStatus, "ARCHIVED");
+    assert.equal(restore.previousStatus, "ARCHIVED");
+    assert.equal(restore.artifactStatus, "FAILED");
+    assert.equal(restore.restoreStatus, "FAILED");
+    assert.equal(deleted.previousStatus, "FAILED");
+    assert.equal(deleted.artifactStatus, "DELETED");
+    assert.equal(deletedCollection.count, 1);
+    assert.equal(deletedCollection.items[0].artifactStatus, "DELETED");
+    assert.doesNotMatch(JSON.stringify(archive), /Move out of active view/);
+
+    const calls = [];
+    const fetchClient = createFetchArtifactClient({
+      fetchImpl: async (url, options) => {
+        calls.push({ url, options });
+        return jsonResponse({ payload: lifecycleResultPayload() });
+      }
+    });
+    const fetchResult = await fetchClient.submitArtifactLifecycleAction({
+      artifactId: "artifact-001",
+      action: "ARCHIVE",
+      comment: "Client-side body only",
+      idempotencyKey: "archive-fetch-001"
+    });
+
+    assert.equal(fetchResult.clientMode, "fetch");
+    assert.equal(calls[0].url, "/api/v1/artifacts/artifact-001/lifecycle-actions");
+    assert.equal(calls[0].options.method, "POST");
+    assert.equal(calls[0].options.credentials, "same-origin");
+    assert.equal(calls[0].options.headers.Accept, "application/json");
+    assert.equal(calls[0].options.headers["Content-Type"], "application/json");
+    assert.equal(calls[0].options.headers["Idempotency-Key"], "archive-fetch-001");
+    assert.deepEqual(JSON.parse(calls[0].options.body), {
+      action: "ARCHIVE",
+      reason_code: "user_requested",
+      comment: "Client-side body only"
+    });
+  });
+
+  it("rejects malformed lifecycle requests, transitions, and unsafe results", async () => {
+    assert.throws(
+      () => buildArtifactLifecycleActionRequest({ artifactId: "artifact-001", action: "HIDE" }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_LIFECYCLE_ACTION_UNSUPPORTED"
+    );
+    assert.throws(
+      () =>
+        buildArtifactLifecycleActionRequest({
+          artifactId: "artifact-001",
+          action: "ARCHIVE",
+          restoreStatus: "READY"
+        }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_LIFECYCLE_RESTORE_STATUS_UNSUPPORTED"
+    );
+    assert.throws(
+      () =>
+        buildArtifactLifecycleActionRequest({
+          artifactId: "artifact-001",
+          action: "RESTORE",
+          restoreStatus: "RENDERING"
+        }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_LIFECYCLE_RESTORE_STATUS_UNSUPPORTED"
+    );
+    assert.throws(
+      () =>
+        buildArtifactLifecycleActionRequest({
+          artifactId: "artifact-001",
+          action: "ARCHIVE",
+          reasonCode: "bad reason"
+        }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_LIFECYCLE_REASON_CODE_INVALID"
+    );
+    assert.throws(
+      () =>
+        buildArtifactLifecycleActionSurface({
+          artifact_lifecycle_action_result_schema_version: "wrong"
+        }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_LIFECYCLE_RESULT_INVALID"
+    );
+    assert.throws(
+      () =>
+        buildArtifactLifecycleActionSurface(
+          lifecycleResultPayload({
+            lifecycle_action: {
+              ...lifecycleResultPayload().lifecycle_action,
+              target_status: "DELETED"
+            }
+          })
+        ),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_LIFECYCLE_TARGET_STATUS_MISMATCH"
+    );
+    assert.throws(
+      () =>
+        buildArtifactLifecycleActionSurface(
+          lifecycleResultPayload({
+            routes: {
+              artifact: "/data/nex-platform/ae/artifacts/artifact-001",
+              collection: "/api/v1/artifacts"
+            }
+          })
+        ),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_LINK_ROUTE_UNSAFE"
+    );
+    assert.throws(
+      () =>
+        buildArtifactLifecycleActionSurface(
+          lifecycleResultPayload({
+            lifecycle_action: {
+              ...lifecycleResultPayload().lifecycle_action,
+              metadata: {
+                physical_delete_requested: false,
+                storage_mutation_requested: false,
+                raw_comment_included: true
+              }
+            }
+          })
+        ),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_LIFECYCLE_METADATA_UNSAFE"
+    );
+    assert.throws(
+      () =>
+        buildArtifactLifecycleActionSurface(
+          lifecycleResultPayload({
+            lifecycle_action: {
+              ...lifecycleResultPayload().lifecycle_action,
+              comment_hash: "bad"
+            }
+          })
+        ),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_LIFECYCLE_COMMENT_HASH_INVALID"
+    );
+    assert.throws(
+      () =>
+        buildArtifactLifecycleActionSummary({
+          artifact_lifecycle_action_surface_schema_version: "wrong"
+        }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_LIFECYCLE_SUMMARY_INVALID"
+    );
+
+    const archivedClient = createMockArtifactClient({
+      artifacts: [artifactRecord({ artifact_status: "ARCHIVED" })]
+    });
+    await assert.rejects(
+      () =>
+        archivedClient.submitArtifactLifecycleAction({
+          artifactId: "artifact-001",
+          action: "ARCHIVE"
+        }),
+      error =>
+        error instanceof ArtifactClientError &&
+        error.status === "ARTIFACT_LIFECYCLE_TRANSITION_INVALID"
+    );
+    await assert.rejects(
+      () =>
+        createMockArtifactClient({ artifacts: [artifactRecord()] }).submitArtifactLifecycleAction({
+          artifactId: "missing",
+          action: "ARCHIVE"
+        }),
+      error => error instanceof ArtifactClientError && error.status === "NOT_FOUND"
+    );
   });
 
   it("rejects malformed export requests and responses", () => {

@@ -14,8 +14,27 @@ export const AE_ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION =
   "ae_artifact_collection_item.v1";
 export const AE_WEB_ARTIFACT_COLLECTION_SURFACE_SCHEMA_VERSION =
   "ae_web_artifact_collection_surface.v1";
+export const AE_ARTIFACT_LIFECYCLE_ACTION_SCHEMA_VERSION =
+  "ae_artifact_lifecycle_action.v1";
+export const AE_ARTIFACT_LIFECYCLE_ACTION_RESULT_SCHEMA_VERSION =
+  "ae_artifact_lifecycle_action_result.v1";
+export const AE_WEB_ARTIFACT_LIFECYCLE_ACTION_REQUEST_SCHEMA_VERSION =
+  "ae_web_artifact_lifecycle_action_request.v1";
+export const AE_WEB_ARTIFACT_LIFECYCLE_ACTION_SURFACE_SCHEMA_VERSION =
+  "ae_web_artifact_lifecycle_action_surface.v1";
 
 const SUPPORTED_ARTIFACT_EXPORT_FORMATS = ["MD", "HTML_PREVIEW", "DOCX", "PDF"];
+const SUPPORTED_ARTIFACT_LIFECYCLE_ACTIONS = [
+  "ARCHIVE",
+  "RESTORE",
+  "MARK_DELETED"
+];
+const ARTIFACT_RESTORABLE_STATUSES = ["DRAFT", "READY", "FAILED"];
+const ARTIFACT_ARCHIVABLE_STATUSES = ["DRAFT", "READY", "FAILED"];
+const ARTIFACT_DELETABLE_STATUSES = ["DRAFT", "READY", "FAILED", "ARCHIVED"];
+const ARTIFACT_RESTORE_SOURCE_STATUSES = ["ARCHIVED", "DELETED"];
+const DEFAULT_ARTIFACT_RESTORE_STATUS = "READY";
+const DEFAULT_ARTIFACT_LIFECYCLE_REASON_CODE = "user_requested";
 const SUPPORTED_ARTIFACT_COLLECTION_STATUSES = [
   "DRAFT",
   "RENDERING",
@@ -85,6 +104,10 @@ export function artifactVersionsRoute(artifactId) {
 
 export function artifactRenderJobRoute(artifactId) {
   return `${artifactDetailRoute(artifactId)}/render-jobs`;
+}
+
+export function artifactLifecycleActionRoute(artifactId) {
+  return `${artifactDetailRoute(artifactId)}/lifecycle-actions`;
 }
 
 export function artifactFileMetadataRoute(artifactFileId) {
@@ -217,6 +240,21 @@ export function createMockArtifactClient({
         route: exportRequest.route,
         requestedFormats: exportRequest.target_formats
       });
+    },
+    async submitArtifactLifecycleAction(requestPayload) {
+      const lifecycleRequest = buildArtifactLifecycleActionRequest(requestPayload);
+      const record = records.get(lifecycleRequest.artifact_id);
+      if (!record) {
+        throw new ArtifactClientError("Artifact was not found.", {
+          status: "NOT_FOUND"
+        });
+      }
+      const payload = materializeMockArtifactLifecycleAction(record, lifecycleRequest);
+      records.set(lifecycleRequest.artifact_id, payload.artifact);
+      return buildArtifactLifecycleActionSurface(payload.result, {
+        clientMode: "mock",
+        route: lifecycleRequest.route
+      });
     }
   };
 }
@@ -286,6 +324,25 @@ export function createFetchArtifactClient({ baseUrl = "", fetchImpl } = {}) {
         route: exportRequest.route,
         requestedFormats: exportRequest.target_formats
       });
+    },
+    async submitArtifactLifecycleAction(requestPayload) {
+      const lifecycleRequest = buildArtifactLifecycleActionRequest(requestPayload);
+      const payload = await fetchArtifactJson(
+        request,
+        `${baseUrl}${lifecycleRequest.route}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": lifecycleRequest.idempotency_key
+          },
+          body: JSON.stringify(lifecycleRequest.body)
+        }
+      );
+      return buildArtifactLifecycleActionSurface(payload, {
+        clientMode: "fetch",
+        route: lifecycleRequest.route
+      });
     }
   };
 }
@@ -336,6 +393,98 @@ export function buildArtifactExportRequest({
     target_formats: normalizedTargetFormats,
     route: artifactRenderJobRoute(normalizedArtifactId),
     metadata: safeArtifactMetadata({ contentIncluded: false })
+  };
+}
+
+export function buildArtifactLifecycleActionRequest({
+  artifactId,
+  artifact_id,
+  action,
+  lifecycle_action,
+  restoreStatus,
+  restore_status,
+  reasonCode,
+  reason_code,
+  comment,
+  idempotencyKey,
+  idempotency_key,
+  lifecycleActionRequestId,
+  lifecycle_action_request_id
+} = {}) {
+  const normalizedArtifactId = requiredText(
+    artifactId || artifact_id,
+    "artifact_id"
+  );
+  const normalizedAction = normalizeArtifactLifecycleAction(
+    action || lifecycle_action
+  );
+  const restoreStatusProvided =
+    restoreStatus != null || restore_status != null;
+  const normalizedRestoreStatus = normalizeArtifactRestoreStatus(
+    restoreStatus ?? restore_status
+  );
+  if (normalizedAction !== "RESTORE" && restoreStatusProvided) {
+    throw new ArtifactClientError(
+      "restore_status is only supported for RESTORE lifecycle actions.",
+      { status: "ARTIFACT_LIFECYCLE_RESTORE_STATUS_UNSUPPORTED" }
+    );
+  }
+  const targetStatus = artifactLifecycleTargetStatus({
+    action: normalizedAction,
+    restoreStatus: normalizedRestoreStatus
+  });
+  const normalizedReasonCode = normalizeLifecycleReasonCode(
+    reasonCode ?? reason_code
+  );
+  const commentText = optionalText(comment);
+  const idempotencyKeyValue =
+    optionalText(
+      idempotencyKey || idempotency_key || lifecycleActionRequestId ||
+        lifecycle_action_request_id
+    ) ||
+    deterministicLifecycleRequestId(
+      normalizedArtifactId,
+      normalizedAction,
+      targetStatus
+    );
+  const body = {
+    action: normalizedAction,
+    reason_code: normalizedReasonCode
+  };
+  if (normalizedAction === "RESTORE") {
+    body.restore_status = targetStatus;
+  }
+  if (commentText) {
+    body.comment = commentText;
+  }
+
+  return {
+    artifact_lifecycle_action_request_schema_version:
+      AE_WEB_ARTIFACT_LIFECYCLE_ACTION_REQUEST_SCHEMA_VERSION,
+    artifact_id: normalizedArtifactId,
+    action: normalizedAction,
+    target_status: targetStatus,
+    restore_status: normalizedAction === "RESTORE" ? targetStatus : null,
+    reason_code: normalizedReasonCode,
+    comment_length: commentText ? commentText.length : 0,
+    idempotency_key: idempotencyKeyValue,
+    route: artifactLifecycleActionRoute(normalizedArtifactId),
+    body,
+    metadata: {
+      contentIncluded: false,
+      binaryContentIncluded: false,
+      previewTextIncluded: false,
+      commentBodyIncluded: Boolean(commentText),
+      rawCommentSurfaceIncluded: false,
+      physicalDeleteRequested: false,
+      storageMutationRequested: false,
+      browserServiceTokenIncluded: false,
+      databaseEndpointIncluded: false,
+      providerEndpointIncluded: false,
+      rawPromptIncluded: false,
+      rawSourceIncluded: false,
+      storageLocationIncluded: false
+    }
   };
 }
 
@@ -676,6 +825,101 @@ export function buildArtifactExportSummary(surface) {
     requested_format_count: surface.requestedFormats.length,
     rendered_format_count: surface.renderedFormats.length,
     route_present: Boolean(surface.route),
+    client_mode: surface.clientMode,
+    metadata: surface.metadata
+  };
+  assertArtifactClientSurfaceSafe(summary);
+  return summary;
+}
+
+export function buildArtifactLifecycleActionSurface(
+  payload,
+  { clientMode = "mock", route = null } = {}
+) {
+  if (
+    !isObject(payload) ||
+    payload.artifact_lifecycle_action_result_schema_version !==
+      AE_ARTIFACT_LIFECYCLE_ACTION_RESULT_SCHEMA_VERSION ||
+    !isObject(payload.lifecycle_action)
+  ) {
+    throw new ArtifactClientError("Artifact lifecycle action response is invalid.", {
+      status: "ARTIFACT_LIFECYCLE_RESULT_INVALID"
+    });
+  }
+  const lifecycleAction = normalizeLifecycleActionForSurface(
+    payload.lifecycle_action
+  );
+  const routes = normalizeArtifactLifecycleRoutes(
+    payload.routes,
+    payload.artifact_id
+  );
+  const metadata = normalizeLifecycleResultMetadata(
+    payload.metadata,
+    lifecycleAction.metadata
+  );
+  const surface = {
+    artifact_lifecycle_action_surface_schema_version:
+      AE_WEB_ARTIFACT_LIFECYCLE_ACTION_SURFACE_SCHEMA_VERSION,
+    artifact_client_schema_version: AE_WEB_ARTIFACT_CLIENT_SCHEMA_VERSION,
+    artifact_lifecycle_action_result_schema_version:
+      payload.artifact_lifecycle_action_result_schema_version,
+    artifact_lifecycle_action_schema_version:
+      lifecycleAction.artifact_lifecycle_action_schema_version,
+    lifecycleActionId: lifecycleAction.lifecycle_action_id,
+    artifactId: requiredText(payload.artifact_id, "artifact_id"),
+    action: lifecycleAction.action,
+    previousStatus: normalizeArtifactLifecycleStatus(payload.previous_status),
+    targetStatus: normalizeArtifactLifecycleTerminalOrRestorableStatus(
+      payload.target_status
+    ),
+    artifactStatus: normalizeArtifactLifecycleStatus(payload.artifact_status),
+    restoreStatus: lifecycleAction.restore_status,
+    reasonCode: lifecycleAction.reason_code,
+    commentHashPresent: Boolean(lifecycleAction.comment_hash),
+    commentLength: lifecycleAction.comment_length,
+    actorScope: lifecycleAction.actor_ref,
+    requestId: lifecycleAction.request_id,
+    traceId: lifecycleAction.trace_id,
+    idempotencyKey: lifecycleAction.idempotency_key,
+    transitionApplied: Boolean(payload.transition_applied),
+    routes,
+    updatedAt: optionalText(payload.updated_at) || null,
+    route,
+    clientMode: clientMode === "fetch" ? "fetch" : "mock",
+    metadata
+  };
+  assertLifecycleSurfaceMatchesAction(surface, lifecycleAction);
+  assertArtifactClientSurfaceSafe(surface);
+  return surface;
+}
+
+export function buildArtifactLifecycleActionSummary(surface) {
+  if (
+    !isObject(surface) ||
+    surface.artifact_lifecycle_action_surface_schema_version !==
+      AE_WEB_ARTIFACT_LIFECYCLE_ACTION_SURFACE_SCHEMA_VERSION
+  ) {
+    throw new ArtifactClientError("Artifact lifecycle action summary is invalid.", {
+      status: "ARTIFACT_LIFECYCLE_SUMMARY_INVALID"
+    });
+  }
+  const summary = {
+    artifact_lifecycle_action_surface_schema_version:
+      surface.artifact_lifecycle_action_surface_schema_version,
+    artifact_lifecycle_action_result_schema_version:
+      surface.artifact_lifecycle_action_result_schema_version,
+    artifact_id: surface.artifactId,
+    action: surface.action,
+    previous_status: surface.previousStatus,
+    target_status: surface.targetStatus,
+    artifact_status: surface.artifactStatus,
+    restore_status: surface.restoreStatus,
+    transition_applied: Boolean(surface.transitionApplied),
+    comment_hash_present: Boolean(surface.commentHashPresent),
+    comment_length: numberOrZero(surface.commentLength),
+    route_present: Boolean(surface.route),
+    artifact_route_present: Boolean(surface.routes?.artifact),
+    collection_route_present: Boolean(surface.routes?.collection),
     client_mode: surface.clientMode,
     metadata: surface.metadata
   };
@@ -1051,6 +1295,110 @@ function currentVersion(versions, currentVersionId) {
   );
 }
 
+function normalizeArtifactLifecycleAction(action) {
+  const normalized = requiredText(action, "lifecycle_action").toUpperCase();
+  if (!SUPPORTED_ARTIFACT_LIFECYCLE_ACTIONS.includes(normalized)) {
+    throw new ArtifactClientError("Artifact lifecycle action is unsupported.", {
+      status: "ARTIFACT_LIFECYCLE_ACTION_UNSUPPORTED"
+    });
+  }
+  return normalized;
+}
+
+function normalizeArtifactLifecycleStatus(status) {
+  const normalized = requiredText(status, "artifact_status").toUpperCase();
+  if (!SUPPORTED_ARTIFACT_COLLECTION_STATUSES.includes(normalized)) {
+    throw new ArtifactClientError("Artifact lifecycle status is unsupported.", {
+      status: "ARTIFACT_LIFECYCLE_STATUS_UNSUPPORTED"
+    });
+  }
+  return normalized;
+}
+
+function normalizeArtifactLifecycleTerminalOrRestorableStatus(status) {
+  const normalized = normalizeArtifactLifecycleStatus(status);
+  if (
+    !ARTIFACT_RESTORABLE_STATUSES.includes(normalized) &&
+    normalized !== "ARCHIVED" &&
+    normalized !== "DELETED"
+  ) {
+    throw new ArtifactClientError("Artifact lifecycle target status is unsupported.", {
+      status: "ARTIFACT_LIFECYCLE_TARGET_STATUS_UNSUPPORTED"
+    });
+  }
+  return normalized;
+}
+
+function normalizeArtifactRestoreStatus(status) {
+  const normalized = optionalText(status);
+  if (!normalized) return null;
+  const upper = normalized.toUpperCase();
+  if (!ARTIFACT_RESTORABLE_STATUSES.includes(upper)) {
+    throw new ArtifactClientError("Artifact restore status is unsupported.", {
+      status: "ARTIFACT_LIFECYCLE_RESTORE_STATUS_UNSUPPORTED"
+    });
+  }
+  return upper;
+}
+
+function artifactLifecycleTargetStatus({ action, restoreStatus = null }) {
+  const normalizedAction = normalizeArtifactLifecycleAction(action);
+  const normalizedRestoreStatus = normalizeArtifactRestoreStatus(restoreStatus);
+  if (normalizedAction === "ARCHIVE") return "ARCHIVED";
+  if (normalizedAction === "MARK_DELETED") return "DELETED";
+  return normalizedRestoreStatus || DEFAULT_ARTIFACT_RESTORE_STATUS;
+}
+
+function normalizeLifecycleReasonCode(reasonCode) {
+  const normalized =
+    optionalText(reasonCode)?.toLowerCase() ||
+    DEFAULT_ARTIFACT_LIFECYCLE_REASON_CODE;
+  if (normalized.length > 64 || !/^[a-z0-9_:-]+$/.test(normalized)) {
+    throw new ArtifactClientError("Artifact lifecycle reason code is invalid.", {
+      status: "ARTIFACT_LIFECYCLE_REASON_CODE_INVALID"
+    });
+  }
+  return normalized;
+}
+
+function normalizeLifecycleCommentHash(value) {
+  const normalized = optionalText(value);
+  if (!normalized) return null;
+  if (!/^[0-9a-f]{64}$/.test(normalized)) {
+    throw new ArtifactClientError("Artifact lifecycle comment hash is invalid.", {
+      status: "ARTIFACT_LIFECYCLE_COMMENT_HASH_INVALID"
+    });
+  }
+  return normalized;
+}
+
+function normalizeLifecycleActorScope(actorRef) {
+  const actor = isObject(actorRef) ? actorRef : {};
+  return {
+    actorType: optionalText(actor.actor_type) || "user",
+    actorId: optionalText(actor.actor_id) || "unknown",
+    tenantId: optionalText(actor.tenant_id) || null
+  };
+}
+
+function deterministicLifecycleRequestId(artifactId, action, targetStatus) {
+  return `artifact-lifecycle-${safeIdStem(artifactId)}-${action.toLowerCase()}-${safeIdStem(targetStatus)}`;
+}
+
+function deterministicLifecycleActionId(artifactId, idempotencyKey) {
+  return `artifact-lifecycle-action-${safeIdStem(artifactId)}-${safeIdStem(idempotencyKey)}`;
+}
+
+function mockHexDigest(value) {
+  let hash = 2166136261;
+  for (const character of String(value)) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  const seed = (hash >>> 0).toString(16).padStart(8, "0");
+  return seed.repeat(8).slice(0, 64);
+}
+
 function normalizeArtifactCollectionStatus(status) {
   const normalized = optionalText(status);
   if (!normalized) return null;
@@ -1281,6 +1629,222 @@ function materializeMockArtifactExport(record, exportRequest) {
     },
     artifact
   };
+}
+
+function materializeMockArtifactLifecycleAction(record, lifecycleRequest) {
+  const artifact = clone(record);
+  const previousStatus = normalizeArtifactLifecycleStatus(artifact.artifact_status);
+  assertMockArtifactLifecycleTransitionAllowed({
+    currentStatus: previousStatus,
+    action: lifecycleRequest.action
+  });
+  const targetStatus = lifecycleRequest.target_status;
+  const updatedAt = new Date(0).toISOString();
+  artifact.artifact_status = targetStatus;
+  artifact.updated_at = updatedAt;
+  const lifecycleAction = {
+    artifact_lifecycle_action_schema_version:
+      AE_ARTIFACT_LIFECYCLE_ACTION_SCHEMA_VERSION,
+    lifecycle_action_id: deterministicLifecycleActionId(
+      lifecycleRequest.artifact_id,
+      lifecycleRequest.idempotency_key
+    ),
+    artifact_id: lifecycleRequest.artifact_id,
+    action: lifecycleRequest.action,
+    previous_status: previousStatus,
+    target_status: targetStatus,
+    restore_status:
+      lifecycleRequest.action === "RESTORE" ? lifecycleRequest.restore_status : null,
+    reason_code: lifecycleRequest.reason_code,
+    comment_hash: lifecycleRequest.body.comment
+      ? mockHexDigest(lifecycleRequest.body.comment)
+      : null,
+    comment_length: lifecycleRequest.comment_length,
+    actor_ref: normalizeLifecycleActorScope(record.owner_actor_ref),
+    request_id: lifecycleRequest.idempotency_key,
+    trace_id: "0".repeat(32),
+    idempotency_key: lifecycleRequest.idempotency_key,
+    metadata: {
+      physical_delete_requested: false,
+      storage_mutation_requested: false,
+      raw_comment_included: false
+    }
+  };
+  return {
+    artifact,
+    result: {
+      artifact_lifecycle_action_result_schema_version:
+        AE_ARTIFACT_LIFECYCLE_ACTION_RESULT_SCHEMA_VERSION,
+      lifecycle_action: lifecycleAction,
+      artifact_id: lifecycleRequest.artifact_id,
+      artifact_status: targetStatus,
+      previous_status: previousStatus,
+      target_status: targetStatus,
+      transition_applied: artifact.artifact_status === targetStatus,
+      routes: {
+        artifact: artifactDetailRoute(lifecycleRequest.artifact_id),
+        collection: "/api/v1/artifacts"
+      },
+      updated_at: updatedAt,
+      metadata: {
+        rendered_payload_included: false,
+        storage_location_included: false,
+        physical_delete_executed: false
+      }
+    }
+  };
+}
+
+function normalizeLifecycleActionForSurface(action) {
+  if (
+    !isObject(action) ||
+    action.artifact_lifecycle_action_schema_version !==
+      AE_ARTIFACT_LIFECYCLE_ACTION_SCHEMA_VERSION
+  ) {
+    throw new ArtifactClientError("Artifact lifecycle action is invalid.", {
+      status: "ARTIFACT_LIFECYCLE_ACTION_INVALID"
+    });
+  }
+  const normalized = {
+    artifact_lifecycle_action_schema_version:
+      action.artifact_lifecycle_action_schema_version,
+    lifecycle_action_id: requiredText(
+      action.lifecycle_action_id,
+      "lifecycle_action_id"
+    ),
+    artifact_id: requiredText(action.artifact_id, "artifact_id"),
+    action: normalizeArtifactLifecycleAction(action.action),
+    previous_status: normalizeArtifactLifecycleStatus(action.previous_status),
+    target_status: normalizeArtifactLifecycleTerminalOrRestorableStatus(
+      action.target_status
+    ),
+    restore_status: normalizeArtifactRestoreStatus(action.restore_status),
+    reason_code: normalizeLifecycleReasonCode(action.reason_code),
+    comment_hash: normalizeLifecycleCommentHash(action.comment_hash),
+    comment_length: numberOrZero(action.comment_length),
+    actor_ref: normalizeLifecycleActorScope(action.actor_ref),
+    request_id: requiredText(action.request_id, "request_id"),
+    trace_id: requiredText(action.trace_id, "trace_id"),
+    idempotency_key: requiredText(action.idempotency_key, "idempotency_key"),
+    metadata: normalizeLifecycleActionMetadata(action.metadata)
+  };
+  if (
+    normalized.target_status !==
+    artifactLifecycleTargetStatus({
+      action: normalized.action,
+      restoreStatus: normalized.restore_status
+    })
+  ) {
+    throw new ArtifactClientError("Artifact lifecycle target status is invalid.", {
+      status: "ARTIFACT_LIFECYCLE_TARGET_STATUS_MISMATCH"
+    });
+  }
+  return normalized;
+}
+
+function normalizeLifecycleActionMetadata(metadata) {
+  const normalized = isObject(metadata) ? metadata : {};
+  if (
+    normalized.physical_delete_requested ||
+    normalized.storage_mutation_requested ||
+    normalized.raw_comment_included
+  ) {
+    throw new ArtifactClientError("Artifact lifecycle action metadata is unsafe.", {
+      status: "ARTIFACT_LIFECYCLE_METADATA_UNSAFE"
+    });
+  }
+  return {
+    physicalDeleteRequested: false,
+    storageMutationRequested: false,
+    rawCommentIncluded: false
+  };
+}
+
+function normalizeLifecycleResultMetadata(resultMetadata, actionMetadata) {
+  const normalized = isObject(resultMetadata) ? resultMetadata : {};
+  if (
+    normalized.rendered_payload_included ||
+    normalized.storage_location_included ||
+    normalized.physical_delete_executed ||
+    actionMetadata.physicalDeleteRequested ||
+    actionMetadata.storageMutationRequested ||
+    actionMetadata.rawCommentIncluded
+  ) {
+    throw new ArtifactClientError("Artifact lifecycle result metadata is unsafe.", {
+      status: "ARTIFACT_LIFECYCLE_METADATA_UNSAFE"
+    });
+  }
+  return {
+    renderedPayloadIncluded: false,
+    storageLocationIncluded: false,
+    physicalDeleteExecuted: false,
+    physicalDeleteRequested: false,
+    storageMutationRequested: false,
+    rawCommentIncluded: false,
+    contentIncluded: false,
+    binaryContentIncluded: false,
+    previewTextIncluded: false,
+    browserServiceTokenIncluded: false,
+    databaseEndpointIncluded: false,
+    providerEndpointIncluded: false,
+    rawPromptIncluded: false,
+    rawSourceIncluded: false
+  };
+}
+
+function normalizeArtifactLifecycleRoutes(routes, artifactId) {
+  const rawRoutes = isObject(routes) ? routes : {};
+  return {
+    artifact: rawRoutes.artifact
+      ? safeRoute(rawRoutes.artifact)
+      : artifactDetailRoute(artifactId),
+    collection: rawRoutes.collection ? safeRoute(rawRoutes.collection) : "/api/v1/artifacts"
+  };
+}
+
+function assertLifecycleSurfaceMatchesAction(surface, lifecycleAction) {
+  if (surface.artifactId !== lifecycleAction.artifact_id) {
+    throw new ArtifactClientError("Artifact lifecycle action artifact id mismatched.", {
+      status: "ARTIFACT_LIFECYCLE_ARTIFACT_MISMATCH"
+    });
+  }
+  if (surface.previousStatus !== lifecycleAction.previous_status) {
+    throw new ArtifactClientError("Artifact lifecycle previous status mismatched.", {
+      status: "ARTIFACT_LIFECYCLE_STATUS_MISMATCH"
+    });
+  }
+  if (surface.targetStatus !== lifecycleAction.target_status) {
+    throw new ArtifactClientError("Artifact lifecycle target status mismatched.", {
+      status: "ARTIFACT_LIFECYCLE_STATUS_MISMATCH"
+    });
+  }
+}
+
+function assertMockArtifactLifecycleTransitionAllowed({ currentStatus, action }) {
+  if (
+    action === "ARCHIVE" &&
+    !ARTIFACT_ARCHIVABLE_STATUSES.includes(currentStatus)
+  ) {
+    throw new ArtifactClientError("Artifact cannot be archived from current status.", {
+      status: "ARTIFACT_LIFECYCLE_TRANSITION_INVALID"
+    });
+  }
+  if (
+    action === "MARK_DELETED" &&
+    !ARTIFACT_DELETABLE_STATUSES.includes(currentStatus)
+  ) {
+    throw new ArtifactClientError("Artifact cannot be marked deleted from current status.", {
+      status: "ARTIFACT_LIFECYCLE_TRANSITION_INVALID"
+    });
+  }
+  if (
+    action === "RESTORE" &&
+    !ARTIFACT_RESTORE_SOURCE_STATUSES.includes(currentStatus)
+  ) {
+    throw new ArtifactClientError("Artifact cannot be restored from current status.", {
+      status: "ARTIFACT_LIFECYCLE_TRANSITION_INVALID"
+    });
+  }
 }
 
 function safeArtifactMetadata({
