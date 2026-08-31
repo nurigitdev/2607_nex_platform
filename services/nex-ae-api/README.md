@@ -388,3 +388,8 @@ Artifact library management:
 - Slice 0460 closes S46 by checking the AE lifecycle contract, repository/API
   wiring, PostgreSQL smoke evidence, AE Web lifecycle surface, and AG read-only
   lifecycle projection remain connected without adding physical deletion.
+- Slice 0461 starts S47 by freezing the artifact retention/purge boundary.
+  `artifact_status=DELETED` is the first logical purge flag, candidate scans are
+  dry-run and metadata-only through Slice 0465, the default post-logical-purge
+  retention window is 30 days with 15-day and 30-day presets, and physical file
+  deletion remains deferred to a guarded scheduled batch track.
