@@ -393,3 +393,7 @@ Artifact library management:
   dry-run and metadata-only through Slice 0465, the default post-logical-purge
   retention window is 30 days with 15-day and 30-day presets, and physical file
   deletion remains deferred to a guarded scheduled batch track.
+- Slice 0462 adds the `ae_artifact_retention_policy.v1` contract and runtime
+  policy helpers. The contract keeps logical purge first, requires dry-run
+  candidate scans, disables physical file and database-row deletion, and fixes
+  the first scheduled batch window at 02:00-05:00 `Asia/Seoul`.

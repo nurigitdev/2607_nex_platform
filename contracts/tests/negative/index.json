@@ -96,6 +96,11 @@
       "schema": "schemas/generation/ae_artifact_lifecycle_action.v1.schema.json"
     },
     {
+      "name": "ae_artifact_retention_policy_storage_ref_leak",
+      "path": "tests/negative/generation/ae_artifact_retention_policy.storage_ref_leak.json",
+      "schema": "schemas/generation/ae_artifact_retention_policy.v1.schema.json"
+    },
+    {
       "name": "ae_generation_feedback_raw_prompt_field",
       "path": "tests/negative/generation/ae_generation_feedback.raw_prompt_field.json",
       "schema": "schemas/service/nex_ae_api/generation_feedback.v1.schema.json"

@@ -24,6 +24,7 @@ from nex_ae_api.artifacts import (
     ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION,
     AE_ARTIFACT_LIFECYCLE_ACTION_RESULT_SCHEMA_VERSION,
     AE_ARTIFACT_LIFECYCLE_ACTION_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_POLICY_SCHEMA_VERSION,
     HttpCxArtifactSourceClient,
     InMemoryRenderedArtifactStorage,
     LocalRenderedArtifactStorage,
@@ -44,6 +45,7 @@ from nex_ae_api.artifacts import (
     build_artifact_collection_item,
     build_artifact_lifecycle_action_request,
     build_artifact_lifecycle_action_result,
+    build_artifact_retention_policy,
     build_default_artifact_handoff_store,
     build_default_artifact_record_store,
     build_default_rendered_artifact_storage,
@@ -58,6 +60,7 @@ from nex_ae_api.artifacts import (
     build_artifact_record_from_handoff,
     deterministic_render_job_id,
     normalize_artifact_collection_limit,
+    normalize_artifact_retention_days,
     normalize_artifact_lifecycle_action,
     normalize_artifact_restore_status,
     language_from_payload,
@@ -76,6 +79,7 @@ from nex_ae_api.artifacts import (
     safe_file_stem,
     sha256_bytes,
     target_formats_from_payload,
+    validate_artifact_retention_policy,
     validate_artifact_handoff_record,
     validate_structured_draft_for_markdown_render,
 )
@@ -1530,6 +1534,112 @@ def test_artifact_lifecycle_action_apply_rejects_mismatch_and_missing_record() -
     with pytest.raises(ArtifactHandoffError) as missing_exc:
         store.apply_lifecycle_action("missing-artifact", action_request)
     assert missing_exc.value.error_code == "ae.artifact_not_found"
+
+
+def test_artifact_retention_policy_contract_defaults_and_presets_are_safe() -> None:
+    default_policy = build_artifact_retention_policy()
+    fifteen_day_policy = build_artifact_retention_policy(
+        {
+            "retention_policy_id": "ae-artifact-logical-purge-15d-local-v1",
+            "retention_days": "15",
+        }
+    )
+    serialized = json.dumps(default_policy, ensure_ascii=False, sort_keys=True)
+
+    assert default_policy["artifact_retention_policy_schema_version"] == (
+        AE_ARTIFACT_RETENTION_POLICY_SCHEMA_VERSION
+    )
+    assert default_policy["retention_policy_id"] == (
+        "ae-artifact-logical-purge-30d-local-v1"
+    )
+    assert default_policy["logical_purge"] == {
+        "enabled": True,
+        "flag_field": "artifact_status",
+        "flag_value": "DELETED",
+        "first_action": "MARK_DELETED",
+        "reversible_before_physical_purge": True,
+    }
+    assert default_policy["physical_purge"]["enabled"] is False
+    assert default_policy["physical_purge"]["dry_run_required"] is True
+    assert default_policy["physical_purge"]["storage_mutation_enabled"] is False
+    assert default_policy["physical_purge"]["database_row_delete_enabled"] is False
+    assert default_policy["physical_purge"][
+        "retention_days_after_logical_purge"
+    ] == 30
+    assert default_policy["physical_purge"]["supported_retention_day_presets"] == [
+        15,
+        30,
+    ]
+    assert default_policy["physical_purge"]["batch_window"] == {
+        "timezone": "Asia/Seoul",
+        "start_local_time": "02:00",
+        "end_local_time": "05:00",
+    }
+    assert default_policy["candidate_query"] == {
+        "status": "DELETED",
+        "timestamp_field": "updated_at",
+        "metadata_only": True,
+        "default_limit": 20,
+        "max_limit": 100,
+    }
+    assert fifteen_day_policy["physical_purge"][
+        "retention_days_after_logical_purge"
+    ] == 15
+    assert "/data/nex-platform" not in serialized
+    assert "storage_ref" not in serialized
+
+
+def test_artifact_retention_policy_contract_rejects_invalid_inputs() -> None:
+    assert normalize_artifact_retention_days(None) == 30
+    assert normalize_artifact_retention_days("30") == 30
+
+    for bad_value in (0, 366, True, "many"):
+        with pytest.raises(ArtifactHandoffError) as days_exc:
+            normalize_artifact_retention_days(bad_value)
+        assert days_exc.value.error_code == "ae.artifact_retention_days_invalid"
+
+    policy = build_artifact_retention_policy()
+    broken_schema = {**policy, "artifact_retention_policy_schema_version": "wrong"}
+    with pytest.raises(ArtifactHandoffError) as schema_exc:
+        validate_artifact_retention_policy(broken_schema)
+    assert schema_exc.value.error_code == "ae.artifact_retention_policy_schema_invalid"
+
+    for patch, expected_detail in (
+        (
+            {"logical_purge": {**policy["logical_purge"], "flag_field": "status"}},
+            "flag field",
+        ),
+        (
+            {"logical_purge": {**policy["logical_purge"], "flag_value": "PURGED"}},
+            "flag value",
+        ),
+        (
+            {"physical_purge": {**policy["physical_purge"], "enabled": True}},
+            "disabled",
+        ),
+        (
+            {"physical_purge": {**policy["physical_purge"], "dry_run_required": False}},
+            "dry-run",
+        ),
+        (
+            {"candidate_query": {**policy["candidate_query"], "metadata_only": False}},
+            "metadata-only",
+        ),
+    ):
+        with pytest.raises(ArtifactHandoffError) as policy_exc:
+            validate_artifact_retention_policy({**policy, **patch})
+        assert policy_exc.value.error_code == "ae.artifact_retention_policy_invalid"
+        assert expected_detail in policy_exc.value.detail
+
+    with pytest.raises(ArtifactHandoffError) as section_exc:
+        validate_artifact_retention_policy({**policy, "logical_purge": "bad"})
+    assert section_exc.value.error_code == "ae.artifact_retention_policy_invalid"
+
+    with pytest.raises(ArtifactHandoffError) as unsafe_exc:
+        ae_artifacts.assert_artifact_retention_payload_safe(
+            {"storage_ref": "ae://artifacts/private"}
+        )
+    assert unsafe_exc.value.error_code == "ae.artifact_retention_payload_unsafe"
 
 
 def test_sqlalchemy_artifact_record_store_applies_lifecycle_with_sqlite() -> None:

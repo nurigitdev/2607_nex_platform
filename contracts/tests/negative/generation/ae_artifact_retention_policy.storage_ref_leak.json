@@ -1,0 +1,36 @@
+{
+  "artifact_retention_policy_schema_version": "ae_artifact_retention_policy.v1",
+  "retention_policy_id": "ae-artifact-logical-purge-30d-local-v1",
+  "storage_ref": "ae://artifacts/private/file.md",
+  "logical_purge": {
+    "enabled": true,
+    "flag_field": "artifact_status",
+    "flag_value": "DELETED",
+    "first_action": "MARK_DELETED",
+    "reversible_before_physical_purge": true
+  },
+  "physical_purge": {
+    "enabled": false,
+    "execution_mode": "scheduled_batch_after_retention",
+    "retention_days_after_logical_purge": 30,
+    "supported_retention_day_presets": [
+      15,
+      30
+    ],
+    "batch_window": {
+      "timezone": "Asia/Seoul",
+      "start_local_time": "02:00",
+      "end_local_time": "05:00"
+    },
+    "dry_run_required": true,
+    "storage_mutation_enabled": false,
+    "database_row_delete_enabled": false
+  },
+  "candidate_query": {
+    "status": "DELETED",
+    "timestamp_field": "updated_at",
+    "metadata_only": true,
+    "default_limit": 20,
+    "max_limit": 100
+  }
+}

@@ -126,12 +126,23 @@ AE_ARTIFACT_LIFECYCLE_ACTION_SCHEMA_VERSION = "ae_artifact_lifecycle_action.v1"
 AE_ARTIFACT_LIFECYCLE_ACTION_RESULT_SCHEMA_VERSION = (
     "ae_artifact_lifecycle_action_result.v1"
 )
+AE_ARTIFACT_RETENTION_POLICY_SCHEMA_VERSION = "ae_artifact_retention_policy.v1"
 SUPPORTED_ARTIFACT_LIFECYCLE_ACTIONS = {"ARCHIVE", "RESTORE", "MARK_DELETED"}
 ARCHIVABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED"}
 DELETABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED", "ARCHIVED"}
 RESTORABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED"}
 ARTIFACT_LIFECYCLE_DEFAULT_RESTORE_STATUS = "READY"
 ARTIFACT_LIFECYCLE_DEFAULT_REASON_CODE = "user_requested"
+DEFAULT_ARTIFACT_RETENTION_POLICY_ID = "ae-artifact-logical-purge-30d-local-v1"
+DEFAULT_ARTIFACT_RETENTION_DAYS_AFTER_LOGICAL_PURGE = 30
+MIN_ARTIFACT_RETENTION_DAYS_AFTER_LOGICAL_PURGE = 1
+MAX_ARTIFACT_RETENTION_DAYS_AFTER_LOGICAL_PURGE = 365
+SUPPORTED_ARTIFACT_RETENTION_DAY_PRESETS = (15, 30)
+ARTIFACT_RETENTION_LOGICAL_PURGE_STATUS = "DELETED"
+ARTIFACT_RETENTION_LOGICAL_PURGE_FIELD = "artifact_status"
+ARTIFACT_RETENTION_BATCH_TIMEZONE = "Asia/Seoul"
+ARTIFACT_RETENTION_BATCH_WINDOW_START = "02:00"
+ARTIFACT_RETENTION_BATCH_WINDOW_END = "05:00"
 SUPPORTED_TARGET_FORMATS = {"MD", "HTML_PREVIEW", "DOCX", "PDF"}
 ARTIFACT_COLLECTION_SCHEMA_VERSION = "ae_artifact_collection.v1"
 ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION = "ae_artifact_collection_item.v1"
@@ -1988,6 +1999,172 @@ def validate_artifact_lifecycle_action_request(action_request: dict[str, Any]) -
             detail="Artifact lifecycle target status does not match the action.",
         )
     assert_artifact_lifecycle_payload_safe(action_request)
+
+
+def build_artifact_retention_policy(
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    source = payload or {}
+    retention_days = normalize_artifact_retention_days(
+        source.get("retention_days_after_logical_purge")
+        if "retention_days_after_logical_purge" in source
+        else source.get("retention_days")
+    )
+    policy = {
+        "artifact_retention_policy_schema_version": (
+            AE_ARTIFACT_RETENTION_POLICY_SCHEMA_VERSION
+        ),
+        "retention_policy_id": (
+            optional_text(source.get("retention_policy_id"))
+            or DEFAULT_ARTIFACT_RETENTION_POLICY_ID
+        ),
+        "logical_purge": {
+            "enabled": True,
+            "flag_field": ARTIFACT_RETENTION_LOGICAL_PURGE_FIELD,
+            "flag_value": ARTIFACT_RETENTION_LOGICAL_PURGE_STATUS,
+            "first_action": "MARK_DELETED",
+            "reversible_before_physical_purge": True,
+        },
+        "physical_purge": {
+            "enabled": False,
+            "execution_mode": "scheduled_batch_after_retention",
+            "retention_days_after_logical_purge": retention_days,
+            "supported_retention_day_presets": list(
+                SUPPORTED_ARTIFACT_RETENTION_DAY_PRESETS
+            ),
+            "batch_window": {
+                "timezone": ARTIFACT_RETENTION_BATCH_TIMEZONE,
+                "start_local_time": ARTIFACT_RETENTION_BATCH_WINDOW_START,
+                "end_local_time": ARTIFACT_RETENTION_BATCH_WINDOW_END,
+            },
+            "dry_run_required": True,
+            "storage_mutation_enabled": False,
+            "database_row_delete_enabled": False,
+        },
+        "candidate_query": {
+            "status": ARTIFACT_RETENTION_LOGICAL_PURGE_STATUS,
+            "timestamp_field": "updated_at",
+            "metadata_only": True,
+            "default_limit": DEFAULT_ARTIFACT_COLLECTION_LIMIT,
+            "max_limit": MAX_ARTIFACT_COLLECTION_LIMIT,
+        },
+    }
+    validate_artifact_retention_policy(policy)
+    return policy
+
+
+def normalize_artifact_retention_days(value: Any) -> int:
+    if value is None:
+        return DEFAULT_ARTIFACT_RETENTION_DAYS_AFTER_LOGICAL_PURGE
+    if isinstance(value, bool):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_days_invalid",
+            detail="Artifact retention days must be an integer.",
+        )
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_days_invalid",
+            detail="Artifact retention days must be an integer.",
+        ) from exc
+    if (
+        normalized < MIN_ARTIFACT_RETENTION_DAYS_AFTER_LOGICAL_PURGE
+        or normalized > MAX_ARTIFACT_RETENTION_DAYS_AFTER_LOGICAL_PURGE
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_days_invalid",
+            detail=(
+                "Artifact retention days must be between "
+                f"{MIN_ARTIFACT_RETENTION_DAYS_AFTER_LOGICAL_PURGE} and "
+                f"{MAX_ARTIFACT_RETENTION_DAYS_AFTER_LOGICAL_PURGE}."
+            ),
+        )
+    return normalized
+
+
+def validate_artifact_retention_policy(policy: dict[str, Any]) -> None:
+    if (
+        policy.get("artifact_retention_policy_schema_version")
+        != AE_ARTIFACT_RETENTION_POLICY_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_policy_schema_invalid",
+            detail="Artifact retention policy schema version is invalid.",
+        )
+    logical_purge = policy.get("logical_purge")
+    physical_purge = policy.get("physical_purge")
+    candidate_query = policy.get("candidate_query")
+    if not isinstance(logical_purge, dict) or not isinstance(physical_purge, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_policy_invalid",
+            detail="Artifact retention policy purge sections are required.",
+        )
+    if logical_purge.get("flag_field") != ARTIFACT_RETENTION_LOGICAL_PURGE_FIELD:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_policy_invalid",
+            detail="Artifact retention logical purge flag field is invalid.",
+        )
+    if logical_purge.get("flag_value") != ARTIFACT_RETENTION_LOGICAL_PURGE_STATUS:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_policy_invalid",
+            detail="Artifact retention logical purge flag value is invalid.",
+        )
+    if physical_purge.get("enabled") is not False:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_policy_invalid",
+            detail="Artifact physical purge must stay disabled in this policy.",
+        )
+    if physical_purge.get("dry_run_required") is not True:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_policy_invalid",
+            detail="Artifact retention candidate scans must require dry-run first.",
+        )
+    normalize_artifact_retention_days(
+        physical_purge.get("retention_days_after_logical_purge")
+    )
+    if not isinstance(candidate_query, dict) or candidate_query.get("metadata_only") is not True:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_policy_invalid",
+            detail="Artifact retention candidate query must be metadata-only.",
+        )
+    assert_artifact_retention_payload_safe(policy)
+
+
+def assert_artifact_retention_payload_safe(payload: dict[str, Any]) -> None:
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    blocked_tokens = (
+        "raw_prompt",
+        "raw_text",
+        "raw_source",
+        "rendered_payloads",
+        "rendered_markdown",
+        "content_base64",
+        "storage_ref",
+        "storage_root",
+        "/data/nex-platform",
+        "postgresql://",
+        "postgresql+psycopg://",
+        "nuri1004",
+        "ed6@c496em",
+    )
+    for token in blocked_tokens:
+        if token in serialized:
+            raise ArtifactHandoffError(
+                status_code=500,
+                error_code="ae.artifact_retention_payload_unsafe",
+                detail="Artifact retention payload contains private material.",
+            )
 
 
 def lifecycle_actor_ref_from_payload(
