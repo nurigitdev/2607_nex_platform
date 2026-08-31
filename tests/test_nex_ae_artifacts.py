@@ -1813,6 +1813,90 @@ def test_sqlalchemy_artifact_record_store_lists_retention_candidates_with_sqlite
     assert candidates["items"][0]["link_count"] == 0
 
 
+def test_artifact_retention_candidate_route_returns_metadata_only_candidates() -> None:
+    client, _, artifact_store, _ = build_client_with_artifact_store()
+    old_deleted = sample_collection_artifact_record(
+        artifact_request_id="route-retention-old-deleted-001",
+        artifact_status="DELETED",
+        display_title="Route old deleted report",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    recent_deleted = sample_collection_artifact_record(
+        artifact_request_id="route-retention-recent-deleted-001",
+        artifact_status="DELETED",
+        display_title="Route recent deleted report",
+        updated_at="2026-08-30T00:00:00Z",
+    )
+    artifact_store.save(old_deleted)
+    artifact_store.save(recent_deleted)
+    headers = auth_headers()
+
+    response = client.get(
+        "/api/v1/artifact-retention/candidates",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "retention_days": "30",
+            "as_of": "2026-09-01T00:00:00Z",
+            "limit": "10",
+        },
+        headers=headers,
+    )
+    unauthorized = client.get("/api/v1/artifact-retention/candidates")
+    missing_scope = client.get(
+        "/api/v1/artifact-retention/candidates",
+        headers=headers,
+    )
+    invalid_retention_days = client.get(
+        "/api/v1/artifact-retention/candidates",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "retention_days": "many",
+        },
+        headers=headers,
+    )
+    invalid_as_of = client.get(
+        "/api/v1/artifact-retention/candidates",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "as_of": "not-a-date",
+        },
+        headers=headers,
+    )
+    payload = response.json()
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+    assert response.status_code == 200
+    assert payload["count"] == 1
+    assert payload["items"][0]["artifact_id"] == old_deleted["artifact_id"]
+    assert payload["items"][0]["display_title"] == "Route old deleted report"
+    assert payload["metadata"] == {
+        "dry_run": True,
+        "physical_delete_executed": False,
+        "storage_mutation_executed": False,
+        "database_row_delete_executed": False,
+    }
+    assert payload["policy"]["physical_purge"]["database_row_delete_enabled"] is False
+    assert "storage_ref" not in serialized
+    assert "content_base64" not in serialized
+    assert unauthorized.status_code == 401
+    assert missing_scope.status_code == 422
+    assert missing_scope.json()["error_code"] == "ae.artifact_collection_scope_required"
+    assert invalid_retention_days.status_code == 422
+    assert invalid_retention_days.json()["error_code"] == (
+        "ae.artifact_retention_days_invalid"
+    )
+    assert invalid_as_of.status_code == 422
+    assert invalid_as_of.json()["error_code"] == (
+        "ae.artifact_retention_timestamp_invalid"
+    )
+
+
 def test_sqlalchemy_artifact_record_store_applies_lifecycle_with_sqlite() -> None:
     session_factory = sqlite_artifact_session_factory()
     store = SqlAlchemyArtifactRecordStore(session_factory)

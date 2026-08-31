@@ -27,6 +27,7 @@ Current endpoints:
 - `POST /api/v1/artifacts`
 - `GET /api/v1/artifacts/{artifact_id}`
 - `GET /api/v1/artifacts/{artifact_id}/versions`
+- `GET /api/v1/artifact-retention/candidates`
 - `POST /api/v1/artifacts/{artifact_id}/render-jobs`
 - `GET /api/v1/artifact-render-jobs/{render_job_id}`
 - `GET /api/v1/artifact-files/{artifact_file_id}`
@@ -401,3 +402,7 @@ Artifact library management:
   existing in-memory and SQLAlchemy artifact stores. Candidate scans are
   owner-scoped, dry-run only, ordered oldest-first, and currently treat
   `updated_at` on `DELETED` artifacts as the logical purge timestamp.
+- Slice 0464 exposes that read-model through
+  `GET /api/v1/artifact-retention/candidates`. The route is authenticated,
+  read-only, owner-scoped, dry-run only, and returns metadata without rendered
+  payloads, storage refs, database URLs, source text, or local paths.

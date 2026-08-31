@@ -1113,6 +1113,33 @@ def register_artifact_handoff_routes(
         except ArtifactHandoffError as exc:
             return _artifact_problem_response(request, exc)
 
+    @app.get("/api/v1/artifact-retention/candidates", response_model=None)
+    def list_artifact_retention_candidates(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        tenant_id: str | None = None,
+        workspace_id: str | None = None,
+        owner_user_id: str | None = None,
+        retention_days: str | None = None,
+        as_of: str | None = None,
+        limit: str | None = None,
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return artifact_record_store.list_retention_candidates(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
+                retention_days=retention_days,
+                as_of=as_of,
+                limit=limit,
+            )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
     @app.get("/api/v1/artifacts/{artifact_id}", response_model=None)
     def get_artifact(
         artifact_id: str,
