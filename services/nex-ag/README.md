@@ -170,6 +170,10 @@ Unified operations:
 - Slice 0450 closes S45 by checking the AG artifact collection projection
   remains connected to the AE-owned collection API and AE Web library evidence
   without crossing the metadata-only operations boundary.
+- Slice 0451 starts S46 by freezing AG's lifecycle role as read-only operator
+  projection and issue-candidate generation. AE remains the lifecycle mutation
+  owner, while AG may surface `ARCHIVE`, `RESTORE`, and logical `MARK_DELETED`
+  state only through metadata-safe AE artifact projections.
 - AG remediation execution handoff planning is centralized in
   `nex_ag.generation_remediation_execution`. The planner maps CX remediation
   execution statuses back to AG task updates without bypassing the existing

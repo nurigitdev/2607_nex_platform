@@ -885,6 +885,11 @@ Slice 0441 starts S45:
 - Slice 0450 closes S45 by checking the AE API collection contract, AE Web
   library UX, Playwright/PostgreSQL evidence, and AG collection operations
   projection stay wired as metadata-only artifact library surfaces.
+- Slice 0451 starts S46 by freezing the artifact lifecycle action boundary
+  before browser controls are added. AE Web will own the browser action surface
+  for `ARCHIVE`, `RESTORE`, and logical `MARK_DELETED`, but must continue to
+  call AE API through the artifact client and keep storage paths, rendered
+  payloads, credentials, and database URLs out of browser evidence.
 
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

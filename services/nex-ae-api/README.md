@@ -365,3 +365,8 @@ Artifact library management:
 - Slice 0450 closes S45 by checking the AE collection read-model, API route,
   PostgreSQL smoke evidence, AE Web library surface, and AG operations
   projection remain connected as metadata-only artifact library contracts.
+- Slice 0451 starts S46 by freezing artifact lifecycle management before
+  mutation contracts are added. AE API remains the lifecycle system of record,
+  the first allowed actions are reversible metadata actions (`ARCHIVE`,
+  `RESTORE`, `MARK_DELETED`), and physical file deletion/storage purge remains
+  deferred to a later retention or purge track.
