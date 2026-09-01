@@ -421,3 +421,7 @@ Artifact library management:
   unless all delete flags are enabled, artifact graph rows are deleted
   child-first, rendered files are removed through the storage adapter, and
   handoff lineage records are retained.
+- Slice 0468 exposes the guarded purge path as
+  `POST /api/v1/artifact-retention/purge`. The route is authenticated, defaults
+  to dry-run, rejects non-boolean control flags and dry-run delete flags, and
+  returns metadata-only `ae_artifact_retention_execution.v1` evidence.

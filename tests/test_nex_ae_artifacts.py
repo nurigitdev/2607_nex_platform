@@ -2415,6 +2415,113 @@ def test_artifact_retention_candidate_route_returns_metadata_only_candidates() -
     )
 
 
+def test_artifact_retention_purge_route_requires_guarded_control_flags() -> None:
+    client, _, artifact_store, _ = build_client_with_artifact_store()
+    old_deleted = save_rendered_retention_artifact(
+        artifact_store,
+        artifact_request_id="route-retention-purge-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    recent_deleted = save_rendered_retention_artifact(
+        artifact_store,
+        artifact_request_id="route-retention-purge-recent-001",
+        updated_at="2026-08-31T00:00:00Z",
+    )
+    headers = {**auth_headers(), "Idempotency-Key": "route-retention-purge-001"}
+    base_payload = {
+        "tenant_id": "tenant-001",
+        "workspace_id": "workspace-001",
+        "owner_user_id": "user-001",
+        "retention_days": "30",
+        "as_of": "2026-09-01T00:00:00Z",
+        "checked_at": "2026-09-01T02:30:00Z",
+        "scan_limit": "10",
+        "max_delete_count": "1",
+        "requested_by": {"actor_type": "service", "actor_id": "nex-ag"},
+    }
+
+    dry_run = client.post(
+        "/api/v1/artifact-retention/purge",
+        json=base_payload,
+        headers=headers,
+    )
+    blocked = client.post(
+        "/api/v1/artifact-retention/purge",
+        json={**base_payload, "dry_run": False},
+        headers=headers,
+    )
+    invalid_bool = client.post(
+        "/api/v1/artifact-retention/purge",
+        json={**base_payload, "dry_run": "false"},
+        headers=headers,
+    )
+    unsafe_dry_run = client.post(
+        "/api/v1/artifact-retention/purge",
+        json={**base_payload, "delete_enabled": True},
+        headers=headers,
+    )
+    missing_scope = client.post(
+        "/api/v1/artifact-retention/purge",
+        json={},
+        headers=headers,
+    )
+    unauthorized = client.post(
+        "/api/v1/artifact-retention/purge",
+        json=base_payload,
+    )
+    execute = client.post(
+        "/api/v1/artifact-retention/purge",
+        json={
+            **base_payload,
+            "dry_run": False,
+            "delete_enabled": True,
+            "storage_mutation_enabled": True,
+            "database_row_delete_enabled": True,
+        },
+        headers=headers,
+    )
+    payload = execute.json()
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+    assert dry_run.status_code == 200
+    assert dry_run.json()["artifact_retention_execution_schema_version"] == (
+        AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION
+    )
+    assert dry_run.json()["mode"] == "DRY_RUN"
+    assert dry_run.json()["candidate_count"] == 1
+    assert dry_run.json()["selected_count"] == 1
+    assert dry_run.json()["idempotency_key"] == "route-retention-purge-001"
+    assert dry_run.json()["requested_by"] == {
+        "actor_type": "service",
+        "actor_id": "nex-ag",
+        "service_id": "nex-ae-api",
+    }
+    assert blocked.status_code == 200
+    assert blocked.json()["execution_status"] == "BLOCKED"
+    assert blocked.json()["blocked_reason"] == "delete_not_enabled"
+    assert invalid_bool.status_code == 422
+    assert invalid_bool.json()["error_code"] == (
+        "ae.artifact_retention_dry_run_invalid"
+    )
+    assert unsafe_dry_run.status_code == 422
+    assert unsafe_dry_run.json()["error_code"] == (
+        "ae.artifact_retention_dry_run_delete_enabled_invalid"
+    )
+    assert missing_scope.status_code == 422
+    assert missing_scope.json()["error_code"] == "ae.artifact_collection_scope_required"
+    assert unauthorized.status_code == 401
+    assert execute.status_code == 200
+    assert payload["mode"] == "EXECUTE"
+    assert payload["execution_status"] == "SUCCEEDED"
+    assert payload["deleted_counts"]["artifacts"] == 1
+    assert payload["deleted_counts"]["files"] == 2
+    assert payload["deleted_counts"]["links"] == 4
+    assert payload["deleted_counts"]["storage_files"] == 2
+    assert artifact_store.get(old_deleted["artifact_id"]) is None
+    assert artifact_store.get(recent_deleted["artifact_id"]) is not None
+    assert "storage_ref" not in serialized
+
+
 def test_sqlalchemy_artifact_record_store_applies_lifecycle_with_sqlite() -> None:
     session_factory = sqlite_artifact_session_factory()
     store = SqlAlchemyArtifactRecordStore(session_factory)

@@ -449,6 +449,9 @@ class ArtifactRecordStore:
                 max_delete_count=max_delete,
                 candidate_count=len(records),
                 selected_count=len(selected),
+                delete_enabled=delete_enabled,
+                storage_mutation_enabled=storage_mutation_enabled,
+                database_row_delete_enabled=database_row_delete_enabled,
                 requested_by=requested_by,
                 idempotency_key=idempotency_key,
                 trace_id=trace_id,
@@ -982,6 +985,9 @@ class SqlAlchemyArtifactRecordStore:
                         max_delete_count=max_delete,
                         candidate_count=len(records),
                         selected_count=len(selected),
+                        delete_enabled=delete_enabled,
+                        storage_mutation_enabled=storage_mutation_enabled,
+                        database_row_delete_enabled=database_row_delete_enabled,
                         requested_by=requested_by,
                         idempotency_key=idempotency_key,
                         trace_id=trace_id,
@@ -1441,6 +1447,52 @@ def register_artifact_handoff_routes(
                 retention_days=retention_days,
                 as_of=as_of,
                 limit=limit,
+            )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.post("/api/v1/artifact-retention/purge", response_model=None)
+    def purge_artifact_retention_candidates(
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return artifact_record_store.purge_retention_candidates(
+                tenant_id=payload.get("tenant_id"),
+                workspace_id=payload.get("workspace_id"),
+                owner_user_id=payload.get("owner_user_id"),
+                retention_days=payload.get("retention_days"),
+                as_of=payload.get("as_of"),
+                checked_at=payload.get("checked_at"),
+                scan_limit=payload.get("scan_limit"),
+                max_delete_count=payload.get("max_delete_count"),
+                dry_run=_boolean_from_payload(payload, "dry_run", default=True),
+                delete_enabled=_boolean_from_payload(
+                    payload,
+                    "delete_enabled",
+                    default=False,
+                ),
+                storage_mutation_enabled=_boolean_from_payload(
+                    payload,
+                    "storage_mutation_enabled",
+                    default=False,
+                ),
+                database_row_delete_enabled=_boolean_from_payload(
+                    payload,
+                    "database_row_delete_enabled",
+                    default=False,
+                ),
+                requested_by=payload.get("requested_by"),
+                idempotency_key=idempotency_key
+                or optional_text(payload.get("idempotency_key")),
+                trace_id=payload.get("trace_id") or trace_id_from_headers(request),
+                request_id=request_id_from_headers(request),
             )
         except ArtifactHandoffError as exc:
             return _artifact_problem_response(request, exc)
@@ -4293,6 +4345,24 @@ def optional_text(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None
+
+
+def _boolean_from_payload(
+    payload: dict[str, Any],
+    field_name: str,
+    *,
+    default: bool,
+) -> bool:
+    if field_name not in payload or payload[field_name] is None:
+        return default
+    value = payload[field_name]
+    if not isinstance(value, bool):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=f"ae.artifact_retention_{field_name}_invalid",
+            detail=f"{field_name} must be a boolean.",
+        )
+    return value
 
 
 def sha256_json(value: dict[str, Any]) -> str:
