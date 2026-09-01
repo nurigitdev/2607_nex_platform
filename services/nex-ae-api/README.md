@@ -416,3 +416,8 @@ Artifact library management:
   helpers. Retention execution remains guarded: dry-run cannot enable delete
   flags, successful execute requires database and storage mutation flags, and
   the scheduled batch window stays 02:00-05:00 `Asia/Seoul`.
+- Slice 0467 wires guarded retention purge into the AE artifact stores without
+  exposing an HTTP route yet. Dry-run remains the default, execute is blocked
+  unless all delete flags are enabled, artifact graph rows are deleted
+  child-first, rendered files are removed through the storage adapter, and
+  handoff lineage records are retained.

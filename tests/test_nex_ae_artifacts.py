@@ -316,6 +316,45 @@ def sample_collection_artifact_record(
     return record
 
 
+def save_rendered_retention_artifact(
+    store: ArtifactRecordStore | SqlAlchemyArtifactRecordStore,
+    *,
+    artifact_request_id: str,
+    artifact_status: str = "DELETED",
+    updated_at: str = "2026-07-31T00:00:00Z",
+    target_formats: list[str] | None = None,
+) -> dict[str, Any]:
+    artifact_record = sample_collection_artifact_record(
+        artifact_request_id=artifact_request_id,
+        artifact_status="DRAFT",
+        updated_at=updated_at,
+    )
+    created = store.create(artifact_record)
+    render_result = build_markdown_render_result(
+        artifact_record=created,
+        structured_draft=sample_structured_draft(),
+        target_formats=target_formats or ["MD", "HTML_PREVIEW"],
+        render_request_id=f"render-{artifact_request_id}",
+        render_job_id=deterministic_render_job_id(
+            created["artifact_id"],
+            f"render-{artifact_request_id}",
+        ),
+    )
+    rendered = store.apply_markdown_render(
+        artifact_id=created["artifact_id"],
+        artifact_version=render_result["artifact_version"],
+        render_job=render_result["render_job"],
+        markdown=render_result["markdown"],
+        artifact_files=render_result["artifact_files"],
+        artifact_links=render_result["artifact_links"],
+        rendered_payloads=render_result["rendered_payloads"],
+    )
+    rendered["artifact_status"] = artifact_status
+    rendered["updated_at"] = updated_at
+    store.save(rendered)
+    return rendered
+
+
 def sqlite_artifact_session_factory():
     engine = create_engine(
         "sqlite+pysqlite://",
@@ -2099,6 +2138,199 @@ def test_sqlalchemy_artifact_record_store_lists_retention_candidates_with_sqlite
     assert candidates["items"][0]["link_count"] == 0
 
 
+def test_artifact_record_store_purge_retention_candidates_is_safe_by_default() -> None:
+    store = ArtifactRecordStore()
+    old_deleted = save_rendered_retention_artifact(
+        store,
+        artifact_request_id="retention-purge-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    save_rendered_retention_artifact(
+        store,
+        artifact_request_id="retention-purge-recent-001",
+        updated_at="2026-08-31T00:00:00Z",
+    )
+    dry_run = store.purge_retention_candidates(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        checked_at="2026-09-01T02:00:00Z",
+        scan_limit=10,
+        max_delete_count=1,
+        requested_by={"actor_type": "service", "actor_id": "nex-ag"},
+        idempotency_key="retention-dry-run-001",
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+    )
+    blocked = store.purge_retention_candidates(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        checked_at="2026-09-01T02:05:00Z",
+        dry_run=False,
+        max_delete_count=1,
+    )
+
+    assert dry_run["mode"] == "DRY_RUN"
+    assert dry_run["execution_status"] == "SUCCEEDED"
+    assert dry_run["candidate_count"] == 1
+    assert dry_run["selected_count"] == 1
+    assert set(dry_run["deleted_counts"].values()) == {0}
+    assert dry_run["idempotency_key"] == "retention-dry-run-001"
+    assert blocked["mode"] == "EXECUTE"
+    assert blocked["execution_status"] == "BLOCKED"
+    assert blocked["blocked_reason"] == "delete_not_enabled"
+    assert blocked["selected_count"] == 0
+    assert store.get(old_deleted["artifact_id"]) is not None
+    assert "storage_ref" not in json.dumps(dry_run, sort_keys=True)
+
+
+def test_artifact_record_store_executes_guarded_retention_purge() -> None:
+    store = ArtifactRecordStore()
+    old_deleted = save_rendered_retention_artifact(
+        store,
+        artifact_request_id="retention-execute-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+        target_formats=["MD", "HTML_PREVIEW", "DOCX"],
+    )
+    later_deleted = save_rendered_retention_artifact(
+        store,
+        artifact_request_id="retention-execute-old-002",
+        updated_at="2026-07-31T01:00:00Z",
+    )
+
+    execution = store.purge_retention_candidates(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        checked_at="2026-09-01T02:10:00Z",
+        dry_run=False,
+        max_delete_count="1",
+        delete_enabled=True,
+        storage_mutation_enabled=True,
+        database_row_delete_enabled=True,
+    )
+
+    assert execution["mode"] == "EXECUTE"
+    assert execution["execution_status"] == "SUCCEEDED"
+    assert execution["candidate_count"] == 2
+    assert execution["selected_count"] == 1
+    assert execution["deleted_counts"] == {
+        "artifacts": 1,
+        "source_refs": 1,
+        "versions": 1,
+        "render_jobs": 1,
+        "files": 3,
+        "links": 6,
+        "storage_files": 3,
+    }
+    assert store.get(old_deleted["artifact_id"]) is None
+    assert store.get(later_deleted["artifact_id"]) is not None
+    assert set(store.rendered_markdown) == {later_deleted["current_version_id"]}
+    assert set(store.artifact_files) == {
+        artifact_file["artifact_file_id"] for artifact_file in later_deleted["files"]
+    }
+    assert "storage_ref" not in json.dumps(execution, sort_keys=True)
+
+
+def test_artifact_record_store_retention_purge_respects_scan_limit() -> None:
+    store = ArtifactRecordStore()
+    first = save_rendered_retention_artifact(
+        store,
+        artifact_request_id="retention-scan-limit-001",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    second = save_rendered_retention_artifact(
+        store,
+        artifact_request_id="retention-scan-limit-002",
+        updated_at="2026-07-31T01:00:00Z",
+    )
+
+    execution = store.purge_retention_candidates(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit=1,
+        max_delete_count=10,
+    )
+
+    assert execution["candidate_count"] == 1
+    assert execution["selected_count"] == 1
+    assert store.get(first["artifact_id"]) is not None
+    assert store.get(second["artifact_id"]) is not None
+
+
+def test_sqlalchemy_artifact_record_store_executes_guarded_retention_purge_with_sqlite() -> None:
+    session_factory = sqlite_artifact_session_factory()
+    storage = InMemoryRenderedArtifactStorage()
+    store = SqlAlchemyArtifactRecordStore(
+        session_factory,
+        rendered_storage=storage,
+    )
+    first = save_rendered_retention_artifact(
+        store,
+        artifact_request_id="sql-retention-purge-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+        target_formats=["MD", "HTML_PREVIEW"],
+    )
+    second = save_rendered_retention_artifact(
+        store,
+        artifact_request_id="sql-retention-purge-old-002",
+        updated_at="2026-07-31T01:00:00Z",
+        target_formats=["MD"],
+    )
+
+    blocked = store.purge_retention_candidates(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        dry_run=False,
+        max_delete_count=1,
+    )
+    execution = store.purge_retention_candidates(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        checked_at="2026-09-01T02:20:00Z",
+        dry_run=False,
+        max_delete_count=1,
+        delete_enabled=True,
+        storage_mutation_enabled=True,
+        database_row_delete_enabled=True,
+    )
+
+    assert blocked["execution_status"] == "BLOCKED"
+    assert blocked["candidate_count"] == 2
+    assert execution["execution_status"] == "SUCCEEDED"
+    assert execution["candidate_count"] == 2
+    assert execution["selected_count"] == 1
+    assert execution["deleted_counts"] == {
+        "artifacts": 1,
+        "source_refs": 1,
+        "versions": 1,
+        "render_jobs": 1,
+        "files": 2,
+        "links": 4,
+        "storage_files": 2,
+    }
+    assert store.get(first["artifact_id"]) is None
+    assert store.get(second["artifact_id"]) is not None
+    assert len(storage.rendered_artifact_files) == 1
+    assert "storage_ref" not in json.dumps(execution, sort_keys=True)
+
+
 def test_artifact_retention_candidate_route_returns_metadata_only_candidates() -> None:
     client, _, artifact_store, _ = build_client_with_artifact_store()
     old_deleted = sample_collection_artifact_record(
@@ -3043,6 +3275,9 @@ def test_local_rendered_artifact_storage_writes_under_configured_root(
     assert private_path.read_text(encoding="utf-8") == render_result["markdown"]
     assert str(tmp_path) not in str(artifact_file)
     assert artifact_file["storage_ref"].startswith("ae://artifacts/")
+    assert storage.delete_rendered_artifact_file(artifact_file) is True
+    assert storage.get_markdown(artifact_file) is None
+    assert storage.delete_rendered_artifact_file(artifact_file) is False
 
 
 @pytest.mark.parametrize(
@@ -3383,6 +3618,7 @@ def test_sqlalchemy_artifact_record_store_reads_markdown_from_local_storage(
         ("record", "file"),
         ("record", "file_link"),
         ("record", "list"),
+        ("record", "retention_purge"),
         ("record", "delete"),
     ],
 )
@@ -3424,6 +3660,12 @@ def test_sqlalchemy_artifact_stores_map_database_errors(
                 store.get_file_link("missing", "preview")
             elif operation == "list":
                 store.list_artifacts(
+                    tenant_id="tenant-001",
+                    workspace_id="workspace-001",
+                    owner_user_id="user-001",
+                )
+            elif operation == "retention_purge":
+                store.purge_retention_candidates(
                     tenant_id="tenant-001",
                     workspace_id="workspace-001",
                     owner_user_id="user-001",

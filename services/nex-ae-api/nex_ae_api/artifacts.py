@@ -202,6 +202,12 @@ class RenderedArtifactStorage(Protocol):
     ) -> bytes | None:
         ...
 
+    def delete_rendered_artifact_file(
+        self,
+        artifact_file: dict[str, Any],
+    ) -> bool:
+        ...
+
     def save_markdown(self, artifact_file: dict[str, Any], markdown: str) -> str:
         ...
 
@@ -384,6 +390,153 @@ class ArtifactRecordStore:
             candidate_filter=candidate_filter,
         )
 
+    def purge_retention_candidates(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        retention_days: int | str | None = None,
+        as_of: str | None = None,
+        checked_at: str | None = None,
+        scan_limit: int | str | None = None,
+        max_delete_count: int | str | None = None,
+        dry_run: bool = True,
+        delete_enabled: bool = False,
+        storage_mutation_enabled: bool = False,
+        database_row_delete_enabled: bool = False,
+        requested_by: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        candidate_filter = build_artifact_retention_candidate_filter(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            retention_days=retention_days,
+            as_of=as_of,
+            limit=scan_limit,
+        )
+        records = [
+            record
+            for record in self.records.values()
+            if artifact_record_matches_retention_candidate_filter(
+                record,
+                candidate_filter,
+            )
+        ]
+        records.sort(
+            key=lambda record: (
+                str(record.get("updated_at") or ""),
+                str(record.get("artifact_id") or ""),
+            )
+        )
+        records = records[: candidate_filter["limit"]]
+        max_delete = normalize_artifact_retention_delete_limit(max_delete_count)
+        selected = records[:max_delete]
+        if dry_run:
+            return build_artifact_retention_execution(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
+                mode="DRY_RUN",
+                execution_status="SUCCEEDED",
+                retention_days=retention_days,
+                as_of=candidate_filter["as_of"],
+                checked_at=checked_at,
+                scan_limit=candidate_filter["limit"],
+                max_delete_count=max_delete,
+                candidate_count=len(records),
+                selected_count=len(selected),
+                requested_by=requested_by,
+                idempotency_key=idempotency_key,
+                trace_id=trace_id,
+                request_id=request_id,
+            )
+        if not (
+            delete_enabled
+            and storage_mutation_enabled
+            and database_row_delete_enabled
+        ):
+            return build_artifact_retention_execution(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
+                mode="EXECUTE",
+                execution_status="BLOCKED",
+                retention_days=retention_days,
+                as_of=candidate_filter["as_of"],
+                checked_at=checked_at,
+                scan_limit=candidate_filter["limit"],
+                max_delete_count=max_delete,
+                candidate_count=len(records),
+                selected_count=0,
+                delete_enabled=delete_enabled,
+                storage_mutation_enabled=storage_mutation_enabled,
+                database_row_delete_enabled=database_row_delete_enabled,
+                requested_by=requested_by,
+                idempotency_key=idempotency_key,
+                trace_id=trace_id,
+                request_id=request_id,
+                blocked_reason="delete_not_enabled",
+            )
+        deleted_counts = self._delete_retention_selected_records(selected)
+        return build_artifact_retention_execution(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            mode="EXECUTE",
+            execution_status="SUCCEEDED",
+            retention_days=retention_days,
+            as_of=candidate_filter["as_of"],
+            checked_at=checked_at,
+            scan_limit=candidate_filter["limit"],
+            max_delete_count=max_delete,
+            candidate_count=len(records),
+            selected_count=len(selected),
+            deleted_counts=deleted_counts,
+            delete_enabled=True,
+            storage_mutation_enabled=True,
+            database_row_delete_enabled=True,
+            requested_by=requested_by,
+            idempotency_key=idempotency_key,
+            trace_id=trace_id,
+            request_id=request_id,
+        )
+
+    def _delete_retention_selected_records(
+        self,
+        records: list[dict[str, Any]],
+    ) -> dict[str, int]:
+        counts = _empty_artifact_retention_deleted_counts()
+        for record in records:
+            artifact_id = record["artifact_id"]
+            for artifact_link in _list_of_mappings(record.get("links")):
+                if self.artifact_links.pop(artifact_link["artifact_link_id"], None):
+                    counts["links"] += 1
+            for artifact_file in _list_of_mappings(record.get("files")):
+                if self.artifact_files.pop(artifact_file["artifact_file_id"], None):
+                    counts["files"] += 1
+                if self.rendered_artifact_files.pop(
+                    artifact_file["artifact_file_id"],
+                    None,
+                ) is not None:
+                    counts["storage_files"] += 1
+                if artifact_file.get("format") == "MD":
+                    self.rendered_markdown.pop(
+                        artifact_file["artifact_version_id"],
+                        None,
+                    )
+            for render_job in _list_of_mappings(record.get("render_jobs")):
+                if self.render_jobs.pop(render_job["render_job_id"], None):
+                    counts["render_jobs"] += 1
+            counts["versions"] += len(_list_of_mappings(record.get("versions")))
+            counts["source_refs"] += len(_list_of_mappings(record.get("source_refs")))
+            if self.records.pop(artifact_id, None) is not None:
+                counts["artifacts"] += 1
+        return counts
+
     def get_render_job(self, render_job_id: str) -> dict[str, Any] | None:
         return self.render_jobs.get(render_job_id)
 
@@ -501,6 +654,17 @@ class InMemoryRenderedArtifactStorage:
             return markdown.encode("utf-8")
         return None
 
+    def delete_rendered_artifact_file(
+        self,
+        artifact_file: dict[str, Any],
+    ) -> bool:
+        artifact_file_id = artifact_file["artifact_file_id"]
+        artifact_version_id = artifact_file["artifact_version_id"]
+        removed = self.rendered_artifact_files.pop(artifact_file_id, None) is not None
+        if artifact_file.get("format") == "MD":
+            self.rendered_markdown.pop(artifact_version_id, None)
+        return removed
+
     def save_markdown(self, artifact_file: dict[str, Any], markdown: str) -> str:
         return self.save_rendered_artifact_file(artifact_file, markdown.encode("utf-8"))
 
@@ -533,6 +697,16 @@ class LocalRenderedArtifactStorage:
         if not path.exists():
             return None
         return path.read_bytes()
+
+    def delete_rendered_artifact_file(
+        self,
+        artifact_file: dict[str, Any],
+    ) -> bool:
+        path = self.path_for_storage_ref(artifact_file["storage_ref"])
+        if not path.exists():
+            return False
+        path.unlink()
+        return True
 
     def save_markdown(self, artifact_file: dict[str, Any], markdown: str) -> str:
         return self.save_rendered_artifact_file(
@@ -750,6 +924,125 @@ class SqlAlchemyArtifactRecordStore:
                 records,
                 candidate_filter=candidate_filter,
             )
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_store_unavailable",
+                detail="AE artifact store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def purge_retention_candidates(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        retention_days: int | str | None = None,
+        as_of: str | None = None,
+        checked_at: str | None = None,
+        scan_limit: int | str | None = None,
+        max_delete_count: int | str | None = None,
+        dry_run: bool = True,
+        delete_enabled: bool = False,
+        storage_mutation_enabled: bool = False,
+        database_row_delete_enabled: bool = False,
+        requested_by: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+        trace_id: str | None = None,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        candidate_filter = build_artifact_retention_candidate_filter(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            retention_days=retention_days,
+            as_of=as_of,
+            limit=scan_limit,
+        )
+        max_delete = normalize_artifact_retention_delete_limit(max_delete_count)
+        try:
+            with self._session_factory() as session:
+                records = _load_artifact_records_for_retention_candidates(
+                    session,
+                    candidate_filter,
+                )
+                selected = records[:max_delete]
+                if dry_run:
+                    return build_artifact_retention_execution(
+                        tenant_id=tenant_id,
+                        workspace_id=workspace_id,
+                        owner_user_id=owner_user_id,
+                        mode="DRY_RUN",
+                        execution_status="SUCCEEDED",
+                        retention_days=retention_days,
+                        as_of=candidate_filter["as_of"],
+                        checked_at=checked_at,
+                        scan_limit=candidate_filter["limit"],
+                        max_delete_count=max_delete,
+                        candidate_count=len(records),
+                        selected_count=len(selected),
+                        requested_by=requested_by,
+                        idempotency_key=idempotency_key,
+                        trace_id=trace_id,
+                        request_id=request_id,
+                    )
+                if not (
+                    delete_enabled
+                    and storage_mutation_enabled
+                    and database_row_delete_enabled
+                ):
+                    return build_artifact_retention_execution(
+                        tenant_id=tenant_id,
+                        workspace_id=workspace_id,
+                        owner_user_id=owner_user_id,
+                        mode="EXECUTE",
+                        execution_status="BLOCKED",
+                        retention_days=retention_days,
+                        as_of=candidate_filter["as_of"],
+                        checked_at=checked_at,
+                        scan_limit=candidate_filter["limit"],
+                        max_delete_count=max_delete,
+                        candidate_count=len(records),
+                        selected_count=0,
+                        delete_enabled=delete_enabled,
+                        storage_mutation_enabled=storage_mutation_enabled,
+                        database_row_delete_enabled=database_row_delete_enabled,
+                        requested_by=requested_by,
+                        idempotency_key=idempotency_key,
+                        trace_id=trace_id,
+                        request_id=request_id,
+                        blocked_reason="delete_not_enabled",
+                    )
+                deleted_counts = _delete_retention_selected_artifact_records(
+                    session,
+                    selected,
+                    rendered_storage=self._rendered_storage,
+                )
+                execution = build_artifact_retention_execution(
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    owner_user_id=owner_user_id,
+                    mode="EXECUTE",
+                    execution_status="SUCCEEDED",
+                    retention_days=retention_days,
+                    as_of=candidate_filter["as_of"],
+                    checked_at=checked_at,
+                    scan_limit=candidate_filter["limit"],
+                    max_delete_count=max_delete,
+                    candidate_count=len(records),
+                    selected_count=len(selected),
+                    deleted_counts=deleted_counts,
+                    delete_enabled=True,
+                    storage_mutation_enabled=True,
+                    database_row_delete_enabled=True,
+                    requested_by=requested_by,
+                    idempotency_key=idempotency_key,
+                    trace_id=trace_id,
+                    request_id=request_id,
+                )
+                session.commit()
+                return execution
         except SQLAlchemyError as exc:
             raise ArtifactHandoffError(
                 status_code=503,
@@ -2875,6 +3168,10 @@ def _normalize_artifact_retention_deleted_counts(
     }
 
 
+def _empty_artifact_retention_deleted_counts() -> dict[str, int]:
+    return _normalize_artifact_retention_deleted_counts(None)
+
+
 def _non_negative_artifact_retention_int(value: Any, field_name: str) -> int:
     if isinstance(value, bool):
         raise ArtifactHandoffError(
@@ -4460,6 +4757,75 @@ def _load_artifact_records_for_retention_candidates(
         if record is not None:
             records.append(record)
     return records
+
+
+def _delete_retention_selected_artifact_records(
+    session: Session,
+    records: list[dict[str, Any]],
+    *,
+    rendered_storage: RenderedArtifactStorage,
+) -> dict[str, int]:
+    counts = _empty_artifact_retention_deleted_counts()
+    for record in records:
+        artifact_id = record["artifact_id"]
+        counts["storage_files"] += _delete_rendered_files_for_retention(
+            rendered_storage,
+            record,
+        )
+        counts["links"] += _delete_artifact_rows(
+            session,
+            """
+            DELETE FROM ae_artifact_links
+            WHERE artifact_file_id IN (
+                SELECT artifact_file_id
+                FROM ae_artifact_files
+                WHERE artifact_id = :artifact_id
+            )
+            """,
+            artifact_id,
+        )
+        counts["files"] += _delete_artifact_rows(
+            session,
+            "DELETE FROM ae_artifact_files WHERE artifact_id = :artifact_id",
+            artifact_id,
+        )
+        counts["render_jobs"] += _delete_artifact_rows(
+            session,
+            "DELETE FROM ae_artifact_render_jobs WHERE artifact_id = :artifact_id",
+            artifact_id,
+        )
+        counts["versions"] += _delete_artifact_rows(
+            session,
+            "DELETE FROM ae_artifact_versions WHERE artifact_id = :artifact_id",
+            artifact_id,
+        )
+        counts["source_refs"] += _delete_artifact_rows(
+            session,
+            "DELETE FROM ae_artifact_source_refs WHERE artifact_id = :artifact_id",
+            artifact_id,
+        )
+        counts["artifacts"] += _delete_artifact_rows(
+            session,
+            "DELETE FROM ae_artifacts WHERE artifact_id = :artifact_id",
+            artifact_id,
+        )
+    return counts
+
+
+def _delete_rendered_files_for_retention(
+    rendered_storage: RenderedArtifactStorage,
+    record: dict[str, Any],
+) -> int:
+    deleted = 0
+    for artifact_file in _list_of_mappings(record.get("files")):
+        if rendered_storage.delete_rendered_artifact_file(artifact_file):
+            deleted += 1
+    return deleted
+
+
+def _delete_artifact_rows(session: Session, sql: str, artifact_id: str) -> int:
+    result = session.execute(text(sql), {"artifact_id": artifact_id})
+    return int(result.rowcount or 0)
 
 
 def _artifact_collection_select_ids_sql(collection_filter: dict[str, Any]) -> str:
