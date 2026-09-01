@@ -33,6 +33,9 @@ AG_ARTIFACT_OPERATION_LIFECYCLE_PROJECTION_SCHEMA_VERSION = (
 AG_ARTIFACT_OPERATION_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION = (
     "ag_artifact_operation_retention_history_projection.v1"
 )
+AG_ARTIFACT_OPERATION_RETENTION_BATCH_PROJECTION_SCHEMA_VERSION = (
+    "ag_artifact_operation_retention_batch_projection.v1"
+)
 AE_ARTIFACT_SOURCE_SERVICE_ID = "nex-ae-api"
 NEX_AG_AE_ARTIFACT_BASE_URL_ENV = "NEX_AG_AE_ARTIFACT_BASE_URL"
 NEX_AG_AE_ARTIFACT_SERVICE_TOKEN_ENV = "NEX_AG_AE_ARTIFACT_SERVICE_TOKEN"
@@ -59,6 +62,7 @@ SUPPORTED_ARTIFACT_RETENTION_STATUSES = (
     "BLOCKED",
     "FAILED",
 )
+SUPPORTED_ARTIFACT_RETENTION_BATCH_STATUSES = ("READY", "NOOP")
 ARCHIVABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED"}
 DELETABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED", "ARCHIVED"}
 RESTORABLE_ARTIFACT_STATUSES = {"ARCHIVED", "DELETED"}
@@ -91,6 +95,22 @@ class AeArtifactOperationsClient(Protocol):
         mode: str | None,
         execution_status: str | None,
         limit: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        ...
+
+    def get_artifact_retention_batch_plan(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        retention_days: int | None,
+        as_of: str | None,
+        scan_limit: int,
+        max_delete_count: int,
+        checked_at: str | None,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
@@ -136,6 +156,9 @@ class InMemoryAeArtifactOperationsClient:
     artifacts: dict[str, dict[str, Any]] = field(default_factory=dict)
     artifact_collections: dict[str, dict[str, Any]] = field(default_factory=dict)
     artifact_retention_history_collections: dict[str, dict[str, Any]] = field(
+        default_factory=dict
+    )
+    artifact_retention_batch_plans: dict[str, dict[str, Any]] = field(
         default_factory=dict
     )
     handoffs: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -240,6 +263,43 @@ class InMemoryAeArtifactOperationsClient:
             "metadata": {"metadata_only": True, "system_of_record": "nex-ae-api"},
         }
 
+    def get_artifact_retention_batch_plan(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        retention_days: int | None,
+        as_of: str | None,
+        scan_limit: int,
+        max_delete_count: int,
+        checked_at: str | None,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        plan_key = _artifact_retention_batch_plan_cache_key(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            retention_days=retention_days,
+            as_of=as_of,
+            scan_limit=scan_limit,
+            max_delete_count=max_delete_count,
+            checked_at=checked_at,
+        )
+        if plan_key in self.artifact_retention_batch_plans:
+            return deepcopy(self.artifact_retention_batch_plans[plan_key])
+        return _empty_artifact_retention_batch_plan_payload(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            retention_days=retention_days,
+            as_of=as_of,
+            scan_limit=scan_limit,
+            max_delete_count=max_delete_count,
+            checked_at=checked_at,
+        )
+
     def get_artifact(
         self,
         artifact_id: str,
@@ -339,6 +399,41 @@ class HttpAeArtifactOperationsClient:
                 "limit": str(limit),
                 **({"mode": mode} if mode else {}),
                 **({"execution_status": execution_status} if execution_status else {}),
+            },
+        )
+        return payload if isinstance(payload, dict) else {}
+
+    def get_artifact_retention_batch_plan(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        retention_days: int | None,
+        as_of: str | None,
+        scan_limit: int,
+        max_delete_count: int,
+        checked_at: str | None,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        payload = self._get_json(
+            "/api/v1/artifact-retention/batch-plan",
+            request_id=request_id,
+            trace_id=trace_id,
+            params={
+                "tenant_id": tenant_id,
+                "workspace_id": workspace_id,
+                "owner_user_id": owner_user_id,
+                "scan_limit": str(scan_limit),
+                "max_delete_count": str(max_delete_count),
+                **(
+                    {"retention_days": str(retention_days)}
+                    if retention_days is not None
+                    else {}
+                ),
+                **({"as_of": as_of} if as_of else {}),
+                **({"checked_at": checked_at} if checked_at else {}),
             },
         )
         return payload if isinstance(payload, dict) else {}
@@ -550,6 +645,66 @@ def register_artifact_operation_routes(
             request_trace_id=trace_id,
         )
 
+    @app.get(
+        "/admin/v1/operations/artifact-retention/batch-plan",
+        response_model=None,
+    )
+    def get_artifact_retention_batch_operations(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        tenant_id: str | None = None,
+        workspace_id: str | None = None,
+        owner_user_id: str | None = None,
+        retention_days: str | None = None,
+        as_of: str | None = None,
+        scan_limit: str | None = None,
+        max_delete_count: str | None = None,
+        checked_at: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        service_problem = _validate_artifact_service_filter(request, service_id)
+        if service_problem is not None:
+            return service_problem
+        filter_result = _validate_artifact_retention_batch_query(
+            request,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            retention_days=retention_days,
+            scan_limit=scan_limit,
+            max_delete_count=max_delete_count,
+        )
+        if isinstance(filter_result, JSONResponse):
+            return filter_result
+
+        selected_client = configured_client or build_default_ae_artifact_operations_client()
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            plan = selected_client.get_artifact_retention_batch_plan(
+                tenant_id=filter_result["tenant_id"],
+                workspace_id=filter_result["workspace_id"],
+                owner_user_id=filter_result["owner_user_id"],
+                retention_days=filter_result["retention_days"],
+                as_of=as_of,
+                scan_limit=filter_result["scan_limit"],
+                max_delete_count=filter_result["max_delete_count"],
+                checked_at=checked_at,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        except AeArtifactOperationsError as exc:
+            return _artifact_operations_problem_response(request, exc)
+
+        return build_artifact_operation_retention_batch_projection(
+            plan=plan,
+            source_client=selected_client,
+            request_trace_id=trace_id,
+        )
+
     @app.get("/admin/v1/operations/artifacts/{artifact_id}", response_model=None)
     def get_artifact_operation_detail(
         artifact_id: str,
@@ -698,6 +853,47 @@ def build_artifact_operation_collection_projection(
             item_count=len(items),
             errors=errors,
         ),
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    assert_artifact_operation_projection_redacted(projection)
+    return projection
+
+
+def build_artifact_operation_retention_batch_projection(
+    *,
+    plan: Mapping[str, Any],
+    source_client: AeArtifactOperationsClient | None = None,
+    source_errors: list[AeArtifactOperationsError] | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    projected_plan = _project_retention_batch_plan(plan)
+    errors = source_errors or []
+    projection = {
+        "projection_schema_version": (
+            AG_ARTIFACT_OPERATION_RETENTION_BATCH_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "DEGRADED" if errors else "READY",
+        "checked_at": _utc_now(),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "operation_type": "ae_artifact_retention_batch_plan",
+        "plan": projected_plan,
+        "summary": summarize_artifact_retention_batch_operations(projected_plan),
+        "source_status": _artifact_retention_batch_source_status(
+            source_client=source_client,
+            plan_loaded=bool(projected_plan.get("plan_id")),
+            errors=errors,
+        ),
+        "operator_guidance": {
+            "metadata_only": True,
+            "system_of_record": AE_ARTIFACT_SOURCE_SERVICE_ID,
+            "ae_batch_plan_route": "/api/v1/artifact-retention/batch-plan",
+            "ae_purge_route": "/api/v1/artifact-retention/purge",
+            "scheduled_command_required_before_worker": True,
+            "mock_worker_available": True,
+            "physical_delete_confirmation_required": True,
+            "ag_direct_database_write_allowed": False,
+        },
     }
     if request_trace_id is not None:
         projection["request_trace_id"] = request_trace_id
@@ -927,6 +1123,37 @@ def summarize_artifact_operation_collection(
     }
 
 
+def summarize_artifact_retention_batch_operations(
+    plan: Mapping[str, Any],
+) -> dict[str, Any]:
+    estimated_deleted_counts = plan.get("estimated_deleted_counts")
+    if not isinstance(estimated_deleted_counts, Mapping):
+        estimated_deleted_counts = {}
+    plan_status = _normalized_retention_batch_status(plan.get("plan_status"))
+    scheduler_status = _text_or_none(plan.get("scheduler_status"))
+    selected_count = _int_or_zero(plan.get("selected_count"))
+    return {
+        "plan_status": plan_status,
+        "scheduler_status": scheduler_status,
+        "candidate_count": _int_or_zero(plan.get("candidate_count")),
+        "selected_count": selected_count,
+        "unselected_count": _int_or_zero(plan.get("unselected_count")),
+        "estimated_deleted_artifacts": _int_or_zero(
+            estimated_deleted_counts.get("artifacts")
+        ),
+        "estimated_deleted_storage_files": _int_or_zero(
+            estimated_deleted_counts.get("storage_files")
+        ),
+        "operator_attention_required": plan_status == "READY",
+        "dispatch_available": (
+            plan_status == "READY"
+            and plan.get("mode") == "DRY_RUN"
+            and selected_count > 0
+        ),
+        "latest_checked_at": _text_or_none(plan.get("checked_at")),
+    }
+
+
 def summarize_artifact_retention_history_operations(
     items: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -1144,6 +1371,153 @@ def _project_retention_history_filter(raw_value: Any) -> dict[str, Any]:
             raw_value.get("execution_status")
         ),
         "limit": _int_or_zero(raw_value.get("limit")),
+    }
+
+
+def _project_retention_batch_plan(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "artifact_retention_batch_plan_schema_version": _text_or_none(
+            raw_value.get("artifact_retention_batch_plan_schema_version")
+        ),
+        "plan_id": _text_or_none(raw_value.get("plan_id")),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "schedule": _project_retention_batch_schedule(raw_value.get("schedule")),
+        "candidate_filter": _project_retention_batch_filter(
+            raw_value.get("candidate_filter")
+        ),
+        "tenant_id": _text_or_none(raw_value.get("tenant_id")),
+        "workspace_id": _text_or_none(raw_value.get("workspace_id")),
+        "owner_user_id": _text_or_none(raw_value.get("owner_user_id")),
+        "mode": _normalized_retention_mode(raw_value.get("mode")),
+        "plan_status": _normalized_retention_batch_status(
+            raw_value.get("plan_status")
+        ),
+        "scheduler_status": _text_or_none(raw_value.get("scheduler_status")),
+        "execution_advice": _text_or_none(raw_value.get("execution_advice")),
+        "as_of": _text_or_none(raw_value.get("as_of")),
+        "cutoff_at": _text_or_none(raw_value.get("cutoff_at")),
+        "checked_at": _text_or_none(raw_value.get("checked_at")),
+        "scan_limit": _int_or_zero(raw_value.get("scan_limit")),
+        "max_delete_count": _int_or_zero(raw_value.get("max_delete_count")),
+        "candidate_count": _int_or_zero(raw_value.get("candidate_count")),
+        "selected_count": _int_or_zero(raw_value.get("selected_count")),
+        "unselected_count": _int_or_zero(raw_value.get("unselected_count")),
+        "estimated_deleted_counts": _safe_deleted_counts(
+            raw_value.get("estimated_deleted_counts")
+        ),
+        "selected_candidates": [
+            _project_retention_batch_candidate(candidate)
+            for candidate in _list_value(raw_value.get("selected_candidates"))
+            if isinstance(candidate, Mapping)
+        ],
+        "requested_by": _select_mapping(
+            raw_value.get("requested_by"),
+            ("actor_type", "actor_id", "service_id"),
+        ),
+        "idempotency_key": _text_or_none(raw_value.get("idempotency_key")),
+        "metadata": _select_mapping(
+            raw_value.get("metadata"),
+            (
+                "metadata_only",
+                "dry_run",
+                "physical_delete_executed",
+                "storage_mutation_executed",
+                "database_row_delete_executed",
+                "history_write_executed",
+                "source_collection_count",
+            ),
+        ),
+    }
+
+
+def _project_retention_batch_schedule(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "schedule_id": _text_or_none(raw_value.get("schedule_id")),
+        "policy_id": _text_or_none(raw_value.get("policy_id")),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "enabled": raw_value.get("enabled") is True,
+        "planning_enabled": raw_value.get("planning_enabled") is not False,
+        "default_mode": _normalized_retention_mode(raw_value.get("default_mode")),
+        "allowed_modes": [
+            mode
+            for mode in (
+                _normalized_retention_mode(value)
+                for value in _list_value(raw_value.get("allowed_modes"))
+            )
+            if mode is not None
+        ],
+        "retention_days_presets": [
+            _int_or_zero(value)
+            for value in _list_value(raw_value.get("retention_days_presets"))
+            if _int_or_zero(value) > 0
+        ],
+        "default_retention_days_after_logical_purge": _int_or_zero(
+            raw_value.get("default_retention_days_after_logical_purge")
+        ),
+        "max_scan_limit": _int_or_zero(raw_value.get("max_scan_limit")),
+        "max_delete_count": _int_or_zero(raw_value.get("max_delete_count")),
+        "timezone": _text_or_none(raw_value.get("timezone")),
+        "batch_window": _select_mapping(
+            raw_value.get("batch_window"),
+            ("start_local_time", "end_local_time"),
+        ),
+        "scheduler": _select_mapping(raw_value.get("scheduler"), ("daemon_enabled",)),
+        "execution_guards": _select_mapping(
+            raw_value.get("execution_guards"),
+            (
+                "delete_enabled",
+                "storage_mutation_enabled",
+                "database_row_delete_enabled",
+            ),
+        ),
+        "ownership": _select_mapping(
+            raw_value.get("ownership"),
+            ("system_of_record", "dispatch_owner"),
+        ),
+    }
+
+
+def _project_retention_batch_filter(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "tenant_id": _text_or_none(raw_value.get("tenant_id")),
+        "workspace_id": _text_or_none(raw_value.get("workspace_id")),
+        "owner_user_id": _text_or_none(raw_value.get("owner_user_id")),
+        "status": _normalized_status(raw_value.get("status")),
+        "retention_days": _int_or_zero(raw_value.get("retention_days")),
+        "as_of": _text_or_none(raw_value.get("as_of")),
+        "cutoff_at": _text_or_none(raw_value.get("cutoff_at")),
+        "limit": _int_or_zero(raw_value.get("limit")),
+        "dry_run": raw_value.get("dry_run") is not False,
+    }
+
+
+def _project_retention_batch_candidate(record: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "artifact_retention_batch_candidate_schema_version": _text_or_none(
+            record.get("artifact_retention_batch_candidate_schema_version")
+        ),
+        "selection_order": _int_or_zero(record.get("selection_order")),
+        "artifact_id": _text_or_none(record.get("artifact_id")),
+        "display_title": _text_or_none(record.get("display_title")),
+        "artifact_status": _normalized_status(record.get("artifact_status")),
+        "logical_purged_at": _text_or_none(record.get("logical_purged_at")),
+        "purge_eligible_at": _text_or_none(record.get("purge_eligible_at")),
+        "age_days_after_logical_purge": _int_or_zero(
+            record.get("age_days_after_logical_purge")
+        ),
+        "version_count": _int_or_zero(record.get("version_count")),
+        "file_count": _int_or_zero(record.get("file_count")),
+        "link_count": _int_or_zero(record.get("link_count")),
+        "render_job_count": _int_or_zero(record.get("render_job_count")),
+        "planned_action": _text_or_none(record.get("planned_action")),
+        "execution_mode": _normalized_retention_mode(record.get("execution_mode")),
+        "dry_run": record.get("dry_run") is not False,
     }
 
 
@@ -1435,6 +1809,30 @@ def _artifact_retention_history_source_status(
     }
 
 
+def _artifact_retention_batch_source_status(
+    *,
+    source_client: AeArtifactOperationsClient | None,
+    plan_loaded: bool,
+    errors: list[AeArtifactOperationsError],
+) -> dict[str, Any]:
+    status = "DEGRADED" if errors else "READY"
+    return {
+        "status": status,
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "source_kind": getattr(source_client, "source_kind", "provided"),
+        "base_url": getattr(source_client, "base_url", None),
+        "plan_loaded": plan_loaded and not errors,
+        "errors": [
+            {
+                "error_code": error.error_code,
+                "detail": error.detail,
+                "status_code": error.status_code,
+            }
+            for error in errors
+        ],
+    }
+
+
 def _validate_artifact_collection_query(
     request: Request,
     *,
@@ -1590,6 +1988,96 @@ def _validate_artifact_retention_history_query(
     }
 
 
+def _validate_artifact_retention_batch_query(
+    request: Request,
+    *,
+    tenant_id: str | None,
+    workspace_id: str | None,
+    owner_user_id: str | None,
+    retention_days: str | None,
+    scan_limit: str | None,
+    max_delete_count: str | None,
+) -> dict[str, Any] | JSONResponse:
+    required = {
+        "tenant_id": tenant_id,
+        "workspace_id": workspace_id,
+        "owner_user_id": owner_user_id,
+    }
+    missing = [name for name, value in required.items() if not _present_text(value)]
+    if missing:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_batch_scope_missing",
+            title="Artifact retention batch scope is required",
+            detail=(
+                "Artifact retention batch plans require tenant, workspace, "
+                "and owner scope."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-batch-scope-missing"
+            ),
+        )
+
+    normalized_retention_days = _retention_days_filter(retention_days)
+    if normalized_retention_days is None and _present_text(retention_days):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_batch_retention_days_invalid",
+            title="Invalid artifact retention days",
+            detail="Artifact retention days must be between 1 and 365.",
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-batch-retention-days-invalid"
+            ),
+        )
+
+    normalized_scan_limit = _collection_limit(scan_limit)
+    if normalized_scan_limit is None:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_batch_scan_limit_invalid",
+            title="Invalid artifact retention batch scan limit",
+            detail=(
+                "Artifact retention batch scan limit must be between 1 and "
+                f"{MAX_ARTIFACT_COLLECTION_LIMIT}."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-batch-scan-limit-invalid"
+            ),
+        )
+
+    normalized_max_delete_count = _collection_limit(max_delete_count)
+    if normalized_max_delete_count is None:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_batch_delete_limit_invalid",
+            title="Invalid artifact retention batch delete limit",
+            detail=(
+                "Artifact retention batch delete limit must be between 1 and "
+                f"{MAX_ARTIFACT_COLLECTION_LIMIT}."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-batch-delete-limit-invalid"
+            ),
+        )
+
+    return {
+        "tenant_id": str(tenant_id).strip(),
+        "workspace_id": str(workspace_id).strip(),
+        "owner_user_id": str(owner_user_id).strip(),
+        "retention_days": normalized_retention_days,
+        "scan_limit": normalized_scan_limit,
+        "max_delete_count": normalized_max_delete_count,
+    }
+
+
 def _artifact_collection_cache_key(
     *,
     tenant_id: str,
@@ -1624,6 +2112,133 @@ def _artifact_retention_history_cache_key(
     )
 
 
+def _artifact_retention_batch_plan_cache_key(
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    owner_user_id: str,
+    retention_days: int | None,
+    as_of: str | None,
+    scan_limit: int,
+    max_delete_count: int,
+    checked_at: str | None,
+) -> str:
+    return "|".join(
+        (
+            tenant_id,
+            workspace_id,
+            owner_user_id,
+            str(retention_days or ""),
+            as_of or "",
+            str(scan_limit),
+            str(max_delete_count),
+            checked_at or "",
+        )
+    )
+
+
+def _empty_artifact_retention_batch_plan_payload(
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    owner_user_id: str,
+    retention_days: int | None,
+    as_of: str | None,
+    scan_limit: int,
+    max_delete_count: int,
+    checked_at: str | None,
+) -> dict[str, Any]:
+    effective_retention_days = retention_days or 30
+    effective_as_of = as_of or "1970-01-01T00:00:00Z"
+    effective_checked_at = checked_at or effective_as_of
+    return {
+        "artifact_retention_batch_plan_schema_version": (
+            "ae_artifact_retention_batch_plan.v1"
+        ),
+        "plan_id": (
+            "retention-batch-plan-empty:"
+            f"{tenant_id}:{workspace_id}:{owner_user_id}"
+        ),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "schedule": {
+            "schedule_id": "ae-artifact-retention-schedule-local-v1",
+            "policy_id": "ae-artifact-logical-purge-30d-local-v1",
+            "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+            "enabled": False,
+            "planning_enabled": True,
+            "default_mode": "DRY_RUN",
+            "allowed_modes": list(SUPPORTED_ARTIFACT_RETENTION_MODES),
+            "retention_days_presets": [15, 30],
+            "default_retention_days_after_logical_purge": 30,
+            "max_scan_limit": MAX_ARTIFACT_COLLECTION_LIMIT,
+            "max_delete_count": MAX_ARTIFACT_COLLECTION_LIMIT,
+            "timezone": "Asia/Seoul",
+            "batch_window": {
+                "start_local_time": "02:00",
+                "end_local_time": "05:00",
+            },
+            "scheduler": {"daemon_enabled": False},
+            "execution_guards": {
+                "delete_enabled": False,
+                "storage_mutation_enabled": False,
+                "database_row_delete_enabled": False,
+            },
+            "ownership": {"system_of_record": AE_ARTIFACT_SOURCE_SERVICE_ID},
+        },
+        "candidate_filter": {
+            "tenant_id": tenant_id,
+            "workspace_id": workspace_id,
+            "owner_user_id": owner_user_id,
+            "status": "DELETED",
+            "retention_days": effective_retention_days,
+            "as_of": effective_as_of,
+            "cutoff_at": effective_as_of,
+            "limit": scan_limit,
+            "dry_run": True,
+        },
+        "tenant_id": tenant_id,
+        "workspace_id": workspace_id,
+        "owner_user_id": owner_user_id,
+        "mode": "DRY_RUN",
+        "plan_status": "NOOP",
+        "scheduler_status": "DISABLED",
+        "execution_advice": "No eligible artifacts are currently selected.",
+        "as_of": effective_as_of,
+        "cutoff_at": effective_as_of,
+        "checked_at": effective_checked_at,
+        "scan_limit": scan_limit,
+        "max_delete_count": max_delete_count,
+        "candidate_count": 0,
+        "selected_count": 0,
+        "unselected_count": 0,
+        "estimated_deleted_counts": {
+            "artifacts": 0,
+            "source_refs": 0,
+            "versions": 0,
+            "render_jobs": 0,
+            "files": 0,
+            "links": 0,
+            "storage_files": 0,
+        },
+        "selected_candidates": [],
+        "requested_by": {
+            "actor_type": "service",
+            "actor_id": "nex-ag",
+            "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        },
+        "idempotency_key": None,
+        "metadata": {
+            "metadata_only": True,
+            "dry_run": True,
+            "physical_delete_executed": False,
+            "storage_mutation_executed": False,
+            "database_row_delete_executed": False,
+            "history_write_executed": False,
+            "source_collection_count": 0,
+        },
+    }
+
+
 def _normalized_retention_mode(raw_value: Any) -> str | None:
     value = _text_or_none(raw_value)
     if value is None or not value.strip():
@@ -1636,6 +2251,23 @@ def _normalized_retention_status(raw_value: Any) -> str | None:
     if value is None or not value.strip():
         return None
     return value.strip().replace("-", "_").upper()
+
+
+def _normalized_retention_batch_status(raw_value: Any) -> str | None:
+    value = _text_or_none(raw_value)
+    if value is None or not value.strip():
+        return None
+    return value.strip().replace("-", "_").upper()
+
+
+def _retention_days_filter(raw_value: str | None) -> int | None:
+    if raw_value is None or not str(raw_value).strip():
+        return None
+    try:
+        retention_days = int(str(raw_value))
+    except ValueError:
+        return None
+    return retention_days if 1 <= retention_days <= 365 else None
 
 
 def _safe_deleted_counts(raw_value: Any) -> dict[str, int]:

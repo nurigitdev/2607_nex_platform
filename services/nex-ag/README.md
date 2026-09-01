@@ -28,6 +28,7 @@ Current endpoints:
 - `GET /admin/v1/operations/retrieval-packages/{retrieval_package_id}`
 - `GET /admin/v1/operations/retrieval-score-calibration`
 - `GET /admin/v1/operations/artifacts`
+- `GET /admin/v1/operations/artifact-retention/batch-plan`
 - `GET /admin/v1/operations/artifacts/{artifact_id}`
 - `GET /admin/v1/operations/artifacts/{artifact_id}/lifecycle`
 - `POST /admin/v1/operations/jobs/{service_id}/{job_id}/cancel`
@@ -339,6 +340,12 @@ Unified operations:
 - Slice 0481 starts S49 by freezing AG's role for scheduled artifact retention
   operations: AG may expose operator projection and future dispatch controls
   through AE APIs, but it must not write directly into the AE artifact database.
+- Slice 0488 adds
+  `ag_artifact_operation_retention_batch_projection.v1` and
+  `GET /admin/v1/operations/artifact-retention/batch-plan`. AG reads AE's
+  owner-scoped batch plan through the AE client boundary, summarizes scheduler
+  status, candidate counts, selected counts, estimated delete counts, and
+  dispatch availability, and keeps the projection metadata-only.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
