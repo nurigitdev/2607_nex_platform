@@ -458,3 +458,7 @@ Artifact library management:
   against `NEX_AE_TEST_DATABASE_URL`, the runner migrates the test DB, exercises
   dry-run/blocked/guarded execute plus idempotency replay, directly verifies
   `ae_artifact_retention_executions`, and cleans up generated rows.
+- Slice 0476 adds the retention execution history read-model contract. Stores
+  still return persisted history records, while list surfaces wrap them as
+  metadata-only collection/items with summary counts and execution payload
+  hashes instead of raw execution JSON.

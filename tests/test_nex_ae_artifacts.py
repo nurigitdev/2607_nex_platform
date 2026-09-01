@@ -25,6 +25,8 @@ from nex_ae_api.artifacts import (
     ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION,
     AE_ARTIFACT_LIFECYCLE_ACTION_RESULT_SCHEMA_VERSION,
     AE_ARTIFACT_LIFECYCLE_ACTION_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_COLLECTION_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_ITEM_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_POLICY_SCHEMA_VERSION,
@@ -52,6 +54,9 @@ from nex_ae_api.artifacts import (
     build_artifact_retention_candidate_filter,
     build_artifact_retention_candidate_collection,
     build_artifact_retention_execution,
+    build_artifact_retention_execution_history_collection,
+    build_artifact_retention_execution_history_filter,
+    build_artifact_retention_execution_history_item,
     build_artifact_retention_execution_history_record,
     build_artifact_retention_policy,
     build_default_artifact_handoff_store,
@@ -88,8 +93,10 @@ from nex_ae_api.artifacts import (
     resolve_rendered_artifact_file_payload,
     safe_file_stem,
     sha256_bytes,
+    summarize_artifact_retention_execution_history,
     target_formats_from_payload,
     parse_artifact_retention_timestamp,
+    assert_artifact_retention_history_payload_safe,
     validate_artifact_retention_execution,
     validate_artifact_retention_execution_history_record,
     validate_artifact_retention_policy,
@@ -2102,6 +2109,144 @@ def test_artifact_retention_execution_history_record_derives_safe_metadata() -> 
     with pytest.raises(ArtifactHandoffError) as type_exc:
         validate_artifact_retention_execution_history_record(["bad"])  # type: ignore[arg-type]
     assert type_exc.value.error_code == "ae.artifact_retention_history_invalid"
+
+
+def test_artifact_retention_execution_history_collection_is_metadata_only() -> None:
+    succeeded = build_artifact_retention_execution_history_record(
+        sample_retention_execution(
+            mode="EXECUTE",
+            execution_status="SUCCEEDED",
+            checked_at="2026-09-01T02:45:00Z",
+            delete_enabled=True,
+            storage_mutation_enabled=True,
+            database_row_delete_enabled=True,
+            deleted_counts={
+                "artifacts": 1,
+                "source_refs": 1,
+                "versions": 1,
+                "render_jobs": 1,
+                "files": 2,
+                "links": 4,
+                "storage_files": 2,
+            },
+        )
+    )
+    blocked = build_artifact_retention_execution_history_record(
+        sample_retention_execution(
+            mode="EXECUTE",
+            execution_status="BLOCKED",
+            checked_at="2026-09-01T02:40:00Z",
+            selected_count=0,
+            idempotency_key=None,
+            blocked_reason="delete_not_enabled",
+        )
+    )
+    history_filter = build_artifact_retention_execution_history_filter(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        mode="execute",
+        limit="10",
+    )
+
+    collection = build_artifact_retention_execution_history_collection(
+        [succeeded, blocked],
+        history_filter=history_filter,
+    )
+    first_item = collection["items"][0]
+    serialized = json.dumps(collection, ensure_ascii=False, sort_keys=True)
+
+    assert collection[
+        "artifact_retention_execution_history_collection_schema_version"
+    ] == AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_COLLECTION_SCHEMA_VERSION
+    assert collection["filter"] == {
+        "tenant_id": "tenant-001",
+        "workspace_id": "workspace-001",
+        "owner_user_id": "user-001",
+        "mode": "EXECUTE",
+        "execution_status": None,
+        "limit": 10,
+    }
+    assert collection["count"] == 2
+    assert collection["metadata"]["metadata_only"] is True
+    assert collection["summary"] == {
+        "item_count": 2,
+        "mode_counts": {"EXECUTE": 2},
+        "status_counts": {"SUCCEEDED": 1, "BLOCKED": 1},
+        "dry_run_count": 0,
+        "execute_count": 2,
+        "succeeded_count": 1,
+        "blocked_count": 1,
+        "failed_count": 0,
+        "total_deleted_artifacts": 1,
+        "total_deleted_storage_files": 2,
+        "latest_checked_at": "2026-09-01T02:45:00Z",
+    }
+    assert first_item[
+        "artifact_retention_execution_history_item_schema_version"
+    ] == AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_ITEM_SCHEMA_VERSION
+    assert first_item["execution_payload_hash"] == succeeded["execution_payload_hash"]
+    assert first_item["metadata"] == {
+        "metadata_only": True,
+        "candidate_scan_metadata_only": True,
+        "logical_purge_required_before_physical_delete": True,
+        "scheduled_batch_timezone": "Asia/Seoul",
+        "scheduled_batch_window": {
+            "start_local_time": "02:00",
+            "end_local_time": "05:00",
+        },
+        "policy_snapshot": {},
+        "safety": {},
+    }
+    assert '"execution":' not in serialized
+    assert "storage_ref" not in serialized
+    assert summarize_artifact_retention_execution_history([]) == {
+        "item_count": 0,
+        "mode_counts": {},
+        "status_counts": {},
+        "dry_run_count": 0,
+        "execute_count": 0,
+        "succeeded_count": 0,
+        "blocked_count": 0,
+        "failed_count": 0,
+        "total_deleted_artifacts": 0,
+        "total_deleted_storage_files": 0,
+        "latest_checked_at": None,
+    }
+
+
+def test_artifact_retention_execution_history_read_model_rejects_unsafe_payloads() -> None:
+    record = build_artifact_retention_execution_history_record(
+        sample_retention_execution()
+    )
+    with pytest.raises(ArtifactHandoffError) as raw_execution_exc:
+        assert_artifact_retention_history_payload_safe(
+            {"execution": record["execution"]}
+        )
+    with pytest.raises(ArtifactHandoffError) as private_token_exc:
+        assert_artifact_retention_history_payload_safe({"leak": "storage_ref"})
+    with pytest.raises(ArtifactHandoffError) as mismatch_exc:
+        build_artifact_retention_execution_history_item(
+            {**record, "metadata": {"private": "storage_ref"}}
+        )
+    with pytest.raises(ArtifactHandoffError) as mode_exc:
+        build_artifact_retention_execution_history_filter(
+            tenant_id="tenant-001",
+            workspace_id="workspace-001",
+            owner_user_id="user-001",
+            mode="preview",
+        )
+
+    assert raw_execution_exc.value.error_code == (
+        "ae.artifact_retention_history_payload_unsafe"
+    )
+    assert private_token_exc.value.error_code == (
+        "ae.artifact_retention_payload_unsafe"
+    )
+    assert mismatch_exc.value.error_code == "ae.artifact_retention_history_mismatch"
+    assert mode_exc.value.error_code == (
+        "ae.artifact_retention_execution_mode_invalid"
+    )
 
 
 def test_artifact_retention_execution_history_store_scopes_idempotency_and_lists() -> None:

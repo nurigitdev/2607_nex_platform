@@ -139,6 +139,12 @@ AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_SCHEMA_VERSION = (
     "ae_artifact_retention_execution_history.v1"
 )
+AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_COLLECTION_SCHEMA_VERSION = (
+    "ae_artifact_retention_execution_history_collection.v1"
+)
+AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_ITEM_SCHEMA_VERSION = (
+    "ae_artifact_retention_execution_history_item.v1"
+)
 ARTIFACT_RETENTION_EXECUTION_HISTORY_JSON_FIELDS = (
     "deleted_counts",
     "requested_by",
@@ -3594,6 +3600,232 @@ def validate_artifact_retention_execution_history_record(
     parse_artifact_retention_timestamp(record["created_at"], field_name="created_at")
     assert_artifact_retention_payload_safe(record)
     return record
+
+
+def build_artifact_retention_execution_history_filter(
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    owner_user_id: str,
+    mode: str | None = None,
+    execution_status: str | None = None,
+    limit: int | str | None = None,
+) -> dict[str, Any]:
+    return _artifact_retention_execution_history_filter(
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
+        mode=mode,
+        execution_status=execution_status,
+        limit=limit,
+    )
+
+
+def build_artifact_retention_execution_history_collection(
+    records: list[dict[str, Any]],
+    *,
+    history_filter: dict[str, Any],
+) -> dict[str, Any]:
+    items = [
+        build_artifact_retention_execution_history_item(record)
+        for record in records
+    ]
+    collection = {
+        "artifact_retention_execution_history_collection_schema_version": (
+            AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_COLLECTION_SCHEMA_VERSION
+        ),
+        "filter": dict(history_filter),
+        "count": len(items),
+        "limit": history_filter["limit"],
+        "next_cursor": None,
+        "items": items,
+        "summary": summarize_artifact_retention_execution_history(items),
+        "metadata": {
+            "metadata_only": True,
+            "system_of_record": "nex-ae-api",
+            "history_table": "ae_artifact_retention_executions",
+            "idempotency_scope": "tenant_workspace_owner_idempotency_key",
+            "execution_payload_hash_available": True,
+        },
+    }
+    assert_artifact_retention_history_payload_safe(collection)
+    return collection
+
+
+def build_artifact_retention_execution_history_item(
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_execution_history_record(record)
+    item = {
+        "artifact_retention_execution_history_item_schema_version": (
+            AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_ITEM_SCHEMA_VERSION
+        ),
+        "retention_execution_id": validated["retention_execution_id"],
+        "artifact_retention_execution_schema_version": validated[
+            "artifact_retention_execution_schema_version"
+        ],
+        "policy_id": validated["policy_id"],
+        "service_id": validated["service_id"],
+        "mode": validated["mode"],
+        "execution_status": validated["execution_status"],
+        "tenant_id": validated["tenant_id"],
+        "workspace_id": validated["workspace_id"],
+        "owner_user_id": validated["owner_user_id"],
+        "retention_days_after_logical_purge": validated[
+            "retention_days_after_logical_purge"
+        ],
+        "as_of": validated["as_of"],
+        "cutoff_at": validated["cutoff_at"],
+        "checked_at": validated["checked_at"],
+        "scan_limit": validated["scan_limit"],
+        "max_delete_count": validated["max_delete_count"],
+        "candidate_count": validated["candidate_count"],
+        "selected_count": validated["selected_count"],
+        "delete_enabled": validated["delete_enabled"],
+        "storage_mutation_enabled": validated["storage_mutation_enabled"],
+        "database_row_delete_enabled": validated["database_row_delete_enabled"],
+        "deleted_counts": dict(validated["deleted_counts"]),
+        "requested_by": dict(validated["requested_by"]),
+        "idempotency_key": validated["idempotency_key"],
+        "trace_id": validated["trace_id"],
+        "request_id": validated["request_id"],
+        "blocked_reason": validated["blocked_reason"],
+        "error": validated["error"],
+        "audit": dict(validated["audit"]),
+        "metadata": _retention_history_item_metadata(validated["metadata"]),
+        "execution_payload_hash": validated["execution_payload_hash"],
+        "created_at": validated["created_at"],
+    }
+    assert_artifact_retention_history_payload_safe(item)
+    return item
+
+
+def summarize_artifact_retention_execution_history(
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    mode_counts: dict[str, int] = {}
+    status_counts: dict[str, int] = {}
+    latest_checked_at: str | None = None
+    total_deleted_artifacts = 0
+    total_deleted_storage_files = 0
+    for item in items:
+        mode = optional_text(item.get("mode"))
+        if mode is not None:
+            mode_counts[mode] = mode_counts.get(mode, 0) + 1
+        status = optional_text(item.get("execution_status"))
+        if status is not None:
+            status_counts[status] = status_counts.get(status, 0) + 1
+        checked_at = optional_text(item.get("checked_at"))
+        if checked_at is not None and (
+            latest_checked_at is None or checked_at > latest_checked_at
+        ):
+            latest_checked_at = checked_at
+        deleted_counts = item.get("deleted_counts")
+        if isinstance(deleted_counts, dict):
+            total_deleted_artifacts += int(deleted_counts.get("artifacts") or 0)
+            total_deleted_storage_files += int(
+                deleted_counts.get("storage_files") or 0
+            )
+    return {
+        "item_count": len(items),
+        "mode_counts": mode_counts,
+        "status_counts": status_counts,
+        "dry_run_count": mode_counts.get("DRY_RUN", 0),
+        "execute_count": mode_counts.get("EXECUTE", 0),
+        "succeeded_count": status_counts.get("SUCCEEDED", 0),
+        "blocked_count": status_counts.get("BLOCKED", 0),
+        "failed_count": status_counts.get("FAILED", 0),
+        "total_deleted_artifacts": total_deleted_artifacts,
+        "total_deleted_storage_files": total_deleted_storage_files,
+        "latest_checked_at": latest_checked_at,
+    }
+
+
+def assert_artifact_retention_history_payload_safe(payload: dict[str, Any]) -> None:
+    assert_artifact_retention_payload_safe(payload)
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    if '"execution":' in serialized:
+        raise ArtifactHandoffError(
+            status_code=500,
+            error_code="ae.artifact_retention_history_payload_unsafe",
+            detail="Artifact retention history collection must not expose raw execution payloads.",
+        )
+
+
+def _retention_history_item_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "metadata_only": True,
+        "candidate_scan_metadata_only": metadata.get(
+            "candidate_scan_metadata_only"
+        )
+        is True,
+        "logical_purge_required_before_physical_delete": metadata.get(
+            "logical_purge_required_before_physical_delete"
+        )
+        is True,
+        "scheduled_batch_timezone": optional_text(
+            metadata.get("scheduled_batch_timezone")
+        ),
+        "scheduled_batch_window": _retention_history_scheduled_batch_window(
+            metadata,
+        ),
+        "policy_snapshot": _retention_history_policy_metadata(metadata),
+        "safety": _retention_history_safety_metadata(metadata),
+    }
+
+
+def _retention_history_policy_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    policy_snapshot = metadata.get("policy_snapshot")
+    if not isinstance(policy_snapshot, dict):
+        return {}
+    allowed_fields = (
+        "policy_id",
+        "policy_schema_version",
+        "retention_days_after_logical_purge",
+        "dry_run_required",
+        "physical_purge_enabled",
+        "logical_purge_status",
+        "batch_timezone",
+        "batch_window_start",
+        "batch_window_end",
+    )
+    return {
+        field_name: policy_snapshot[field_name]
+        for field_name in allowed_fields
+        if field_name in policy_snapshot
+    }
+
+
+def _retention_history_safety_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    safety = metadata.get("safety")
+    if not isinstance(safety, dict):
+        return {}
+    allowed_fields = (
+        "candidate_query_metadata_only",
+        "dry_run_default",
+        "requires_delete_enabled",
+        "requires_storage_mutation_enabled",
+        "requires_database_row_delete_enabled",
+        "retains_handoff_lineage",
+    )
+    return {
+        field_name: safety[field_name]
+        for field_name in allowed_fields
+        if field_name in safety
+    }
+
+
+def _retention_history_scheduled_batch_window(
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    scheduled_batch_window = metadata.get("scheduled_batch_window")
+    if not isinstance(scheduled_batch_window, dict):
+        return {}
+    return {
+        field_name: scheduled_batch_window[field_name]
+        for field_name in ("start_local_time", "end_local_time")
+        if field_name in scheduled_batch_window
+    }
 
 
 def _artifact_retention_history_created_at(
