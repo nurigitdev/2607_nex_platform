@@ -425,3 +425,9 @@ Artifact library management:
   `POST /api/v1/artifact-retention/purge`. The route is authenticated, defaults
   to dry-run, rejects non-boolean control flags and dry-run delete flags, and
   returns metadata-only `ae_artifact_retention_execution.v1` evidence.
+- Slice 0469 adds protected PostgreSQL smoke evidence for the purge route. When
+  `NEX_AE_ARTIFACT_RETENTION_PURGE_POSTGRES_SMOKE=1` is set against
+  `NEX_AE_TEST_DATABASE_URL`, the runner migrates the real AE test DB, creates
+  rendered logical-purge artifacts, verifies dry-run and blocked execute retain
+  rows/files, executes guarded purge, checks direct DB row counts and local
+  storage file counts, then cleans up smoke data.
