@@ -41,6 +41,7 @@ from nex_ae_api.artifacts import (
     AE_ARTIFACT_RETENTION_SCHEDULED_JOB_PAYLOAD_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULED_JOB_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE,
+    AE_ARTIFACT_RETENTION_SCHEDULED_WORKER_TYPE,
     HttpCxArtifactSourceClient,
     InMemoryRenderedArtifactStorage,
     LocalRenderedArtifactStorage,
@@ -76,6 +77,8 @@ from nex_ae_api.artifacts import (
     build_artifact_retention_scheduled_job_admission,
     build_artifact_retention_scheduled_job,
     build_artifact_retention_scheduled_job_payload,
+    build_artifact_retention_scheduled_worker_config,
+    build_artifact_retention_scheduled_worker_handler,
     build_default_artifact_handoff_store,
     build_default_artifact_retention_execution_history_store,
     build_default_artifact_record_store,
@@ -118,7 +121,10 @@ from nex_ae_api.artifacts import (
     target_formats_from_payload,
     parse_artifact_retention_timestamp,
     run_artifact_retention_scheduled_execution_mock_worker,
+    run_artifact_retention_scheduled_worker_batch,
+    run_artifact_retention_scheduled_worker_once,
     enqueue_artifact_retention_scheduled_job,
+    artifact_retention_scheduled_command_from_job,
     artifact_retention_scheduled_job_admission_idempotency_key,
     artifact_retention_scheduled_job_id,
     artifact_retention_scheduled_job_idempotency_key,
@@ -139,8 +145,10 @@ from nex_ae_api.artifacts import (
 )
 from nex_runtime import (
     InMemoryJobQueue,
+    InMemoryWorkerHeartbeatStore,
     JobQueueError,
     SERVICE_SPECS,
+    WorkerHeartbeatEmitter,
     build_service_app,
     issue_mock_service_token,
 )
@@ -3909,6 +3917,205 @@ def test_artifact_retention_scheduled_job_admission_validation_edges() -> None:
             "ae.artifact_retention_scheduled_job_payload_invalid",
         }
         assert detail in exc_info.value.detail
+
+
+def test_artifact_retention_scheduled_worker_once_runs_dry_run_history() -> None:
+    store = ArtifactRecordStore()
+    history_store = ArtifactRetentionExecutionHistoryStore()
+    first = save_rendered_retention_artifact(
+        store,
+        artifact_request_id="scheduled-worker-runner-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+        target_formats=["MD", "HTML_PREVIEW"],
+    )
+    save_rendered_retention_artifact(
+        store,
+        artifact_request_id="scheduled-worker-runner-old-002",
+        updated_at="2026-07-31T01:00:00Z",
+        target_formats=["MD"],
+    )
+    plan = store.plan_retention_batch(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit="10",
+        max_delete_count="1",
+        checked_at="2026-09-01T02:10:00Z",
+    )
+    admission = build_artifact_retention_scheduled_job_admission(
+        plan,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        requested_at="2026-09-01T02:16:00Z",
+    )
+    queue = InMemoryJobQueue()
+    enqueue_artifact_retention_scheduled_job(queue, admission)
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_emitter = WorkerHeartbeatEmitter(
+        service_id="nex-ae-api",
+        worker_id="ae-retention-worker-test-001",
+        worker_type=AE_ARTIFACT_RETENTION_SCHEDULED_WORKER_TYPE,
+        store=heartbeat_store,
+        started_at="2026-09-01T02:16:00Z",
+    )
+
+    execution = run_artifact_retention_scheduled_worker_once(
+        job_queue=queue,
+        artifact_store=store,
+        history_store=history_store,
+        worker_id="ae-retention-worker-test-001",
+        worker_heartbeat_emitter=heartbeat_emitter,
+        clock=lambda: "2026-09-01T02:20:00Z",
+    )
+    final_job = queue.get_job(admission["job_id"])
+    heartbeat = heartbeat_store.get_heartbeat(
+        "nex-ae-api",
+        "ae-retention-worker-test-001",
+    )
+
+    assert execution.status == "SUCCEEDED"
+    assert execution.job["status"] == "RUNNING"
+    assert execution.completed_job["status"] == "SUCCEEDED"
+    assert execution.handler_result["worker_status"] == "SUCCEEDED"
+    assert execution.handler_result["history"]["history_written"] is True
+    assert execution.handler_result["execution"]["mode"] == "DRY_RUN"
+    assert final_job["status"] == "SUCCEEDED"
+    assert final_job["attempt_count"] == 1
+    assert heartbeat["status"] == "IDLE"
+    assert heartbeat["active_job_id"] is None
+    persisted_history = history_store.list_executions(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+    )
+    assert persisted_history[0]["retention_execution_id"] == (
+        execution.handler_result["history"]["retention_execution_id"]
+    )
+    assert execution.handler_result["trigger_type"] == "scheduler_tick"
+    assert store.get(first["artifact_id"]) is not None
+
+
+def test_artifact_retention_scheduled_worker_batch_processes_until_idle() -> None:
+    store = ArtifactRecordStore()
+    history_store = ArtifactRetentionExecutionHistoryStore()
+    save_rendered_retention_artifact(
+        store,
+        artifact_request_id="scheduled-worker-batch-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    plan = store.plan_retention_batch(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit="10",
+        checked_at="2026-09-01T02:10:00Z",
+    )
+    admission = build_artifact_retention_scheduled_job_admission(
+        plan,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        requested_at="2026-09-01T02:16:00Z",
+    )
+    queue = InMemoryJobQueue()
+    enqueue_artifact_retention_scheduled_job(queue, admission)
+
+    batch = run_artifact_retention_scheduled_worker_batch(
+        job_queue=queue,
+        artifact_store=store,
+        history_store=history_store,
+        worker_id="ae-retention-worker-batch-001",
+        max_jobs=3,
+        clock=lambda: "2026-09-01T02:20:00Z",
+    )
+    summary = batch.to_summary()
+
+    assert batch.claimed_count == 1
+    assert batch.succeeded_count == 1
+    assert batch.idle_count == 1
+    assert summary["service_id"] == "nex-ae-api"
+    assert summary["worker_type"] == AE_ARTIFACT_RETENTION_SCHEDULED_WORKER_TYPE
+    assert summary["job_type"] == AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE
+    assert summary["executions"][0]["handler_result"]["worker_status"] == "SUCCEEDED"
+    assert queue.get_job(admission["job_id"])["status"] == "SUCCEEDED"
+
+
+def test_artifact_retention_scheduled_worker_adapter_edges() -> None:
+    store = ArtifactRecordStore()
+    save_rendered_retention_artifact(
+        store,
+        artifact_request_id="scheduled-worker-edge-runner-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    admission = build_artifact_retention_scheduled_job_admission(
+        store.plan_retention_batch(
+            tenant_id="tenant-001",
+            workspace_id="workspace-001",
+            owner_user_id="user-001",
+            retention_days="30",
+            as_of="2026-09-01T00:00:00Z",
+            scan_limit="10",
+            checked_at="2026-09-01T02:10:00Z",
+        ),
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        requested_at="2026-09-01T02:16:00Z",
+    )
+    job = admission["job"]
+
+    command = artifact_retention_scheduled_command_from_job(job)
+    assert command == job["payload"]["scheduled_command"]
+    assert build_artifact_retention_scheduled_worker_config(
+        worker_id="ae-retention-worker-config-001",
+        max_jobs=2,
+    ).max_jobs == 2
+    with pytest.raises(ArtifactHandoffError) as job_type_exc:
+        artifact_retention_scheduled_command_from_job([])  # type: ignore[arg-type]
+    assert job_type_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_worker_job_invalid"
+    )
+    with pytest.raises(ArtifactHandoffError) as handler_exc:
+        build_artifact_retention_scheduled_worker_handler(
+            artifact_store=None,
+        )(job)
+    assert handler_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_worker_store_invalid"
+    )
+
+    idle_execution = run_artifact_retention_scheduled_worker_once(
+        job_queue=InMemoryJobQueue(),
+        artifact_store=store,
+        history_store=ArtifactRetentionExecutionHistoryStore(),
+        worker_id="ae-retention-worker-idle-001",
+        clock=lambda: "2026-09-01T02:20:00Z",
+    )
+    assert idle_execution.status == "IDLE"
+    assert idle_execution.job is None
+
+    failing_queue = InMemoryJobQueue()
+    enqueue_artifact_retention_scheduled_job(failing_queue, admission)
+    failed_execution = run_artifact_retention_scheduled_worker_once(
+        job_queue=failing_queue,
+        artifact_store=None,
+        history_store=ArtifactRetentionExecutionHistoryStore(),
+        worker_id="ae-retention-worker-failing-001",
+        clock=lambda: "2026-09-01T02:20:00Z",
+    )
+    retried_job = failing_queue.get_job(admission["job_id"])
+
+    assert failed_execution.status == "FAILED"
+    assert failed_execution.error_code == (
+        "ae.artifact_retention_scheduled_worker_store_invalid"
+    )
+    assert failed_execution.completed_job["status"] == "QUEUED"
+    assert retried_job["status"] == "QUEUED"
+    assert retried_job["attempt_count"] == 1
+    assert retried_job["error"]["error_code"] == (
+        "ae.artifact_retention_scheduled_worker_store_invalid"
+    )
 
 
 def test_artifact_retention_scheduled_execution_mock_worker_writes_dry_run_history() -> None:

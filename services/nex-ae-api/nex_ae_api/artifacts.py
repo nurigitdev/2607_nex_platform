@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
 import httpx
@@ -25,14 +25,22 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
+    InMemoryWorkerHeartbeatStore,
     JobQueue,
     JobQueueError,
+    ServiceLogEmitter,
+    WorkerBatchResult,
+    WorkerHeartbeatEmitter,
+    WorkerJobExecution,
+    WorkerRunnerConfig,
     build_common_job,
     build_subject_ref,
     issue_mock_service_token,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
+    run_worker_batch,
+    run_worker_once,
     validate_common_job,
     validate_authorization_header,
 )
@@ -219,6 +227,12 @@ AE_ARTIFACT_RETENTION_SCHEDULED_JOB_SUBJECT_TYPE = (
     "ae.artifact_retention.scheduled_execution"
 )
 AE_ARTIFACT_RETENTION_SCHEDULED_JOB_DEFAULT_MAX_ATTEMPTS = 3
+AE_ARTIFACT_RETENTION_SCHEDULED_WORKER_ID = (
+    "ae-artifact-retention-scheduled-worker"
+)
+AE_ARTIFACT_RETENTION_SCHEDULED_WORKER_TYPE = (
+    "ae.artifact_retention.scheduled_worker"
+)
 DEFAULT_ARTIFACT_RETENTION_MAX_DELETE_COUNT = 20
 MAX_ARTIFACT_RETENTION_MAX_DELETE_COUNT = 100
 SUPPORTED_TARGET_FORMATS = {"MD", "HTML_PREVIEW", "DOCX", "PDF"}
@@ -4789,6 +4803,128 @@ def _validate_artifact_retention_scheduled_job_queue_admission(
             error_code="ae.artifact_retention_scheduled_job_admission_invalid",
             detail="Artifact retention scheduled job queue admission is invalid.",
         )
+
+
+def artifact_retention_scheduled_command_from_job(
+    job: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(job, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_worker_job_invalid",
+            detail="Artifact retention scheduled worker job must be an object.",
+        )
+    validated_job = validate_artifact_retention_scheduled_job(dict(job))
+    return deepcopy(validated_job["payload"]["scheduled_command"])
+
+
+def build_artifact_retention_scheduled_worker_handler(
+    *,
+    artifact_store: Any,
+    history_store: Any | None = None,
+) -> Callable[[dict[str, Any]], dict[str, Any]]:
+    def handler(job: dict[str, Any]) -> dict[str, Any]:
+        command = artifact_retention_scheduled_command_from_job(job)
+        return run_artifact_retention_scheduled_execution_mock_worker(
+            command,
+            artifact_store=artifact_store,
+            history_store=history_store,
+            trace_id=str(job["trace_id"]),
+            request_id=str(job["request_id"]),
+        )
+
+    return handler
+
+
+def build_artifact_retention_scheduled_worker_config(
+    *,
+    worker_id: str = AE_ARTIFACT_RETENTION_SCHEDULED_WORKER_ID,
+    max_jobs: int = 1,
+) -> WorkerRunnerConfig:
+    return WorkerRunnerConfig(
+        service_id="nex-ae-api",
+        worker_id=worker_id,
+        worker_type=AE_ARTIFACT_RETENTION_SCHEDULED_WORKER_TYPE,
+        job_type=AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE,
+        max_jobs=max_jobs,
+    )
+
+
+def run_artifact_retention_scheduled_worker_once(
+    *,
+    job_queue: JobQueue,
+    artifact_store: Any,
+    history_store: Any | None = None,
+    worker_id: str = AE_ARTIFACT_RETENTION_SCHEDULED_WORKER_ID,
+    worker_heartbeat_emitter: WorkerHeartbeatEmitter | None = None,
+    service_log_emitter: ServiceLogEmitter | None = None,
+    clock: Callable[[], str] | None = None,
+) -> WorkerJobExecution:
+    heartbeat_emitter = worker_heartbeat_emitter or (
+        _default_artifact_retention_scheduled_worker_heartbeat_emitter(
+            worker_id=worker_id
+        )
+    )
+    return run_worker_once(
+        config=build_artifact_retention_scheduled_worker_config(
+            worker_id=worker_id
+        ),
+        queue=job_queue,
+        heartbeat_emitter=heartbeat_emitter,
+        handler=build_artifact_retention_scheduled_worker_handler(
+            artifact_store=artifact_store,
+            history_store=history_store,
+        ),
+        service_log_emitter=service_log_emitter,
+        clock=clock,
+    )
+
+
+def run_artifact_retention_scheduled_worker_batch(
+    *,
+    job_queue: JobQueue,
+    artifact_store: Any,
+    history_store: Any | None = None,
+    worker_id: str = AE_ARTIFACT_RETENTION_SCHEDULED_WORKER_ID,
+    max_jobs: int = 10,
+    stop_on_failure: bool = True,
+    worker_heartbeat_emitter: WorkerHeartbeatEmitter | None = None,
+    service_log_emitter: ServiceLogEmitter | None = None,
+    clock: Callable[[], str] | None = None,
+) -> WorkerBatchResult:
+    heartbeat_emitter = worker_heartbeat_emitter or (
+        _default_artifact_retention_scheduled_worker_heartbeat_emitter(
+            worker_id=worker_id
+        )
+    )
+    return run_worker_batch(
+        config=build_artifact_retention_scheduled_worker_config(
+            worker_id=worker_id,
+            max_jobs=max_jobs,
+        ),
+        queue=job_queue,
+        heartbeat_emitter=heartbeat_emitter,
+        handler=build_artifact_retention_scheduled_worker_handler(
+            artifact_store=artifact_store,
+            history_store=history_store,
+        ),
+        service_log_emitter=service_log_emitter,
+        stop_on_failure=stop_on_failure,
+        clock=clock,
+    )
+
+
+def _default_artifact_retention_scheduled_worker_heartbeat_emitter(
+    *,
+    worker_id: str,
+) -> WorkerHeartbeatEmitter:
+    return WorkerHeartbeatEmitter(
+        service_id="nex-ae-api",
+        worker_id=worker_id,
+        worker_type=AE_ARTIFACT_RETENTION_SCHEDULED_WORKER_TYPE,
+        store=InMemoryWorkerHeartbeatStore(),
+        metadata={"job_type": AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE},
+    )
 
 
 def run_artifact_retention_scheduled_execution_mock_worker(

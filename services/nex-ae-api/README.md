@@ -537,3 +537,8 @@ Artifact library management:
   reuse the shared JobQueue idempotency key, and NOOP plans are returned as
   skipped admissions without touching the queue, scheduler daemon, worker, or
   physical delete automation.
+- Slice 0494 adds the scheduled retention worker runner adapter. The shared
+  worker runner now claims `ae.artifact_retention.scheduled_execution` jobs,
+  invokes the existing dry-run mock worker, writes optional retention history,
+  updates worker heartbeats, and lets the shared JobQueue complete or retry jobs
+  without enabling physical delete automation.
