@@ -3266,6 +3266,101 @@ def test_artifact_retention_candidate_route_returns_metadata_only_candidates() -
     )
 
 
+def test_artifact_retention_batch_plan_route_returns_metadata_only_plan() -> None:
+    client, _, artifact_store, _ = build_client_with_artifact_store()
+    first = save_rendered_retention_artifact(
+        artifact_store,
+        artifact_request_id="route-retention-plan-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    save_rendered_retention_artifact(
+        artifact_store,
+        artifact_request_id="route-retention-plan-old-002",
+        updated_at="2026-07-31T01:00:00Z",
+    )
+    save_rendered_retention_artifact(
+        artifact_store,
+        artifact_request_id="route-retention-plan-recent-001",
+        updated_at="2026-08-31T00:00:00Z",
+    )
+    headers = {**auth_headers(), "Idempotency-Key": "route-retention-plan-001"}
+
+    response = client.get(
+        "/api/v1/artifact-retention/batch-plan",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "retention_days": "30",
+            "as_of": "2026-09-01T00:00:00Z",
+            "checked_at": "2026-09-01T02:30:00Z",
+            "scan_limit": "10",
+            "max_delete_count": "1",
+        },
+        headers=headers,
+    )
+    unauthorized = client.get("/api/v1/artifact-retention/batch-plan")
+    missing_scope = client.get(
+        "/api/v1/artifact-retention/batch-plan",
+        headers=headers,
+    )
+    invalid_delete_count = client.get(
+        "/api/v1/artifact-retention/batch-plan",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "max_delete_count": "many",
+        },
+        headers=headers,
+    )
+    noop = client.get(
+        "/api/v1/artifact-retention/batch-plan",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "retention_days": "30",
+            "as_of": "2026-08-01T00:00:00Z",
+            "checked_at": "2026-09-01T02:31:00Z",
+        },
+        headers=headers,
+    )
+    payload = response.json()
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+    assert response.status_code == 200
+    assert payload["artifact_retention_batch_plan_schema_version"] == (
+        AE_ARTIFACT_RETENTION_BATCH_PLAN_SCHEMA_VERSION
+    )
+    assert payload["plan_status"] == "READY"
+    assert payload["scheduler_status"] == "DISABLED"
+    assert payload["candidate_count"] == 2
+    assert payload["selected_count"] == 1
+    assert payload["selected_candidates"][0]["artifact_id"] == first["artifact_id"]
+    assert payload["requested_by"] == {
+        "actor_type": "service",
+        "actor_id": "nex-ag",
+        "service_id": "nex-ae-api",
+    }
+    assert payload["idempotency_key"] == "route-retention-plan-001"
+    assert payload["metadata"]["metadata_only"] is True
+    assert payload["metadata"]["physical_delete_executed"] is False
+    assert artifact_store.get(first["artifact_id"]) is not None
+    assert "storage_ref" not in serialized
+    assert "content_base64" not in serialized
+    assert unauthorized.status_code == 401
+    assert missing_scope.status_code == 422
+    assert missing_scope.json()["error_code"] == "ae.artifact_collection_scope_required"
+    assert invalid_delete_count.status_code == 422
+    assert invalid_delete_count.json()["error_code"] == (
+        "ae.artifact_retention_delete_limit_invalid"
+    )
+    assert noop.status_code == 200
+    assert noop.json()["plan_status"] == "NOOP"
+    assert noop.json()["execution_advice"] == "no_retention_candidates"
+
+
 def test_artifact_retention_purge_route_requires_guarded_control_flags() -> None:
     client, _, artifact_store, _ = build_client_with_artifact_store()
     old_deleted = save_rendered_retention_artifact(

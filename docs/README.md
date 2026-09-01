@@ -587,6 +587,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0481`](slices/0481_ae_artifact_retention_scheduled_operations_boundary_audit.md) | `S49-001` AE artifact retention scheduled operations boundary audit. |
 | [`Slice 0482`](slices/0482_ae_artifact_retention_schedule_contract_schema.md) | `S49-002` AE artifact retention schedule contract/schema. |
 | [`Slice 0483`](slices/0483_ae_artifact_retention_batch_plan_read_model.md) | `S49-003` AE artifact retention batch plan read-model. |
+| [`Slice 0484`](slices/0484_ae_artifact_retention_batch_plan_api_wiring.md) | `S49-004` AE artifact retention batch plan API wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

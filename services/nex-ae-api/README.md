@@ -490,3 +490,8 @@ Artifact library management:
   produce metadata-only READY/NOOP plans from retention candidates, cap selected
   artifacts by `max_delete_count`, estimate child-row/file deletes, and keep all
   scheduler, storage, database, and history mutations disabled.
+- Slice 0484 exposes the read-model as
+  `GET /api/v1/artifact-retention/batch-plan`. The route is authenticated,
+  accepts scoped retention planning filters plus `Idempotency-Key`, returns
+  READY/NOOP metadata-only plan evidence, and does not mutate artifacts,
+  rendered storage, or retention history.

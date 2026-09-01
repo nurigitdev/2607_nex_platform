@@ -1814,6 +1814,40 @@ def register_artifact_handoff_routes(
         except ArtifactHandoffError as exc:
             return _artifact_problem_response(request, exc)
 
+    @app.get("/api/v1/artifact-retention/batch-plan", response_model=None)
+    def get_artifact_retention_batch_plan(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        tenant_id: str | None = None,
+        workspace_id: str | None = None,
+        owner_user_id: str | None = None,
+        retention_days: str | None = None,
+        as_of: str | None = None,
+        scan_limit: str | None = None,
+        max_delete_count: str | None = None,
+        checked_at: str | None = None,
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return artifact_record_store.plan_retention_batch(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
+                retention_days=retention_days,
+                as_of=as_of,
+                scan_limit=scan_limit,
+                max_delete_count=max_delete_count,
+                checked_at=checked_at,
+                requested_by={"actor_type": "service", "actor_id": "nex-ag"},
+                idempotency_key=idempotency_key,
+            )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
     @app.get("/api/v1/artifact-retention/executions", response_model=None)
     def list_artifact_retention_executions(
         request: Request,
