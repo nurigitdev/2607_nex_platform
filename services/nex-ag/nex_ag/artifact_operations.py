@@ -30,6 +30,9 @@ AG_ARTIFACT_OPERATION_COLLECTION_PROJECTION_SCHEMA_VERSION = (
 AG_ARTIFACT_OPERATION_LIFECYCLE_PROJECTION_SCHEMA_VERSION = (
     "ag_artifact_operation_lifecycle_projection.v1"
 )
+AG_ARTIFACT_OPERATION_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION = (
+    "ag_artifact_operation_retention_history_projection.v1"
+)
 AE_ARTIFACT_SOURCE_SERVICE_ID = "nex-ae-api"
 NEX_AG_AE_ARTIFACT_BASE_URL_ENV = "NEX_AG_AE_ARTIFACT_BASE_URL"
 NEX_AG_AE_ARTIFACT_SERVICE_TOKEN_ENV = "NEX_AG_AE_ARTIFACT_SERVICE_TOKEN"
@@ -49,6 +52,13 @@ SUPPORTED_ARTIFACT_STATUSES = {
     "DELETED",
 }
 SUPPORTED_ARTIFACT_LIFECYCLE_ACTIONS = ("ARCHIVE", "RESTORE", "MARK_DELETED")
+SUPPORTED_ARTIFACT_RETENTION_MODES = ("DRY_RUN", "EXECUTE")
+SUPPORTED_ARTIFACT_RETENTION_STATUSES = (
+    "PLANNED",
+    "SUCCEEDED",
+    "BLOCKED",
+    "FAILED",
+)
 ARCHIVABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED"}
 DELETABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED", "ARCHIVED"}
 RESTORABLE_ARTIFACT_STATUSES = {"ARCHIVED", "DELETED"}
@@ -66,6 +76,20 @@ class AeArtifactOperationsClient(Protocol):
         workspace_id: str,
         owner_user_id: str,
         status: str | None,
+        limit: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        ...
+
+    def list_artifact_retention_executions(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        mode: str | None,
+        execution_status: str | None,
         limit: int,
         request_id: str,
         trace_id: str,
@@ -111,6 +135,9 @@ class AeArtifactOperationsError(Exception):
 class InMemoryAeArtifactOperationsClient:
     artifacts: dict[str, dict[str, Any]] = field(default_factory=dict)
     artifact_collections: dict[str, dict[str, Any]] = field(default_factory=dict)
+    artifact_retention_history_collections: dict[str, dict[str, Any]] = field(
+        default_factory=dict
+    )
     handoffs: dict[str, dict[str, Any]] = field(default_factory=dict)
     chat_artifact_refs: dict[str, list[dict[str, Any]] | dict[str, Any]] = field(
         default_factory=dict
@@ -169,6 +196,48 @@ class InMemoryAeArtifactOperationsClient:
             "limit": limit,
             "next_cursor": None,
             "items": items,
+        }
+
+    def list_artifact_retention_executions(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        mode: str | None,
+        execution_status: str | None,
+        limit: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        collection_key = _artifact_retention_history_cache_key(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            mode=mode,
+            execution_status=execution_status,
+            limit=limit,
+        )
+        if collection_key in self.artifact_retention_history_collections:
+            return deepcopy(self.artifact_retention_history_collections[collection_key])
+        return {
+            "artifact_retention_execution_history_collection_schema_version": (
+                "ae_artifact_retention_execution_history_collection.v1"
+            ),
+            "filter": {
+                "tenant_id": tenant_id,
+                "workspace_id": workspace_id,
+                "owner_user_id": owner_user_id,
+                "mode": _normalized_retention_mode(mode),
+                "execution_status": _normalized_retention_status(execution_status),
+                "limit": limit,
+            },
+            "count": 0,
+            "limit": limit,
+            "next_cursor": None,
+            "items": [],
+            "summary": summarize_artifact_retention_history_operations([]),
+            "metadata": {"metadata_only": True, "system_of_record": "nex-ae-api"},
         }
 
     def get_artifact(
@@ -243,6 +312,33 @@ class HttpAeArtifactOperationsClient:
                 "owner_user_id": owner_user_id,
                 "limit": str(limit),
                 **({"status": status} if status else {}),
+            },
+        )
+        return payload if isinstance(payload, dict) else {}
+
+    def list_artifact_retention_executions(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        mode: str | None,
+        execution_status: str | None,
+        limit: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        payload = self._get_json(
+            "/api/v1/artifact-retention/executions",
+            request_id=request_id,
+            trace_id=trace_id,
+            params={
+                "tenant_id": tenant_id,
+                "workspace_id": workspace_id,
+                "owner_user_id": owner_user_id,
+                "limit": str(limit),
+                **({"mode": mode} if mode else {}),
+                **({"execution_status": execution_status} if execution_status else {}),
             },
         )
         return payload if isinstance(payload, dict) else {}
@@ -398,6 +494,62 @@ def register_artifact_operation_routes(
             request_trace_id=trace_id,
         )
 
+    @app.get(
+        "/admin/v1/operations/artifact-retention/executions",
+        response_model=None,
+    )
+    def list_artifact_retention_history_operations(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        tenant_id: str | None = None,
+        workspace_id: str | None = None,
+        owner_user_id: str | None = None,
+        mode: str | None = None,
+        execution_status: str | None = None,
+        limit: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        service_problem = _validate_artifact_service_filter(request, service_id)
+        if service_problem is not None:
+            return service_problem
+        filter_result = _validate_artifact_retention_history_query(
+            request,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            mode=mode,
+            execution_status=execution_status,
+            limit=limit,
+        )
+        if isinstance(filter_result, JSONResponse):
+            return filter_result
+
+        selected_client = configured_client or build_default_ae_artifact_operations_client()
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            collection = selected_client.list_artifact_retention_executions(
+                tenant_id=filter_result["tenant_id"],
+                workspace_id=filter_result["workspace_id"],
+                owner_user_id=filter_result["owner_user_id"],
+                mode=filter_result["mode"],
+                execution_status=filter_result["execution_status"],
+                limit=filter_result["limit"],
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        except AeArtifactOperationsError as exc:
+            return _artifact_operations_problem_response(request, exc)
+
+        return build_artifact_operation_retention_history_projection(
+            collection=collection,
+            source_client=selected_client,
+            request_trace_id=trace_id,
+        )
+
     @app.get("/admin/v1/operations/artifacts/{artifact_id}", response_model=None)
     def get_artifact_operation_detail(
         artifact_id: str,
@@ -546,6 +698,51 @@ def build_artifact_operation_collection_projection(
             item_count=len(items),
             errors=errors,
         ),
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    assert_artifact_operation_projection_redacted(projection)
+    return projection
+
+
+def build_artifact_operation_retention_history_projection(
+    *,
+    collection: Mapping[str, Any],
+    source_client: AeArtifactOperationsClient | None = None,
+    source_errors: list[AeArtifactOperationsError] | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    items = [
+        _project_retention_history_item(item)
+        for item in _list_value(collection.get("items"))
+        if isinstance(item, Mapping)
+    ]
+    errors = source_errors or []
+    projection = {
+        "projection_schema_version": (
+            AG_ARTIFACT_OPERATION_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "DEGRADED" if errors else "READY",
+        "checked_at": _utc_now(),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "operation_type": "ae_artifact_retention_history",
+        "filter": _project_retention_history_filter(collection.get("filter")),
+        "count": _int_or_zero(collection.get("count")),
+        "limit": _int_or_zero(collection.get("limit")),
+        "next_cursor": _text_or_none(collection.get("next_cursor")),
+        "items": items,
+        "summary": summarize_artifact_retention_history_operations(items),
+        "source_status": _artifact_retention_history_source_status(
+            source_client=source_client,
+            item_count=len(items),
+            errors=errors,
+        ),
+        "operator_guidance": {
+            "metadata_only": True,
+            "system_of_record": AE_ARTIFACT_SOURCE_SERVICE_ID,
+            "raw_execution_payload_available_in_ae": True,
+            "physical_delete_confirmation_required": True,
+        },
     }
     if request_trace_id is not None:
         projection["request_trace_id"] = request_trace_id
@@ -730,6 +927,50 @@ def summarize_artifact_operation_collection(
     }
 
 
+def summarize_artifact_retention_history_operations(
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    mode_counts: dict[str, int] = {}
+    status_counts: dict[str, int] = {}
+    latest_checked_at: str | None = None
+    total_deleted_artifacts = 0
+    total_deleted_storage_files = 0
+    for item in items:
+        mode = _normalized_retention_mode(item.get("mode"))
+        if mode is not None:
+            mode_counts[mode] = mode_counts.get(mode, 0) + 1
+        status = _normalized_retention_status(item.get("execution_status"))
+        if status is not None:
+            status_counts[status] = status_counts.get(status, 0) + 1
+        checked_at = _text_or_none(item.get("checked_at"))
+        if checked_at is not None and (
+            latest_checked_at is None or checked_at > latest_checked_at
+        ):
+            latest_checked_at = checked_at
+        deleted_counts = item.get("deleted_counts")
+        if isinstance(deleted_counts, Mapping):
+            total_deleted_artifacts += _int_or_zero(deleted_counts.get("artifacts"))
+            total_deleted_storage_files += _int_or_zero(
+                deleted_counts.get("storage_files")
+            )
+    blocked_count = status_counts.get("BLOCKED", 0)
+    failed_count = status_counts.get("FAILED", 0)
+    return {
+        "item_count": len(items),
+        "mode_counts": mode_counts,
+        "status_counts": status_counts,
+        "dry_run_count": mode_counts.get("DRY_RUN", 0),
+        "execute_count": mode_counts.get("EXECUTE", 0),
+        "succeeded_count": status_counts.get("SUCCEEDED", 0),
+        "blocked_count": blocked_count,
+        "failed_count": failed_count,
+        "operator_attention_count": blocked_count + failed_count,
+        "total_deleted_artifacts": total_deleted_artifacts,
+        "total_deleted_storage_files": total_deleted_storage_files,
+        "latest_checked_at": latest_checked_at,
+    }
+
+
 def assert_artifact_operation_projection_redacted(projection: Mapping[str, Any]) -> None:
     serialized = str(projection)
     forbidden_fragments = (
@@ -745,6 +986,8 @@ def assert_artifact_operation_projection_redacted(projection: Mapping[str, Any])
         "rendered_markdown",
         "comment_text",
         "raw_comment",
+        "'execution':",
+        '"execution":',
     )
     for fragment in forbidden_fragments:
         if fragment in serialized:
@@ -886,6 +1129,84 @@ def _project_collection_filter(raw_value: Any) -> dict[str, Any]:
         "owner_user_id": _text_or_none(raw_value.get("owner_user_id")),
         "status": _normalized_status(raw_value.get("status")),
         "limit": _int_or_zero(raw_value.get("limit")),
+    }
+
+
+def _project_retention_history_filter(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "tenant_id": _text_or_none(raw_value.get("tenant_id")),
+        "workspace_id": _text_or_none(raw_value.get("workspace_id")),
+        "owner_user_id": _text_or_none(raw_value.get("owner_user_id")),
+        "mode": _normalized_retention_mode(raw_value.get("mode")),
+        "execution_status": _normalized_retention_status(
+            raw_value.get("execution_status")
+        ),
+        "limit": _int_or_zero(raw_value.get("limit")),
+    }
+
+
+def _project_retention_history_item(record: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "artifact_retention_execution_history_item_schema_version": _text_or_none(
+            record.get("artifact_retention_execution_history_item_schema_version")
+        ),
+        "retention_execution_id": _text_or_none(
+            record.get("retention_execution_id")
+        ),
+        "policy_id": _text_or_none(record.get("policy_id")),
+        "service_id": _text_or_none(record.get("service_id")),
+        "mode": _normalized_retention_mode(record.get("mode")),
+        "execution_status": _normalized_retention_status(
+            record.get("execution_status")
+        ),
+        "tenant_id": _text_or_none(record.get("tenant_id")),
+        "workspace_id": _text_or_none(record.get("workspace_id")),
+        "owner_user_id": _text_or_none(record.get("owner_user_id")),
+        "retention_days_after_logical_purge": _int_or_zero(
+            record.get("retention_days_after_logical_purge")
+        ),
+        "as_of": _text_or_none(record.get("as_of")),
+        "cutoff_at": _text_or_none(record.get("cutoff_at")),
+        "checked_at": _text_or_none(record.get("checked_at")),
+        "scan_limit": _int_or_zero(record.get("scan_limit")),
+        "max_delete_count": _int_or_zero(record.get("max_delete_count")),
+        "candidate_count": _int_or_zero(record.get("candidate_count")),
+        "selected_count": _int_or_zero(record.get("selected_count")),
+        "delete_enabled": record.get("delete_enabled") is True,
+        "storage_mutation_enabled": record.get("storage_mutation_enabled") is True,
+        "database_row_delete_enabled": (
+            record.get("database_row_delete_enabled") is True
+        ),
+        "deleted_counts": _safe_deleted_counts(record.get("deleted_counts")),
+        "requested_by": _select_mapping(
+            record.get("requested_by"),
+            ("actor_type", "actor_id", "service_id"),
+        ),
+        "idempotency_key": _text_or_none(record.get("idempotency_key")),
+        "trace_id": _text_or_none(record.get("trace_id")),
+        "request_id": _text_or_none(record.get("request_id")),
+        "blocked_reason": _text_or_none(record.get("blocked_reason")),
+        "error": _select_mapping(record.get("error"), ("error_code", "detail")),
+        "audit": _select_mapping(
+            record.get("audit"),
+            ("audit_event_type", "audit_event_id", "emitted"),
+        ),
+        "metadata": _select_mapping(
+            record.get("metadata"),
+            (
+                "metadata_only",
+                "candidate_scan_metadata_only",
+                "logical_purge_required_before_physical_delete",
+                "scheduled_batch_timezone",
+                "scheduled_batch_window",
+            ),
+        ),
+        "execution_payload_hash": _text_or_none(
+            record.get("execution_payload_hash")
+        ),
+        "created_at": _text_or_none(record.get("created_at")),
     }
 
 
@@ -1089,6 +1410,31 @@ def _artifact_lifecycle_source_status(
     }
 
 
+def _artifact_retention_history_source_status(
+    *,
+    source_client: AeArtifactOperationsClient | None,
+    item_count: int,
+    errors: list[AeArtifactOperationsError],
+) -> dict[str, Any]:
+    status = "DEGRADED" if errors else "READY"
+    return {
+        "status": status,
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "source_kind": getattr(source_client, "source_kind", "provided"),
+        "base_url": getattr(source_client, "base_url", None),
+        "history_loaded": not errors,
+        "item_count": item_count,
+        "errors": [
+            {
+                "error_code": error.error_code,
+                "detail": error.detail,
+                "status_code": error.status_code,
+            }
+            for error in errors
+        ],
+    }
+
+
 def _validate_artifact_collection_query(
     request: Request,
     *,
@@ -1154,6 +1500,96 @@ def _validate_artifact_collection_query(
     }
 
 
+def _validate_artifact_retention_history_query(
+    request: Request,
+    *,
+    tenant_id: str | None,
+    workspace_id: str | None,
+    owner_user_id: str | None,
+    mode: str | None,
+    execution_status: str | None,
+    limit: str | None,
+) -> dict[str, Any] | JSONResponse:
+    required = {
+        "tenant_id": tenant_id,
+        "workspace_id": workspace_id,
+        "owner_user_id": owner_user_id,
+    }
+    missing = [name for name, value in required.items() if not _present_text(value)]
+    if missing:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_history_scope_missing",
+            title="Artifact retention history scope is required",
+            detail=(
+                "Artifact retention history queries require tenant, workspace, "
+                "and owner scope."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-history-scope-missing"
+            ),
+        )
+
+    normalized_mode = _normalized_retention_mode(mode)
+    if normalized_mode is not None and normalized_mode not in SUPPORTED_ARTIFACT_RETENTION_MODES:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_history_mode_invalid",
+            title="Invalid artifact retention history mode",
+            detail="Artifact retention history mode must be DRY_RUN or EXECUTE.",
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-history-mode-invalid"
+            ),
+        )
+
+    normalized_status = _normalized_retention_status(execution_status)
+    if (
+        normalized_status is not None
+        and normalized_status not in SUPPORTED_ARTIFACT_RETENTION_STATUSES
+    ):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_history_status_invalid",
+            title="Invalid artifact retention history status",
+            detail="Artifact retention history execution status is not supported.",
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-history-status-invalid"
+            ),
+        )
+
+    normalized_limit = _collection_limit(limit)
+    if normalized_limit is None:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_history_limit_invalid",
+            title="Invalid artifact retention history limit",
+            detail=(
+                "Artifact retention history limit must be between 1 and "
+                f"{MAX_ARTIFACT_COLLECTION_LIMIT}."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-history-limit-invalid"
+            ),
+        )
+
+    return {
+        "tenant_id": str(tenant_id).strip(),
+        "workspace_id": str(workspace_id).strip(),
+        "owner_user_id": str(owner_user_id).strip(),
+        "mode": normalized_mode,
+        "execution_status": normalized_status,
+        "limit": normalized_limit,
+    }
+
+
 def _artifact_collection_cache_key(
     *,
     tenant_id: str,
@@ -1165,6 +1601,58 @@ def _artifact_collection_cache_key(
     return "|".join(
         (tenant_id, workspace_id, owner_user_id, status or "", str(limit))
     )
+
+
+def _artifact_retention_history_cache_key(
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    owner_user_id: str,
+    mode: str | None,
+    execution_status: str | None,
+    limit: int,
+) -> str:
+    return "|".join(
+        (
+            tenant_id,
+            workspace_id,
+            owner_user_id,
+            _normalized_retention_mode(mode) or "",
+            _normalized_retention_status(execution_status) or "",
+            str(limit),
+        )
+    )
+
+
+def _normalized_retention_mode(raw_value: Any) -> str | None:
+    value = _text_or_none(raw_value)
+    if value is None:
+        return None
+    return value.replace("-", "_").upper()
+
+
+def _normalized_retention_status(raw_value: Any) -> str | None:
+    value = _text_or_none(raw_value)
+    if value is None:
+        return None
+    return value.replace("-", "_").upper()
+
+
+def _safe_deleted_counts(raw_value: Any) -> dict[str, int]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        key: _int_or_zero(raw_value.get(key))
+        for key in (
+            "artifacts",
+            "source_refs",
+            "versions",
+            "render_jobs",
+            "files",
+            "links",
+            "storage_files",
+        )
+    }
 
 
 def _artifact_matches_collection_filter(

@@ -327,6 +327,12 @@ Unified operations:
   `NEX_AG_RETRIEVAL_THRESHOLD_DECISION_POSTGRES_SMOKE=1` and is included in the
   optional `run_postgres_test_smoke_suite.py` as
   `ag_retrieval_threshold_decision_postgres`.
+- Slice 0479 adds
+  `ag_artifact_operation_retention_history_projection.v1` and
+  `GET /admin/v1/operations/artifact-retention/executions`. AG reads the AE
+  retention execution history collection through the artifact operations client,
+  summarizes mode/status/deletion counts for operators, and keeps raw persisted
+  execution JSON out of the operations projection.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
