@@ -507,3 +507,8 @@ Artifact library management:
   mock workers, and AG dispatch. READY commands carry only a dry-run purge
   request with delete, storage, and database-row mutation flags false; NOOP
   commands carry no execution request.
+- Slice 0487 adds a mock scheduled execution worker pipeline. The helper
+  validates the scheduled command, forces the existing purge path into
+  `DRY_RUN`, optionally writes retention execution history, leaves artifact
+  rows/rendered storage untouched, and returns worker result evidence without
+  embedding the full command payload.

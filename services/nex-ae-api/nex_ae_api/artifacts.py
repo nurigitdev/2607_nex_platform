@@ -143,6 +143,9 @@ AE_ARTIFACT_RETENTION_BATCH_PLAN_ITEM_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_COMMAND_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduled_execution_command.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_WORKER_RESULT_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduled_execution_worker_result.v1"
+)
 AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION = (
     "ae_artifact_retention_execution.v1"
 )
@@ -3939,6 +3942,209 @@ def summarize_artifact_retention_scheduled_execution_command(
     }
 
 
+def run_artifact_retention_scheduled_execution_mock_worker(
+    command: dict[str, Any],
+    *,
+    artifact_store: Any,
+    history_store: Any | None = None,
+    trace_id: str | None = None,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    validated_command = validate_artifact_retention_scheduled_execution_command(
+        command
+    )
+    if artifact_store is None or not hasattr(
+        artifact_store,
+        "purge_retention_candidates",
+    ):
+        raise ArtifactHandoffError(
+            status_code=500,
+            error_code="ae.artifact_retention_scheduled_worker_store_invalid",
+            detail="Artifact retention scheduled worker store is invalid.",
+        )
+    if history_store is not None and not hasattr(history_store, "save"):
+        raise ArtifactHandoffError(
+            status_code=500,
+            error_code="ae.artifact_retention_scheduled_worker_history_invalid",
+            detail="Artifact retention scheduled worker history store is invalid.",
+        )
+
+    execution: dict[str, Any] | None = None
+    history: dict[str, Any] = _artifact_retention_scheduled_worker_empty_history()
+    if validated_command["command_status"] == "READY":
+        payload = validated_command["execution_request"]["payload"]
+        execution = artifact_store.purge_retention_candidates(
+            tenant_id=payload.get("tenant_id"),
+            workspace_id=payload.get("workspace_id"),
+            owner_user_id=payload.get("owner_user_id"),
+            retention_days=payload.get("retention_days"),
+            as_of=payload.get("as_of"),
+            checked_at=payload.get("checked_at"),
+            scan_limit=payload.get("scan_limit"),
+            max_delete_count=payload.get("max_delete_count"),
+            dry_run=True,
+            delete_enabled=False,
+            storage_mutation_enabled=False,
+            database_row_delete_enabled=False,
+            requested_by=payload.get("requested_by"),
+            idempotency_key=payload.get("idempotency_key"),
+            trace_id=trace_id,
+            request_id=request_id,
+        )
+        if history_store is not None:
+            history = _artifact_retention_scheduled_worker_history_summary(
+                history_store.save(execution)
+            )
+
+    result = {
+        "artifact_retention_scheduled_execution_worker_result_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_WORKER_RESULT_SCHEMA_VERSION
+        ),
+        "worker_result_id": _artifact_retention_scheduled_worker_result_id(
+            command_id=validated_command["command_id"],
+            execution_id=execution.get("execution_id") if execution else None,
+        ),
+        "service_id": "nex-ae-api",
+        "command_id": validated_command["command_id"],
+        "source_plan_id": validated_command["source_plan_id"],
+        "trigger_type": validated_command["trigger_type"],
+        "worker_status": (
+            execution["execution_status"]
+            if execution is not None
+            else validated_command["command_status"]
+        ),
+        "command_summary": summarize_artifact_retention_scheduled_execution_command(
+            validated_command
+        ),
+        "execution": execution,
+        "history": history,
+        "metadata": {
+            "metadata_only": False,
+            "mock_worker": True,
+            "dry_run": True,
+            "command_embedded": False,
+            "physical_delete_executed": False,
+            "storage_mutation_executed": False,
+            "database_row_delete_executed": False,
+        },
+    }
+    return validate_artifact_retention_scheduled_execution_worker_result(result)
+
+
+def validate_artifact_retention_scheduled_execution_worker_result(
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(result, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_worker_result_invalid",
+            detail="Artifact retention scheduled worker result must be an object.",
+        )
+    if (
+        result.get(
+            "artifact_retention_scheduled_execution_worker_result_schema_version"
+        )
+        != AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_WORKER_RESULT_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_worker_result_schema_invalid",
+            detail=(
+                "Artifact retention scheduled worker result schema version "
+                "is invalid."
+            ),
+        )
+    for section_name in ("command_summary", "history", "metadata"):
+        if not isinstance(result.get(section_name), dict):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduled_worker_result_invalid",
+                detail=(
+                    "Artifact retention scheduled worker result "
+                    f"{section_name} is required."
+                ),
+            )
+    if result.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_worker_result_invalid",
+            detail="Artifact retention scheduled worker result service id is invalid.",
+        )
+    if result.get("worker_status") not in {"NOOP", "SUCCEEDED", "BLOCKED", "FAILED"}:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_worker_result_invalid",
+            detail="Artifact retention scheduled worker status is invalid.",
+        )
+    _validate_artifact_retention_scheduled_worker_summary(result)
+    execution = result.get("execution")
+    if execution is None:
+        if (
+            result["worker_status"] != "NOOP"
+            or result["history"] != _artifact_retention_scheduled_worker_empty_history()
+        ):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduled_worker_result_invalid",
+                detail="Artifact retention scheduled worker NOOP result is invalid.",
+            )
+    else:
+        validated_execution = validate_artifact_retention_execution(execution)
+        if (
+            validated_execution["mode"] != "DRY_RUN"
+            or validated_execution["delete_enabled"] is not False
+            or validated_execution["storage_mutation_enabled"] is not False
+            or validated_execution["database_row_delete_enabled"] is not False
+        ):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduled_worker_result_invalid",
+                detail=(
+                    "Artifact retention scheduled worker execution must be "
+                    "safe dry-run."
+                ),
+            )
+        _validate_artifact_retention_scheduled_worker_history(
+            result["history"],
+            execution=validated_execution,
+        )
+    metadata = result["metadata"]
+    if (
+        metadata.get("mock_worker") is not True
+        or metadata.get("dry_run") is not True
+        or metadata.get("command_embedded") is not False
+        or metadata.get("physical_delete_executed") is not False
+        or metadata.get("storage_mutation_executed") is not False
+        or metadata.get("database_row_delete_executed") is not False
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_worker_result_invalid",
+            detail="Artifact retention scheduled worker metadata is invalid.",
+        )
+    assert_artifact_retention_payload_safe(result)
+    return result
+
+
+def summarize_artifact_retention_scheduled_execution_worker_result(
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduled_execution_worker_result(result)
+    execution = validated.get("execution")
+    return {
+        "worker_status": validated["worker_status"],
+        "trigger_type": validated["trigger_type"],
+        "command_status": validated["command_summary"]["command_status"],
+        "execution_mode": (
+            execution["mode"] if isinstance(execution, dict) else "DRY_RUN"
+        ),
+        "candidate_count": validated["command_summary"]["candidate_count"],
+        "selected_count": validated["command_summary"]["selected_count"],
+        "history_written": validated["history"]["history_written"],
+        "retention_execution_id": validated["history"]["retention_execution_id"],
+    }
+
+
 def _artifact_retention_batch_plan_item(
     candidate: Mapping[str, Any],
     *,
@@ -4047,6 +4253,7 @@ def _artifact_retention_scheduled_execution_request(
         "workspace_id": batch_plan["workspace_id"],
         "owner_user_id": batch_plan["owner_user_id"],
         "mode": "DRY_RUN",
+        "dry_run": True,
         "retention_days": batch_plan["candidate_filter"][
             "retention_days_after_logical_purge"
         ],
@@ -4113,7 +4320,7 @@ def _validate_artifact_retention_scheduled_execution_request(
         "storage_mutation_enabled",
         "database_row_delete_enabled",
     )
-    if payload.get("mode") != "DRY_RUN" or any(
+    if payload.get("mode") != "DRY_RUN" or payload.get("dry_run") is not True or any(
         payload.get(flag_name) is not False for flag_name in required_false_flags
     ):
         raise ArtifactHandoffError(
@@ -4226,6 +4433,102 @@ def _artifact_retention_scheduled_execution_command_id(
         uuid5(
             NAMESPACE_URL,
             f"ae-artifact-retention-scheduled-command:{sha256_json(basis)}",
+        )
+    )
+
+
+def _artifact_retention_scheduled_worker_empty_history() -> dict[str, Any]:
+    return {
+        "history_written": False,
+        "retention_execution_id": None,
+        "execution_payload_hash": None,
+        "created_at": None,
+    }
+
+
+def _artifact_retention_scheduled_worker_history_summary(
+    history_record: dict[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_execution_history_record(history_record)
+    return {
+        "history_written": True,
+        "retention_execution_id": validated["retention_execution_id"],
+        "execution_payload_hash": validated["execution_payload_hash"],
+        "created_at": validated["created_at"],
+    }
+
+
+def _validate_artifact_retention_scheduled_worker_history(
+    history: dict[str, Any],
+    *,
+    execution: dict[str, Any],
+) -> None:
+    history_written = history.get("history_written")
+    if history_written is False:
+        if history != _artifact_retention_scheduled_worker_empty_history():
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduled_worker_result_invalid",
+                detail="Artifact retention scheduled worker history is invalid.",
+            )
+        return
+    if history_written is not True:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_worker_result_invalid",
+            detail="Artifact retention scheduled worker history flag is invalid.",
+        )
+    if (
+        history.get("retention_execution_id") != execution["execution_id"]
+        or history.get("execution_payload_hash") != sha256_json(execution)
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_worker_result_invalid",
+            detail="Artifact retention scheduled worker history reference is invalid.",
+        )
+    parse_artifact_retention_timestamp(history.get("created_at"), field_name="created_at")
+
+
+def _validate_artifact_retention_scheduled_worker_summary(
+    result: dict[str, Any],
+) -> None:
+    summary = result["command_summary"]
+    if summary.get("trigger_type") != result.get("trigger_type") or summary.get(
+        "command_status"
+    ) not in {"READY", "NOOP"}:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_worker_result_invalid",
+            detail="Artifact retention scheduled worker command summary is invalid.",
+        )
+    if result.get("execution") is None and summary["command_status"] != "NOOP":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_worker_result_invalid",
+            detail="Artifact retention scheduled worker command summary is invalid.",
+        )
+    if result.get("execution") is not None and summary["command_status"] != "READY":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_worker_result_invalid",
+            detail="Artifact retention scheduled worker command summary is invalid.",
+        )
+
+
+def _artifact_retention_scheduled_worker_result_id(
+    *,
+    command_id: str,
+    execution_id: str | None,
+) -> str:
+    basis = {
+        "command_id": command_id,
+        "execution_id": execution_id,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            f"ae-artifact-retention-scheduled-worker-result:{sha256_json(basis)}",
         )
     )
 

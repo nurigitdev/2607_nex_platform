@@ -351,6 +351,7 @@
             "workspace_id",
             "owner_user_id",
             "mode",
+            "dry_run",
             "retention_days",
             "as_of",
             "checked_at",
@@ -379,6 +380,9 @@
             },
             "mode": {
               "const": "DRY_RUN"
+            },
+            "dry_run": {
+              "const": true
             },
             "retention_days": {
               "type": "integer",

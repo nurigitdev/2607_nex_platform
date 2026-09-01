@@ -48,6 +48,7 @@
       "workspace_id": "workspace-001",
       "owner_user_id": "user-001",
       "mode": "DRY_RUN",
+      "dry_run": true,
       "retention_days": 30,
       "as_of": "2026-09-01T00:00:00Z",
       "checked_at": "2026-09-01T02:10:00Z",

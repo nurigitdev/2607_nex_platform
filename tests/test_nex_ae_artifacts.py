@@ -34,6 +34,7 @@ from nex_ae_api.artifacts import (
     AE_ARTIFACT_RETENTION_POLICY_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULE_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_COMMAND_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_WORKER_RESULT_SCHEMA_VERSION,
     HttpCxArtifactSourceClient,
     InMemoryRenderedArtifactStorage,
     LocalRenderedArtifactStorage,
@@ -102,9 +103,11 @@ from nex_ae_api.artifacts import (
     sha256_bytes,
     summarize_artifact_retention_batch_plan,
     summarize_artifact_retention_scheduled_execution_command,
+    summarize_artifact_retention_scheduled_execution_worker_result,
     summarize_artifact_retention_execution_history,
     target_formats_from_payload,
     parse_artifact_retention_timestamp,
+    run_artifact_retention_scheduled_execution_mock_worker,
     assert_artifact_retention_history_payload_safe,
     validate_artifact_retention_batch_plan,
     validate_artifact_retention_execution,
@@ -112,6 +115,7 @@ from nex_ae_api.artifacts import (
     validate_artifact_retention_policy,
     validate_artifact_retention_schedule,
     validate_artifact_retention_scheduled_execution_command,
+    validate_artifact_retention_scheduled_execution_worker_result,
     validate_artifact_handoff_record,
     validate_structured_draft_for_markdown_render,
 )
@@ -3004,6 +3008,7 @@ def test_artifact_retention_scheduled_execution_command_builds_safe_dispatch() -
     )
     assert command["execution_request"]["route"] == "/api/v1/artifact-retention/purge"
     assert request_payload["mode"] == "DRY_RUN"
+    assert request_payload["dry_run"] is True
     assert request_payload["delete_enabled"] is False
     assert request_payload["storage_mutation_enabled"] is False
     assert request_payload["database_row_delete_enabled"] is False
@@ -3199,6 +3204,15 @@ def test_artifact_retention_scheduled_execution_command_noop_and_validation_edge
             {
                 "payload": {
                     **ready_command["execution_request"]["payload"],
+                    "dry_run": False,
+                }
+            },
+            "dry-run",
+        ),
+        (
+            {
+                "payload": {
+                    **ready_command["execution_request"]["payload"],
                     "delete_enabled": True,
                 }
             },
@@ -3227,6 +3241,303 @@ def test_artifact_retention_scheduled_execution_command_noop_and_validation_edge
             "ae.artifact_retention_scheduled_command_invalid"
         )
         assert detail in request_exc.value.detail
+
+
+def test_artifact_retention_scheduled_execution_mock_worker_writes_dry_run_history() -> None:
+    store = ArtifactRecordStore()
+    history_store = ArtifactRetentionExecutionHistoryStore()
+    first = save_rendered_retention_artifact(
+        store,
+        artifact_request_id="scheduled-worker-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+        target_formats=["MD", "HTML_PREVIEW"],
+    )
+    second = save_rendered_retention_artifact(
+        store,
+        artifact_request_id="scheduled-worker-old-002",
+        updated_at="2026-07-31T01:00:00Z",
+        target_formats=["MD"],
+    )
+    plan = store.plan_retention_batch(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit="10",
+        max_delete_count="1",
+        checked_at="2026-09-01T02:30:00Z",
+        requested_by={"actor_type": "service", "actor_id": "nex-ag"},
+        idempotency_key="scheduled-worker-plan-001",
+    )
+    command = build_artifact_retention_scheduled_execution_command(
+        plan,
+        trigger_type="scheduler_tick",
+        command_created_at="2026-09-01T02:35:00Z",
+        idempotency_key="scheduled-worker-command-001",
+    )
+
+    result = run_artifact_retention_scheduled_execution_mock_worker(
+        command,
+        artifact_store=store,
+        history_store=history_store,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+    )
+    execution = result["execution"]
+    summary = summarize_artifact_retention_scheduled_execution_worker_result(result)
+    listed_history = history_store.list_executions(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+    )
+    serialized = json.dumps(result, ensure_ascii=False, sort_keys=True)
+
+    assert result[
+        "artifact_retention_scheduled_execution_worker_result_schema_version"
+    ] == AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_WORKER_RESULT_SCHEMA_VERSION
+    assert result["worker_status"] == "SUCCEEDED"
+    assert result["command_id"] == command["command_id"]
+    assert execution["mode"] == "DRY_RUN"
+    assert execution["execution_status"] == "SUCCEEDED"
+    assert execution["selected_count"] == 1
+    assert execution["delete_enabled"] is False
+    assert execution["storage_mutation_enabled"] is False
+    assert execution["database_row_delete_enabled"] is False
+    assert result["history"]["history_written"] is True
+    assert result["history"]["retention_execution_id"] == execution["execution_id"]
+    assert listed_history[0]["execution"]["execution_id"] == execution["execution_id"]
+    assert summary == {
+        "worker_status": "SUCCEEDED",
+        "trigger_type": "scheduler_tick",
+        "command_status": "READY",
+        "execution_mode": "DRY_RUN",
+        "candidate_count": 2,
+        "selected_count": 1,
+        "history_written": True,
+        "retention_execution_id": execution["execution_id"],
+    }
+    assert store.get(first["artifact_id"]) is not None
+    assert store.get(second["artifact_id"]) is not None
+    assert "storage_ref" not in serialized
+
+
+def test_artifact_retention_scheduled_execution_mock_worker_noop_and_edges() -> None:
+    candidate_filter = build_artifact_retention_candidate_filter(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        limit="10",
+    )
+    plan = build_artifact_retention_batch_plan(
+        build_artifact_retention_candidate_collection(
+            [],
+            candidate_filter=candidate_filter,
+        ),
+        checked_at="2026-09-01T02:30:00Z",
+    )
+    noop_command = build_artifact_retention_scheduled_execution_command(
+        plan,
+        command_created_at="2026-09-01T02:35:00Z",
+    )
+    noop_result = run_artifact_retention_scheduled_execution_mock_worker(
+        noop_command,
+        artifact_store=ArtifactRecordStore(),
+        history_store=ArtifactRetentionExecutionHistoryStore(),
+    )
+
+    assert noop_result["worker_status"] == "NOOP"
+    assert noop_result["execution"] is None
+    assert noop_result["history"]["history_written"] is False
+    assert summarize_artifact_retention_scheduled_execution_worker_result(
+        noop_result
+    )["retention_execution_id"] is None
+
+    with pytest.raises(ArtifactHandoffError) as store_exc:
+        run_artifact_retention_scheduled_execution_mock_worker(
+            noop_command,
+            artifact_store=None,
+        )
+    assert store_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_worker_store_invalid"
+    )
+    with pytest.raises(ArtifactHandoffError) as history_exc:
+        run_artifact_retention_scheduled_execution_mock_worker(
+            noop_command,
+            artifact_store=ArtifactRecordStore(),
+            history_store=object(),
+        )
+    assert history_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_worker_history_invalid"
+    )
+    with pytest.raises(ArtifactHandoffError) as type_exc:
+        validate_artifact_retention_scheduled_execution_worker_result([])  # type: ignore[arg-type]
+    assert type_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_worker_result_invalid"
+    )
+    with pytest.raises(ArtifactHandoffError) as schema_exc:
+        validate_artifact_retention_scheduled_execution_worker_result(
+            {
+                **noop_result,
+                "artifact_retention_scheduled_execution_worker_result_schema_version": (
+                    "wrong"
+                ),
+            }
+        )
+    assert schema_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_worker_result_schema_invalid"
+    )
+
+    validation_mutations = [
+        ({"service_id": "nex-cx"}, "service id"),
+        ({"worker_status": "RUNNING"}, "status"),
+        ({"command_summary": []}, "command_summary"),
+        (
+            {
+                "command_summary": {
+                    **noop_result["command_summary"],
+                    "trigger_type": "operator_dispatch",
+                }
+            },
+            "command summary",
+        ),
+        (
+            {
+                "history": {
+                    **noop_result["history"],
+                    "retention_execution_id": "unexpected",
+                }
+            },
+            "NOOP result",
+        ),
+        (
+            {
+                "metadata": {
+                    **noop_result["metadata"],
+                    "storage_mutation_executed": True,
+                }
+            },
+            "metadata",
+        ),
+        ({"storage_ref": "ae://private/file.md"}, "private"),
+    ]
+    for mutation, detail in validation_mutations:
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_scheduled_execution_worker_result(
+                {**noop_result, **mutation}
+            )
+        assert exc_info.value.error_code in {
+            "ae.artifact_retention_scheduled_worker_result_invalid",
+            "ae.artifact_retention_payload_unsafe",
+        }
+        assert detail in exc_info.value.detail
+
+    ready_store = ArtifactRecordStore()
+    save_rendered_retention_artifact(
+        ready_store,
+        artifact_request_id="scheduled-worker-edge-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    ready_command = build_artifact_retention_scheduled_execution_command(
+        ready_store.plan_retention_batch(
+            tenant_id="tenant-001",
+            workspace_id="workspace-001",
+            owner_user_id="user-001",
+            retention_days="30",
+            as_of="2026-09-01T00:00:00Z",
+            scan_limit="10",
+            checked_at="2026-09-01T02:30:00Z",
+        ),
+        command_created_at="2026-09-01T02:35:00Z",
+    )
+    ready_result = run_artifact_retention_scheduled_execution_mock_worker(
+        ready_command,
+        artifact_store=ready_store,
+    )
+    ready_execution = ready_result["execution"]
+    execute_like_evidence = build_artifact_retention_execution(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        mode="EXECUTE",
+        execution_status="SUCCEEDED",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        checked_at="2026-09-01T02:30:00Z",
+        scan_limit="10",
+        max_delete_count="20",
+        candidate_count=1,
+        selected_count=1,
+        deleted_counts={
+            "artifacts": 1,
+            "source_refs": 0,
+            "versions": 0,
+            "render_jobs": 0,
+            "files": 0,
+            "links": 0,
+            "storage_files": 0,
+        },
+        delete_enabled=True,
+        storage_mutation_enabled=True,
+        database_row_delete_enabled=True,
+    )
+
+    ready_mutations = [
+        ({"execution": None}, "command summary"),
+        (
+            {
+                "command_summary": {
+                    **ready_result["command_summary"],
+                    "command_status": "NOOP",
+                }
+            },
+            "command summary",
+        ),
+        (
+            {"execution": execute_like_evidence},
+            "safe dry-run",
+        ),
+        (
+            {
+                "history": {
+                    **ready_result["history"],
+                    "history_written": None,
+                }
+            },
+            "history flag",
+        ),
+        (
+            {
+                "history": {
+                    **ready_result["history"],
+                    "retention_execution_id": "unexpected",
+                }
+            },
+            "history",
+        ),
+        (
+            {
+                "history": {
+                    "history_written": True,
+                    "retention_execution_id": "wrong",
+                    "execution_payload_hash": "0" * 64,
+                    "created_at": "2026-09-01T02:35:00Z",
+                }
+            },
+            "history reference",
+        ),
+    ]
+    for mutation, detail in ready_mutations:
+        with pytest.raises(ArtifactHandoffError) as ready_exc:
+            validate_artifact_retention_scheduled_execution_worker_result(
+                {**ready_result, **mutation}
+            )
+        assert ready_exc.value.error_code == (
+            "ae.artifact_retention_scheduled_worker_result_invalid"
+        )
+        assert detail in ready_exc.value.detail
 
 
 def test_sqlalchemy_artifact_record_store_plans_retention_batch_with_sqlite() -> None:
