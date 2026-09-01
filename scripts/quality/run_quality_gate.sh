@@ -132,6 +132,7 @@ node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_boundary_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_retention_purge_boundary_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_retention_candidate_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_artifact_retention_batch_plan_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_retention_purge_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s47_ae_artifact_retention_purge_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_retention_history_boundary_audit.py --summary

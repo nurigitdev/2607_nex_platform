@@ -495,3 +495,9 @@ Artifact library management:
   accepts scoped retention planning filters plus `Idempotency-Key`, returns
   READY/NOOP metadata-only plan evidence, and does not mutate artifacts,
   rendered storage, or retention history.
+- Slice 0485 adds protected PostgreSQL smoke evidence for the batch plan route.
+  Set `NEX_AE_ARTIFACT_RETENTION_BATCH_PLAN_POSTGRES_SMOKE=1` with
+  `NEX_AE_TEST_DATABASE_URL` to migrate the real AE test DB, create three
+  rendered logical-purge artifacts, verify `candidate_count=2` and
+  `selected_count=1` through the route plus direct DB counts, confirm rows/files
+  remain retained, and clean up smoke rows.
