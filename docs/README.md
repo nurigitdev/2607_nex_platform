@@ -603,6 +603,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0497`](slices/0497_ag_artifact_retention_scheduled_dispatch_control_guardrail.md) | `S50-007` AG artifact retention scheduled dispatch/control guardrail. |
 | [`Slice 0498`](slices/0498_ae_artifact_retention_scheduler_config_read_model_api.md) | `S50-008` AE artifact retention scheduler config/read-model API. |
 | [`Slice 0499`](slices/0499_ae_ag_artifact_retention_scheduler_postgresql_smoke.md) | `S50-009` AE/AG artifact retention scheduler PostgreSQL smoke evidence. |
+| [`Slice 0500`](slices/0500_s50_ae_artifact_retention_scheduler_runtime_closure.md) | `S50-010` S50 AE artifact retention scheduler runtime closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

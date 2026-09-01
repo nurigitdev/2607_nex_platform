@@ -375,6 +375,10 @@ Unified operations:
   routes against an AE TestClient backed by the real AE test DB, proves AG does
   not write AE persistence directly, verifies the queued job through
   `service_jobs`, and emits only metadata/redacted evidence.
+- Slice 0500 closes S50 by checking AG's scheduled job projection and dispatch
+  guardrail stay connected to AE's scheduler config/read-model APIs,
+  JobQueue-backed admission, worker runtime evidence, and AE-only persistence
+  ownership.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

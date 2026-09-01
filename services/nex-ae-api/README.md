@@ -557,3 +557,7 @@ Artifact library management:
   real AE test DB, lets AG dispatch through the AE scheduled-job admission API,
   directly verifies the persisted `service_jobs` QUEUED row, lists it back via
   AG's scheduled-job projection, and cleans up smoke artifacts and jobs.
+- Slice 0500 closes S50 by checking the scheduler runtime boundary, scheduled
+  job contract, admission, shared worker runner, AE scheduler/read-model APIs,
+  AG scheduled job/dispatch projections, PostgreSQL smoke evidence, and
+  metadata-only redaction posture remain connected end to end.
