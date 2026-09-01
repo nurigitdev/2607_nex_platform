@@ -662,6 +662,59 @@ def sqlite_artifact_session_factory():
                 """
             )
         )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE service_jobs (
+                    job_id TEXT PRIMARY KEY,
+                    job_schema_version TEXT NOT NULL,
+                    job_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    trace_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    subject_type TEXT NOT NULL,
+                    subject_id TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    attempt_count INTEGER NOT NULL,
+                    max_attempts INTEGER NOT NULL,
+                    retryable INTEGER NOT NULL,
+                    links TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    error TEXT,
+                    replay_lineage TEXT,
+                    available_at TEXT NOT NULL,
+                    locked_at TEXT,
+                    locked_by TEXT,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE (job_type, idempotency_key)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE service_worker_heartbeats (
+                    service_id TEXT NOT NULL,
+                    worker_id TEXT NOT NULL,
+                    heartbeat_schema_version TEXT NOT NULL,
+                    worker_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    active_job_id TEXT,
+                    trace_id TEXT,
+                    started_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL,
+                    metadata TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (service_id, worker_id)
+                )
+                """
+            )
+        )
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
@@ -4068,6 +4121,14 @@ def test_artifact_retention_scheduled_worker_adapter_edges() -> None:
 
     command = artifact_retention_scheduled_command_from_job(job)
     assert command == job["payload"]["scheduled_command"]
+    persisted_common_job = deepcopy(job)
+    persisted_common_job.pop("artifact_retention_scheduled_job_schema_version")
+    assert artifact_retention_scheduled_command_from_job(persisted_common_job) == (
+        job["payload"]["scheduled_command"]
+    )
+    assert validate_artifact_retention_scheduled_job(persisted_common_job)[
+        "artifact_retention_scheduled_job_schema_version"
+    ] == AE_ARTIFACT_RETENTION_SCHEDULED_JOB_SCHEMA_VERSION
     assert build_artifact_retention_scheduled_worker_config(
         worker_id="ae-retention-worker-config-001",
         max_jobs=2,

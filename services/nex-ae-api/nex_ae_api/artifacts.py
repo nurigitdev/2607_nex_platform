@@ -4217,6 +4217,17 @@ def validate_artifact_retention_scheduled_job(
             error_code="ae.artifact_retention_scheduled_job_invalid",
             detail="Artifact retention scheduled job must be an object.",
         )
+    if (
+        job.get("artifact_retention_scheduled_job_schema_version") is None
+        and job.get("job_type") == AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE
+        and isinstance(job.get("payload"), dict)
+    ):
+        job = {
+            **job,
+            "artifact_retention_scheduled_job_schema_version": (
+                AE_ARTIFACT_RETENTION_SCHEDULED_JOB_SCHEMA_VERSION
+            ),
+        }
     try:
         validate_common_job(job)
     except JobQueueError as exc:

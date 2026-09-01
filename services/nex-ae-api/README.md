@@ -542,3 +542,8 @@ Artifact library management:
   invokes the existing dry-run mock worker, writes optional retention history,
   updates worker heartbeats, and lets the shared JobQueue complete or retry jobs
   without enabling physical delete automation.
+- Slice 0495 adds protected PostgreSQL evidence for that runtime path. When
+  explicitly enabled against `NEX_AE_TEST_DATABASE_URL`, it migrates the real AE
+  test DB, enqueues a scheduled retention job, runs the shared worker once, and
+  directly checks `service_jobs`, `service_worker_heartbeats`, and retention
+  history before cleanup.
