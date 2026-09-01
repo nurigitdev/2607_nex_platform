@@ -566,3 +566,7 @@ Artifact library management:
   automation path is dry-run scheduled job admission, AG can control retention
   only through AE APIs, and physical delete execution still requires explicit
   operator/delete/storage/database row deletion guards.
+- Slice 0502 expands the scheduler config read-model with disabled-by-default
+  automation knobs: 15-minute tick interval, 60-second jitter, 10-minute lock
+  TTL, one job per tick, enforced `Asia/Seoul` `02:00-05:00` batch window, and
+  exact runtime validation that rejects missing, extra, or drifted knobs.

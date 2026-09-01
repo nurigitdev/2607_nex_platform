@@ -228,6 +228,12 @@ ARTIFACT_RETENTION_SCHEDULED_EXECUTION_TRIGGER_TYPES = (
     "scheduler_tick",
     "operator_dispatch",
 )
+ARTIFACT_RETENTION_SCHEDULER_AUTOMATION_PROFILE = "disabled-dry-run-local-v1"
+ARTIFACT_RETENTION_SCHEDULER_TICK_INTERVAL_SECONDS = 900
+ARTIFACT_RETENTION_SCHEDULER_TICK_JITTER_SECONDS = 60
+ARTIFACT_RETENTION_SCHEDULER_TICK_LOCK_TTL_SECONDS = 600
+ARTIFACT_RETENTION_SCHEDULER_TICK_STALE_AFTER_SECONDS = 3600
+ARTIFACT_RETENTION_SCHEDULER_MAX_JOBS_PER_TICK = 1
 AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE = (
     "ae.artifact_retention.scheduled_execution"
 )
@@ -3239,16 +3245,9 @@ def build_artifact_retention_scheduler_config(
                 ARTIFACT_RETENTION_SCHEDULED_EXECUTION_TRIGGER_TYPES
             ),
         },
-        "runtime": {
-            "scheduler_daemon_enabled": False,
-            "scheduler_tick_admission_enabled": True,
-            "operator_dispatch_admission_enabled": True,
-            "default_execution_mode": "DRY_RUN",
-            "job_queue_available": _artifact_job_queue_available(job_queue),
-            "job_queue_backend": _artifact_job_queue_backend_name(job_queue),
-            "worker_runner_available": True,
-            "physical_delete_automation_enabled": False,
-        },
+        "runtime": build_artifact_retention_scheduler_runtime_config(
+            job_queue=job_queue
+        ),
         "api_routes": {
             "scheduler_config": "/api/v1/artifact-retention/scheduler-config",
             "scheduled_jobs": "/api/v1/artifact-retention/scheduled-jobs",
@@ -3272,6 +3271,42 @@ def build_artifact_retention_scheduler_config(
         },
     }
     return validate_artifact_retention_scheduler_config(config)
+
+
+def build_artifact_retention_scheduler_runtime_config(
+    *,
+    job_queue: JobQueue | None = None,
+) -> dict[str, Any]:
+    return {
+        "scheduler_daemon_enabled": False,
+        "scheduler_tick_admission_enabled": True,
+        "operator_dispatch_admission_enabled": True,
+        "default_execution_mode": "DRY_RUN",
+        "job_queue_available": _artifact_job_queue_available(job_queue),
+        "job_queue_backend": _artifact_job_queue_backend_name(job_queue),
+        "worker_runner_available": True,
+        "physical_delete_automation_enabled": False,
+        "automation_profile": ARTIFACT_RETENTION_SCHEDULER_AUTOMATION_PROFILE,
+        "scheduler_tick_interval_seconds": (
+            ARTIFACT_RETENTION_SCHEDULER_TICK_INTERVAL_SECONDS
+        ),
+        "scheduler_tick_jitter_seconds": (
+            ARTIFACT_RETENTION_SCHEDULER_TICK_JITTER_SECONDS
+        ),
+        "scheduler_tick_lock_ttl_seconds": (
+            ARTIFACT_RETENTION_SCHEDULER_TICK_LOCK_TTL_SECONDS
+        ),
+        "scheduler_tick_stale_after_seconds": (
+            ARTIFACT_RETENTION_SCHEDULER_TICK_STALE_AFTER_SECONDS
+        ),
+        "scheduler_tick_max_jobs_per_tick": (
+            ARTIFACT_RETENTION_SCHEDULER_MAX_JOBS_PER_TICK
+        ),
+        "scheduler_tick_batch_window_enforced": True,
+        "scheduler_tick_timezone": ARTIFACT_RETENTION_BATCH_TIMEZONE,
+        "scheduler_tick_window_start": ARTIFACT_RETENTION_BATCH_WINDOW_START,
+        "scheduler_tick_window_end": ARTIFACT_RETENTION_BATCH_WINDOW_END,
+    }
 
 
 def validate_artifact_retention_scheduler_config(
@@ -3591,17 +3626,72 @@ def _expected_artifact_retention_scheduler_job_contract() -> dict[str, Any]:
 
 
 def _artifact_retention_scheduler_runtime_valid(runtime: dict[str, Any]) -> bool:
-    return (
-        runtime.get("scheduler_daemon_enabled") is False
-        and runtime.get("scheduler_tick_admission_enabled") is True
-        and runtime.get("operator_dispatch_admission_enabled") is True
-        and runtime.get("default_execution_mode") == "DRY_RUN"
-        and isinstance(runtime.get("job_queue_available"), bool)
-        and isinstance(runtime.get("job_queue_backend"), str)
-        and bool(runtime.get("job_queue_backend", "").strip())
-        and runtime.get("worker_runner_available") is True
-        and runtime.get("physical_delete_automation_enabled") is False
-    )
+    expected_keys = set(build_artifact_retention_scheduler_runtime_config())
+    if set(runtime) != expected_keys:
+        return False
+    if runtime.get("scheduler_daemon_enabled") is not False:
+        return False
+    if runtime.get("scheduler_tick_admission_enabled") is not True:
+        return False
+    if runtime.get("operator_dispatch_admission_enabled") is not True:
+        return False
+    if runtime.get("default_execution_mode") != "DRY_RUN":
+        return False
+    if not isinstance(runtime.get("job_queue_available"), bool):
+        return False
+    if not isinstance(runtime.get("job_queue_backend"), str):
+        return False
+    if not runtime.get("job_queue_backend", "").strip():
+        return False
+    if runtime.get("worker_runner_available") is not True:
+        return False
+    if runtime.get("physical_delete_automation_enabled") is not False:
+        return False
+    if (
+        runtime.get("automation_profile")
+        != ARTIFACT_RETENTION_SCHEDULER_AUTOMATION_PROFILE
+    ):
+        return False
+    if (
+        runtime.get("scheduler_tick_interval_seconds")
+        != ARTIFACT_RETENTION_SCHEDULER_TICK_INTERVAL_SECONDS
+    ):
+        return False
+    if (
+        runtime.get("scheduler_tick_jitter_seconds")
+        != ARTIFACT_RETENTION_SCHEDULER_TICK_JITTER_SECONDS
+    ):
+        return False
+    if (
+        runtime.get("scheduler_tick_lock_ttl_seconds")
+        != ARTIFACT_RETENTION_SCHEDULER_TICK_LOCK_TTL_SECONDS
+    ):
+        return False
+    if (
+        runtime.get("scheduler_tick_stale_after_seconds")
+        != ARTIFACT_RETENTION_SCHEDULER_TICK_STALE_AFTER_SECONDS
+    ):
+        return False
+    if (
+        runtime.get("scheduler_tick_max_jobs_per_tick")
+        != ARTIFACT_RETENTION_SCHEDULER_MAX_JOBS_PER_TICK
+    ):
+        return False
+    if runtime.get("scheduler_tick_batch_window_enforced") is not True:
+        return False
+    if runtime.get("scheduler_tick_timezone") != ARTIFACT_RETENTION_BATCH_TIMEZONE:
+        return False
+    if (
+        runtime.get("scheduler_tick_window_start")
+        != ARTIFACT_RETENTION_BATCH_WINDOW_START
+    ):
+        return False
+    if (
+        runtime.get("scheduler_tick_window_end")
+        != ARTIFACT_RETENTION_BATCH_WINDOW_END
+    ):
+        return False
+    return True
 
 
 def _expected_artifact_retention_scheduler_api_routes() -> dict[str, str]:

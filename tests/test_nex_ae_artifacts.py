@@ -76,6 +76,7 @@ from nex_ae_api.artifacts import (
     build_artifact_retention_policy,
     build_artifact_retention_schedule,
     build_artifact_retention_scheduler_config,
+    build_artifact_retention_scheduler_runtime_config,
     build_artifact_retention_scheduled_execution_command,
     build_artifact_retention_scheduled_job_collection,
     build_artifact_retention_scheduled_job_admission,
@@ -2076,6 +2077,16 @@ def test_artifact_retention_scheduler_config_exposes_safe_runtime_surface() -> N
         "job_queue_backend": "InMemoryJobQueue",
         "worker_runner_available": True,
         "physical_delete_automation_enabled": False,
+        "automation_profile": "disabled-dry-run-local-v1",
+        "scheduler_tick_interval_seconds": 900,
+        "scheduler_tick_jitter_seconds": 60,
+        "scheduler_tick_lock_ttl_seconds": 600,
+        "scheduler_tick_stale_after_seconds": 3600,
+        "scheduler_tick_max_jobs_per_tick": 1,
+        "scheduler_tick_batch_window_enforced": True,
+        "scheduler_tick_timezone": "Asia/Seoul",
+        "scheduler_tick_window_start": "02:00",
+        "scheduler_tick_window_end": "05:00",
     }
     assert config["api_routes"][
         "scheduled_job_admission"
@@ -2094,6 +2105,25 @@ def test_artifact_retention_scheduler_config_exposes_safe_runtime_surface() -> N
     assert validate_artifact_retention_scheduler_config(config) is config
     assert "storage_ref" not in serialized
     assert "nuri1004" not in serialized
+
+
+def test_artifact_retention_scheduler_runtime_config_defaults_without_queue() -> None:
+    runtime = build_artifact_retention_scheduler_runtime_config()
+
+    assert runtime["scheduler_daemon_enabled"] is False
+    assert runtime["scheduler_tick_admission_enabled"] is True
+    assert runtime["job_queue_available"] is False
+    assert runtime["job_queue_backend"] == "unconfigured"
+    assert runtime["automation_profile"] == "disabled-dry-run-local-v1"
+    assert runtime["scheduler_tick_interval_seconds"] == 900
+    assert runtime["scheduler_tick_jitter_seconds"] == 60
+    assert runtime["scheduler_tick_lock_ttl_seconds"] == 600
+    assert runtime["scheduler_tick_stale_after_seconds"] == 3600
+    assert runtime["scheduler_tick_max_jobs_per_tick"] == 1
+    assert runtime["scheduler_tick_batch_window_enforced"] is True
+    assert runtime["scheduler_tick_timezone"] == "Asia/Seoul"
+    assert runtime["scheduler_tick_window_start"] == "02:00"
+    assert runtime["scheduler_tick_window_end"] == "05:00"
 
 
 def test_artifact_retention_scheduler_config_rejects_contract_drift() -> None:
@@ -2152,6 +2182,58 @@ def test_artifact_retention_scheduler_config_rejects_contract_drift() -> None:
             validate_artifact_retention_scheduler_config({**config, **patch})
         assert invalid_exc.value.error_code == error_code
         assert detail in invalid_exc.value.detail
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("scheduler_daemon_enabled", True),
+        ("scheduler_tick_admission_enabled", False),
+        ("operator_dispatch_admission_enabled", False),
+        ("default_execution_mode", "EXECUTE"),
+        ("job_queue_available", "yes"),
+        ("job_queue_backend", ""),
+        ("worker_runner_available", False),
+        ("physical_delete_automation_enabled", True),
+        ("automation_profile", "enabled-local-v1"),
+        ("scheduler_tick_interval_seconds", 60),
+        ("scheduler_tick_jitter_seconds", 0),
+        ("scheduler_tick_lock_ttl_seconds", 60),
+        ("scheduler_tick_stale_after_seconds", 600),
+        ("scheduler_tick_max_jobs_per_tick", 2),
+        ("scheduler_tick_batch_window_enforced", False),
+        ("scheduler_tick_timezone", "UTC"),
+        ("scheduler_tick_window_start", "00:00"),
+        ("scheduler_tick_window_end", "23:59"),
+    ),
+)
+def test_artifact_retention_scheduler_config_rejects_runtime_knob_drift(
+    field: str,
+    value: Any,
+) -> None:
+    config = build_artifact_retention_scheduler_config()
+    runtime = {**config["runtime"], field: value}
+
+    with pytest.raises(ArtifactHandoffError) as exc:
+        validate_artifact_retention_scheduler_config({**config, "runtime": runtime})
+
+    assert exc.value.error_code == "ae.artifact_retention_scheduler_config_invalid"
+    assert "runtime" in exc.value.detail
+
+
+def test_artifact_retention_scheduler_config_rejects_runtime_key_drift() -> None:
+    config = build_artifact_retention_scheduler_config()
+    runtime = dict(config["runtime"])
+    runtime.pop("scheduler_tick_interval_seconds")
+
+    with pytest.raises(ArtifactHandoffError) as missing_exc:
+        validate_artifact_retention_scheduler_config({**config, "runtime": runtime})
+    assert missing_exc.value.error_code == "ae.artifact_retention_scheduler_config_invalid"
+
+    runtime = {**config["runtime"], "unexpected_scheduler_knob": True}
+    with pytest.raises(ArtifactHandoffError) as extra_exc:
+        validate_artifact_retention_scheduler_config({**config, "runtime": runtime})
+    assert extra_exc.value.error_code == "ae.artifact_retention_scheduler_config_invalid"
 
 
 def test_artifact_retention_execution_contract_defaults_to_safe_dry_run() -> None:
@@ -5199,6 +5281,9 @@ def test_artifact_retention_scheduler_config_route_returns_runtime_surface() -> 
     )
     assert payload["runtime"]["job_queue_available"] is True
     assert payload["runtime"]["scheduler_daemon_enabled"] is False
+    assert payload["runtime"]["automation_profile"] == "disabled-dry-run-local-v1"
+    assert payload["runtime"]["scheduler_tick_interval_seconds"] == 900
+    assert payload["runtime"]["scheduler_tick_batch_window_enforced"] is True
     assert payload["api_routes"]["scheduled_jobs"] == (
         "/api/v1/artifact-retention/scheduled-jobs"
     )
