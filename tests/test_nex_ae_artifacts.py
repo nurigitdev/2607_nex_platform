@@ -3071,6 +3071,133 @@ def test_artifact_retention_purge_route_persists_history_and_reuses_idempotency(
     )["execution"]["deleted_counts"]["artifacts"] == 1
 
 
+def test_artifact_retention_execution_history_route_lists_metadata_only() -> None:
+    history_store = ArtifactRetentionExecutionHistoryStore()
+    client, _, _, _ = build_client_with_artifact_store(
+        retention_history_store=history_store
+    )
+    succeeded = history_store.save(
+        sample_retention_execution(
+            mode="EXECUTE",
+            execution_status="SUCCEEDED",
+            checked_at="2026-09-01T02:45:00Z",
+            delete_enabled=True,
+            storage_mutation_enabled=True,
+            database_row_delete_enabled=True,
+            deleted_counts={
+                "artifacts": 1,
+                "source_refs": 1,
+                "versions": 1,
+                "render_jobs": 1,
+                "files": 2,
+                "links": 4,
+                "storage_files": 2,
+            },
+            idempotency_key="route-history-query-execute-001",
+        )
+    )
+    blocked = history_store.save(
+        sample_retention_execution(
+            mode="EXECUTE",
+            execution_status="BLOCKED",
+            checked_at="2026-09-01T02:40:00Z",
+            selected_count=0,
+            blocked_reason="delete_not_enabled",
+            idempotency_key="route-history-query-blocked-001",
+        )
+    )
+    history_store.save(
+        sample_retention_execution(
+            owner_user_id="user-002",
+            execution_status="SUCCEEDED",
+            checked_at="2026-09-01T02:50:00Z",
+            idempotency_key="route-history-query-other-owner-001",
+        )
+    )
+
+    response = client.get(
+        "/api/v1/artifact-retention/executions",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "mode": "execute",
+            "limit": "10",
+        },
+        headers=auth_headers(),
+    )
+    blocked_response = client.get(
+        "/api/v1/artifact-retention/executions",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "execution_status": "blocked",
+            "limit": "1",
+        },
+        headers=auth_headers(),
+    )
+    missing_scope = client.get(
+        "/api/v1/artifact-retention/executions",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+        },
+        headers=auth_headers(),
+    )
+    invalid_mode = client.get(
+        "/api/v1/artifact-retention/executions",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "mode": "preview",
+        },
+        headers=auth_headers(),
+    )
+    unauthorized = client.get(
+        "/api/v1/artifact-retention/executions",
+        params={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+        },
+    )
+    payload = response.json()
+    blocked_payload = blocked_response.json()
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+    assert response.status_code == 200
+    assert payload[
+        "artifact_retention_execution_history_collection_schema_version"
+    ] == AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_COLLECTION_SCHEMA_VERSION
+    assert payload["count"] == 2
+    assert payload["filter"]["mode"] == "EXECUTE"
+    assert payload["summary"]["execute_count"] == 2
+    assert payload["summary"]["blocked_count"] == 1
+    assert [item["retention_execution_id"] for item in payload["items"]] == [
+        succeeded["retention_execution_id"],
+        blocked["retention_execution_id"],
+    ]
+    assert payload["items"][0]["execution_payload_hash"] == (
+        succeeded["execution_payload_hash"]
+    )
+    assert '"execution":' not in serialized
+    assert "storage_ref" not in serialized
+    assert blocked_response.status_code == 200
+    assert blocked_payload["count"] == 1
+    assert blocked_payload["items"][0]["retention_execution_id"] == (
+        blocked["retention_execution_id"]
+    )
+    assert missing_scope.status_code == 422
+    assert missing_scope.json()["error_code"] == "ae.artifact_collection_scope_required"
+    assert invalid_mode.status_code == 422
+    assert invalid_mode.json()["error_code"] == (
+        "ae.artifact_retention_execution_mode_invalid"
+    )
+    assert unauthorized.status_code == 401
+
+
 def test_artifact_retention_purge_route_checks_history_store_before_execute() -> None:
     class FailingHistoryStore(ArtifactRetentionExecutionHistoryStore):
         def ensure_available(self) -> None:

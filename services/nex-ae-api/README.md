@@ -462,3 +462,8 @@ Artifact library management:
   still return persisted history records, while list surfaces wrap them as
   metadata-only collection/items with summary counts and execution payload
   hashes instead of raw execution JSON.
+- Slice 0477 exposes `GET /api/v1/artifact-retention/executions` for
+  authenticated retention history queries. The route requires tenant,
+  workspace, and owner scope, accepts mode/status/limit filters, and returns the
+  Slice 0476 metadata-only collection rather than persisted raw execution
+  records.

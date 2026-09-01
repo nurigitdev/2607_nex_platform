@@ -1746,6 +1746,45 @@ def register_artifact_handoff_routes(
         except ArtifactHandoffError as exc:
             return _artifact_problem_response(request, exc)
 
+    @app.get("/api/v1/artifact-retention/executions", response_model=None)
+    def list_artifact_retention_executions(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        tenant_id: str | None = None,
+        workspace_id: str | None = None,
+        owner_user_id: str | None = None,
+        mode: str | None = None,
+        execution_status: str | None = None,
+        limit: str | None = None,
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            history_filter = build_artifact_retention_execution_history_filter(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
+                mode=mode,
+                execution_status=execution_status,
+                limit=limit,
+            )
+            records = artifact_retention_history_store.list_executions(
+                tenant_id=history_filter["tenant_id"],
+                workspace_id=history_filter["workspace_id"],
+                owner_user_id=history_filter["owner_user_id"],
+                mode=history_filter["mode"],
+                execution_status=history_filter["execution_status"],
+                limit=history_filter["limit"],
+            )
+            return build_artifact_retention_execution_history_collection(
+                records,
+                history_filter=history_filter,
+            )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
     @app.post("/api/v1/artifact-retention/purge", response_model=None)
     def purge_artifact_retention_candidates(
         payload: dict[str, Any],
