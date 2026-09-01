@@ -574,3 +574,7 @@ Artifact library management:
   metadata-only batch plan into a READY, NOOP, or SKIPPED tick decision, emits a
   dry-run `scheduler_tick` command preview only for READY ticks, and still does
   not enqueue jobs, start the daemon, run workers, or enable physical deletion.
+- Slice 0504 wires READY scheduler tick plans into the existing JobQueue
+  admission path. NOOP/SKIPPED ticks return metadata-only skipped enqueue
+  evidence without touching the queue, while READY ticks reuse the existing
+  scheduled-job admission/result contracts and shared JobQueue idempotency.

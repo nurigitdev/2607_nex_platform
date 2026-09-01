@@ -184,6 +184,9 @@ AE_ARTIFACT_RETENTION_SCHEDULED_JOB_COLLECTION_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_SCHEDULER_TICK_PLAN_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_tick_plan.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_TICK_ENQUEUE_RESULT_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_tick_enqueue_result.v1"
+)
 AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION = (
     "ae_artifact_retention_execution.v1"
 )
@@ -5720,6 +5723,237 @@ def enqueue_artifact_retention_scheduled_job(
     )
 
 
+def build_artifact_retention_scheduler_tick_job_admission(
+    tick_plan: dict[str, Any],
+    *,
+    trace_id: str | None = None,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    validated_tick = validate_artifact_retention_scheduler_tick_plan(tick_plan)
+    if validated_tick["tick_status"] != "READY":
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.artifact_retention_scheduler_tick_not_ready",
+            detail="Only READY scheduler ticks can be admitted to the JobQueue.",
+        )
+    normalized_trace_id = _normalize_retention_scheduled_job_trace_id(
+        trace_id or validated_tick.get("trace_id")
+    )
+    normalized_request_id = required_string(
+        {"request_id": request_id or validated_tick.get("request_id")},
+        "request_id",
+        "ae.artifact_retention_scheduled_job_request_id_required",
+    )
+    command = validate_artifact_retention_scheduled_execution_command(
+        validated_tick["command_preview"]
+    )
+    job = build_artifact_retention_scheduled_job(
+        command,
+        trace_id=normalized_trace_id,
+        request_id=normalized_request_id,
+        requested_at=validated_tick["admission"]["requested_at"],
+        idempotency_key=validated_tick["admission"]["idempotency_key"],
+    )
+    admission = {
+        "artifact_retention_scheduled_job_admission_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULED_JOB_ADMISSION_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "source_plan_id": command["source_plan_id"],
+        "command_id": command["command_id"],
+        "job_id": job["job_id"],
+        "job_type": AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE,
+        "tenant_id": command["tenant_id"],
+        "workspace_id": command["workspace_id"],
+        "owner_user_id": command["owner_user_id"],
+        "trigger_type": command["trigger_type"],
+        "scheduler_status": command["scheduler_status"],
+        "command_status": command["command_status"],
+        "admission_status": "READY",
+        "enqueue_required": True,
+        "skip_reason": None,
+        "trace_id": normalized_trace_id,
+        "request_id": normalized_request_id,
+        "requested_at": validated_tick["admission"]["requested_at"],
+        "idempotency_key": validated_tick["admission"]["idempotency_key"],
+        "command_summary": summarize_artifact_retention_scheduled_execution_command(
+            command
+        ),
+        "job_summary": summarize_artifact_retention_scheduled_job(job),
+        "command": command,
+        "job": job,
+        "queue_admission": {
+            "queue_service_id": "nex-ae-api",
+            "queue_backend": "service_job_queue",
+            "target_job_type": AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE,
+            "job_enqueued": False,
+            "worker_execution_performed": False,
+            "scheduler_daemon_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+    }
+    return validate_artifact_retention_scheduled_job_admission(admission)
+
+
+def enqueue_artifact_retention_scheduler_tick_job(
+    queue: JobQueue | None,
+    tick_plan: dict[str, Any],
+    *,
+    trace_id: str | None = None,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    validated_tick = validate_artifact_retention_scheduler_tick_plan(tick_plan)
+    if validated_tick["tick_status"] != "READY":
+        return validate_artifact_retention_scheduler_tick_enqueue_result(
+            _build_artifact_retention_scheduler_tick_enqueue_result(
+                validated_tick,
+                admission=None,
+                scheduled_job_enqueue_result=None,
+                enqueue_status="SKIPPED",
+            )
+        )
+    if queue is None or not hasattr(queue, "enqueue"):
+        raise ArtifactHandoffError(
+            status_code=500,
+            error_code="ae.artifact_retention_scheduler_tick_queue_invalid",
+            detail="Artifact retention scheduler tick queue is invalid.",
+        )
+    admission = build_artifact_retention_scheduler_tick_job_admission(
+        validated_tick,
+        trace_id=trace_id,
+        request_id=request_id,
+    )
+    enqueue_result = enqueue_artifact_retention_scheduled_job(queue, admission)
+    return validate_artifact_retention_scheduler_tick_enqueue_result(
+        _build_artifact_retention_scheduler_tick_enqueue_result(
+            validated_tick,
+            admission=admission,
+            scheduled_job_enqueue_result=enqueue_result,
+            enqueue_status="ENQUEUED",
+        )
+    )
+
+
+def validate_artifact_retention_scheduler_tick_enqueue_result(
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(result, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_enqueue_result_invalid",
+            detail="Artifact retention scheduler tick enqueue result must be an object.",
+        )
+    if (
+        result.get("artifact_retention_scheduler_tick_enqueue_result_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_TICK_ENQUEUE_RESULT_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_tick_enqueue_result_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler tick enqueue result schema version "
+                "is invalid."
+            ),
+        )
+    if result.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_enqueue_result_invalid",
+            detail="Artifact retention scheduler tick enqueue result service id is invalid.",
+        )
+    if not isinstance(result.get("queue_admission"), dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_enqueue_result_invalid",
+            detail="Artifact retention scheduler tick queue admission is invalid.",
+        )
+    tick_plan = validate_artifact_retention_scheduler_tick_plan(
+        result.get("tick_plan")
+    )
+    for field_name in (
+        "tick_id",
+        "source_plan_id",
+        "tick_status",
+        "skip_reason",
+        "trace_id",
+        "request_id",
+    ):
+        if result.get(field_name) != tick_plan.get(field_name):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=(
+                    "ae.artifact_retention_scheduler_tick_enqueue_result_invalid"
+                ),
+                detail=(
+                    "Artifact retention scheduler tick enqueue result does not "
+                    f"match tick plan {field_name}."
+                ),
+            )
+    if result.get("idempotency_key") != tick_plan["admission"]["idempotency_key"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_enqueue_result_invalid",
+            detail=(
+                "Artifact retention scheduler tick enqueue result does not match "
+                "tick plan idempotency_key."
+            ),
+        )
+    if result["metadata"] != {
+        "metadata_only": True,
+        "worker_executed": False,
+        "history_write_executed": False,
+        "physical_delete_automation_enabled": False,
+        "dry_run": True,
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_enqueue_result_invalid",
+            detail="Artifact retention scheduler tick enqueue result metadata is invalid.",
+        )
+    _validate_artifact_retention_scheduler_tick_queue_admission(
+        result["queue_admission"],
+        job_enqueued=result.get("job_enqueued") is True,
+        admission_performed=result.get("admission_performed") is True,
+    )
+    if tick_plan["tick_status"] == "READY":
+        admission = validate_artifact_retention_scheduled_job_admission(
+            result.get("admission")
+        )
+        scheduled_result = validate_artifact_retention_scheduled_job_enqueue_result(
+            result.get("scheduled_job_enqueue_result")
+        )
+        if (
+            result.get("enqueue_status") != "ENQUEUED"
+            or result.get("job_enqueued") is not True
+            or result.get("admission_performed") is not True
+            or admission["command_id"] != tick_plan["command_preview"]["command_id"]
+            or scheduled_result["job_id"] != admission["job_id"]
+        ):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=(
+                    "ae.artifact_retention_scheduler_tick_enqueue_result_invalid"
+                ),
+                detail="Artifact retention scheduler tick enqueue result is invalid.",
+            )
+    elif (
+        result.get("enqueue_status") != "SKIPPED"
+        or result.get("job_enqueued") is not False
+        or result.get("admission_performed") is not False
+        or result.get("admission") is not None
+        or result.get("scheduled_job_enqueue_result") is not None
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_enqueue_result_invalid",
+            detail="Artifact retention scheduler tick skipped enqueue result is invalid.",
+        )
+    assert_artifact_retention_payload_safe(result)
+    return result
+
+
 def validate_artifact_retention_scheduled_job_enqueue_result(
     result: dict[str, Any],
 ) -> dict[str, Any]:
@@ -5880,6 +6114,85 @@ def _build_artifact_retention_scheduled_job_enqueue_result(
         "admission": deepcopy(admission),
         "enqueued_job": deepcopy(enqueued_job) if enqueued_job is not None else None,
     }
+
+
+def _build_artifact_retention_scheduler_tick_enqueue_result(
+    tick_plan: dict[str, Any],
+    *,
+    admission: dict[str, Any] | None,
+    scheduled_job_enqueue_result: dict[str, Any] | None,
+    enqueue_status: str,
+) -> dict[str, Any]:
+    job_enqueued = enqueue_status == "ENQUEUED"
+    admission_performed = admission is not None
+    return {
+        "artifact_retention_scheduler_tick_enqueue_result_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_TICK_ENQUEUE_RESULT_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "tick_id": tick_plan["tick_id"],
+        "source_plan_id": tick_plan["source_plan_id"],
+        "tick_status": tick_plan["tick_status"],
+        "skip_reason": tick_plan["skip_reason"],
+        "trace_id": tick_plan["trace_id"],
+        "request_id": tick_plan["request_id"],
+        "idempotency_key": tick_plan["admission"]["idempotency_key"],
+        "enqueue_status": enqueue_status,
+        "job_enqueued": job_enqueued,
+        "admission_performed": admission_performed,
+        "queue_admission": {
+            "queue_service_id": "nex-ae-api",
+            "queue_backend": tick_plan["runtime"]["job_queue_backend"],
+            "target_job_type": AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE,
+            "admission_performed": admission_performed,
+            "job_enqueued": job_enqueued,
+            "worker_execution_performed": False,
+            "scheduler_daemon_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+        "admission": deepcopy(admission) if admission is not None else None,
+        "scheduled_job_enqueue_result": (
+            deepcopy(scheduled_job_enqueue_result)
+            if scheduled_job_enqueue_result is not None
+            else None
+        ),
+        "tick_plan": deepcopy(tick_plan),
+        "metadata": {
+            "metadata_only": True,
+            "worker_executed": False,
+            "history_write_executed": False,
+            "physical_delete_automation_enabled": False,
+            "dry_run": True,
+        },
+    }
+
+
+def _validate_artifact_retention_scheduler_tick_queue_admission(
+    queue_admission: dict[str, Any],
+    *,
+    job_enqueued: bool,
+    admission_performed: bool,
+) -> None:
+    expected = {
+        "queue_service_id": "nex-ae-api",
+        "queue_backend": queue_admission.get("queue_backend"),
+        "target_job_type": AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE,
+        "admission_performed": admission_performed,
+        "job_enqueued": job_enqueued,
+        "worker_execution_performed": False,
+        "scheduler_daemon_started": False,
+        "physical_delete_automation_enabled": False,
+    }
+    if (
+        queue_admission != expected
+        or not isinstance(queue_admission.get("queue_backend"), str)
+        or not queue_admission.get("queue_backend", "").strip()
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_enqueue_result_invalid",
+            detail="Artifact retention scheduler tick queue admission is invalid.",
+        )
 
 
 def _validate_ready_artifact_retention_scheduled_job_admission(
