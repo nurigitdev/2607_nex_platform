@@ -519,3 +519,7 @@ Artifact library management:
   mock worker through SQLAlchemy artifact/history stores, verify persisted
   history, verify artifact/storage rows remain retained, project the plan
   through AG's metadata-only operator view, and clean up smoke rows.
+- Slice 0490 closes S49 by checking the scheduled retention boundary, schedule
+  contract, batch plan read-model/API, PostgreSQL smoke evidence, scheduled
+  command, mock worker, AG projection linkage, and dry-run/metadata-only
+  redaction posture remain connected end to end.

@@ -593,6 +593,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0487`](slices/0487_ae_artifact_retention_scheduled_execution_mock_worker.md) | `S49-007` AE artifact retention scheduled execution mock worker. |
 | [`Slice 0488`](slices/0488_ag_artifact_retention_batch_operations_projection.md) | `S49-008` AG artifact retention batch operations projection. |
 | [`Slice 0489`](slices/0489_ae_artifact_retention_scheduled_execution_postgresql_smoke.md) | `S49-009` AE artifact retention scheduled execution PostgreSQL smoke evidence. |
+| [`Slice 0490`](slices/0490_s49_ae_artifact_retention_scheduled_operations_closure.md) | `S49-010` S49 AE artifact retention scheduled operations closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

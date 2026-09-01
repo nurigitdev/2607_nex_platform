@@ -350,6 +350,10 @@ Unified operations:
   the smoke builds a live-test-DB batch plan, scheduled command, mock-worker
   history row, and AG batch projection without any direct AG write into AE
   persistence.
+- Slice 0490 closes S49 by checking AG's batch-plan projection stays connected
+  to AE's scheduled retention boundary, schedule contract, batch plan API,
+  scheduled command, mock worker, and PostgreSQL smoke evidence while remaining
+  read-only and metadata-only.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
