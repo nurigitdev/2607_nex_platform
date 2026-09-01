@@ -392,6 +392,10 @@ Unified operations:
 - Slice 0510 closes S51 by checking AG's automation projection stays connected
   to AE scheduler tick admission, protected PostgreSQL smoke evidence, physical
   purge approval guardrails, and read-only/metadata-only operator semantics.
+- Slice 0511 starts S52 by freezing AG's scheduler-daemon operations boundary.
+  AG may later project lease, last tick, and queue posture through AE APIs, but
+  daemon control remains AE-owned and AG still performs no direct database write
+  or direct job enqueue.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

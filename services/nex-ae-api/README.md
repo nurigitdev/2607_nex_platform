@@ -600,3 +600,7 @@ Artifact library management:
   tick admission, protected PostgreSQL smoke hooks, execute-mode operator
   approval hardening, physical purge adapter, AG automation projection, and
   metadata-only redaction posture remain connected end to end.
+- Slice 0511 starts S52 by freezing the scheduler daemon boundary before lease
+  or loop code lands. Daemon auto-start remains disabled, the first runtime path
+  is a manual once dry-run tick runner, and lease/lock work should be separated
+  from the large artifact surface before continuous scheduling is introduced.
