@@ -7,6 +7,7 @@ import json
 import os
 import re
 import textwrap
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
@@ -24,10 +25,14 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
+    JobQueueError,
+    build_common_job,
+    build_subject_ref,
     issue_mock_service_token,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
+    validate_common_job,
     validate_authorization_header,
 )
 
@@ -146,6 +151,12 @@ AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_COMMAND_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_WORKER_RESULT_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduled_execution_worker_result.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULED_JOB_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduled_job.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULED_JOB_PAYLOAD_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduled_job_payload.v1"
+)
 AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION = (
     "ae_artifact_retention_execution.v1"
 )
@@ -194,6 +205,13 @@ ARTIFACT_RETENTION_SCHEDULED_EXECUTION_TRIGGER_TYPES = (
     "scheduler_tick",
     "operator_dispatch",
 )
+AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE = (
+    "ae.artifact_retention.scheduled_execution"
+)
+AE_ARTIFACT_RETENTION_SCHEDULED_JOB_SUBJECT_TYPE = (
+    "ae.artifact_retention.scheduled_execution"
+)
+AE_ARTIFACT_RETENTION_SCHEDULED_JOB_DEFAULT_MAX_ATTEMPTS = 3
 DEFAULT_ARTIFACT_RETENTION_MAX_DELETE_COUNT = 20
 MAX_ARTIFACT_RETENTION_MAX_DELETE_COUNT = 100
 SUPPORTED_TARGET_FORMATS = {"MD", "HTML_PREVIEW", "DOCX", "PDF"}
@@ -3939,6 +3957,377 @@ def summarize_artifact_retention_scheduled_execution_command(
         ],
         "command_created_at": validated["command_created_at"],
         "next_action": validated["execution_advice"],
+    }
+
+
+def build_artifact_retention_scheduled_job_payload(
+    command: dict[str, Any],
+    *,
+    requested_at: str | None = None,
+) -> dict[str, Any]:
+    validated_command = validate_artifact_retention_scheduled_execution_command(
+        command
+    )
+    if validated_command["command_status"] != "READY":
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.artifact_retention_scheduled_job_not_ready",
+            detail="Only READY scheduled execution commands can be queued.",
+        )
+    normalized_requested_at = format_artifact_retention_timestamp(
+        parse_artifact_retention_timestamp(
+            requested_at or _utc_now(),
+            field_name="requested_at",
+        )
+    )
+    payload = {
+        "payload_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULED_JOB_PAYLOAD_SCHEMA_VERSION
+        ),
+        "command_id": validated_command["command_id"],
+        "source_plan_id": validated_command["source_plan_id"],
+        "tenant_id": validated_command["tenant_id"],
+        "workspace_id": validated_command["workspace_id"],
+        "owner_user_id": validated_command["owner_user_id"],
+        "trigger_type": validated_command["trigger_type"],
+        "scheduler_status": validated_command["scheduler_status"],
+        "command_status": validated_command["command_status"],
+        "execution_mode": validated_command["execution_mode"],
+        "retention_days_after_logical_purge": validated_command[
+            "retention_days_after_logical_purge"
+        ],
+        "scan_limit": validated_command["scan_limit"],
+        "max_delete_count": validated_command["max_delete_count"],
+        "candidate_count": validated_command["candidate_count"],
+        "selected_count": validated_command["selected_count"],
+        "estimated_deleted_counts": deepcopy(
+            validated_command["estimated_deleted_counts"]
+        ),
+        "command_summary": summarize_artifact_retention_scheduled_execution_command(
+            validated_command
+        ),
+        "scheduled_command": deepcopy(validated_command),
+        "requested_by": deepcopy(validated_command["requested_by"]),
+        "idempotency_key": optional_text(validated_command.get("idempotency_key")),
+        "requested_at": normalized_requested_at,
+        "redaction_summary": {
+            "metadata_only": True,
+            "scheduled_command_embedded": True,
+            "batch_plan_embedded": False,
+            "artifact_payload_included": False,
+            "prompt_content_included": False,
+            "generation_output_included": False,
+            "storage_locator_included": False,
+            "database_url_included": False,
+        },
+    }
+    return validate_artifact_retention_scheduled_job_payload(payload)
+
+
+def validate_artifact_retention_scheduled_job_payload(
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_payload_invalid",
+            detail="Artifact retention scheduled job payload must be an object.",
+        )
+    if (
+        payload.get("payload_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULED_JOB_PAYLOAD_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_payload_schema_invalid",
+            detail="Artifact retention scheduled job payload schema version is invalid.",
+        )
+    for section_name in (
+        "estimated_deleted_counts",
+        "command_summary",
+        "scheduled_command",
+        "requested_by",
+        "redaction_summary",
+    ):
+        if not isinstance(payload.get(section_name), dict):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduled_job_payload_invalid",
+                detail=(
+                    "Artifact retention scheduled job payload "
+                    f"{section_name} is required."
+                ),
+            )
+    command = validate_artifact_retention_scheduled_execution_command(
+        payload["scheduled_command"]
+    )
+    if command["command_status"] != "READY":
+        raise ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.artifact_retention_scheduled_job_not_ready",
+            detail="Only READY scheduled execution commands can be queued.",
+        )
+    for field_name in (
+        "command_id",
+        "source_plan_id",
+        "tenant_id",
+        "workspace_id",
+        "owner_user_id",
+        "trigger_type",
+        "scheduler_status",
+        "command_status",
+        "execution_mode",
+        "retention_days_after_logical_purge",
+        "scan_limit",
+        "max_delete_count",
+        "candidate_count",
+        "selected_count",
+        "idempotency_key",
+    ):
+        if payload.get(field_name) != command.get(field_name):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduled_job_payload_invalid",
+                detail=(
+                    "Artifact retention scheduled job payload does not match "
+                    f"command {field_name}."
+                ),
+            )
+    if payload["estimated_deleted_counts"] != command["estimated_deleted_counts"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_payload_invalid",
+            detail="Artifact retention scheduled job payload estimates do not match.",
+        )
+    if payload["command_summary"] != summarize_artifact_retention_scheduled_execution_command(
+        command
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_payload_invalid",
+            detail="Artifact retention scheduled job payload summary does not match.",
+        )
+    redaction_summary = payload["redaction_summary"]
+    if (
+        redaction_summary.get("metadata_only") is not True
+        or redaction_summary.get("scheduled_command_embedded") is not True
+        or any(
+            redaction_summary.get(flag_name) is not False
+            for flag_name in (
+                "batch_plan_embedded",
+                "artifact_payload_included",
+                "prompt_content_included",
+                "generation_output_included",
+                "storage_locator_included",
+                "database_url_included",
+            )
+        )
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_payload_invalid",
+            detail="Artifact retention scheduled job payload redaction summary is invalid.",
+        )
+    parse_artifact_retention_timestamp(
+        required_string(
+            payload,
+            "requested_at",
+            "ae.artifact_retention_scheduled_job_requested_at_required",
+        ),
+        field_name="requested_at",
+    )
+    assert_artifact_retention_payload_safe(payload)
+    return payload
+
+
+def build_artifact_retention_scheduled_job(
+    command: dict[str, Any],
+    *,
+    trace_id: str,
+    request_id: str,
+    requested_at: str | None = None,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    payload = build_artifact_retention_scheduled_job_payload(
+        command,
+        requested_at=requested_at,
+    )
+    normalized_requested_at = payload["requested_at"]
+    normalized_idempotency_key = (
+        optional_text(idempotency_key)
+        or artifact_retention_scheduled_job_idempotency_key(payload)
+    )
+    job = build_common_job(
+        job_id=artifact_retention_scheduled_job_id(payload["command_id"]),
+        job_type=AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE,
+        trace_id=_normalize_retention_scheduled_job_trace_id(trace_id),
+        request_id=required_string(
+            {"request_id": request_id},
+            "request_id",
+            "ae.artifact_retention_scheduled_job_request_id_required",
+        ),
+        subject_ref=build_subject_ref(
+            AE_ARTIFACT_RETENTION_SCHEDULED_JOB_SUBJECT_TYPE,
+            payload["command_id"],
+        ),
+        idempotency_key=normalized_idempotency_key,
+        created_at=normalized_requested_at,
+        max_attempts=AE_ARTIFACT_RETENTION_SCHEDULED_JOB_DEFAULT_MAX_ATTEMPTS,
+        retryable=True,
+        links={
+            "ae_retention_batch_plan": "/api/v1/artifact-retention/batch-plan",
+            "ae_retention_purge": "/api/v1/artifact-retention/purge",
+            "ae_retention_history": "/api/v1/artifact-retention/executions",
+        },
+    )
+    job["artifact_retention_scheduled_job_schema_version"] = (
+        AE_ARTIFACT_RETENTION_SCHEDULED_JOB_SCHEMA_VERSION
+    )
+    job["payload"] = payload
+    return validate_artifact_retention_scheduled_job(job)
+
+
+def validate_artifact_retention_scheduled_job(
+    job: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(job, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_invalid",
+            detail="Artifact retention scheduled job must be an object.",
+        )
+    try:
+        validate_common_job(job)
+    except JobQueueError as exc:
+        raise ArtifactHandoffError(
+            status_code=exc.status_code,
+            error_code="ae.artifact_retention_scheduled_job_invalid",
+            detail=exc.detail,
+        ) from exc
+    if (
+        job.get("artifact_retention_scheduled_job_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULED_JOB_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_schema_invalid",
+            detail="Artifact retention scheduled job schema version is invalid.",
+        )
+    if job.get("job_type") != AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_invalid",
+            detail="Artifact retention scheduled job type is invalid.",
+        )
+    payload = validate_artifact_retention_scheduled_job_payload(job.get("payload"))
+    subject_ref = job.get("subject_ref")
+    if not isinstance(subject_ref, dict) or subject_ref != {
+        "type": AE_ARTIFACT_RETENTION_SCHEDULED_JOB_SUBJECT_TYPE,
+        "id": payload["command_id"],
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_invalid",
+            detail="Artifact retention scheduled job subject is invalid.",
+        )
+    if job["created_at"] != payload["requested_at"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_invalid",
+            detail="Artifact retention scheduled job created_at must match requested_at.",
+        )
+    if int(job["max_attempts"]) != AE_ARTIFACT_RETENTION_SCHEDULED_JOB_DEFAULT_MAX_ATTEMPTS:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_invalid",
+            detail="Artifact retention scheduled job max attempts is invalid.",
+        )
+    if job.get("retryable") is not True:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_invalid",
+            detail="Artifact retention scheduled job must be retryable.",
+        )
+    if not _retention_scheduled_job_links_valid(job.get("links")):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_invalid",
+            detail="Artifact retention scheduled job links are invalid.",
+        )
+    assert_artifact_retention_payload_safe(job)
+    return job
+
+
+def summarize_artifact_retention_scheduled_job(job: dict[str, Any]) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduled_job(job)
+    payload = validated["payload"]
+    return {
+        "job_id": validated["job_id"],
+        "job_type": validated["job_type"],
+        "status": validated["status"],
+        "command_id": payload["command_id"],
+        "source_plan_id": payload["source_plan_id"],
+        "trigger_type": payload["trigger_type"],
+        "execution_mode": payload["execution_mode"],
+        "candidate_count": payload["candidate_count"],
+        "selected_count": payload["selected_count"],
+        "history_write_expected": True,
+        "physical_delete_automation_enabled": False,
+    }
+
+
+def artifact_retention_scheduled_job_id(command_id: str) -> str:
+    normalized_command_id = required_string(
+        {"command_id": command_id},
+        "command_id",
+        "ae.artifact_retention_scheduled_job_command_id_required",
+    )
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            (
+                "https://nex-platform.local/jobs/ae/"
+                f"artifact-retention/scheduled-execution/{normalized_command_id}"
+            ),
+        )
+    )
+
+
+def artifact_retention_scheduled_job_idempotency_key(
+    payload: Mapping[str, Any],
+) -> str:
+    normalized_payload = validate_artifact_retention_scheduled_job_payload(
+        dict(payload)
+    )
+    return (
+        "ae-artifact-retention-scheduled-execution:"
+        f"{normalized_payload['tenant_id']}:"
+        f"{normalized_payload['workspace_id']}:"
+        f"{normalized_payload['owner_user_id']}:"
+        f"{normalized_payload['command_id']}"
+    )
+
+
+def _normalize_retention_scheduled_job_trace_id(value: str) -> str:
+    normalized = required_string(
+        {"trace_id": value},
+        "trace_id",
+        "ae.artifact_retention_scheduled_job_trace_id_required",
+    )
+    if re.fullmatch(r"[0-9a-f]{32}", normalized):
+        return normalized
+    raise ArtifactHandoffError(
+        status_code=422,
+        error_code="ae.artifact_retention_scheduled_job_trace_id_invalid",
+        detail="Artifact retention scheduled job trace_id must be 32 lowercase hex characters.",
+    )
+
+
+def _retention_scheduled_job_links_valid(value: Any) -> bool:
+    return isinstance(value, dict) and value == {
+        "ae_retention_batch_plan": "/api/v1/artifact-retention/batch-plan",
+        "ae_retention_purge": "/api/v1/artifact-retention/purge",
+        "ae_retention_history": "/api/v1/artifact-retention/executions",
     }
 
 

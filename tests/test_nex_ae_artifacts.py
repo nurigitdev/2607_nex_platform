@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+from copy import deepcopy
 from io import BytesIO
 from types import SimpleNamespace
 from typing import Any
@@ -35,6 +36,9 @@ from nex_ae_api.artifacts import (
     AE_ARTIFACT_RETENTION_SCHEDULE_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_COMMAND_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_WORKER_RESULT_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULED_JOB_PAYLOAD_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULED_JOB_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE,
     HttpCxArtifactSourceClient,
     InMemoryRenderedArtifactStorage,
     LocalRenderedArtifactStorage,
@@ -67,6 +71,8 @@ from nex_ae_api.artifacts import (
     build_artifact_retention_policy,
     build_artifact_retention_schedule,
     build_artifact_retention_scheduled_execution_command,
+    build_artifact_retention_scheduled_job,
+    build_artifact_retention_scheduled_job_payload,
     build_default_artifact_handoff_store,
     build_default_artifact_retention_execution_history_store,
     build_default_artifact_record_store,
@@ -104,10 +110,13 @@ from nex_ae_api.artifacts import (
     summarize_artifact_retention_batch_plan,
     summarize_artifact_retention_scheduled_execution_command,
     summarize_artifact_retention_scheduled_execution_worker_result,
+    summarize_artifact_retention_scheduled_job,
     summarize_artifact_retention_execution_history,
     target_formats_from_payload,
     parse_artifact_retention_timestamp,
     run_artifact_retention_scheduled_execution_mock_worker,
+    artifact_retention_scheduled_job_id,
+    artifact_retention_scheduled_job_idempotency_key,
     assert_artifact_retention_history_payload_safe,
     validate_artifact_retention_batch_plan,
     validate_artifact_retention_execution,
@@ -116,6 +125,8 @@ from nex_ae_api.artifacts import (
     validate_artifact_retention_schedule,
     validate_artifact_retention_scheduled_execution_command,
     validate_artifact_retention_scheduled_execution_worker_result,
+    validate_artifact_retention_scheduled_job,
+    validate_artifact_retention_scheduled_job_payload,
     validate_artifact_handoff_record,
     validate_structured_draft_for_markdown_render,
 )
@@ -3241,6 +3252,325 @@ def test_artifact_retention_scheduled_execution_command_noop_and_validation_edge
             "ae.artifact_retention_scheduled_command_invalid"
         )
         assert detail in request_exc.value.detail
+
+
+def test_artifact_retention_scheduled_job_contract_builds_common_job_payload() -> None:
+    store = ArtifactRecordStore()
+    save_rendered_retention_artifact(
+        store,
+        artifact_request_id="scheduled-job-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+        target_formats=["MD", "HTML_PREVIEW"],
+    )
+    save_rendered_retention_artifact(
+        store,
+        artifact_request_id="scheduled-job-old-002",
+        updated_at="2026-07-31T01:00:00Z",
+        target_formats=["MD"],
+    )
+    plan = store.plan_retention_batch(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit="10",
+        max_delete_count="1",
+        checked_at="2026-09-01T02:10:00Z",
+        requested_by={"actor_type": "service", "actor_id": "nex-ag"},
+        idempotency_key="scheduled-job-plan-001",
+    )
+    command = build_artifact_retention_scheduled_execution_command(
+        plan,
+        trigger_type="scheduler_tick",
+        command_created_at="2026-09-01T02:15:00Z",
+        idempotency_key="scheduled-job-command-001",
+    )
+
+    payload = build_artifact_retention_scheduled_job_payload(
+        command,
+        requested_at="2026-09-01T02:16:00Z",
+    )
+    job = build_artifact_retention_scheduled_job(
+        command,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        requested_at="2026-09-01T02:16:00Z",
+    )
+    serialized = json.dumps(job, ensure_ascii=False, sort_keys=True)
+
+    assert payload["payload_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULED_JOB_PAYLOAD_SCHEMA_VERSION
+    )
+    assert payload["scheduled_command"] == command
+    assert payload["command_summary"] == (
+        summarize_artifact_retention_scheduled_execution_command(command)
+    )
+    assert payload["idempotency_key"] == "scheduled-job-command-001"
+    assert payload["redaction_summary"] == {
+        "metadata_only": True,
+        "scheduled_command_embedded": True,
+        "batch_plan_embedded": False,
+        "artifact_payload_included": False,
+        "prompt_content_included": False,
+        "generation_output_included": False,
+        "storage_locator_included": False,
+        "database_url_included": False,
+    }
+    assert validate_artifact_retention_scheduled_job_payload(payload) is payload
+    assert job["artifact_retention_scheduled_job_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULED_JOB_SCHEMA_VERSION
+    )
+    assert job["job_schema_version"] == "common_job.v1"
+    assert job["job_id"] == artifact_retention_scheduled_job_id(command["command_id"])
+    assert job["job_type"] == AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE
+    assert job["status"] == "QUEUED"
+    assert job["trace_id"] == TRACE_ID
+    assert job["request_id"] == REQUEST_ID
+    assert job["subject_ref"] == {
+        "type": "ae.artifact_retention.scheduled_execution",
+        "id": command["command_id"],
+    }
+    assert job["idempotency_key"] == (
+        artifact_retention_scheduled_job_idempotency_key(payload)
+    )
+    assert job["attempt_count"] == 0
+    assert job["max_attempts"] == 3
+    assert job["retryable"] is True
+    assert job["created_at"] == "2026-09-01T02:16:00Z"
+    assert job["updated_at"] == "2026-09-01T02:16:00Z"
+    assert job["payload"] == payload
+    assert job["links"] == {
+        "ae_retention_batch_plan": "/api/v1/artifact-retention/batch-plan",
+        "ae_retention_purge": "/api/v1/artifact-retention/purge",
+        "ae_retention_history": "/api/v1/artifact-retention/executions",
+    }
+    assert summarize_artifact_retention_scheduled_job(job) == {
+        "job_id": job["job_id"],
+        "job_type": "ae.artifact_retention.scheduled_execution",
+        "status": "QUEUED",
+        "command_id": command["command_id"],
+        "source_plan_id": plan["plan_id"],
+        "trigger_type": "scheduler_tick",
+        "execution_mode": "DRY_RUN",
+        "candidate_count": 2,
+        "selected_count": 1,
+        "history_write_expected": True,
+        "physical_delete_automation_enabled": False,
+    }
+    assert validate_artifact_retention_scheduled_job(job) is job
+    assert "storage_ref" not in serialized
+    assert "postgresql://" not in serialized
+    assert "nuri1004" not in serialized
+
+
+def test_artifact_retention_scheduled_job_contract_noop_and_validation_edges() -> None:
+    candidate_filter = build_artifact_retention_candidate_filter(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        limit="10",
+    )
+    noop_plan = build_artifact_retention_batch_plan(
+        build_artifact_retention_candidate_collection(
+            [],
+            candidate_filter=candidate_filter,
+        ),
+        checked_at="2026-09-01T02:10:00Z",
+    )
+    noop_command = build_artifact_retention_scheduled_execution_command(
+        noop_plan,
+        command_created_at="2026-09-01T02:15:00Z",
+    )
+    with pytest.raises(ArtifactHandoffError) as noop_payload_exc:
+        build_artifact_retention_scheduled_job_payload(noop_command)
+    assert noop_payload_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_job_not_ready"
+    )
+    with pytest.raises(ArtifactHandoffError) as noop_job_exc:
+        build_artifact_retention_scheduled_job(
+            noop_command,
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+        )
+    assert noop_job_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_job_not_ready"
+    )
+
+    store = ArtifactRecordStore()
+    save_rendered_retention_artifact(
+        store,
+        artifact_request_id="scheduled-job-edge-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    command = build_artifact_retention_scheduled_execution_command(
+        store.plan_retention_batch(
+            tenant_id="tenant-001",
+            workspace_id="workspace-001",
+            owner_user_id="user-001",
+            retention_days="30",
+            as_of="2026-09-01T00:00:00Z",
+            scan_limit="10",
+            checked_at="2026-09-01T02:10:00Z",
+        ),
+        command_created_at="2026-09-01T02:15:00Z",
+        idempotency_key="scheduled-job-edge-command-001",
+    )
+    payload = build_artifact_retention_scheduled_job_payload(
+        command,
+        requested_at="2026-09-01T02:16:00Z",
+    )
+    job = build_artifact_retention_scheduled_job(
+        command,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        requested_at="2026-09-01T02:16:00Z",
+    )
+
+    with pytest.raises(ArtifactHandoffError) as payload_type_exc:
+        validate_artifact_retention_scheduled_job_payload([])  # type: ignore[arg-type]
+    assert payload_type_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_job_payload_invalid"
+    )
+    with pytest.raises(ArtifactHandoffError) as payload_schema_exc:
+        validate_artifact_retention_scheduled_job_payload(
+            {**payload, "payload_schema_version": "wrong"}
+        )
+    assert payload_schema_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_job_payload_schema_invalid"
+    )
+
+    payload_mutations = [
+        ({"scheduled_command": []}, "scheduled_command"),
+        ({"estimated_deleted_counts": []}, "estimated_deleted_counts"),
+        ({"requested_by": []}, "requested_by"),
+    ]
+    for mutation, detail in payload_mutations:
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_scheduled_job_payload(
+                {**payload, **mutation}
+            )
+        assert exc_info.value.error_code == (
+            "ae.artifact_retention_scheduled_job_payload_invalid"
+        )
+        assert detail in exc_info.value.detail
+
+    mismatched_command_id = deepcopy(payload)
+    mismatched_command_id["scheduled_command"]["command_id"] = "other-command"
+    with pytest.raises(ArtifactHandoffError) as command_id_exc:
+        validate_artifact_retention_scheduled_job_payload(mismatched_command_id)
+    assert command_id_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_job_payload_invalid"
+    )
+    assert "command command_id" in command_id_exc.value.detail
+
+    mismatched_estimates = deepcopy(payload)
+    mismatched_estimates["estimated_deleted_counts"]["artifacts"] = 7
+    with pytest.raises(ArtifactHandoffError) as estimates_exc:
+        validate_artifact_retention_scheduled_job_payload(mismatched_estimates)
+    assert estimates_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_job_payload_invalid"
+    )
+    assert "estimates" in estimates_exc.value.detail
+
+    mismatched_summary = deepcopy(payload)
+    mismatched_summary["command_summary"]["selected_count"] = 99
+    with pytest.raises(ArtifactHandoffError) as summary_exc:
+        validate_artifact_retention_scheduled_job_payload(mismatched_summary)
+    assert summary_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_job_payload_invalid"
+    )
+    assert "summary" in summary_exc.value.detail
+
+    bad_redaction = deepcopy(payload)
+    bad_redaction["redaction_summary"]["storage_locator_included"] = True
+    with pytest.raises(ArtifactHandoffError) as redaction_exc:
+        validate_artifact_retention_scheduled_job_payload(bad_redaction)
+    assert redaction_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_job_payload_invalid"
+    )
+    assert "redaction" in redaction_exc.value.detail
+
+    unsafe_payload = {**payload, "database_url": "postgresql://private"}
+    with pytest.raises(ArtifactHandoffError) as unsafe_payload_exc:
+        validate_artifact_retention_scheduled_job_payload(unsafe_payload)
+    assert unsafe_payload_exc.value.error_code == (
+        "ae.artifact_retention_payload_unsafe"
+    )
+
+    with pytest.raises(ArtifactHandoffError) as invalid_trace_exc:
+        build_artifact_retention_scheduled_job(
+            command,
+            trace_id="bad-trace",
+            request_id=REQUEST_ID,
+        )
+    assert invalid_trace_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_job_trace_id_invalid"
+    )
+    with pytest.raises(ArtifactHandoffError) as missing_request_exc:
+        build_artifact_retention_scheduled_job(
+            command,
+            trace_id=TRACE_ID,
+            request_id=" ",
+        )
+    assert missing_request_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_job_request_id_required"
+    )
+
+    with pytest.raises(ArtifactHandoffError) as job_type_exc:
+        validate_artifact_retention_scheduled_job([])  # type: ignore[arg-type]
+    assert job_type_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_job_invalid"
+    )
+    job_mutations = [
+        (
+            {"job_schema_version": "wrong"},
+            "ae.artifact_retention_scheduled_job_invalid",
+            "job_schema_version",
+        ),
+        (
+            {"artifact_retention_scheduled_job_schema_version": "wrong"},
+            "ae.artifact_retention_scheduled_job_schema_invalid",
+            "schema version",
+        ),
+        (
+            {"job_type": "ae.other"},
+            "ae.artifact_retention_scheduled_job_invalid",
+            "type",
+        ),
+        (
+            {"subject_ref": {"type": "ae.other", "id": payload["command_id"]}},
+            "ae.artifact_retention_scheduled_job_invalid",
+            "subject",
+        ),
+        (
+            {"created_at": "2026-09-01T02:17:00Z"},
+            "ae.artifact_retention_scheduled_job_invalid",
+            "created_at",
+        ),
+        (
+            {"max_attempts": 1},
+            "ae.artifact_retention_scheduled_job_invalid",
+            "max attempts",
+        ),
+        (
+            {"retryable": False},
+            "ae.artifact_retention_scheduled_job_invalid",
+            "retryable",
+        ),
+        (
+            {"links": {}},
+            "ae.artifact_retention_scheduled_job_invalid",
+            "links",
+        ),
+    ]
+    for mutation, error_code, detail in job_mutations:
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_scheduled_job({**job, **mutation})
+        assert exc_info.value.error_code == error_code
+        assert detail in exc_info.value.detail
 
 
 def test_artifact_retention_scheduled_execution_mock_worker_writes_dry_run_history() -> None:

@@ -201,6 +201,11 @@
       "schema": "schemas/generation/ae_artifact_retention_scheduled_execution_command.v1.schema.json"
     },
     {
+      "name": "ae_artifact_retention_scheduled_job_queued_dry_run",
+      "path": "examples/generation/ae_artifact_retention_scheduled_job.queued_dry_run.json",
+      "schema": "schemas/generation/ae_artifact_retention_scheduled_job.v1.schema.json"
+    },
+    {
       "name": "ae_artifact_retention_execution_dry_run_planned",
       "path": "examples/generation/ae_artifact_retention_execution.dry_run_planned.json",
       "schema": "schemas/generation/ae_artifact_retention_execution.v1.schema.json"

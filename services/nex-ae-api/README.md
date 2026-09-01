@@ -527,3 +527,8 @@ Artifact library management:
   retention uses `common_job.v1` and the shared worker runner, keeps scheduler
   daemon startup and physical delete automation deferred, and limits the first
   runtime path to dry-run scheduled execution with persisted history.
+- Slice 0492 adds `ae_artifact_retention_scheduled_job.v1`. READY scheduled
+  execution commands can now be wrapped as retryable `common_job.v1` envelopes
+  with metadata-only payloads, deterministic job IDs/idempotency, AE API links,
+  and redaction flags that keep raw content, storage locators, DB URLs, and
+  provider secrets out of the queue contract.

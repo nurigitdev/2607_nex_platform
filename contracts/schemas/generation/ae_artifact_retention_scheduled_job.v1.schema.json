@@ -1,0 +1,444 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/ae_artifact_retention_scheduled_job.v1.schema.json",
+  "title": "NeX AE Artifact Retention Scheduled Job",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_retention_scheduled_job_schema_version",
+    "job_schema_version",
+    "job_id",
+    "job_type",
+    "status",
+    "trace_id",
+    "request_id",
+    "subject_ref",
+    "idempotency_key",
+    "attempt_count",
+    "max_attempts",
+    "retryable",
+    "links",
+    "created_at",
+    "updated_at",
+    "payload"
+  ],
+  "properties": {
+    "artifact_retention_scheduled_job_schema_version": {
+      "const": "ae_artifact_retention_scheduled_job.v1"
+    },
+    "job_schema_version": {
+      "const": "common_job.v1"
+    },
+    "job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "job_type": {
+      "const": "ae.artifact_retention.scheduled_execution"
+    },
+    "status": {
+      "enum": [
+        "QUEUED",
+        "RUNNING",
+        "SUCCEEDED",
+        "FAILED",
+        "CANCELLED"
+      ]
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subject_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "const": "ae.artifact_retention.scheduled_execution"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempt_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_attempts": {
+      "const": 3
+    },
+    "retryable": {
+      "const": true
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ae_retention_batch_plan",
+        "ae_retention_purge",
+        "ae_retention_history"
+      ],
+      "properties": {
+        "ae_retention_batch_plan": {
+          "const": "/api/v1/artifact-retention/batch-plan"
+        },
+        "ae_retention_purge": {
+          "const": "/api/v1/artifact-retention/purge"
+        },
+        "ae_retention_history": {
+          "const": "/api/v1/artifact-retention/executions"
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "$ref": "#/$defs/payload"
+    },
+    "error": {
+      "type": "object"
+    },
+    "locked_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "locked_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "available_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload_schema_version",
+        "command_id",
+        "source_plan_id",
+        "tenant_id",
+        "workspace_id",
+        "owner_user_id",
+        "trigger_type",
+        "scheduler_status",
+        "command_status",
+        "execution_mode",
+        "retention_days_after_logical_purge",
+        "scan_limit",
+        "max_delete_count",
+        "candidate_count",
+        "selected_count",
+        "estimated_deleted_counts",
+        "command_summary",
+        "scheduled_command",
+        "requested_by",
+        "idempotency_key",
+        "requested_at",
+        "redaction_summary"
+      ],
+      "properties": {
+        "payload_schema_version": {
+          "const": "ae_artifact_retention_scheduled_job_payload.v1"
+        },
+        "command_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_plan_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenant_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_user_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trigger_type": {
+          "enum": [
+            "scheduler_tick",
+            "operator_dispatch"
+          ]
+        },
+        "scheduler_status": {
+          "const": "DISABLED"
+        },
+        "command_status": {
+          "const": "READY"
+        },
+        "execution_mode": {
+          "const": "DRY_RUN"
+        },
+        "retention_days_after_logical_purge": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 365
+        },
+        "scan_limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "max_delete_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "candidate_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "selected_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "estimated_deleted_counts": {
+          "$ref": "#/$defs/deleted_counts"
+        },
+        "command_summary": {
+          "$ref": "#/$defs/command_summary"
+        },
+        "scheduled_command": {
+          "type": "object",
+          "required": [
+            "artifact_retention_scheduled_execution_command_schema_version",
+            "command_id",
+            "command_status",
+            "execution_mode",
+            "execution_request"
+          ],
+          "properties": {
+            "artifact_retention_scheduled_execution_command_schema_version": {
+              "const": "ae_artifact_retention_scheduled_execution_command.v1"
+            },
+            "command_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "command_status": {
+              "const": "READY"
+            },
+            "execution_mode": {
+              "const": "DRY_RUN"
+            },
+            "execution_request": {
+              "type": "object"
+            }
+          }
+        },
+        "requested_by": {
+          "$ref": "#/$defs/requested_by"
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requested_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "redaction_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "metadata_only",
+            "scheduled_command_embedded",
+            "batch_plan_embedded",
+            "artifact_payload_included",
+            "prompt_content_included",
+            "generation_output_included",
+            "storage_locator_included",
+            "database_url_included"
+          ],
+          "properties": {
+            "metadata_only": {
+              "const": true
+            },
+            "scheduled_command_embedded": {
+              "const": true
+            },
+            "batch_plan_embedded": {
+              "const": false
+            },
+            "artifact_payload_included": {
+              "const": false
+            },
+            "prompt_content_included": {
+              "const": false
+            },
+            "generation_output_included": {
+              "const": false
+            },
+            "storage_locator_included": {
+              "const": false
+            },
+            "database_url_included": {
+              "const": false
+            }
+          }
+        }
+      }
+    },
+    "deleted_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifacts",
+        "source_refs",
+        "versions",
+        "render_jobs",
+        "files",
+        "links",
+        "storage_files"
+      ],
+      "properties": {
+        "artifacts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source_refs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "versions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "render_jobs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "links": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "storage_files": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "command_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command_status",
+        "trigger_type",
+        "scheduler_status",
+        "execution_mode",
+        "candidate_count",
+        "selected_count",
+        "estimated_deleted_artifacts",
+        "estimated_deleted_storage_files",
+        "command_created_at",
+        "next_action"
+      ],
+      "properties": {
+        "command_status": {
+          "const": "READY"
+        },
+        "trigger_type": {
+          "enum": [
+            "scheduler_tick",
+            "operator_dispatch"
+          ]
+        },
+        "scheduler_status": {
+          "const": "DISABLED"
+        },
+        "execution_mode": {
+          "const": "DRY_RUN"
+        },
+        "candidate_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "selected_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "estimated_deleted_artifacts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "estimated_deleted_storage_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "command_created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "next_action": {
+          "const": "manual_dispatch_after_operator_approval"
+        }
+      }
+    },
+    "requested_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor_type",
+        "actor_id",
+        "service_id"
+      ],
+      "properties": {
+        "actor_type": {
+          "enum": [
+            "service",
+            "user"
+          ]
+        },
+        "actor_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "service_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "artifact_retention_scheduled_job_schema_version": "ae_artifact_retention_scheduled_job.v1",
+  "job_schema_version": "common_job.v1",
+  "job_id": "56e0aa30-4a58-5863-b3d7-47203eb1b3d4",
+  "job_type": "ae.artifact_retention.scheduled_execution",
+  "status": "QUEUED",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "retention-scheduled-job-001",
+  "subject_ref": {
+    "type": "ae.artifact_retention.scheduled_execution",
+    "id": "b6c5f4c7-5d57-5f01-884b-8ac1471b31a0"
+  },
+  "idempotency_key": "ae-artifact-retention-scheduled-execution:tenant-001:workspace-001:user-001:b6c5f4c7-5d57-5f01-884b-8ac1471b31a0",
+  "attempt_count": 0,
+  "max_attempts": 3,
+  "retryable": true,
+  "links": {
+    "ae_retention_batch_plan": "/api/v1/artifact-retention/batch-plan",
+    "ae_retention_purge": "/api/v1/artifact-retention/purge",
+    "ae_retention_history": "/api/v1/artifact-retention/executions"
+  },
+  "created_at": "2026-09-01T02:16:00Z",
+  "updated_at": "2026-09-01T02:16:00Z",
+  "payload": {
+    "payload_schema_version": "ae_artifact_retention_scheduled_job_payload.v1",
+    "command_id": "b6c5f4c7-5d57-5f01-884b-8ac1471b31a0",
+    "source_plan_id": "3f4b0b3f-1c1a-5c5a-a73f-9de1d42b4101",
+    "tenant_id": "tenant-001",
+    "workspace_id": "workspace-001",
+    "owner_user_id": "user-001",
+    "trigger_type": "scheduler_tick",
+    "scheduler_status": "DISABLED",
+    "command_status": "READY",
+    "execution_mode": "DRY_RUN",
+    "retention_days_after_logical_purge": 30,
+    "scan_limit": 10,
+    "max_delete_count": 1,
+    "candidate_count": 2,
+    "selected_count": 1,
+    "estimated_deleted_counts": {
+      "artifacts": 1,
+      "source_refs": 0,
+      "versions": 1,
+      "render_jobs": 1,
+      "files": 2,
+      "links": 4,
+      "storage_files": 2
+    },
+    "command_summary": {
+      "command_status": "READY",
+      "trigger_type": "scheduler_tick",
+      "scheduler_status": "DISABLED",
+      "execution_mode": "DRY_RUN",
+      "candidate_count": 2,
+      "selected_count": 1,
+      "estimated_deleted_artifacts": 1,
+      "estimated_deleted_storage_files": 2,
+      "command_created_at": "2026-09-01T02:15:00Z",
+      "next_action": "manual_dispatch_after_operator_approval"
+    },
+    "scheduled_command": {
+      "artifact_retention_scheduled_execution_command_schema_version": "ae_artifact_retention_scheduled_execution_command.v1",
+      "command_id": "b6c5f4c7-5d57-5f01-884b-8ac1471b31a0",
+      "command_status": "READY",
+      "execution_mode": "DRY_RUN",
+      "execution_request": {
+        "method": "POST",
+        "route": "/api/v1/artifact-retention/purge"
+      }
+    },
+    "requested_by": {
+      "actor_type": "service",
+      "actor_id": "nex-ag",
+      "service_id": "nex-ae-api"
+    },
+    "idempotency_key": "scheduled-command-001",
+    "requested_at": "2026-09-01T02:16:00Z",
+    "redaction_summary": {
+      "metadata_only": true,
+      "scheduled_command_embedded": true,
+      "batch_plan_embedded": false,
+      "artifact_payload_included": false,
+      "prompt_content_included": false,
+      "generation_output_included": false,
+      "storage_locator_included": false,
+      "database_url_included": false
+    }
+  }
+}
