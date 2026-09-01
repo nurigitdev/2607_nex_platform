@@ -431,3 +431,7 @@ Artifact library management:
   rendered logical-purge artifacts, verifies dry-run and blocked execute retain
   rows/files, executes guarded purge, checks direct DB row counts and local
   storage file counts, then cleans up smoke data.
+- Slice 0470 closes S47 by checking the retention boundary audit, policy and
+  execution contracts, candidate read-model/API, guarded purge store/API,
+  PostgreSQL smoke evidence, quality gate hooks, and metadata-only redaction
+  posture remain connected end to end.
