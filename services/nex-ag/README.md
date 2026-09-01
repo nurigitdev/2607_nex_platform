@@ -362,6 +362,10 @@ Unified operations:
   scheduled jobs at `/admin/v1/operations/artifact-retention/scheduled-jobs`.
   It reports common JobQueue status, retry attention, safe AE route links, and
   retention estimates while keeping AE as the system of record.
+- Slice 0497 adds a protected AG dispatch guardrail at
+  `/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch`. Operators
+  must set `confirm_dispatch=true`; AG rechecks the AE batch plan, then calls
+  the AE scheduled-job admission route without directly enqueueing AE jobs.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

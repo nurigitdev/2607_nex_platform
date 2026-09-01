@@ -12,6 +12,7 @@ from nex_ag.artifact_operations import (
     AG_ARTIFACT_OPERATION_LIFECYCLE_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_BATCH_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_DISPATCH_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_JOB_PROJECTION_SCHEMA_VERSION,
     AE_ARTIFACT_SOURCE_SERVICE_ID,
     DEFAULT_AE_ARTIFACT_TIMEOUT_SECONDS,
@@ -27,6 +28,7 @@ from nex_ag.artifact_operations import (
     build_artifact_operation_lifecycle_projection,
     build_artifact_operation_retention_batch_projection,
     build_artifact_operation_retention_history_projection,
+    build_artifact_operation_retention_scheduled_dispatch_projection,
     build_artifact_operation_retention_scheduled_job_projection,
     build_default_ae_artifact_operations_client,
     register_artifact_operation_routes,
@@ -35,6 +37,7 @@ from nex_ag.artifact_operations import (
     summarize_artifact_operation_lifecycle,
     summarize_artifact_retention_batch_operations,
     summarize_artifact_retention_history_operations,
+    summarize_artifact_retention_scheduled_dispatch,
     summarize_artifact_retention_scheduled_job_operations,
 )
 import nex_ag.artifact_operations as artifact_operations
@@ -684,6 +687,62 @@ def artifact_retention_scheduled_job_collection_payload() -> dict[str, Any]:
     }
 
 
+def artifact_retention_scheduled_dispatch_response_payload() -> dict[str, Any]:
+    job = artifact_retention_scheduled_job_payload()
+    return {
+        "artifact_retention_scheduled_job_enqueue_result_schema_version": (
+            "ae_artifact_retention_scheduled_job_enqueue_result.v1"
+        ),
+        "service_id": "nex-ae-api",
+        "source_plan_id": "retention-batch-plan-0409",
+        "command_id": job["payload"]["command_id"],
+        "job_id": job["job_id"],
+        "job_type": job["job_type"],
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+        "owner_user_id": "user-0409",
+        "trigger_type": "operator_dispatch",
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "idempotency_key": "dispatch-idem-0409",
+        "enqueue_status": "ENQUEUED",
+        "job_enqueued": True,
+        "duplicate_returned": False,
+        "queue_admission": {
+            "queue_service_id": "nex-ae-api",
+            "queue_backend": "service_job_queue",
+            "target_job_type": "ae.artifact_retention.scheduled_execution",
+            "job_enqueued": True,
+            "worker_execution_performed": False,
+            "scheduler_daemon_started": False,
+            "physical_delete_automation_enabled": False,
+            "database_url": "DATABASE_URL_SHOULD_NOT_LEAK",
+        },
+        "command_summary": job["payload"]["command_summary"],
+        "job_summary": {
+            "job_id": job["job_id"],
+            "job_type": job["job_type"],
+            "status": "QUEUED",
+            "command_id": job["payload"]["command_id"],
+            "source_plan_id": "retention-batch-plan-0409",
+            "trigger_type": "operator_dispatch",
+            "execution_mode": "DRY_RUN",
+            "candidate_count": 2,
+            "selected_count": 1,
+            "history_write_expected": True,
+            "physical_delete_automation_enabled": False,
+        },
+        "admission": {
+            "command": {
+                "execution_request": {
+                    "storage_ref": "/data/nex-platform/ae/private.md",
+                }
+            }
+        },
+        "enqueued_job": job,
+    }
+
+
 def artifact_client() -> InMemoryAeArtifactOperationsClient:
     return InMemoryAeArtifactOperationsClient(
         artifacts={ARTIFACT_ID: artifact_record()},
@@ -1170,6 +1229,113 @@ def test_artifact_operation_retention_scheduled_job_projection_handles_sparse_ed
     assert projection["source_status"]["jobs_loaded"] is False
     assert projection["source_status"]["errors"][0]["error_code"] == (
         "ag.optional_retention_scheduled_job_warning"
+    )
+
+
+def test_artifact_operation_retention_scheduled_dispatch_projection_summarizes_and_redacts() -> None:
+    dispatch_request = {
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+        "owner_user_id": "user-0409",
+        "retention_days": 30,
+        "as_of": "2026-09-01T00:00:00Z",
+        "scan_limit": 20,
+        "max_delete_count": 1,
+        "checked_at": "2026-09-01T02:30:00Z",
+        "trigger_type": "operator-dispatch",
+        "requested_at": "2026-09-01T02:35:00Z",
+        "idempotency_key": "dispatch-idem-0409",
+        "confirm_dispatch": True,
+        "database_url": "DATABASE_URL_SHOULD_NOT_LEAK",
+    }
+    projection = build_artifact_operation_retention_scheduled_dispatch_projection(
+        dispatch_request=dispatch_request,
+        batch_plan=artifact_retention_batch_plan_payload(),
+        dispatch_response=artifact_retention_scheduled_dispatch_response_payload(),
+        source_client=InMemoryAeArtifactOperationsClient(),
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_DISPATCH_SCHEMA_VERSION
+    )
+    assert projection["operation_type"] == "ae_artifact_retention_scheduled_dispatch"
+    assert projection["dispatch_request"] == {
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+        "owner_user_id": "user-0409",
+        "retention_days": 30,
+        "as_of": "2026-09-01T00:00:00Z",
+        "scan_limit": 20,
+        "max_delete_count": 1,
+        "checked_at": "2026-09-01T02:30:00Z",
+        "trigger_type": "operator_dispatch",
+        "requested_at": "2026-09-01T02:35:00Z",
+        "idempotency_key": "dispatch-idem-0409",
+        "confirm_dispatch": True,
+    }
+    assert projection["dispatch_response"]["enqueue_status"] == "ENQUEUED"
+    assert projection["dispatch_response"]["queue_admission"] == {
+        "queue_service_id": "nex-ae-api",
+        "queue_backend": "service_job_queue",
+        "target_job_type": "ae.artifact_retention.scheduled_execution",
+        "job_enqueued": True,
+        "worker_execution_performed": False,
+        "scheduler_daemon_started": False,
+        "physical_delete_automation_enabled": False,
+    }
+    assert projection["summary"] == summarize_artifact_retention_scheduled_dispatch(
+        batch_plan=projection["batch_plan"],
+        dispatch_response=projection["dispatch_response"],
+    )
+    assert projection["summary"]["dispatch_available"] is True
+    assert projection["summary"]["job_enqueued"] is True
+    assert projection["summary"]["job_status"] == "QUEUED"
+    assert projection["source_status"]["dispatch_response_loaded"] is True
+    assert projection["operator_guidance"]["confirm_dispatch_required"] is True
+    assert projection["operator_guidance"]["ag_direct_job_enqueue_allowed"] is False
+    assert "execution_request" not in str(projection)
+    assert "storage_ref" not in str(projection)
+    assert "DATABASE_URL_SHOULD_NOT_LEAK" not in str(projection)
+    assert "nuri1004" not in str(projection)
+
+
+def test_artifact_operation_retention_scheduled_dispatch_projection_handles_sparse_edges() -> None:
+    projection = build_artifact_operation_retention_scheduled_dispatch_projection(
+        dispatch_request={
+            "tenant_id": "tenant-0409",
+            "workspace_id": "workspace-0409",
+            "owner_user_id": "user-0409",
+            "scan_limit": "bad",
+            "max_delete_count": "bad",
+            "trigger_type": "bad",
+            "confirm_dispatch": False,
+        },
+        batch_plan={
+            "mode": "dry-run",
+            "plan_status": "noop",
+            "selected_count": "0",
+        },
+        dispatch_response=[],
+        source_errors=[
+            AeArtifactOperationsError(
+                error_code="ag.optional_retention_scheduled_dispatch_warning",
+                detail="partial scheduled dispatch source warning",
+                status_code=503,
+            )
+        ],
+    )
+
+    assert projection["projection_status"] == "DEGRADED"
+    assert projection["dispatch_request"]["trigger_type"] is None
+    assert projection["dispatch_request"]["confirm_dispatch"] is False
+    assert projection["dispatch_response"] == {}
+    assert projection["summary"]["dispatch_available"] is False
+    assert projection["summary"]["job_enqueued"] is False
+    assert projection["summary"]["job_status"] is None
+    assert projection["source_status"]["dispatch_response_loaded"] is False
+    assert projection["source_status"]["errors"][0]["error_code"] == (
+        "ag.optional_retention_scheduled_dispatch_warning"
     )
 
 
@@ -1762,6 +1928,47 @@ def test_in_memory_artifact_operations_client_lists_retention_scheduled_jobs() -
     assert empty["metadata"]["system_of_record"] == AE_ARTIFACT_SOURCE_SERVICE_ID
 
 
+def test_in_memory_artifact_operations_client_dispatches_retention_scheduled_job() -> None:
+    cached_key = artifact_operations._artifact_retention_scheduled_dispatch_cache_key(
+        plan_id="retention-batch-plan-0409",
+        trigger_type="operator_dispatch",
+        idempotency_key="dispatch-idem-0409",
+    )
+    client = InMemoryAeArtifactOperationsClient(
+        artifact_retention_scheduled_dispatch_results={
+            cached_key: artifact_retention_scheduled_dispatch_response_payload()
+        }
+    )
+
+    cached = client.dispatch_artifact_retention_scheduled_job(
+        batch_plan=artifact_retention_batch_plan_payload(),
+        trigger_type="operator_dispatch",
+        requested_at="2026-09-01T02:35:00Z",
+        idempotency_key="dispatch-idem-0409",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    synthesized = InMemoryAeArtifactOperationsClient().dispatch_artifact_retention_scheduled_job(
+        batch_plan=artifact_retention_batch_plan_payload(),
+        trigger_type="operator_dispatch",
+        requested_at="2026-09-01T02:35:00Z",
+        idempotency_key=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    cached["job_id"] = "mutated"
+
+    assert client.artifact_retention_scheduled_dispatch_results[cached_key][
+        "job_id"
+    ] == "job-retention-scheduled-0409"
+    assert synthesized["enqueue_status"] == "ENQUEUED"
+    assert synthesized["job_enqueued"] is True
+    assert synthesized["enqueued_job"]["status"] == "QUEUED"
+    assert synthesized["enqueued_job"]["payload"]["execution_mode"] == "DRY_RUN"
+    assert synthesized["queue_admission"]["worker_execution_performed"] is False
+    assert synthesized["queue_admission"]["physical_delete_automation_enabled"] is False
+
+
 def test_in_memory_artifact_operations_client_skips_non_matching_scope() -> None:
     tenant_mismatch = {
         **artifact_record(include_private=False),
@@ -2263,6 +2470,170 @@ def test_artifact_retention_scheduled_job_operations_route_auth_filter_and_error
     )
 
 
+def test_artifact_retention_scheduled_dispatch_route_returns_projection() -> None:
+    client = build_app(artifact_client())
+
+    response = client.post(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch",
+        json={
+            "tenant_id": "tenant-0409",
+            "workspace_id": "workspace-0409",
+            "owner_user_id": "user-0409",
+            "retention_days": "30",
+            "as_of": "2026-09-01T00:00:00Z",
+            "scan_limit": "20",
+            "max_delete_count": "1",
+            "checked_at": "2026-09-01T02:30:00Z",
+            "trigger_type": "operator-dispatch",
+            "requested_at": "2026-09-01T02:35:00Z",
+            "idempotency_key": "dispatch-idem-0409",
+            "confirm_dispatch": True,
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_DISPATCH_SCHEMA_VERSION
+    )
+    assert payload["operation_type"] == "ae_artifact_retention_scheduled_dispatch"
+    assert payload["dispatch_request"]["trigger_type"] == "operator_dispatch"
+    assert payload["summary"]["dispatch_available"] is True
+    assert payload["summary"]["enqueue_status"] == "ENQUEUED"
+    assert payload["summary"]["job_enqueued"] is True
+    assert payload["summary"]["job_status"] == "QUEUED"
+    assert payload["source_status"]["dispatch_response_loaded"] is True
+    assert payload["request_trace_id"] == TRACE_ID
+
+
+def test_artifact_retention_scheduled_dispatch_route_guardrail_edges() -> None:
+    client = build_app(artifact_client())
+    request_payload = {
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+        "owner_user_id": "user-0409",
+        "confirm_dispatch": True,
+    }
+
+    unauthorized = client.post(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch",
+        json=request_payload,
+    )
+    invalid_service = client.post(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch",
+        params={"service_id": "nex-cx"},
+        json=request_payload,
+        headers=auth_headers(),
+    )
+    confirmation_required = client.post(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch",
+        json={**request_payload, "confirm_dispatch": False},
+        headers=auth_headers(),
+    )
+    missing_scope = client.post(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch",
+        json={
+            "tenant_id": "tenant-0409",
+            "workspace_id": "workspace-0409",
+            "confirm_dispatch": True,
+        },
+        headers=auth_headers(),
+    )
+    invalid_trigger = client.post(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch",
+        json={**request_payload, "trigger_type": "manual-now"},
+        headers=auth_headers(),
+    )
+    invalid_retention_days = client.post(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch",
+        json={**request_payload, "retention_days": "0"},
+        headers=auth_headers(),
+    )
+    invalid_scan_limit = client.post(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch",
+        json={**request_payload, "scan_limit": "101"},
+        headers=auth_headers(),
+    )
+    invalid_delete_limit = client.post(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch",
+        json={**request_payload, "max_delete_count": "many"},
+        headers=auth_headers(),
+    )
+    blocked = client.post(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch",
+        json={
+            "tenant_id": "tenant-0409",
+            "workspace_id": "workspace-0409",
+            "owner_user_id": "user-0409",
+            "confirm_dispatch": True,
+            "scan_limit": "20",
+            "max_delete_count": "20",
+        },
+        headers=auth_headers(),
+    )
+
+    class BrokenRetentionDispatchClient(InMemoryAeArtifactOperationsClient):
+        def dispatch_artifact_retention_scheduled_job(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            raise AeArtifactOperationsError(
+                error_code="ag.ae_artifact_retention_scheduled_dispatch_source_failed",
+                detail="AE retention scheduled dispatch source unavailable",
+                status_code=503,
+            )
+
+    source_failed = build_app(
+        BrokenRetentionDispatchClient(
+            artifact_retention_batch_plans=artifact_client().artifact_retention_batch_plans
+        )
+    ).post(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch",
+        json={
+            **request_payload,
+            "retention_days": "30",
+            "as_of": "2026-09-01T00:00:00Z",
+            "scan_limit": "20",
+            "max_delete_count": "1",
+            "checked_at": "2026-09-01T02:30:00Z",
+        },
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert invalid_service.status_code == 400
+    assert confirmation_required.status_code == 409
+    assert confirmation_required.json()["error_code"] == (
+        "ag.ae_artifact_retention_scheduled_dispatch_confirmation_required"
+    )
+    assert missing_scope.status_code == 400
+    assert missing_scope.json()["error_code"] == (
+        "ag.ae_artifact_retention_scheduled_dispatch_scope_missing"
+    )
+    assert invalid_trigger.json()["error_code"] == (
+        "ag.ae_artifact_retention_scheduled_dispatch_trigger_invalid"
+    )
+    assert invalid_retention_days.json()["error_code"] == (
+        "ag.ae_artifact_retention_scheduled_dispatch_retention_days_invalid"
+    )
+    assert invalid_scan_limit.json()["error_code"] == (
+        "ag.ae_artifact_retention_scheduled_dispatch_scan_limit_invalid"
+    )
+    assert invalid_delete_limit.json()["error_code"] == (
+        "ag.ae_artifact_retention_scheduled_dispatch_delete_limit_invalid"
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["error_code"] == (
+        "ag.ae_artifact_retention_scheduled_dispatch_blocked"
+    )
+    assert source_failed.status_code == 503
+    assert source_failed.json()["error_code"] == (
+        "ag.ae_artifact_retention_scheduled_dispatch_source_failed"
+    )
+
+
 def test_artifact_operation_route_returns_detail_projection() -> None:
     client = build_app(artifact_client())
 
@@ -2465,7 +2836,25 @@ def test_http_artifact_operations_client_requests_expected_routes(
             return FakeHttpResponse(200, {"artifact_refs": [chat_artifact_ref()]})
         return FakeHttpResponse(404, {})
 
+    def fake_post(
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, Any],
+        timeout: float,
+    ) -> FakeHttpResponse:
+        calls.append(
+            {"url": url, "headers": headers, "json": json, "timeout": timeout}
+        )
+        if url.endswith("/api/v1/artifact-retention/scheduled-jobs/admission"):
+            return FakeHttpResponse(
+                200,
+                artifact_retention_scheduled_dispatch_response_payload(),
+            )
+        return FakeHttpResponse(404, {})
+
     monkeypatch.setattr(artifact_operations.httpx, "get", fake_get)
+    monkeypatch.setattr(artifact_operations.httpx, "post", fake_post)
     client = HttpAeArtifactOperationsClient(
         base_url="http://ae.example.local/",
         service_token="token-0409",
@@ -2523,6 +2912,14 @@ def test_http_artifact_operations_client_requests_expected_routes(
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     )
+    scheduled_dispatch = client.dispatch_artifact_retention_scheduled_job(
+        batch_plan=artifact_retention_batch_plan_payload(),
+        trigger_type="operator_dispatch",
+        requested_at="2026-09-01T02:35:00Z",
+        idempotency_key="dispatch-idem-0409",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
 
     assert artifact["artifact_id"] == ARTIFACT_ID
     assert handoff["artifact_handoff_id"] == HANDOFF_ID
@@ -2531,6 +2928,7 @@ def test_http_artifact_operations_client_requests_expected_routes(
     assert retention_history["count"] == 3
     assert retention_batch_plan["plan_id"] == "retention-batch-plan-0409"
     assert retention_scheduled_jobs["count"] == 3
+    assert scheduled_dispatch["enqueue_status"] == "ENQUEUED"
     assert calls[0]["url"] == f"http://ae.example.local/api/v1/artifacts/{ARTIFACT_ID}"
     assert calls[0]["headers"]["Authorization"] == "Bearer token-0409"
     assert calls[0]["headers"]["X-Service-ID"] == "nex-ag"
@@ -2577,6 +2975,14 @@ def test_http_artifact_operations_client_requests_expected_routes(
         "limit": "20",
         "status": "QUEUED",
     }
+    assert calls[7]["url"] == (
+        "http://ae.example.local/api/v1/artifact-retention/scheduled-jobs/admission"
+    )
+    assert calls[7]["headers"]["Idempotency-Key"] == "dispatch-idem-0409"
+    assert calls[7]["json"]["trigger_type"] == "operator_dispatch"
+    assert calls[7]["json"]["requested_at"] == "2026-09-01T02:35:00Z"
+    assert calls[7]["json"]["idempotency_key"] == "dispatch-idem-0409"
+    assert calls[7]["json"]["batch_plan"]["plan_id"] == "retention-batch-plan-0409"
 
 
 def test_http_artifact_operations_client_handles_404_and_errors(
@@ -2618,6 +3024,70 @@ def test_http_artifact_operations_client_handles_404_and_errors(
     assert artifact_operations._safe_response_json(FakeHttpResponse(500, [])) == {}
     assert problem.value.error_code == "ae.artifact_source_down"
     assert fallback.value.error_code == "ag.ae_artifact_source_request_failed"
+
+
+def test_http_artifact_operations_client_dispatch_handles_post_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = [
+        FakeHttpResponse(
+            409,
+            {
+                "error_code": "ae.artifact_retention_scheduled_job_not_ready",
+                "detail": "not ready",
+            },
+        ),
+        FakeHttpResponse(500, ValueError("not json")),
+    ]
+
+    def fake_post(
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, Any],
+        timeout: float,
+    ) -> FakeHttpResponse:
+        return responses.pop(0)
+
+    monkeypatch.setattr(artifact_operations.httpx, "post", fake_post)
+    client = HttpAeArtifactOperationsClient(base_url="http://ae.example.local")
+
+    with pytest.raises(AeArtifactOperationsError) as not_ready:
+        client.dispatch_artifact_retention_scheduled_job(
+            batch_plan=artifact_retention_batch_plan_payload(),
+            trigger_type="operator_dispatch",
+            requested_at=None,
+            idempotency_key=None,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+    with pytest.raises(AeArtifactOperationsError) as fallback:
+        client.dispatch_artifact_retention_scheduled_job(
+            batch_plan=artifact_retention_batch_plan_payload(),
+            trigger_type="operator_dispatch",
+            requested_at=None,
+            idempotency_key=None,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    def unreachable_post(*args: Any, **kwargs: Any) -> FakeHttpResponse:
+        raise httpx.ConnectError("offline")
+
+    monkeypatch.setattr(artifact_operations.httpx, "post", unreachable_post)
+    with pytest.raises(AeArtifactOperationsError) as unreachable:
+        client.dispatch_artifact_retention_scheduled_job(
+            batch_plan=artifact_retention_batch_plan_payload(),
+            trigger_type="operator_dispatch",
+            requested_at=None,
+            idempotency_key=None,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert not_ready.value.error_code == "ae.artifact_retention_scheduled_job_not_ready"
+    assert fallback.value.error_code == "ag.ae_artifact_source_request_failed"
+    assert unreachable.value.error_code == "ag.ae_artifact_source_unreachable"
 
 
 def test_http_artifact_operations_client_wraps_network_errors(
@@ -2674,6 +3144,7 @@ def test_artifact_operations_registered_on_main_app() -> None:
     assert "/admin/v1/operations/artifact-retention/executions" in paths
     assert "/admin/v1/operations/artifact-retention/batch-plan" in paths
     assert "/admin/v1/operations/artifact-retention/scheduled-jobs" in paths
+    assert "/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch" in paths
     assert "/admin/v1/operations/artifacts/{artifact_id}" in paths
     assert "/admin/v1/operations/artifacts/{artifact_id}/lifecycle" in paths
     assert AE_ARTIFACT_SOURCE_SERVICE_ID == "nex-ae-api"
