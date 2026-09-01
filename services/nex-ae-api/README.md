@@ -608,3 +608,9 @@ Artifact library management:
   separate scheduler module. It defines request, record, acquire/busy decision,
   and explicit release shapes, but still performs no persistence, no job enqueue,
   and no daemon loop execution.
+- Slice 0513 adds the scheduler lease repository adapter. The in-memory store
+  supports deterministic regression, and the SQLAlchemy store targets
+  `ae_artifact_retention_scheduler_leases` through migration
+  `0513_ae_artifact_retention_scheduler_lease`. It handles duplicate
+  idempotency, held-lease busy decisions, release, expired/released reacquire,
+  and fencing token increments without starting the daemon or running jobs.

@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
+from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any, Mapping
 from uuid import NAMESPACE_URL, uuid5
+
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
 from nex_ae_api.artifacts import (
     ARTIFACT_RETENTION_SCHEDULER_TICK_LOCK_TTL_SECONDS,
@@ -619,6 +625,507 @@ def summarize_artifact_retention_scheduler_lease_decision(
         "fencing_token": validated["fencing_token"],
         "skip_reason": validated["skip_reason"],
     }
+
+
+@dataclass
+class ArtifactRetentionSchedulerLeaseStore:
+    records: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def ensure_available(self) -> None:
+        return None
+
+    def get(self, scheduler_id: str) -> dict[str, Any] | None:
+        normalized_scheduler_id = _required_text(
+            scheduler_id,
+            "scheduler_id",
+            "ae.artifact_retention_scheduler_lease_store_invalid",
+        )
+        record = self.records.get(normalized_scheduler_id)
+        return deepcopy(record) if record is not None else None
+
+    def acquire(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        validated_request = validate_artifact_retention_scheduler_lease_request(request)
+        current = self.records.get(validated_request["scheduler_id"])
+        if current is not None and _lease_matches_request(current, validated_request):
+            return build_artifact_retention_scheduler_lease_decision(
+                validated_request,
+                lease_record=current,
+            )
+        if current is not None and _lease_blocks_acquisition(
+            current,
+            requested_at=validated_request["requested_at"],
+        ):
+            return build_artifact_retention_scheduler_lease_decision(
+                validated_request,
+                blocking_lease=current,
+            )
+        record = build_artifact_retention_scheduler_lease_record(
+            validated_request,
+            fencing_token=_next_fencing_token(current),
+            acquired_at=validated_request["requested_at"],
+            last_observed_at=validated_request["requested_at"],
+        )
+        self.records[validated_request["scheduler_id"]] = deepcopy(record)
+        return build_artifact_retention_scheduler_lease_decision(
+            validated_request,
+            lease_record=record,
+        )
+
+    def release(
+        self,
+        *,
+        scheduler_id: str,
+        lease_token: str,
+        released_at: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_scheduler_id = _required_text(
+            scheduler_id,
+            "scheduler_id",
+            "ae.artifact_retention_scheduler_lease_store_invalid",
+        )
+        current = self.records.get(normalized_scheduler_id)
+        if current is None:
+            raise ArtifactHandoffError(
+                status_code=404,
+                error_code="ae.artifact_retention_scheduler_lease_not_found",
+                detail="Artifact retention scheduler lease was not found.",
+            )
+        released = release_artifact_retention_scheduler_lease(
+            current,
+            lease_token=lease_token,
+            released_at=released_at,
+        )
+        self.records[normalized_scheduler_id] = deepcopy(released)
+        return released
+
+
+class SqlAlchemyArtifactRetentionSchedulerLeaseStore:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def ensure_available(self) -> None:
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    text("SELECT 1 FROM ae_artifact_retention_scheduler_leases LIMIT 1")
+                )
+        except SQLAlchemyError as exc:
+            raise _lease_store_unavailable() from exc
+
+    def get(self, scheduler_id: str) -> dict[str, Any] | None:
+        normalized_scheduler_id = _required_text(
+            scheduler_id,
+            "scheduler_id",
+            "ae.artifact_retention_scheduler_lease_store_invalid",
+        )
+        try:
+            with self._session_factory() as session:
+                return _select_scheduler_lease(
+                    session,
+                    scheduler_id=normalized_scheduler_id,
+                )
+        except SQLAlchemyError as exc:
+            raise _lease_store_unavailable() from exc
+
+    def acquire(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        validated_request = validate_artifact_retention_scheduler_lease_request(request)
+        try:
+            with self._session_factory() as session:
+                current = _select_scheduler_lease(
+                    session,
+                    scheduler_id=validated_request["scheduler_id"],
+                    for_update=True,
+                )
+                if current is not None and _lease_matches_request(
+                    current,
+                    validated_request,
+                ):
+                    session.commit()
+                    return build_artifact_retention_scheduler_lease_decision(
+                        validated_request,
+                        lease_record=current,
+                    )
+                if current is not None and _lease_blocks_acquisition(
+                    current,
+                    requested_at=validated_request["requested_at"],
+                ):
+                    session.commit()
+                    return build_artifact_retention_scheduler_lease_decision(
+                        validated_request,
+                        blocking_lease=current,
+                    )
+                record = build_artifact_retention_scheduler_lease_record(
+                    validated_request,
+                    fencing_token=_next_fencing_token(current),
+                    acquired_at=validated_request["requested_at"],
+                    last_observed_at=validated_request["requested_at"],
+                )
+                _upsert_scheduler_lease(session, record)
+                session.commit()
+                stored = _select_scheduler_lease(
+                    session,
+                    scheduler_id=validated_request["scheduler_id"],
+                )
+                if stored is None:
+                    raise ArtifactHandoffError(
+                        status_code=503,
+                        error_code=(
+                            "ae.artifact_retention_scheduler_lease_store_unavailable"
+                        ),
+                        detail="AE artifact retention scheduler lease store is unavailable.",
+                        retryable=True,
+                    )
+                return build_artifact_retention_scheduler_lease_decision(
+                    validated_request,
+                    lease_record=stored,
+                )
+        except ArtifactHandoffError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _lease_store_unavailable() from exc
+
+    def release(
+        self,
+        *,
+        scheduler_id: str,
+        lease_token: str,
+        released_at: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_scheduler_id = _required_text(
+            scheduler_id,
+            "scheduler_id",
+            "ae.artifact_retention_scheduler_lease_store_invalid",
+        )
+        try:
+            with self._session_factory() as session:
+                current = _select_scheduler_lease(
+                    session,
+                    scheduler_id=normalized_scheduler_id,
+                    for_update=True,
+                )
+                if current is None:
+                    raise ArtifactHandoffError(
+                        status_code=404,
+                        error_code="ae.artifact_retention_scheduler_lease_not_found",
+                        detail="Artifact retention scheduler lease was not found.",
+                    )
+                released = release_artifact_retention_scheduler_lease(
+                    current,
+                    lease_token=lease_token,
+                    released_at=released_at,
+                )
+                _upsert_scheduler_lease(session, released)
+                session.commit()
+                stored = _select_scheduler_lease(
+                    session,
+                    scheduler_id=normalized_scheduler_id,
+                )
+                return released if stored is None else stored
+        except ArtifactHandoffError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _lease_store_unavailable() from exc
+
+
+DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_STORE = (
+    ArtifactRetentionSchedulerLeaseStore()
+)
+
+
+def build_default_artifact_retention_scheduler_lease_store(app: Any) -> Any:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is not None:
+        return SqlAlchemyArtifactRetentionSchedulerLeaseStore(session_factory)
+    return DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_STORE
+
+
+def artifact_retention_scheduler_lease_table_sql(dialect_name: str) -> str:
+    timestamp_type = "TIMESTAMPTZ" if dialect_name == "postgresql" else "TEXT"
+    json_type = "JSONB" if dialect_name == "postgresql" else "TEXT"
+    json_default = "'{}'::jsonb" if dialect_name == "postgresql" else "'{}'"
+    json_object_check = (
+        "CHECK (jsonb_typeof({field}) = 'object')"
+        if dialect_name == "postgresql"
+        else ""
+    )
+    return f"""
+        CREATE TABLE IF NOT EXISTS ae_artifact_retention_scheduler_leases (
+            scheduler_id TEXT PRIMARY KEY,
+            lease_record_id TEXT NOT NULL,
+            lease_record_schema_version TEXT NOT NULL
+                DEFAULT '{AE_ARTIFACT_RETENTION_SCHEDULER_LEASE_RECORD_SCHEMA_VERSION}'
+                CHECK (
+                    lease_record_schema_version =
+                    '{AE_ARTIFACT_RETENTION_SCHEDULER_LEASE_RECORD_SCHEMA_VERSION}'
+                ),
+            service_id TEXT NOT NULL DEFAULT 'nex-ae-api'
+                CHECK (service_id = 'nex-ae-api'),
+            lease_owner_id TEXT NOT NULL,
+            lease_token TEXT NOT NULL,
+            lease_status TEXT NOT NULL
+                CHECK (lease_status IN ('HELD', 'RELEASED', 'EXPIRED')),
+            fencing_token INTEGER NOT NULL CHECK (fencing_token >= 1),
+            acquired_at {timestamp_type} NOT NULL,
+            expires_at {timestamp_type} NOT NULL,
+            released_at {timestamp_type},
+            last_observed_at {timestamp_type} NOT NULL,
+            operation TEXT NOT NULL CHECK (operation IN ('manual_tick_once')),
+            tick_id TEXT,
+            idempotency_key TEXT NOT NULL,
+            guardrails {json_type} NOT NULL DEFAULT {json_default}
+                {json_object_check.format(field='guardrails')},
+            metadata {json_type} NOT NULL DEFAULT {json_default}
+                {json_object_check.format(field='metadata')},
+            updated_at {timestamp_type} NOT NULL
+        )
+    """
+
+
+def _select_scheduler_lease(
+    session: Session,
+    *,
+    scheduler_id: str,
+    for_update: bool = False,
+) -> dict[str, Any] | None:
+    dialect_name = _dialect_name(session)
+    lock_sql = " FOR UPDATE" if for_update and dialect_name == "postgresql" else ""
+    row = (
+        session.execute(
+            text(
+                f"""
+                SELECT
+                    scheduler_id,
+                    lease_record_id,
+                    lease_record_schema_version,
+                    service_id,
+                    lease_owner_id,
+                    lease_token,
+                    lease_status,
+                    fencing_token,
+                    acquired_at,
+                    expires_at,
+                    released_at,
+                    last_observed_at,
+                    operation,
+                    tick_id,
+                    idempotency_key,
+                    guardrails,
+                    metadata,
+                    updated_at
+                FROM ae_artifact_retention_scheduler_leases
+                WHERE scheduler_id = :scheduler_id
+                {lock_sql}
+                """
+            ),
+            {"scheduler_id": scheduler_id},
+        )
+        .mappings()
+        .first()
+    )
+    return _scheduler_lease_from_row(row) if row is not None else None
+
+
+def _upsert_scheduler_lease(session: Session, record: Mapping[str, Any]) -> None:
+    validated = validate_artifact_retention_scheduler_lease_record(record)
+    dialect_name = _dialect_name(session)
+    session.execute(
+        text(_scheduler_lease_upsert_sql(dialect_name)),
+        _scheduler_lease_params(validated),
+    )
+
+
+def _scheduler_lease_upsert_sql(dialect_name: str) -> str:
+    guardrails_expr = _json_sql_expression(dialect_name, "guardrails")
+    metadata_expr = _json_sql_expression(dialect_name, "metadata")
+    return f"""
+        INSERT INTO ae_artifact_retention_scheduler_leases (
+            scheduler_id,
+            lease_record_id,
+            lease_record_schema_version,
+            service_id,
+            lease_owner_id,
+            lease_token,
+            lease_status,
+            fencing_token,
+            acquired_at,
+            expires_at,
+            released_at,
+            last_observed_at,
+            operation,
+            tick_id,
+            idempotency_key,
+            guardrails,
+            metadata,
+            updated_at
+        )
+        VALUES (
+            :scheduler_id,
+            :lease_record_id,
+            :lease_record_schema_version,
+            :service_id,
+            :lease_owner_id,
+            :lease_token,
+            :lease_status,
+            :fencing_token,
+            :acquired_at,
+            :expires_at,
+            :released_at,
+            :last_observed_at,
+            :operation,
+            :tick_id,
+            :idempotency_key,
+            {guardrails_expr},
+            {metadata_expr},
+            :updated_at
+        )
+        ON CONFLICT (scheduler_id) DO UPDATE SET
+            lease_record_id = excluded.lease_record_id,
+            lease_record_schema_version = excluded.lease_record_schema_version,
+            service_id = excluded.service_id,
+            lease_owner_id = excluded.lease_owner_id,
+            lease_token = excluded.lease_token,
+            lease_status = excluded.lease_status,
+            fencing_token = excluded.fencing_token,
+            acquired_at = excluded.acquired_at,
+            expires_at = excluded.expires_at,
+            released_at = excluded.released_at,
+            last_observed_at = excluded.last_observed_at,
+            operation = excluded.operation,
+            tick_id = excluded.tick_id,
+            idempotency_key = excluded.idempotency_key,
+            guardrails = excluded.guardrails,
+            metadata = excluded.metadata,
+            updated_at = excluded.updated_at
+    """
+
+
+def _scheduler_lease_params(record: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "scheduler_id": record["scheduler_id"],
+        "lease_record_id": record["lease_record_id"],
+        "lease_record_schema_version": record["lease_record_schema_version"],
+        "service_id": record["service_id"],
+        "lease_owner_id": record["lease_owner_id"],
+        "lease_token": record["lease_token"],
+        "lease_status": record["lease_status"],
+        "fencing_token": record["fencing_token"],
+        "acquired_at": record["acquired_at"],
+        "expires_at": record["expires_at"],
+        "released_at": record["released_at"],
+        "last_observed_at": record["last_observed_at"],
+        "operation": record["operation"],
+        "tick_id": record["tick_id"],
+        "idempotency_key": record["idempotency_key"],
+        "guardrails": json.dumps(record["guardrails"]),
+        "metadata": json.dumps(record["metadata"]),
+        "updated_at": record["last_observed_at"],
+    }
+
+
+def _scheduler_lease_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    data = dict(row)
+    record = {
+        "lease_record_schema_version": data["lease_record_schema_version"],
+        "lease_record_id": data["lease_record_id"],
+        "service_id": data["service_id"],
+        "scheduler_id": data["scheduler_id"],
+        "lease_owner_id": data["lease_owner_id"],
+        "lease_token": data["lease_token"],
+        "lease_status": data["lease_status"],
+        "fencing_token": data["fencing_token"],
+        "acquired_at": _datetime_value(data["acquired_at"]),
+        "expires_at": _datetime_value(data["expires_at"]),
+        "released_at": _datetime_value(data["released_at"]),
+        "last_observed_at": _datetime_value(data["last_observed_at"]),
+        "operation": data["operation"],
+        "tick_id": data["tick_id"],
+        "idempotency_key": data["idempotency_key"],
+        "guardrails": _json_value(data["guardrails"], {}),
+        "metadata": _json_value(data["metadata"], {}),
+    }
+    return validate_artifact_retention_scheduler_lease_record(record)
+
+
+def _lease_matches_request(
+    record: Mapping[str, Any],
+    request: Mapping[str, Any],
+) -> bool:
+    validated_record = validate_artifact_retention_scheduler_lease_record(record)
+    return (
+        validated_record["lease_status"] == "HELD"
+        and validated_record["scheduler_id"] == request["scheduler_id"]
+        and validated_record["lease_owner_id"] == request["lease_owner_id"]
+        and validated_record["operation"] == request["operation"]
+        and validated_record["idempotency_key"] == request["idempotency_key"]
+    )
+
+
+def _lease_blocks_acquisition(
+    record: Mapping[str, Any],
+    *,
+    requested_at: str,
+) -> bool:
+    validated_record = validate_artifact_retention_scheduler_lease_record(record)
+    if validated_record["lease_status"] != "HELD":
+        return False
+    expires_at = parse_artifact_retention_timestamp(
+        validated_record["expires_at"],
+        field_name="expires_at",
+    )
+    requested_dt = parse_artifact_retention_timestamp(
+        requested_at,
+        field_name="requested_at",
+    )
+    return expires_at > requested_dt
+
+
+def _next_fencing_token(record: Mapping[str, Any] | None) -> int:
+    if record is None:
+        return 1
+    return validate_artifact_retention_scheduler_lease_record(record)["fencing_token"] + 1
+
+
+def _json_sql_expression(dialect_name: str, field_name: str) -> str:
+    if dialect_name == "postgresql":
+        return f"CAST(:{field_name} AS JSONB)"
+    return f":{field_name}"
+
+
+def _json_value(value: Any, fallback: Any) -> Any:
+    if value is None:
+        return fallback
+    if isinstance(value, Mapping):
+        return deepcopy(dict(value))
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return fallback
+        return decoded if decoded is not None else fallback
+    return fallback
+
+
+def _datetime_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    return format_artifact_retention_timestamp(
+        parse_artifact_retention_timestamp(str(value), field_name="timestamp")
+    )
+
+
+def _dialect_name(session: Session) -> str:
+    bind = session.get_bind()
+    return bind.dialect.name if bind is not None else ""
+
+
+def _lease_store_unavailable() -> ArtifactHandoffError:
+    return ArtifactHandoffError(
+        status_code=503,
+        error_code="ae.artifact_retention_scheduler_lease_store_unavailable",
+        detail="AE artifact retention scheduler lease store is unavailable.",
+        retryable=True,
+    )
 
 
 def normalize_artifact_retention_scheduler_lease_operation(value: Any) -> str:

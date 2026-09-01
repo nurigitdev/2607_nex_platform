@@ -86,6 +86,22 @@ def test_load_migrations_returns_sorted_valid_migrations(tmp_path: Path) -> None
     assert [migration.version for migration in migrations] == ["0023_first", "0024_second"]
 
 
+def test_load_migrations_includes_ae_scheduler_lease_repository_migration() -> None:
+    migrations = load_migrations("nex-ae-api")
+
+    migration_versions = {migration.version for migration in migrations}
+    migration_sql = {
+        migration.version: migration.sql
+        for migration in migrations
+        if migration.version == "0513_ae_artifact_retention_scheduler_lease"
+    }
+
+    assert "0513_ae_artifact_retention_scheduler_lease" in migration_versions
+    assert "ae_artifact_retention_scheduler_leases" in migration_sql[
+        "0513_ae_artifact_retention_scheduler_lease"
+    ]
+
+
 @pytest.mark.parametrize(
     ("sql", "message"),
     [

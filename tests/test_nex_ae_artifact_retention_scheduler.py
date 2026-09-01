@@ -3,16 +3,26 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
+import nex_ae_api.artifact_retention_scheduler as scheduler_module
 from nex_ae_api.artifact_retention_scheduler import (
     AE_ARTIFACT_RETENTION_SCHEDULER_LEASE_DECISION_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_LEASE_RECORD_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_LEASE_REQUEST_SCHEMA_VERSION,
+    DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_STORE,
     DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_OWNER_ID,
+    ArtifactRetentionSchedulerLeaseStore,
+    SqlAlchemyArtifactRetentionSchedulerLeaseStore,
+    artifact_retention_scheduler_lease_table_sql,
     artifact_retention_scheduler_lease_idempotency_key,
+    build_default_artifact_retention_scheduler_lease_store,
     build_artifact_retention_scheduler_lease_decision,
     build_artifact_retention_scheduler_lease_record,
     build_artifact_retention_scheduler_lease_request,
@@ -35,6 +45,17 @@ from nex_ae_api.artifacts import (
 
 REQUESTED_AT = "2026-09-01T02:00:00Z"
 EXPIRES_AT = "2026-09-01T02:10:00Z"
+
+
+def sqlite_scheduler_session_factory() -> sessionmaker:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    with engine.begin() as connection:
+        connection.execute(text(artifact_retention_scheduler_lease_table_sql("sqlite")))
+    return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
 def test_artifact_retention_scheduler_lease_request_contract_defaults() -> None:
@@ -174,6 +195,286 @@ def test_artifact_retention_scheduler_lease_busy_decision_contract() -> None:
     assert summarize_artifact_retention_scheduler_lease_decision(decision)[
         "skip_reason"
     ] == "lease_busy"
+
+
+def test_artifact_retention_scheduler_in_memory_lease_store_lifecycle() -> None:
+    store = ArtifactRetentionSchedulerLeaseStore()
+    first = build_artifact_retention_scheduler_lease_request(
+        requested_at=REQUESTED_AT,
+        lease_owner_id="runner-one",
+        idempotency_key="lease-store-0513",
+    )
+    second = build_artifact_retention_scheduler_lease_request(
+        requested_at="2026-09-01T02:01:00Z",
+        lease_owner_id="runner-two",
+        idempotency_key="lease-store-0513-second",
+    )
+
+    acquired = store.acquire(first)
+    duplicate = store.acquire(first)
+    busy = store.acquire(second)
+    stored = store.get(first["scheduler_id"])
+    assert stored is not None
+    stored["metadata"]["job_enqueued"] = True
+    released = store.release(
+        scheduler_id=first["scheduler_id"],
+        lease_token=acquired["lease_token"],
+        released_at="2026-09-01T02:02:00Z",
+    )
+    reacquired = store.acquire(second)
+
+    assert store.ensure_available() is None
+    assert acquired["decision_status"] == "ACQUIRED"
+    assert duplicate["decision_status"] == "ACQUIRED"
+    assert duplicate["lease_token"] == acquired["lease_token"]
+    assert duplicate["fencing_token"] == acquired["fencing_token"]
+    assert busy["decision_status"] == "BUSY"
+    assert busy["blocking_lease"]["lease_owner_id"] == "runner-one"
+    assert store.get(first["scheduler_id"])["metadata"]["job_enqueued"] is False  # type: ignore[index]
+    assert released["lease_status"] == "RELEASED"
+    assert reacquired["decision_status"] == "ACQUIRED"
+    assert reacquired["fencing_token"] == 2
+
+
+def test_artifact_retention_scheduler_in_memory_lease_store_expired_record_reacquires() -> None:
+    store = ArtifactRetentionSchedulerLeaseStore()
+    first = build_artifact_retention_scheduler_lease_request(
+        requested_at=REQUESTED_AT,
+        lease_owner_id="runner-one",
+    )
+    second = build_artifact_retention_scheduler_lease_request(
+        requested_at="2026-09-01T02:11:00Z",
+        lease_owner_id="runner-two",
+    )
+
+    first_decision = store.acquire(first)
+    second_decision = store.acquire(second)
+
+    assert first_decision["decision_status"] == "ACQUIRED"
+    assert second_decision["decision_status"] == "ACQUIRED"
+    assert second_decision["fencing_token"] == 2
+    assert second_decision["lease_record"]["lease_owner_id"] == "runner-two"
+
+
+def test_artifact_retention_scheduler_lease_store_release_errors() -> None:
+    store = ArtifactRetentionSchedulerLeaseStore()
+    request = build_artifact_retention_scheduler_lease_request(
+        requested_at=REQUESTED_AT,
+    )
+    acquired = store.acquire(request)
+
+    with pytest.raises(ArtifactHandoffError) as invalid_get_exc:
+        store.get(" ")
+    assert invalid_get_exc.value.error_code == (
+        "ae.artifact_retention_scheduler_lease_store_invalid"
+    )
+
+    with pytest.raises(ArtifactHandoffError) as missing_release_exc:
+        store.release(scheduler_id="missing", lease_token="token")
+    assert missing_release_exc.value.status_code == 404
+    assert missing_release_exc.value.error_code == (
+        "ae.artifact_retention_scheduler_lease_not_found"
+    )
+
+    with pytest.raises(ArtifactHandoffError) as mismatch_exc:
+        store.release(
+            scheduler_id=request["scheduler_id"],
+            lease_token="wrong-token",
+        )
+    assert mismatch_exc.value.error_code == (
+        "ae.artifact_retention_scheduler_lease_token_mismatch"
+    )
+
+    released = store.release(
+        scheduler_id=request["scheduler_id"],
+        lease_token=acquired["lease_token"],
+    )
+    assert released["released_at"] == REQUESTED_AT
+    assert released["last_observed_at"] == REQUESTED_AT
+
+
+def test_artifact_retention_scheduler_sqlalchemy_lease_store_sqlite_lifecycle() -> None:
+    session_factory = sqlite_scheduler_session_factory()
+    store = SqlAlchemyArtifactRetentionSchedulerLeaseStore(session_factory)
+    first = build_artifact_retention_scheduler_lease_request(
+        requested_at=REQUESTED_AT,
+        lease_owner_id="sql-runner-one",
+        idempotency_key="sql-lease-0513",
+    )
+    second = build_artifact_retention_scheduler_lease_request(
+        requested_at="2026-09-01T02:01:00Z",
+        lease_owner_id="sql-runner-two",
+        idempotency_key="sql-lease-0513-second",
+    )
+
+    acquired = store.acquire(first)
+    duplicate = store.acquire(first)
+    busy = store.acquire(second)
+    released = store.release(
+        scheduler_id=first["scheduler_id"],
+        lease_token=acquired["lease_token"],
+        released_at="2026-09-01T02:02:00Z",
+    )
+    reacquired = store.acquire(second)
+
+    with session_factory() as session:
+        rows = (
+            session.execute(
+                text(
+                    """
+                    SELECT lease_status, fencing_token, guardrails, metadata
+                    FROM ae_artifact_retention_scheduler_leases
+                    WHERE scheduler_id = :scheduler_id
+                    """
+                ),
+                {"scheduler_id": first["scheduler_id"]},
+            )
+            .mappings()
+            .all()
+        )
+
+    assert store.ensure_available() is None
+    assert acquired["decision_status"] == "ACQUIRED"
+    assert duplicate["lease_token"] == acquired["lease_token"]
+    assert busy["decision_status"] == "BUSY"
+    assert released["lease_status"] == "RELEASED"
+    assert reacquired["decision_status"] == "ACQUIRED"
+    assert reacquired["fencing_token"] == 2
+    assert rows == [
+        {
+            "lease_status": "HELD",
+            "fencing_token": 2,
+            "guardrails": json.dumps(reacquired["lease_record"]["guardrails"]),
+            "metadata": json.dumps(reacquired["lease_record"]["metadata"]),
+        }
+    ]
+
+
+def test_artifact_retention_scheduler_sqlalchemy_lease_store_expired_and_missing_edges() -> None:
+    session_factory = sqlite_scheduler_session_factory()
+    store = SqlAlchemyArtifactRetentionSchedulerLeaseStore(session_factory)
+    first = build_artifact_retention_scheduler_lease_request(
+        requested_at=REQUESTED_AT,
+        lease_owner_id="expired-sql-one",
+    )
+    second = build_artifact_retention_scheduler_lease_request(
+        requested_at="2026-09-01T02:11:00Z",
+        lease_owner_id="expired-sql-two",
+    )
+
+    first_decision = store.acquire(first)
+    second_decision = store.acquire(second)
+
+    assert first_decision["decision_status"] == "ACQUIRED"
+    assert second_decision["decision_status"] == "ACQUIRED"
+    assert second_decision["fencing_token"] == 2
+    assert store.get(first["scheduler_id"])["lease_owner_id"] == "expired-sql-two"  # type: ignore[index]
+    assert store.get("missing-scheduler") is None
+
+    with pytest.raises(ArtifactHandoffError) as missing_release_exc:
+        store.release(scheduler_id="missing-scheduler", lease_token="token")
+    assert missing_release_exc.value.status_code == 404
+
+
+def test_artifact_retention_scheduler_sqlalchemy_lease_store_unavailable_edges() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    store = SqlAlchemyArtifactRetentionSchedulerLeaseStore(session_factory)
+    request = build_artifact_retention_scheduler_lease_request(
+        requested_at=REQUESTED_AT,
+    )
+
+    for operation in (
+        store.ensure_available,
+        lambda: store.get(request["scheduler_id"]),
+        lambda: store.acquire(request),
+        lambda: store.release(
+            scheduler_id=request["scheduler_id"],
+            lease_token="token",
+        ),
+    ):
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            operation()
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.error_code == (
+            "ae.artifact_retention_scheduler_lease_store_unavailable"
+        )
+        assert exc_info.value.retryable is True
+
+
+def test_artifact_retention_scheduler_sqlalchemy_acquire_rereads_missing_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = sqlite_scheduler_session_factory()
+    store = SqlAlchemyArtifactRetentionSchedulerLeaseStore(session_factory)
+    request = build_artifact_retention_scheduler_lease_request(
+        requested_at=REQUESTED_AT,
+    )
+
+    def missing_select(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(scheduler_module, "_select_scheduler_lease", missing_select)
+
+    with pytest.raises(ArtifactHandoffError) as exc_info:
+        store.acquire(request)
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.error_code == (
+        "ae.artifact_retention_scheduler_lease_store_unavailable"
+    )
+    assert exc_info.value.retryable is True
+
+
+def test_artifact_retention_scheduler_default_store_factory_uses_persistence() -> None:
+    session_factory = sqlite_scheduler_session_factory()
+    app_with_persistence = SimpleNamespace(
+        state=SimpleNamespace(
+            nex_persistence=SimpleNamespace(api_session_factory=session_factory)
+        )
+    )
+    app_without_persistence = SimpleNamespace(state=SimpleNamespace())
+
+    persisted = build_default_artifact_retention_scheduler_lease_store(
+        app_with_persistence
+    )
+    fallback = build_default_artifact_retention_scheduler_lease_store(
+        app_without_persistence
+    )
+
+    assert isinstance(persisted, SqlAlchemyArtifactRetentionSchedulerLeaseStore)
+    assert fallback is DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_STORE
+
+
+def test_artifact_retention_scheduler_lease_table_sql_profiles() -> None:
+    postgres_sql = artifact_retention_scheduler_lease_table_sql("postgresql")
+    sqlite_sql = artifact_retention_scheduler_lease_table_sql("sqlite")
+
+    assert "JSONB" in postgres_sql
+    assert "jsonb_typeof(guardrails)" in postgres_sql
+    assert "TIMESTAMPTZ" in postgres_sql
+    assert "JSONB" not in sqlite_sql
+    assert "jsonb_typeof" not in sqlite_sql
+    assert "updated_at TEXT NOT NULL" in sqlite_sql
+
+
+def test_artifact_retention_scheduler_sql_helpers_json_fallback_edges() -> None:
+    assert "CAST(:guardrails AS JSONB)" in scheduler_module._scheduler_lease_upsert_sql(
+        "postgresql"
+    )
+    assert scheduler_module._json_value(None, {"fallback": True}) == {
+        "fallback": True
+    }
+    assert scheduler_module._json_value({"live": True}, {}) == {"live": True}
+    assert scheduler_module._json_value("{not-json", {"fallback": True}) == {
+        "fallback": True
+    }
+    assert scheduler_module._json_value("null", {"fallback": True}) == {
+        "fallback": True
+    }
+    assert scheduler_module._json_value(object(), {"fallback": True}) == {
+        "fallback": True
+    }
 
 
 @pytest.mark.parametrize(
