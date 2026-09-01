@@ -435,3 +435,8 @@ Artifact library management:
   execution contracts, candidate read-model/API, guarded purge store/API,
   PostgreSQL smoke evidence, quality gate hooks, and metadata-only redaction
   posture remain connected end to end.
+- Slice 0471 starts S48 by freezing the artifact retention execution history
+  boundary before adding persistence. `nex-ae-api` remains the system of record,
+  `ae_artifact_retention_executions` is the planned history table, purge
+  executions stay metadata-only, and idempotency is scoped by tenant, workspace,
+  owner, and idempotency key.
