@@ -186,6 +186,11 @@
       "schema": "schemas/generation/ae_artifact_retention_policy.v1.schema.json"
     },
     {
+      "name": "ae_artifact_retention_schedule_local_dry_run",
+      "path": "examples/generation/ae_artifact_retention_schedule.local_dry_run.json",
+      "schema": "schemas/generation/ae_artifact_retention_schedule.v1.schema.json"
+    },
+    {
       "name": "ae_artifact_retention_execution_dry_run_planned",
       "path": "examples/generation/ae_artifact_retention_execution.dry_run_planned.json",
       "schema": "schemas/generation/ae_artifact_retention_execution.v1.schema.json"

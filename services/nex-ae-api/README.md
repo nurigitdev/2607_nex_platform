@@ -482,3 +482,7 @@ Artifact library management:
   boundary. AE remains the retention system of record, scheduled runs default to
   dry-run in the 02:00-05:00 `Asia/Seoul` window, execute-mode deletion keeps
   the three existing guard flags, and scheduler/worker mutation remains deferred.
+- Slice 0482 adds `ae_artifact_retention_schedule.v1`, a metadata-only schedule
+  contract with schedule daemon disabled, planning enabled, default `DRY_RUN`,
+  15/30-day presets, max delete limits, three execute guard flags, and AG
+  dispatch-only ownership semantics.

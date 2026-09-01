@@ -30,6 +30,7 @@ from nex_ae_api.artifacts import (
     AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_POLICY_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULE_SCHEMA_VERSION,
     HttpCxArtifactSourceClient,
     InMemoryRenderedArtifactStorage,
     LocalRenderedArtifactStorage,
@@ -59,6 +60,7 @@ from nex_ae_api.artifacts import (
     build_artifact_retention_execution_history_item,
     build_artifact_retention_execution_history_record,
     build_artifact_retention_policy,
+    build_artifact_retention_schedule,
     build_default_artifact_handoff_store,
     build_default_artifact_retention_execution_history_store,
     build_default_artifact_record_store,
@@ -100,6 +102,7 @@ from nex_ae_api.artifacts import (
     validate_artifact_retention_execution,
     validate_artifact_retention_execution_history_record,
     validate_artifact_retention_policy,
+    validate_artifact_retention_schedule,
     validate_artifact_handoff_record,
     validate_structured_draft_for_markdown_render,
 )
@@ -1763,6 +1766,160 @@ def test_artifact_retention_policy_contract_rejects_invalid_inputs() -> None:
     with pytest.raises(ArtifactHandoffError) as unsafe_exc:
         ae_artifacts.assert_artifact_retention_payload_safe(
             {"storage_ref": "ae://artifacts/private"}
+        )
+    assert unsafe_exc.value.error_code == "ae.artifact_retention_payload_unsafe"
+
+
+def test_artifact_retention_schedule_contract_defaults_are_safe() -> None:
+    schedule = build_artifact_retention_schedule()
+    fifteen_day_schedule = build_artifact_retention_schedule(
+        {
+            "schedule_id": "ae-artifact-retention-schedule-15d-local-v1",
+            "retention_days": "15",
+            "max_delete_count": "10",
+        }
+    )
+    serialized = json.dumps(schedule, ensure_ascii=False, sort_keys=True)
+
+    assert schedule["artifact_retention_schedule_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULE_SCHEMA_VERSION
+    )
+    assert schedule["schedule_id"] == "ae-artifact-retention-schedule-local-v1"
+    assert schedule["policy_id"] == "ae-artifact-logical-purge-30d-local-v1"
+    assert schedule["service_id"] == "nex-ae-api"
+    assert schedule["schedule_enabled"] is False
+    assert schedule["planning_enabled"] is True
+    assert schedule["default_mode"] == "DRY_RUN"
+    assert schedule["allowed_modes"] == ["DRY_RUN", "EXECUTE"]
+    assert schedule["retention"] == {
+        "logical_purge_status": "DELETED",
+        "logical_purge_timestamp_field": "updated_at",
+        "retention_days_after_logical_purge": 30,
+        "supported_retention_day_presets": [15, 30],
+    }
+    assert schedule["batch_window"] == {
+        "timezone": "Asia/Seoul",
+        "start_local_time": "02:00",
+        "end_local_time": "05:00",
+    }
+    assert schedule["limits"] == {
+        "default_scan_limit": 20,
+        "max_scan_limit": 100,
+        "default_max_delete_count": 20,
+        "max_delete_count": 100,
+    }
+    assert schedule["guardrails"] == {
+        "dry_run_required_before_execute": True,
+        "execute_requires_delete_enabled": True,
+        "execute_requires_storage_mutation_enabled": True,
+        "execute_requires_database_row_delete_enabled": True,
+        "history_required_for_execute": True,
+    }
+    assert schedule["ownership"] == {
+        "artifact_system_of_record": "nex-ae-api",
+        "operator_projection_owner": "nex-ag",
+        "ag_dispatch_policy": "ae_api_only",
+        "ag_direct_database_write_allowed": False,
+    }
+    assert fifteen_day_schedule["retention"]["retention_days_after_logical_purge"] == 15
+    assert fifteen_day_schedule["limits"]["default_max_delete_count"] == 10
+    assert validate_artifact_retention_schedule(schedule) is None
+    assert "/data/nex-platform" not in serialized
+    assert "postgresql://" not in serialized
+
+
+def test_artifact_retention_schedule_contract_rejects_invalid_inputs() -> None:
+    schedule = build_artifact_retention_schedule()
+    with pytest.raises(ArtifactHandoffError) as object_exc:
+        validate_artifact_retention_schedule("bad")  # type: ignore[arg-type]
+    assert object_exc.value.error_code == "ae.artifact_retention_schedule_invalid"
+
+    broken_schema = {
+        **schedule,
+        "artifact_retention_schedule_schema_version": "wrong",
+    }
+    with pytest.raises(ArtifactHandoffError) as schema_exc:
+        validate_artifact_retention_schedule(broken_schema)
+    assert schema_exc.value.error_code == "ae.artifact_retention_schedule_schema_invalid"
+
+    invalid_cases = (
+        ({"service_id": "nex-cx"}, "service id"),
+        ({"schedule_enabled": True}, "disabled"),
+        ({"planning_enabled": False}, "planning"),
+        ({"default_mode": "EXECUTE"}, "DRY_RUN"),
+        ({"allowed_modes": ["EXECUTE", "DRY_RUN"]}, "modes"),
+        ({"retention": "bad"}, "retention section"),
+        (
+            {
+                "retention": {
+                    **schedule["retention"],
+                    "logical_purge_status": "ARCHIVED",
+                }
+            },
+            "logical purge status",
+        ),
+        (
+            {
+                "retention": {
+                    **schedule["retention"],
+                    "logical_purge_timestamp_field": "created_at",
+                }
+            },
+            "timestamp field",
+        ),
+        (
+            {
+                "retention": {
+                    **schedule["retention"],
+                    "supported_retention_day_presets": [30, 15],
+                }
+            },
+            "presets",
+        ),
+        (
+            {"batch_window": {**schedule["batch_window"], "start_local_time": "01:00"}},
+            "batch window",
+        ),
+        (
+            {"limits": {**schedule["limits"], "default_scan_limit": 10}},
+            "default scan",
+        ),
+        (
+            {"limits": {**schedule["limits"], "max_scan_limit": 50}},
+            "max scan",
+        ),
+        (
+            {"limits": {**schedule["limits"], "max_delete_count": 50}},
+            "max delete",
+        ),
+        (
+            {
+                "guardrails": {
+                    **schedule["guardrails"],
+                    "history_required_for_execute": False,
+                }
+            },
+            "guardrails",
+        ),
+        (
+            {
+                "ownership": {
+                    **schedule["ownership"],
+                    "ag_direct_database_write_allowed": True,
+                }
+            },
+            "ownership",
+        ),
+    )
+    for patch, detail in invalid_cases:
+        with pytest.raises(ArtifactHandoffError) as invalid_exc:
+            validate_artifact_retention_schedule({**schedule, **patch})
+        assert invalid_exc.value.error_code == "ae.artifact_retention_schedule_invalid"
+        assert detail in invalid_exc.value.detail
+
+    with pytest.raises(ArtifactHandoffError) as unsafe_exc:
+        validate_artifact_retention_schedule(
+            {**schedule, "database_url": "postgresql://nex_ae_user:secret@host/db"}
         )
     assert unsafe_exc.value.error_code == "ae.artifact_retention_payload_unsafe"
 

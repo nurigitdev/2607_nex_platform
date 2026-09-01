@@ -101,6 +101,11 @@
       "schema": "schemas/generation/ae_artifact_retention_policy.v1.schema.json"
     },
     {
+      "name": "ae_artifact_retention_schedule_database_url_leak",
+      "path": "tests/negative/generation/ae_artifact_retention_schedule.database_url_leak.json",
+      "schema": "schemas/generation/ae_artifact_retention_schedule.v1.schema.json"
+    },
+    {
       "name": "ae_artifact_retention_execution_dry_run_delete_enabled",
       "path": "tests/negative/generation/ae_artifact_retention_execution.dry_run_delete_enabled.json",
       "schema": "schemas/generation/ae_artifact_retention_execution.v1.schema.json"

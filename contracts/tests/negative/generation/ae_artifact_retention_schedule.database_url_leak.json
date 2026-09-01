@@ -1,0 +1,47 @@
+{
+  "artifact_retention_schedule_schema_version": "ae_artifact_retention_schedule.v1",
+  "schedule_id": "ae-artifact-retention-schedule-local-v1",
+  "policy_id": "ae-artifact-logical-purge-30d-local-v1",
+  "service_id": "nex-ae-api",
+  "schedule_enabled": false,
+  "planning_enabled": true,
+  "default_mode": "DRY_RUN",
+  "allowed_modes": [
+    "DRY_RUN",
+    "EXECUTE"
+  ],
+  "database_url": "postgresql://nex_ae_user:secret@127.0.0.1:5432/nex_ae_test",
+  "retention": {
+    "logical_purge_status": "DELETED",
+    "logical_purge_timestamp_field": "updated_at",
+    "retention_days_after_logical_purge": 30,
+    "supported_retention_day_presets": [
+      15,
+      30
+    ]
+  },
+  "batch_window": {
+    "timezone": "Asia/Seoul",
+    "start_local_time": "02:00",
+    "end_local_time": "05:00"
+  },
+  "limits": {
+    "default_scan_limit": 20,
+    "max_scan_limit": 100,
+    "default_max_delete_count": 20,
+    "max_delete_count": 100
+  },
+  "guardrails": {
+    "dry_run_required_before_execute": true,
+    "execute_requires_delete_enabled": true,
+    "execute_requires_storage_mutation_enabled": true,
+    "execute_requires_database_row_delete_enabled": true,
+    "history_required_for_execute": true
+  },
+  "ownership": {
+    "artifact_system_of_record": "nex-ae-api",
+    "operator_projection_owner": "nex-ag",
+    "ag_dispatch_policy": "ae_api_only",
+    "ag_direct_database_write_allowed": false
+  }
+}

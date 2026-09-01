@@ -127,6 +127,7 @@ AE_ARTIFACT_LIFECYCLE_ACTION_RESULT_SCHEMA_VERSION = (
     "ae_artifact_lifecycle_action_result.v1"
 )
 AE_ARTIFACT_RETENTION_POLICY_SCHEMA_VERSION = "ae_artifact_retention_policy.v1"
+AE_ARTIFACT_RETENTION_SCHEDULE_SCHEMA_VERSION = "ae_artifact_retention_schedule.v1"
 AE_ARTIFACT_RETENTION_CANDIDATE_COLLECTION_SCHEMA_VERSION = (
     "ae_artifact_retention_candidate_collection.v1"
 )
@@ -160,6 +161,7 @@ RESTORABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED"}
 ARTIFACT_LIFECYCLE_DEFAULT_RESTORE_STATUS = "READY"
 ARTIFACT_LIFECYCLE_DEFAULT_REASON_CODE = "user_requested"
 DEFAULT_ARTIFACT_RETENTION_POLICY_ID = "ae-artifact-logical-purge-30d-local-v1"
+DEFAULT_ARTIFACT_RETENTION_SCHEDULE_ID = "ae-artifact-retention-schedule-local-v1"
 DEFAULT_ARTIFACT_RETENTION_DAYS_AFTER_LOGICAL_PURGE = 30
 MIN_ARTIFACT_RETENTION_DAYS_AFTER_LOGICAL_PURGE = 1
 MAX_ARTIFACT_RETENTION_DAYS_AFTER_LOGICAL_PURGE = 365
@@ -2868,6 +2870,72 @@ def build_artifact_retention_policy(
     return policy
 
 
+def build_artifact_retention_schedule(
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    source = payload or {}
+    retention_days = normalize_artifact_retention_days(
+        source.get("retention_days_after_logical_purge")
+        if "retention_days_after_logical_purge" in source
+        else source.get("retention_days")
+    )
+    max_delete_count = normalize_artifact_retention_delete_limit(
+        source.get("max_delete_count")
+    )
+    schedule = {
+        "artifact_retention_schedule_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULE_SCHEMA_VERSION
+        ),
+        "schedule_id": (
+            optional_text(source.get("schedule_id"))
+            or DEFAULT_ARTIFACT_RETENTION_SCHEDULE_ID
+        ),
+        "policy_id": (
+            optional_text(source.get("policy_id"))
+            or DEFAULT_ARTIFACT_RETENTION_POLICY_ID
+        ),
+        "service_id": "nex-ae-api",
+        "schedule_enabled": False,
+        "planning_enabled": True,
+        "default_mode": "DRY_RUN",
+        "allowed_modes": list(ARTIFACT_RETENTION_EXECUTION_MODES),
+        "retention": {
+            "logical_purge_status": ARTIFACT_RETENTION_LOGICAL_PURGE_STATUS,
+            "logical_purge_timestamp_field": "updated_at",
+            "retention_days_after_logical_purge": retention_days,
+            "supported_retention_day_presets": list(
+                SUPPORTED_ARTIFACT_RETENTION_DAY_PRESETS
+            ),
+        },
+        "batch_window": {
+            "timezone": ARTIFACT_RETENTION_BATCH_TIMEZONE,
+            "start_local_time": ARTIFACT_RETENTION_BATCH_WINDOW_START,
+            "end_local_time": ARTIFACT_RETENTION_BATCH_WINDOW_END,
+        },
+        "limits": {
+            "default_scan_limit": DEFAULT_ARTIFACT_COLLECTION_LIMIT,
+            "max_scan_limit": MAX_ARTIFACT_COLLECTION_LIMIT,
+            "default_max_delete_count": max_delete_count,
+            "max_delete_count": MAX_ARTIFACT_RETENTION_MAX_DELETE_COUNT,
+        },
+        "guardrails": {
+            "dry_run_required_before_execute": True,
+            "execute_requires_delete_enabled": True,
+            "execute_requires_storage_mutation_enabled": True,
+            "execute_requires_database_row_delete_enabled": True,
+            "history_required_for_execute": True,
+        },
+        "ownership": {
+            "artifact_system_of_record": "nex-ae-api",
+            "operator_projection_owner": "nex-ag",
+            "ag_dispatch_policy": "ae_api_only",
+            "ag_direct_database_write_allowed": False,
+        },
+    }
+    validate_artifact_retention_schedule(schedule)
+    return schedule
+
+
 def normalize_artifact_retention_days(value: Any) -> int:
     if value is None:
         return DEFAULT_ARTIFACT_RETENTION_DAYS_AFTER_LOGICAL_PURGE
@@ -2954,6 +3022,157 @@ def validate_artifact_retention_policy(policy: dict[str, Any]) -> None:
             detail="Artifact retention candidate query must be metadata-only.",
         )
     assert_artifact_retention_payload_safe(policy)
+
+
+def validate_artifact_retention_schedule(schedule: dict[str, Any]) -> None:
+    if not isinstance(schedule, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_schedule_invalid",
+            detail="Artifact retention schedule must be an object.",
+        )
+    if (
+        schedule.get("artifact_retention_schedule_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULE_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_schedule_schema_invalid",
+            detail="Artifact retention schedule schema version is invalid.",
+        )
+    for section_name in (
+        "retention",
+        "batch_window",
+        "limits",
+        "guardrails",
+        "ownership",
+    ):
+        if not isinstance(schedule.get(section_name), dict):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_schedule_invalid",
+                detail=(
+                    f"Artifact retention schedule {section_name} section is "
+                    "required."
+                ),
+            )
+    if schedule.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_schedule_invalid",
+            detail="Artifact retention schedule service id is invalid.",
+        )
+    if schedule.get("schedule_enabled") is not False:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_schedule_invalid",
+            detail="Artifact retention scheduler daemon remains disabled for S49 setup.",
+        )
+    if schedule.get("planning_enabled") is not True:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_schedule_invalid",
+            detail="Artifact retention schedule planning must stay enabled.",
+        )
+    if schedule.get("default_mode") != "DRY_RUN":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_schedule_invalid",
+            detail="Artifact retention schedule default mode must be DRY_RUN.",
+        )
+    if schedule.get("allowed_modes") != list(ARTIFACT_RETENTION_EXECUTION_MODES):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_schedule_invalid",
+            detail="Artifact retention schedule modes are invalid.",
+        )
+
+    retention = schedule["retention"]
+    if retention.get("logical_purge_status") != ARTIFACT_RETENTION_LOGICAL_PURGE_STATUS:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_schedule_invalid",
+            detail="Artifact retention schedule logical purge status is invalid.",
+        )
+    if retention.get("logical_purge_timestamp_field") != "updated_at":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_schedule_invalid",
+            detail="Artifact retention schedule logical purge timestamp field is invalid.",
+        )
+    normalize_artifact_retention_days(
+        retention.get("retention_days_after_logical_purge")
+    )
+    if retention.get("supported_retention_day_presets") != list(
+        SUPPORTED_ARTIFACT_RETENTION_DAY_PRESETS
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_schedule_invalid",
+            detail="Artifact retention schedule retention day presets are invalid.",
+        )
+
+    batch_window = schedule["batch_window"]
+    if batch_window != {
+        "timezone": ARTIFACT_RETENTION_BATCH_TIMEZONE,
+        "start_local_time": ARTIFACT_RETENTION_BATCH_WINDOW_START,
+        "end_local_time": ARTIFACT_RETENTION_BATCH_WINDOW_END,
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_schedule_invalid",
+            detail="Artifact retention schedule batch window is invalid.",
+        )
+
+    limits = schedule["limits"]
+    if limits.get("default_scan_limit") != DEFAULT_ARTIFACT_COLLECTION_LIMIT:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_schedule_invalid",
+            detail="Artifact retention schedule default scan limit is invalid.",
+        )
+    if limits.get("max_scan_limit") != MAX_ARTIFACT_COLLECTION_LIMIT:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_schedule_invalid",
+            detail="Artifact retention schedule max scan limit is invalid.",
+        )
+    normalize_artifact_retention_delete_limit(limits.get("default_max_delete_count"))
+    if limits.get("max_delete_count") != MAX_ARTIFACT_RETENTION_MAX_DELETE_COUNT:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_schedule_invalid",
+            detail="Artifact retention schedule max delete count is invalid.",
+        )
+
+    guardrails = schedule["guardrails"]
+    required_guardrails = {
+        "dry_run_required_before_execute",
+        "execute_requires_delete_enabled",
+        "execute_requires_storage_mutation_enabled",
+        "execute_requires_database_row_delete_enabled",
+        "history_required_for_execute",
+    }
+    if any(guardrails.get(key) is not True for key in required_guardrails):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_schedule_invalid",
+            detail="Artifact retention schedule guardrails are invalid.",
+        )
+
+    ownership = schedule["ownership"]
+    if ownership != {
+        "artifact_system_of_record": "nex-ae-api",
+        "operator_projection_owner": "nex-ag",
+        "ag_dispatch_policy": "ae_api_only",
+        "ag_direct_database_write_allowed": False,
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_schedule_invalid",
+            detail="Artifact retention schedule ownership boundary is invalid.",
+        )
+    assert_artifact_retention_payload_safe(schedule)
 
 
 def assert_artifact_retention_payload_safe(payload: dict[str, Any]) -> None:
