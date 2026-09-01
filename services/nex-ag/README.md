@@ -346,6 +346,10 @@ Unified operations:
   owner-scoped batch plan through the AE client boundary, summarizes scheduler
   status, candidate counts, selected counts, estimated delete counts, and
   dispatch availability, and keeps the projection metadata-only.
+- Slice 0489 connects that projection to protected AE PostgreSQL smoke evidence:
+  the smoke builds a live-test-DB batch plan, scheduled command, mock-worker
+  history row, and AG batch projection without any direct AG write into AE
+  persistence.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

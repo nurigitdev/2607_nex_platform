@@ -512,3 +512,10 @@ Artifact library management:
   `DRY_RUN`, optionally writes retention execution history, leaves artifact
   rows/rendered storage untouched, and returns worker result evidence without
   embedding the full command payload.
+- Slice 0489 adds protected PostgreSQL smoke evidence for scheduled execution.
+  Set `NEX_AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_POSTGRES_SMOKE=1` with
+  `NEX_AE_TEST_DATABASE_URL` to migrate the real AE test DB, create rendered
+  logical-purge artifacts, build a batch plan and scheduled command, run the
+  mock worker through SQLAlchemy artifact/history stores, verify persisted
+  history, verify artifact/storage rows remain retained, project the plan
+  through AG's metadata-only operator view, and clean up smoke rows.
