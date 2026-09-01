@@ -478,3 +478,7 @@ Artifact library management:
   repository, purge writer, read-model, query API, PostgreSQL writer/query smoke
   evidence, AG projection linkage, and metadata-only redaction posture remain
   connected end to end.
+- Slice 0481 starts S49 by freezing the scheduled artifact retention operations
+  boundary. AE remains the retention system of record, scheduled runs default to
+  dry-run in the 02:00-05:00 `Asia/Seoul` window, execute-mode deletion keeps
+  the three existing guard flags, and scheduler/worker mutation remains deferred.
