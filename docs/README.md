@@ -608,6 +608,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0502`](slices/0502_ae_retention_scheduler_runtime_config_expansion.md) | `S51-002` AE retention scheduler runtime config expansion. |
 | [`Slice 0503`](slices/0503_ae_retention_scheduler_tick_planner_foundation.md) | `S51-003` AE retention scheduler tick planner foundation. |
 | [`Slice 0504`](slices/0504_ae_retention_scheduler_tick_jobqueue_admission.md) | `S51-004` AE retention scheduler tick JobQueue admission. |
+| [`Slice 0505`](slices/0505_ae_artifact_retention_scheduler_tick_postgresql_smoke.md) | `S51-005` AE retention scheduler tick PostgreSQL smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

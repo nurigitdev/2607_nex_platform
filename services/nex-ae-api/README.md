@@ -578,3 +578,8 @@ Artifact library management:
   admission path. NOOP/SKIPPED ticks return metadata-only skipped enqueue
   evidence without touching the queue, while READY ticks reuse the existing
   scheduled-job admission/result contracts and shared JobQueue idempotency.
+- Slice 0505 adds protected PostgreSQL evidence for scheduler tick admission.
+  When explicitly enabled against `NEX_AE_TEST_DATABASE_URL`, it migrates the
+  real AE test DB, builds a READY tick inside the batch window, enqueues it via
+  `SqlAlchemyJobQueue`, directly verifies the persisted `service_jobs` row, and
+  reads it back through AE's scheduled-job route before cleanup.
