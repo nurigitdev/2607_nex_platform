@@ -1626,16 +1626,16 @@ def _artifact_retention_history_cache_key(
 
 def _normalized_retention_mode(raw_value: Any) -> str | None:
     value = _text_or_none(raw_value)
-    if value is None:
+    if value is None or not value.strip():
         return None
-    return value.replace("-", "_").upper()
+    return value.strip().replace("-", "_").upper()
 
 
 def _normalized_retention_status(raw_value: Any) -> str | None:
     value = _text_or_none(raw_value)
-    if value is None:
+    if value is None or not value.strip():
         return None
-    return value.replace("-", "_").upper()
+    return value.strip().replace("-", "_").upper()
 
 
 def _safe_deleted_counts(raw_value: Any) -> dict[str, int]:

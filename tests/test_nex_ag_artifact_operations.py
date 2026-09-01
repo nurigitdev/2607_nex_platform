@@ -1000,6 +1000,7 @@ def test_artifact_operation_collection_helper_edges() -> None:
     assert artifact_operations._safe_artifact_route_mapping("bad") == {}
     assert artifact_operations._safe_artifact_route(None) is None
     assert artifact_operations._first_mapping([]) == {}
+    assert artifact_operations._first_mapping(["bad", {"ok": True}]) == {"ok": True}
     assert artifact_operations._owner_tenant_id({"tenant_id": "tenant-fallback"}) == (
         "tenant-fallback"
     )
@@ -1017,6 +1018,56 @@ def test_artifact_operation_collection_helper_edges() -> None:
     assert artifact_operations._normalized_retention_status(None) is None
     assert artifact_operations._safe_deleted_counts("bad") == {}
     assert artifact_operations._safe_deleted_counts({"artifacts": "2"})["artifacts"] == 2
+    assert artifact_operations._current_version_no(
+        [
+            {"artifact_version_id": "old", "version_no": 1},
+            {"artifact_version_id": "current", "version_no": "2"},
+        ],
+        "current",
+    ) == 2
+    assert artifact_operations._project_lifecycle_action(
+        artifact_id=None,
+        current_status="READY",
+        action="ARCHIVE",
+    )["blocked_reason"] == "artifact_id_missing"
+    assert summarize_artifact_operation_collection(
+        [
+            {"artifact_status": None, "updated_at": None},
+            {"artifact_status": "", "updated_at": "2026-08-28T00:00:00Z"},
+        ]
+    ) == {
+        "item_count": 2,
+        "ready_count": 0,
+        "draft_count": 0,
+        "failed_count": 0,
+        "downloadable_count": 0,
+        "previewable_count": 0,
+        "status_counts": {},
+        "latest_updated_at": "2026-08-28T00:00:00Z",
+    }
+    assert summarize_artifact_retention_history_operations(
+        [
+            {"mode": None, "execution_status": None, "deleted_counts": None},
+            {
+                "mode": "",
+                "execution_status": "",
+                "checked_at": "2026-09-01T01:00:00Z",
+            },
+        ]
+    ) == {
+        "item_count": 2,
+        "mode_counts": {},
+        "status_counts": {},
+        "dry_run_count": 0,
+        "execute_count": 0,
+        "succeeded_count": 0,
+        "blocked_count": 0,
+        "failed_count": 0,
+        "operator_attention_count": 0,
+        "total_deleted_artifacts": 0,
+        "total_deleted_storage_files": 0,
+        "latest_checked_at": "2026-09-01T01:00:00Z",
+    }
 
 
 def test_in_memory_artifact_operations_client_lists_retention_history() -> None:

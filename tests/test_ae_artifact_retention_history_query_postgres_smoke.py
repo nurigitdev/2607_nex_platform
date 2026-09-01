@@ -145,6 +145,24 @@ def test_ae_artifact_retention_history_query_postgres_smoke_reports_failed_check
         )
 
 
+def test_ae_artifact_retention_history_query_postgres_smoke_wraps_execute_value_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = sqlite_artifact_session_factory().kw["bind"]
+    monkeypatch.setattr(smoke, "build_engine", lambda _database_url: engine)
+    monkeypatch.setattr(
+        smoke,
+        "build_session_factory",
+        lambda _engine: (_ for _ in ()).throw(ValueError("bad session")),
+    )
+
+    with pytest.raises(RuntimeError, match="bad session"):
+        smoke._execute_ae_artifact_retention_history_query_smoke(
+            database_url=smoke_env()["NEX_AE_TEST_DATABASE_URL"],
+            database_env="NEX_AE_TEST_DATABASE_URL",
+        )
+
+
 def test_ae_artifact_retention_history_query_postgres_smoke_reports_execution_exception(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -201,8 +219,23 @@ def test_ae_artifact_retention_history_query_postgres_smoke_helpers_and_redactio
         "postgresql+psycopg://user:sensitive-pass@127.0.0.1:5432/nex_ae_test"
     ) == "sensitive-pass"
     assert smoke._database_url_password(None) is None
-    assert smoke._database_url_password("not-a-url") is None
+    assert smoke._database_url_password("postgresql://user@127.0.0.1/nex_ae_test") is None
+    assert smoke._database_url_password("http://[::1") is None
     assert smoke._safe_response_json(type("Response", (), {"json": lambda self: []})()) == {}
+    assert (
+        smoke._safe_response_json(
+            type(
+                "BadJsonResponse",
+                (),
+                {
+                    "json": lambda self: (_ for _ in ()).throw(
+                        json.JSONDecodeError("bad", "", 0)
+                    )
+                },
+            )()
+        )
+        == {}
+    )
     assert smoke._metadata_only({"safe": "ok"}, forbidden_fragments=["secret"])
     assert not smoke._metadata_only(
         {"leak": "storage_ref"},

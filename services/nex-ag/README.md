@@ -333,6 +333,9 @@ Unified operations:
   retention execution history collection through the artifact operations client,
   summarizes mode/status/deletion counts for operators, and keeps raw persisted
   execution JSON out of the operations projection.
+- Slice 0480 closes S48 with an automated checkpoint confirming the AG
+  retention history projection remains linked to AE history read-model/query
+  evidence while preserving read-only, metadata-only operator semantics.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

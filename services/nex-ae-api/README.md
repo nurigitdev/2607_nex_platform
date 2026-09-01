@@ -474,3 +474,7 @@ Artifact library management:
   rows, queries all/execute/blocked collections through the API, cross-checks DB
   counts, and cleans up the generated history rows without exposing raw
   execution JSON.
+- Slice 0480 closes S48 by checking retention history boundary, migration,
+  repository, purge writer, read-model, query API, PostgreSQL writer/query smoke
+  evidence, AG projection linkage, and metadata-only redaction posture remain
+  connected end to end.
