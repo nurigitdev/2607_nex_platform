@@ -25,6 +25,8 @@ from nex_ae_api.artifacts import (
     ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION,
     AE_ARTIFACT_LIFECYCLE_ACTION_RESULT_SCHEMA_VERSION,
     AE_ARTIFACT_LIFECYCLE_ACTION_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_BATCH_PLAN_ITEM_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_BATCH_PLAN_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_COLLECTION_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_ITEM_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_SCHEMA_VERSION,
@@ -52,6 +54,7 @@ from nex_ae_api.artifacts import (
     build_artifact_collection_item,
     build_artifact_lifecycle_action_request,
     build_artifact_lifecycle_action_result,
+    build_artifact_retention_batch_plan,
     build_artifact_retention_candidate_filter,
     build_artifact_retention_candidate_collection,
     build_artifact_retention_execution,
@@ -95,10 +98,12 @@ from nex_ae_api.artifacts import (
     resolve_rendered_artifact_file_payload,
     safe_file_stem,
     sha256_bytes,
+    summarize_artifact_retention_batch_plan,
     summarize_artifact_retention_execution_history,
     target_formats_from_payload,
     parse_artifact_retention_timestamp,
     assert_artifact_retention_history_payload_safe,
+    validate_artifact_retention_batch_plan,
     validate_artifact_retention_execution,
     validate_artifact_retention_execution_history_record,
     validate_artifact_retention_policy,
@@ -2769,6 +2774,219 @@ def test_sqlalchemy_artifact_record_store_lists_retention_candidates_with_sqlite
     assert candidates["items"][0]["display_title"] == "SQL old deleted report"
     assert candidates["items"][0]["file_count"] == 0
     assert candidates["items"][0]["link_count"] == 0
+
+
+def test_artifact_retention_batch_plan_read_model_selects_candidates_safely() -> None:
+    store = ArtifactRecordStore()
+    first = save_rendered_retention_artifact(
+        store,
+        artifact_request_id="retention-plan-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+        target_formats=["MD", "HTML_PREVIEW", "DOCX"],
+    )
+    save_rendered_retention_artifact(
+        store,
+        artifact_request_id="retention-plan-old-002",
+        updated_at="2026-07-31T01:00:00Z",
+        target_formats=["MD"],
+    )
+    save_rendered_retention_artifact(
+        store,
+        artifact_request_id="retention-plan-recent-001",
+        updated_at="2026-08-31T00:00:00Z",
+    )
+
+    plan = store.plan_retention_batch(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit="10",
+        max_delete_count="1",
+        checked_at="2026-09-01T02:15:00Z",
+        requested_by={"actor_type": "service", "actor_id": "nex-ag"},
+        idempotency_key="retention-plan-001",
+    )
+    selected = plan["selected_candidates"][0]
+    serialized = json.dumps(plan, ensure_ascii=False, sort_keys=True)
+
+    assert plan["artifact_retention_batch_plan_schema_version"] == (
+        AE_ARTIFACT_RETENTION_BATCH_PLAN_SCHEMA_VERSION
+    )
+    assert plan["plan_status"] == "READY"
+    assert plan["scheduler_status"] == "DISABLED"
+    assert plan["execution_advice"] == "manual_dispatch_after_operator_approval"
+    assert plan["mode"] == "DRY_RUN"
+    assert plan["candidate_count"] == 2
+    assert plan["selected_count"] == 1
+    assert plan["unselected_count"] == 1
+    assert plan["max_delete_count"] == 1
+    assert plan["idempotency_key"] == "retention-plan-001"
+    assert plan["metadata"] == {
+        "metadata_only": True,
+        "dry_run": True,
+        "physical_delete_executed": False,
+        "storage_mutation_executed": False,
+        "database_row_delete_executed": False,
+        "history_write_executed": False,
+        "source_collection_count": 2,
+    }
+    assert selected["artifact_retention_batch_plan_item_schema_version"] == (
+        AE_ARTIFACT_RETENTION_BATCH_PLAN_ITEM_SCHEMA_VERSION
+    )
+    assert selected["selection_order"] == 1
+    assert selected["artifact_id"] == first["artifact_id"]
+    assert selected["planned_action"] == "PHYSICAL_DELETE"
+    assert selected["dry_run"] is True
+    assert plan["estimated_deleted_counts"] == {
+        "artifacts": 1,
+        "source_refs": 0,
+        "versions": 1,
+        "render_jobs": 1,
+        "files": 3,
+        "links": 6,
+        "storage_files": 3,
+    }
+    assert summarize_artifact_retention_batch_plan(plan) == {
+        "plan_status": "READY",
+        "scheduler_status": "DISABLED",
+        "candidate_count": 2,
+        "selected_count": 1,
+        "unselected_count": 1,
+        "estimated_deleted_artifacts": 1,
+        "estimated_deleted_storage_files": 3,
+        "checked_at": "2026-09-01T02:15:00Z",
+        "next_action": "manual_dispatch_after_operator_approval",
+    }
+    assert validate_artifact_retention_batch_plan(plan) is plan
+    assert "storage_ref" not in serialized
+    assert "content_base64" not in serialized
+    assert store.get(first["artifact_id"]) is not None
+
+
+def test_artifact_retention_batch_plan_noop_and_validation_edges() -> None:
+    candidate_filter = build_artifact_retention_candidate_filter(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="15",
+        as_of="2026-09-01T00:00:00Z",
+        limit="5",
+    )
+    collection = build_artifact_retention_candidate_collection(
+        [],
+        candidate_filter=candidate_filter,
+    )
+    noop = build_artifact_retention_batch_plan(
+        collection,
+        schedule={"retention_days": "15", "max_delete_count": "7"},
+        checked_at="2026-09-01T02:20:00Z",
+    )
+
+    assert noop["plan_status"] == "NOOP"
+    assert noop["execution_advice"] == "no_retention_candidates"
+    assert noop["candidate_count"] == 0
+    assert noop["selected_count"] == 0
+    assert noop["max_delete_count"] == 7
+    assert noop["schedule"]["retention"]["retention_days_after_logical_purge"] == 15
+    assert noop["schedule"]["limits"]["default_max_delete_count"] == 7
+    assert summarize_artifact_retention_batch_plan(noop)["next_action"] == (
+        "no_retention_candidates"
+    )
+
+    with pytest.raises(ArtifactHandoffError) as collection_type_exc:
+        build_artifact_retention_batch_plan([])  # type: ignore[arg-type]
+    assert collection_type_exc.value.error_code == (
+        "ae.artifact_retention_batch_plan_invalid"
+    )
+
+    with pytest.raises(ArtifactHandoffError) as collection_schema_exc:
+        build_artifact_retention_batch_plan(
+            {
+                **collection,
+                "artifact_retention_candidate_collection_schema_version": "wrong",
+            }
+        )
+    assert collection_schema_exc.value.error_code == (
+        "ae.artifact_retention_batch_plan_invalid"
+    )
+
+    with pytest.raises(ArtifactHandoffError) as collection_filter_exc:
+        build_artifact_retention_batch_plan({**collection, "filter": []})  # type: ignore[dict-item]
+    assert collection_filter_exc.value.error_code == (
+        "ae.artifact_retention_batch_plan_invalid"
+    )
+
+    with pytest.raises(ArtifactHandoffError) as plan_type_exc:
+        validate_artifact_retention_batch_plan("bad")  # type: ignore[arg-type]
+    assert plan_type_exc.value.error_code == "ae.artifact_retention_batch_plan_invalid"
+
+    invalid_cases = [
+        (
+            {"artifact_retention_batch_plan_schema_version": "wrong"},
+            "ae.artifact_retention_batch_plan_schema_invalid",
+        ),
+        ({"candidate_filter": []}, "ae.artifact_retention_batch_plan_invalid"),
+        ({"estimated_deleted_counts": []}, "ae.artifact_retention_batch_plan_invalid"),
+        ({"requested_by": []}, "ae.artifact_retention_batch_plan_invalid"),
+        ({"metadata": []}, "ae.artifact_retention_batch_plan_invalid"),
+        ({"candidate_filter": {**noop["candidate_filter"], "tenant_id": " "}},
+         "ae.artifact_retention_batch_plan_invalid"),
+        ({"mode": "EXECUTE"}, "ae.artifact_retention_batch_plan_invalid"),
+        ({"plan_status": "RUNNING"}, "ae.artifact_retention_batch_plan_invalid"),
+        ({"scheduler_status": "ENABLED"}, "ae.artifact_retention_batch_plan_invalid"),
+        ({"selected_count": 1}, "ae.artifact_retention_batch_plan_invalid"),
+        ({"candidate_count": 0, "selected_count": 0, "unselected_count": 1},
+         "ae.artifact_retention_batch_plan_invalid"),
+        ({"metadata": {**noop["metadata"], "metadata_only": False}},
+         "ae.artifact_retention_batch_plan_invalid"),
+        ({"storage_ref": "ae://artifacts/private.md"},
+         "ae.artifact_retention_payload_unsafe"),
+    ]
+    for mutation, error_code in invalid_cases:
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_batch_plan({**noop, **mutation})
+        assert exc_info.value.error_code == error_code
+
+
+def test_sqlalchemy_artifact_record_store_plans_retention_batch_with_sqlite() -> None:
+    session_factory = sqlite_artifact_session_factory()
+    storage = InMemoryRenderedArtifactStorage()
+    store = SqlAlchemyArtifactRecordStore(
+        session_factory,
+        rendered_storage=storage,
+    )
+    first = save_rendered_retention_artifact(
+        store,
+        artifact_request_id="sql-retention-plan-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    save_rendered_retention_artifact(
+        store,
+        artifact_request_id="sql-retention-plan-old-002",
+        updated_at="2026-07-31T01:00:00Z",
+    )
+
+    plan = store.plan_retention_batch(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit=10,
+        max_delete_count=1,
+        checked_at="2026-09-01T02:25:00Z",
+    )
+
+    assert plan["plan_status"] == "READY"
+    assert plan["candidate_count"] == 2
+    assert plan["selected_count"] == 1
+    assert plan["selected_candidates"][0]["artifact_id"] == first["artifact_id"]
+    assert plan["estimated_deleted_counts"]["files"] == 2
+    assert plan["estimated_deleted_counts"]["links"] == 4
+    assert store.get(first["artifact_id"]) is not None
+    assert len(storage.rendered_artifact_files) == 4
 
 
 def test_artifact_record_store_purge_retention_candidates_is_safe_by_default() -> None:

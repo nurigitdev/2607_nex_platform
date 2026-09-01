@@ -1,0 +1,81 @@
+{
+  "artifact_retention_batch_plan_schema_version": "ae_artifact_retention_batch_plan.v1",
+  "plan_id": "1d7e0f1f-00a7-5f8f-9074-2a92e3b6a2b0",
+  "service_id": "nex-ae-api",
+  "schedule": {
+    "artifact_retention_schedule_schema_version": "ae_artifact_retention_schedule.v1",
+    "schedule_enabled": false,
+    "planning_enabled": true,
+    "default_mode": "DRY_RUN"
+  },
+  "candidate_filter": {
+    "tenant_id": "tenant-001",
+    "workspace_id": "workspace-001",
+    "owner_user_id": "user-001",
+    "status": "DELETED",
+    "retention_days_after_logical_purge": 30,
+    "as_of": "2026-09-01T00:00:00Z",
+    "cutoff_at": "2026-08-02T00:00:00Z",
+    "limit": 10,
+    "dry_run": true
+  },
+  "tenant_id": "tenant-001",
+  "workspace_id": "workspace-001",
+  "owner_user_id": "user-001",
+  "mode": "DRY_RUN",
+  "plan_status": "READY",
+  "scheduler_status": "DISABLED",
+  "execution_advice": "manual_dispatch_after_operator_approval",
+  "as_of": "2026-09-01T00:00:00Z",
+  "cutoff_at": "2026-08-02T00:00:00Z",
+  "checked_at": "2026-09-01T02:15:00Z",
+  "scan_limit": 10,
+  "max_delete_count": 1,
+  "candidate_count": 1,
+  "selected_count": 1,
+  "unselected_count": 0,
+  "estimated_deleted_counts": {
+    "artifacts": 1,
+    "source_refs": 0,
+    "versions": 1,
+    "render_jobs": 1,
+    "files": 2,
+    "links": 4,
+    "storage_files": 2
+  },
+  "selected_candidates": [
+    {
+      "artifact_retention_batch_plan_item_schema_version": "ae_artifact_retention_batch_plan_item.v1",
+      "selection_order": 1,
+      "artifact_id": "artifact-retention-plan-old-001",
+      "display_title": "Old deleted report",
+      "artifact_status": "DELETED",
+      "logical_purged_at": "2026-07-31T00:00:00Z",
+      "purge_eligible_at": "2026-08-30T00:00:00Z",
+      "age_days_after_logical_purge": 32,
+      "version_count": 1,
+      "file_count": 2,
+      "link_count": 4,
+      "render_job_count": 1,
+      "planned_action": "PHYSICAL_DELETE",
+      "execution_mode": "scheduled_batch_after_retention",
+      "dry_run": true
+    }
+  ],
+  "requested_by": {
+    "actor_type": "service",
+    "actor_id": "nex-ag",
+    "service_id": "nex-ae-api"
+  },
+  "idempotency_key": "retention-plan-001",
+  "metadata": {
+    "metadata_only": true,
+    "dry_run": true,
+    "physical_delete_executed": false,
+    "storage_mutation_executed": false,
+    "database_row_delete_executed": false,
+    "history_write_executed": false,
+    "source_collection_count": 1
+  },
+  "database_url": "postgresql://nex_ae_user:nuri1004@127.0.0.1:5432/nex_ae_test"
+}

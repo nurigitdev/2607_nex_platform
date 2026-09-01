@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
 import httpx
@@ -133,6 +133,12 @@ AE_ARTIFACT_RETENTION_CANDIDATE_COLLECTION_SCHEMA_VERSION = (
 )
 AE_ARTIFACT_RETENTION_CANDIDATE_ITEM_SCHEMA_VERSION = (
     "ae_artifact_retention_candidate_item.v1"
+)
+AE_ARTIFACT_RETENTION_BATCH_PLAN_SCHEMA_VERSION = (
+    "ae_artifact_retention_batch_plan.v1"
+)
+AE_ARTIFACT_RETENTION_BATCH_PLAN_ITEM_SCHEMA_VERSION = (
+    "ae_artifact_retention_batch_plan_item.v1"
 )
 AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION = (
     "ae_artifact_retention_execution.v1"
@@ -407,6 +413,36 @@ class ArtifactRecordStore:
         return build_artifact_retention_candidate_collection(
             records[: candidate_filter["limit"]],
             candidate_filter=candidate_filter,
+        )
+
+    def plan_retention_batch(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        retention_days: int | str | None = None,
+        as_of: str | None = None,
+        scan_limit: int | str | None = None,
+        max_delete_count: int | str | None = None,
+        checked_at: str | None = None,
+        requested_by: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        candidates = self.list_retention_candidates(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            retention_days=retention_days,
+            as_of=as_of,
+            limit=scan_limit,
+        )
+        return build_artifact_retention_batch_plan(
+            candidates,
+            max_delete_count=max_delete_count,
+            checked_at=checked_at,
+            requested_by=requested_by,
+            idempotency_key=idempotency_key,
         )
 
     def purge_retention_candidates(
@@ -1042,6 +1078,36 @@ class SqlAlchemyArtifactRecordStore:
                 detail="AE artifact store is unavailable.",
                 retryable=True,
             ) from exc
+
+    def plan_retention_batch(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        retention_days: int | str | None = None,
+        as_of: str | None = None,
+        scan_limit: int | str | None = None,
+        max_delete_count: int | str | None = None,
+        checked_at: str | None = None,
+        requested_by: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        candidates = self.list_retention_candidates(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            retention_days=retention_days,
+            as_of=as_of,
+            limit=scan_limit,
+        )
+        return build_artifact_retention_batch_plan(
+            candidates,
+            max_delete_count=max_delete_count,
+            checked_at=checked_at,
+            requested_by=requested_by,
+            idempotency_key=idempotency_key,
+        )
 
     def purge_retention_candidates(
         self,
@@ -3354,6 +3420,317 @@ def build_artifact_retention_candidate_item(
     }
     assert_artifact_retention_payload_safe(item)
     return item
+
+
+def build_artifact_retention_batch_plan(
+    candidate_collection: dict[str, Any],
+    *,
+    schedule: dict[str, Any] | None = None,
+    max_delete_count: int | str | None = None,
+    checked_at: str | None = None,
+    requested_by: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    if not isinstance(candidate_collection, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_batch_plan_invalid",
+            detail="Artifact retention batch plan candidates must be an object.",
+        )
+    if (
+        candidate_collection.get(
+            "artifact_retention_candidate_collection_schema_version"
+        )
+        != AE_ARTIFACT_RETENTION_CANDIDATE_COLLECTION_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_batch_plan_invalid",
+            detail="Artifact retention batch plan candidate collection is invalid.",
+        )
+    candidate_filter = candidate_collection.get("filter")
+    if not isinstance(candidate_filter, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_batch_plan_invalid",
+            detail="Artifact retention batch plan candidate filter is required.",
+        )
+    normalized_schedule = build_artifact_retention_schedule(schedule)
+    normalized_checked_at = format_artifact_retention_timestamp(
+        parse_artifact_retention_timestamp(
+            checked_at or _utc_now(),
+            field_name="checked_at",
+        )
+    )
+    normalized_max_delete_count = normalize_artifact_retention_delete_limit(
+        max_delete_count
+        if max_delete_count is not None
+        else normalized_schedule["limits"]["default_max_delete_count"]
+    )
+    items = _list_of_mappings(candidate_collection.get("items"))
+    selected_items = items[:normalized_max_delete_count]
+    plan = {
+        "artifact_retention_batch_plan_schema_version": (
+            AE_ARTIFACT_RETENTION_BATCH_PLAN_SCHEMA_VERSION
+        ),
+        "plan_id": _artifact_retention_batch_plan_id(
+            candidate_filter=candidate_filter,
+            checked_at=normalized_checked_at,
+            max_delete_count=normalized_max_delete_count,
+            idempotency_key=idempotency_key,
+        ),
+        "service_id": "nex-ae-api",
+        "schedule": normalized_schedule,
+        "candidate_filter": dict(candidate_filter),
+        "tenant_id": candidate_filter["tenant_id"],
+        "workspace_id": candidate_filter["workspace_id"],
+        "owner_user_id": candidate_filter["owner_user_id"],
+        "mode": normalized_schedule["default_mode"],
+        "plan_status": "READY" if selected_items else "NOOP",
+        "scheduler_status": "DISABLED",
+        "execution_advice": (
+            "manual_dispatch_after_operator_approval"
+            if selected_items
+            else "no_retention_candidates"
+        ),
+        "as_of": candidate_filter["as_of"],
+        "cutoff_at": candidate_filter["cutoff_at"],
+        "checked_at": normalized_checked_at,
+        "scan_limit": candidate_filter["limit"],
+        "max_delete_count": normalized_max_delete_count,
+        "candidate_count": len(items),
+        "selected_count": len(selected_items),
+        "unselected_count": max(0, len(items) - len(selected_items)),
+        "estimated_deleted_counts": _estimate_artifact_retention_deleted_counts(
+            selected_items
+        ),
+        "selected_candidates": [
+            _artifact_retention_batch_plan_item(item, index=index)
+            for index, item in enumerate(selected_items, start=1)
+        ],
+        "requested_by": _normalize_artifact_retention_requested_by(requested_by),
+        "idempotency_key": optional_text(idempotency_key),
+        "metadata": {
+            "metadata_only": True,
+            "dry_run": True,
+            "physical_delete_executed": False,
+            "storage_mutation_executed": False,
+            "database_row_delete_executed": False,
+            "history_write_executed": False,
+            "source_collection_count": candidate_collection.get("count"),
+        },
+    }
+    return validate_artifact_retention_batch_plan(plan)
+
+
+def validate_artifact_retention_batch_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(plan, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_batch_plan_invalid",
+            detail="Artifact retention batch plan must be an object.",
+        )
+    if (
+        plan.get("artifact_retention_batch_plan_schema_version")
+        != AE_ARTIFACT_RETENTION_BATCH_PLAN_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_batch_plan_schema_invalid",
+            detail="Artifact retention batch plan schema version is invalid.",
+        )
+    validate_artifact_retention_schedule(plan.get("schedule"))
+    for section_name in (
+        "candidate_filter",
+        "estimated_deleted_counts",
+        "requested_by",
+        "metadata",
+    ):
+        if not isinstance(plan.get(section_name), dict):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_batch_plan_invalid",
+                detail=f"Artifact retention batch plan {section_name} is required.",
+            )
+    candidate_filter = plan["candidate_filter"]
+    required_scope = ("tenant_id", "workspace_id", "owner_user_id", "as_of", "cutoff_at")
+    if any(
+        optional_text(candidate_filter.get(field_name)) is None
+        for field_name in required_scope
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_batch_plan_invalid",
+            detail="Artifact retention batch plan candidate scope is required.",
+        )
+    if plan.get("mode") != "DRY_RUN":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_batch_plan_invalid",
+            detail="Artifact retention batch plan mode must be DRY_RUN.",
+        )
+    if plan.get("plan_status") not in {"READY", "NOOP"}:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_batch_plan_invalid",
+            detail="Artifact retention batch plan status is invalid.",
+        )
+    if plan.get("scheduler_status") != "DISABLED":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_batch_plan_invalid",
+            detail="Artifact retention batch plan scheduler status is invalid.",
+        )
+    selected_candidates = _list_of_mappings(plan.get("selected_candidates"))
+    candidate_count = _non_negative_artifact_retention_int(
+        plan.get("candidate_count"),
+        "candidate_count",
+    )
+    selected_count = _non_negative_artifact_retention_int(
+        plan.get("selected_count"),
+        "selected_count",
+    )
+    unselected_count = _non_negative_artifact_retention_int(
+        plan.get("unselected_count"),
+        "unselected_count",
+    )
+    if selected_count != len(selected_candidates):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_batch_plan_invalid",
+            detail="Artifact retention batch plan selected count is invalid.",
+        )
+    if (
+        selected_count > candidate_count
+        or candidate_count != selected_count + unselected_count
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_batch_plan_invalid",
+            detail="Artifact retention batch plan candidate counts are invalid.",
+        )
+    if plan["metadata"].get("metadata_only") is not True:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_batch_plan_invalid",
+            detail="Artifact retention batch plan must be metadata-only.",
+        )
+    assert_artifact_retention_payload_safe(plan)
+    return plan
+
+
+def summarize_artifact_retention_batch_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    validated = validate_artifact_retention_batch_plan(plan)
+    return {
+        "plan_status": validated["plan_status"],
+        "scheduler_status": validated["scheduler_status"],
+        "candidate_count": validated["candidate_count"],
+        "selected_count": validated["selected_count"],
+        "unselected_count": validated["unselected_count"],
+        "estimated_deleted_artifacts": validated["estimated_deleted_counts"][
+            "artifacts"
+        ],
+        "estimated_deleted_storage_files": validated["estimated_deleted_counts"][
+            "storage_files"
+        ],
+        "checked_at": validated["checked_at"],
+        "next_action": validated["execution_advice"],
+    }
+
+
+def _artifact_retention_batch_plan_item(
+    candidate: Mapping[str, Any],
+    *,
+    index: int,
+) -> dict[str, Any]:
+    item = {
+        "artifact_retention_batch_plan_item_schema_version": (
+            AE_ARTIFACT_RETENTION_BATCH_PLAN_ITEM_SCHEMA_VERSION
+        ),
+        "selection_order": index,
+        "artifact_id": candidate["artifact_id"],
+        "display_title": candidate.get("display_title"),
+        "artifact_status": candidate.get("artifact_status"),
+        "logical_purged_at": candidate.get("logical_purged_at"),
+        "purge_eligible_at": candidate.get("purge_eligible_at"),
+        "age_days_after_logical_purge": _non_negative_artifact_retention_int(
+            candidate.get("age_days_after_logical_purge"),
+            "age_days_after_logical_purge",
+        ),
+        "version_count": _non_negative_artifact_retention_int(
+            candidate.get("version_count"),
+            "version_count",
+        ),
+        "file_count": _non_negative_artifact_retention_int(
+            candidate.get("file_count"),
+            "file_count",
+        ),
+        "link_count": _non_negative_artifact_retention_int(
+            candidate.get("link_count"),
+            "link_count",
+        ),
+        "render_job_count": _non_negative_artifact_retention_int(
+            candidate.get("render_job_count"),
+            "render_job_count",
+        ),
+        "planned_action": "PHYSICAL_DELETE",
+        "execution_mode": "scheduled_batch_after_retention",
+        "dry_run": True,
+    }
+    assert_artifact_retention_payload_safe(item)
+    return item
+
+
+def _estimate_artifact_retention_deleted_counts(
+    selected_candidates: list[Mapping[str, Any]],
+) -> dict[str, int]:
+    counts = _empty_artifact_retention_deleted_counts()
+    for candidate in selected_candidates:
+        counts["artifacts"] += 1
+        counts["versions"] += _non_negative_artifact_retention_int(
+            candidate.get("version_count"),
+            "version_count",
+        )
+        counts["render_jobs"] += _non_negative_artifact_retention_int(
+            candidate.get("render_job_count"),
+            "render_job_count",
+        )
+        file_count = _non_negative_artifact_retention_int(
+            candidate.get("file_count"),
+            "file_count",
+        )
+        counts["files"] += file_count
+        counts["storage_files"] += file_count
+        counts["links"] += _non_negative_artifact_retention_int(
+            candidate.get("link_count"),
+            "link_count",
+        )
+    return counts
+
+
+def _artifact_retention_batch_plan_id(
+    *,
+    candidate_filter: Mapping[str, Any],
+    checked_at: str,
+    max_delete_count: int,
+    idempotency_key: str | None,
+) -> str:
+    basis = {
+        "tenant_id": candidate_filter.get("tenant_id"),
+        "workspace_id": candidate_filter.get("workspace_id"),
+        "owner_user_id": candidate_filter.get("owner_user_id"),
+        "as_of": candidate_filter.get("as_of"),
+        "cutoff_at": candidate_filter.get("cutoff_at"),
+        "checked_at": checked_at,
+        "max_delete_count": max_delete_count,
+        "idempotency_key": idempotency_key,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            f"ae-artifact-retention-batch-plan:{sha256_json(basis)}",
+        )
+    )
 
 
 def parse_artifact_retention_timestamp(value: Any, *, field_name: str) -> datetime:

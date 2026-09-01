@@ -486,3 +486,7 @@ Artifact library management:
   contract with schedule daemon disabled, planning enabled, default `DRY_RUN`,
   15/30-day presets, max delete limits, three execute guard flags, and AG
   dispatch-only ownership semantics.
+- Slice 0483 adds the retention batch plan read-model. Artifact stores can now
+  produce metadata-only READY/NOOP plans from retention candidates, cap selected
+  artifacts by `max_delete_count`, estimate child-row/file deletes, and keep all
+  scheduler, storage, database, and history mutations disabled.
