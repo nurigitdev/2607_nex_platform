@@ -19,17 +19,20 @@ import nex_ae_api.artifacts as ae_artifacts
 from nex_ae_api.artifacts import (
     ArtifactHandoffError,
     ArtifactHandoffStore,
+    ArtifactRetentionExecutionHistoryStore,
     ArtifactRecordStore,
     ARTIFACT_COLLECTION_SCHEMA_VERSION,
     ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION,
     AE_ARTIFACT_LIFECYCLE_ACTION_RESULT_SCHEMA_VERSION,
     AE_ARTIFACT_LIFECYCLE_ACTION_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_POLICY_SCHEMA_VERSION,
     HttpCxArtifactSourceClient,
     InMemoryRenderedArtifactStorage,
     LocalRenderedArtifactStorage,
     SqlAlchemyArtifactHandoffStore,
+    SqlAlchemyArtifactRetentionExecutionHistoryStore,
     SqlAlchemyArtifactRecordStore,
     actor_claims_ref_from_payload,
     apply_artifact_lifecycle_action,
@@ -49,8 +52,10 @@ from nex_ae_api.artifacts import (
     build_artifact_retention_candidate_filter,
     build_artifact_retention_candidate_collection,
     build_artifact_retention_execution,
+    build_artifact_retention_execution_history_record,
     build_artifact_retention_policy,
     build_default_artifact_handoff_store,
+    build_default_artifact_retention_execution_history_store,
     build_default_artifact_record_store,
     build_default_rendered_artifact_storage,
     build_artifact_handoff_record,
@@ -86,6 +91,7 @@ from nex_ae_api.artifacts import (
     target_formats_from_payload,
     parse_artifact_retention_timestamp,
     validate_artifact_retention_execution,
+    validate_artifact_retention_execution_history_record,
     validate_artifact_retention_policy,
     validate_artifact_handoff_record,
     validate_structured_draft_for_markdown_render,
@@ -355,6 +361,23 @@ def save_rendered_retention_artifact(
     return rendered
 
 
+def sample_retention_execution(**overrides: Any) -> dict[str, Any]:
+    payload = {
+        "tenant_id": "tenant-001",
+        "workspace_id": "workspace-001",
+        "owner_user_id": "user-001",
+        "as_of": "2026-09-01T00:00:00Z",
+        "checked_at": "2026-09-01T02:30:00Z",
+        "candidate_count": 2,
+        "selected_count": 1,
+        "idempotency_key": "retention-history-001",
+        "request_id": REQUEST_ID,
+        "trace_id": TRACE_ID,
+    }
+    payload.update(overrides)
+    return build_artifact_retention_execution(**payload)
+
+
 def sqlite_artifact_session_factory():
     engine = create_engine(
         "sqlite+pysqlite://",
@@ -531,6 +554,53 @@ def sqlite_artifact_session_factory():
                     download_count INTEGER NOT NULL,
                     revoked_at TEXT,
                     created_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ae_artifact_retention_executions (
+                    retention_execution_id TEXT PRIMARY KEY,
+                    execution_history_schema_version TEXT NOT NULL,
+                    artifact_retention_execution_schema_version TEXT NOT NULL,
+                    policy_id TEXT NOT NULL,
+                    service_id TEXT NOT NULL,
+                    mode TEXT NOT NULL,
+                    execution_status TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL,
+                    owner_user_id TEXT NOT NULL,
+                    retention_days_after_logical_purge INTEGER NOT NULL,
+                    as_of TEXT NOT NULL,
+                    cutoff_at TEXT NOT NULL,
+                    checked_at TEXT NOT NULL,
+                    scan_limit INTEGER NOT NULL,
+                    max_delete_count INTEGER NOT NULL,
+                    candidate_count INTEGER NOT NULL,
+                    selected_count INTEGER NOT NULL,
+                    delete_enabled INTEGER NOT NULL,
+                    storage_mutation_enabled INTEGER NOT NULL,
+                    database_row_delete_enabled INTEGER NOT NULL,
+                    deleted_counts TEXT NOT NULL,
+                    requested_by TEXT NOT NULL,
+                    idempotency_key TEXT,
+                    trace_id TEXT,
+                    request_id TEXT,
+                    blocked_reason TEXT,
+                    error TEXT,
+                    audit TEXT NOT NULL,
+                    metadata TEXT NOT NULL,
+                    execution TEXT NOT NULL,
+                    execution_payload_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE (
+                        tenant_id,
+                        workspace_id,
+                        owner_user_id,
+                        idempotency_key
+                    )
                 )
                 """
             )
@@ -1967,6 +2037,263 @@ def test_artifact_retention_execution_contract_rejects_unsafe_edges() -> None:
         )
     assert schema_exc.value.error_code == (
         "ae.artifact_retention_execution_schema_invalid"
+    )
+
+
+def test_artifact_retention_execution_history_record_derives_safe_metadata() -> None:
+    execution = sample_retention_execution(
+        execution_status="SUCCEEDED",
+        checked_at="2026-09-01T02:00:00Z",
+        requested_by={"actor_type": "service", "actor_id": "nex-ag"},
+    )
+    record = build_artifact_retention_execution_history_record(
+        execution,
+        created_at="2026-09-01T02:01:00Z",
+    )
+
+    assert record["execution_history_schema_version"] == (
+        AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_SCHEMA_VERSION
+    )
+    assert record["retention_execution_id"] == execution["execution_id"]
+    assert record["artifact_retention_execution_schema_version"] == (
+        AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION
+    )
+    assert record["execution"] == execution
+    assert record["created_at"] == "2026-09-01T02:01:00Z"
+    assert record["execution_payload_hash"] == ae_artifacts.sha256_json(execution)
+    assert validate_artifact_retention_execution_history_record(record) is record
+    assert "storage_ref" not in json.dumps(record, ensure_ascii=False, sort_keys=True)
+    assert "postgresql" not in json.dumps(record, ensure_ascii=False, sort_keys=True)
+
+    invalid_cases = [
+        (
+            {**record, "execution_history_schema_version": "wrong"},
+            "ae.artifact_retention_history_schema_invalid",
+        ),
+        (
+            {**record, "candidate_count": record["candidate_count"] + 1},
+            "ae.artifact_retention_history_mismatch",
+        ),
+        (
+            {**record, "retention_execution_id": "wrong"},
+            "ae.artifact_retention_history_mismatch",
+        ),
+        (
+            {**record, "execution_payload_hash": "0" * 64},
+            "ae.artifact_retention_history_hash_invalid",
+        ),
+        (
+            {**record, "created_at": "not-a-date"},
+            "ae.artifact_retention_timestamp_invalid",
+        ),
+    ]
+    for mutation, error_code in invalid_cases:
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_execution_history_record(mutation)
+        assert exc_info.value.error_code == error_code
+
+    missing_required = dict(record)
+    missing_required.pop("execution")
+    with pytest.raises(ArtifactHandoffError) as missing_exc:
+        validate_artifact_retention_execution_history_record(missing_required)
+    assert missing_exc.value.error_code == "ae.artifact_retention_history_invalid"
+    with pytest.raises(ArtifactHandoffError) as type_exc:
+        validate_artifact_retention_execution_history_record(["bad"])  # type: ignore[arg-type]
+    assert type_exc.value.error_code == "ae.artifact_retention_history_invalid"
+
+
+def test_artifact_retention_execution_history_store_scopes_idempotency_and_lists() -> None:
+    store = ArtifactRetentionExecutionHistoryStore()
+    first = store.save(
+        sample_retention_execution(
+            execution_status="SUCCEEDED",
+            checked_at="2026-09-01T02:00:00Z",
+            idempotency_key="same-key",
+        )
+    )
+    duplicate = store.save(
+        sample_retention_execution(
+            execution_status="SUCCEEDED",
+            checked_at="2026-09-01T02:05:00Z",
+            idempotency_key="same-key",
+        )
+    )
+    blocked = store.save(
+        sample_retention_execution(
+            mode="EXECUTE",
+            execution_status="BLOCKED",
+            checked_at="2026-09-01T02:10:00Z",
+            selected_count=0,
+            idempotency_key=None,
+            blocked_reason="delete_not_enabled",
+        )
+    )
+    other_owner = store.save(
+        sample_retention_execution(
+            owner_user_id="user-002",
+            execution_status="SUCCEEDED",
+            checked_at="2026-09-01T02:20:00Z",
+            idempotency_key="same-key",
+        )
+    )
+
+    assert duplicate is first
+    assert store.get(first["retention_execution_id"]) is first
+    assert store.get_by_idempotency_key(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        idempotency_key="same-key",
+    ) is first
+    assert store.get_by_idempotency_key(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        idempotency_key=None,
+    ) is None
+    assert other_owner is not first
+    listed = store.list_executions(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+    )
+    blocked_only = store.list_executions(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        execution_status="blocked",
+        limit="1",
+    )
+
+    assert [item["retention_execution_id"] for item in listed] == [
+        blocked["retention_execution_id"],
+        first["retention_execution_id"],
+    ]
+    assert blocked_only == [blocked]
+    with pytest.raises(ArtifactHandoffError) as scope_exc:
+        store.list_executions(
+            tenant_id=" ",
+            workspace_id="workspace-001",
+            owner_user_id="user-001",
+        )
+    assert scope_exc.value.error_code == "ae.artifact_collection_scope_required"
+
+
+def test_sqlalchemy_artifact_retention_execution_history_store_round_trips_with_sqlite() -> None:
+    session_factory = sqlite_artifact_session_factory()
+    store = SqlAlchemyArtifactRetentionExecutionHistoryStore(session_factory)
+    first_execution = sample_retention_execution(
+        execution_status="SUCCEEDED",
+        checked_at="2026-09-01T02:30:00Z",
+        idempotency_key="sql-history-key",
+    )
+    duplicate_execution = sample_retention_execution(
+        execution_status="SUCCEEDED",
+        checked_at="2026-09-01T02:31:00Z",
+        idempotency_key="sql-history-key",
+    )
+    execute_execution = sample_retention_execution(
+        mode="EXECUTE",
+        execution_status="SUCCEEDED",
+        checked_at="2026-09-01T02:35:00Z",
+        idempotency_key=None,
+        delete_enabled=True,
+        storage_mutation_enabled=True,
+        database_row_delete_enabled=True,
+        deleted_counts={
+            "artifacts": 1,
+            "source_refs": 1,
+            "versions": 1,
+            "render_jobs": 1,
+            "files": 2,
+            "links": 4,
+            "storage_files": 2,
+        },
+    )
+
+    first = store.save(first_execution)
+    duplicate = store.save(duplicate_execution)
+    executed = store.save(execute_execution)
+    fetched = store.get(first["retention_execution_id"])
+    by_key = store.get_by_idempotency_key(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        idempotency_key="sql-history-key",
+    )
+    listed = store.list_executions(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        limit=1,
+    )
+    dry_runs = store.list_executions(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        mode="dry_run",
+    )
+
+    assert duplicate["retention_execution_id"] == first["retention_execution_id"]
+    assert fetched == first
+    assert by_key == first
+    assert listed == [executed]
+    assert dry_runs == [first]
+    assert store.get("missing-history") is None
+    assert store.get_by_idempotency_key(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        idempotency_key=None,
+    ) is None
+    with session_factory() as session:
+        row = session.execute(
+            text(
+                """
+                SELECT error, execution_payload_hash
+                FROM ae_artifact_retention_executions
+                WHERE retention_execution_id = :retention_execution_id
+                """
+            ),
+            {"retention_execution_id": first["retention_execution_id"]},
+        ).first()
+    assert row is not None
+    assert row[0] is None
+    assert len(row[1]) == 64
+    assert "storage_ref" not in json.dumps(executed, sort_keys=True)
+
+
+@pytest.mark.parametrize("operation", ["save", "get", "idempotency", "list"])
+def test_sqlalchemy_artifact_retention_execution_history_store_maps_database_errors(
+    operation: str,
+) -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    store = SqlAlchemyArtifactRetentionExecutionHistoryStore(session_factory)
+
+    with pytest.raises(ArtifactHandoffError) as exc_info:
+        if operation == "save":
+            store.save(sample_retention_execution())
+        elif operation == "get":
+            store.get("missing-history")
+        elif operation == "idempotency":
+            store.get_by_idempotency_key(
+                tenant_id="tenant-001",
+                workspace_id="workspace-001",
+                owner_user_id="user-001",
+                idempotency_key="missing-key",
+            )
+        else:
+            store.list_executions(
+                tenant_id="tenant-001",
+                workspace_id="workspace-001",
+                owner_user_id="user-001",
+            )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.retryable is True
+    assert exc_info.value.error_code == (
+        "ae.artifact_retention_history_store_unavailable"
     )
 
 
@@ -3432,9 +3759,11 @@ def test_default_artifact_stores_use_persistence_session_factory(tmp_path, monke
 
     handoff_store = build_default_artifact_handoff_store(app)
     artifact_store = build_default_artifact_record_store(app)
+    history_store = build_default_artifact_retention_execution_history_store(app)
 
     assert isinstance(handoff_store, SqlAlchemyArtifactHandoffStore)
     assert isinstance(artifact_store, SqlAlchemyArtifactRecordStore)
+    assert isinstance(history_store, SqlAlchemyArtifactRetentionExecutionHistoryStore)
     assert isinstance(artifact_store._rendered_storage, LocalRenderedArtifactStorage)
 
 
@@ -3803,6 +4132,29 @@ def test_artifact_sqlalchemy_storage_helpers_cover_dialects_and_nulls() -> None:
     assert ae_artifacts._datetime_value(
         type("FakeDate", (), {"isoformat": lambda self: "2026-08-28T00:00:00+00:00"})()
     ) == "2026-08-28T00:00:00Z"
+    history_record = build_artifact_retention_execution_history_record(
+        sample_retention_execution()
+    )
+    history_params = ae_artifacts._artifact_retention_execution_history_params(
+        history_record
+    )
+    assert history_params["error"] is None
+    assert isinstance(history_params["execution"], str)
+    assert ae_artifacts._artifact_retention_execution_history_filter_params(
+        {
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "mode": None,
+            "execution_status": None,
+            "limit": 20,
+        }
+    ) == {
+        "tenant_id": "tenant-001",
+        "workspace_id": "workspace-001",
+        "owner_user_id": "user-001",
+        "limit": 20,
+    }
 
 
 def test_artifact_route_requires_auth_and_reports_missing_records() -> None:

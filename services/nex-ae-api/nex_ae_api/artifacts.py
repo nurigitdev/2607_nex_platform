@@ -136,6 +136,17 @@ AE_ARTIFACT_RETENTION_CANDIDATE_ITEM_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION = (
     "ae_artifact_retention_execution.v1"
 )
+AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_SCHEMA_VERSION = (
+    "ae_artifact_retention_execution_history.v1"
+)
+ARTIFACT_RETENTION_EXECUTION_HISTORY_JSON_FIELDS = (
+    "deleted_counts",
+    "requested_by",
+    "error",
+    "audit",
+    "metadata",
+    "execution",
+)
 SUPPORTED_ARTIFACT_LIFECYCLE_ACTIONS = {"ARCHIVE", "RESTORE", "MARK_DELETED"}
 ARCHIVABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED"}
 DELETABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED", "ARCHIVED"}
@@ -626,6 +637,92 @@ class ArtifactRecordStore:
             action_request=action_request,
             artifact_record=updated_record,
         )
+
+
+@dataclass
+class ArtifactRetentionExecutionHistoryStore:
+    records: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def save(self, execution: dict[str, Any]) -> dict[str, Any]:
+        record = build_artifact_retention_execution_history_record(execution)
+        existing = self.get_by_idempotency_key(
+            tenant_id=record["tenant_id"],
+            workspace_id=record["workspace_id"],
+            owner_user_id=record["owner_user_id"],
+            idempotency_key=record["idempotency_key"],
+        )
+        if existing is not None:
+            return existing
+        existing_by_id = self.records.get(record["retention_execution_id"])
+        if existing_by_id is not None:
+            return existing_by_id
+        self.records[record["retention_execution_id"]] = record
+        return record
+
+    def get(self, retention_execution_id: str) -> dict[str, Any] | None:
+        return self.records.get(retention_execution_id)
+
+    def get_by_idempotency_key(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        idempotency_key: str | None,
+    ) -> dict[str, Any] | None:
+        normalized_idempotency_key = optional_text(idempotency_key)
+        if normalized_idempotency_key is None:
+            return None
+        normalized_tenant_id = _required_collection_scope_text(tenant_id, "tenant_id")
+        normalized_workspace_id = _required_collection_scope_text(
+            workspace_id,
+            "workspace_id",
+        )
+        normalized_owner_user_id = _required_collection_scope_text(
+            owner_user_id,
+            "owner_user_id",
+        )
+        for record in self.records.values():
+            if (
+                record.get("tenant_id") == normalized_tenant_id
+                and record.get("workspace_id") == normalized_workspace_id
+                and record.get("owner_user_id") == normalized_owner_user_id
+                and record.get("idempotency_key") == normalized_idempotency_key
+            ):
+                return record
+        return None
+
+    def list_executions(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        mode: str | None = None,
+        execution_status: str | None = None,
+        limit: int | str | None = None,
+    ) -> list[dict[str, Any]]:
+        normalized_filter = _artifact_retention_execution_history_filter(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            mode=mode,
+            execution_status=execution_status,
+            limit=limit,
+        )
+        records = [
+            record
+            for record in self.records.values()
+            if _artifact_retention_execution_history_matches(record, normalized_filter)
+        ]
+        records.sort(
+            key=lambda record: (
+                str(record.get("checked_at") or ""),
+                str(record.get("retention_execution_id") or ""),
+            ),
+            reverse=True,
+        )
+        return records[: normalized_filter["limit"]]
 
 
 @dataclass
@@ -1249,6 +1346,167 @@ class SqlAlchemyArtifactRecordStore:
             ) from exc
 
 
+class SqlAlchemyArtifactRetentionExecutionHistoryStore:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def save(self, execution: dict[str, Any]) -> dict[str, Any]:
+        record = build_artifact_retention_execution_history_record(execution)
+        existing = self.get_by_idempotency_key(
+            tenant_id=record["tenant_id"],
+            workspace_id=record["workspace_id"],
+            owner_user_id=record["owner_user_id"],
+            idempotency_key=record["idempotency_key"],
+        )
+        if existing is not None:
+            return existing
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    text(
+                        _artifact_retention_execution_history_upsert_sql(
+                            _dialect_name(session)
+                        )
+                    ),
+                    _artifact_retention_execution_history_params(record),
+                )
+                session.commit()
+            return record
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_retention_history_store_unavailable",
+                detail="AE artifact retention execution history store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def get(self, retention_execution_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _artifact_retention_execution_history_select_sql(
+                                "retention_execution_id = :retention_execution_id"
+                            )
+                        ),
+                        {"retention_execution_id": retention_execution_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+            return (
+                _artifact_retention_execution_history_from_row(row)
+                if row is not None
+                else None
+            )
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_retention_history_store_unavailable",
+                detail="AE artifact retention execution history store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def get_by_idempotency_key(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        idempotency_key: str | None,
+    ) -> dict[str, Any] | None:
+        normalized_idempotency_key = optional_text(idempotency_key)
+        if normalized_idempotency_key is None:
+            return None
+        params = {
+            "tenant_id": _required_collection_scope_text(tenant_id, "tenant_id"),
+            "workspace_id": _required_collection_scope_text(
+                workspace_id,
+                "workspace_id",
+            ),
+            "owner_user_id": _required_collection_scope_text(
+                owner_user_id,
+                "owner_user_id",
+            ),
+            "idempotency_key": normalized_idempotency_key,
+        }
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _artifact_retention_execution_history_select_sql(
+                                "tenant_id = :tenant_id "
+                                "AND workspace_id = :workspace_id "
+                                "AND owner_user_id = :owner_user_id "
+                                "AND idempotency_key = :idempotency_key"
+                            )
+                        ),
+                        params,
+                    )
+                    .mappings()
+                    .first()
+                )
+            return (
+                _artifact_retention_execution_history_from_row(row)
+                if row is not None
+                else None
+            )
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_retention_history_store_unavailable",
+                detail="AE artifact retention execution history store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def list_executions(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        mode: str | None = None,
+        execution_status: str | None = None,
+        limit: int | str | None = None,
+    ) -> list[dict[str, Any]]:
+        normalized_filter = _artifact_retention_execution_history_filter(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            mode=mode,
+            execution_status=execution_status,
+            limit=limit,
+        )
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            _artifact_retention_execution_history_list_sql(
+                                normalized_filter
+                            )
+                        ),
+                        _artifact_retention_execution_history_filter_params(
+                            normalized_filter
+                        ),
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [
+                _artifact_retention_execution_history_from_row(row) for row in rows
+            ]
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_retention_history_store_unavailable",
+                detail="AE artifact retention execution history store is unavailable.",
+                retryable=True,
+            ) from exc
+
+
 @dataclass(frozen=True)
 class ArtifactHandoffError(Exception):
     status_code: int
@@ -1259,6 +1517,7 @@ class ArtifactHandoffError(Exception):
 
 DEFAULT_ARTIFACT_HANDOFF_STORE = ArtifactHandoffStore()
 DEFAULT_ARTIFACT_RECORD_STORE = ArtifactRecordStore()
+DEFAULT_ARTIFACT_RETENTION_HISTORY_STORE = ArtifactRetentionExecutionHistoryStore()
 
 
 def build_default_artifact_handoff_store(app: Any) -> Any:
@@ -1278,6 +1537,14 @@ def build_default_artifact_record_store(app: Any) -> Any:
             rendered_storage=build_default_rendered_artifact_storage(),
         )
     return DEFAULT_ARTIFACT_RECORD_STORE
+
+
+def build_default_artifact_retention_execution_history_store(app: Any) -> Any:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is not None:
+        return SqlAlchemyArtifactRetentionExecutionHistoryStore(session_factory)
+    return DEFAULT_ARTIFACT_RETENTION_HISTORY_STORE
 
 
 def build_default_cx_artifact_source_client() -> HttpCxArtifactSourceClient:
@@ -3119,6 +3386,188 @@ def validate_artifact_retention_execution(
     return execution
 
 
+def build_artifact_retention_execution_history_record(
+    execution: dict[str, Any],
+    *,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    validated_execution = validate_artifact_retention_execution(execution)
+    execution_payload = json.loads(
+        json.dumps(validated_execution, ensure_ascii=False, sort_keys=True)
+    )
+    record = {
+        "retention_execution_id": execution_payload["execution_id"],
+        "execution_history_schema_version": (
+            AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_SCHEMA_VERSION
+        ),
+        "artifact_retention_execution_schema_version": (
+            execution_payload["artifact_retention_execution_schema_version"]
+        ),
+        "policy_id": execution_payload["policy_id"],
+        "service_id": execution_payload["service_id"],
+        "mode": execution_payload["mode"],
+        "execution_status": execution_payload["execution_status"],
+        "tenant_id": execution_payload["tenant_id"],
+        "workspace_id": execution_payload["workspace_id"],
+        "owner_user_id": execution_payload["owner_user_id"],
+        "retention_days_after_logical_purge": (
+            execution_payload["retention_days_after_logical_purge"]
+        ),
+        "as_of": execution_payload["as_of"],
+        "cutoff_at": execution_payload["cutoff_at"],
+        "checked_at": execution_payload["checked_at"],
+        "scan_limit": execution_payload["scan_limit"],
+        "max_delete_count": execution_payload["max_delete_count"],
+        "candidate_count": execution_payload["candidate_count"],
+        "selected_count": execution_payload["selected_count"],
+        "delete_enabled": execution_payload["delete_enabled"],
+        "storage_mutation_enabled": execution_payload["storage_mutation_enabled"],
+        "database_row_delete_enabled": execution_payload["database_row_delete_enabled"],
+        "deleted_counts": dict(execution_payload["deleted_counts"]),
+        "requested_by": dict(execution_payload["requested_by"]),
+        "idempotency_key": execution_payload["idempotency_key"],
+        "trace_id": execution_payload["trace_id"],
+        "request_id": execution_payload["request_id"],
+        "blocked_reason": execution_payload["blocked_reason"],
+        "error": execution_payload["error"],
+        "audit": dict(execution_payload["audit"]),
+        "metadata": dict(execution_payload["metadata"]),
+        "execution": execution_payload,
+        "execution_payload_hash": sha256_json(execution_payload),
+        "created_at": _artifact_retention_history_created_at(
+            created_at,
+            execution_payload["checked_at"],
+        ),
+    }
+    return validate_artifact_retention_execution_history_record(record)
+
+
+def validate_artifact_retention_execution_history_record(
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(record, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_history_invalid",
+            detail="Artifact retention execution history record must be an object.",
+        )
+    required_fields = (
+        "retention_execution_id",
+        "execution_history_schema_version",
+        "artifact_retention_execution_schema_version",
+        "policy_id",
+        "service_id",
+        "mode",
+        "execution_status",
+        "tenant_id",
+        "workspace_id",
+        "owner_user_id",
+        "retention_days_after_logical_purge",
+        "as_of",
+        "cutoff_at",
+        "checked_at",
+        "scan_limit",
+        "max_delete_count",
+        "candidate_count",
+        "selected_count",
+        "delete_enabled",
+        "storage_mutation_enabled",
+        "database_row_delete_enabled",
+        "deleted_counts",
+        "requested_by",
+        "idempotency_key",
+        "trace_id",
+        "request_id",
+        "blocked_reason",
+        "error",
+        "audit",
+        "metadata",
+        "execution",
+        "execution_payload_hash",
+        "created_at",
+    )
+    for field_name in required_fields:
+        if field_name not in record:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_history_invalid",
+                detail=f"Missing artifact retention history field: {field_name}.",
+            )
+    if (
+        record["execution_history_schema_version"]
+        != AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_history_schema_invalid",
+            detail="Artifact retention execution history schema version is invalid.",
+        )
+    execution = validate_artifact_retention_execution(record["execution"])
+    for field_name in (
+        "artifact_retention_execution_schema_version",
+        "policy_id",
+        "service_id",
+        "mode",
+        "execution_status",
+        "tenant_id",
+        "workspace_id",
+        "owner_user_id",
+        "retention_days_after_logical_purge",
+        "as_of",
+        "cutoff_at",
+        "checked_at",
+        "scan_limit",
+        "max_delete_count",
+        "candidate_count",
+        "selected_count",
+        "delete_enabled",
+        "storage_mutation_enabled",
+        "database_row_delete_enabled",
+        "deleted_counts",
+        "requested_by",
+        "idempotency_key",
+        "trace_id",
+        "request_id",
+        "blocked_reason",
+        "error",
+        "audit",
+        "metadata",
+    ):
+        if record[field_name] != execution[field_name]:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_history_mismatch",
+                detail=f"Artifact retention history field mismatch: {field_name}.",
+            )
+    if record["retention_execution_id"] != execution["execution_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_history_mismatch",
+            detail="Artifact retention history id must match execution id.",
+        )
+    if record["execution_payload_hash"] != sha256_json(execution):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_history_hash_invalid",
+            detail="Artifact retention history payload hash is invalid.",
+        )
+    parse_artifact_retention_timestamp(record["created_at"], field_name="created_at")
+    assert_artifact_retention_payload_safe(record)
+    return record
+
+
+def _artifact_retention_history_created_at(
+    created_at: str | None,
+    checked_at: str,
+) -> str:
+    return format_artifact_retention_timestamp(
+        parse_artifact_retention_timestamp(
+            created_at or checked_at,
+            field_name="created_at",
+        )
+    )
+
+
 def normalize_artifact_retention_delete_limit(value: int | str | None) -> int:
     if value is None:
         return DEFAULT_ARTIFACT_RETENTION_MAX_DELETE_COUNT
@@ -4424,6 +4873,286 @@ def _safe_response_json(response: httpx.Response) -> dict[str, Any]:
     if isinstance(payload, dict):
         return payload
     return {}
+
+
+def _artifact_retention_execution_history_upsert_sql(dialect_name: str) -> str:
+    json_exprs = _json_param_exprs(
+        ARTIFACT_RETENTION_EXECUTION_HISTORY_JSON_FIELDS,
+        dialect_name,
+    )
+    return f"""
+        INSERT INTO ae_artifact_retention_executions (
+            retention_execution_id,
+            execution_history_schema_version,
+            artifact_retention_execution_schema_version,
+            policy_id,
+            service_id,
+            mode,
+            execution_status,
+            tenant_id,
+            workspace_id,
+            owner_user_id,
+            retention_days_after_logical_purge,
+            as_of,
+            cutoff_at,
+            checked_at,
+            scan_limit,
+            max_delete_count,
+            candidate_count,
+            selected_count,
+            delete_enabled,
+            storage_mutation_enabled,
+            database_row_delete_enabled,
+            deleted_counts,
+            requested_by,
+            idempotency_key,
+            trace_id,
+            request_id,
+            blocked_reason,
+            error,
+            audit,
+            metadata,
+            execution,
+            execution_payload_hash,
+            created_at
+        )
+        VALUES (
+            :retention_execution_id,
+            :execution_history_schema_version,
+            :artifact_retention_execution_schema_version,
+            :policy_id,
+            :service_id,
+            :mode,
+            :execution_status,
+            :tenant_id,
+            :workspace_id,
+            :owner_user_id,
+            :retention_days_after_logical_purge,
+            :as_of,
+            :cutoff_at,
+            :checked_at,
+            :scan_limit,
+            :max_delete_count,
+            :candidate_count,
+            :selected_count,
+            :delete_enabled,
+            :storage_mutation_enabled,
+            :database_row_delete_enabled,
+            {json_exprs["deleted_counts"]},
+            {json_exprs["requested_by"]},
+            :idempotency_key,
+            :trace_id,
+            :request_id,
+            :blocked_reason,
+            {json_exprs["error"]},
+            {json_exprs["audit"]},
+            {json_exprs["metadata"]},
+            {json_exprs["execution"]},
+            :execution_payload_hash,
+            :created_at
+        )
+        ON CONFLICT (retention_execution_id) DO UPDATE SET
+            execution_status = excluded.execution_status,
+            checked_at = excluded.checked_at,
+            candidate_count = excluded.candidate_count,
+            selected_count = excluded.selected_count,
+            deleted_counts = excluded.deleted_counts,
+            requested_by = excluded.requested_by,
+            trace_id = excluded.trace_id,
+            request_id = excluded.request_id,
+            blocked_reason = excluded.blocked_reason,
+            error = excluded.error,
+            audit = excluded.audit,
+            metadata = excluded.metadata,
+            execution = excluded.execution,
+            execution_payload_hash = excluded.execution_payload_hash,
+            created_at = excluded.created_at
+    """
+
+
+def _artifact_retention_execution_history_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            retention_execution_id,
+            execution_history_schema_version,
+            artifact_retention_execution_schema_version,
+            policy_id,
+            service_id,
+            mode,
+            execution_status,
+            tenant_id,
+            workspace_id,
+            owner_user_id,
+            retention_days_after_logical_purge,
+            as_of,
+            cutoff_at,
+            checked_at,
+            scan_limit,
+            max_delete_count,
+            candidate_count,
+            selected_count,
+            delete_enabled,
+            storage_mutation_enabled,
+            database_row_delete_enabled,
+            deleted_counts,
+            requested_by,
+            idempotency_key,
+            trace_id,
+            request_id,
+            blocked_reason,
+            error,
+            audit,
+            metadata,
+            execution,
+            execution_payload_hash,
+            created_at
+        FROM ae_artifact_retention_executions
+        WHERE {where_clause}
+    """
+
+
+def _artifact_retention_execution_history_list_sql(
+    history_filter: dict[str, Any],
+) -> str:
+    where_clauses = [
+        "tenant_id = :tenant_id",
+        "workspace_id = :workspace_id",
+        "owner_user_id = :owner_user_id",
+    ]
+    if history_filter.get("mode") is not None:
+        where_clauses.append("mode = :mode")
+    if history_filter.get("execution_status") is not None:
+        where_clauses.append("execution_status = :execution_status")
+    return (
+        _artifact_retention_execution_history_select_sql(
+            " AND ".join(where_clauses)
+        )
+        + """
+        ORDER BY checked_at DESC, retention_execution_id DESC
+        LIMIT :limit
+        """
+    )
+
+
+def _artifact_retention_execution_history_params(
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    validate_artifact_retention_execution_history_record(record)
+    params = dict(record)
+    for field_name in ARTIFACT_RETENTION_EXECUTION_HISTORY_JSON_FIELDS:
+        value = params[field_name]
+        params[field_name] = None if value is None else json.dumps(value)
+    return params
+
+
+def _artifact_retention_execution_history_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    record = {
+        "retention_execution_id": data["retention_execution_id"],
+        "execution_history_schema_version": data["execution_history_schema_version"],
+        "artifact_retention_execution_schema_version": data[
+            "artifact_retention_execution_schema_version"
+        ],
+        "policy_id": data["policy_id"],
+        "service_id": data["service_id"],
+        "mode": data["mode"],
+        "execution_status": data["execution_status"],
+        "tenant_id": data["tenant_id"],
+        "workspace_id": data["workspace_id"],
+        "owner_user_id": data["owner_user_id"],
+        "retention_days_after_logical_purge": data[
+            "retention_days_after_logical_purge"
+        ],
+        "as_of": _datetime_value(data["as_of"]),
+        "cutoff_at": _datetime_value(data["cutoff_at"]),
+        "checked_at": _datetime_value(data["checked_at"]),
+        "scan_limit": data["scan_limit"],
+        "max_delete_count": data["max_delete_count"],
+        "candidate_count": data["candidate_count"],
+        "selected_count": data["selected_count"],
+        "delete_enabled": bool(data["delete_enabled"]),
+        "storage_mutation_enabled": bool(data["storage_mutation_enabled"]),
+        "database_row_delete_enabled": bool(data["database_row_delete_enabled"]),
+        "deleted_counts": _json_value(data["deleted_counts"], {}),
+        "requested_by": _json_value(data["requested_by"], {}),
+        "idempotency_key": data["idempotency_key"],
+        "trace_id": data["trace_id"],
+        "request_id": data["request_id"],
+        "blocked_reason": data["blocked_reason"],
+        "error": _json_value(data["error"], None),
+        "audit": _json_value(data["audit"], {}),
+        "metadata": _json_value(data["metadata"], {}),
+        "execution": _json_value(data["execution"], {}),
+        "execution_payload_hash": data["execution_payload_hash"],
+        "created_at": _datetime_value(data["created_at"]),
+    }
+    return validate_artifact_retention_execution_history_record(record)
+
+
+def _artifact_retention_execution_history_filter(
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    owner_user_id: str,
+    mode: str | None,
+    execution_status: str | None,
+    limit: int | str | None,
+) -> dict[str, Any]:
+    return {
+        "tenant_id": _required_collection_scope_text(tenant_id, "tenant_id"),
+        "workspace_id": _required_collection_scope_text(
+            workspace_id,
+            "workspace_id",
+        ),
+        "owner_user_id": _required_collection_scope_text(
+            owner_user_id,
+            "owner_user_id",
+        ),
+        "mode": _normalize_artifact_retention_execution_mode(mode)
+        if mode is not None
+        else None,
+        "execution_status": _normalize_artifact_retention_execution_status(
+            execution_status
+        )
+        if execution_status is not None
+        else None,
+        "limit": normalize_artifact_collection_limit(limit),
+    }
+
+
+def _artifact_retention_execution_history_filter_params(
+    history_filter: dict[str, Any],
+) -> dict[str, Any]:
+    params = {
+        "tenant_id": history_filter["tenant_id"],
+        "workspace_id": history_filter["workspace_id"],
+        "owner_user_id": history_filter["owner_user_id"],
+        "limit": history_filter["limit"],
+    }
+    if history_filter.get("mode") is not None:
+        params["mode"] = history_filter["mode"]
+    if history_filter.get("execution_status") is not None:
+        params["execution_status"] = history_filter["execution_status"]
+    return params
+
+
+def _artifact_retention_execution_history_matches(
+    record: dict[str, Any],
+    history_filter: dict[str, Any],
+) -> bool:
+    return (
+        record.get("tenant_id") == history_filter["tenant_id"]
+        and record.get("workspace_id") == history_filter["workspace_id"]
+        and record.get("owner_user_id") == history_filter["owner_user_id"]
+        and (
+            history_filter["mode"] is None
+            or record.get("mode") == history_filter["mode"]
+        )
+        and (
+            history_filter["execution_status"] is None
+            or record.get("execution_status") == history_filter["execution_status"]
+        )
+    )
 
 
 def _artifact_handoff_upsert_sql(dialect_name: str) -> str:

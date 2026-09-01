@@ -445,3 +445,7 @@ Artifact library management:
   validated execution payload, a payload hash, scope/idempotency indexes, and
   safety constraints while avoiding raw content, local storage paths, and
   foreign keys to records that may be physically purged.
+- Slice 0473 adds the retention execution history repository layer. History
+  records are derived from validated purge execution evidence, hashed, saved via
+  in-memory or SQLAlchemy stores, and reused by tenant/workspace/owner-scoped
+  idempotency keys before API wiring.
