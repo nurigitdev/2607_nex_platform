@@ -604,3 +604,7 @@ Artifact library management:
   or loop code lands. Daemon auto-start remains disabled, the first runtime path
   is a manual once dry-run tick runner, and lease/lock work should be separated
   from the large artifact surface before continuous scheduling is introduced.
+- Slice 0512 adds the AE artifact retention scheduler lease/lock contract in a
+  separate scheduler module. It defines request, record, acquire/busy decision,
+  and explicit release shapes, but still performs no persistence, no job enqueue,
+  and no daemon loop execution.
