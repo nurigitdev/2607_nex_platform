@@ -111,6 +111,11 @@
       "schema": "schemas/generation/ae_artifact_retention_batch_plan.v1.schema.json"
     },
     {
+      "name": "ae_artifact_retention_scheduled_execution_command_delete_enabled",
+      "path": "tests/negative/generation/ae_artifact_retention_scheduled_execution_command.delete_enabled.json",
+      "schema": "schemas/generation/ae_artifact_retention_scheduled_execution_command.v1.schema.json"
+    },
+    {
       "name": "ae_artifact_retention_execution_dry_run_delete_enabled",
       "path": "tests/negative/generation/ae_artifact_retention_execution.dry_run_delete_enabled.json",
       "schema": "schemas/generation/ae_artifact_retention_execution.v1.schema.json"

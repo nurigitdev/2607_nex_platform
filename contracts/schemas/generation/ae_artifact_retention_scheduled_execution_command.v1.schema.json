@@ -1,0 +1,484 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/ae_artifact_retention_scheduled_execution_command.v1.schema.json",
+  "title": "NeX AE Artifact Retention Scheduled Execution Command",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_retention_scheduled_execution_command_schema_version",
+    "command_id",
+    "service_id",
+    "source_plan_id",
+    "trigger_type",
+    "scheduler_status",
+    "command_status",
+    "execution_mode",
+    "execution_advice",
+    "tenant_id",
+    "workspace_id",
+    "owner_user_id",
+    "as_of",
+    "cutoff_at",
+    "checked_at",
+    "command_created_at",
+    "retention_days_after_logical_purge",
+    "scan_limit",
+    "max_delete_count",
+    "candidate_count",
+    "selected_count",
+    "estimated_deleted_counts",
+    "batch_plan_summary",
+    "execution_request",
+    "requested_by",
+    "idempotency_key",
+    "guardrails",
+    "metadata"
+  ],
+  "properties": {
+    "artifact_retention_scheduled_execution_command_schema_version": {
+      "const": "ae_artifact_retention_scheduled_execution_command.v1"
+    },
+    "command_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "service_id": {
+      "const": "nex-ae-api"
+    },
+    "source_plan_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trigger_type": {
+      "enum": [
+        "scheduler_tick",
+        "operator_dispatch"
+      ]
+    },
+    "scheduler_status": {
+      "const": "DISABLED"
+    },
+    "command_status": {
+      "enum": [
+        "READY",
+        "NOOP"
+      ]
+    },
+    "execution_mode": {
+      "const": "DRY_RUN"
+    },
+    "execution_advice": {
+      "enum": [
+        "manual_dispatch_after_operator_approval",
+        "no_retention_candidates"
+      ]
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspace_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner_user_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cutoff_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "command_created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "retention_days_after_logical_purge": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 365
+    },
+    "scan_limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "max_delete_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "candidate_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "selected_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "estimated_deleted_counts": {
+      "$ref": "#/$defs/deleted_counts"
+    },
+    "batch_plan_summary": {
+      "$ref": "#/$defs/batch_plan_summary"
+    },
+    "execution_request": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/execution_request"
+        }
+      ]
+    },
+    "requested_by": {
+      "$ref": "#/$defs/requested_by"
+    },
+    "idempotency_key": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "guardrails": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dry_run_required",
+        "execute_requires_operator_approval",
+        "execute_requires_delete_enabled",
+        "execute_requires_storage_mutation_enabled",
+        "execute_requires_database_row_delete_enabled",
+        "history_required_for_execute",
+        "ag_dispatch_policy",
+        "ag_direct_database_write_allowed"
+      ],
+      "properties": {
+        "dry_run_required": {
+          "const": true
+        },
+        "execute_requires_operator_approval": {
+          "const": true
+        },
+        "execute_requires_delete_enabled": {
+          "const": true
+        },
+        "execute_requires_storage_mutation_enabled": {
+          "const": true
+        },
+        "execute_requires_database_row_delete_enabled": {
+          "const": true
+        },
+        "history_required_for_execute": {
+          "const": true
+        },
+        "ag_dispatch_policy": {
+          "const": "ae_api_only"
+        },
+        "ag_direct_database_write_allowed": {
+          "const": false
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metadata_only",
+        "batch_plan_embedded",
+        "worker_execution_performed",
+        "history_write_executed",
+        "physical_delete_executed",
+        "storage_mutation_executed",
+        "database_row_delete_executed"
+      ],
+      "properties": {
+        "metadata_only": {
+          "const": true
+        },
+        "batch_plan_embedded": {
+          "const": false
+        },
+        "worker_execution_performed": {
+          "const": false
+        },
+        "history_write_executed": {
+          "const": false
+        },
+        "physical_delete_executed": {
+          "const": false
+        },
+        "storage_mutation_executed": {
+          "const": false
+        },
+        "database_row_delete_executed": {
+          "const": false
+        }
+      }
+    }
+  },
+  "$defs": {
+    "batch_plan_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plan_status",
+        "scheduler_status",
+        "candidate_count",
+        "selected_count",
+        "unselected_count",
+        "estimated_deleted_artifacts",
+        "estimated_deleted_storage_files",
+        "checked_at",
+        "next_action"
+      ],
+      "properties": {
+        "plan_status": {
+          "enum": [
+            "READY",
+            "NOOP"
+          ]
+        },
+        "scheduler_status": {
+          "const": "DISABLED"
+        },
+        "candidate_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selected_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unselected_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "estimated_deleted_artifacts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "estimated_deleted_storage_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "checked_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "next_action": {
+          "enum": [
+            "manual_dispatch_after_operator_approval",
+            "no_retention_candidates"
+          ]
+        }
+      }
+    },
+    "deleted_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifacts",
+        "source_refs",
+        "versions",
+        "render_jobs",
+        "files",
+        "links",
+        "storage_files"
+      ],
+      "properties": {
+        "artifacts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source_refs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "versions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "render_jobs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "links": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "storage_files": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "execution_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "route",
+        "payload",
+        "metadata"
+      ],
+      "properties": {
+        "method": {
+          "const": "POST"
+        },
+        "route": {
+          "const": "/api/v1/artifact-retention/purge"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "tenant_id",
+            "workspace_id",
+            "owner_user_id",
+            "mode",
+            "retention_days",
+            "as_of",
+            "checked_at",
+            "scan_limit",
+            "max_delete_count",
+            "candidate_count",
+            "selected_count",
+            "delete_enabled",
+            "storage_mutation_enabled",
+            "database_row_delete_enabled",
+            "requested_by",
+            "idempotency_key"
+          ],
+          "properties": {
+            "tenant_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "workspace_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "owner_user_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "mode": {
+              "const": "DRY_RUN"
+            },
+            "retention_days": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 365
+            },
+            "as_of": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "checked_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "scan_limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "max_delete_count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "candidate_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "selected_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "delete_enabled": {
+              "const": false
+            },
+            "storage_mutation_enabled": {
+              "const": false
+            },
+            "database_row_delete_enabled": {
+              "const": false
+            },
+            "requested_by": {
+              "$ref": "#/$defs/requested_by"
+            },
+            "idempotency_key": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1
+            }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "dry_run",
+            "history_write_expected",
+            "storage_mutation_enabled",
+            "database_row_delete_enabled"
+          ],
+          "properties": {
+            "dry_run": {
+              "const": true
+            },
+            "history_write_expected": {
+              "const": true
+            },
+            "storage_mutation_enabled": {
+              "const": false
+            },
+            "database_row_delete_enabled": {
+              "const": false
+            }
+          }
+        }
+      }
+    },
+    "requested_by": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "actor_type",
+        "actor_id",
+        "service_id"
+      ],
+      "properties": {
+        "actor_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actor_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "service_id": {
+          "const": "nex-ae-api"
+        }
+      }
+    }
+  }
+}

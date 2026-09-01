@@ -33,6 +33,7 @@ from nex_ae_api.artifacts import (
     AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_POLICY_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULE_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_COMMAND_SCHEMA_VERSION,
     HttpCxArtifactSourceClient,
     InMemoryRenderedArtifactStorage,
     LocalRenderedArtifactStorage,
@@ -64,6 +65,7 @@ from nex_ae_api.artifacts import (
     build_artifact_retention_execution_history_record,
     build_artifact_retention_policy,
     build_artifact_retention_schedule,
+    build_artifact_retention_scheduled_execution_command,
     build_default_artifact_handoff_store,
     build_default_artifact_retention_execution_history_store,
     build_default_artifact_record_store,
@@ -99,6 +101,7 @@ from nex_ae_api.artifacts import (
     safe_file_stem,
     sha256_bytes,
     summarize_artifact_retention_batch_plan,
+    summarize_artifact_retention_scheduled_execution_command,
     summarize_artifact_retention_execution_history,
     target_formats_from_payload,
     parse_artifact_retention_timestamp,
@@ -108,6 +111,7 @@ from nex_ae_api.artifacts import (
     validate_artifact_retention_execution_history_record,
     validate_artifact_retention_policy,
     validate_artifact_retention_schedule,
+    validate_artifact_retention_scheduled_execution_command,
     validate_artifact_handoff_record,
     validate_structured_draft_for_markdown_render,
 )
@@ -2948,6 +2952,281 @@ def test_artifact_retention_batch_plan_noop_and_validation_edges() -> None:
         with pytest.raises(ArtifactHandoffError) as exc_info:
             validate_artifact_retention_batch_plan({**noop, **mutation})
         assert exc_info.value.error_code == error_code
+
+
+def test_artifact_retention_scheduled_execution_command_builds_safe_dispatch() -> None:
+    store = ArtifactRecordStore()
+    save_rendered_retention_artifact(
+        store,
+        artifact_request_id="scheduled-command-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+        target_formats=["MD", "HTML_PREVIEW"],
+    )
+    save_rendered_retention_artifact(
+        store,
+        artifact_request_id="scheduled-command-old-002",
+        updated_at="2026-07-31T01:00:00Z",
+        target_formats=["MD"],
+    )
+
+    plan = store.plan_retention_batch(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit="10",
+        max_delete_count="1",
+        checked_at="2026-09-01T02:10:00Z",
+        requested_by={"actor_type": "service", "actor_id": "nex-ag"},
+        idempotency_key="scheduled-plan-001",
+    )
+    command = build_artifact_retention_scheduled_execution_command(
+        plan,
+        trigger_type="operator-dispatch",
+        command_created_at="2026-09-01T02:15:00Z",
+        idempotency_key="scheduled-command-001",
+    )
+    request_payload = command["execution_request"]["payload"]
+    serialized = json.dumps(command, ensure_ascii=False, sort_keys=True)
+
+    assert command[
+        "artifact_retention_scheduled_execution_command_schema_version"
+    ] == AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_COMMAND_SCHEMA_VERSION
+    assert command["source_plan_id"] == plan["plan_id"]
+    assert command["trigger_type"] == "operator_dispatch"
+    assert command["command_status"] == "READY"
+    assert command["execution_mode"] == "DRY_RUN"
+    assert command["selected_count"] == 1
+    assert command["estimated_deleted_counts"]["artifacts"] == 1
+    assert command["batch_plan_summary"] == summarize_artifact_retention_batch_plan(
+        plan
+    )
+    assert command["execution_request"]["route"] == "/api/v1/artifact-retention/purge"
+    assert request_payload["mode"] == "DRY_RUN"
+    assert request_payload["delete_enabled"] is False
+    assert request_payload["storage_mutation_enabled"] is False
+    assert request_payload["database_row_delete_enabled"] is False
+    assert request_payload["idempotency_key"] == "scheduled-command-001"
+    assert command["guardrails"]["ag_dispatch_policy"] == "ae_api_only"
+    assert command["guardrails"]["ag_direct_database_write_allowed"] is False
+    assert command["metadata"] == {
+        "metadata_only": True,
+        "batch_plan_embedded": False,
+        "worker_execution_performed": False,
+        "history_write_executed": False,
+        "physical_delete_executed": False,
+        "storage_mutation_executed": False,
+        "database_row_delete_executed": False,
+    }
+    assert summarize_artifact_retention_scheduled_execution_command(command) == {
+        "command_status": "READY",
+        "trigger_type": "operator_dispatch",
+        "scheduler_status": "DISABLED",
+        "execution_mode": "DRY_RUN",
+        "candidate_count": 2,
+        "selected_count": 1,
+        "estimated_deleted_artifacts": 1,
+        "estimated_deleted_storage_files": 2,
+        "command_created_at": "2026-09-01T02:15:00Z",
+        "next_action": "manual_dispatch_after_operator_approval",
+    }
+    assert validate_artifact_retention_scheduled_execution_command(command) is command
+    assert "storage_ref" not in serialized
+    assert "postgresql://" not in serialized
+
+
+def test_artifact_retention_scheduled_execution_command_noop_and_validation_edges() -> None:
+    candidate_filter = build_artifact_retention_candidate_filter(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        limit="10",
+    )
+    collection = build_artifact_retention_candidate_collection(
+        [],
+        candidate_filter=candidate_filter,
+    )
+    plan = build_artifact_retention_batch_plan(
+        collection,
+        checked_at="2026-09-01T02:00:00Z",
+    )
+    noop = build_artifact_retention_scheduled_execution_command(
+        plan,
+        command_created_at="2026-09-01T02:05:00Z",
+    )
+
+    assert noop["command_status"] == "NOOP"
+    assert noop["execution_request"] is None
+    assert noop["requested_by"]["actor_id"] == "nex-ae-api"
+
+    with pytest.raises(ArtifactHandoffError) as invalid_plan_exc:
+        build_artifact_retention_scheduled_execution_command(
+            {**plan, "mode": "EXECUTE"},
+            command_created_at="2026-09-01T02:05:00Z",
+        )
+    assert invalid_plan_exc.value.error_code == (
+        "ae.artifact_retention_batch_plan_invalid"
+    )
+    with pytest.raises(ArtifactHandoffError) as trigger_exc:
+        build_artifact_retention_scheduled_execution_command(
+            plan,
+            trigger_type="daemon",
+            command_created_at="2026-09-01T02:05:00Z",
+        )
+    assert trigger_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_trigger_invalid"
+    )
+    with pytest.raises(ArtifactHandoffError) as type_exc:
+        validate_artifact_retention_scheduled_execution_command([])  # type: ignore[arg-type]
+    assert type_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_command_invalid"
+    )
+    with pytest.raises(ArtifactHandoffError) as schema_exc:
+        validate_artifact_retention_scheduled_execution_command(
+            {
+                **noop,
+                "artifact_retention_scheduled_execution_command_schema_version": (
+                    "wrong"
+                ),
+            }
+        )
+    assert schema_exc.value.error_code == (
+        "ae.artifact_retention_scheduled_command_schema_invalid"
+    )
+
+    ready_store = ArtifactRecordStore()
+    save_rendered_retention_artifact(
+        ready_store,
+        artifact_request_id="scheduled-command-validation-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    ready_plan = ready_store.plan_retention_batch(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit="10",
+        checked_at="2026-09-01T02:00:00Z",
+    )
+    ready_command = build_artifact_retention_scheduled_execution_command(
+        ready_plan,
+        command_created_at="2026-09-01T02:05:00Z",
+    )
+    validation_mutations = [
+        ({"service_id": "nex-cx"}, "service id"),
+        ({"trigger_type": None}, "trigger"),
+        ({"scheduler_status": "ENABLED"}, "scheduler"),
+        ({"command_status": "RUNNING"}, "status"),
+        ({"execution_mode": "EXECUTE"}, "DRY_RUN"),
+        ({"tenant_id": " "}, "scope"),
+        ({"selected_count": 2, "candidate_count": 1}, "counts"),
+        ({"execution_request": None}, "execution request"),
+        (
+            {
+                "command_status": "NOOP",
+                "selected_count": 0,
+                "candidate_count": 0,
+            },
+            "NOOP request",
+        ),
+        (
+            {
+                "batch_plan_summary": {
+                    **ready_command["batch_plan_summary"],
+                    "selected_count": 0,
+                }
+            },
+            "summary",
+        ),
+        (
+            {
+                "guardrails": {
+                    **ready_command["guardrails"],
+                    "dry_run_required": False,
+                }
+            },
+            "guardrails",
+        ),
+        (
+            {
+                "guardrails": {
+                    **ready_command["guardrails"],
+                    "ag_direct_database_write_allowed": True,
+                }
+            },
+            "AG boundary",
+        ),
+        (
+            {
+                "metadata": {
+                    **ready_command["metadata"],
+                    "worker_execution_performed": True,
+                }
+            },
+            "metadata",
+        ),
+        ({"storage_ref": "ae://artifacts/private"}, "private"),
+    ]
+    for mutation, detail in validation_mutations:
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_scheduled_execution_command(
+                {**ready_command, **mutation}
+            )
+        assert exc_info.value.error_code in {
+            "ae.artifact_retention_scheduled_command_invalid",
+            "ae.artifact_retention_scheduled_trigger_invalid",
+            "ae.artifact_retention_payload_unsafe",
+        }
+        assert detail in exc_info.value.detail
+
+    request_mutations = [
+        ({"method": "GET"}, "route"),
+        ({"payload": []}, "payload"),
+        (
+            {
+                "payload": {
+                    **ready_command["execution_request"]["payload"],
+                    "tenant_id": "other-tenant",
+                }
+            },
+            "scope",
+        ),
+        (
+            {
+                "payload": {
+                    **ready_command["execution_request"]["payload"],
+                    "delete_enabled": True,
+                }
+            },
+            "dry-run",
+        ),
+        (
+            {
+                "metadata": {
+                    **ready_command["execution_request"]["metadata"],
+                    "history_write_expected": False,
+                }
+            },
+            "metadata",
+        ),
+    ]
+    for request_patch, detail in request_mutations:
+        execution_request = {
+            **ready_command["execution_request"],
+            **request_patch,
+        }
+        with pytest.raises(ArtifactHandoffError) as request_exc:
+            validate_artifact_retention_scheduled_execution_command(
+                {**ready_command, "execution_request": execution_request}
+            )
+        assert request_exc.value.error_code == (
+            "ae.artifact_retention_scheduled_command_invalid"
+        )
+        assert detail in request_exc.value.detail
 
 
 def test_sqlalchemy_artifact_record_store_plans_retention_batch_with_sqlite() -> None:

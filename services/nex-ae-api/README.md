@@ -501,3 +501,9 @@ Artifact library management:
   rendered logical-purge artifacts, verify `candidate_count=2` and
   `selected_count=1` through the route plus direct DB counts, confirm rows/files
   remain retained, and clean up smoke rows.
+- Slice 0486 adds
+  `ae_artifact_retention_scheduled_execution_command.v1`. It turns a batch plan
+  into a deterministic metadata-only command envelope for scheduler ticks,
+  mock workers, and AG dispatch. READY commands carry only a dry-run purge
+  request with delete, storage, and database-row mutation flags false; NOOP
+  commands carry no execution request.

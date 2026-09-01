@@ -140,6 +140,9 @@ AE_ARTIFACT_RETENTION_BATCH_PLAN_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_BATCH_PLAN_ITEM_SCHEMA_VERSION = (
     "ae_artifact_retention_batch_plan_item.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_COMMAND_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduled_execution_command.v1"
+)
 AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION = (
     "ae_artifact_retention_execution.v1"
 )
@@ -183,6 +186,10 @@ ARTIFACT_RETENTION_EXECUTION_STATUSES = (
     "SUCCEEDED",
     "BLOCKED",
     "FAILED",
+)
+ARTIFACT_RETENTION_SCHEDULED_EXECUTION_TRIGGER_TYPES = (
+    "scheduler_tick",
+    "operator_dispatch",
 )
 DEFAULT_ARTIFACT_RETENTION_MAX_DELETE_COUNT = 20
 MAX_ARTIFACT_RETENTION_MAX_DELETE_COUNT = 100
@@ -3672,6 +3679,266 @@ def summarize_artifact_retention_batch_plan(plan: dict[str, Any]) -> dict[str, A
     }
 
 
+def build_artifact_retention_scheduled_execution_command(
+    batch_plan: dict[str, Any],
+    *,
+    trigger_type: str = "scheduler_tick",
+    command_created_at: str | None = None,
+    requested_by: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    validated_plan = validate_artifact_retention_batch_plan(batch_plan)
+    normalized_trigger_type = _normalize_artifact_retention_scheduled_trigger(
+        trigger_type
+    )
+    normalized_created_at = format_artifact_retention_timestamp(
+        parse_artifact_retention_timestamp(
+            command_created_at or _utc_now(),
+            field_name="command_created_at",
+        )
+    )
+    normalized_requested_by = _normalize_artifact_retention_requested_by(
+        requested_by
+        if requested_by is not None
+        else validated_plan.get("requested_by")
+    )
+    normalized_idempotency_key = optional_text(
+        idempotency_key
+        if idempotency_key is not None
+        else validated_plan.get("idempotency_key")
+    )
+    command = {
+        "artifact_retention_scheduled_execution_command_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_COMMAND_SCHEMA_VERSION
+        ),
+        "command_id": _artifact_retention_scheduled_execution_command_id(
+            plan_id=validated_plan["plan_id"],
+            trigger_type=normalized_trigger_type,
+            command_created_at=normalized_created_at,
+            idempotency_key=normalized_idempotency_key,
+        ),
+        "service_id": "nex-ae-api",
+        "source_plan_id": validated_plan["plan_id"],
+        "trigger_type": normalized_trigger_type,
+        "scheduler_status": validated_plan["scheduler_status"],
+        "command_status": (
+            "READY" if validated_plan["selected_count"] > 0 else "NOOP"
+        ),
+        "execution_mode": validated_plan["mode"],
+        "execution_advice": validated_plan["execution_advice"],
+        "tenant_id": validated_plan["tenant_id"],
+        "workspace_id": validated_plan["workspace_id"],
+        "owner_user_id": validated_plan["owner_user_id"],
+        "as_of": validated_plan["as_of"],
+        "cutoff_at": validated_plan["cutoff_at"],
+        "checked_at": validated_plan["checked_at"],
+        "command_created_at": normalized_created_at,
+        "retention_days_after_logical_purge": validated_plan["candidate_filter"][
+            "retention_days_after_logical_purge"
+        ],
+        "scan_limit": validated_plan["scan_limit"],
+        "max_delete_count": validated_plan["max_delete_count"],
+        "candidate_count": validated_plan["candidate_count"],
+        "selected_count": validated_plan["selected_count"],
+        "estimated_deleted_counts": dict(validated_plan["estimated_deleted_counts"]),
+        "batch_plan_summary": summarize_artifact_retention_batch_plan(
+            validated_plan
+        ),
+        "execution_request": _artifact_retention_scheduled_execution_request(
+            validated_plan,
+            requested_by=normalized_requested_by,
+            idempotency_key=normalized_idempotency_key,
+        ),
+        "requested_by": normalized_requested_by,
+        "idempotency_key": normalized_idempotency_key,
+        "guardrails": {
+            "dry_run_required": True,
+            "execute_requires_operator_approval": True,
+            "execute_requires_delete_enabled": True,
+            "execute_requires_storage_mutation_enabled": True,
+            "execute_requires_database_row_delete_enabled": True,
+            "history_required_for_execute": True,
+            "ag_dispatch_policy": "ae_api_only",
+            "ag_direct_database_write_allowed": False,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "batch_plan_embedded": False,
+            "worker_execution_performed": False,
+            "history_write_executed": False,
+            "physical_delete_executed": False,
+            "storage_mutation_executed": False,
+            "database_row_delete_executed": False,
+        },
+    }
+    return validate_artifact_retention_scheduled_execution_command(command)
+
+
+def validate_artifact_retention_scheduled_execution_command(
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(command, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command must be an object.",
+        )
+    if (
+        command.get(
+            "artifact_retention_scheduled_execution_command_schema_version"
+        )
+        != AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_COMMAND_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_schema_invalid",
+            detail="Artifact retention scheduled command schema version is invalid.",
+        )
+    for section_name in (
+        "estimated_deleted_counts",
+        "batch_plan_summary",
+        "requested_by",
+        "guardrails",
+        "metadata",
+    ):
+        if not isinstance(command.get(section_name), dict):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduled_command_invalid",
+                detail=(
+                    "Artifact retention scheduled command "
+                    f"{section_name} is required."
+                ),
+            )
+    if command.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command service id is invalid.",
+        )
+    _normalize_artifact_retention_scheduled_trigger(command.get("trigger_type"))
+    if command.get("scheduler_status") != "DISABLED":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command scheduler status is invalid.",
+        )
+    if command.get("command_status") not in {"READY", "NOOP"}:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command status is invalid.",
+        )
+    if command.get("execution_mode") != "DRY_RUN":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command mode must be DRY_RUN.",
+        )
+    for field_name in (
+        "tenant_id",
+        "workspace_id",
+        "owner_user_id",
+        "as_of",
+        "cutoff_at",
+        "checked_at",
+        "command_created_at",
+    ):
+        if optional_text(command.get(field_name)) is None:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduled_command_invalid",
+                detail=(
+                    "Artifact retention scheduled command scope and timestamps "
+                    "are required."
+                ),
+            )
+    parse_artifact_retention_timestamp(command["as_of"], field_name="as_of")
+    parse_artifact_retention_timestamp(command["cutoff_at"], field_name="cutoff_at")
+    parse_artifact_retention_timestamp(command["checked_at"], field_name="checked_at")
+    parse_artifact_retention_timestamp(
+        command["command_created_at"],
+        field_name="command_created_at",
+    )
+    selected_count = _non_negative_artifact_retention_int(
+        command.get("selected_count"),
+        "selected_count",
+    )
+    candidate_count = _non_negative_artifact_retention_int(
+        command.get("candidate_count"),
+        "candidate_count",
+    )
+    if selected_count > candidate_count:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command counts are invalid.",
+        )
+    if (
+        command["command_status"] == "READY"
+        and command.get("execution_request") is None
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command execution request is required.",
+        )
+    if (
+        command["command_status"] == "NOOP"
+        and command.get("execution_request") is not None
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command NOOP request is invalid.",
+        )
+    if command.get("execution_request") is not None:
+        _validate_artifact_retention_scheduled_execution_request(command)
+    _validate_artifact_retention_scheduled_command_summary(command)
+    _validate_artifact_retention_scheduled_command_guardrails(command["guardrails"])
+    metadata = command["metadata"]
+    required_false_flags = (
+        "batch_plan_embedded",
+        "worker_execution_performed",
+        "history_write_executed",
+        "physical_delete_executed",
+        "storage_mutation_executed",
+        "database_row_delete_executed",
+    )
+    if metadata.get("metadata_only") is not True or any(
+        metadata.get(flag_name) is not False for flag_name in required_false_flags
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command metadata is invalid.",
+        )
+    assert_artifact_retention_payload_safe(command)
+    return command
+
+
+def summarize_artifact_retention_scheduled_execution_command(
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduled_execution_command(command)
+    return {
+        "command_status": validated["command_status"],
+        "trigger_type": validated["trigger_type"],
+        "scheduler_status": validated["scheduler_status"],
+        "execution_mode": validated["execution_mode"],
+        "candidate_count": validated["candidate_count"],
+        "selected_count": validated["selected_count"],
+        "estimated_deleted_artifacts": validated["estimated_deleted_counts"][
+            "artifacts"
+        ],
+        "estimated_deleted_storage_files": validated["estimated_deleted_counts"][
+            "storage_files"
+        ],
+        "command_created_at": validated["command_created_at"],
+        "next_action": validated["execution_advice"],
+    }
+
+
 def _artifact_retention_batch_plan_item(
     candidate: Mapping[str, Any],
     *,
@@ -3763,6 +4030,202 @@ def _artifact_retention_batch_plan_id(
         uuid5(
             NAMESPACE_URL,
             f"ae-artifact-retention-batch-plan:{sha256_json(basis)}",
+        )
+    )
+
+
+def _artifact_retention_scheduled_execution_request(
+    batch_plan: dict[str, Any],
+    *,
+    requested_by: dict[str, Any],
+    idempotency_key: str | None,
+) -> dict[str, Any] | None:
+    if batch_plan["selected_count"] == 0:
+        return None
+    payload = {
+        "tenant_id": batch_plan["tenant_id"],
+        "workspace_id": batch_plan["workspace_id"],
+        "owner_user_id": batch_plan["owner_user_id"],
+        "mode": "DRY_RUN",
+        "retention_days": batch_plan["candidate_filter"][
+            "retention_days_after_logical_purge"
+        ],
+        "as_of": batch_plan["as_of"],
+        "checked_at": batch_plan["checked_at"],
+        "scan_limit": batch_plan["scan_limit"],
+        "max_delete_count": batch_plan["max_delete_count"],
+        "candidate_count": batch_plan["candidate_count"],
+        "selected_count": batch_plan["selected_count"],
+        "delete_enabled": False,
+        "storage_mutation_enabled": False,
+        "database_row_delete_enabled": False,
+        "requested_by": dict(requested_by),
+        "idempotency_key": idempotency_key,
+    }
+    return {
+        "method": "POST",
+        "route": "/api/v1/artifact-retention/purge",
+        "payload": payload,
+        "metadata": {
+            "dry_run": True,
+            "history_write_expected": True,
+            "storage_mutation_enabled": False,
+            "database_row_delete_enabled": False,
+        },
+    }
+
+
+def _validate_artifact_retention_scheduled_execution_request(
+    command: dict[str, Any],
+) -> None:
+    execution_request = command["execution_request"]
+    if not isinstance(execution_request, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command request is invalid.",
+        )
+    if execution_request.get("method") != "POST" or execution_request.get(
+        "route"
+    ) != "/api/v1/artifact-retention/purge":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command route is invalid.",
+        )
+    payload = execution_request.get("payload")
+    metadata = execution_request.get("metadata")
+    if not isinstance(payload, dict) or not isinstance(metadata, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command request payload is invalid.",
+        )
+    for field_name in ("tenant_id", "workspace_id", "owner_user_id"):
+        if payload.get(field_name) != command[field_name]:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduled_command_invalid",
+                detail="Artifact retention scheduled command request scope is invalid.",
+            )
+    required_false_flags = (
+        "delete_enabled",
+        "storage_mutation_enabled",
+        "database_row_delete_enabled",
+    )
+    if payload.get("mode") != "DRY_RUN" or any(
+        payload.get(flag_name) is not False for flag_name in required_false_flags
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command request must be dry-run.",
+        )
+    if (
+        metadata.get("dry_run") is not True
+        or metadata.get("history_write_expected") is not True
+        or metadata.get("storage_mutation_enabled") is not False
+        or metadata.get("database_row_delete_enabled") is not False
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command request metadata is invalid.",
+        )
+
+
+def _validate_artifact_retention_scheduled_command_summary(
+    command: dict[str, Any],
+) -> None:
+    summary = command["batch_plan_summary"]
+    expected = {
+        "plan_status": "READY" if command["selected_count"] > 0 else "NOOP",
+        "scheduler_status": command["scheduler_status"],
+        "candidate_count": command["candidate_count"],
+        "selected_count": command["selected_count"],
+        "unselected_count": max(
+            0,
+            command["candidate_count"] - command["selected_count"],
+        ),
+        "estimated_deleted_artifacts": command["estimated_deleted_counts"][
+            "artifacts"
+        ],
+        "estimated_deleted_storage_files": command["estimated_deleted_counts"][
+            "storage_files"
+        ],
+        "checked_at": command["checked_at"],
+        "next_action": command["execution_advice"],
+    }
+    if summary != expected:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command plan summary is invalid.",
+        )
+
+
+def _validate_artifact_retention_scheduled_command_guardrails(
+    guardrails: dict[str, Any],
+) -> None:
+    required_true_flags = (
+        "dry_run_required",
+        "execute_requires_operator_approval",
+        "execute_requires_delete_enabled",
+        "execute_requires_storage_mutation_enabled",
+        "execute_requires_database_row_delete_enabled",
+        "history_required_for_execute",
+    )
+    if any(guardrails.get(flag_name) is not True for flag_name in required_true_flags):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command guardrails are invalid.",
+        )
+    if guardrails.get("ag_dispatch_policy") != "ae_api_only" or guardrails.get(
+        "ag_direct_database_write_allowed"
+    ) is not False:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_command_invalid",
+            detail="Artifact retention scheduled command AG boundary is invalid.",
+        )
+
+
+def _normalize_artifact_retention_scheduled_trigger(value: Any) -> str:
+    normalized = optional_text(value)
+    if normalized is None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_trigger_invalid",
+            detail="Artifact retention scheduled command trigger is required.",
+        )
+    normalized = normalized.lower().replace("-", "_")
+    if normalized not in ARTIFACT_RETENTION_SCHEDULED_EXECUTION_TRIGGER_TYPES:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_trigger_invalid",
+            detail="Artifact retention scheduled command trigger is invalid.",
+        )
+    return normalized
+
+
+def _artifact_retention_scheduled_execution_command_id(
+    *,
+    plan_id: str,
+    trigger_type: str,
+    command_created_at: str,
+    idempotency_key: str | None,
+) -> str:
+    basis = {
+        "plan_id": plan_id,
+        "trigger_type": trigger_type,
+        "command_created_at": command_created_at,
+        "idempotency_key": idempotency_key,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            f"ae-artifact-retention-scheduled-command:{sha256_json(basis)}",
         )
     )
 

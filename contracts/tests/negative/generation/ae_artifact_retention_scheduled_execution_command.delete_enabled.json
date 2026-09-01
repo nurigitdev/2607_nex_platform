@@ -1,0 +1,100 @@
+{
+  "artifact_retention_scheduled_execution_command_schema_version": "ae_artifact_retention_scheduled_execution_command.v1",
+  "command_id": "b6c5f4c7-5d57-5f01-884b-8ac1471b31a0",
+  "service_id": "nex-ae-api",
+  "source_plan_id": "3f4b0b3f-1c1a-5c5a-a73f-9de1d42b4101",
+  "trigger_type": "scheduler_tick",
+  "scheduler_status": "DISABLED",
+  "command_status": "READY",
+  "execution_mode": "DRY_RUN",
+  "execution_advice": "manual_dispatch_after_operator_approval",
+  "tenant_id": "tenant-001",
+  "workspace_id": "workspace-001",
+  "owner_user_id": "user-001",
+  "as_of": "2026-09-01T00:00:00Z",
+  "cutoff_at": "2026-08-02T00:00:00Z",
+  "checked_at": "2026-09-01T02:10:00Z",
+  "command_created_at": "2026-09-01T02:15:00Z",
+  "retention_days_after_logical_purge": 30,
+  "scan_limit": 10,
+  "max_delete_count": 1,
+  "candidate_count": 2,
+  "selected_count": 1,
+  "estimated_deleted_counts": {
+    "artifacts": 1,
+    "source_refs": 0,
+    "versions": 1,
+    "render_jobs": 1,
+    "files": 2,
+    "links": 4,
+    "storage_files": 2
+  },
+  "batch_plan_summary": {
+    "plan_status": "READY",
+    "scheduler_status": "DISABLED",
+    "candidate_count": 2,
+    "selected_count": 1,
+    "unselected_count": 1,
+    "estimated_deleted_artifacts": 1,
+    "estimated_deleted_storage_files": 2,
+    "checked_at": "2026-09-01T02:10:00Z",
+    "next_action": "manual_dispatch_after_operator_approval"
+  },
+  "execution_request": {
+    "method": "POST",
+    "route": "/api/v1/artifact-retention/purge",
+    "payload": {
+      "tenant_id": "tenant-001",
+      "workspace_id": "workspace-001",
+      "owner_user_id": "user-001",
+      "mode": "DRY_RUN",
+      "retention_days": 30,
+      "as_of": "2026-09-01T00:00:00Z",
+      "checked_at": "2026-09-01T02:10:00Z",
+      "scan_limit": 10,
+      "max_delete_count": 1,
+      "candidate_count": 2,
+      "selected_count": 1,
+      "delete_enabled": true,
+      "storage_mutation_enabled": false,
+      "database_row_delete_enabled": false,
+      "requested_by": {
+        "actor_type": "service",
+        "actor_id": "nex-ag",
+        "service_id": "nex-ae-api"
+      },
+      "idempotency_key": "scheduled-command-001"
+    },
+    "metadata": {
+      "dry_run": true,
+      "history_write_expected": true,
+      "storage_mutation_enabled": false,
+      "database_row_delete_enabled": false
+    }
+  },
+  "requested_by": {
+    "actor_type": "service",
+    "actor_id": "nex-ag",
+    "service_id": "nex-ae-api"
+  },
+  "idempotency_key": "scheduled-command-001",
+  "guardrails": {
+    "dry_run_required": true,
+    "execute_requires_operator_approval": true,
+    "execute_requires_delete_enabled": true,
+    "execute_requires_storage_mutation_enabled": true,
+    "execute_requires_database_row_delete_enabled": true,
+    "history_required_for_execute": true,
+    "ag_dispatch_policy": "ae_api_only",
+    "ag_direct_database_write_allowed": false
+  },
+  "metadata": {
+    "metadata_only": true,
+    "batch_plan_embedded": false,
+    "worker_execution_performed": false,
+    "history_write_executed": false,
+    "physical_delete_executed": false,
+    "storage_mutation_executed": false,
+    "database_row_delete_executed": false
+  }
+}
