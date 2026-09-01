@@ -379,6 +379,9 @@ Unified operations:
   guardrail stay connected to AE's scheduler config/read-model APIs,
   JobQueue-backed admission, worker runtime evidence, and AE-only persistence
   ownership.
+- Slice 0501 starts S51 by freezing AG's retention automation boundary. AG may
+  project and dispatch AE retention automation through protected AE APIs, but it
+  still cannot write AE persistence or enqueue AE jobs directly.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -561,3 +561,8 @@ Artifact library management:
   job contract, admission, shared worker runner, AE scheduler/read-model APIs,
   AG scheduled job/dispatch projections, PostgreSQL smoke evidence, and
   metadata-only redaction posture remain connected end to end.
+- Slice 0501 starts S51 by freezing the artifact retention automation safety
+  boundary. Scheduler daemon startup remains disabled by default, the first
+  automation path is dry-run scheduled job admission, AG can control retention
+  only through AE APIs, and physical delete execution still requires explicit
+  operator/delete/storage/database row deletion guards.
