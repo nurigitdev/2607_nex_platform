@@ -1,0 +1,366 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/ae_artifact_retention_execution.v1.schema.json",
+  "title": "NeX AE Artifact Retention Execution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_retention_execution_schema_version",
+    "execution_id",
+    "policy_id",
+    "service_id",
+    "mode",
+    "execution_status",
+    "delete_enabled",
+    "storage_mutation_enabled",
+    "database_row_delete_enabled",
+    "tenant_id",
+    "workspace_id",
+    "owner_user_id",
+    "retention_days_after_logical_purge",
+    "as_of",
+    "cutoff_at",
+    "checked_at",
+    "scan_limit",
+    "max_delete_count",
+    "candidate_count",
+    "selected_count",
+    "deleted_counts",
+    "requested_by",
+    "idempotency_key",
+    "trace_id",
+    "request_id",
+    "blocked_reason",
+    "error",
+    "audit",
+    "metadata"
+  ],
+  "properties": {
+    "artifact_retention_execution_schema_version": {
+      "const": "ae_artifact_retention_execution.v1"
+    },
+    "execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy_id": {
+      "const": "ae-artifact-logical-purge-30d-local-v1"
+    },
+    "service_id": {
+      "const": "nex-ae-api"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "DRY_RUN",
+        "EXECUTE"
+      ]
+    },
+    "execution_status": {
+      "type": "string",
+      "enum": [
+        "PLANNED",
+        "SUCCEEDED",
+        "BLOCKED",
+        "FAILED"
+      ]
+    },
+    "delete_enabled": {
+      "type": "boolean"
+    },
+    "storage_mutation_enabled": {
+      "type": "boolean"
+    },
+    "database_row_delete_enabled": {
+      "type": "boolean"
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspace_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner_user_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "retention_days_after_logical_purge": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 365
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cutoff_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "scan_limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "max_delete_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "candidate_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "selected_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "deleted_counts": {
+      "$ref": "#/$defs/deleted_counts"
+    },
+    "requested_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor_type",
+        "actor_id",
+        "service_id"
+      ],
+      "properties": {
+        "actor_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actor_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "service_id": {
+          "const": "nex-ae-api"
+        }
+      }
+    },
+    "idempotency_key": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "trace_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "request_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "blocked_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "error": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "error_code",
+            "detail"
+          ],
+          "properties": {
+            "error_code": {
+              "type": "string",
+              "minLength": 1
+            },
+            "detail": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "audit_event_type",
+        "audit_event_id",
+        "emitted"
+      ],
+      "properties": {
+        "audit_event_type": {
+          "const": "ae_artifact.retention.execution"
+        },
+        "audit_event_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "emitted": {
+          "type": "boolean"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logical_purge_required_before_physical_delete",
+        "candidate_scan_metadata_only",
+        "scheduled_batch_timezone",
+        "scheduled_batch_window"
+      ],
+      "properties": {
+        "logical_purge_required_before_physical_delete": {
+          "const": true
+        },
+        "candidate_scan_metadata_only": {
+          "const": true
+        },
+        "scheduled_batch_timezone": {
+          "const": "Asia/Seoul"
+        },
+        "scheduled_batch_window": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start_local_time",
+            "end_local_time"
+          ],
+          "properties": {
+            "start_local_time": {
+              "const": "02:00"
+            },
+            "end_local_time": {
+              "const": "05:00"
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "DRY_RUN"
+          }
+        },
+        "required": [
+          "mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "delete_enabled": {
+            "const": false
+          },
+          "storage_mutation_enabled": {
+            "const": false
+          },
+          "database_row_delete_enabled": {
+            "const": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "EXECUTE"
+          },
+          "execution_status": {
+            "const": "SUCCEEDED"
+          }
+        },
+        "required": [
+          "mode",
+          "execution_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "delete_enabled": {
+            "const": true
+          },
+          "storage_mutation_enabled": {
+            "const": true
+          },
+          "database_row_delete_enabled": {
+            "const": true
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "deleted_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifacts",
+        "source_refs",
+        "versions",
+        "render_jobs",
+        "files",
+        "links",
+        "storage_files"
+      ],
+      "properties": {
+        "artifacts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source_refs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "versions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "render_jobs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "links": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "storage_files": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

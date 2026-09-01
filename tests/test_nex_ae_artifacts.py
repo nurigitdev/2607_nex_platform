@@ -24,6 +24,7 @@ from nex_ae_api.artifacts import (
     ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION,
     AE_ARTIFACT_LIFECYCLE_ACTION_RESULT_SCHEMA_VERSION,
     AE_ARTIFACT_LIFECYCLE_ACTION_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_POLICY_SCHEMA_VERSION,
     HttpCxArtifactSourceClient,
     InMemoryRenderedArtifactStorage,
@@ -47,6 +48,7 @@ from nex_ae_api.artifacts import (
     build_artifact_lifecycle_action_result,
     build_artifact_retention_candidate_filter,
     build_artifact_retention_candidate_collection,
+    build_artifact_retention_execution,
     build_artifact_retention_policy,
     build_default_artifact_handoff_store,
     build_default_artifact_record_store,
@@ -62,6 +64,7 @@ from nex_ae_api.artifacts import (
     build_artifact_record_from_handoff,
     deterministic_render_job_id,
     normalize_artifact_collection_limit,
+    normalize_artifact_retention_delete_limit,
     normalize_artifact_retention_days,
     normalize_artifact_lifecycle_action,
     normalize_artifact_restore_status,
@@ -82,6 +85,7 @@ from nex_ae_api.artifacts import (
     sha256_bytes,
     target_formats_from_payload,
     parse_artifact_retention_timestamp,
+    validate_artifact_retention_execution,
     validate_artifact_retention_policy,
     validate_artifact_handoff_record,
     validate_structured_draft_for_markdown_render,
@@ -1643,6 +1647,288 @@ def test_artifact_retention_policy_contract_rejects_invalid_inputs() -> None:
             {"storage_ref": "ae://artifacts/private"}
         )
     assert unsafe_exc.value.error_code == "ae.artifact_retention_payload_unsafe"
+
+
+def test_artifact_retention_execution_contract_defaults_to_safe_dry_run() -> None:
+    execution = build_artifact_retention_execution(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="owner-001",
+        as_of="2026-09-01T00:00:00Z",
+        checked_at="2026-09-01T02:30:00Z",
+        candidate_count=3,
+        selected_count=0,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert execution["artifact_retention_execution_schema_version"] == (
+        AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION
+    )
+    assert execution["mode"] == "DRY_RUN"
+    assert execution["execution_status"] == "PLANNED"
+    assert execution["delete_enabled"] is False
+    assert execution["storage_mutation_enabled"] is False
+    assert execution["database_row_delete_enabled"] is False
+    assert execution["retention_days_after_logical_purge"] == 30
+    assert execution["cutoff_at"] == "2026-08-02T00:00:00Z"
+    assert execution["scan_limit"] == 20
+    assert execution["max_delete_count"] == 20
+    assert execution["candidate_count"] == 3
+    assert execution["deleted_counts"] == {
+        "artifacts": 0,
+        "source_refs": 0,
+        "versions": 0,
+        "render_jobs": 0,
+        "files": 0,
+        "links": 0,
+        "storage_files": 0,
+    }
+    assert execution["requested_by"] == {
+        "actor_type": "service",
+        "actor_id": "nex-ae-api",
+        "service_id": "nex-ae-api",
+    }
+    assert execution["audit"]["audit_event_type"] == "ae_artifact.retention.execution"
+    assert validate_artifact_retention_execution(execution) is execution
+    assert "storage_ref" not in json.dumps(execution, sort_keys=True)
+
+
+def test_artifact_retention_execution_contract_supports_guarded_execute() -> None:
+    blocked = build_artifact_retention_execution(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="owner-001",
+        mode="execute",
+        execution_status="blocked",
+        as_of="2026-09-01T00:00:00Z",
+        checked_at="2026-09-01T02:30:00Z",
+        candidate_count=2,
+        selected_count=0,
+        blocked_reason="delete_not_enabled",
+        requested_by={"actor_type": "service", "actor_id": "nex-ag"},
+    )
+    succeeded = build_artifact_retention_execution(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="owner-001",
+        mode="EXECUTE",
+        execution_status="SUCCEEDED",
+        retention_days="15",
+        as_of="2026-09-01T00:00:00Z",
+        checked_at="2026-09-01T02:30:00Z",
+        max_delete_count="10",
+        candidate_count=2,
+        selected_count=1,
+        deleted_counts={
+            "artifacts": 1,
+            "source_refs": 1,
+            "versions": 1,
+            "render_jobs": 1,
+            "files": 2,
+            "links": 4,
+            "storage_files": 2,
+        },
+        delete_enabled=True,
+        storage_mutation_enabled=True,
+        database_row_delete_enabled=True,
+        idempotency_key="retention-execute-001",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert blocked["execution_status"] == "BLOCKED"
+    assert blocked["blocked_reason"] == "delete_not_enabled"
+    assert blocked["requested_by"] == {
+        "actor_type": "service",
+        "actor_id": "nex-ag",
+        "service_id": "nex-ae-api",
+    }
+    assert succeeded["mode"] == "EXECUTE"
+    assert succeeded["execution_status"] == "SUCCEEDED"
+    assert succeeded["retention_days_after_logical_purge"] == 15
+    assert succeeded["max_delete_count"] == 10
+    assert succeeded["deleted_counts"]["artifacts"] == 1
+    assert succeeded["deleted_counts"]["storage_files"] == 2
+    assert validate_artifact_retention_execution(succeeded) is succeeded
+
+
+def test_artifact_retention_execution_contract_rejects_unsafe_edges() -> None:
+    base = {
+        "tenant_id": "tenant-001",
+        "workspace_id": "workspace-001",
+        "owner_user_id": "owner-001",
+        "as_of": "2026-09-01T00:00:00Z",
+        "checked_at": "2026-09-01T02:30:00Z",
+    }
+
+    assert normalize_artifact_retention_delete_limit(None) == 20
+    assert normalize_artifact_retention_delete_limit("100") == 100
+    for bad_value in (0, 101, True, "many"):
+        with pytest.raises(ArtifactHandoffError) as limit_exc:
+            normalize_artifact_retention_delete_limit(bad_value)
+        assert limit_exc.value.error_code == (
+            "ae.artifact_retention_delete_limit_invalid"
+        )
+
+    invalid_cases = [
+        (
+            {**base, "mode": "preview"},
+            "ae.artifact_retention_execution_mode_invalid",
+        ),
+        (
+            {**base, "execution_status": "done"},
+            "ae.artifact_retention_execution_status_invalid",
+        ),
+        (
+            {**base, "delete_enabled": True},
+            "ae.artifact_retention_dry_run_delete_enabled_invalid",
+        ),
+        (
+            {
+                **base,
+                "mode": "EXECUTE",
+                "execution_status": "SUCCEEDED",
+                "delete_enabled": True,
+            },
+            "ae.artifact_retention_execute_not_enabled",
+        ),
+        (
+            {**base, "candidate_count": 1, "selected_count": 2},
+            "ae.artifact_retention_selected_count_invalid",
+        ),
+        (
+            {**base, "deleted_counts": {"artifacts": 1}},
+            "ae.artifact_retention_deleted_counts_invalid",
+        ),
+        (
+            {**base, "requested_by": {"actor_id": "storage_ref"}},
+            "ae.artifact_retention_payload_unsafe",
+        ),
+        (
+            {**base, "error": {"error_code": "boom"}},
+            "ae.artifact_retention_error_invalid",
+        ),
+        (
+            {**base, "error": "boom"},
+            "ae.artifact_retention_error_invalid",
+        ),
+        (
+            {**base, "candidate_count": True},
+            "ae.artifact_retention_count_invalid",
+        ),
+        (
+            {**base, "candidate_count": "many"},
+            "ae.artifact_retention_count_invalid",
+        ),
+        (
+            {**base, "candidate_count": -1},
+            "ae.artifact_retention_count_invalid",
+        ),
+    ]
+    for kwargs, error_code in invalid_cases:
+        with pytest.raises(ArtifactHandoffError) as exc:
+            build_artifact_retention_execution(**kwargs)
+        assert exc.value.error_code == error_code
+
+    without_checked_at = build_artifact_retention_execution(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="owner-001",
+        as_of="2026-09-01T00:00:00Z",
+    )
+    assert without_checked_at["checked_at"].endswith("Z")
+
+    valid = build_artifact_retention_execution(**base, candidate_count=5)
+    validation_mutations = [
+        (
+            {"policy_id": "wrong"},
+            "ae.artifact_retention_execution_policy_invalid",
+        ),
+        (
+            {"service_id": "nex-cx"},
+            "ae.artifact_retention_execution_service_invalid",
+        ),
+        (
+            {"delete_enabled": "yes"},
+            "ae.artifact_retention_execution_flag_invalid",
+        ),
+        (
+            {"retention_days_after_logical_purge": "30"},
+            "ae.artifact_retention_execution_days_invalid",
+        ),
+        (
+            {"scan_limit": "20"},
+            "ae.artifact_retention_execution_scan_limit_invalid",
+        ),
+        (
+            {"max_delete_count": "20"},
+            "ae.artifact_retention_execution_delete_limit_invalid",
+        ),
+        (
+            {"selected_count": 21, "candidate_count": 30},
+            "ae.artifact_retention_selected_count_invalid",
+        ),
+        (
+            {
+                "mode": "EXECUTE",
+                "execution_status": "SUCCEEDED",
+                "delete_enabled": True,
+                "storage_mutation_enabled": True,
+                "database_row_delete_enabled": True,
+                "selected_count": 2,
+                "deleted_counts": {
+                    "artifacts": 1,
+                    "source_refs": 0,
+                    "versions": 0,
+                    "render_jobs": 0,
+                    "files": 0,
+                    "links": 0,
+                    "storage_files": 0,
+                },
+            },
+            "ae.artifact_retention_deleted_counts_invalid",
+        ),
+        (
+            {"metadata": {"candidate_scan_metadata_only": False}},
+            "ae.artifact_retention_execution_metadata_invalid",
+        ),
+        (
+            {"audit": {**valid["audit"], "audit_event_type": "wrong"}},
+            "ae.artifact_retention_audit_invalid",
+        ),
+        (
+            {"audit": {**valid["audit"], "audit_event_id": "wrong"}},
+            "ae.artifact_retention_audit_invalid",
+        ),
+        (
+            {"audit": {**valid["audit"], "emitted": "no"}},
+            "ae.artifact_retention_audit_invalid",
+        ),
+    ]
+    for mutation, error_code in validation_mutations:
+        with pytest.raises(ArtifactHandoffError) as exc:
+            validate_artifact_retention_execution({**valid, **mutation})
+        assert exc.value.error_code == error_code
+
+    with pytest.raises(ArtifactHandoffError) as missing_exc:
+        validate_artifact_retention_execution({**valid, "audit": []})  # type: ignore[dict-item]
+    assert missing_exc.value.error_code == "ae.artifact_retention_audit_invalid"
+    missing_required = dict(valid)
+    missing_required.pop("metadata")
+    with pytest.raises(ArtifactHandoffError) as required_exc:
+        validate_artifact_retention_execution(missing_required)
+    assert required_exc.value.error_code == "ae.artifact_retention_execution_invalid"
+    with pytest.raises(ArtifactHandoffError) as type_exc:
+        validate_artifact_retention_execution(["bad"])  # type: ignore[arg-type]
+    assert type_exc.value.error_code == "ae.artifact_retention_execution_invalid"
+    with pytest.raises(ArtifactHandoffError) as schema_exc:
+        validate_artifact_retention_execution(
+            {**valid, "artifact_retention_execution_schema_version": "wrong"}
+        )
+    assert schema_exc.value.error_code == (
+        "ae.artifact_retention_execution_schema_invalid"
+    )
 
 
 def test_artifact_retention_candidate_read_model_filters_logical_purge_age() -> None:

@@ -101,6 +101,11 @@
       "schema": "schemas/generation/ae_artifact_retention_policy.v1.schema.json"
     },
     {
+      "name": "ae_artifact_retention_execution_dry_run_delete_enabled",
+      "path": "tests/negative/generation/ae_artifact_retention_execution.dry_run_delete_enabled.json",
+      "schema": "schemas/generation/ae_artifact_retention_execution.v1.schema.json"
+    },
+    {
       "name": "ae_generation_feedback_raw_prompt_field",
       "path": "tests/negative/generation/ae_generation_feedback.raw_prompt_field.json",
       "schema": "schemas/service/nex_ae_api/generation_feedback.v1.schema.json"

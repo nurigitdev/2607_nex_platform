@@ -412,3 +412,7 @@ Artifact library management:
   rendered artifacts, mark both `DELETED`, age one beyond the 30-day cutoff,
   verify API and direct DB candidate counts, confirm local files/DB rows remain
   retained, and clean up smoke rows.
+- Slice 0466 adds the `ae_artifact_retention_execution.v1` contract and runtime
+  helpers. Retention execution remains guarded: dry-run cannot enable delete
+  flags, successful execute requires database and storage mutation flags, and
+  the scheduled batch window stays 02:00-05:00 `Asia/Seoul`.

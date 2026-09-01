@@ -133,6 +133,9 @@ AE_ARTIFACT_RETENTION_CANDIDATE_COLLECTION_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_CANDIDATE_ITEM_SCHEMA_VERSION = (
     "ae_artifact_retention_candidate_item.v1"
 )
+AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION = (
+    "ae_artifact_retention_execution.v1"
+)
 SUPPORTED_ARTIFACT_LIFECYCLE_ACTIONS = {"ARCHIVE", "RESTORE", "MARK_DELETED"}
 ARCHIVABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED"}
 DELETABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED", "ARCHIVED"}
@@ -149,6 +152,15 @@ ARTIFACT_RETENTION_LOGICAL_PURGE_FIELD = "artifact_status"
 ARTIFACT_RETENTION_BATCH_TIMEZONE = "Asia/Seoul"
 ARTIFACT_RETENTION_BATCH_WINDOW_START = "02:00"
 ARTIFACT_RETENTION_BATCH_WINDOW_END = "05:00"
+ARTIFACT_RETENTION_EXECUTION_MODES = ("DRY_RUN", "EXECUTE")
+ARTIFACT_RETENTION_EXECUTION_STATUSES = (
+    "PLANNED",
+    "SUCCEEDED",
+    "BLOCKED",
+    "FAILED",
+)
+DEFAULT_ARTIFACT_RETENTION_MAX_DELETE_COUNT = 20
+MAX_ARTIFACT_RETENTION_MAX_DELETE_COUNT = 100
 SUPPORTED_TARGET_FORMATS = {"MD", "HTML_PREVIEW", "DOCX", "PDF"}
 ARTIFACT_COLLECTION_SCHEMA_VERSION = "ae_artifact_collection.v1"
 ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION = "ae_artifact_collection_item.v1"
@@ -2453,6 +2465,539 @@ def parse_artifact_retention_timestamp(value: Any, *, field_name: str) -> dateti
 
 def format_artifact_retention_timestamp(value: datetime) -> str:
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def build_artifact_retention_execution(
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    owner_user_id: str,
+    mode: str = "DRY_RUN",
+    execution_status: str = "PLANNED",
+    retention_days: int | str | None = None,
+    as_of: str | None = None,
+    checked_at: str | None = None,
+    scan_limit: int | str | None = None,
+    max_delete_count: int | str | None = None,
+    candidate_count: int = 0,
+    selected_count: int = 0,
+    deleted_counts: dict[str, int] | None = None,
+    delete_enabled: bool = False,
+    storage_mutation_enabled: bool = False,
+    database_row_delete_enabled: bool = False,
+    requested_by: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
+    trace_id: str | None = None,
+    request_id: str | None = None,
+    blocked_reason: str | None = None,
+    error: dict[str, Any] | None = None,
+    execution_id: str | None = None,
+) -> dict[str, Any]:
+    candidate_filter = build_artifact_retention_candidate_filter(
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
+        retention_days=retention_days,
+        as_of=as_of,
+        limit=scan_limit,
+    )
+    normalized_checked_at = format_artifact_retention_timestamp(
+        parse_artifact_retention_timestamp(
+            checked_at or _utc_now(),
+            field_name="checked_at",
+        )
+    )
+    normalized_mode = _normalize_artifact_retention_execution_mode(mode)
+    normalized_status = _normalize_artifact_retention_execution_status(
+        execution_status
+    )
+    normalized_deleted_counts = _normalize_artifact_retention_deleted_counts(
+        deleted_counts
+    )
+    normalized_max_delete_count = normalize_artifact_retention_delete_limit(
+        max_delete_count
+    )
+    normalized_execution_id = execution_id or _artifact_retention_execution_id(
+        mode=normalized_mode,
+        execution_status=normalized_status,
+        candidate_filter=candidate_filter,
+        checked_at=normalized_checked_at,
+        idempotency_key=idempotency_key,
+    )
+    execution = {
+        "artifact_retention_execution_schema_version": (
+            AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION
+        ),
+        "execution_id": normalized_execution_id,
+        "policy_id": DEFAULT_ARTIFACT_RETENTION_POLICY_ID,
+        "service_id": "nex-ae-api",
+        "mode": normalized_mode,
+        "execution_status": normalized_status,
+        "delete_enabled": bool(delete_enabled),
+        "storage_mutation_enabled": bool(storage_mutation_enabled),
+        "database_row_delete_enabled": bool(database_row_delete_enabled),
+        "tenant_id": candidate_filter["tenant_id"],
+        "workspace_id": candidate_filter["workspace_id"],
+        "owner_user_id": candidate_filter["owner_user_id"],
+        "retention_days_after_logical_purge": (
+            candidate_filter["retention_days_after_logical_purge"]
+        ),
+        "as_of": candidate_filter["as_of"],
+        "cutoff_at": candidate_filter["cutoff_at"],
+        "checked_at": normalized_checked_at,
+        "scan_limit": candidate_filter["limit"],
+        "max_delete_count": normalized_max_delete_count,
+        "candidate_count": _non_negative_artifact_retention_int(
+            candidate_count,
+            "candidate_count",
+        ),
+        "selected_count": _non_negative_artifact_retention_int(
+            selected_count,
+            "selected_count",
+        ),
+        "deleted_counts": normalized_deleted_counts,
+        "requested_by": _normalize_artifact_retention_requested_by(requested_by),
+        "idempotency_key": optional_text(idempotency_key),
+        "trace_id": optional_text(trace_id),
+        "request_id": optional_text(request_id),
+        "blocked_reason": optional_text(blocked_reason),
+        "error": _normalize_artifact_retention_error(error),
+        "audit": {
+            "audit_event_type": "ae_artifact.retention.execution",
+            "audit_event_id": _artifact_retention_audit_id(normalized_execution_id),
+            "emitted": False,
+        },
+        "metadata": {
+            "logical_purge_required_before_physical_delete": True,
+            "candidate_scan_metadata_only": True,
+            "scheduled_batch_timezone": ARTIFACT_RETENTION_BATCH_TIMEZONE,
+            "scheduled_batch_window": {
+                "start_local_time": ARTIFACT_RETENTION_BATCH_WINDOW_START,
+                "end_local_time": ARTIFACT_RETENTION_BATCH_WINDOW_END,
+            },
+        },
+    }
+    return validate_artifact_retention_execution(execution)
+
+
+def validate_artifact_retention_execution(
+    execution: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(execution, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_execution_invalid",
+            detail="Artifact retention execution must be an object.",
+        )
+    for field_name in (
+        "artifact_retention_execution_schema_version",
+        "execution_id",
+        "policy_id",
+        "service_id",
+        "mode",
+        "execution_status",
+        "delete_enabled",
+        "storage_mutation_enabled",
+        "database_row_delete_enabled",
+        "tenant_id",
+        "workspace_id",
+        "owner_user_id",
+        "retention_days_after_logical_purge",
+        "as_of",
+        "cutoff_at",
+        "checked_at",
+        "scan_limit",
+        "max_delete_count",
+        "candidate_count",
+        "selected_count",
+        "deleted_counts",
+        "requested_by",
+        "idempotency_key",
+        "trace_id",
+        "request_id",
+        "blocked_reason",
+        "error",
+        "audit",
+        "metadata",
+    ):
+        if field_name not in execution:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_execution_invalid",
+                detail=f"Missing artifact retention execution field: {field_name}.",
+            )
+    if (
+        execution["artifact_retention_execution_schema_version"]
+        != AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_execution_schema_invalid",
+            detail="Artifact retention execution schema version is invalid.",
+        )
+    if execution["policy_id"] != DEFAULT_ARTIFACT_RETENTION_POLICY_ID:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_execution_policy_invalid",
+            detail="Artifact retention execution policy id is invalid.",
+        )
+    if execution["service_id"] != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_execution_service_invalid",
+            detail="Artifact retention execution service id is invalid.",
+        )
+    _required_collection_scope_text(execution["tenant_id"], "tenant_id")
+    _required_collection_scope_text(execution["workspace_id"], "workspace_id")
+    _required_collection_scope_text(execution["owner_user_id"], "owner_user_id")
+    mode = _normalize_artifact_retention_execution_mode(execution["mode"])
+    status = _normalize_artifact_retention_execution_status(
+        execution["execution_status"]
+    )
+    for field_name in (
+        "delete_enabled",
+        "storage_mutation_enabled",
+        "database_row_delete_enabled",
+    ):
+        if not isinstance(execution[field_name], bool):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_execution_flag_invalid",
+                detail=f"{field_name} must be a boolean.",
+            )
+    if mode == "DRY_RUN" and (
+        execution["delete_enabled"]
+        or execution["storage_mutation_enabled"]
+        or execution["database_row_delete_enabled"]
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_dry_run_delete_enabled_invalid",
+            detail="Dry-run artifact retention execution cannot enable deletes.",
+        )
+    if (
+        mode == "EXECUTE"
+        and status == "SUCCEEDED"
+        and not (
+            execution["delete_enabled"]
+            and execution["storage_mutation_enabled"]
+            and execution["database_row_delete_enabled"]
+        )
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_execute_not_enabled",
+            detail="Successful artifact retention execute requires all delete flags.",
+        )
+    retention_days = normalize_artifact_retention_days(
+        execution["retention_days_after_logical_purge"]
+    )
+    if retention_days != execution["retention_days_after_logical_purge"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_execution_days_invalid",
+            detail="Artifact retention execution days must be normalized.",
+        )
+    for field_name in ("as_of", "cutoff_at", "checked_at"):
+        parse_artifact_retention_timestamp(
+            execution[field_name],
+            field_name=field_name,
+        )
+    if normalize_artifact_collection_limit(execution["scan_limit"]) != execution[
+        "scan_limit"
+    ]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_execution_scan_limit_invalid",
+            detail="Artifact retention scan limit must be normalized.",
+        )
+    if (
+        normalize_artifact_retention_delete_limit(execution["max_delete_count"])
+        != execution["max_delete_count"]
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_execution_delete_limit_invalid",
+            detail="Artifact retention delete limit must be normalized.",
+        )
+    candidate_count = _non_negative_artifact_retention_int(
+        execution["candidate_count"],
+        "candidate_count",
+    )
+    selected_count = _non_negative_artifact_retention_int(
+        execution["selected_count"],
+        "selected_count",
+    )
+    if selected_count > candidate_count:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_selected_count_invalid",
+            detail="Artifact retention selected_count cannot exceed candidate_count.",
+        )
+    if selected_count > execution["max_delete_count"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_selected_count_invalid",
+            detail="Artifact retention selected_count cannot exceed max_delete_count.",
+        )
+    deleted_counts = _normalize_artifact_retention_deleted_counts(
+        execution["deleted_counts"]
+    )
+    if mode == "DRY_RUN" or status in {"PLANNED", "BLOCKED"}:
+        if any(count != 0 for count in deleted_counts.values()):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_deleted_counts_invalid",
+                detail="Dry-run, planned, and blocked executions cannot delete rows.",
+            )
+    if mode == "EXECUTE" and status == "SUCCEEDED":
+        if deleted_counts["artifacts"] != selected_count:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_deleted_counts_invalid",
+                detail="Deleted artifact count must match selected_count.",
+            )
+    _normalize_artifact_retention_requested_by(execution["requested_by"])
+    _normalize_artifact_retention_error(execution["error"])
+    _validate_artifact_retention_audit(execution["audit"], execution["execution_id"])
+    metadata = execution["metadata"]
+    if (
+        not isinstance(metadata, dict)
+        or metadata.get("candidate_scan_metadata_only") is not True
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_execution_metadata_invalid",
+            detail="Artifact retention execution metadata is invalid.",
+        )
+    assert_artifact_retention_payload_safe(execution)
+    return execution
+
+
+def normalize_artifact_retention_delete_limit(value: int | str | None) -> int:
+    if value is None:
+        return DEFAULT_ARTIFACT_RETENTION_MAX_DELETE_COUNT
+    if isinstance(value, bool):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_delete_limit_invalid",
+            detail="Artifact retention delete limit must be an integer.",
+        )
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_delete_limit_invalid",
+            detail="Artifact retention delete limit must be an integer.",
+        ) from exc
+    if normalized < 1 or normalized > MAX_ARTIFACT_RETENTION_MAX_DELETE_COUNT:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_delete_limit_invalid",
+            detail=(
+                "Artifact retention delete limit must be between 1 and "
+                f"{MAX_ARTIFACT_RETENTION_MAX_DELETE_COUNT}."
+            ),
+        )
+    return normalized
+
+
+def _normalize_artifact_retention_execution_mode(value: Any) -> str:
+    normalized = optional_text(value)
+    if normalized is None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_execution_mode_invalid",
+            detail="Artifact retention execution mode is required.",
+        )
+    normalized = normalized.replace("-", "_").upper()
+    if normalized not in ARTIFACT_RETENTION_EXECUTION_MODES:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_execution_mode_invalid",
+            detail="Artifact retention execution mode must be DRY_RUN or EXECUTE.",
+        )
+    return normalized
+
+
+def _normalize_artifact_retention_execution_status(value: Any) -> str:
+    normalized = optional_text(value)
+    if normalized is None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_execution_status_invalid",
+            detail="Artifact retention execution status is required.",
+        )
+    normalized = normalized.upper()
+    if normalized not in ARTIFACT_RETENTION_EXECUTION_STATUSES:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_execution_status_invalid",
+            detail="Artifact retention execution status is not supported.",
+        )
+    return normalized
+
+
+def _normalize_artifact_retention_deleted_counts(
+    counts: dict[str, int] | None,
+) -> dict[str, int]:
+    source = counts or {}
+    return {
+        "artifacts": _non_negative_artifact_retention_int(
+            source.get("artifacts", 0),
+            "deleted_counts.artifacts",
+        ),
+        "source_refs": _non_negative_artifact_retention_int(
+            source.get("source_refs", 0),
+            "deleted_counts.source_refs",
+        ),
+        "versions": _non_negative_artifact_retention_int(
+            source.get("versions", 0),
+            "deleted_counts.versions",
+        ),
+        "render_jobs": _non_negative_artifact_retention_int(
+            source.get("render_jobs", 0),
+            "deleted_counts.render_jobs",
+        ),
+        "files": _non_negative_artifact_retention_int(
+            source.get("files", 0),
+            "deleted_counts.files",
+        ),
+        "links": _non_negative_artifact_retention_int(
+            source.get("links", 0),
+            "deleted_counts.links",
+        ),
+        "storage_files": _non_negative_artifact_retention_int(
+            source.get("storage_files", 0),
+            "deleted_counts.storage_files",
+        ),
+    }
+
+
+def _non_negative_artifact_retention_int(value: Any, field_name: str) -> int:
+    if isinstance(value, bool):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_count_invalid",
+            detail=f"{field_name} must be a non-negative integer.",
+        )
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_count_invalid",
+            detail=f"{field_name} must be a non-negative integer.",
+        ) from exc
+    if normalized < 0:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_count_invalid",
+            detail=f"{field_name} must be a non-negative integer.",
+        )
+    return normalized
+
+
+def _normalize_artifact_retention_requested_by(
+    requested_by: dict[str, Any] | None,
+) -> dict[str, str]:
+    source = requested_by or {}
+    actor_type = optional_text(source.get("actor_type")) or "service"
+    actor_id = optional_text(source.get("actor_id")) or "nex-ae-api"
+    service_id = optional_text(source.get("service_id")) or "nex-ae-api"
+    normalized = {
+        "actor_type": actor_type,
+        "actor_id": actor_id,
+        "service_id": service_id,
+    }
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def _normalize_artifact_retention_error(
+    error: dict[str, Any] | None,
+) -> dict[str, str] | None:
+    if error is None:
+        return None
+    if not isinstance(error, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_error_invalid",
+            detail="Artifact retention error must be an object.",
+        )
+    return {
+        "error_code": required_string(
+            error,
+            "error_code",
+            "ae.artifact_retention_error_invalid",
+        ),
+        "detail": required_string(
+            error,
+            "detail",
+            "ae.artifact_retention_error_invalid",
+        ),
+    }
+
+
+def _validate_artifact_retention_audit(
+    audit: dict[str, Any],
+    execution_id: str,
+) -> None:
+    if not isinstance(audit, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_audit_invalid",
+            detail="Artifact retention audit must be an object.",
+        )
+    if audit.get("audit_event_type") != "ae_artifact.retention.execution":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_audit_invalid",
+            detail="Artifact retention audit event type is invalid.",
+        )
+    if audit.get("audit_event_id") != _artifact_retention_audit_id(execution_id):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_audit_invalid",
+            detail="Artifact retention audit event id is invalid.",
+        )
+    if not isinstance(audit.get("emitted"), bool):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_audit_invalid",
+            detail="Artifact retention audit emitted flag is invalid.",
+        )
+
+
+def _artifact_retention_execution_id(
+    *,
+    mode: str,
+    execution_status: str,
+    candidate_filter: dict[str, Any],
+    checked_at: str,
+    idempotency_key: str | None,
+) -> str:
+    basis = {
+        "mode": mode,
+        "execution_status": execution_status,
+        "tenant_id": candidate_filter["tenant_id"],
+        "workspace_id": candidate_filter["workspace_id"],
+        "owner_user_id": candidate_filter["owner_user_id"],
+        "cutoff_at": candidate_filter["cutoff_at"],
+        "checked_at": checked_at,
+        "idempotency_key": optional_text(idempotency_key),
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            f"ae-artifact-retention-execution:{sha256_json(basis)}",
+        )
+    )
+
+
+def _artifact_retention_audit_id(execution_id: str) -> str:
+    return str(uuid5(NAMESPACE_URL, f"ae-artifact-retention-audit:{execution_id}"))
 
 
 def lifecycle_actor_ref_from_payload(

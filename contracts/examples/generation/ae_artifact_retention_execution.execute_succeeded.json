@@ -1,0 +1,55 @@
+{
+  "artifact_retention_execution_schema_version": "ae_artifact_retention_execution.v1",
+  "execution_id": "ae-retention-execution-execute-001",
+  "policy_id": "ae-artifact-logical-purge-30d-local-v1",
+  "service_id": "nex-ae-api",
+  "mode": "EXECUTE",
+  "execution_status": "SUCCEEDED",
+  "delete_enabled": true,
+  "storage_mutation_enabled": true,
+  "database_row_delete_enabled": true,
+  "tenant_id": "tenant-001",
+  "workspace_id": "workspace-001",
+  "owner_user_id": "owner-001",
+  "retention_days_after_logical_purge": 30,
+  "as_of": "2026-09-01T00:00:00Z",
+  "cutoff_at": "2026-08-02T00:00:00Z",
+  "checked_at": "2026-09-01T02:30:00Z",
+  "scan_limit": 20,
+  "max_delete_count": 20,
+  "candidate_count": 2,
+  "selected_count": 1,
+  "deleted_counts": {
+    "artifacts": 1,
+    "source_refs": 1,
+    "versions": 1,
+    "render_jobs": 1,
+    "files": 2,
+    "links": 4,
+    "storage_files": 2
+  },
+  "requested_by": {
+    "actor_type": "service",
+    "actor_id": "nex-ag",
+    "service_id": "nex-ae-api"
+  },
+  "idempotency_key": "retention-execute-001",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "blocked_reason": null,
+  "error": null,
+  "audit": {
+    "audit_event_type": "ae_artifact.retention.execution",
+    "audit_event_id": "ae-retention-audit-execute-001",
+    "emitted": false
+  },
+  "metadata": {
+    "logical_purge_required_before_physical_delete": true,
+    "candidate_scan_metadata_only": true,
+    "scheduled_batch_timezone": "Asia/Seoul",
+    "scheduled_batch_window": {
+      "start_local_time": "02:00",
+      "end_local_time": "05:00"
+    }
+  }
+}
