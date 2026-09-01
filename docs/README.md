@@ -596,6 +596,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0490`](slices/0490_s49_ae_artifact_retention_scheduled_operations_closure.md) | `S49-010` S49 AE artifact retention scheduled operations closure checkpoint. |
 | [`Slice 0491`](slices/0491_ae_artifact_retention_scheduler_runtime_boundary_audit.md) | `S50-001` AE artifact retention scheduler runtime boundary audit. |
 | [`Slice 0492`](slices/0492_ae_artifact_retention_scheduled_job_contract_schema.md) | `S50-002` AE artifact retention scheduled job contract/schema. |
+| [`Slice 0493`](slices/0493_ae_artifact_retention_scheduled_job_admission.md) | `S50-003` AE artifact retention scheduled job planner and JobQueue admission. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

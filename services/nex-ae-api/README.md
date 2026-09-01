@@ -532,3 +532,8 @@ Artifact library management:
   with metadata-only payloads, deterministic job IDs/idempotency, AE API links,
   and redaction flags that keep raw content, storage locators, DB URLs, and
   provider secrets out of the queue contract.
+- Slice 0493 adds scheduled job admission around the Slice 0492 contract. READY
+  batch plans become deterministic enqueue-ready jobs, duplicate submissions
+  reuse the shared JobQueue idempotency key, and NOOP plans are returned as
+  skipped admissions without touching the queue, scheduler daemon, worker, or
+  physical delete automation.

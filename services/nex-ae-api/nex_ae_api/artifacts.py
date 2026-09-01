@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
+    JobQueue,
     JobQueueError,
     build_common_job,
     build_subject_ref,
@@ -156,6 +157,12 @@ AE_ARTIFACT_RETENTION_SCHEDULED_JOB_SCHEMA_VERSION = (
 )
 AE_ARTIFACT_RETENTION_SCHEDULED_JOB_PAYLOAD_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduled_job_payload.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULED_JOB_ADMISSION_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduled_job_admission.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULED_JOB_ENQUEUE_RESULT_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduled_job_enqueue_result.v1"
 )
 AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION = (
     "ae_artifact_retention_execution.v1"
@@ -4329,6 +4336,459 @@ def _retention_scheduled_job_links_valid(value: Any) -> bool:
         "ae_retention_purge": "/api/v1/artifact-retention/purge",
         "ae_retention_history": "/api/v1/artifact-retention/executions",
     }
+
+
+def build_artifact_retention_scheduled_job_admission(
+    batch_plan: dict[str, Any],
+    *,
+    trace_id: str,
+    request_id: str,
+    trigger_type: str = "scheduler_tick",
+    command_created_at: str | None = None,
+    requested_at: str | None = None,
+    requested_by: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    validated_plan = validate_artifact_retention_batch_plan(batch_plan)
+    normalized_trace_id = _normalize_retention_scheduled_job_trace_id(trace_id)
+    normalized_request_id = required_string(
+        {"request_id": request_id},
+        "request_id",
+        "ae.artifact_retention_scheduled_job_request_id_required",
+    )
+    normalized_trigger_type = _normalize_artifact_retention_scheduled_trigger(
+        trigger_type
+    )
+    normalized_requested_at = format_artifact_retention_timestamp(
+        parse_artifact_retention_timestamp(
+            requested_at or command_created_at or validated_plan["checked_at"],
+            field_name="requested_at",
+        )
+    )
+    normalized_command_created_at = format_artifact_retention_timestamp(
+        parse_artifact_retention_timestamp(
+            command_created_at or normalized_requested_at,
+            field_name="command_created_at",
+        )
+    )
+    normalized_idempotency_key = (
+        optional_text(idempotency_key)
+        or artifact_retention_scheduled_job_admission_idempotency_key(
+            validated_plan,
+            trigger_type=normalized_trigger_type,
+        )
+    )
+    command = build_artifact_retention_scheduled_execution_command(
+        validated_plan,
+        trigger_type=normalized_trigger_type,
+        command_created_at=normalized_command_created_at,
+        requested_by=requested_by,
+        idempotency_key=normalized_idempotency_key,
+    )
+    job = (
+        build_artifact_retention_scheduled_job(
+            command,
+            trace_id=normalized_trace_id,
+            request_id=normalized_request_id,
+            requested_at=normalized_requested_at,
+            idempotency_key=normalized_idempotency_key,
+        )
+        if command["command_status"] == "READY"
+        else None
+    )
+    admission = {
+        "artifact_retention_scheduled_job_admission_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULED_JOB_ADMISSION_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "source_plan_id": command["source_plan_id"],
+        "command_id": command["command_id"],
+        "job_id": job["job_id"] if job is not None else None,
+        "job_type": AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE,
+        "tenant_id": command["tenant_id"],
+        "workspace_id": command["workspace_id"],
+        "owner_user_id": command["owner_user_id"],
+        "trigger_type": command["trigger_type"],
+        "scheduler_status": command["scheduler_status"],
+        "command_status": command["command_status"],
+        "admission_status": "READY" if job is not None else "SKIPPED",
+        "enqueue_required": job is not None,
+        "skip_reason": None if job is not None else "no_retention_candidates",
+        "trace_id": normalized_trace_id,
+        "request_id": normalized_request_id,
+        "requested_at": normalized_requested_at,
+        "idempotency_key": normalized_idempotency_key,
+        "command_summary": summarize_artifact_retention_scheduled_execution_command(
+            command
+        ),
+        "job_summary": (
+            summarize_artifact_retention_scheduled_job(job)
+            if job is not None
+            else None
+        ),
+        "command": command,
+        "job": job,
+        "queue_admission": {
+            "queue_service_id": "nex-ae-api",
+            "queue_backend": "service_job_queue",
+            "target_job_type": AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE,
+            "job_enqueued": False,
+            "worker_execution_performed": False,
+            "scheduler_daemon_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+    }
+    return validate_artifact_retention_scheduled_job_admission(admission)
+
+
+def validate_artifact_retention_scheduled_job_admission(
+    admission: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(admission, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_admission_invalid",
+            detail="Artifact retention scheduled job admission must be an object.",
+        )
+    if (
+        admission.get(
+            "artifact_retention_scheduled_job_admission_schema_version"
+        )
+        != AE_ARTIFACT_RETENTION_SCHEDULED_JOB_ADMISSION_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_admission_schema_invalid",
+            detail="Artifact retention scheduled job admission schema version is invalid.",
+        )
+    for section_name in ("command_summary", "command", "queue_admission"):
+        if not isinstance(admission.get(section_name), dict):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduled_job_admission_invalid",
+                detail=(
+                    "Artifact retention scheduled job admission "
+                    f"{section_name} is required."
+                ),
+            )
+    command = validate_artifact_retention_scheduled_execution_command(
+        admission["command"]
+    )
+    queue_admission = admission["queue_admission"]
+    _validate_artifact_retention_scheduled_job_queue_admission(queue_admission)
+    for field_name in (
+        "source_plan_id",
+        "command_id",
+        "tenant_id",
+        "workspace_id",
+        "owner_user_id",
+        "trigger_type",
+        "scheduler_status",
+        "command_status",
+        "idempotency_key",
+    ):
+        if admission.get(field_name) != command.get(field_name):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduled_job_admission_invalid",
+                detail=(
+                    "Artifact retention scheduled job admission does not "
+                    f"match command {field_name}."
+                ),
+            )
+    if admission.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_admission_invalid",
+            detail="Artifact retention scheduled job admission service id is invalid.",
+        )
+    _normalize_retention_scheduled_job_trace_id(admission.get("trace_id"))
+    required_string(
+        admission,
+        "request_id",
+        "ae.artifact_retention_scheduled_job_request_id_required",
+    )
+    parse_artifact_retention_timestamp(
+        required_string(
+            admission,
+            "requested_at",
+            "ae.artifact_retention_scheduled_job_requested_at_required",
+        ),
+        field_name="requested_at",
+    )
+    if admission["command_summary"] != (
+        summarize_artifact_retention_scheduled_execution_command(command)
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_admission_invalid",
+            detail="Artifact retention scheduled job admission command summary is invalid.",
+        )
+    if command["command_status"] == "READY":
+        _validate_ready_artifact_retention_scheduled_job_admission(
+            admission,
+            command,
+        )
+    else:
+        _validate_skipped_artifact_retention_scheduled_job_admission(admission)
+    assert_artifact_retention_payload_safe(admission)
+    return admission
+
+
+def enqueue_artifact_retention_scheduled_job(
+    queue: JobQueue,
+    admission: dict[str, Any],
+) -> dict[str, Any]:
+    if queue is None or not hasattr(queue, "enqueue"):
+        raise ArtifactHandoffError(
+            status_code=500,
+            error_code="ae.artifact_retention_scheduled_job_queue_invalid",
+            detail="Artifact retention scheduled job queue is invalid.",
+        )
+    validated_admission = validate_artifact_retention_scheduled_job_admission(
+        admission
+    )
+    if not validated_admission["enqueue_required"]:
+        return validate_artifact_retention_scheduled_job_enqueue_result(
+            _build_artifact_retention_scheduled_job_enqueue_result(
+                validated_admission,
+                enqueued_job=None,
+                enqueue_status="SKIPPED",
+            )
+        )
+    try:
+        enqueued_job = queue.enqueue(validated_admission["job"])
+    except JobQueueError as exc:
+        raise ArtifactHandoffError(
+            status_code=exc.status_code,
+            error_code="ae.artifact_retention_scheduled_job_admission_failed",
+            detail=exc.detail,
+            retryable=exc.status_code >= 500,
+        ) from exc
+    return validate_artifact_retention_scheduled_job_enqueue_result(
+        _build_artifact_retention_scheduled_job_enqueue_result(
+            validated_admission,
+            enqueued_job=enqueued_job,
+            enqueue_status="ENQUEUED",
+        )
+    )
+
+
+def validate_artifact_retention_scheduled_job_enqueue_result(
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(result, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_enqueue_result_invalid",
+            detail="Artifact retention scheduled job enqueue result must be an object.",
+        )
+    if (
+        result.get(
+            "artifact_retention_scheduled_job_enqueue_result_schema_version"
+        )
+        != AE_ARTIFACT_RETENTION_SCHEDULED_JOB_ENQUEUE_RESULT_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduled_job_enqueue_result_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduled job enqueue result schema "
+                "version is invalid."
+            ),
+        )
+    admission = validate_artifact_retention_scheduled_job_admission(
+        result.get("admission")
+    )
+    if result.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_enqueue_result_invalid",
+            detail="Artifact retention scheduled job enqueue result service id is invalid.",
+        )
+    for field_name in (
+        "source_plan_id",
+        "command_id",
+        "job_id",
+        "job_type",
+        "tenant_id",
+        "workspace_id",
+        "owner_user_id",
+        "trace_id",
+        "request_id",
+        "idempotency_key",
+    ):
+        if result.get(field_name) != admission.get(field_name):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduled_job_enqueue_result_invalid",
+                detail=(
+                    "Artifact retention scheduled job enqueue result does "
+                    f"not match admission {field_name}."
+                ),
+            )
+    if not isinstance(result.get("queue_admission"), dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_enqueue_result_invalid",
+            detail="Artifact retention scheduled job enqueue result queue admission is invalid.",
+        )
+    _validate_artifact_retention_scheduled_job_queue_admission(
+        result["queue_admission"],
+        job_enqueued=result.get("enqueue_status") == "ENQUEUED",
+    )
+    if admission["enqueue_required"]:
+        enqueued_job = validate_artifact_retention_scheduled_job(
+            result.get("enqueued_job")
+        )
+        if (
+            result.get("enqueue_status") != "ENQUEUED"
+            or result.get("job_enqueued") is not True
+            or enqueued_job["idempotency_key"] != admission["idempotency_key"]
+        ):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=(
+                    "ae.artifact_retention_scheduled_job_enqueue_result_invalid"
+                ),
+                detail="Artifact retention scheduled job enqueue result is invalid.",
+            )
+    elif (
+        result.get("enqueue_status") != "SKIPPED"
+        or result.get("job_enqueued") is not False
+        or result.get("enqueued_job") is not None
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_enqueue_result_invalid",
+            detail="Artifact retention scheduled job skipped enqueue result is invalid.",
+        )
+    assert_artifact_retention_payload_safe(result)
+    return result
+
+
+def artifact_retention_scheduled_job_admission_idempotency_key(
+    batch_plan: Mapping[str, Any],
+    *,
+    trigger_type: str = "scheduler_tick",
+) -> str:
+    validated_plan = validate_artifact_retention_batch_plan(dict(batch_plan))
+    normalized_trigger_type = _normalize_artifact_retention_scheduled_trigger(
+        trigger_type
+    )
+    return (
+        "ae-artifact-retention-scheduled-job-admission:"
+        f"{validated_plan['tenant_id']}:"
+        f"{validated_plan['workspace_id']}:"
+        f"{validated_plan['owner_user_id']}:"
+        f"{validated_plan['plan_id']}:"
+        f"{normalized_trigger_type}"
+    )
+
+
+def _build_artifact_retention_scheduled_job_enqueue_result(
+    admission: dict[str, Any],
+    *,
+    enqueued_job: dict[str, Any] | None,
+    enqueue_status: str,
+) -> dict[str, Any]:
+    queue_admission = deepcopy(admission["queue_admission"])
+    queue_admission["job_enqueued"] = enqueue_status == "ENQUEUED"
+    return {
+        "artifact_retention_scheduled_job_enqueue_result_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULED_JOB_ENQUEUE_RESULT_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "source_plan_id": admission["source_plan_id"],
+        "command_id": admission["command_id"],
+        "job_id": admission["job_id"],
+        "job_type": admission["job_type"],
+        "tenant_id": admission["tenant_id"],
+        "workspace_id": admission["workspace_id"],
+        "owner_user_id": admission["owner_user_id"],
+        "trace_id": admission["trace_id"],
+        "request_id": admission["request_id"],
+        "idempotency_key": admission["idempotency_key"],
+        "enqueue_status": enqueue_status,
+        "job_enqueued": enqueue_status == "ENQUEUED",
+        "duplicate_returned": (
+            enqueued_job is not None
+            and enqueued_job["job_id"] != admission["job_id"]
+        ),
+        "queue_admission": queue_admission,
+        "admission": deepcopy(admission),
+        "enqueued_job": deepcopy(enqueued_job) if enqueued_job is not None else None,
+    }
+
+
+def _validate_ready_artifact_retention_scheduled_job_admission(
+    admission: dict[str, Any],
+    command: dict[str, Any],
+) -> None:
+    if not isinstance(admission.get("job"), dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_admission_invalid",
+            detail="Artifact retention scheduled job READY admission is invalid.",
+        )
+    job = validate_artifact_retention_scheduled_job(admission.get("job"))
+    if (
+        admission.get("admission_status") != "READY"
+        or admission.get("enqueue_required") is not True
+        or admission.get("skip_reason") is not None
+        or admission.get("job_id") != job["job_id"]
+        or admission.get("job_summary")
+        != summarize_artifact_retention_scheduled_job(job)
+        or job["payload"]["command_id"] != command["command_id"]
+        or job["idempotency_key"] != admission["idempotency_key"]
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_admission_invalid",
+            detail="Artifact retention scheduled job READY admission is invalid.",
+        )
+
+
+def _validate_skipped_artifact_retention_scheduled_job_admission(
+    admission: dict[str, Any],
+) -> None:
+    if (
+        admission.get("admission_status") != "SKIPPED"
+        or admission.get("enqueue_required") is not False
+        or admission.get("skip_reason") != "no_retention_candidates"
+        or admission.get("job_id") is not None
+        or admission.get("job") is not None
+        or admission.get("job_summary") is not None
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_admission_invalid",
+            detail="Artifact retention scheduled job skipped admission is invalid.",
+        )
+
+
+def _validate_artifact_retention_scheduled_job_queue_admission(
+    queue_admission: dict[str, Any],
+    *,
+    job_enqueued: bool = False,
+) -> None:
+    expected = {
+        "queue_service_id": "nex-ae-api",
+        "queue_backend": "service_job_queue",
+        "target_job_type": AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE,
+        "job_enqueued": job_enqueued,
+        "worker_execution_performed": False,
+        "scheduler_daemon_started": False,
+        "physical_delete_automation_enabled": False,
+    }
+    if queue_admission != expected:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduled_job_admission_invalid",
+            detail="Artifact retention scheduled job queue admission is invalid.",
+        )
 
 
 def run_artifact_retention_scheduled_execution_mock_worker(
