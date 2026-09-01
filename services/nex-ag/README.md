@@ -358,6 +358,10 @@ Unified operations:
   scheduled retention jobs and later dispatch controls through AE APIs, but it
   must not enqueue jobs directly in AE persistence or write to the AE artifact
   database.
+- Slice 0496 adds a metadata-only AG projection for AE artifact retention
+  scheduled jobs at `/admin/v1/operations/artifact-retention/scheduled-jobs`.
+  It reports common JobQueue status, retry attention, safe AE route links, and
+  retention estimates while keeping AE as the system of record.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

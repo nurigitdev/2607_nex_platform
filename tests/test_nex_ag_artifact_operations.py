@@ -12,6 +12,7 @@ from nex_ag.artifact_operations import (
     AG_ARTIFACT_OPERATION_LIFECYCLE_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_BATCH_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_JOB_PROJECTION_SCHEMA_VERSION,
     AE_ARTIFACT_SOURCE_SERVICE_ID,
     DEFAULT_AE_ARTIFACT_TIMEOUT_SECONDS,
     NEX_AG_AE_ARTIFACT_BASE_URL_ENV,
@@ -26,6 +27,7 @@ from nex_ag.artifact_operations import (
     build_artifact_operation_lifecycle_projection,
     build_artifact_operation_retention_batch_projection,
     build_artifact_operation_retention_history_projection,
+    build_artifact_operation_retention_scheduled_job_projection,
     build_default_ae_artifact_operations_client,
     register_artifact_operation_routes,
     summarize_artifact_operation_collection,
@@ -33,6 +35,7 @@ from nex_ag.artifact_operations import (
     summarize_artifact_operation_lifecycle,
     summarize_artifact_retention_batch_operations,
     summarize_artifact_retention_history_operations,
+    summarize_artifact_retention_scheduled_job_operations,
 )
 import nex_ag.artifact_operations as artifact_operations
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
@@ -539,6 +542,148 @@ def artifact_retention_batch_plan_payload() -> dict[str, Any]:
     }
 
 
+def artifact_retention_scheduled_job_payload(
+    *,
+    job_id: str = "job-retention-scheduled-0409",
+    status: str = "QUEUED",
+    owner_user_id: str = "user-0409",
+    updated_at: str = "2026-09-01T02:16:00Z",
+    retryable: bool = True,
+    selected_count: int = 1,
+) -> dict[str, Any]:
+    command_id = f"command-{job_id}"
+    estimated_deleted_counts = {
+        "artifacts": selected_count,
+        "source_refs": selected_count,
+        "versions": selected_count,
+        "render_jobs": selected_count,
+        "files": selected_count * 2,
+        "links": selected_count * 4,
+        "storage_files": selected_count * 2,
+    }
+    command_summary = {
+        "command_status": "READY",
+        "trigger_type": "scheduler_tick",
+        "scheduler_status": "DISABLED",
+        "execution_mode": "DRY_RUN",
+        "candidate_count": 2,
+        "selected_count": selected_count,
+        "estimated_deleted_artifacts": selected_count,
+        "estimated_deleted_storage_files": selected_count * 2,
+        "command_created_at": "2026-09-01T02:15:00Z",
+        "next_action": "Review dry-run evidence before enabling deletes.",
+    }
+    return {
+        "artifact_retention_scheduled_job_schema_version": (
+            "ae_artifact_retention_scheduled_job.v1"
+        ),
+        "job_schema_version": "common_job.v1",
+        "job_id": job_id,
+        "job_type": "ae.artifact_retention.scheduled_execution",
+        "status": status,
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "subject_ref": {
+            "type": "ae.artifact_retention.scheduled_execution",
+            "id": command_id,
+            "database_url": "postgresql://nuri1004@private",
+        },
+        "idempotency_key": f"idem-{job_id}",
+        "attempt_count": 0 if status == "QUEUED" else 1,
+        "max_attempts": 3,
+        "retryable": retryable,
+        "links": {
+            "ae_retention_batch_plan": "/api/v1/artifact-retention/batch-plan",
+            "ae_retention_purge": "/api/v1/artifact-retention/purge",
+            "ae_retention_history": "/api/v1/artifact-retention/executions",
+            "unsafe_storage": "/data/nex-platform/ae/private.md",
+        },
+        "payload": {
+            "payload_schema_version": "ae_artifact_retention_scheduled_job_payload.v1",
+            "command_id": command_id,
+            "source_plan_id": "retention-batch-plan-0409",
+            "tenant_id": "tenant-0409",
+            "workspace_id": "workspace-0409",
+            "owner_user_id": owner_user_id,
+            "trigger_type": "scheduler_tick",
+            "scheduler_status": "DISABLED",
+            "command_status": "READY",
+            "execution_mode": "dry-run",
+            "retention_days_after_logical_purge": "30",
+            "scan_limit": "20",
+            "max_delete_count": "1",
+            "candidate_count": "2",
+            "selected_count": str(selected_count),
+            "estimated_deleted_counts": estimated_deleted_counts,
+            "command_summary": command_summary,
+            "scheduled_command": {
+                "execution_request": {
+                    "storage_ref": "/data/nex-platform/ae/private.md",
+                }
+            },
+            "requested_by": {
+                "actor_type": "service",
+                "actor_id": "nex-ag",
+                "service_id": "nex-ae-api",
+                "database_url": "DATABASE_URL_SHOULD_NOT_LEAK",
+            },
+            "idempotency_key": f"idem-{job_id}",
+            "requested_at": "2026-09-01T02:16:00Z",
+            "redaction_summary": {
+                "metadata_only": True,
+                "scheduled_command_embedded": True,
+                "batch_plan_embedded": False,
+                "artifact_payload_included": False,
+                "prompt_content_included": False,
+                "generation_output_included": False,
+                "storage_locator_included": False,
+                "database_url_included": False,
+            },
+        },
+        "created_at": "2026-09-01T02:16:00Z",
+        "updated_at": updated_at,
+    }
+
+
+def artifact_retention_scheduled_job_collection_payload() -> dict[str, Any]:
+    return {
+        "artifact_retention_scheduled_job_collection_schema_version": (
+            "ae_artifact_retention_scheduled_job_collection.v1"
+        ),
+        "filter": {
+            "tenant_id": "tenant-0409",
+            "workspace_id": "workspace-0409",
+            "owner_user_id": "user-0409",
+            "status": None,
+            "limit": 20,
+        },
+        "count": 3,
+        "limit": 20,
+        "next_cursor": None,
+        "items": [
+            artifact_retention_scheduled_job_payload(),
+            artifact_retention_scheduled_job_payload(
+                job_id="job-retention-scheduled-failed-0409",
+                status="FAILED",
+                updated_at="2026-09-01T02:18:00Z",
+                retryable=True,
+                selected_count=2,
+            ),
+            artifact_retention_scheduled_job_payload(
+                job_id="job-retention-scheduled-succeeded-0409",
+                status="SUCCEEDED",
+                updated_at="2026-09-01T02:17:00Z",
+                retryable=False,
+                selected_count=1,
+            ),
+        ],
+        "metadata": {
+            "metadata_only": True,
+            "system_of_record": "nex-ae-api",
+        },
+    }
+
+
 def artifact_client() -> InMemoryAeArtifactOperationsClient:
     return InMemoryAeArtifactOperationsClient(
         artifacts={ARTIFACT_ID: artifact_record()},
@@ -579,6 +724,36 @@ def artifact_client() -> InMemoryAeArtifactOperationsClient:
                 max_delete_count=1,
                 checked_at="2026-09-01T02:30:00Z",
             ): artifact_retention_batch_plan_payload()
+        },
+        artifact_retention_scheduled_job_collections={
+            artifact_operations._artifact_retention_scheduled_job_cache_key(
+                tenant_id="tenant-0409",
+                workspace_id="workspace-0409",
+                owner_user_id="user-0409",
+                status=None,
+                limit=20,
+            ): artifact_retention_scheduled_job_collection_payload(),
+        },
+        artifact_retention_scheduled_jobs={
+            "job-retention-scheduled-filtered-0409": (
+                artifact_retention_scheduled_job_payload(
+                    job_id="job-retention-scheduled-filtered-0409",
+                    status="RUNNING",
+                    updated_at="2026-09-01T02:19:00Z",
+                )
+            ),
+            "job-retention-scheduled-other-owner": (
+                artifact_retention_scheduled_job_payload(
+                    job_id="job-retention-scheduled-other-owner",
+                    owner_user_id="other-user",
+                )
+            ),
+            "job-retention-scheduled-other-type": {
+                **artifact_retention_scheduled_job_payload(
+                    job_id="job-retention-scheduled-other-type"
+                ),
+                "job_type": "ae.other",
+            },
         },
         handoffs={HANDOFF_ID: handoff_record()},
         chat_artifact_refs={INTERACTION_ID: {"artifact_refs": [chat_artifact_ref()]}},
@@ -879,6 +1054,122 @@ def test_artifact_operation_retention_batch_projection_handles_sparse_edges() ->
     assert projection["source_status"]["plan_loaded"] is False
     assert projection["source_status"]["errors"][0]["error_code"] == (
         "ag.optional_retention_batch_warning"
+    )
+
+
+def test_artifact_operation_retention_scheduled_job_projection_summarizes_and_redacts() -> None:
+    projection = build_artifact_operation_retention_scheduled_job_projection(
+        collection=artifact_retention_scheduled_job_collection_payload(),
+        source_client=InMemoryAeArtifactOperationsClient(),
+        request_trace_id=TRACE_ID,
+    )
+
+    first_item = projection["items"][0]
+
+    assert projection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_JOB_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["operation_type"] == "ae_artifact_retention_scheduled_jobs"
+    assert projection["projection_status"] == "READY"
+    assert projection["filter"] == {
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+        "owner_user_id": "user-0409",
+        "status": None,
+        "limit": 20,
+    }
+    assert first_item["status"] == "QUEUED"
+    assert first_item["job_type"] == "ae.artifact_retention.scheduled_execution"
+    assert first_item["subject_ref"] == {
+        "type": "ae.artifact_retention.scheduled_execution",
+        "id": "command-job-retention-scheduled-0409",
+    }
+    assert first_item["links"] == {
+        "ae_retention_batch_plan": "/api/v1/artifact-retention/batch-plan",
+        "ae_retention_purge": "/api/v1/artifact-retention/purge",
+        "ae_retention_history": "/api/v1/artifact-retention/executions",
+    }
+    assert first_item["payload"]["execution_mode"] == "DRY_RUN"
+    assert first_item["payload"]["command_summary"] == {
+        "command_status": "READY",
+        "trigger_type": "scheduler_tick",
+        "scheduler_status": "DISABLED",
+        "execution_mode": "DRY_RUN",
+        "candidate_count": 2,
+        "selected_count": 1,
+        "estimated_deleted_artifacts": 1,
+        "estimated_deleted_storage_files": 2,
+        "command_created_at": "2026-09-01T02:15:00Z",
+        "next_action": "Review dry-run evidence before enabling deletes.",
+    }
+    assert "scheduled_command" not in first_item["payload"]
+    assert projection["summary"] == {
+        "job_count": 3,
+        "active_count": 1,
+        "queued_count": 1,
+        "running_count": 0,
+        "terminal_count": 2,
+        "failed_count": 1,
+        "retryable_failed_count": 1,
+        "dry_run_job_count": 3,
+        "selected_artifact_count": 4,
+        "estimated_deleted_artifacts": 4,
+        "estimated_deleted_storage_files": 8,
+        "operator_attention_required": True,
+        "latest_updated_at": "2026-09-01T02:18:00Z",
+    }
+    assert projection["source_status"]["jobs_loaded"] is True
+    assert projection["operator_guidance"]["ag_direct_database_write_allowed"] is False
+    assert projection["operator_guidance"]["ag_direct_job_enqueue_allowed"] is False
+    assert projection["request_trace_id"] == TRACE_ID
+    assert "storage_ref" not in str(projection)
+    assert "DATABASE_URL_SHOULD_NOT_LEAK" not in str(projection)
+    assert "nuri1004" not in str(projection)
+
+
+def test_artifact_operation_retention_scheduled_job_projection_handles_sparse_edges() -> None:
+    projection = build_artifact_operation_retention_scheduled_job_projection(
+        collection={
+            "filter": "bad",
+            "count": "bad",
+            "limit": "bad",
+            "items": [
+                {
+                    "job_id": "sparse-scheduled-job",
+                    "job_type": "ae.artifact_retention.scheduled_execution",
+                    "status": "failed",
+                    "retryable": True,
+                    "payload": "bad",
+                    "links": {"ae_retention_purge": "/unsafe/private"},
+                },
+                "not-a-mapping",
+            ],
+        },
+        source_errors=[
+            AeArtifactOperationsError(
+                error_code="ag.optional_retention_scheduled_job_warning",
+                detail="partial scheduled job source warning",
+                status_code=503,
+            )
+        ],
+    )
+
+    assert projection["projection_status"] == "DEGRADED"
+    assert projection["filter"] == {}
+    assert projection["count"] == 0
+    assert projection["limit"] == 0
+    assert projection["items"][0]["status"] == "FAILED"
+    assert projection["items"][0]["payload"] == {}
+    assert projection["items"][0]["links"] == {}
+    assert projection["summary"] == summarize_artifact_retention_scheduled_job_operations(
+        projection["items"]
+    )
+    assert projection["summary"]["failed_count"] == 1
+    assert projection["summary"]["retryable_failed_count"] == 1
+    assert projection["summary"]["operator_attention_required"] is True
+    assert projection["source_status"]["jobs_loaded"] is False
+    assert projection["source_status"]["errors"][0]["error_code"] == (
+        "ag.optional_retention_scheduled_job_warning"
     )
 
 
@@ -1423,6 +1714,54 @@ def test_in_memory_artifact_operations_client_gets_retention_batch_plan() -> Non
     assert defaulted["metadata"]["physical_delete_executed"] is False
 
 
+def test_in_memory_artifact_operations_client_lists_retention_scheduled_jobs() -> None:
+    client = artifact_client()
+    cached = client.list_artifact_retention_scheduled_jobs(
+        tenant_id="tenant-0409",
+        workspace_id="workspace-0409",
+        owner_user_id="user-0409",
+        status=None,
+        limit=20,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    running = client.list_artifact_retention_scheduled_jobs(
+        tenant_id="tenant-0409",
+        workspace_id="workspace-0409",
+        owner_user_id="user-0409",
+        status="running",
+        limit=20,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    empty = client.list_artifact_retention_scheduled_jobs(
+        tenant_id="tenant-0409",
+        workspace_id="workspace-0409",
+        owner_user_id="user-0409",
+        status="FAILED",
+        limit=20,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    cached["items"][0]["job_id"] = "mutated"
+
+    assert client.artifact_retention_scheduled_job_collections[
+        artifact_operations._artifact_retention_scheduled_job_cache_key(
+            tenant_id="tenant-0409",
+            workspace_id="workspace-0409",
+            owner_user_id="user-0409",
+            status=None,
+            limit=20,
+        )
+    ]["items"][0]["job_id"] == "job-retention-scheduled-0409"
+    assert cached["count"] == 3
+    assert running["count"] == 1
+    assert running["filter"]["status"] == "RUNNING"
+    assert running["items"][0]["job_id"] == "job-retention-scheduled-filtered-0409"
+    assert empty["count"] == 0
+    assert empty["metadata"]["system_of_record"] == AE_ARTIFACT_SOURCE_SERVICE_ID
+
+
 def test_in_memory_artifact_operations_client_skips_non_matching_scope() -> None:
     tenant_mismatch = {
         **artifact_record(include_private=False),
@@ -1814,6 +2153,116 @@ def test_artifact_retention_batch_operations_route_auth_filter_and_error_edges()
     )
 
 
+def test_artifact_retention_scheduled_job_operations_route_returns_projection() -> None:
+    client = build_app(artifact_client())
+
+    response = client.get(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs",
+        params={
+            "tenant_id": "tenant-0409",
+            "workspace_id": "workspace-0409",
+            "owner_user_id": "user-0409",
+            "limit": "20",
+        },
+        headers=auth_headers(),
+    )
+    running = client.get(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs",
+        params={
+            "tenant_id": "tenant-0409",
+            "workspace_id": "workspace-0409",
+            "owner_user_id": "user-0409",
+            "status": "running",
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_JOB_PROJECTION_SCHEMA_VERSION
+    )
+    assert payload["operation_type"] == "ae_artifact_retention_scheduled_jobs"
+    assert payload["summary"]["job_count"] == 3
+    assert payload["summary"]["failed_count"] == 1
+    assert payload["summary"]["retryable_failed_count"] == 1
+    assert payload["request_trace_id"] == TRACE_ID
+    assert running.status_code == 200
+    assert running.json()["filter"]["status"] == "RUNNING"
+    assert running.json()["summary"]["running_count"] == 1
+
+
+def test_artifact_retention_scheduled_job_operations_route_auth_filter_and_error_edges() -> None:
+    client = build_app(artifact_client())
+    params = {
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+        "owner_user_id": "user-0409",
+    }
+
+    unauthorized = client.get(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs",
+        params=params,
+    )
+    invalid_service = client.get(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs",
+        params={**params, "service_id": "nex-cx"},
+        headers=auth_headers(),
+    )
+    missing_scope = client.get(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs",
+        params={"tenant_id": "tenant-0409", "workspace_id": "workspace-0409"},
+        headers=auth_headers(),
+    )
+    invalid_status = client.get(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs",
+        params={**params, "status": "blocked"},
+        headers=auth_headers(),
+    )
+    invalid_limit = client.get(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs",
+        params={**params, "limit": "0"},
+        headers=auth_headers(),
+    )
+
+    class BrokenRetentionScheduledJobClient(InMemoryAeArtifactOperationsClient):
+        def list_artifact_retention_scheduled_jobs(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            raise AeArtifactOperationsError(
+                error_code="ag.ae_artifact_retention_scheduled_job_source_failed",
+                detail="AE retention scheduled job source unavailable",
+                status_code=503,
+            )
+
+    source_failed = build_app(BrokenRetentionScheduledJobClient()).get(
+        "/admin/v1/operations/artifact-retention/scheduled-jobs",
+        params=params,
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert invalid_service.status_code == 400
+    assert missing_scope.status_code == 400
+    assert missing_scope.json()["error_code"] == (
+        "ag.ae_artifact_retention_scheduled_job_scope_missing"
+    )
+    assert invalid_status.status_code == 400
+    assert invalid_status.json()["error_code"] == (
+        "ag.ae_artifact_retention_scheduled_job_status_invalid"
+    )
+    assert invalid_limit.status_code == 400
+    assert invalid_limit.json()["error_code"] == (
+        "ag.ae_artifact_retention_scheduled_job_limit_invalid"
+    )
+    assert source_failed.status_code == 503
+    assert source_failed.json()["error_code"] == (
+        "ag.ae_artifact_retention_scheduled_job_source_failed"
+    )
+
+
 def test_artifact_operation_route_returns_detail_projection() -> None:
     client = build_app(artifact_client())
 
@@ -2003,6 +2452,11 @@ def test_http_artifact_operations_client_requests_expected_routes(
             return FakeHttpResponse(200, artifact_retention_history_collection_payload())
         if url.endswith("/api/v1/artifact-retention/batch-plan"):
             return FakeHttpResponse(200, artifact_retention_batch_plan_payload())
+        if url.endswith("/api/v1/artifact-retention/scheduled-jobs"):
+            return FakeHttpResponse(
+                200,
+                artifact_retention_scheduled_job_collection_payload(),
+            )
         if url.endswith(f"/api/v1/artifacts/{ARTIFACT_ID}"):
             return FakeHttpResponse(200, artifact_record(include_private=False))
         if url.endswith(f"/api/v1/artifact-handoffs/{HANDOFF_ID}"):
@@ -2060,6 +2514,15 @@ def test_http_artifact_operations_client_requests_expected_routes(
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     )
+    retention_scheduled_jobs = client.list_artifact_retention_scheduled_jobs(
+        tenant_id="tenant-0409",
+        workspace_id="workspace-0409",
+        owner_user_id="user-0409",
+        status="QUEUED",
+        limit=20,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
 
     assert artifact["artifact_id"] == ARTIFACT_ID
     assert handoff["artifact_handoff_id"] == HANDOFF_ID
@@ -2067,6 +2530,7 @@ def test_http_artifact_operations_client_requests_expected_routes(
     assert collection["count"] == 2
     assert retention_history["count"] == 3
     assert retention_batch_plan["plan_id"] == "retention-batch-plan-0409"
+    assert retention_scheduled_jobs["count"] == 3
     assert calls[0]["url"] == f"http://ae.example.local/api/v1/artifacts/{ARTIFACT_ID}"
     assert calls[0]["headers"]["Authorization"] == "Bearer token-0409"
     assert calls[0]["headers"]["X-Service-ID"] == "nex-ag"
@@ -2102,6 +2566,16 @@ def test_http_artifact_operations_client_requests_expected_routes(
         "retention_days": "30",
         "as_of": "2026-09-01T00:00:00Z",
         "checked_at": "2026-09-01T02:30:00Z",
+    }
+    assert calls[6]["url"] == (
+        "http://ae.example.local/api/v1/artifact-retention/scheduled-jobs"
+    )
+    assert calls[6]["params"] == {
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+        "owner_user_id": "user-0409",
+        "limit": "20",
+        "status": "QUEUED",
     }
 
 
@@ -2199,6 +2673,7 @@ def test_artifact_operations_registered_on_main_app() -> None:
     assert "/admin/v1/operations/artifacts" in paths
     assert "/admin/v1/operations/artifact-retention/executions" in paths
     assert "/admin/v1/operations/artifact-retention/batch-plan" in paths
+    assert "/admin/v1/operations/artifact-retention/scheduled-jobs" in paths
     assert "/admin/v1/operations/artifacts/{artifact_id}" in paths
     assert "/admin/v1/operations/artifacts/{artifact_id}/lifecycle" in paths
     assert AE_ARTIFACT_SOURCE_SERVICE_ID == "nex-ae-api"
