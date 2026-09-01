@@ -354,6 +354,10 @@ Unified operations:
   to AE's scheduled retention boundary, schedule contract, batch plan API,
   scheduled command, mock worker, and PostgreSQL smoke evidence while remaining
   read-only and metadata-only.
+- Slice 0491 starts S50 by freezing AG's scheduler-runtime role. AG may project
+  scheduled retention jobs and later dispatch controls through AE APIs, but it
+  must not enqueue jobs directly in AE persistence or write to the AE artifact
+  database.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

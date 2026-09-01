@@ -523,3 +523,7 @@ Artifact library management:
   contract, batch plan read-model/API, PostgreSQL smoke evidence, scheduled
   command, mock worker, AG projection linkage, and dry-run/metadata-only
   redaction posture remain connected end to end.
+- Slice 0491 starts S50 by freezing the scheduler runtime boundary. AE scheduled
+  retention uses `common_job.v1` and the shared worker runner, keeps scheduler
+  daemon startup and physical delete automation deferred, and limits the first
+  runtime path to dry-run scheduled execution with persisted history.
