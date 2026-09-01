@@ -4,7 +4,7 @@ import json
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from uuid import NAMESPACE_URL, uuid5
 
 from sqlalchemy import text
@@ -16,12 +16,18 @@ from nex_ae_api.artifacts import (
     ARTIFACT_RETENTION_SCHEDULER_TICK_STALE_AFTER_SECONDS,
     ArtifactHandoffError,
     assert_artifact_retention_payload_safe,
+    build_artifact_retention_scheduler_tick_plan,
     build_artifact_retention_scheduler_config,
     format_artifact_retention_timestamp,
+    enqueue_artifact_retention_scheduler_tick_job,
     optional_text,
     parse_artifact_retention_timestamp,
+    run_artifact_retention_scheduled_worker_once,
     sha256_json,
+    validate_artifact_retention_batch_plan,
     validate_artifact_retention_scheduler_config,
+    validate_artifact_retention_scheduler_tick_enqueue_result,
+    validate_artifact_retention_scheduler_tick_plan,
 )
 
 
@@ -33,6 +39,9 @@ AE_ARTIFACT_RETENTION_SCHEDULER_LEASE_RECORD_SCHEMA_VERSION = (
 )
 AE_ARTIFACT_RETENTION_SCHEDULER_LEASE_DECISION_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_lease_decision.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_RESULT_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_tick_once_result.v1"
 )
 
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_OWNER_ID = (
@@ -50,6 +59,19 @@ ARTIFACT_RETENTION_SCHEDULER_LEASE_RECORD_STATUSES = (
 ARTIFACT_RETENTION_SCHEDULER_LEASE_DECISION_STATUSES = (
     "ACQUIRED",
     "BUSY",
+)
+ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_RESULT_STATUSES = (
+    "SUCCEEDED",
+    "NOOP",
+    "SKIPPED",
+    "FAILED",
+)
+ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_SKIP_REASONS = (
+    "lease_busy",
+    "scheduler_tick_admission_disabled",
+    "job_queue_unavailable",
+    "outside_batch_window",
+    "no_retention_candidates",
 )
 MIN_ARTIFACT_RETENTION_SCHEDULER_LEASE_TTL_SECONDS = 60
 MAX_ARTIFACT_RETENTION_SCHEDULER_LEASE_TTL_SECONDS = (
@@ -625,6 +647,511 @@ def summarize_artifact_retention_scheduler_lease_decision(
         "fencing_token": validated["fencing_token"],
         "skip_reason": validated["skip_reason"],
     }
+
+
+def run_artifact_retention_scheduler_tick_once(
+    *,
+    artifact_store: Any,
+    job_queue: Any | None,
+    tenant_id: str,
+    workspace_id: str,
+    owner_user_id: str,
+    lease_store: Any | None = None,
+    history_store: Any | None = None,
+    scheduler_config: Mapping[str, Any] | None = None,
+    lease_owner_id: str = DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_OWNER_ID,
+    retention_days: int | str | None = None,
+    as_of: str | None = None,
+    scan_limit: int | str | None = None,
+    max_delete_count: int | str | None = None,
+    tick_at: str | None = None,
+    trace_id: str | None = None,
+    request_id: str | None = None,
+    idempotency_key: str | None = None,
+    run_worker: bool = False,
+    worker_id: str | None = None,
+    clock: Callable[[], str] | None = None,
+) -> dict[str, Any]:
+    config = validate_artifact_retention_scheduler_config(
+        dict(scheduler_config)
+        if scheduler_config is not None
+        else build_artifact_retention_scheduler_config(job_queue=job_queue)
+    )
+    run_at = _scheduler_tick_once_run_at(
+        tick_at=tick_at,
+        scheduler_config=config,
+        clock=clock,
+    )
+    active_lease_store = _scheduler_tick_once_lease_store(lease_store)
+    active_lease_store.ensure_available()
+    lease_request = build_artifact_retention_scheduler_lease_request(
+        scheduler_config=config,
+        lease_owner_id=lease_owner_id,
+        requested_at=run_at,
+        tick_id=None,
+    )
+    lease_decision = active_lease_store.acquire(lease_request)
+    if not lease_decision["lease_acquired"]:
+        return validate_artifact_retention_scheduler_tick_once_result(
+            _build_artifact_retention_scheduler_tick_once_result(
+                scheduler_config=config,
+                run_at=run_at,
+                lease_decision=lease_decision,
+                lease_release=None,
+                batch_plan=None,
+                tick_plan=None,
+                enqueue_result=None,
+                worker_result=None,
+            )
+        )
+
+    lease_release: dict[str, Any] | None = None
+    release_attempted = False
+    try:
+        if artifact_store is None or not hasattr(artifact_store, "plan_retention_batch"):
+            raise ArtifactHandoffError(
+                status_code=500,
+                error_code="ae.artifact_retention_scheduler_artifact_store_invalid",
+                detail="Artifact retention scheduler artifact store is invalid.",
+            )
+        batch_plan = artifact_store.plan_retention_batch(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            retention_days=retention_days,
+            as_of=as_of,
+            scan_limit=scan_limit,
+            max_delete_count=max_delete_count,
+            checked_at=run_at,
+            requested_by={
+                "actor_type": "service",
+                "actor_id": "nex-ae-api",
+                "tenant_id": tenant_id,
+            },
+            idempotency_key=optional_text(idempotency_key),
+        )
+        tick_plan = build_artifact_retention_scheduler_tick_plan(
+            validate_artifact_retention_batch_plan(batch_plan),
+            scheduler_config=config,
+            tick_at=run_at,
+            trace_id=trace_id,
+            request_id=request_id,
+            idempotency_key=idempotency_key,
+        )
+        enqueue_result = enqueue_artifact_retention_scheduler_tick_job(
+            job_queue,
+            tick_plan,
+            trace_id=trace_id,
+            request_id=request_id,
+        )
+        worker_result = None
+        if run_worker and enqueue_result["enqueue_status"] == "ENQUEUED":
+            worker_execution = run_artifact_retention_scheduled_worker_once(
+                job_queue=job_queue,
+                artifact_store=artifact_store,
+                history_store=history_store,
+                worker_id=worker_id or "ae-artifact-retention-scheduler-tick-once",
+                clock=clock,
+            )
+            worker_result = _scheduler_tick_once_worker_summary(worker_execution)
+        release_attempted = True
+        lease_release = active_lease_store.release(
+            scheduler_id=lease_decision["scheduler_id"],
+            lease_token=lease_decision["lease_token"],
+            released_at=run_at,
+        )
+        return validate_artifact_retention_scheduler_tick_once_result(
+            _build_artifact_retention_scheduler_tick_once_result(
+                scheduler_config=config,
+                run_at=run_at,
+                lease_decision=lease_decision,
+                lease_release=lease_release,
+                batch_plan=batch_plan,
+                tick_plan=tick_plan,
+                enqueue_result=enqueue_result,
+                worker_result=worker_result,
+            )
+        )
+    finally:
+        if lease_decision["lease_acquired"] and not release_attempted:
+            active_lease_store.release(
+                scheduler_id=lease_decision["scheduler_id"],
+                lease_token=lease_decision["lease_token"],
+                released_at=run_at,
+            )
+
+
+def validate_artifact_retention_scheduler_tick_once_result(
+    result: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(result, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_once_result_invalid",
+            detail="Artifact retention scheduler tick-once result must be an object.",
+        )
+    normalized = dict(result)
+    if (
+        normalized.get("tick_once_result_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_RESULT_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_once_result_schema_invalid",
+            detail="Artifact retention scheduler tick-once result schema version is invalid.",
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_once_result_invalid",
+            detail="Artifact retention scheduler tick-once result service id is invalid.",
+        )
+    for field_name in ("tick_once_result_id", "scheduler_id", "lease_owner_id"):
+        _required_text(
+            normalized.get(field_name),
+            field_name,
+            "ae.artifact_retention_scheduler_tick_once_result_invalid",
+        )
+    parse_artifact_retention_timestamp(
+        normalized.get("run_at"),
+        field_name="run_at",
+    )
+    result_status = normalized.get("result_status")
+    if result_status not in ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_RESULT_STATUSES:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_once_result_invalid",
+            detail="Artifact retention scheduler tick-once result status is invalid.",
+        )
+    skip_reason = normalized.get("skip_reason")
+    if skip_reason is not None and skip_reason not in (
+        ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_SKIP_REASONS
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_once_result_invalid",
+            detail="Artifact retention scheduler tick-once skip reason is invalid.",
+        )
+    lease_decision = validate_artifact_retention_scheduler_lease_decision(
+        normalized.get("lease_decision")
+    )
+    if (
+        lease_decision["scheduler_id"] != normalized["scheduler_id"]
+        or lease_decision["lease_owner_id"] != normalized["lease_owner_id"]
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_once_result_invalid",
+            detail="Artifact retention scheduler tick-once lease scope is invalid.",
+        )
+    lease_release = normalized.get("lease_release")
+    batch_plan = normalized.get("batch_plan")
+    tick_plan = normalized.get("tick_plan")
+    enqueue_result = normalized.get("enqueue_result")
+    worker_result = normalized.get("worker_result")
+    if lease_decision["decision_status"] == "BUSY":
+        if (
+            result_status != "SKIPPED"
+            or skip_reason != "lease_busy"
+            or lease_release is not None
+            or batch_plan is not None
+            or tick_plan is not None
+            or enqueue_result is not None
+            or worker_result is not None
+        ):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_tick_once_result_invalid",
+                detail="Busy scheduler tick-once result is invalid.",
+            )
+    else:
+        released = validate_artifact_retention_scheduler_lease_record(lease_release)
+        validated_plan = validate_artifact_retention_batch_plan(batch_plan)
+        validated_tick = validate_artifact_retention_scheduler_tick_plan(tick_plan)
+        validated_enqueue = validate_artifact_retention_scheduler_tick_enqueue_result(
+            enqueue_result
+        )
+        if (
+            released["lease_status"] != "RELEASED"
+            or released["lease_token"] != lease_decision["lease_token"]
+            or validated_tick["source_plan_id"] != validated_plan["plan_id"]
+            or validated_enqueue["tick_id"] != validated_tick["tick_id"]
+        ):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_tick_once_result_invalid",
+                detail="Acquired scheduler tick-once result lineage is invalid.",
+            )
+        expected_status = _scheduler_tick_once_result_status(
+            tick_plan=validated_tick,
+            enqueue_result=validated_enqueue,
+            worker_result=worker_result,
+        )
+        expected_skip_reason = _scheduler_tick_once_skip_reason(validated_tick)
+        if result_status != expected_status or skip_reason != expected_skip_reason:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_tick_once_result_invalid",
+                detail="Acquired scheduler tick-once result status is invalid.",
+            )
+        if worker_result is not None and not isinstance(worker_result, Mapping):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_tick_once_result_invalid",
+                detail="Artifact retention scheduler tick-once worker result is invalid.",
+            )
+    if normalized.get("metadata") != _scheduler_tick_once_metadata(
+        lease_decision=lease_decision,
+        lease_release=lease_release,
+        enqueue_result=enqueue_result,
+        worker_result=worker_result,
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_once_result_invalid",
+            detail="Artifact retention scheduler tick-once metadata is invalid.",
+        )
+    if normalized.get("guardrails") != _scheduler_tick_once_guardrails(
+        lease_released=lease_release is not None
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_once_result_invalid",
+            detail="Artifact retention scheduler tick-once guardrails are invalid.",
+        )
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_tick_once_result(
+    result: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduler_tick_once_result(result)
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "result_status": validated["result_status"],
+        "skip_reason": validated["skip_reason"],
+        "lease_acquired": validated["lease_decision"]["lease_acquired"],
+        "lease_released": validated["metadata"]["lease_released"],
+        "job_enqueued": validated["metadata"]["job_enqueued"],
+        "worker_executed": validated["metadata"]["worker_executed"],
+    }
+
+
+def _build_artifact_retention_scheduler_tick_once_result(
+    *,
+    scheduler_config: Mapping[str, Any],
+    run_at: str,
+    lease_decision: Mapping[str, Any],
+    lease_release: Mapping[str, Any] | None,
+    batch_plan: Mapping[str, Any] | None,
+    tick_plan: Mapping[str, Any] | None,
+    enqueue_result: Mapping[str, Any] | None,
+    worker_result: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    validated_config = validate_artifact_retention_scheduler_config(
+        dict(scheduler_config)
+    )
+    validated_decision = validate_artifact_retention_scheduler_lease_decision(
+        lease_decision
+    )
+    result_status = (
+        "SKIPPED"
+        if not validated_decision["lease_acquired"]
+        else _scheduler_tick_once_result_status(
+            tick_plan=tick_plan,
+            enqueue_result=enqueue_result,
+            worker_result=worker_result,
+        )
+    )
+    skip_reason = (
+        "lease_busy"
+        if not validated_decision["lease_acquired"]
+        else _scheduler_tick_once_skip_reason(tick_plan)
+    )
+    result = {
+        "tick_once_result_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_RESULT_SCHEMA_VERSION
+        ),
+        "tick_once_result_id": _scheduler_tick_once_result_id(
+            scheduler_id=validated_config["scheduler_id"],
+            lease_decision=validated_decision,
+            run_at=run_at,
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": validated_config["scheduler_id"],
+        "lease_owner_id": validated_decision["lease_owner_id"],
+        "run_at": run_at,
+        "result_status": result_status,
+        "skip_reason": skip_reason,
+        "lease_decision": deepcopy(dict(validated_decision)),
+        "lease_release": deepcopy(dict(lease_release)) if lease_release else None,
+        "batch_plan": deepcopy(dict(batch_plan)) if batch_plan else None,
+        "tick_plan": deepcopy(dict(tick_plan)) if tick_plan else None,
+        "enqueue_result": deepcopy(dict(enqueue_result)) if enqueue_result else None,
+        "worker_result": deepcopy(dict(worker_result)) if worker_result else None,
+        "guardrails": {
+            "manual_once_runner": True,
+            "lease_required_before_tick": True,
+            "lease_released_after_tick": lease_release is not None,
+            "daemon_auto_start_allowed": False,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+        "metadata": _scheduler_tick_once_metadata(
+            lease_decision=validated_decision,
+            lease_release=lease_release,
+            enqueue_result=enqueue_result,
+            worker_result=worker_result,
+        ),
+    }
+    return result
+
+
+def _scheduler_tick_once_lease_store(lease_store: Any | None) -> Any:
+    store = lease_store or DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_STORE
+    if not (
+        hasattr(store, "ensure_available")
+        and hasattr(store, "acquire")
+        and hasattr(store, "release")
+    ):
+        raise ArtifactHandoffError(
+            status_code=500,
+            error_code="ae.artifact_retention_scheduler_lease_store_invalid",
+            detail="Artifact retention scheduler lease store is invalid.",
+        )
+    return store
+
+
+def _scheduler_tick_once_run_at(
+    *,
+    tick_at: str | None,
+    scheduler_config: Mapping[str, Any],
+    clock: Callable[[], str] | None,
+) -> str:
+    candidate = tick_at or (clock() if clock is not None else None)
+    observed = candidate or _request_time_from_config(scheduler_config)
+    return format_artifact_retention_timestamp(
+        parse_artifact_retention_timestamp(observed, field_name="tick_at")
+    )
+
+
+def _scheduler_tick_once_result_status(
+    *,
+    tick_plan: Mapping[str, Any] | None,
+    enqueue_result: Mapping[str, Any] | None,
+    worker_result: Mapping[str, Any] | None,
+) -> str:
+    if tick_plan is None or enqueue_result is None:
+        return "FAILED"
+    if _scheduler_tick_once_worker_failed(worker_result):
+        return "FAILED"
+    if tick_plan.get("tick_status") == "NOOP":
+        return "NOOP"
+    if tick_plan.get("tick_status") == "SKIPPED":
+        return "SKIPPED"
+    if enqueue_result.get("enqueue_status") == "ENQUEUED":
+        return "SUCCEEDED"
+    return "SKIPPED"
+
+
+def _scheduler_tick_once_skip_reason(
+    tick_plan: Mapping[str, Any] | None,
+) -> str | None:
+    if tick_plan is None:
+        return None
+    return optional_text(tick_plan.get("skip_reason"))
+
+
+def _scheduler_tick_once_worker_summary(worker_execution: Any) -> dict[str, Any]:
+    if hasattr(worker_execution, "to_summary"):
+        summary = worker_execution.to_summary()
+    elif isinstance(worker_execution, Mapping):
+        summary = dict(worker_execution)
+    else:
+        summary = {"status": str(worker_execution)}
+    return deepcopy(summary)
+
+
+def _scheduler_tick_once_worker_failed(
+    worker_result: Mapping[str, Any] | None,
+) -> bool:
+    return isinstance(worker_result, Mapping) and worker_result.get("status") == "FAILED"
+
+
+def _scheduler_tick_once_history_written(
+    worker_result: Mapping[str, Any] | None,
+) -> bool:
+    if not isinstance(worker_result, Mapping):
+        return False
+    handler_result = worker_result.get("handler_result")
+    if not isinstance(handler_result, Mapping):
+        return False
+    history = handler_result.get("history")
+    return isinstance(history, Mapping) and history.get("history_written") is True
+
+
+def _scheduler_tick_once_metadata(
+    *,
+    lease_decision: Mapping[str, Any],
+    lease_release: Mapping[str, Any] | None,
+    enqueue_result: Mapping[str, Any] | None,
+    worker_result: Mapping[str, Any] | None,
+) -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "lease_acquired_before_tick": lease_decision.get("lease_acquired") is True,
+        "lease_released": lease_release is not None,
+        "job_enqueued": (
+            isinstance(enqueue_result, Mapping)
+            and enqueue_result.get("job_enqueued") is True
+        ),
+        "admission_performed": (
+            isinstance(enqueue_result, Mapping)
+            and enqueue_result.get("admission_performed") is True
+        ),
+        "worker_executed": worker_result is not None,
+        "history_write_executed": _scheduler_tick_once_history_written(worker_result),
+        "daemon_auto_start_allowed": False,
+        "scheduler_daemon_started": False,
+        "continuous_loop_started": False,
+        "physical_delete_automation_enabled": False,
+        "dry_run": True,
+    }
+
+
+def _scheduler_tick_once_guardrails(*, lease_released: bool) -> dict[str, bool]:
+    return {
+        "manual_once_runner": True,
+        "lease_required_before_tick": True,
+        "lease_released_after_tick": lease_released,
+        "daemon_auto_start_allowed": False,
+        "scheduler_daemon_started": False,
+        "continuous_loop_started": False,
+        "physical_delete_automation_enabled": False,
+    }
+
+
+def _scheduler_tick_once_result_id(
+    *,
+    scheduler_id: str,
+    lease_decision: Mapping[str, Any],
+    run_at: str,
+) -> str:
+    basis = {
+        "scheduler_id": scheduler_id,
+        "lease_owner_id": lease_decision["lease_owner_id"],
+        "lease_token": lease_decision.get("lease_token"),
+        "idempotency_key": lease_decision.get("idempotency_key"),
+        "run_at": run_at,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            f"ae-artifact-retention-scheduler-tick-once:{sha256_json(basis)}",
+        )
+    )
 
 
 @dataclass

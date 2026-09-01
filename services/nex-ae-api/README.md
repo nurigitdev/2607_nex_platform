@@ -614,3 +614,9 @@ Artifact library management:
   `0513_ae_artifact_retention_scheduler_lease`. It handles duplicate
   idempotency, held-lease busy decisions, release, expired/released reacquire,
   and fencing token increments without starting the daemon or running jobs.
+- Slice 0514 wires a manual scheduler tick-once runtime. The runner acquires a
+  scheduler lease before retention planning, skips busy leases without touching
+  the artifact store or JobQueue, reuses the existing batch plan, scheduler tick,
+  queue admission, and optional worker runner contracts, and releases the lease
+  on success or failure. It remains dry-run by default and does not start a
+  daemon loop.

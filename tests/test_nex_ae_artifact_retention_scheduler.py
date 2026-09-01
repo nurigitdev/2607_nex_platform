@@ -12,10 +12,12 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import nex_ae_api.artifact_retention_scheduler as scheduler_module
+from nex_runtime import InMemoryJobQueue
 from nex_ae_api.artifact_retention_scheduler import (
     AE_ARTIFACT_RETENTION_SCHEDULER_LEASE_DECISION_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_LEASE_RECORD_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_LEASE_REQUEST_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_RESULT_SCHEMA_VERSION,
     DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_STORE,
     DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_OWNER_ID,
     ArtifactRetentionSchedulerLeaseStore,
@@ -30,21 +32,103 @@ from nex_ae_api.artifact_retention_scheduler import (
     normalize_artifact_retention_scheduler_lease_record_status,
     normalize_artifact_retention_scheduler_lease_ttl_seconds,
     release_artifact_retention_scheduler_lease,
+    run_artifact_retention_scheduler_tick_once,
     summarize_artifact_retention_scheduler_lease_decision,
+    summarize_artifact_retention_scheduler_tick_once_result,
     validate_artifact_retention_scheduler_lease_decision,
     validate_artifact_retention_scheduler_lease_record,
     validate_artifact_retention_scheduler_lease_request,
+    validate_artifact_retention_scheduler_tick_once_result,
 )
 from nex_ae_api.artifacts import (
+    AE_ARTIFACT_RETENTION_CANDIDATE_COLLECTION_SCHEMA_VERSION,
     ARTIFACT_RETENTION_SCHEDULER_TICK_LOCK_TTL_SECONDS,
     ARTIFACT_RETENTION_SCHEDULER_TICK_STALE_AFTER_SECONDS,
     ArtifactHandoffError,
+    build_artifact_retention_batch_plan,
+    build_artifact_retention_candidate_filter,
     build_artifact_retention_scheduler_config,
 )
 
 
 REQUESTED_AT = "2026-09-01T02:00:00Z"
 EXPIRES_AT = "2026-09-01T02:10:00Z"
+READY_TICK_AT = "2026-08-31T17:30:00Z"
+TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
+REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
+
+
+class FakeArtifactRetentionStore:
+    def __init__(self, *, candidate_count: int = 1) -> None:
+        self.candidate_count = candidate_count
+        self.calls: list[dict[str, Any]] = []
+
+    def plan_retention_batch(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        retention_days: int | str | None = None,
+        as_of: str | None = None,
+        scan_limit: int | str | None = None,
+        max_delete_count: int | str | None = None,
+        checked_at: str | None = None,
+        requested_by: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            {
+                "tenant_id": tenant_id,
+                "workspace_id": workspace_id,
+                "owner_user_id": owner_user_id,
+                "retention_days": retention_days,
+                "as_of": as_of,
+                "scan_limit": scan_limit,
+                "max_delete_count": max_delete_count,
+                "checked_at": checked_at,
+                "requested_by": requested_by,
+                "idempotency_key": idempotency_key,
+            }
+        )
+        candidate_filter = build_artifact_retention_candidate_filter(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            retention_days=retention_days,
+            as_of=as_of,
+            limit=scan_limit,
+        )
+        items = [
+            {
+                "artifact_id": f"artifact-retention-candidate-{index}",
+                "display_title": f"Old artifact {index}",
+                "artifact_status": "DELETED",
+                "logical_purged_at": "2026-07-31T00:00:00Z",
+                "purge_eligible_at": "2026-08-30T00:00:00Z",
+                "age_days_after_logical_purge": 32,
+                "version_count": 1,
+                "file_count": 1,
+                "link_count": 0,
+                "render_job_count": 1,
+            }
+            for index in range(self.candidate_count)
+        ]
+        return build_artifact_retention_batch_plan(
+            {
+                "artifact_retention_candidate_collection_schema_version": (
+                    AE_ARTIFACT_RETENTION_CANDIDATE_COLLECTION_SCHEMA_VERSION
+                ),
+                "filter": candidate_filter,
+                "count": len(items),
+                "limit": candidate_filter["limit"],
+                "items": items,
+            },
+            max_delete_count=max_delete_count,
+            checked_at=checked_at,
+            requested_by=requested_by,
+            idempotency_key=idempotency_key,
+        )
 
 
 def sqlite_scheduler_session_factory() -> sessionmaker:
@@ -475,6 +559,431 @@ def test_artifact_retention_scheduler_sql_helpers_json_fallback_edges() -> None:
     assert scheduler_module._json_value(object(), {"fallback": True}) == {
         "fallback": True
     }
+
+
+def test_artifact_retention_scheduler_tick_once_enqueues_ready_tick() -> None:
+    artifact_store = FakeArtifactRetentionStore(candidate_count=1)
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+    queue = InMemoryJobQueue()
+
+    result = run_artifact_retention_scheduler_tick_once(
+        artifact_store=artifact_store,
+        job_queue=queue,
+        lease_store=lease_store,
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit=10,
+        max_delete_count=1,
+        tick_at=READY_TICK_AT,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        idempotency_key="tick-once-0514",
+    )
+    validated = validate_artifact_retention_scheduler_tick_once_result(result)
+    summary = summarize_artifact_retention_scheduler_tick_once_result(result)
+    enqueued_job = queue.get_job(
+        result["enqueue_result"]["scheduled_job_enqueue_result"]["job_id"]
+    )
+    released = lease_store.get(result["scheduler_id"])
+
+    assert result["tick_once_result_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_RESULT_SCHEMA_VERSION
+    )
+    assert validated == result
+    assert result["result_status"] == "SUCCEEDED"
+    assert result["skip_reason"] is None
+    assert result["lease_decision"]["decision_status"] == "ACQUIRED"
+    assert result["lease_release"]["lease_status"] == "RELEASED"
+    assert result["tick_plan"]["tick_status"] == "READY"
+    assert result["enqueue_result"]["enqueue_status"] == "ENQUEUED"
+    assert result["metadata"] == {
+        "metadata_only": True,
+        "lease_acquired_before_tick": True,
+        "lease_released": True,
+        "job_enqueued": True,
+        "admission_performed": True,
+        "worker_executed": False,
+        "history_write_executed": False,
+        "daemon_auto_start_allowed": False,
+        "scheduler_daemon_started": False,
+        "continuous_loop_started": False,
+        "physical_delete_automation_enabled": False,
+        "dry_run": True,
+    }
+    assert result["guardrails"]["scheduler_daemon_started"] is False
+    assert result["guardrails"]["continuous_loop_started"] is False
+    assert result["guardrails"]["physical_delete_automation_enabled"] is False
+    assert summary == {
+        "scheduler_id": "ae-artifact-retention-scheduler-local-v1",
+        "result_status": "SUCCEEDED",
+        "skip_reason": None,
+        "lease_acquired": True,
+        "lease_released": True,
+        "job_enqueued": True,
+        "worker_executed": False,
+    }
+    assert artifact_store.calls[0]["checked_at"] == READY_TICK_AT
+    assert enqueued_job is not None
+    assert enqueued_job["payload"]["trigger_type"] == "scheduler_tick"
+    assert released is not None
+    assert released["lease_status"] == "RELEASED"
+
+
+def test_artifact_retention_scheduler_tick_once_noops_without_candidates() -> None:
+    artifact_store = FakeArtifactRetentionStore(candidate_count=0)
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+    queue = InMemoryJobQueue()
+
+    result = run_artifact_retention_scheduler_tick_once(
+        artifact_store=artifact_store,
+        job_queue=queue,
+        lease_store=lease_store,
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        tick_at=READY_TICK_AT,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+    )
+
+    assert result["result_status"] == "NOOP"
+    assert result["skip_reason"] == "no_retention_candidates"
+    assert result["tick_plan"]["tick_status"] == "NOOP"
+    assert result["enqueue_result"]["enqueue_status"] == "SKIPPED"
+    assert result["metadata"]["job_enqueued"] is False
+    assert result["metadata"]["lease_released"] is True
+
+
+def test_artifact_retention_scheduler_tick_once_skips_when_lease_busy() -> None:
+    artifact_store = FakeArtifactRetentionStore(candidate_count=1)
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+    blocking_request = build_artifact_retention_scheduler_lease_request(
+        requested_at="2026-08-31T17:29:00Z",
+        lease_owner_id="active-runner",
+    )
+    lease_store.acquire(blocking_request)
+
+    result = run_artifact_retention_scheduler_tick_once(
+        artifact_store=artifact_store,
+        job_queue=InMemoryJobQueue(),
+        lease_store=lease_store,
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        tick_at=READY_TICK_AT,
+        lease_owner_id="second-runner",
+    )
+
+    assert result["result_status"] == "SKIPPED"
+    assert result["skip_reason"] == "lease_busy"
+    assert result["lease_decision"]["decision_status"] == "BUSY"
+    assert result["lease_release"] is None
+    assert result["batch_plan"] is None
+    assert result["tick_plan"] is None
+    assert result["enqueue_result"] is None
+    assert result["metadata"]["lease_acquired_before_tick"] is False
+    assert artifact_store.calls == []
+
+
+def test_artifact_retention_scheduler_tick_once_worker_summary_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact_store = FakeArtifactRetentionStore(candidate_count=1)
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+    queue = InMemoryJobQueue()
+    worker_calls: list[dict[str, Any]] = []
+
+    class FakeWorkerExecution:
+        def to_summary(self) -> dict[str, Any]:
+            return {
+                "status": "SUCCEEDED",
+                "handler_result": {"history": {"history_written": True}},
+            }
+
+    def fake_worker_once(**kwargs: Any) -> FakeWorkerExecution:
+        worker_calls.append(kwargs)
+        return FakeWorkerExecution()
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "run_artifact_retention_scheduled_worker_once",
+        fake_worker_once,
+    )
+
+    result = run_artifact_retention_scheduler_tick_once(
+        artifact_store=artifact_store,
+        job_queue=queue,
+        lease_store=lease_store,
+        history_store=object(),
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        tick_at=READY_TICK_AT,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        run_worker=True,
+        worker_id="worker-0514",
+        clock=lambda: READY_TICK_AT,
+    )
+
+    assert result["result_status"] == "SUCCEEDED"
+    assert result["worker_result"]["status"] == "SUCCEEDED"
+    assert result["metadata"]["worker_executed"] is True
+    assert result["metadata"]["history_write_executed"] is True
+    assert worker_calls[0]["worker_id"] == "worker-0514"
+    assert worker_calls[0]["artifact_store"] is artifact_store
+
+
+def test_artifact_retention_scheduler_tick_once_releases_lease_on_failure() -> None:
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+
+    with pytest.raises(ArtifactHandoffError) as exc_info:
+        run_artifact_retention_scheduler_tick_once(
+            artifact_store=object(),
+            job_queue=InMemoryJobQueue(),
+            lease_store=lease_store,
+            tenant_id="tenant-001",
+            workspace_id="workspace-001",
+            owner_user_id="user-001",
+            tick_at=READY_TICK_AT,
+        )
+
+    released = lease_store.get("ae-artifact-retention-scheduler-local-v1")
+    assert exc_info.value.error_code == (
+        "ae.artifact_retention_scheduler_artifact_store_invalid"
+    )
+    assert released is not None
+    assert released["lease_status"] == "RELEASED"
+
+
+def test_artifact_retention_scheduler_tick_once_rejects_invalid_lease_store() -> None:
+    with pytest.raises(ArtifactHandoffError) as exc_info:
+        run_artifact_retention_scheduler_tick_once(
+            artifact_store=FakeArtifactRetentionStore(candidate_count=1),
+            job_queue=InMemoryJobQueue(),
+            lease_store=object(),
+            tenant_id="tenant-001",
+            workspace_id="workspace-001",
+            owner_user_id="user-001",
+            tick_at=READY_TICK_AT,
+        )
+
+    assert exc_info.value.error_code == (
+        "ae.artifact_retention_scheduler_lease_store_invalid"
+    )
+
+
+def test_artifact_retention_scheduler_tick_once_validation_edges() -> None:
+    result = run_artifact_retention_scheduler_tick_once(
+        artifact_store=FakeArtifactRetentionStore(candidate_count=1),
+        job_queue=InMemoryJobQueue(),
+        lease_store=ArtifactRetentionSchedulerLeaseStore(),
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        tick_at=READY_TICK_AT,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+    )
+    invalid_cases = (
+        (
+            [],
+            "ae.artifact_retention_scheduler_tick_once_result_invalid",
+            "object",
+        ),
+        (
+            {**result, "tick_once_result_schema_version": "wrong"},
+            "ae.artifact_retention_scheduler_tick_once_result_schema_invalid",
+            "schema version",
+        ),
+        (
+            {**result, "service_id": "nex-cx"},
+            "ae.artifact_retention_scheduler_tick_once_result_invalid",
+            "service id",
+        ),
+        (
+            {**result, "result_status": "QUEUED"},
+            "ae.artifact_retention_scheduler_tick_once_result_invalid",
+            "status",
+        ),
+        (
+            {**result, "skip_reason": "manual-stop"},
+            "ae.artifact_retention_scheduler_tick_once_result_invalid",
+            "skip reason",
+        ),
+        (
+            {
+                **result,
+                "lease_decision": {
+                    **result["lease_decision"],
+                    "lease_owner_id": "other-owner",
+                },
+            },
+            "ae.artifact_retention_scheduler_lease_decision_invalid",
+            "Acquired",
+        ),
+        (
+            {**result, "lease_owner_id": "other-owner"},
+            "ae.artifact_retention_scheduler_tick_once_result_invalid",
+            "lease scope",
+        ),
+        (
+            {**result, "lease_release": None},
+            "ae.artifact_retention_scheduler_lease_record_invalid",
+            "object",
+        ),
+        (
+            {
+                **result,
+                "tick_plan": {
+                    **result["tick_plan"],
+                    "source_plan_id": "other-plan",
+                },
+            },
+            "ae.artifact_retention_scheduler_tick_plan_invalid",
+            "command preview",
+        ),
+        (
+            {**result, "metadata": {**result["metadata"], "dry_run": False}},
+            "ae.artifact_retention_scheduler_tick_once_result_invalid",
+            "metadata",
+        ),
+        (
+            {
+                **result,
+                "guardrails": {
+                    **result["guardrails"],
+                    "scheduler_daemon_started": True,
+                },
+            },
+            "ae.artifact_retention_scheduler_tick_once_result_invalid",
+            "guardrails",
+        ),
+    )
+    for payload, error_code, detail in invalid_cases:
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_scheduler_tick_once_result(payload)  # type: ignore[arg-type]
+        assert exc_info.value.error_code == error_code
+        assert detail in exc_info.value.detail
+
+    busy_result = run_artifact_retention_scheduler_tick_once(
+        artifact_store=FakeArtifactRetentionStore(candidate_count=1),
+        job_queue=InMemoryJobQueue(),
+        lease_store=ArtifactRetentionSchedulerLeaseStore(
+            records={
+                "ae-artifact-retention-scheduler-local-v1": build_artifact_retention_scheduler_lease_record(
+                    build_artifact_retention_scheduler_lease_request(
+                        requested_at="2026-08-31T17:29:00Z",
+                        lease_owner_id="active-runner",
+                    )
+                )
+            }
+        ),
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        tick_at=READY_TICK_AT,
+        lease_owner_id="second-runner",
+    )
+    with pytest.raises(ArtifactHandoffError) as busy_exc:
+        validate_artifact_retention_scheduler_tick_once_result(
+            {**busy_result, "batch_plan": result["batch_plan"]}
+        )
+    assert busy_exc.value.error_code == (
+        "ae.artifact_retention_scheduler_tick_once_result_invalid"
+    )
+
+
+def test_artifact_retention_scheduler_tick_once_lineage_status_and_helper_edges() -> None:
+    result = run_artifact_retention_scheduler_tick_once(
+        artifact_store=FakeArtifactRetentionStore(candidate_count=1),
+        job_queue=InMemoryJobQueue(),
+        lease_store=ArtifactRetentionSchedulerLeaseStore(),
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        tick_at=READY_TICK_AT,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+    )
+
+    with pytest.raises(ArtifactHandoffError) as lineage_exc:
+        validate_artifact_retention_scheduler_tick_once_result(
+            {
+                **result,
+                "lease_release": {
+                    **result["lease_release"],
+                    "lease_token": "other-token",
+                },
+            }
+        )
+    assert lineage_exc.value.error_code == (
+        "ae.artifact_retention_scheduler_tick_once_result_invalid"
+    )
+    assert "lineage" in lineage_exc.value.detail
+
+    with pytest.raises(ArtifactHandoffError) as status_exc:
+        validate_artifact_retention_scheduler_tick_once_result(
+            {**result, "result_status": "FAILED"}
+        )
+    assert status_exc.value.error_code == (
+        "ae.artifact_retention_scheduler_tick_once_result_invalid"
+    )
+    assert "status" in status_exc.value.detail
+
+    with pytest.raises(ArtifactHandoffError) as worker_exc:
+        validate_artifact_retention_scheduler_tick_once_result(
+            {**result, "worker_result": "done"}
+        )
+    assert worker_exc.value.error_code == (
+        "ae.artifact_retention_scheduler_tick_once_result_invalid"
+    )
+    assert "worker result" in worker_exc.value.detail
+
+    assert scheduler_module._scheduler_tick_once_result_status(
+        tick_plan=None,
+        enqueue_result=result["enqueue_result"],
+        worker_result=None,
+    ) == "FAILED"
+    assert scheduler_module._scheduler_tick_once_result_status(
+        tick_plan=result["tick_plan"],
+        enqueue_result=result["enqueue_result"],
+        worker_result={"status": "FAILED"},
+    ) == "FAILED"
+    assert scheduler_module._scheduler_tick_once_result_status(
+        tick_plan={"tick_status": "SKIPPED"},
+        enqueue_result={"enqueue_status": "SKIPPED"},
+        worker_result=None,
+    ) == "SKIPPED"
+    assert scheduler_module._scheduler_tick_once_result_status(
+        tick_plan={"tick_status": "READY"},
+        enqueue_result={"enqueue_status": "SKIPPED"},
+        worker_result=None,
+    ) == "SKIPPED"
+    assert scheduler_module._scheduler_tick_once_skip_reason(None) is None
+    assert scheduler_module._scheduler_tick_once_worker_summary(
+        {"status": "SUCCEEDED"}
+    ) == {"status": "SUCCEEDED"}
+    assert scheduler_module._scheduler_tick_once_worker_summary("idle") == {
+        "status": "idle"
+    }
+    assert (
+        scheduler_module._scheduler_tick_once_history_written(
+            {"handler_result": "not-a-dict"}
+        )
+        is False
+    )
 
 
 @pytest.mark.parametrize(
