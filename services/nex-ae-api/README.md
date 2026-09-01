@@ -449,3 +449,7 @@ Artifact library management:
   records are derived from validated purge execution evidence, hashed, saved via
   in-memory or SQLAlchemy stores, and reused by tenant/workspace/owner-scoped
   idempotency keys before API wiring.
+- Slice 0474 wires `POST /api/v1/artifact-retention/purge` to the retention
+  history store. The route reuses persisted idempotency history for duplicate
+  commands, saves dry-run/blocked/succeeded execution evidence, and checks
+  history store availability before guarded physical delete.

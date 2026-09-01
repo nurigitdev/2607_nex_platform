@@ -577,6 +577,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0471`](slices/0471_ae_artifact_retention_execution_history_boundary_audit.md) | `S48-001` AE artifact retention execution history boundary audit. |
 | [`Slice 0472`](slices/0472_ae_artifact_retention_execution_history_migration.md) | `S48-002` AE artifact retention execution history PostgreSQL migration. |
 | [`Slice 0473`](slices/0473_ae_artifact_retention_execution_history_repository.md) | `S48-003` AE artifact retention execution history repository. |
+| [`Slice 0474`](slices/0474_ae_artifact_retention_purge_api_history_wiring.md) | `S48-004` AE artifact retention purge API persisted history wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

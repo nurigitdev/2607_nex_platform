@@ -643,6 +643,9 @@ class ArtifactRecordStore:
 class ArtifactRetentionExecutionHistoryStore:
     records: dict[str, dict[str, Any]] = field(default_factory=dict)
 
+    def ensure_available(self) -> None:
+        return None
+
     def save(self, execution: dict[str, Any]) -> dict[str, Any]:
         record = build_artifact_retention_execution_history_record(execution)
         existing = self.get_by_idempotency_key(
@@ -1350,6 +1353,20 @@ class SqlAlchemyArtifactRetentionExecutionHistoryStore:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
 
+    def ensure_available(self) -> None:
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    text("SELECT 1 FROM ae_artifact_retention_executions LIMIT 1")
+                )
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_retention_history_store_unavailable",
+                detail="AE artifact retention execution history store is unavailable.",
+                retryable=True,
+            ) from exc
+
     def save(self, execution: dict[str, Any]) -> dict[str, Any]:
         record = build_artifact_retention_execution_history_record(execution)
         existing = self.get_by_idempotency_key(
@@ -1559,10 +1576,15 @@ def register_artifact_handoff_routes(
     *,
     store: Any | None = None,
     artifact_store: Any | None = None,
+    retention_history_store: Any | None = None,
     cx_client: CxArtifactSourceClient | None = None,
 ) -> None:
     handoff_store = store or build_default_artifact_handoff_store(app)
     artifact_record_store = artifact_store or build_default_artifact_record_store(app)
+    artifact_retention_history_store = (
+        retention_history_store
+        or build_default_artifact_retention_execution_history_store(app)
+    )
     client = cx_client or build_default_cx_artifact_source_client()
 
     @app.post("/api/v1/artifact-handoffs", response_model=None)
@@ -1730,7 +1752,36 @@ def register_artifact_handoff_routes(
             return auth_problem
 
         try:
-            return artifact_record_store.purge_retention_candidates(
+            dry_run = _boolean_from_payload(payload, "dry_run", default=True)
+            delete_enabled = _boolean_from_payload(
+                payload,
+                "delete_enabled",
+                default=False,
+            )
+            storage_mutation_enabled = _boolean_from_payload(
+                payload,
+                "storage_mutation_enabled",
+                default=False,
+            )
+            database_row_delete_enabled = _boolean_from_payload(
+                payload,
+                "database_row_delete_enabled",
+                default=False,
+            )
+            normalized_idempotency_key = idempotency_key or optional_text(
+                payload.get("idempotency_key")
+            )
+            existing_history = artifact_retention_history_store.get_by_idempotency_key(
+                tenant_id=payload.get("tenant_id"),
+                workspace_id=payload.get("workspace_id"),
+                owner_user_id=payload.get("owner_user_id"),
+                idempotency_key=normalized_idempotency_key,
+            )
+            if existing_history is not None:
+                return existing_history["execution"]
+            if not dry_run:
+                artifact_retention_history_store.ensure_available()
+            execution = artifact_record_store.purge_retention_candidates(
                 tenant_id=payload.get("tenant_id"),
                 workspace_id=payload.get("workspace_id"),
                 owner_user_id=payload.get("owner_user_id"),
@@ -1739,28 +1790,17 @@ def register_artifact_handoff_routes(
                 checked_at=payload.get("checked_at"),
                 scan_limit=payload.get("scan_limit"),
                 max_delete_count=payload.get("max_delete_count"),
-                dry_run=_boolean_from_payload(payload, "dry_run", default=True),
-                delete_enabled=_boolean_from_payload(
-                    payload,
-                    "delete_enabled",
-                    default=False,
-                ),
-                storage_mutation_enabled=_boolean_from_payload(
-                    payload,
-                    "storage_mutation_enabled",
-                    default=False,
-                ),
-                database_row_delete_enabled=_boolean_from_payload(
-                    payload,
-                    "database_row_delete_enabled",
-                    default=False,
-                ),
+                dry_run=dry_run,
+                delete_enabled=delete_enabled,
+                storage_mutation_enabled=storage_mutation_enabled,
+                database_row_delete_enabled=database_row_delete_enabled,
                 requested_by=payload.get("requested_by"),
-                idempotency_key=idempotency_key
-                or optional_text(payload.get("idempotency_key")),
+                idempotency_key=normalized_idempotency_key,
                 trace_id=payload.get("trace_id") or trace_id_from_headers(request),
                 request_id=request_id_from_headers(request),
             )
+            history_record = artifact_retention_history_store.save(execution)
+            return history_record["execution"]
         except ArtifactHandoffError as exc:
             return _artifact_problem_response(request, exc)
 

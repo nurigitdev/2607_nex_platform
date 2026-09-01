@@ -252,6 +252,7 @@ def build_client(
 
 def build_client_with_artifact_store(
     cx_client: FakeCxArtifactSourceClient | None = None,
+    retention_history_store: ArtifactRetentionExecutionHistoryStore | None = None,
 ) -> tuple[
     TestClient,
     ArtifactHandoffStore,
@@ -266,6 +267,7 @@ def build_client_with_artifact_store(
         app,
         store=store,
         artifact_store=artifact_store,
+        retention_history_store=retention_history_store,
         cx_client=client,
     )
     return TestClient(app), store, artifact_store, client
@@ -2263,7 +2265,7 @@ def test_sqlalchemy_artifact_retention_execution_history_store_round_trips_with_
     assert "storage_ref" not in json.dumps(executed, sort_keys=True)
 
 
-@pytest.mark.parametrize("operation", ["save", "get", "idempotency", "list"])
+@pytest.mark.parametrize("operation", ["ensure", "save", "get", "idempotency", "list"])
 def test_sqlalchemy_artifact_retention_execution_history_store_maps_database_errors(
     operation: str,
 ) -> None:
@@ -2272,7 +2274,9 @@ def test_sqlalchemy_artifact_retention_execution_history_store_maps_database_err
     store = SqlAlchemyArtifactRetentionExecutionHistoryStore(session_factory)
 
     with pytest.raises(ArtifactHandoffError) as exc_info:
-        if operation == "save":
+        if operation == "ensure":
+            store.ensure_available()
+        elif operation == "save":
             store.save(sample_retention_execution())
         elif operation == "get":
             store.get("missing-history")
@@ -2754,7 +2758,6 @@ def test_artifact_retention_purge_route_requires_guarded_control_flags() -> None
         artifact_request_id="route-retention-purge-recent-001",
         updated_at="2026-08-31T00:00:00Z",
     )
-    headers = {**auth_headers(), "Idempotency-Key": "route-retention-purge-001"}
     base_payload = {
         "tenant_id": "tenant-001",
         "workspace_id": "workspace-001",
@@ -2770,27 +2773,27 @@ def test_artifact_retention_purge_route_requires_guarded_control_flags() -> None
     dry_run = client.post(
         "/api/v1/artifact-retention/purge",
         json=base_payload,
-        headers=headers,
+        headers={**auth_headers(), "Idempotency-Key": "route-retention-dry-run-001"},
     )
     blocked = client.post(
         "/api/v1/artifact-retention/purge",
         json={**base_payload, "dry_run": False},
-        headers=headers,
+        headers={**auth_headers(), "Idempotency-Key": "route-retention-blocked-001"},
     )
     invalid_bool = client.post(
         "/api/v1/artifact-retention/purge",
         json={**base_payload, "dry_run": "false"},
-        headers=headers,
+        headers={**auth_headers(), "Idempotency-Key": "route-retention-invalid-001"},
     )
     unsafe_dry_run = client.post(
         "/api/v1/artifact-retention/purge",
         json={**base_payload, "delete_enabled": True},
-        headers=headers,
+        headers={**auth_headers(), "Idempotency-Key": "route-retention-unsafe-001"},
     )
     missing_scope = client.post(
         "/api/v1/artifact-retention/purge",
         json={},
-        headers=headers,
+        headers={**auth_headers(), "Idempotency-Key": "route-retention-missing-001"},
     )
     unauthorized = client.post(
         "/api/v1/artifact-retention/purge",
@@ -2805,7 +2808,7 @@ def test_artifact_retention_purge_route_requires_guarded_control_flags() -> None
             "storage_mutation_enabled": True,
             "database_row_delete_enabled": True,
         },
-        headers=headers,
+        headers={**auth_headers(), "Idempotency-Key": "route-retention-execute-001"},
     )
     payload = execute.json()
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True)
@@ -2817,7 +2820,7 @@ def test_artifact_retention_purge_route_requires_guarded_control_flags() -> None
     assert dry_run.json()["mode"] == "DRY_RUN"
     assert dry_run.json()["candidate_count"] == 1
     assert dry_run.json()["selected_count"] == 1
-    assert dry_run.json()["idempotency_key"] == "route-retention-purge-001"
+    assert dry_run.json()["idempotency_key"] == "route-retention-dry-run-001"
     assert dry_run.json()["requested_by"] == {
         "actor_type": "service",
         "actor_id": "nex-ag",
@@ -2847,6 +2850,124 @@ def test_artifact_retention_purge_route_requires_guarded_control_flags() -> None
     assert artifact_store.get(old_deleted["artifact_id"]) is None
     assert artifact_store.get(recent_deleted["artifact_id"]) is not None
     assert "storage_ref" not in serialized
+
+
+def test_artifact_retention_purge_route_persists_history_and_reuses_idempotency() -> None:
+    history_store = ArtifactRetentionExecutionHistoryStore()
+    client, _, artifact_store, _ = build_client_with_artifact_store(
+        retention_history_store=history_store
+    )
+    old_deleted = save_rendered_retention_artifact(
+        artifact_store,
+        artifact_request_id="route-retention-history-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    base_payload = {
+        "tenant_id": "tenant-001",
+        "workspace_id": "workspace-001",
+        "owner_user_id": "user-001",
+        "retention_days": "30",
+        "as_of": "2026-09-01T00:00:00Z",
+        "checked_at": "2026-09-01T02:40:00Z",
+        "scan_limit": "10",
+        "max_delete_count": "1",
+        "requested_by": {"actor_type": "service", "actor_id": "nex-ag"},
+    }
+
+    first = client.post(
+        "/api/v1/artifact-retention/purge",
+        json=base_payload,
+        headers={**auth_headers(), "Idempotency-Key": "route-history-dry-001"},
+    )
+    duplicate = client.post(
+        "/api/v1/artifact-retention/purge",
+        json={**base_payload, "checked_at": "2026-09-01T02:41:00Z"},
+        headers={**auth_headers(), "Idempotency-Key": "route-history-dry-001"},
+    )
+    execute = client.post(
+        "/api/v1/artifact-retention/purge",
+        json={
+            **base_payload,
+            "checked_at": "2026-09-01T02:45:00Z",
+            "dry_run": False,
+            "delete_enabled": True,
+            "storage_mutation_enabled": True,
+            "database_row_delete_enabled": True,
+        },
+        headers={**auth_headers(), "Idempotency-Key": "route-history-execute-001"},
+    )
+    first_payload = first.json()
+    duplicate_payload = duplicate.json()
+    execute_payload = execute.json()
+    histories = history_store.list_executions(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+    )
+
+    assert first.status_code == 200
+    assert duplicate.status_code == 200
+    assert execute.status_code == 200
+    assert duplicate_payload["execution_id"] == first_payload["execution_id"]
+    assert duplicate_payload["checked_at"] == first_payload["checked_at"]
+    assert execute_payload["mode"] == "EXECUTE"
+    assert execute_payload["execution_status"] == "SUCCEEDED"
+    assert execute_payload["deleted_counts"]["artifacts"] == 1
+    assert artifact_store.get(old_deleted["artifact_id"]) is None
+    assert len(histories) == 2
+    assert {
+        item["execution"]["execution_id"] for item in histories
+    } == {first_payload["execution_id"], execute_payload["execution_id"]}
+    assert history_store.get_by_idempotency_key(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        idempotency_key="route-history-execute-001",
+    )["execution"]["deleted_counts"]["artifacts"] == 1
+
+
+def test_artifact_retention_purge_route_checks_history_store_before_execute() -> None:
+    class FailingHistoryStore(ArtifactRetentionExecutionHistoryStore):
+        def ensure_available(self) -> None:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_retention_history_store_unavailable",
+                detail="history unavailable",
+                retryable=True,
+            )
+
+    history_store = FailingHistoryStore()
+    client, _, artifact_store, _ = build_client_with_artifact_store(
+        retention_history_store=history_store
+    )
+    old_deleted = save_rendered_retention_artifact(
+        artifact_store,
+        artifact_request_id="route-retention-history-unavailable-001",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+
+    response = client.post(
+        "/api/v1/artifact-retention/purge",
+        json={
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "retention_days": "30",
+            "as_of": "2026-09-01T00:00:00Z",
+            "dry_run": False,
+            "delete_enabled": True,
+            "storage_mutation_enabled": True,
+            "database_row_delete_enabled": True,
+        },
+        headers={**auth_headers(), "Idempotency-Key": "route-history-fail-001"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == (
+        "ae.artifact_retention_history_store_unavailable"
+    )
+    assert artifact_store.get(old_deleted["artifact_id"]) is not None
+    assert history_store.records == {}
 
 
 def test_sqlalchemy_artifact_record_store_applies_lifecycle_with_sqlite() -> None:
