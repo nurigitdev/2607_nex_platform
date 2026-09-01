@@ -34,6 +34,7 @@ from nex_ae_api.artifacts import (  # noqa: E402
     AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_ITEM_SCHEMA_VERSION,
     SqlAlchemyArtifactRetentionExecutionHistoryStore,
     build_artifact_retention_execution,
+    build_artifact_retention_operator_approval,
     register_artifact_handoff_routes,
 )
 from nex_runtime import (  # noqa: E402
@@ -329,6 +330,15 @@ def _seed_history_records(
             delete_enabled=True,
             storage_mutation_enabled=True,
             database_row_delete_enabled=True,
+            operator_approval=build_artifact_retention_operator_approval(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
+                operator_id="history-query-smoke-operator",
+                approved_at="2026-09-01T02:49:00Z",
+                approval_reason="Verified history query seed before execute.",
+                approval_ticket=f"AE-RET-HISTORY-QUERY-{suffix}",
+            ),
             idempotency_key=f"history-query-execute-{suffix}",
             request_id=request_id,
             trace_id=trace_id,

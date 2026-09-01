@@ -32,6 +32,7 @@ from nex_ae_api.artifacts import (
     AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_ITEM_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_OPERATOR_APPROVAL_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_POLICY_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULE_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_CONFIG_SCHEMA_VERSION,
@@ -75,6 +76,7 @@ from nex_ae_api.artifacts import (
     build_artifact_retention_execution_history_filter,
     build_artifact_retention_execution_history_item,
     build_artifact_retention_execution_history_record,
+    build_artifact_retention_operator_approval,
     build_artifact_retention_policy,
     build_artifact_retention_schedule,
     build_artifact_retention_scheduler_config,
@@ -143,6 +145,7 @@ from nex_ae_api.artifacts import (
     validate_artifact_retention_batch_plan,
     validate_artifact_retention_execution,
     validate_artifact_retention_execution_history_record,
+    validate_artifact_retention_operator_approval,
     validate_artifact_retention_policy,
     validate_artifact_retention_schedule,
     validate_artifact_retention_scheduler_config,
@@ -435,6 +438,20 @@ def save_rendered_retention_artifact(
     return rendered
 
 
+def sample_retention_operator_approval(**overrides: Any) -> dict[str, Any]:
+    payload = {
+        "tenant_id": "tenant-001",
+        "workspace_id": "workspace-001",
+        "owner_user_id": "user-001",
+        "operator_id": "operator-001",
+        "approved_at": "2026-09-01T02:25:00Z",
+        "approval_reason": "Verified dry-run plan before physical purge.",
+        "approval_ticket": "AE-RET-001",
+    }
+    payload.update(overrides)
+    return build_artifact_retention_operator_approval(**payload)
+
+
 def sample_retention_execution(**overrides: Any) -> dict[str, Any]:
     payload = {
         "tenant_id": "tenant-001",
@@ -449,6 +466,16 @@ def sample_retention_execution(**overrides: Any) -> dict[str, Any]:
         "trace_id": TRACE_ID,
     }
     payload.update(overrides)
+    if (
+        str(payload.get("mode", "DRY_RUN")).upper() == "EXECUTE"
+        and str(payload.get("execution_status", "PLANNED")).upper() == "SUCCEEDED"
+        and "operator_approval" not in payload
+    ):
+        payload["operator_approval"] = sample_retention_operator_approval(
+            tenant_id=payload["tenant_id"],
+            workspace_id=payload["workspace_id"],
+            owner_user_id=payload["owner_user_id"],
+        )
     return build_artifact_retention_execution(**payload)
 
 
@@ -2732,6 +2759,10 @@ def test_artifact_retention_execution_contract_supports_guarded_execute() -> Non
         idempotency_key="retention-execute-001",
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
+        operator_approval=sample_retention_operator_approval(
+            owner_user_id="owner-001",
+            approval_ticket="AE-RET-EXEC-001",
+        ),
     )
 
     assert blocked["execution_status"] == "BLOCKED"
@@ -2747,6 +2778,7 @@ def test_artifact_retention_execution_contract_supports_guarded_execute() -> Non
     assert succeeded["max_delete_count"] == 10
     assert succeeded["deleted_counts"]["artifacts"] == 1
     assert succeeded["deleted_counts"]["storage_files"] == 2
+    assert succeeded["operator_approval"]["operator_id"] == "operator-001"
     assert validate_artifact_retention_execution(succeeded) is succeeded
 
 
@@ -2761,6 +2793,16 @@ def test_artifact_retention_execution_contract_rejects_unsafe_edges() -> None:
 
     assert normalize_artifact_retention_delete_limit(None) == 20
     assert normalize_artifact_retention_delete_limit("100") == 100
+    approval = sample_retention_operator_approval(owner_user_id="owner-001")
+    assert approval["artifact_retention_operator_approval_schema_version"] == (
+        AE_ARTIFACT_RETENTION_OPERATOR_APPROVAL_SCHEMA_VERSION
+    )
+    assert validate_artifact_retention_operator_approval(
+        approval,
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="owner-001",
+    ) is approval
     for bad_value in (0, 101, True, "many"):
         with pytest.raises(ArtifactHandoffError) as limit_exc:
             normalize_artifact_retention_delete_limit(bad_value)
@@ -2789,6 +2831,17 @@ def test_artifact_retention_execution_contract_rejects_unsafe_edges() -> None:
                 "delete_enabled": True,
             },
             "ae.artifact_retention_execute_not_enabled",
+        ),
+        (
+            {
+                **base,
+                "mode": "EXECUTE",
+                "execution_status": "SUCCEEDED",
+                "delete_enabled": True,
+                "storage_mutation_enabled": True,
+                "database_row_delete_enabled": True,
+            },
+            "ae.artifact_retention_operator_approval_required",
         ),
         (
             {**base, "candidate_count": 1, "selected_count": 2},
@@ -2874,6 +2927,7 @@ def test_artifact_retention_execution_contract_rejects_unsafe_edges() -> None:
                 "storage_mutation_enabled": True,
                 "database_row_delete_enabled": True,
                 "selected_count": 2,
+                "operator_approval": approval,
                 "deleted_counts": {
                     "artifacts": 1,
                     "source_refs": 0,
@@ -2889,6 +2943,21 @@ def test_artifact_retention_execution_contract_rejects_unsafe_edges() -> None:
         (
             {"metadata": {"candidate_scan_metadata_only": False}},
             "ae.artifact_retention_execution_metadata_invalid",
+        ),
+        (
+            {"operator_approval": []},
+            "ae.artifact_retention_dry_run_operator_approval_invalid",
+        ),
+        (
+            {
+                "mode": "EXECUTE",
+                "execution_status": "BLOCKED",
+                "delete_enabled": True,
+                "storage_mutation_enabled": False,
+                "database_row_delete_enabled": True,
+                "blocked_reason": "operator_approval_required",
+            },
+            "ae.artifact_retention_operator_approval_block_invalid",
         ),
         (
             {"audit": {**valid["audit"], "audit_event_type": "wrong"}},
@@ -2907,6 +2976,56 @@ def test_artifact_retention_execution_contract_rejects_unsafe_edges() -> None:
         with pytest.raises(ArtifactHandoffError) as exc:
             validate_artifact_retention_execution({**valid, **mutation})
         assert exc.value.error_code == error_code
+
+    approval_invalid_cases = [
+        (
+            [],
+            "ae.artifact_retention_operator_approval_invalid",
+        ),
+        (
+            {**approval, "artifact_retention_operator_approval_schema_version": "old"},
+            "ae.artifact_retention_operator_approval_schema_invalid",
+        ),
+        (
+            {**approval, "approval_status": "PENDING"},
+            "ae.artifact_retention_operator_approval_status_invalid",
+        ),
+        (
+            {**approval, "operator_id": " "},
+            "ae.artifact_retention_operator_approval_invalid",
+        ),
+        (
+            {**approval, "scope": {**approval["scope"], "owner_user_id": "other"}},
+            "ae.artifact_retention_operator_approval_scope_mismatch",
+        ),
+        (
+            {**approval, "scope": []},
+            "ae.artifact_retention_operator_approval_scope_invalid",
+        ),
+        (
+            {
+                **approval,
+                "guardrails": {
+                    **approval["guardrails"],
+                    "database_row_delete_enabled_confirmed": False,
+                },
+            },
+            "ae.artifact_retention_operator_approval_guardrail_invalid",
+        ),
+        (
+            {**approval, "metadata": {"metadata_only": True}},
+            "ae.artifact_retention_operator_approval_metadata_invalid",
+        ),
+    ]
+    for approval_payload, error_code in approval_invalid_cases:
+        with pytest.raises(ArtifactHandoffError) as approval_exc:
+            validate_artifact_retention_operator_approval(
+                approval_payload,  # type: ignore[arg-type]
+                tenant_id="tenant-001",
+                workspace_id="workspace-001",
+                owner_user_id="owner-001",
+            )
+        assert approval_exc.value.error_code == error_code
 
     with pytest.raises(ArtifactHandoffError) as missing_exc:
         validate_artifact_retention_execution({**valid, "audit": []})  # type: ignore[dict-item]
@@ -5447,6 +5566,7 @@ def test_artifact_retention_scheduled_execution_mock_worker_noop_and_edges() -> 
         delete_enabled=True,
         storage_mutation_enabled=True,
         database_row_delete_enabled=True,
+        operator_approval=sample_retention_operator_approval(),
     )
 
     ready_mutations = [
@@ -5609,6 +5729,25 @@ def test_artifact_record_store_executes_guarded_retention_purge() -> None:
         updated_at="2026-07-31T01:00:00Z",
     )
 
+    approval_blocked = store.purge_retention_candidates(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        checked_at="2026-09-01T02:09:00Z",
+        dry_run=False,
+        max_delete_count="1",
+        delete_enabled=True,
+        storage_mutation_enabled=True,
+        database_row_delete_enabled=True,
+    )
+
+    assert approval_blocked["execution_status"] == "BLOCKED"
+    assert approval_blocked["blocked_reason"] == "operator_approval_required"
+    assert approval_blocked["selected_count"] == 0
+    assert store.get(old_deleted["artifact_id"]) is not None
+
     execution = store.purge_retention_candidates(
         tenant_id="tenant-001",
         workspace_id="workspace-001",
@@ -5621,10 +5760,12 @@ def test_artifact_record_store_executes_guarded_retention_purge() -> None:
         delete_enabled=True,
         storage_mutation_enabled=True,
         database_row_delete_enabled=True,
+        operator_approval=sample_retention_operator_approval(),
     )
 
     assert execution["mode"] == "EXECUTE"
     assert execution["execution_status"] == "SUCCEEDED"
+    assert execution["operator_approval"]["approval_ticket"] == "AE-RET-001"
     assert execution["candidate_count"] == 2
     assert execution["selected_count"] == 1
     assert execution["deleted_counts"] == {
@@ -5703,6 +5844,26 @@ def test_sqlalchemy_artifact_record_store_executes_guarded_retention_purge_with_
         dry_run=False,
         max_delete_count=1,
     )
+    approval_blocked = store.purge_retention_candidates(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        dry_run=False,
+        max_delete_count=1,
+        delete_enabled=True,
+        storage_mutation_enabled=True,
+        database_row_delete_enabled=True,
+    )
+
+    assert blocked["execution_status"] == "BLOCKED"
+    assert blocked["candidate_count"] == 2
+    assert approval_blocked["execution_status"] == "BLOCKED"
+    assert approval_blocked["blocked_reason"] == "operator_approval_required"
+    assert store.get(first["artifact_id"]) is not None
+    assert blocked["blocked_reason"] == "delete_not_enabled"
+
     execution = store.purge_retention_candidates(
         tenant_id="tenant-001",
         workspace_id="workspace-001",
@@ -5715,11 +5876,11 @@ def test_sqlalchemy_artifact_record_store_executes_guarded_retention_purge_with_
         delete_enabled=True,
         storage_mutation_enabled=True,
         database_row_delete_enabled=True,
+        operator_approval=sample_retention_operator_approval(),
     )
 
-    assert blocked["execution_status"] == "BLOCKED"
-    assert blocked["candidate_count"] == 2
     assert execution["execution_status"] == "SUCCEEDED"
+    assert execution["operator_approval"]["operator_id"] == "operator-001"
     assert execution["candidate_count"] == 2
     assert execution["selected_count"] == 1
     assert execution["deleted_counts"] == {
@@ -6171,6 +6332,20 @@ def test_artifact_retention_purge_route_requires_guarded_control_flags() -> None
         json={**base_payload, "dry_run": False},
         headers={**auth_headers(), "Idempotency-Key": "route-retention-blocked-001"},
     )
+    approval_blocked = client.post(
+        "/api/v1/artifact-retention/purge",
+        json={
+            **base_payload,
+            "dry_run": False,
+            "delete_enabled": True,
+            "storage_mutation_enabled": True,
+            "database_row_delete_enabled": True,
+        },
+        headers={
+            **auth_headers(),
+            "Idempotency-Key": "route-retention-approval-blocked-001",
+        },
+    )
     invalid_bool = client.post(
         "/api/v1/artifact-retention/purge",
         json={**base_payload, "dry_run": "false"},
@@ -6198,6 +6373,7 @@ def test_artifact_retention_purge_route_requires_guarded_control_flags() -> None
             "delete_enabled": True,
             "storage_mutation_enabled": True,
             "database_row_delete_enabled": True,
+            "operator_approval": sample_retention_operator_approval(),
         },
         headers={**auth_headers(), "Idempotency-Key": "route-retention-execute-001"},
     )
@@ -6220,6 +6396,9 @@ def test_artifact_retention_purge_route_requires_guarded_control_flags() -> None
     assert blocked.status_code == 200
     assert blocked.json()["execution_status"] == "BLOCKED"
     assert blocked.json()["blocked_reason"] == "delete_not_enabled"
+    assert approval_blocked.status_code == 200
+    assert approval_blocked.json()["execution_status"] == "BLOCKED"
+    assert approval_blocked.json()["blocked_reason"] == "operator_approval_required"
     assert invalid_bool.status_code == 422
     assert invalid_bool.json()["error_code"] == (
         "ae.artifact_retention_dry_run_invalid"
@@ -6234,6 +6413,7 @@ def test_artifact_retention_purge_route_requires_guarded_control_flags() -> None
     assert execute.status_code == 200
     assert payload["mode"] == "EXECUTE"
     assert payload["execution_status"] == "SUCCEEDED"
+    assert payload["operator_approval"]["operator_id"] == "operator-001"
     assert payload["deleted_counts"]["artifacts"] == 1
     assert payload["deleted_counts"]["files"] == 2
     assert payload["deleted_counts"]["links"] == 4
@@ -6284,6 +6464,10 @@ def test_artifact_retention_purge_route_persists_history_and_reuses_idempotency(
             "delete_enabled": True,
             "storage_mutation_enabled": True,
             "database_row_delete_enabled": True,
+            "operator_approval": sample_retention_operator_approval(
+                approved_at="2026-09-01T02:44:00Z",
+                approval_ticket="AE-RET-HISTORY-001",
+            ),
         },
         headers={**auth_headers(), "Idempotency-Key": "route-history-execute-001"},
     )

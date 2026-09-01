@@ -190,6 +190,9 @@ AE_ARTIFACT_RETENTION_SCHEDULER_TICK_ENQUEUE_RESULT_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION = (
     "ae_artifact_retention_execution.v1"
 )
+AE_ARTIFACT_RETENTION_OPERATOR_APPROVAL_SCHEMA_VERSION = (
+    "ae_artifact_retention_operator_approval.v1"
+)
 AE_ARTIFACT_RETENTION_EXECUTION_HISTORY_SCHEMA_VERSION = (
     "ae_artifact_retention_execution_history.v1"
 )
@@ -231,6 +234,7 @@ ARTIFACT_RETENTION_EXECUTION_STATUSES = (
     "BLOCKED",
     "FAILED",
 )
+ARTIFACT_RETENTION_OPERATOR_APPROVAL_REQUIRED_REASON = "operator_approval_required"
 ARTIFACT_RETENTION_SCHEDULED_EXECUTION_TRIGGER_TYPES = (
     "scheduler_tick",
     "operator_dispatch",
@@ -541,6 +545,7 @@ class ArtifactRecordStore:
         idempotency_key: str | None = None,
         trace_id: str | None = None,
         request_id: str | None = None,
+        operator_approval: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         candidate_filter = build_artifact_retention_candidate_filter(
             tenant_id=tenant_id,
@@ -616,6 +621,35 @@ class ArtifactRecordStore:
                 request_id=request_id,
                 blocked_reason="delete_not_enabled",
             )
+        if operator_approval is None:
+            return build_artifact_retention_execution(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
+                mode="EXECUTE",
+                execution_status="BLOCKED",
+                retention_days=retention_days,
+                as_of=candidate_filter["as_of"],
+                checked_at=checked_at,
+                scan_limit=candidate_filter["limit"],
+                max_delete_count=max_delete,
+                candidate_count=len(records),
+                selected_count=0,
+                delete_enabled=True,
+                storage_mutation_enabled=True,
+                database_row_delete_enabled=True,
+                requested_by=requested_by,
+                idempotency_key=idempotency_key,
+                trace_id=trace_id,
+                request_id=request_id,
+                blocked_reason=ARTIFACT_RETENTION_OPERATOR_APPROVAL_REQUIRED_REASON,
+            )
+        normalized_operator_approval = _normalize_artifact_retention_operator_approval(
+            operator_approval,
+            tenant_id=candidate_filter["tenant_id"],
+            workspace_id=candidate_filter["workspace_id"],
+            owner_user_id=candidate_filter["owner_user_id"],
+        )
         deleted_counts = self._delete_retention_selected_records(selected)
         return build_artifact_retention_execution(
             tenant_id=tenant_id,
@@ -638,6 +672,7 @@ class ArtifactRecordStore:
             idempotency_key=idempotency_key,
             trace_id=trace_id,
             request_id=request_id,
+            operator_approval=normalized_operator_approval,
         )
 
     def _delete_retention_selected_records(
@@ -1205,6 +1240,7 @@ class SqlAlchemyArtifactRecordStore:
         idempotency_key: str | None = None,
         trace_id: str | None = None,
         request_id: str | None = None,
+        operator_approval: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         candidate_filter = build_artifact_retention_candidate_filter(
             tenant_id=tenant_id,
@@ -1271,6 +1307,39 @@ class SqlAlchemyArtifactRecordStore:
                         request_id=request_id,
                         blocked_reason="delete_not_enabled",
                     )
+                if operator_approval is None:
+                    return build_artifact_retention_execution(
+                        tenant_id=tenant_id,
+                        workspace_id=workspace_id,
+                        owner_user_id=owner_user_id,
+                        mode="EXECUTE",
+                        execution_status="BLOCKED",
+                        retention_days=retention_days,
+                        as_of=candidate_filter["as_of"],
+                        checked_at=checked_at,
+                        scan_limit=candidate_filter["limit"],
+                        max_delete_count=max_delete,
+                        candidate_count=len(records),
+                        selected_count=0,
+                        delete_enabled=True,
+                        storage_mutation_enabled=True,
+                        database_row_delete_enabled=True,
+                        requested_by=requested_by,
+                        idempotency_key=idempotency_key,
+                        trace_id=trace_id,
+                        request_id=request_id,
+                        blocked_reason=(
+                            ARTIFACT_RETENTION_OPERATOR_APPROVAL_REQUIRED_REASON
+                        ),
+                    )
+                normalized_operator_approval = (
+                    _normalize_artifact_retention_operator_approval(
+                        operator_approval,
+                        tenant_id=candidate_filter["tenant_id"],
+                        workspace_id=candidate_filter["workspace_id"],
+                        owner_user_id=candidate_filter["owner_user_id"],
+                    )
+                )
                 deleted_counts = _delete_retention_selected_artifact_records(
                     session,
                     selected,
@@ -1297,6 +1366,7 @@ class SqlAlchemyArtifactRecordStore:
                     idempotency_key=idempotency_key,
                     trace_id=trace_id,
                     request_id=request_id,
+                    operator_approval=normalized_operator_approval,
                 )
                 session.commit()
                 return execution
@@ -2125,6 +2195,7 @@ def register_artifact_handoff_routes(
                 idempotency_key=normalized_idempotency_key,
                 trace_id=payload.get("trace_id") or trace_id_from_headers(request),
                 request_id=request_id_from_headers(request),
+                operator_approval=payload.get("operator_approval"),
             )
             history_record = artifact_retention_history_store.save(execution)
             return history_record["execution"]
@@ -7003,6 +7074,272 @@ def format_artifact_retention_timestamp(value: datetime) -> str:
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
+def build_artifact_retention_operator_approval(
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    owner_user_id: str,
+    operator_id: str,
+    approved_at: str | None = None,
+    approval_reason: str,
+    approval_ticket: str | None = None,
+) -> dict[str, Any]:
+    scope = {
+        "tenant_id": _required_collection_scope_text(tenant_id, "tenant_id"),
+        "workspace_id": _required_collection_scope_text(
+            workspace_id,
+            "workspace_id",
+        ),
+        "owner_user_id": _required_collection_scope_text(
+            owner_user_id,
+            "owner_user_id",
+        ),
+    }
+    normalized_approved_at = format_artifact_retention_timestamp(
+        parse_artifact_retention_timestamp(
+            approved_at or _utc_now(),
+            field_name="approved_at",
+        )
+    )
+    approval = {
+        "artifact_retention_operator_approval_schema_version": (
+            AE_ARTIFACT_RETENTION_OPERATOR_APPROVAL_SCHEMA_VERSION
+        ),
+        "approval_status": "APPROVED",
+        "operator_id": _required_artifact_retention_operator_approval_text(
+            operator_id,
+            "operator_id",
+        ),
+        "approved_at": normalized_approved_at,
+        "approval_reason": _required_artifact_retention_operator_approval_text(
+            approval_reason,
+            "approval_reason",
+        ),
+        "approval_ticket": optional_text(approval_ticket),
+        "scope": scope,
+        "guardrails": {
+            "delete_enabled_confirmed": True,
+            "storage_mutation_enabled_confirmed": True,
+            "database_row_delete_enabled_confirmed": True,
+            "logical_purge_reviewed": True,
+            "candidate_plan_reviewed": True,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "contains_private_material": False,
+        },
+    }
+    return validate_artifact_retention_operator_approval(
+        approval,
+        tenant_id=scope["tenant_id"],
+        workspace_id=scope["workspace_id"],
+        owner_user_id=scope["owner_user_id"],
+    )
+
+
+def validate_artifact_retention_operator_approval(
+    approval: dict[str, Any],
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    owner_user_id: str,
+) -> dict[str, Any]:
+    if not isinstance(approval, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_operator_approval_invalid",
+            detail="Artifact retention operator approval must be an object.",
+        )
+    required_fields = (
+        "artifact_retention_operator_approval_schema_version",
+        "approval_status",
+        "operator_id",
+        "approved_at",
+        "approval_reason",
+        "approval_ticket",
+        "scope",
+        "guardrails",
+        "metadata",
+    )
+    for field_name in required_fields:
+        if field_name not in approval:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_operator_approval_invalid",
+                detail=f"Missing artifact retention operator approval field: {field_name}.",
+            )
+    if (
+        approval["artifact_retention_operator_approval_schema_version"]
+        != AE_ARTIFACT_RETENTION_OPERATOR_APPROVAL_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_operator_approval_schema_invalid",
+            detail="Artifact retention operator approval schema version is invalid.",
+        )
+    if approval["approval_status"] != "APPROVED":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_operator_approval_status_invalid",
+            detail="Artifact retention operator approval status must be APPROVED.",
+        )
+    _required_artifact_retention_operator_approval_text(
+        approval.get("operator_id"),
+        "operator_id",
+    )
+    parse_artifact_retention_timestamp(
+        approval.get("approved_at"),
+        field_name="approved_at",
+    )
+    _required_artifact_retention_operator_approval_text(
+        approval.get("approval_reason"),
+        "approval_reason",
+    )
+    scope = approval["scope"]
+    if not isinstance(scope, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_operator_approval_scope_invalid",
+            detail="Artifact retention operator approval scope must be an object.",
+        )
+    expected_scope = {
+        "tenant_id": _required_collection_scope_text(tenant_id, "tenant_id"),
+        "workspace_id": _required_collection_scope_text(
+            workspace_id,
+            "workspace_id",
+        ),
+        "owner_user_id": _required_collection_scope_text(
+            owner_user_id,
+            "owner_user_id",
+        ),
+    }
+    actual_scope = {
+        "tenant_id": _required_collection_scope_text(
+            scope.get("tenant_id"),
+            "tenant_id",
+        ),
+        "workspace_id": _required_collection_scope_text(
+            scope.get("workspace_id"),
+            "workspace_id",
+        ),
+        "owner_user_id": _required_collection_scope_text(
+            scope.get("owner_user_id"),
+            "owner_user_id",
+        ),
+    }
+    if actual_scope != expected_scope:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_operator_approval_scope_mismatch",
+            detail="Artifact retention operator approval scope must match execution scope.",
+        )
+    guardrails = approval["guardrails"]
+    required_guardrails = (
+        "delete_enabled_confirmed",
+        "storage_mutation_enabled_confirmed",
+        "database_row_delete_enabled_confirmed",
+        "logical_purge_reviewed",
+        "candidate_plan_reviewed",
+    )
+    if (
+        not isinstance(guardrails, dict)
+        or any(guardrails.get(field_name) is not True for field_name in required_guardrails)
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_operator_approval_guardrail_invalid",
+            detail="Artifact retention operator approval guardrails are invalid.",
+        )
+    metadata = approval["metadata"]
+    if (
+        not isinstance(metadata, dict)
+        or metadata.get("metadata_only") is not True
+        or metadata.get("contains_private_material") is not False
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_operator_approval_metadata_invalid",
+            detail="Artifact retention operator approval metadata is invalid.",
+        )
+    assert_artifact_retention_payload_safe(approval)
+    return approval
+
+
+def _normalize_artifact_retention_operator_approval(
+    approval: dict[str, Any],
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    owner_user_id: str,
+) -> dict[str, Any]:
+    validate_artifact_retention_operator_approval(
+        approval,
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
+    )
+    scope = approval["scope"]
+    return {
+        "artifact_retention_operator_approval_schema_version": (
+            AE_ARTIFACT_RETENTION_OPERATOR_APPROVAL_SCHEMA_VERSION
+        ),
+        "approval_status": "APPROVED",
+        "operator_id": _required_artifact_retention_operator_approval_text(
+            approval.get("operator_id"),
+            "operator_id",
+        ),
+        "approved_at": format_artifact_retention_timestamp(
+            parse_artifact_retention_timestamp(
+                approval.get("approved_at"),
+                field_name="approved_at",
+            )
+        ),
+        "approval_reason": _required_artifact_retention_operator_approval_text(
+            approval.get("approval_reason"),
+            "approval_reason",
+        ),
+        "approval_ticket": optional_text(approval.get("approval_ticket")),
+        "scope": {
+            "tenant_id": _required_collection_scope_text(
+                scope.get("tenant_id"),
+                "tenant_id",
+            ),
+            "workspace_id": _required_collection_scope_text(
+                scope.get("workspace_id"),
+                "workspace_id",
+            ),
+            "owner_user_id": _required_collection_scope_text(
+                scope.get("owner_user_id"),
+                "owner_user_id",
+            ),
+        },
+        "guardrails": {
+            "delete_enabled_confirmed": True,
+            "storage_mutation_enabled_confirmed": True,
+            "database_row_delete_enabled_confirmed": True,
+            "logical_purge_reviewed": True,
+            "candidate_plan_reviewed": True,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "contains_private_material": False,
+        },
+    }
+
+
+def _required_artifact_retention_operator_approval_text(
+    value: Any,
+    field_name: str,
+) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_operator_approval_invalid",
+            detail=f"{field_name} is required for artifact retention operator approval.",
+        )
+    return value.strip()
+
+
 def build_artifact_retention_execution(
     *,
     tenant_id: str,
@@ -7028,6 +7365,7 @@ def build_artifact_retention_execution(
     blocked_reason: str | None = None,
     error: dict[str, Any] | None = None,
     execution_id: str | None = None,
+    operator_approval: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     candidate_filter = build_artifact_retention_candidate_filter(
         tenant_id=tenant_id,
@@ -7052,6 +7390,16 @@ def build_artifact_retention_execution(
     )
     normalized_max_delete_count = normalize_artifact_retention_delete_limit(
         max_delete_count
+    )
+    normalized_operator_approval = (
+        _normalize_artifact_retention_operator_approval(
+            operator_approval,
+            tenant_id=candidate_filter["tenant_id"],
+            workspace_id=candidate_filter["workspace_id"],
+            owner_user_id=candidate_filter["owner_user_id"],
+        )
+        if operator_approval is not None
+        else None
     )
     normalized_execution_id = execution_id or _artifact_retention_execution_id(
         mode=normalized_mode,
@@ -7098,6 +7446,7 @@ def build_artifact_retention_execution(
         "request_id": optional_text(request_id),
         "blocked_reason": optional_text(blocked_reason),
         "error": _normalize_artifact_retention_error(error),
+        "operator_approval": deepcopy(normalized_operator_approval),
         "audit": {
             "audit_event_type": "ae_artifact.retention.execution",
             "audit_event_id": _artifact_retention_audit_id(normalized_execution_id),
@@ -7153,6 +7502,7 @@ def validate_artifact_retention_execution(
         "request_id",
         "blocked_reason",
         "error",
+        "operator_approval",
         "audit",
         "metadata",
     ):
@@ -7211,6 +7561,12 @@ def validate_artifact_retention_execution(
             error_code="ae.artifact_retention_dry_run_delete_enabled_invalid",
             detail="Dry-run artifact retention execution cannot enable deletes.",
         )
+    if mode == "DRY_RUN" and execution["operator_approval"] is not None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_dry_run_operator_approval_invalid",
+            detail="Dry-run artifact retention execution cannot carry operator approval.",
+        )
     if (
         mode == "EXECUTE"
         and status == "SUCCEEDED"
@@ -7224,6 +7580,39 @@ def validate_artifact_retention_execution(
             status_code=422,
             error_code="ae.artifact_retention_execute_not_enabled",
             detail="Successful artifact retention execute requires all delete flags.",
+        )
+    if (
+        mode == "EXECUTE"
+        and status == "SUCCEEDED"
+        and execution["operator_approval"] is None
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_operator_approval_required",
+            detail="Successful artifact retention execute requires operator approval.",
+        )
+    if mode == "EXECUTE" and execution["operator_approval"] is not None:
+        validate_artifact_retention_operator_approval(
+            execution["operator_approval"],
+            tenant_id=execution["tenant_id"],
+            workspace_id=execution["workspace_id"],
+            owner_user_id=execution["owner_user_id"],
+        )
+    if (
+        mode == "EXECUTE"
+        and status == "BLOCKED"
+        and execution["blocked_reason"]
+        == ARTIFACT_RETENTION_OPERATOR_APPROVAL_REQUIRED_REASON
+        and not (
+            execution["delete_enabled"]
+            and execution["storage_mutation_enabled"]
+            and execution["database_row_delete_enabled"]
+        )
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_operator_approval_block_invalid",
+            detail="Operator approval block requires all delete flags to be present.",
         )
     retention_days = normalize_artifact_retention_days(
         execution["retention_days_after_logical_purge"]

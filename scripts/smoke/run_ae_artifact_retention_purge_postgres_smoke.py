@@ -31,7 +31,10 @@ import run_ae_artifact_collection_postgres_smoke as collection_pg  # noqa: E402
 import run_ae_artifact_postgres_smoke as artifact_pg  # noqa: E402
 import run_ae_artifact_retention_candidate_postgres_smoke as candidate_pg  # noqa: E402
 import run_ae_oa_auth_postgres_smoke as base_auth  # noqa: E402
-from nex_ae_api.artifacts import register_artifact_handoff_routes  # noqa: E402
+from nex_ae_api.artifacts import (  # noqa: E402
+    build_artifact_retention_operator_approval,
+    register_artifact_handoff_routes,
+)
 from nex_runtime import (  # noqa: E402
     SERVICE_SPECS,
     build_engine,
@@ -237,6 +240,17 @@ def _execute_ae_artifact_retention_purge_smoke(
                         "delete_enabled": True,
                         "storage_mutation_enabled": True,
                         "database_row_delete_enabled": True,
+                        "operator_approval": build_artifact_retention_operator_approval(
+                            tenant_id=tenant_id,
+                            workspace_id=workspace_id,
+                            owner_user_id=owner_user_id,
+                            operator_id="postgres-smoke-operator",
+                            approved_at="2026-09-01T02:45:00Z",
+                            approval_reason=(
+                                "Verified protected smoke dry-run before execute."
+                            ),
+                            approval_ticket=f"AE-RET-SMOKE-{suffix}",
+                        ),
                     },
                     idempotency_key=f"retention-purge-execute-{suffix}",
                 )

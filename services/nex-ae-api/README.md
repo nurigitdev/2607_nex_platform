@@ -583,3 +583,8 @@ Artifact library management:
   real AE test DB, builds a READY tick inside the batch window, enqueues it via
   `SqlAlchemyJobQueue`, directly verifies the persisted `service_jobs` row, and
   reads it back through AE's scheduled-job route before cleanup.
+- Slice 0506 hardens execute-mode physical purge safety. Successful execute now
+  requires a scoped metadata-only operator approval snapshot in addition to the
+  delete, storage mutation, and database row deletion guard flags; otherwise the
+  purge returns `BLOCKED/operator_approval_required` without deleting rows or
+  rendered files.
