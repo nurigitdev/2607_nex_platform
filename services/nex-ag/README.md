@@ -366,6 +366,10 @@ Unified operations:
   `/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch`. Operators
   must set `confirm_dispatch=true`; AG rechecks the AE batch plan, then calls
   the AE scheduled-job admission route without directly enqueueing AE jobs.
+- Slice 0498 closes the source-route gap on the AE side. AG scheduled job
+  operations can now point at AE's protected scheduler config, scheduled-job
+  list, and scheduled-job admission APIs while keeping AG read-only against AE
+  persistence.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

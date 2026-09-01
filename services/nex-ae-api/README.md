@@ -547,3 +547,8 @@ Artifact library management:
   test DB, enqueues a scheduled retention job, runs the shared worker once, and
   directly checks `service_jobs`, `service_worker_heartbeats`, and retention
   history before cleanup.
+- Slice 0498 exposes the scheduled retention runtime through protected,
+  metadata-only AE API routes: scheduler config, scheduled job list, and
+  scheduled job admission. Admission uses the shared JobQueue from AE
+  persistence, keeps the scheduler daemon disabled, and preserves the
+  AE-only enqueue boundary for AG dispatch requests.
