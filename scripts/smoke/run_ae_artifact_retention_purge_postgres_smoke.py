@@ -231,6 +231,25 @@ def _execute_ae_artifact_retention_purge_smoke(
                     owner_user_id=owner_user_id,
                     cutoff_at=CUTOFF_AT,
                 )
+                approval_blocked = _post_purge(
+                    client,
+                    headers,
+                    payload={
+                        **purge_payload,
+                        "dry_run": False,
+                        "delete_enabled": True,
+                        "storage_mutation_enabled": True,
+                        "database_row_delete_enabled": True,
+                    },
+                    idempotency_key=f"retention-purge-approval-blocked-{suffix}",
+                )
+                after_approval_blocked = _db_observations(
+                    engine,
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    owner_user_id=owner_user_id,
+                    cutoff_at=CUTOFF_AT,
+                )
                 execute = _post_purge(
                     client,
                     headers,
@@ -289,6 +308,17 @@ def _execute_ae_artifact_retention_purge_smoke(
                     "blocked_reason": blocked["body"].get("blocked_reason")
                     == "delete_not_enabled",
                     "blocked_rows_retained": after_blocked == before,
+                    "approval_blocked_route_ok": approval_blocked["status_code"]
+                    == 200,
+                    "approval_blocked_execute": approval_blocked["body"].get(
+                        "execution_status"
+                    )
+                    == "BLOCKED",
+                    "approval_blocked_reason": approval_blocked["body"].get(
+                        "blocked_reason"
+                    )
+                    == "operator_approval_required",
+                    "approval_blocked_rows_retained": after_approval_blocked == before,
                     "execute_route_ok": execute["status_code"] == 200,
                     "execute_succeeded": execute_body.get("execution_status")
                     == "SUCCEEDED",
@@ -325,6 +355,7 @@ def _execute_ae_artifact_retention_purge_smoke(
                     "metadata_only_evidence": candidate_pg._metadata_only(
                         dry_run,
                         blocked,
+                        approval_blocked,
                         execute,
                         before,
                         after_execute,
@@ -361,6 +392,12 @@ def _execute_ae_artifact_retention_purge_smoke(
                         "cutoff_at": execute_body["cutoff_at"],
                         "dry_run_selected_count": dry_run["body"]["selected_count"],
                         "blocked_status": blocked["body"]["execution_status"],
+                        "approval_blocked_status": approval_blocked["body"][
+                            "execution_status"
+                        ],
+                        "approval_blocked_reason": approval_blocked["body"][
+                            "blocked_reason"
+                        ],
                         "executed_selected_count": execute_body["selected_count"],
                         "deleted_counts": execute_body["deleted_counts"],
                     },

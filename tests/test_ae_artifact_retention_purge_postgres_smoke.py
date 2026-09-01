@@ -99,6 +99,10 @@ def test_ae_artifact_retention_purge_postgres_smoke_passes_with_sqlite_harness(
     assert evidence["retention"]["retention_days"] == 30
     assert evidence["retention"]["dry_run_selected_count"] == 1
     assert evidence["retention"]["blocked_status"] == "BLOCKED"
+    assert evidence["retention"]["approval_blocked_status"] == "BLOCKED"
+    assert evidence["retention"]["approval_blocked_reason"] == (
+        "operator_approval_required"
+    )
     assert evidence["retention"]["executed_selected_count"] == 1
     assert evidence["retention"]["deleted_counts"] == {
         "artifacts": 1,
@@ -118,6 +122,7 @@ def test_ae_artifact_retention_purge_postgres_smoke_passes_with_sqlite_harness(
         "after_execute": 2,
     }
     assert evidence["checks"]["metadata_only_evidence"] is True
+    assert evidence["checks"]["approval_blocked_rows_retained"] is True
     assert evidence["live_db"] is True
     assert evidence["cleanup"] == {"artifacts": 1, "handoffs": 2}
     assert smoke.summary_line(evidence).startswith(

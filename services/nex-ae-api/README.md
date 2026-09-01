@@ -592,3 +592,7 @@ Artifact library management:
   in-memory and SQLAlchemy artifact stores. Rendered storage deletion happens
   before child-first artifact graph row deletion, and the adapter keeps storage
   file counts separate from database row counts.
+- Slice 0508 adds protected PostgreSQL evidence for that physical purge
+  boundary. When enabled against `NEX_AE_TEST_DATABASE_URL`, it verifies the
+  operator approval block, storage deletion, artifact graph row deletion,
+  handoff lineage retention, and cleanup against the real AE test DB.
