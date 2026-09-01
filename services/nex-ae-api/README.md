@@ -467,3 +467,10 @@ Artifact library management:
   workspace, and owner scope, accepts mode/status/limit filters, and returns the
   Slice 0476 metadata-only collection rather than persisted raw execution
   records.
+- Slice 0478 adds protected PostgreSQL smoke evidence for the retention history
+  query route. When
+  `NEX_AE_ARTIFACT_RETENTION_HISTORY_QUERY_POSTGRES_SMOKE=1` is set against
+  `NEX_AE_TEST_DATABASE_URL`, the runner migrates the test DB, seeds history
+  rows, queries all/execute/blocked collections through the API, cross-checks DB
+  counts, and cleans up the generated history rows without exposing raw
+  execution JSON.
