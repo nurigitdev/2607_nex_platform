@@ -575,6 +575,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0469`](slices/0469_ae_artifact_retention_purge_postgresql_smoke.md) | `S47-009` AE artifact retention purge PostgreSQL smoke evidence. |
 | [`Slice 0470`](slices/0470_s47_ae_artifact_retention_purge_closure.md) | `S47-010` S47 AE artifact retention purge closure checkpoint. |
 | [`Slice 0471`](slices/0471_ae_artifact_retention_execution_history_boundary_audit.md) | `S48-001` AE artifact retention execution history boundary audit. |
+| [`Slice 0472`](slices/0472_ae_artifact_retention_execution_history_migration.md) | `S48-002` AE artifact retention execution history PostgreSQL migration. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

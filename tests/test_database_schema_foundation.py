@@ -671,3 +671,69 @@ def test_ae_chat_artifact_refs_persistence_migration_exists() -> None:
     assert "source_content_hash text not null check" in compact
     assert "download_routes jsonb not null default '{}'::jsonb" in compact
     assert "0407_ae_chat_artifact_refs_foundation" in compact
+
+
+def test_ae_artifact_retention_execution_history_migration_exists() -> None:
+    compact = normalized(
+        read_migration_named(
+            "nex-ae-api",
+            "0472_ae_artifact_retention_execution_history.sql",
+        )
+    )
+
+    assert "create table if not exists ae_artifact_retention_executions" in compact
+    for column in (
+        "retention_execution_id text primary key",
+        "execution_history_schema_version text not null default 'ae_artifact_retention_execution_history.v1'",
+        "artifact_retention_execution_schema_version text not null default 'ae_artifact_retention_execution.v1'",
+        "policy_id text not null",
+        "service_id text not null default 'nex-ae-api'",
+        "mode text not null check (mode in ('dry_run', 'execute'))",
+        "execution_status text not null check (execution_status in ('planned', 'succeeded', 'blocked', 'failed'))",
+        "tenant_id text not null",
+        "workspace_id text not null",
+        "owner_user_id text not null",
+        "retention_days_after_logical_purge integer not null",
+        "as_of timestamptz not null",
+        "cutoff_at timestamptz not null",
+        "checked_at timestamptz not null",
+        "scan_limit integer not null check (scan_limit >= 1 and scan_limit <= 100)",
+        "max_delete_count integer not null",
+        "candidate_count integer not null check (candidate_count >= 0)",
+        "selected_count integer not null check (selected_count >= 0)",
+        "delete_enabled boolean not null default false",
+        "storage_mutation_enabled boolean not null default false",
+        "database_row_delete_enabled boolean not null default false",
+        "deleted_counts jsonb not null default '{}'::jsonb",
+        "requested_by jsonb not null default '{}'::jsonb",
+        "execution jsonb not null",
+        "execution_payload_hash text not null",
+        "created_at timestamptz not null default now()",
+    ):
+        assert column in compact
+
+    for constraint_or_index in (
+        "ck_ae_artifact_retention_executions_count_order",
+        "ck_ae_artifact_retention_executions_dry_run_flags",
+        "ck_ae_artifact_retention_executions_execute_flags",
+        "idx_ae_artifact_retention_executions_scope_checked",
+        "idx_ae_artifact_retention_executions_status_checked",
+        "idx_ae_artifact_retention_executions_mode_checked",
+        "idx_ae_artifact_retention_executions_trace",
+        "idx_ae_artifact_retention_executions_request",
+        "ux_ae_artifact_retention_executions_idempotency",
+        "where idempotency_key is not null",
+    ):
+        assert constraint_or_index in compact
+
+    assert "jsonb_typeof(deleted_counts) = 'object'" in compact
+    assert "jsonb_typeof(requested_by) = 'object'" in compact
+    assert "jsonb_typeof(execution) = 'object'" in compact
+    assert "trace_id ~ '^[0-9a-f]{32}$'" in compact
+    assert "execution_payload_hash ~ '^[0-9a-f]{64}$'" in compact
+    assert "content text" not in compact
+    assert "markdown text" not in compact
+    assert "local_path" not in compact
+    assert "/data/nex-platform" not in compact
+    assert "raw_prompt" not in compact
+    assert "0472_ae_artifact_retention_execution_history" in compact

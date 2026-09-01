@@ -440,3 +440,8 @@ Artifact library management:
   `ae_artifact_retention_executions` is the planned history table, purge
   executions stay metadata-only, and idempotency is scoped by tenant, workspace,
   owner, and idempotency key.
+- Slice 0472 adds the PostgreSQL migration for
+  `ae_artifact_retention_executions`. It records flat query fields, the
+  validated execution payload, a payload hash, scope/idempotency indexes, and
+  safety constraints while avoiding raw content, local storage paths, and
+  foreign keys to records that may be physically purged.
