@@ -679,32 +679,48 @@ class ArtifactRecordStore:
         self,
         records: list[dict[str, Any]],
     ) -> dict[str, int]:
+        return delete_artifact_retention_physical_records(
+            records,
+            delete_rendered_artifact_file=(
+                self._delete_rendered_artifact_file_for_retention
+            ),
+            delete_artifact_graph_rows=self._delete_retention_artifact_graph_rows,
+        )
+
+    def _delete_rendered_artifact_file_for_retention(
+        self,
+        artifact_file: dict[str, Any],
+    ) -> bool:
+        deleted = self.rendered_artifact_files.pop(
+            artifact_file["artifact_file_id"],
+            None,
+        ) is not None
+        if artifact_file.get("format") == "MD":
+            self.rendered_markdown.pop(
+                artifact_file["artifact_version_id"],
+                None,
+            )
+        return deleted
+
+    def _delete_retention_artifact_graph_rows(
+        self,
+        record: dict[str, Any],
+    ) -> dict[str, int]:
         counts = _empty_artifact_retention_deleted_counts()
-        for record in records:
-            artifact_id = record["artifact_id"]
-            for artifact_link in _list_of_mappings(record.get("links")):
-                if self.artifact_links.pop(artifact_link["artifact_link_id"], None):
-                    counts["links"] += 1
-            for artifact_file in _list_of_mappings(record.get("files")):
-                if self.artifact_files.pop(artifact_file["artifact_file_id"], None):
-                    counts["files"] += 1
-                if self.rendered_artifact_files.pop(
-                    artifact_file["artifact_file_id"],
-                    None,
-                ) is not None:
-                    counts["storage_files"] += 1
-                if artifact_file.get("format") == "MD":
-                    self.rendered_markdown.pop(
-                        artifact_file["artifact_version_id"],
-                        None,
-                    )
-            for render_job in _list_of_mappings(record.get("render_jobs")):
-                if self.render_jobs.pop(render_job["render_job_id"], None):
-                    counts["render_jobs"] += 1
-            counts["versions"] += len(_list_of_mappings(record.get("versions")))
-            counts["source_refs"] += len(_list_of_mappings(record.get("source_refs")))
-            if self.records.pop(artifact_id, None) is not None:
-                counts["artifacts"] += 1
+        artifact_id = record["artifact_id"]
+        for artifact_link in _list_of_mappings(record.get("links")):
+            if self.artifact_links.pop(artifact_link["artifact_link_id"], None):
+                counts["links"] += 1
+        for artifact_file in _list_of_mappings(record.get("files")):
+            if self.artifact_files.pop(artifact_file["artifact_file_id"], None):
+                counts["files"] += 1
+        for render_job in _list_of_mappings(record.get("render_jobs")):
+            if self.render_jobs.pop(render_job["render_job_id"], None):
+                counts["render_jobs"] += 1
+        counts["versions"] += len(_list_of_mappings(record.get("versions")))
+        counts["source_refs"] += len(_list_of_mappings(record.get("source_refs")))
+        if self.records.pop(artifact_id, None) is not None:
+            counts["artifacts"] += 1
         return counts
 
     def get_render_job(self, render_job_id: str) -> dict[str, Any] | None:
@@ -10108,68 +10124,118 @@ def _load_artifact_records_for_retention_candidates(
     return records
 
 
+def delete_artifact_retention_physical_records(
+    records: list[dict[str, Any]],
+    *,
+    delete_rendered_artifact_file: Callable[[dict[str, Any]], bool],
+    delete_artifact_graph_rows: Callable[[dict[str, Any]], dict[str, int]],
+) -> dict[str, int]:
+    if not isinstance(records, list):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_physical_purge_adapter_invalid",
+            detail="Artifact retention physical purge records must be a list.",
+        )
+    counts = _empty_artifact_retention_deleted_counts()
+    for record in records:
+        if not isinstance(record, dict):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_physical_purge_adapter_invalid",
+                detail="Artifact retention physical purge record must be an object.",
+            )
+        for artifact_file in _list_of_mappings(record.get("files")):
+            storage_deleted = delete_rendered_artifact_file(artifact_file)
+            if not isinstance(storage_deleted, bool):
+                raise ArtifactHandoffError(
+                    status_code=422,
+                    error_code="ae.artifact_retention_physical_purge_adapter_invalid",
+                    detail=(
+                        "Artifact retention storage adapter must return a boolean."
+                    ),
+                )
+            if storage_deleted:
+                counts["storage_files"] += 1
+        graph_counts = _normalize_artifact_retention_deleted_counts(
+            delete_artifact_graph_rows(record)
+        )
+        if graph_counts["storage_files"] != 0:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_physical_purge_adapter_invalid",
+                detail="Artifact retention database adapter cannot report storage deletes.",
+            )
+        for field_name in (
+            "artifacts",
+            "source_refs",
+            "versions",
+            "render_jobs",
+            "files",
+            "links",
+        ):
+            counts[field_name] += graph_counts[field_name]
+    return counts
+
+
 def _delete_retention_selected_artifact_records(
     session: Session,
     records: list[dict[str, Any]],
     *,
     rendered_storage: RenderedArtifactStorage,
 ) -> dict[str, int]:
-    counts = _empty_artifact_retention_deleted_counts()
-    for record in records:
-        artifact_id = record["artifact_id"]
-        counts["storage_files"] += _delete_rendered_files_for_retention(
-            rendered_storage,
-            record,
-        )
-        counts["links"] += _delete_artifact_rows(
-            session,
-            """
-            DELETE FROM ae_artifact_links
-            WHERE artifact_file_id IN (
-                SELECT artifact_file_id
-                FROM ae_artifact_files
-                WHERE artifact_id = :artifact_id
-            )
-            """,
-            artifact_id,
-        )
-        counts["files"] += _delete_artifact_rows(
-            session,
-            "DELETE FROM ae_artifact_files WHERE artifact_id = :artifact_id",
-            artifact_id,
-        )
-        counts["render_jobs"] += _delete_artifact_rows(
-            session,
-            "DELETE FROM ae_artifact_render_jobs WHERE artifact_id = :artifact_id",
-            artifact_id,
-        )
-        counts["versions"] += _delete_artifact_rows(
-            session,
-            "DELETE FROM ae_artifact_versions WHERE artifact_id = :artifact_id",
-            artifact_id,
-        )
-        counts["source_refs"] += _delete_artifact_rows(
-            session,
-            "DELETE FROM ae_artifact_source_refs WHERE artifact_id = :artifact_id",
-            artifact_id,
-        )
-        counts["artifacts"] += _delete_artifact_rows(
-            session,
-            "DELETE FROM ae_artifacts WHERE artifact_id = :artifact_id",
-            artifact_id,
-        )
-    return counts
+    return delete_artifact_retention_physical_records(
+        records,
+        delete_rendered_artifact_file=rendered_storage.delete_rendered_artifact_file,
+        delete_artifact_graph_rows=lambda record: (
+            _delete_retention_artifact_graph_rows(session, record)
+        ),
+    )
 
 
-def _delete_rendered_files_for_retention(
-    rendered_storage: RenderedArtifactStorage,
+def _delete_retention_artifact_graph_rows(
+    session: Session,
     record: dict[str, Any],
-) -> int:
-    deleted = 0
-    for artifact_file in _list_of_mappings(record.get("files")):
-        if rendered_storage.delete_rendered_artifact_file(artifact_file):
-            deleted += 1
-    return deleted
+) -> dict[str, int]:
+    counts = _empty_artifact_retention_deleted_counts()
+    artifact_id = record["artifact_id"]
+    counts["links"] += _delete_artifact_rows(
+        session,
+        """
+        DELETE FROM ae_artifact_links
+        WHERE artifact_file_id IN (
+            SELECT artifact_file_id
+            FROM ae_artifact_files
+            WHERE artifact_id = :artifact_id
+        )
+        """,
+        artifact_id,
+    )
+    counts["files"] += _delete_artifact_rows(
+        session,
+        "DELETE FROM ae_artifact_files WHERE artifact_id = :artifact_id",
+        artifact_id,
+    )
+    counts["render_jobs"] += _delete_artifact_rows(
+        session,
+        "DELETE FROM ae_artifact_render_jobs WHERE artifact_id = :artifact_id",
+        artifact_id,
+    )
+    counts["versions"] += _delete_artifact_rows(
+        session,
+        "DELETE FROM ae_artifact_versions WHERE artifact_id = :artifact_id",
+        artifact_id,
+    )
+    counts["source_refs"] += _delete_artifact_rows(
+        session,
+        "DELETE FROM ae_artifact_source_refs WHERE artifact_id = :artifact_id",
+        artifact_id,
+    )
+    counts["artifacts"] += _delete_artifact_rows(
+        session,
+        "DELETE FROM ae_artifacts WHERE artifact_id = :artifact_id",
+        artifact_id,
+    )
+    return counts
 
 
 def _delete_artifact_rows(session: Session, sql: str, artifact_id: str) -> int:

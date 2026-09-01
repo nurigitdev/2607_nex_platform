@@ -588,3 +588,7 @@ Artifact library management:
   delete, storage mutation, and database row deletion guard flags; otherwise the
   purge returns `BLOCKED/operator_approval_required` without deleting rows or
   rendered files.
+- Slice 0507 puts physical purge behind a shared adapter helper used by both
+  in-memory and SQLAlchemy artifact stores. Rendered storage deletion happens
+  before child-first artifact graph row deletion, and the adapter keeps storage
+  file counts separate from database row counts.

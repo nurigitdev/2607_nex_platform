@@ -104,6 +104,7 @@ from nex_ae_api.artifacts import (
     build_rendered_payloads_from_markdown,
     build_artifact_record_from_handoff,
     deterministic_render_job_id,
+    delete_artifact_retention_physical_records,
     normalize_artifact_collection_limit,
     normalize_artifact_retention_delete_limit,
     normalize_artifact_retention_days,
@@ -5813,6 +5814,91 @@ def test_artifact_record_store_retention_purge_respects_scan_limit() -> None:
     assert execution["selected_count"] == 1
     assert store.get(first["artifact_id"]) is not None
     assert store.get(second["artifact_id"]) is not None
+
+
+def test_artifact_retention_physical_purge_adapter_orders_storage_then_rows() -> None:
+    events: list[tuple[str, str]] = []
+    record = {
+        "artifact_id": "artifact-adapter-001",
+        "files": [
+            {"artifact_file_id": "file-001"},
+            {"artifact_file_id": "file-002"},
+        ],
+    }
+
+    def delete_rendered_file(artifact_file: dict[str, Any]) -> bool:
+        events.append(("storage", artifact_file["artifact_file_id"]))
+        return artifact_file["artifact_file_id"] == "file-001"
+
+    def delete_graph_rows(artifact_record: dict[str, Any]) -> dict[str, int]:
+        events.append(("rows", artifact_record["artifact_id"]))
+        return {
+            "artifacts": 1,
+            "source_refs": 1,
+            "versions": 1,
+            "render_jobs": 1,
+            "files": 2,
+            "links": 4,
+            "storage_files": 0,
+        }
+
+    counts = delete_artifact_retention_physical_records(
+        [record],
+        delete_rendered_artifact_file=delete_rendered_file,
+        delete_artifact_graph_rows=delete_graph_rows,
+    )
+
+    assert events == [
+        ("storage", "file-001"),
+        ("storage", "file-002"),
+        ("rows", "artifact-adapter-001"),
+    ]
+    assert counts == {
+        "artifacts": 1,
+        "source_refs": 1,
+        "versions": 1,
+        "render_jobs": 1,
+        "files": 2,
+        "links": 4,
+        "storage_files": 1,
+    }
+    with pytest.raises(ArtifactHandoffError) as records_exc:
+        delete_artifact_retention_physical_records(
+            {},  # type: ignore[arg-type]
+            delete_rendered_artifact_file=delete_rendered_file,
+            delete_artifact_graph_rows=delete_graph_rows,
+        )
+    with pytest.raises(ArtifactHandoffError) as record_exc:
+        delete_artifact_retention_physical_records(
+            ["bad"],  # type: ignore[list-item]
+            delete_rendered_artifact_file=delete_rendered_file,
+            delete_artifact_graph_rows=delete_graph_rows,
+        )
+    with pytest.raises(ArtifactHandoffError) as storage_exc:
+        delete_artifact_retention_physical_records(
+            [record],
+            delete_rendered_artifact_file=lambda _artifact_file: "yes",  # type: ignore[arg-type,return-value]
+            delete_artifact_graph_rows=delete_graph_rows,
+        )
+    with pytest.raises(ArtifactHandoffError) as graph_exc:
+        delete_artifact_retention_physical_records(
+            [record],
+            delete_rendered_artifact_file=delete_rendered_file,
+            delete_artifact_graph_rows=lambda _record: {"storage_files": 1},
+        )
+
+    assert records_exc.value.error_code == (
+        "ae.artifact_retention_physical_purge_adapter_invalid"
+    )
+    assert record_exc.value.error_code == (
+        "ae.artifact_retention_physical_purge_adapter_invalid"
+    )
+    assert storage_exc.value.error_code == (
+        "ae.artifact_retention_physical_purge_adapter_invalid"
+    )
+    assert graph_exc.value.error_code == (
+        "ae.artifact_retention_physical_purge_adapter_invalid"
+    )
 
 
 def test_sqlalchemy_artifact_record_store_executes_guarded_retention_purge_with_sqlite() -> None:
