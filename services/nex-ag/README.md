@@ -28,6 +28,7 @@ Current endpoints:
 - `GET /admin/v1/operations/retrieval-packages/{retrieval_package_id}`
 - `GET /admin/v1/operations/retrieval-score-calibration`
 - `GET /admin/v1/operations/artifacts`
+- `GET /admin/v1/operations/artifact-retention/automation`
 - `GET /admin/v1/operations/artifact-retention/batch-plan`
 - `GET /admin/v1/operations/artifacts/{artifact_id}`
 - `GET /admin/v1/operations/artifacts/{artifact_id}/lifecycle`
@@ -382,6 +383,12 @@ Unified operations:
 - Slice 0501 starts S51 by freezing AG's retention automation boundary. AG may
   project and dispatch AE retention automation through protected AE APIs, but it
   still cannot write AE persistence or enqueue AE jobs directly.
+- Slice 0509 adds
+  `ag_artifact_operation_retention_automation_projection.v1` at
+  `/admin/v1/operations/artifact-retention/automation`. AG combines AE batch
+  plan, scheduled-job, and retention-history read models into one metadata-only
+  operator summary while keeping physical delete automation disabled and
+  operator approval visible.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

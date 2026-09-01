@@ -15,7 +15,6 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SHARED_PATH = ROOT / "services" / "_shared"
 AE_PATH = ROOT / "services" / "nex-ae-api"
@@ -40,6 +39,7 @@ from nex_ae_api.artifacts import (  # noqa: E402
     register_artifact_handoff_routes,
 )
 from nex_ag.artifact_operations import (  # noqa: E402
+    AG_ARTIFACT_OPERATION_RETENTION_AUTOMATION_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_DISPATCH_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_JOB_PROJECTION_SCHEMA_VERSION,
     AeArtifactOperationsError,
@@ -61,7 +61,6 @@ from run_migrations import (  # noqa: E402
     service_database_env,
     service_database_url,
 )
-
 
 SCHEMA_VERSION = "ae_ag_artifact_retention_scheduler_postgres_smoke.v1"
 SMOKE_ENV = "NEX_AE_AG_ARTIFACT_RETENTION_SCHEDULER_POSTGRES_SMOKE"
@@ -143,6 +142,32 @@ class AeTestClientArtifactOperationsClient:
                 "owner_user_id": owner_user_id,
                 "limit": str(limit),
                 **({"status": status} if status else {}),
+            },
+            headers=self._headers(request_id=request_id, trace_id=trace_id),
+        )
+        return self._json_or_error(response)
+
+    def list_artifact_retention_executions(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        owner_user_id: str,
+        mode: str | None,
+        execution_status: str | None,
+        limit: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        response = self.client.get(
+            "/api/v1/artifact-retention/executions",
+            params={
+                "tenant_id": tenant_id,
+                "workspace_id": workspace_id,
+                "owner_user_id": owner_user_id,
+                "limit": str(limit),
+                **({"mode": mode} if mode else {}),
+                **({"execution_status": execution_status} if execution_status else {}),
             },
             headers=self._headers(request_id=request_id, trace_id=trace_id),
         )
@@ -418,6 +443,26 @@ def _execute_ae_ag_artifact_retention_scheduler_smoke(
                     if scheduled_jobs_response.status_code == 200
                     else {}
                 )
+                automation_response = ag_client.get(
+                    "/admin/v1/operations/artifact-retention/automation",
+                    params={
+                        "tenant_id": tenant_id,
+                        "workspace_id": workspace_id,
+                        "owner_user_id": owner_user_id,
+                        "retention_days": "30",
+                        "as_of": AS_OF,
+                        "scan_limit": "10",
+                        "max_delete_count": "1",
+                        "checked_at": CHECKED_AT,
+                        "limit": "10",
+                    },
+                    headers=ag_headers,
+                )
+                automation_projection = (
+                    automation_response.json()
+                    if automation_response.status_code == 200
+                    else {}
+                )
                 db_job = (
                     worker_pg._job_observation(
                         engine,
@@ -445,6 +490,8 @@ def _execute_ae_ag_artifact_retention_scheduler_smoke(
                     dispatch_projection=dispatch_projection,
                     scheduled_jobs_response=scheduled_jobs_response.status_code,
                     scheduled_jobs_projection=scheduled_jobs_projection,
+                    automation_response=automation_response.status_code,
+                    automation_projection=automation_projection,
                     db_job=db_job,
                     before=before,
                     after=after,
@@ -495,13 +542,9 @@ def _execute_ae_ag_artifact_retention_scheduler_smoke(
                         "enqueue_status": dispatch_projection["summary"][
                             "enqueue_status"
                         ],
-                        "job_enqueued": dispatch_projection["summary"][
-                            "job_enqueued"
-                        ],
+                        "job_enqueued": dispatch_projection["summary"]["job_enqueued"],
                         "job_status": dispatch_projection["summary"]["job_status"],
-                        "trigger_type": dispatch_projection["summary"][
-                            "trigger_type"
-                        ],
+                        "trigger_type": dispatch_projection["summary"]["trigger_type"],
                     },
                     "ag_scheduled_jobs": {
                         "projection_schema_version": scheduled_jobs_projection[
@@ -514,6 +557,32 @@ def _execute_ae_ag_artifact_retention_scheduler_smoke(
                         "queued_count": scheduled_jobs_projection["summary"][
                             "queued_count"
                         ],
+                    },
+                    "ag_automation": {
+                        "projection_schema_version": automation_projection[
+                            "projection_schema_version"
+                        ],
+                        "projection_status": automation_projection["projection_status"],
+                        "safety_status": automation_projection["summary"][
+                            "safety_status"
+                        ],
+                        "dispatch_available": automation_projection["summary"][
+                            "dispatch_available"
+                        ],
+                        "scheduled_job_count": automation_projection["summary"][
+                            "scheduled_job_count"
+                        ],
+                        "queued_job_count": automation_projection["summary"][
+                            "queued_job_count"
+                        ],
+                        "history_count": automation_projection["summary"][
+                            "history_count"
+                        ],
+                        "physical_delete_automation_enabled": (
+                            automation_projection["summary"][
+                                "physical_delete_automation_enabled"
+                            ]
+                        ),
                     },
                     "db_job": db_job,
                     "db_before": before,
@@ -555,6 +624,8 @@ def _scheduler_checks(
     dispatch_projection: Mapping[str, Any],
     scheduled_jobs_response: int,
     scheduled_jobs_projection: Mapping[str, Any],
+    automation_response: int,
+    automation_projection: Mapping[str, Any],
     db_job: Mapping[str, Any],
     before: Mapping[str, int],
     after: Mapping[str, int],
@@ -567,10 +638,15 @@ def _scheduler_checks(
     scheduled_summary = scheduled_jobs_projection.get("summary")
     if not isinstance(scheduled_summary, Mapping):
         scheduled_summary = {}
+    automation_summary = automation_projection.get("summary")
+    if not isinstance(automation_summary, Mapping):
+        automation_summary = {}
+    automation_guidance = automation_projection.get("operator_guidance")
+    if not isinstance(automation_guidance, Mapping):
+        automation_guidance = {}
     return {
         "scheduler_config_route_ok": scheduler_config_response == 200,
-        "scheduler_daemon_disabled": _scheduler_status(scheduler_config)
-        == "DISABLED",
+        "scheduler_daemon_disabled": _scheduler_status(scheduler_config) == "DISABLED",
         "scheduler_uses_sqlalchemy_queue": scheduler_config.get("runtime", {}).get(
             "job_queue_backend"
         )
@@ -595,6 +671,20 @@ def _scheduler_checks(
         and scheduled_jobs_projection.get("projection_status") == "READY",
         "ag_scheduled_jobs_sees_queue": scheduled_jobs_projection.get("count") == 1
         and scheduled_summary.get("queued_count") == 1,
+        "ag_automation_route_ok": automation_response == 200,
+        "ag_automation_projection_ready": automation_projection.get(
+            "projection_schema_version"
+        )
+        == AG_ARTIFACT_OPERATION_RETENTION_AUTOMATION_PROJECTION_SCHEMA_VERSION
+        and automation_projection.get("projection_status") == "READY",
+        "ag_automation_sees_queue": automation_summary.get("scheduled_job_count") == 1
+        and automation_summary.get("queued_job_count") == 1,
+        "ag_automation_keeps_execute_disabled": automation_summary.get(
+            "physical_delete_automation_enabled"
+        )
+        is False
+        and automation_guidance.get("ag_direct_database_write_allowed") is False
+        and automation_guidance.get("ag_direct_job_enqueue_allowed") is False,
         "db_job_persisted_once": db_job.get("row_count") == 1,
         "db_job_queued": db_job.get("status") == "QUEUED"
         and db_job.get("attempt_count") == 0
@@ -606,6 +696,7 @@ def _scheduler_checks(
             scheduler_config,
             dispatch_projection,
             scheduled_jobs_projection,
+            automation_projection,
             db_job,
             before,
             after,
@@ -628,7 +719,10 @@ def _scheduler_status(scheduler_config: Mapping[str, Any]) -> str | None:
     if isinstance(status, str) and status.strip():
         return status.strip().upper()
     runtime = scheduler_config.get("runtime")
-    if isinstance(runtime, Mapping) and runtime.get("scheduler_daemon_enabled") is False:
+    if (
+        isinstance(runtime, Mapping)
+        and runtime.get("scheduler_daemon_enabled") is False
+    ):
         return "DISABLED"
     return None
 
@@ -663,9 +757,7 @@ def _failure(
 def _metadata_only(*payloads: Any, forbidden_fragments: list[str | None]) -> bool:
     serialized = json.dumps(payloads, ensure_ascii=False, sort_keys=True, default=str)
     return all(
-        fragment not in serialized
-        for fragment in forbidden_fragments
-        if fragment
+        fragment not in serialized for fragment in forbidden_fragments if fragment
     )
 
 
@@ -689,8 +781,7 @@ def assert_smoke_evidence_redacted(
                     "a database password."
                 )
             raise ValueError(
-                "AE/AG artifact retention scheduler smoke contains raw "
-                f"{key}."
+                "AE/AG artifact retention scheduler smoke contains raw " f"{key}."
             )
     if "/data/nex-platform" in serialized_evidence:
         raise ValueError(
@@ -740,6 +831,7 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"dispatch={evidence['ag_dispatch']['enqueue_status']} "
             f"job_status={evidence['db_job']['status']} "
             f"scheduled_jobs={evidence['ag_scheduled_jobs']['count']} "
+            f"automation={evidence['ag_automation']['safety_status']} "
             f"live_db={str(evidence['live_db']).lower()} "
             f"cleanup_jobs={evidence['cleanup']['job_rows']}"
         )

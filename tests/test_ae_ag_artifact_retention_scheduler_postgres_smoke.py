@@ -15,8 +15,7 @@ def smoke_env() -> dict[str, str]:
     return {
         smoke.SMOKE_ENV: "1",
         "NEX_AE_TEST_DATABASE_URL": (
-            "postgresql+psycopg://nex_ae_user:secret-0499@127.0.0.1:5432/"
-            "nex_ae_test"
+            "postgresql+psycopg://nex_ae_user:secret-0499@127.0.0.1:5432/" "nex_ae_test"
         ),
     }
 
@@ -31,7 +30,9 @@ def good_observations() -> dict[str, int]:
     }
 
 
-def test_ae_ag_artifact_retention_scheduler_postgres_smoke_skips_when_disabled() -> None:
+def test_ae_ag_artifact_retention_scheduler_postgres_smoke_skips_when_disabled() -> (
+    None
+):
     evidence = smoke.run_ae_ag_artifact_retention_scheduler_postgres_smoke({})
 
     assert evidence == {
@@ -46,7 +47,9 @@ def test_ae_ag_artifact_retention_scheduler_postgres_smoke_skips_when_disabled()
     )
 
 
-def test_ae_ag_artifact_retention_scheduler_postgres_smoke_rejects_non_test_profile() -> None:
+def test_ae_ag_artifact_retention_scheduler_postgres_smoke_rejects_non_test_profile() -> (
+    None
+):
     evidence = smoke.run_ae_ag_artifact_retention_scheduler_postgres_smoke(
         {smoke.SMOKE_ENV: "1", smoke.SMOKE_PROFILE_ENV: "dev"}
     )
@@ -59,7 +62,9 @@ def test_ae_ag_artifact_retention_scheduler_postgres_smoke_rejects_non_test_prof
     )
 
 
-def test_ae_ag_artifact_retention_scheduler_postgres_smoke_reports_missing_database_url() -> None:
+def test_ae_ag_artifact_retention_scheduler_postgres_smoke_reports_missing_database_url() -> (
+    None
+):
     evidence = smoke.run_ae_ag_artifact_retention_scheduler_postgres_smoke(
         {smoke.SMOKE_ENV: "1"}
     )
@@ -78,9 +83,7 @@ def test_ae_ag_artifact_retention_scheduler_postgres_smoke_reports_migration_fai
         lambda *args, **kwargs: (_ for _ in ()).throw(MigrationError("bad migration")),
     )
 
-    evidence = smoke.run_ae_ag_artifact_retention_scheduler_postgres_smoke(
-        smoke_env()
-    )
+    evidence = smoke.run_ae_ag_artifact_retention_scheduler_postgres_smoke(smoke_env())
 
     assert evidence["status"] == "FAIL"
     assert evidence["failure_code"] == "configuration_invalid"
@@ -102,9 +105,7 @@ def test_ae_ag_artifact_retention_scheduler_postgres_smoke_passes_with_sqlite_ha
         ),
     )
 
-    evidence = smoke.run_ae_ag_artifact_retention_scheduler_postgres_smoke(
-        smoke_env()
-    )
+    evidence = smoke.run_ae_ag_artifact_retention_scheduler_postgres_smoke(smoke_env())
     serialized = json.dumps(evidence, ensure_ascii=False, sort_keys=True)
 
     assert evidence["status"] == "PASS"
@@ -134,8 +135,22 @@ def test_ae_ag_artifact_retention_scheduler_postgres_smoke_passes_with_sqlite_ha
         "count": 1,
         "queued_count": 1,
     }
+    assert evidence["ag_automation"] == {
+        "projection_schema_version": (
+            smoke.AG_ARTIFACT_OPERATION_RETENTION_AUTOMATION_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "READY",
+        "safety_status": "OPERATOR_ATTENTION",
+        "dispatch_available": True,
+        "scheduled_job_count": 1,
+        "queued_job_count": 1,
+        "history_count": 0,
+        "physical_delete_automation_enabled": False,
+    }
     assert evidence["db_job"]["row_count"] == 1
-    assert evidence["db_job"]["job_type"] == smoke.AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE
+    assert (
+        evidence["db_job"]["job_type"] == smoke.AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE
+    )
     assert evidence["db_job"]["status"] == "QUEUED"
     assert evidence["db_job"]["attempt_count"] == 0
     assert evidence["db_job"]["payload_command_status"] == "READY"
@@ -208,9 +223,7 @@ def test_ae_ag_artifact_retention_scheduler_postgres_smoke_reports_execution_exc
         lambda *args, **kwargs: (_ for _ in ()).throw(SQLAlchemyError("boom")),
     )
 
-    evidence = smoke.run_ae_ag_artifact_retention_scheduler_postgres_smoke(
-        smoke_env()
-    )
+    evidence = smoke.run_ae_ag_artifact_retention_scheduler_postgres_smoke(smoke_env())
 
     assert evidence["status"] == "FAIL"
     assert evidence["failure_code"] == "execution_failed"
@@ -227,9 +240,12 @@ def test_ae_ag_artifact_retention_scheduler_postgres_smoke_helpers_and_redaction
         request_id="request-0499",
         trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
     )["Authorization"].startswith("Bearer ")
-    assert smoke._database_url_password(
-        "postgresql+psycopg://user:sensitive-pass@127.0.0.1:5432/nex_ae_test"
-    ) == "sensitive-pass"
+    assert (
+        smoke._database_url_password(
+            "postgresql+psycopg://user:sensitive-pass@127.0.0.1:5432/nex_ae_test"
+        )
+        == "sensitive-pass"
+    )
     assert smoke._database_url_password(None) is None
     assert smoke._database_url_password("postgresql://user@127.0.0.1/db") is None
     assert smoke._database_url_password("http://[::1") is None
@@ -252,6 +268,8 @@ def test_ae_ag_artifact_retention_scheduler_postgres_smoke_helpers_and_redaction
         dispatch_projection={},
         scheduled_jobs_response=503,
         scheduled_jobs_projection={},
+        automation_response=503,
+        automation_projection={},
         db_job={},
         before={"artifact_rows": 1},
         after={"artifact_rows": 0},

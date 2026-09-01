@@ -10,6 +10,7 @@ from nex_ag.artifact_operations import (
     AG_ARTIFACT_OPERATION_COLLECTION_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_DETAIL_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_LIFECYCLE_PROJECTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_RETENTION_AUTOMATION_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_BATCH_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_DISPATCH_SCHEMA_VERSION,
@@ -26,6 +27,7 @@ from nex_ag.artifact_operations import (
     build_artifact_operation_collection_projection,
     build_artifact_operation_detail_projection,
     build_artifact_operation_lifecycle_projection,
+    build_artifact_operation_retention_automation_projection,
     build_artifact_operation_retention_batch_projection,
     build_artifact_operation_retention_history_projection,
     build_artifact_operation_retention_scheduled_dispatch_projection,
@@ -36,13 +38,13 @@ from nex_ag.artifact_operations import (
     summarize_artifact_operation_detail,
     summarize_artifact_operation_lifecycle,
     summarize_artifact_retention_batch_operations,
+    summarize_artifact_retention_automation_operations,
     summarize_artifact_retention_history_operations,
     summarize_artifact_retention_scheduled_dispatch,
     summarize_artifact_retention_scheduled_job_operations,
 )
 import nex_ag.artifact_operations as artifact_operations
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
-
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
@@ -906,9 +908,7 @@ def test_artifact_operation_collection_projection_summarizes_and_redacts() -> No
         "detail": f"/api/v1/artifacts/{ARTIFACT_ID}",
         "versions": f"/api/v1/artifacts/{ARTIFACT_ID}/versions",
     }
-    assert projection["items"][0]["latest_render_job"]["render_status"] == (
-        "SUCCEEDED"
-    )
+    assert projection["items"][0]["latest_render_job"]["render_status"] == ("SUCCEEDED")
     assert projection["source_status"]["item_count"] == 2
     assert projection["request_trace_id"] == TRACE_ID
     assert "PRIVATE_CONTENT" not in str(projection)
@@ -916,7 +916,9 @@ def test_artifact_operation_collection_projection_summarizes_and_redacts() -> No
     assert "/data/nex-platform" not in str(projection)
 
 
-def test_artifact_operation_retention_history_projection_summarizes_and_redacts() -> None:
+def test_artifact_operation_retention_history_projection_summarizes_and_redacts() -> (
+    None
+):
     projection = build_artifact_operation_retention_history_projection(
         collection=artifact_retention_history_collection_payload(),
         source_client=InMemoryAeArtifactOperationsClient(),
@@ -1116,7 +1118,9 @@ def test_artifact_operation_retention_batch_projection_handles_sparse_edges() ->
     )
 
 
-def test_artifact_operation_retention_scheduled_job_projection_summarizes_and_redacts() -> None:
+def test_artifact_operation_retention_scheduled_job_projection_summarizes_and_redacts() -> (
+    None
+):
     projection = build_artifact_operation_retention_scheduled_job_projection(
         collection=artifact_retention_scheduled_job_collection_payload(),
         source_client=InMemoryAeArtifactOperationsClient(),
@@ -1186,7 +1190,9 @@ def test_artifact_operation_retention_scheduled_job_projection_summarizes_and_re
     assert "nuri1004" not in str(projection)
 
 
-def test_artifact_operation_retention_scheduled_job_projection_handles_sparse_edges() -> None:
+def test_artifact_operation_retention_scheduled_job_projection_handles_sparse_edges() -> (
+    None
+):
     projection = build_artifact_operation_retention_scheduled_job_projection(
         collection={
             "filter": "bad",
@@ -1220,9 +1226,9 @@ def test_artifact_operation_retention_scheduled_job_projection_handles_sparse_ed
     assert projection["items"][0]["status"] == "FAILED"
     assert projection["items"][0]["payload"] == {}
     assert projection["items"][0]["links"] == {}
-    assert projection["summary"] == summarize_artifact_retention_scheduled_job_operations(
-        projection["items"]
-    )
+    assert projection[
+        "summary"
+    ] == summarize_artifact_retention_scheduled_job_operations(projection["items"])
     assert projection["summary"]["failed_count"] == 1
     assert projection["summary"]["retryable_failed_count"] == 1
     assert projection["summary"]["operator_attention_required"] is True
@@ -1232,7 +1238,9 @@ def test_artifact_operation_retention_scheduled_job_projection_handles_sparse_ed
     )
 
 
-def test_artifact_operation_retention_scheduled_dispatch_projection_summarizes_and_redacts() -> None:
+def test_artifact_operation_retention_scheduled_dispatch_projection_summarizes_and_redacts() -> (
+    None
+):
     dispatch_request = {
         "tenant_id": "tenant-0409",
         "workspace_id": "workspace-0409",
@@ -1300,7 +1308,9 @@ def test_artifact_operation_retention_scheduled_dispatch_projection_summarizes_a
     assert "nuri1004" not in str(projection)
 
 
-def test_artifact_operation_retention_scheduled_dispatch_projection_handles_sparse_edges() -> None:
+def test_artifact_operation_retention_scheduled_dispatch_projection_handles_sparse_edges() -> (
+    None
+):
     projection = build_artifact_operation_retention_scheduled_dispatch_projection(
         dispatch_request={
             "tenant_id": "tenant-0409",
@@ -1337,6 +1347,156 @@ def test_artifact_operation_retention_scheduled_dispatch_projection_handles_spar
     assert projection["source_status"]["errors"][0]["error_code"] == (
         "ag.optional_retention_scheduled_dispatch_warning"
     )
+
+
+def test_artifact_operation_retention_automation_projection_summarizes_and_redacts() -> (
+    None
+):
+    projection = build_artifact_operation_retention_automation_projection(
+        plan=artifact_retention_batch_plan_payload(),
+        scheduled_jobs=artifact_retention_scheduled_job_collection_payload(),
+        history=artifact_retention_history_collection_payload(),
+        source_client=InMemoryAeArtifactOperationsClient(),
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_AUTOMATION_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["operation_type"] == "ae_artifact_retention_automation"
+    assert projection["projection_status"] == "READY"
+    assert projection["batch_plan"]["plan"]["plan_id"] == "retention-batch-plan-0409"
+    assert projection["scheduled_jobs"]["summary"]["job_count"] == 3
+    assert projection["history"]["summary"]["blocked_count"] == 1
+    assert projection["summary"] == {
+        "safety_status": "FAILED_ATTENTION",
+        "dispatch_available": True,
+        "batch_plan_status": "READY",
+        "scheduler_status": "DISABLED",
+        "scheduled_job_count": 3,
+        "active_job_count": 1,
+        "queued_job_count": 1,
+        "running_job_count": 0,
+        "failed_job_count": 1,
+        "retryable_failed_job_count": 1,
+        "history_count": 3,
+        "history_blocked_count": 1,
+        "history_failed_count": 0,
+        "history_execute_count": 2,
+        "history_dry_run_count": 1,
+        "approval_blocked_count": 0,
+        "delete_guard_blocked_count": 1,
+        "selected_artifact_count": 1,
+        "estimated_deleted_artifacts": 1,
+        "estimated_deleted_storage_files": 2,
+        "total_deleted_artifacts": 1,
+        "total_deleted_storage_files": 2,
+        "operator_attention_required": True,
+        "automated_execute_enabled": False,
+        "physical_delete_automation_enabled": False,
+        "physical_delete_operator_approval_required": True,
+        "latest_activity_at": "2026-09-01T02:50:00Z",
+    }
+    assert projection["source_status"]["batch_plan_loaded"] is True
+    assert projection["source_status"]["scheduled_jobs_loaded"] is True
+    assert projection["source_status"]["history_loaded"] is True
+    assert projection["operator_guidance"]["ag_direct_database_write_allowed"] is False
+    assert projection["operator_guidance"]["ag_direct_job_enqueue_allowed"] is False
+    assert (
+        projection["operator_guidance"]["physical_delete_operator_approval_required"]
+        is True
+    )
+    assert projection["request_trace_id"] == TRACE_ID
+    assert "storage_ref" not in str(projection)
+    assert "DATABASE_URL_SHOULD_NOT_LEAK" not in str(projection)
+    assert "nuri1004" not in str(projection)
+
+
+def test_artifact_operation_retention_automation_projection_handles_sparse_edges() -> (
+    None
+):
+    projection = build_artifact_operation_retention_automation_projection(
+        plan={
+            "mode": "dry-run",
+            "plan_status": "noop",
+            "checked_at": "2026-09-01T02:00:00Z",
+        },
+        scheduled_jobs={
+            "filter": "bad",
+            "count": "bad",
+            "limit": "bad",
+            "items": [
+                {
+                    "job_id": "sparse-automation-job",
+                    "job_type": "ae.artifact_retention.scheduled_execution",
+                    "status": "running",
+                    "payload": {},
+                },
+                "not-a-mapping",
+            ],
+        },
+        history={
+            "filter": "bad",
+            "count": "bad",
+            "limit": "bad",
+            "items": [
+                {
+                    "retention_execution_id": "approval-blocked",
+                    "mode": "execute",
+                    "execution_status": "blocked",
+                    "blocked_reason": "operator_approval_required",
+                    "deleted_counts": "bad",
+                    "checked_at": "2026-09-01T02:05:00Z",
+                }
+            ],
+        },
+        source_errors=[
+            AeArtifactOperationsError(
+                error_code="ag.optional_retention_automation_warning",
+                detail="partial automation source warning",
+                status_code=503,
+            )
+        ],
+    )
+
+    assert projection["projection_status"] == "DEGRADED"
+    assert projection["batch_plan"]["plan"]["plan_status"] == "NOOP"
+    assert projection["scheduled_jobs"]["filter"] == {}
+    assert projection["scheduled_jobs"]["items"][0]["status"] == "RUNNING"
+    assert projection["history"]["items"][0]["blocked_reason"] == (
+        "operator_approval_required"
+    )
+    assert projection["summary"] == summarize_artifact_retention_automation_operations(
+        batch_plan=projection["batch_plan"]["plan"],
+        scheduled_jobs=projection["scheduled_jobs"]["items"],
+        history=projection["history"]["items"],
+    )
+    assert projection["summary"]["safety_status"] == "OPERATOR_ATTENTION"
+    assert projection["summary"]["approval_blocked_count"] == 1
+    assert projection["summary"]["latest_activity_at"] == "2026-09-01T02:05:00Z"
+    assert projection["source_status"]["batch_plan_loaded"] is False
+    assert projection["source_status"]["scheduled_jobs_loaded"] is False
+    assert projection["source_status"]["history_loaded"] is False
+    assert projection["source_status"]["errors"][0]["error_code"] == (
+        "ag.optional_retention_automation_warning"
+    )
+    idle_summary = summarize_artifact_retention_automation_operations(
+        batch_plan={
+            "mode": "DRY_RUN",
+            "plan_status": "NOOP",
+            "selected_count": 0,
+            "estimated_deleted_counts": {},
+        },
+        scheduled_jobs=[],
+        history=[],
+    )
+    no_status_job_summary = summarize_artifact_retention_scheduled_job_operations(
+        [{"status": None, "payload": "bad"}]
+    )
+    assert idle_summary["safety_status"] == "IDLE"
+    assert idle_summary["operator_attention_required"] is False
+    assert no_status_job_summary["job_count"] == 1
+    assert no_status_job_summary["active_count"] == 0
 
 
 def test_artifact_operation_collection_projection_handles_sparse_values() -> None:
@@ -1408,10 +1568,13 @@ def test_artifact_operation_lifecycle_projection_summarizes_ready_state() -> Non
         "is_logically_deleted": False,
         "metadata_only": True,
     }
-    assert summarize_artifact_operation_lifecycle(
-        projection["artifact"],
-        projection["lifecycle"]["actions"],
-    ) == projection["summary"]
+    assert (
+        summarize_artifact_operation_lifecycle(
+            projection["artifact"],
+            projection["lifecycle"]["actions"],
+        )
+        == projection["summary"]
+    )
     assert projection["request_trace_id"] == TRACE_ID
     assert "SECRET" not in str(projection)
     assert "raw_comment" not in str(projection)
@@ -1436,8 +1599,7 @@ def test_artifact_operation_lifecycle_projection_status_matrix(
         artifact={**artifact_record(include_private=False), "artifact_status": status}
     )
     actions = {
-        action["action"]: action
-        for action in projection["lifecycle"]["actions"]
+        action["action"]: action for action in projection["lifecycle"]["actions"]
     }
 
     assert projection["summary"]["enabled_actions"] == enabled_actions
@@ -1453,7 +1615,9 @@ def test_artifact_operation_lifecycle_projection_status_matrix(
         assert actions[action]["reason_code"] == "user_requested"
 
 
-def test_artifact_operation_lifecycle_projection_degrades_source_contract_edges() -> None:
+def test_artifact_operation_lifecycle_projection_degrades_source_contract_edges() -> (
+    None
+):
     rendering = build_artifact_operation_lifecycle_projection(
         artifact={
             **artifact_record(include_private=False),
@@ -1479,8 +1643,7 @@ def test_artifact_operation_lifecycle_projection_degrades_source_contract_edges(
     assert rendering["projection_status"] == "DEGRADED"
     assert rendering["issues"][0]["subject"] == "rendering_artifact"
     assert all(
-        action["enabled"] is False
-        for action in rendering["lifecycle"]["actions"]
+        action["enabled"] is False for action in rendering["lifecycle"]["actions"]
     )
     assert unknown["projection_status"] == "DEGRADED"
     assert {issue["subject"] for issue in unknown["issues"]} == {
@@ -1562,9 +1725,9 @@ def test_artifact_operation_projection_helper_edges() -> None:
     assert projection["chat_artifact_refs"][0]["download_routes"] == {}
     assert projection["chat_artifact_refs"][0]["actions"] == {}
     assert projection["chat_artifact_refs"][0]["preview_route"] is None
-    assert artifact_operations._json_safe_value(["x", {"keep": object(), "drop": None}])[
-        1
-    ]["keep"].startswith("<object object")
+    assert artifact_operations._json_safe_value(
+        ["x", {"keep": object(), "drop": None}]
+    )[1]["keep"].startswith("<object object")
 
 
 def test_artifact_operation_projection_redaction_guard_raises() -> None:
@@ -1574,9 +1737,13 @@ def test_artifact_operation_projection_redaction_guard_raises() -> None:
         )
 
 
-def test_in_memory_artifact_operations_client_returns_copies_and_missing_values() -> None:
+def test_in_memory_artifact_operations_client_returns_copies_and_missing_values() -> (
+    None
+):
     client = artifact_client()
-    artifact = client.get_artifact(ARTIFACT_ID, request_id=REQUEST_ID, trace_id=TRACE_ID)
+    artifact = client.get_artifact(
+        ARTIFACT_ID, request_id=REQUEST_ID, trace_id=TRACE_ID
+    )
     refs = client.list_chat_artifact_refs(
         INTERACTION_ID,
         request_id=REQUEST_ID,
@@ -1585,11 +1752,24 @@ def test_in_memory_artifact_operations_client_returns_copies_and_missing_values(
     artifact["artifact_status"] = "MUTATED"
     refs[0]["artifact_status"] = "MUTATED"
 
-    assert client.get_artifact("missing", request_id=REQUEST_ID, trace_id=TRACE_ID) is None
-    assert client.get_artifact_handoff("missing", request_id=REQUEST_ID, trace_id=TRACE_ID) is None
-    assert client.list_chat_artifact_refs("missing", request_id=REQUEST_ID, trace_id=TRACE_ID) == []
+    assert (
+        client.get_artifact("missing", request_id=REQUEST_ID, trace_id=TRACE_ID) is None
+    )
+    assert (
+        client.get_artifact_handoff("missing", request_id=REQUEST_ID, trace_id=TRACE_ID)
+        is None
+    )
+    assert (
+        client.list_chat_artifact_refs(
+            "missing", request_id=REQUEST_ID, trace_id=TRACE_ID
+        )
+        == []
+    )
     assert client.artifacts[ARTIFACT_ID]["artifact_status"] == "READY"
-    assert client.chat_artifact_refs[INTERACTION_ID]["artifact_refs"][0]["artifact_status"] == "READY"
+    assert (
+        client.chat_artifact_refs[INTERACTION_ID]["artifact_refs"][0]["artifact_status"]
+        == "READY"
+    )
 
 
 def test_in_memory_artifact_operations_client_lists_owner_scoped_collections() -> None:
@@ -1702,9 +1882,9 @@ def test_artifact_operation_collection_helper_edges() -> None:
     assert artifact_operations._owner_user_id({"owner_user_id": "owner-fallback"}) == (
         "owner-fallback"
     )
-    assert artifact_operations._workspace_id({"workspace_id": "workspace-fallback"}) == (
-        "workspace-fallback"
-    )
+    assert artifact_operations._workspace_id(
+        {"workspace_id": "workspace-fallback"}
+    ) == ("workspace-fallback")
     assert artifact_operations._current_version_no([], "missing") == 0
     assert artifact_operations._latest_render_job_summary([]) == {}
     assert artifact_operations._normalized_retention_mode("dry-run") == "DRY_RUN"
@@ -1718,19 +1898,36 @@ def test_artifact_operation_collection_helper_edges() -> None:
     assert artifact_operations._retention_days_filter(None) is None
     assert artifact_operations._project_retention_batch_plan("bad") == {}
     assert artifact_operations._safe_deleted_counts("bad") == {}
-    assert artifact_operations._safe_deleted_counts({"artifacts": "2"})["artifacts"] == 2
-    assert artifact_operations._current_version_no(
-        [
-            {"artifact_version_id": "old", "version_no": 1},
-            {"artifact_version_id": "current", "version_no": "2"},
-        ],
-        "current",
-    ) == 2
-    assert artifact_operations._project_lifecycle_action(
-        artifact_id=None,
-        current_status="READY",
-        action="ARCHIVE",
-    )["blocked_reason"] == "artifact_id_missing"
+    assert (
+        artifact_operations._safe_deleted_counts({"artifacts": "2"})["artifacts"] == 2
+    )
+    assert (
+        artifact_operations._latest_timestamp_text(
+            None,
+            "2026-09-01T02:00:00Z",
+            "2026-09-01T02:05:00Z",
+        )
+        == "2026-09-01T02:05:00Z"
+    )
+    assert artifact_operations._latest_timestamp_text(None) is None
+    assert (
+        artifact_operations._current_version_no(
+            [
+                {"artifact_version_id": "old", "version_no": 1},
+                {"artifact_version_id": "current", "version_no": "2"},
+            ],
+            "current",
+        )
+        == 2
+    )
+    assert (
+        artifact_operations._project_lifecycle_action(
+            artifact_id=None,
+            current_status="READY",
+            action="ARCHIVE",
+        )["blocked_reason"]
+        == "artifact_id_missing"
+    )
     assert summarize_artifact_operation_collection(
         [
             {"artifact_status": None, "updated_at": None},
@@ -1819,16 +2016,19 @@ def test_in_memory_artifact_operations_client_lists_retention_history() -> None:
     )
     history["items"][0]["retention_execution_id"] = "mutated"
 
-    assert client.artifact_retention_history_collections[
-        artifact_operations._artifact_retention_history_cache_key(
-            tenant_id="tenant-0409",
-            workspace_id="workspace-0409",
-            owner_user_id="user-0409",
-            mode=None,
-            execution_status=None,
-            limit=20,
-        )
-    ]["items"][0]["retention_execution_id"] == "retention-execute-0409"
+    assert (
+        client.artifact_retention_history_collections[
+            artifact_operations._artifact_retention_history_cache_key(
+                tenant_id="tenant-0409",
+                workspace_id="workspace-0409",
+                owner_user_id="user-0409",
+                mode=None,
+                execution_status=None,
+                limit=20,
+            )
+        ]["items"][0]["retention_execution_id"]
+        == "retention-execute-0409"
+    )
     assert execute_history["count"] == 2
     assert execute_history["filter"]["mode"] == "EXECUTE"
     assert empty_history["count"] == 0
@@ -1863,18 +2063,21 @@ def test_in_memory_artifact_operations_client_gets_retention_batch_plan() -> Non
     )
     cached["plan_id"] = "mutated"
 
-    assert client.artifact_retention_batch_plans[
-        artifact_operations._artifact_retention_batch_plan_cache_key(
-            tenant_id="tenant-0409",
-            workspace_id="workspace-0409",
-            owner_user_id="user-0409",
-            retention_days=30,
-            as_of="2026-09-01T00:00:00Z",
-            scan_limit=20,
-            max_delete_count=1,
-            checked_at="2026-09-01T02:30:00Z",
-        )
-    ]["plan_id"] == "retention-batch-plan-0409"
+    assert (
+        client.artifact_retention_batch_plans[
+            artifact_operations._artifact_retention_batch_plan_cache_key(
+                tenant_id="tenant-0409",
+                workspace_id="workspace-0409",
+                owner_user_id="user-0409",
+                retention_days=30,
+                as_of="2026-09-01T00:00:00Z",
+                scan_limit=20,
+                max_delete_count=1,
+                checked_at="2026-09-01T02:30:00Z",
+            )
+        ]["plan_id"]
+        == "retention-batch-plan-0409"
+    )
     assert defaulted["plan_status"] == "NOOP"
     assert defaulted["candidate_filter"]["retention_days"] == 30
     assert defaulted["metadata"]["physical_delete_executed"] is False
@@ -1911,15 +2114,18 @@ def test_in_memory_artifact_operations_client_lists_retention_scheduled_jobs() -
     )
     cached["items"][0]["job_id"] = "mutated"
 
-    assert client.artifact_retention_scheduled_job_collections[
-        artifact_operations._artifact_retention_scheduled_job_cache_key(
-            tenant_id="tenant-0409",
-            workspace_id="workspace-0409",
-            owner_user_id="user-0409",
-            status=None,
-            limit=20,
-        )
-    ]["items"][0]["job_id"] == "job-retention-scheduled-0409"
+    assert (
+        client.artifact_retention_scheduled_job_collections[
+            artifact_operations._artifact_retention_scheduled_job_cache_key(
+                tenant_id="tenant-0409",
+                workspace_id="workspace-0409",
+                owner_user_id="user-0409",
+                status=None,
+                limit=20,
+            )
+        ]["items"][0]["job_id"]
+        == "job-retention-scheduled-0409"
+    )
     assert cached["count"] == 3
     assert running["count"] == 1
     assert running["filter"]["status"] == "RUNNING"
@@ -1928,7 +2134,9 @@ def test_in_memory_artifact_operations_client_lists_retention_scheduled_jobs() -
     assert empty["metadata"]["system_of_record"] == AE_ARTIFACT_SOURCE_SERVICE_ID
 
 
-def test_in_memory_artifact_operations_client_dispatches_retention_scheduled_job() -> None:
+def test_in_memory_artifact_operations_client_dispatches_retention_scheduled_job() -> (
+    None
+):
     cached_key = artifact_operations._artifact_retention_scheduled_dispatch_cache_key(
         plan_id="retention-batch-plan-0409",
         trigger_type="operator_dispatch",
@@ -1948,19 +2156,22 @@ def test_in_memory_artifact_operations_client_dispatches_retention_scheduled_job
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     )
-    synthesized = InMemoryAeArtifactOperationsClient().dispatch_artifact_retention_scheduled_job(
-        batch_plan=artifact_retention_batch_plan_payload(),
-        trigger_type="operator_dispatch",
-        requested_at="2026-09-01T02:35:00Z",
-        idempotency_key=None,
-        request_id=REQUEST_ID,
-        trace_id=TRACE_ID,
+    synthesized = (
+        InMemoryAeArtifactOperationsClient().dispatch_artifact_retention_scheduled_job(
+            batch_plan=artifact_retention_batch_plan_payload(),
+            trigger_type="operator_dispatch",
+            requested_at="2026-09-01T02:35:00Z",
+            idempotency_key=None,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
     )
     cached["job_id"] = "mutated"
 
-    assert client.artifact_retention_scheduled_dispatch_results[cached_key][
-        "job_id"
-    ] == "job-retention-scheduled-0409"
+    assert (
+        client.artifact_retention_scheduled_dispatch_results[cached_key]["job_id"]
+        == "job-retention-scheduled-0409"
+    )
     assert synthesized["enqueue_status"] == "ENQUEUED"
     assert synthesized["job_enqueued"] is True
     assert synthesized["enqueued_job"]["status"] == "QUEUED"
@@ -2154,16 +2365,16 @@ def test_artifact_retention_history_operations_route_returns_projection() -> Non
     assert payload["operation_type"] == "ae_artifact_retention_history"
     assert payload["summary"]["item_count"] == 3
     assert payload["summary"]["operator_attention_count"] == 1
-    assert payload["items"][0]["retention_execution_id"] == (
-        "retention-execute-0409"
-    )
+    assert payload["items"][0]["retention_execution_id"] == ("retention-execute-0409")
     assert payload["request_trace_id"] == TRACE_ID
     assert execute_only.status_code == 200
     assert execute_only.json()["filter"]["mode"] == "EXECUTE"
     assert execute_only.json()["summary"]["execute_count"] == 2
 
 
-def test_artifact_retention_history_operations_route_auth_filter_and_error_edges() -> None:
+def test_artifact_retention_history_operations_route_auth_filter_and_error_edges() -> (
+    None
+):
     client = build_app(artifact_client())
     params = {
         "tenant_id": "tenant-0409",
@@ -2283,7 +2494,9 @@ def test_artifact_retention_batch_operations_route_returns_projection() -> None:
     assert noop.json()["summary"]["dispatch_available"] is False
 
 
-def test_artifact_retention_batch_operations_route_auth_filter_and_error_edges() -> None:
+def test_artifact_retention_batch_operations_route_auth_filter_and_error_edges() -> (
+    None
+):
     client = build_app(artifact_client())
     params = {
         "tenant_id": "tenant-0409",
@@ -2399,7 +2612,9 @@ def test_artifact_retention_scheduled_job_operations_route_returns_projection() 
     assert running.json()["summary"]["running_count"] == 1
 
 
-def test_artifact_retention_scheduled_job_operations_route_auth_filter_and_error_edges() -> None:
+def test_artifact_retention_scheduled_job_operations_route_auth_filter_and_error_edges() -> (
+    None
+):
     client = build_app(artifact_client())
     params = {
         "tenant_id": "tenant-0409",
@@ -2467,6 +2682,189 @@ def test_artifact_retention_scheduled_job_operations_route_auth_filter_and_error
     assert source_failed.status_code == 503
     assert source_failed.json()["error_code"] == (
         "ag.ae_artifact_retention_scheduled_job_source_failed"
+    )
+
+
+def test_artifact_retention_automation_operations_route_returns_projection() -> None:
+    client = build_app(artifact_client())
+
+    response = client.get(
+        "/admin/v1/operations/artifact-retention/automation",
+        params={
+            "tenant_id": "tenant-0409",
+            "workspace_id": "workspace-0409",
+            "owner_user_id": "user-0409",
+            "retention_days": "30",
+            "as_of": "2026-09-01T00:00:00Z",
+            "scan_limit": "20",
+            "max_delete_count": "1",
+            "checked_at": "2026-09-01T02:30:00Z",
+            "limit": "20",
+        },
+        headers=auth_headers(),
+    )
+    running = client.get(
+        "/admin/v1/operations/artifact-retention/automation",
+        params={
+            "tenant_id": "tenant-0409",
+            "workspace_id": "workspace-0409",
+            "owner_user_id": "user-0409",
+            "retention_days": "30",
+            "as_of": "2026-09-01T00:00:00Z",
+            "scan_limit": "20",
+            "max_delete_count": "1",
+            "checked_at": "2026-09-01T02:30:00Z",
+            "scheduled_status": "running",
+            "limit": "20",
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_AUTOMATION_PROJECTION_SCHEMA_VERSION
+    )
+    assert payload["operation_type"] == "ae_artifact_retention_automation"
+    assert payload["batch_plan"]["summary"]["dispatch_available"] is True
+    assert payload["scheduled_jobs"]["summary"]["failed_count"] == 1
+    assert payload["history"]["summary"]["blocked_count"] == 1
+    assert payload["summary"]["safety_status"] == "FAILED_ATTENTION"
+    assert payload["summary"]["physical_delete_operator_approval_required"] is True
+    assert payload["operator_guidance"]["ag_direct_database_write_allowed"] is False
+    assert payload["request_trace_id"] == TRACE_ID
+    assert running.status_code == 200
+    assert running.json()["scheduled_jobs"]["filter"]["status"] == "RUNNING"
+    assert running.json()["scheduled_jobs"]["summary"]["running_count"] == 1
+
+
+def test_artifact_retention_automation_operations_route_guardrails() -> None:
+    client = build_app(artifact_client())
+    params = {
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+        "owner_user_id": "user-0409",
+    }
+
+    unauthorized = client.get(
+        "/admin/v1/operations/artifact-retention/automation",
+        params=params,
+    )
+    invalid_service = client.get(
+        "/admin/v1/operations/artifact-retention/automation",
+        params={**params, "service_id": "nex-cx"},
+        headers=auth_headers(),
+    )
+    missing_scope = client.get(
+        "/admin/v1/operations/artifact-retention/automation",
+        params={"tenant_id": "tenant-0409", "workspace_id": "workspace-0409"},
+        headers=auth_headers(),
+    )
+    invalid_retention_days = client.get(
+        "/admin/v1/operations/artifact-retention/automation",
+        params={**params, "retention_days": "0"},
+        headers=auth_headers(),
+    )
+    invalid_scan_limit = client.get(
+        "/admin/v1/operations/artifact-retention/automation",
+        params={**params, "scan_limit": "101"},
+        headers=auth_headers(),
+    )
+    invalid_delete_limit = client.get(
+        "/admin/v1/operations/artifact-retention/automation",
+        params={**params, "max_delete_count": "many"},
+        headers=auth_headers(),
+    )
+    invalid_job_status = client.get(
+        "/admin/v1/operations/artifact-retention/automation",
+        params={**params, "scheduled_status": "waiting"},
+        headers=auth_headers(),
+    )
+    invalid_history_mode = client.get(
+        "/admin/v1/operations/artifact-retention/automation",
+        params={**params, "history_mode": "purge"},
+        headers=auth_headers(),
+    )
+    invalid_history_status = client.get(
+        "/admin/v1/operations/artifact-retention/automation",
+        params={**params, "history_status": "paused"},
+        headers=auth_headers(),
+    )
+    invalid_limit = client.get(
+        "/admin/v1/operations/artifact-retention/automation",
+        params={**params, "limit": "0"},
+        headers=auth_headers(),
+    )
+
+    class BrokenRetentionAutomationClient(InMemoryAeArtifactOperationsClient):
+        def list_artifact_retention_executions(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            raise AeArtifactOperationsError(
+                error_code="ag.ae_artifact_retention_automation_source_failed",
+                detail="AE retention automation source unavailable",
+                status_code=503,
+            )
+
+    source_failed = build_app(
+        BrokenRetentionAutomationClient(
+            artifact_retention_batch_plans=artifact_client().artifact_retention_batch_plans,
+            artifact_retention_scheduled_job_collections=(
+                artifact_client().artifact_retention_scheduled_job_collections
+            ),
+        )
+    ).get(
+        "/admin/v1/operations/artifact-retention/automation",
+        params={
+            **params,
+            "retention_days": "30",
+            "as_of": "2026-09-01T00:00:00Z",
+            "scan_limit": "20",
+            "max_delete_count": "1",
+            "checked_at": "2026-09-01T02:30:00Z",
+        },
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert invalid_service.status_code == 400
+    assert missing_scope.status_code == 400
+    assert missing_scope.json()["error_code"] == (
+        "ag.ae_artifact_retention_automation_scope_missing"
+    )
+    assert invalid_retention_days.status_code == 400
+    assert invalid_retention_days.json()["error_code"] == (
+        "ag.ae_artifact_retention_automation_retention_days_invalid"
+    )
+    assert invalid_scan_limit.status_code == 400
+    assert invalid_scan_limit.json()["error_code"] == (
+        "ag.ae_artifact_retention_automation_scan_limit_invalid"
+    )
+    assert invalid_delete_limit.status_code == 400
+    assert invalid_delete_limit.json()["error_code"] == (
+        "ag.ae_artifact_retention_automation_delete_limit_invalid"
+    )
+    assert invalid_job_status.status_code == 400
+    assert invalid_job_status.json()["error_code"] == (
+        "ag.ae_artifact_retention_automation_job_status_invalid"
+    )
+    assert invalid_history_mode.status_code == 400
+    assert invalid_history_mode.json()["error_code"] == (
+        "ag.ae_artifact_retention_automation_history_mode_invalid"
+    )
+    assert invalid_history_status.status_code == 400
+    assert invalid_history_status.json()["error_code"] == (
+        "ag.ae_artifact_retention_automation_history_status_invalid"
+    )
+    assert invalid_limit.status_code == 400
+    assert invalid_limit.json()["error_code"] == (
+        "ag.ae_artifact_retention_automation_limit_invalid"
+    )
+    assert source_failed.status_code == 503
+    assert source_failed.json()["error_code"] == (
+        "ag.ae_artifact_retention_automation_source_failed"
     )
 
 
@@ -2673,7 +3071,9 @@ def test_artifact_operation_route_returns_lifecycle_projection() -> None:
     assert payload["request_trace_id"] == TRACE_ID
 
 
-def test_artifact_operation_lifecycle_route_auth_filter_missing_and_source_errors() -> None:
+def test_artifact_operation_lifecycle_route_auth_filter_missing_and_source_errors() -> (
+    None
+):
     client = build_app(artifact_client())
 
     unauthorized = client.get(f"/admin/v1/operations/artifacts/{ARTIFACT_ID}/lifecycle")
@@ -2728,7 +3128,9 @@ def test_artifact_operation_route_can_disable_optional_reads() -> None:
     assert response.json()["chat_artifact_refs"] == []
 
 
-def test_artifact_operation_route_auth_filter_missing_and_optional_error_edges() -> None:
+def test_artifact_operation_route_auth_filter_missing_and_optional_error_edges() -> (
+    None
+):
     client = build_app(artifact_client())
 
     unauthorized = client.get(f"/admin/v1/operations/artifacts/{ARTIFACT_ID}")
@@ -2743,13 +3145,17 @@ def test_artifact_operation_route_auth_filter_missing_and_optional_error_edges()
     )
 
     class OptionalFailureClient(InMemoryAeArtifactOperationsClient):
-        def get_artifact_handoff(self, *args: Any, **kwargs: Any) -> dict[str, Any] | None:
+        def get_artifact_handoff(
+            self, *args: Any, **kwargs: Any
+        ) -> dict[str, Any] | None:
             raise AeArtifactOperationsError(
                 error_code="ag.optional_handoff_failed",
                 detail="handoff unavailable",
             )
 
-        def list_chat_artifact_refs(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        def list_chat_artifact_refs(
+            self, *args: Any, **kwargs: Any
+        ) -> list[dict[str, Any]]:
             raise AeArtifactOperationsError(
                 error_code="ag.optional_chat_links_failed",
                 detail="chat links unavailable",
@@ -2820,7 +3226,9 @@ def test_http_artifact_operations_client_requests_expected_routes(
         if url.endswith("/api/v1/artifacts") and params.get("tenant_id"):
             return FakeHttpResponse(200, artifact_collection_payload())
         if url.endswith("/api/v1/artifact-retention/executions"):
-            return FakeHttpResponse(200, artifact_retention_history_collection_payload())
+            return FakeHttpResponse(
+                200, artifact_retention_history_collection_payload()
+            )
         if url.endswith("/api/v1/artifact-retention/batch-plan"):
             return FakeHttpResponse(200, artifact_retention_batch_plan_payload())
         if url.endswith("/api/v1/artifact-retention/scheduled-jobs"):
@@ -2843,9 +3251,7 @@ def test_http_artifact_operations_client_requests_expected_routes(
         json: dict[str, Any],
         timeout: float,
     ) -> FakeHttpResponse:
-        calls.append(
-            {"url": url, "headers": headers, "json": json, "timeout": timeout}
-        )
+        calls.append({"url": url, "headers": headers, "json": json, "timeout": timeout})
         if url.endswith("/api/v1/artifact-retention/scheduled-jobs/admission"):
             return FakeHttpResponse(
                 200,
@@ -2861,7 +3267,9 @@ def test_http_artifact_operations_client_requests_expected_routes(
         timeout_seconds=12.5,
     )
 
-    artifact = client.get_artifact(ARTIFACT_ID, request_id=REQUEST_ID, trace_id=TRACE_ID)
+    artifact = client.get_artifact(
+        ARTIFACT_ID, request_id=REQUEST_ID, trace_id=TRACE_ID
+    )
     handoff = client.get_artifact_handoff(
         HANDOFF_ID,
         request_id=REQUEST_ID,
@@ -3014,8 +3422,16 @@ def test_http_artifact_operations_client_handles_404_and_errors(
     monkeypatch.setattr(artifact_operations.httpx, "get", fake_get)
     client = HttpAeArtifactOperationsClient(base_url="http://ae.example.local")
 
-    assert client.get_artifact(ARTIFACT_ID, request_id=REQUEST_ID, trace_id=TRACE_ID) is None
-    assert client.list_chat_artifact_refs(INTERACTION_ID, request_id=REQUEST_ID, trace_id=TRACE_ID) == []
+    assert (
+        client.get_artifact(ARTIFACT_ID, request_id=REQUEST_ID, trace_id=TRACE_ID)
+        is None
+    )
+    assert (
+        client.list_chat_artifact_refs(
+            INTERACTION_ID, request_id=REQUEST_ID, trace_id=TRACE_ID
+        )
+        == []
+    )
     with pytest.raises(AeArtifactOperationsError) as problem:
         client.get_artifact(ARTIFACT_ID, request_id=REQUEST_ID, trace_id=TRACE_ID)
     with pytest.raises(AeArtifactOperationsError) as fallback:
@@ -3143,6 +3559,7 @@ def test_artifact_operations_registered_on_main_app() -> None:
     assert "/admin/v1/operations/artifacts" in paths
     assert "/admin/v1/operations/artifact-retention/executions" in paths
     assert "/admin/v1/operations/artifact-retention/batch-plan" in paths
+    assert "/admin/v1/operations/artifact-retention/automation" in paths
     assert "/admin/v1/operations/artifact-retention/scheduled-jobs" in paths
     assert "/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch" in paths
     assert "/admin/v1/operations/artifacts/{artifact_id}" in paths
