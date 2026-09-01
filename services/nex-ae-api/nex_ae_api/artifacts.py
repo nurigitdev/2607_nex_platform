@@ -9,11 +9,12 @@ import re
 import textwrap
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
 from uuid import NAMESPACE_URL, uuid5
+from zoneinfo import ZoneInfo
 
 import httpx
 from docx import Document
@@ -180,6 +181,9 @@ AE_ARTIFACT_RETENTION_SCHEDULED_JOB_ENQUEUE_RESULT_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_SCHEDULED_JOB_COLLECTION_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduled_job_collection.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_TICK_PLAN_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_tick_plan.v1"
+)
 AE_ARTIFACT_RETENTION_EXECUTION_SCHEMA_VERSION = (
     "ae_artifact_retention_execution.v1"
 )
@@ -227,6 +231,13 @@ ARTIFACT_RETENTION_EXECUTION_STATUSES = (
 ARTIFACT_RETENTION_SCHEDULED_EXECUTION_TRIGGER_TYPES = (
     "scheduler_tick",
     "operator_dispatch",
+)
+ARTIFACT_RETENTION_SCHEDULER_TICK_STATUSES = ("READY", "NOOP", "SKIPPED")
+ARTIFACT_RETENTION_SCHEDULER_TICK_SKIP_REASONS = (
+    "scheduler_tick_admission_disabled",
+    "job_queue_unavailable",
+    "outside_batch_window",
+    "no_retention_candidates",
 )
 ARTIFACT_RETENTION_SCHEDULER_AUTOMATION_PROFILE = "disabled-dry-run-local-v1"
 ARTIFACT_RETENTION_SCHEDULER_TICK_INTERVAL_SECONDS = 900
@@ -3383,6 +3394,245 @@ def validate_artifact_retention_scheduler_config(
     return config
 
 
+def build_artifact_retention_scheduler_tick_plan(
+    batch_plan: dict[str, Any],
+    *,
+    scheduler_config: dict[str, Any] | None = None,
+    tick_at: str | None = None,
+    trace_id: str | None = None,
+    request_id: str | None = None,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    validated_plan = validate_artifact_retention_batch_plan(batch_plan)
+    config = validate_artifact_retention_scheduler_config(
+        scheduler_config
+        if scheduler_config is not None
+        else build_artifact_retention_scheduler_config()
+    )
+    tick_dt = parse_artifact_retention_timestamp(
+        tick_at or _utc_now(),
+        field_name="tick_at",
+    )
+    normalized_tick_at = format_artifact_retention_timestamp(tick_dt)
+    in_batch_window = _artifact_retention_scheduler_tick_in_batch_window(
+        tick_dt,
+        config["runtime"],
+    )
+    skip_reason = _artifact_retention_scheduler_tick_skip_reason(
+        config,
+        validated_plan,
+        in_batch_window,
+    )
+    tick_status = _artifact_retention_scheduler_tick_status(skip_reason)
+    normalized_idempotency_key = optional_text(
+        idempotency_key
+    ) or _artifact_retention_scheduler_tick_idempotency_key(
+        scheduler_id=config["scheduler_id"],
+        plan_id=validated_plan["plan_id"],
+        tick_at=normalized_tick_at,
+    )
+    command_preview = (
+        build_artifact_retention_scheduled_execution_command(
+            validated_plan,
+            trigger_type="scheduler_tick",
+            command_created_at=normalized_tick_at,
+            requested_by={
+                "actor_type": "service",
+                "actor_id": "nex-ae-api",
+                "tenant_id": validated_plan["tenant_id"],
+            },
+            idempotency_key=normalized_idempotency_key,
+        )
+        if tick_status == "READY"
+        else None
+    )
+    tick_plan = {
+        "artifact_retention_scheduler_tick_plan_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_TICK_PLAN_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": config["scheduler_id"],
+        "tick_id": _artifact_retention_scheduler_tick_id(
+            scheduler_id=config["scheduler_id"],
+            plan_id=validated_plan["plan_id"],
+            tick_at=normalized_tick_at,
+            idempotency_key=normalized_idempotency_key,
+        ),
+        "tick_status": tick_status,
+        "skip_reason": skip_reason,
+        "tick_at": normalized_tick_at,
+        "trace_id": optional_text(trace_id),
+        "request_id": optional_text(request_id),
+        "source_plan_id": validated_plan["plan_id"],
+        "source_plan_summary": summarize_artifact_retention_batch_plan(
+            validated_plan
+        ),
+        "runtime": _artifact_retention_scheduler_tick_runtime_snapshot(
+            config,
+            in_batch_window=in_batch_window,
+        ),
+        "admission": {
+            "admission_ready": tick_status == "READY",
+            "admission_performed": False,
+            "trigger_type": "scheduler_tick",
+            "requested_at": normalized_tick_at,
+            "idempotency_key": normalized_idempotency_key,
+            "max_jobs_per_tick": config["runtime"]["scheduler_tick_max_jobs_per_tick"],
+        },
+        "command_preview": command_preview,
+        "metadata": {
+            "metadata_only": True,
+            "job_enqueued": False,
+            "worker_executed": False,
+            "history_write_executed": False,
+            "physical_delete_automation_enabled": False,
+            "dry_run": True,
+        },
+    }
+    return validate_artifact_retention_scheduler_tick_plan(tick_plan)
+
+
+def validate_artifact_retention_scheduler_tick_plan(
+    tick_plan: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(tick_plan, dict):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_plan_invalid",
+            detail="Artifact retention scheduler tick plan must be an object.",
+        )
+    if (
+        tick_plan.get("artifact_retention_scheduler_tick_plan_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_TICK_PLAN_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_plan_schema_invalid",
+            detail="Artifact retention scheduler tick plan schema version is invalid.",
+        )
+    if tick_plan.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_plan_invalid",
+            detail="Artifact retention scheduler tick plan service id is invalid.",
+        )
+    for section_name in ("source_plan_summary", "runtime", "admission", "metadata"):
+        if not isinstance(tick_plan.get(section_name), dict):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_tick_plan_invalid",
+                detail=(
+                    "Artifact retention scheduler tick plan "
+                    f"{section_name} section is required."
+                ),
+            )
+    if optional_text(tick_plan.get("scheduler_id")) is None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_plan_invalid",
+            detail="Artifact retention scheduler tick plan scheduler id is required.",
+        )
+    if optional_text(tick_plan.get("tick_id")) is None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_plan_invalid",
+            detail="Artifact retention scheduler tick plan tick id is required.",
+        )
+    if optional_text(tick_plan.get("source_plan_id")) is None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_plan_invalid",
+            detail="Artifact retention scheduler tick plan source plan id is required.",
+        )
+    parse_artifact_retention_timestamp(tick_plan.get("tick_at"), field_name="tick_at")
+    tick_status = tick_plan.get("tick_status")
+    skip_reason = tick_plan.get("skip_reason")
+    if tick_status not in ARTIFACT_RETENTION_SCHEDULER_TICK_STATUSES:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_plan_invalid",
+            detail="Artifact retention scheduler tick plan status is invalid.",
+        )
+    if not _artifact_retention_scheduler_tick_runtime_snapshot_valid(
+        tick_plan["runtime"]
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_plan_invalid",
+            detail="Artifact retention scheduler tick plan runtime is invalid.",
+        )
+    if not _artifact_retention_scheduler_tick_admission_valid(
+        tick_plan["admission"],
+        ready=tick_status == "READY",
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_plan_invalid",
+            detail="Artifact retention scheduler tick plan admission is invalid.",
+        )
+    if tick_plan["metadata"] != {
+        "metadata_only": True,
+        "job_enqueued": False,
+        "worker_executed": False,
+        "history_write_executed": False,
+        "physical_delete_automation_enabled": False,
+        "dry_run": True,
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_tick_plan_invalid",
+            detail="Artifact retention scheduler tick plan metadata is invalid.",
+        )
+    if tick_status == "READY":
+        if skip_reason is not None:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_tick_plan_invalid",
+                detail="Artifact retention scheduler tick ready plan cannot skip.",
+            )
+        command = validate_artifact_retention_scheduled_execution_command(
+            tick_plan.get("command_preview")
+        )
+        if (
+            command["trigger_type"] != "scheduler_tick"
+            or command["source_plan_id"] != tick_plan["source_plan_id"]
+            or command["command_created_at"] != tick_plan["tick_at"]
+            or command["idempotency_key"] != tick_plan["admission"]["idempotency_key"]
+        ):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_tick_plan_invalid",
+                detail="Artifact retention scheduler tick command preview is invalid.",
+            )
+    else:
+        if skip_reason not in ARTIFACT_RETENTION_SCHEDULER_TICK_SKIP_REASONS:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_tick_plan_invalid",
+                detail="Artifact retention scheduler tick skip reason is invalid.",
+            )
+        if tick_status == "NOOP" and skip_reason != "no_retention_candidates":
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_tick_plan_invalid",
+                detail="Artifact retention scheduler tick noop reason is invalid.",
+            )
+        if tick_status == "SKIPPED" and skip_reason == "no_retention_candidates":
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_tick_plan_invalid",
+                detail="Artifact retention scheduler tick skipped reason is invalid.",
+            )
+        if tick_plan.get("command_preview") is not None:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_tick_plan_invalid",
+                detail="Artifact retention scheduler tick skipped plan cannot carry command.",
+            )
+    assert_artifact_retention_payload_safe(tick_plan)
+    return tick_plan
+
+
 def build_artifact_retention_scheduled_job_collection(
     jobs: list[dict[str, Any]],
     *,
@@ -3732,6 +3982,206 @@ def _artifact_job_queue_backend_name(job_queue: JobQueue | None) -> str:
     if job_queue is None:
         return "unconfigured"
     return type(job_queue).__name__
+
+
+def _artifact_retention_scheduler_tick_in_batch_window(
+    tick_dt: datetime,
+    runtime: dict[str, Any],
+) -> bool:
+    local_dt = tick_dt.astimezone(ZoneInfo(str(runtime["scheduler_tick_timezone"])))
+    start = _artifact_retention_scheduler_local_time(
+        str(runtime["scheduler_tick_window_start"])
+    )
+    end = _artifact_retention_scheduler_local_time(
+        str(runtime["scheduler_tick_window_end"])
+    )
+    return start <= local_dt.time() < end
+
+
+def _artifact_retention_scheduler_local_time(value: str) -> time:
+    hour_text, minute_text = value.split(":", 1)
+    return time(hour=int(hour_text), minute=int(minute_text))
+
+
+def _artifact_retention_scheduler_tick_skip_reason(
+    scheduler_config: dict[str, Any],
+    batch_plan: dict[str, Any],
+    in_batch_window: bool,
+) -> str | None:
+    runtime = scheduler_config["runtime"]
+    if runtime["scheduler_tick_admission_enabled"] is not True:
+        return "scheduler_tick_admission_disabled"
+    if runtime["job_queue_available"] is not True:
+        return "job_queue_unavailable"
+    if runtime["scheduler_tick_batch_window_enforced"] is True and not in_batch_window:
+        return "outside_batch_window"
+    if batch_plan["plan_status"] == "NOOP" or batch_plan["selected_count"] == 0:
+        return "no_retention_candidates"
+    return None
+
+
+def _artifact_retention_scheduler_tick_status(skip_reason: str | None) -> str:
+    if skip_reason is None:
+        return "READY"
+    if skip_reason == "no_retention_candidates":
+        return "NOOP"
+    return "SKIPPED"
+
+
+def _artifact_retention_scheduler_tick_idempotency_key(
+    *,
+    scheduler_id: str,
+    plan_id: str,
+    tick_at: str,
+) -> str:
+    return f"ae-artifact-retention-scheduler-tick:{scheduler_id}:{plan_id}:{tick_at}"
+
+
+def _artifact_retention_scheduler_tick_id(
+    *,
+    scheduler_id: str,
+    plan_id: str,
+    tick_at: str,
+    idempotency_key: str,
+) -> str:
+    basis = {
+        "scheduler_id": scheduler_id,
+        "plan_id": plan_id,
+        "tick_at": tick_at,
+        "idempotency_key": idempotency_key,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            f"ae-artifact-retention-scheduler-tick:{sha256_json(basis)}",
+        )
+    )
+
+
+def _artifact_retention_scheduler_tick_runtime_snapshot(
+    scheduler_config: dict[str, Any],
+    *,
+    in_batch_window: bool,
+) -> dict[str, Any]:
+    runtime = scheduler_config["runtime"]
+    return {
+        "automation_profile": runtime["automation_profile"],
+        "scheduler_daemon_enabled": runtime["scheduler_daemon_enabled"],
+        "scheduler_daemon_started": False,
+        "scheduler_tick_admission_enabled": runtime[
+            "scheduler_tick_admission_enabled"
+        ],
+        "job_queue_available": runtime["job_queue_available"],
+        "job_queue_backend": runtime["job_queue_backend"],
+        "worker_runner_available": runtime["worker_runner_available"],
+        "physical_delete_automation_enabled": runtime[
+            "physical_delete_automation_enabled"
+        ],
+        "default_execution_mode": runtime["default_execution_mode"],
+        "tick_interval_seconds": runtime["scheduler_tick_interval_seconds"],
+        "tick_jitter_seconds": runtime["scheduler_tick_jitter_seconds"],
+        "tick_lock_ttl_seconds": runtime["scheduler_tick_lock_ttl_seconds"],
+        "tick_stale_after_seconds": runtime["scheduler_tick_stale_after_seconds"],
+        "max_jobs_per_tick": runtime["scheduler_tick_max_jobs_per_tick"],
+        "batch_window_enforced": runtime["scheduler_tick_batch_window_enforced"],
+        "in_batch_window": in_batch_window,
+        "batch_window": {
+            "timezone": runtime["scheduler_tick_timezone"],
+            "start_local_time": runtime["scheduler_tick_window_start"],
+            "end_local_time": runtime["scheduler_tick_window_end"],
+        },
+    }
+
+
+def _artifact_retention_scheduler_tick_runtime_snapshot_valid(
+    runtime: dict[str, Any],
+) -> bool:
+    if set(runtime) != {
+        "automation_profile",
+        "scheduler_daemon_enabled",
+        "scheduler_daemon_started",
+        "scheduler_tick_admission_enabled",
+        "job_queue_available",
+        "job_queue_backend",
+        "worker_runner_available",
+        "physical_delete_automation_enabled",
+        "default_execution_mode",
+        "tick_interval_seconds",
+        "tick_jitter_seconds",
+        "tick_lock_ttl_seconds",
+        "tick_stale_after_seconds",
+        "max_jobs_per_tick",
+        "batch_window_enforced",
+        "in_batch_window",
+        "batch_window",
+    }:
+        return False
+    if runtime.get("automation_profile") != ARTIFACT_RETENTION_SCHEDULER_AUTOMATION_PROFILE:
+        return False
+    if runtime.get("scheduler_daemon_enabled") is not False:
+        return False
+    if runtime.get("scheduler_daemon_started") is not False:
+        return False
+    if runtime.get("scheduler_tick_admission_enabled") is not True:
+        return False
+    if not isinstance(runtime.get("job_queue_available"), bool):
+        return False
+    if not isinstance(runtime.get("job_queue_backend"), str):
+        return False
+    if not runtime.get("job_queue_backend", "").strip():
+        return False
+    if runtime.get("worker_runner_available") is not True:
+        return False
+    if runtime.get("physical_delete_automation_enabled") is not False:
+        return False
+    if runtime.get("default_execution_mode") != "DRY_RUN":
+        return False
+    if runtime.get("tick_interval_seconds") != ARTIFACT_RETENTION_SCHEDULER_TICK_INTERVAL_SECONDS:
+        return False
+    if runtime.get("tick_jitter_seconds") != ARTIFACT_RETENTION_SCHEDULER_TICK_JITTER_SECONDS:
+        return False
+    if runtime.get("tick_lock_ttl_seconds") != ARTIFACT_RETENTION_SCHEDULER_TICK_LOCK_TTL_SECONDS:
+        return False
+    if runtime.get("tick_stale_after_seconds") != ARTIFACT_RETENTION_SCHEDULER_TICK_STALE_AFTER_SECONDS:
+        return False
+    if runtime.get("max_jobs_per_tick") != ARTIFACT_RETENTION_SCHEDULER_MAX_JOBS_PER_TICK:
+        return False
+    if runtime.get("batch_window_enforced") is not True:
+        return False
+    if not isinstance(runtime.get("in_batch_window"), bool):
+        return False
+    if runtime.get("batch_window") != {
+        "timezone": ARTIFACT_RETENTION_BATCH_TIMEZONE,
+        "start_local_time": ARTIFACT_RETENTION_BATCH_WINDOW_START,
+        "end_local_time": ARTIFACT_RETENTION_BATCH_WINDOW_END,
+    }:
+        return False
+    return True
+
+
+def _artifact_retention_scheduler_tick_admission_valid(
+    admission: dict[str, Any],
+    *,
+    ready: bool,
+) -> bool:
+    return (
+        set(admission)
+        == {
+            "admission_ready",
+            "admission_performed",
+            "trigger_type",
+            "requested_at",
+            "idempotency_key",
+            "max_jobs_per_tick",
+        }
+        and admission.get("admission_ready") is ready
+        and admission.get("admission_performed") is False
+        and admission.get("trigger_type") == "scheduler_tick"
+        and optional_text(admission.get("requested_at")) is not None
+        and optional_text(admission.get("idempotency_key")) is not None
+        and admission.get("max_jobs_per_tick")
+        == ARTIFACT_RETENTION_SCHEDULER_MAX_JOBS_PER_TICK
+    )
 
 
 def _artifact_retention_scheduled_job_matches_filter(

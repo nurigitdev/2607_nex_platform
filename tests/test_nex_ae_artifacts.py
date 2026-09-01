@@ -35,6 +35,7 @@ from nex_ae_api.artifacts import (
     AE_ARTIFACT_RETENTION_POLICY_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULE_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_CONFIG_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_TICK_PLAN_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_COMMAND_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULED_EXECUTION_WORKER_RESULT_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULED_JOB_COLLECTION_SCHEMA_VERSION,
@@ -77,6 +78,7 @@ from nex_ae_api.artifacts import (
     build_artifact_retention_schedule,
     build_artifact_retention_scheduler_config,
     build_artifact_retention_scheduler_runtime_config,
+    build_artifact_retention_scheduler_tick_plan,
     build_artifact_retention_scheduled_execution_command,
     build_artifact_retention_scheduled_job_collection,
     build_artifact_retention_scheduled_job_admission,
@@ -141,6 +143,7 @@ from nex_ae_api.artifacts import (
     validate_artifact_retention_policy,
     validate_artifact_retention_schedule,
     validate_artifact_retention_scheduler_config,
+    validate_artifact_retention_scheduler_tick_plan,
     validate_artifact_retention_scheduled_execution_command,
     validate_artifact_retention_scheduled_job_collection,
     validate_artifact_retention_scheduled_execution_worker_result,
@@ -2234,6 +2237,409 @@ def test_artifact_retention_scheduler_config_rejects_runtime_key_drift() -> None
     with pytest.raises(ArtifactHandoffError) as extra_exc:
         validate_artifact_retention_scheduler_config({**config, "runtime": runtime})
     assert extra_exc.value.error_code == "ae.artifact_retention_scheduler_config_invalid"
+
+
+def test_artifact_retention_scheduler_tick_plan_builds_ready_command_preview() -> None:
+    store = ArtifactRecordStore()
+    save_rendered_retention_artifact(
+        store,
+        artifact_request_id="scheduler-tick-plan-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+        target_formats=["MD", "HTML_PREVIEW"],
+    )
+    batch_plan = store.plan_retention_batch(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit="10",
+        max_delete_count="1",
+        checked_at="2026-09-01T02:10:00Z",
+        idempotency_key="scheduler-tick-plan-ready-source",
+    )
+    scheduler_config = build_artifact_retention_scheduler_config(
+        job_queue=InMemoryJobQueue()
+    )
+
+    tick_plan = build_artifact_retention_scheduler_tick_plan(
+        batch_plan,
+        scheduler_config=scheduler_config,
+        tick_at="2026-08-31T17:30:00Z",
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        idempotency_key="scheduler-tick-ready-001",
+    )
+    serialized = json.dumps(tick_plan, ensure_ascii=False, sort_keys=True)
+
+    assert tick_plan["artifact_retention_scheduler_tick_plan_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_TICK_PLAN_SCHEMA_VERSION
+    )
+    assert tick_plan["tick_status"] == "READY"
+    assert tick_plan["skip_reason"] is None
+    assert tick_plan["trace_id"] == TRACE_ID
+    assert tick_plan["request_id"] == REQUEST_ID
+    assert tick_plan["source_plan_id"] == batch_plan["plan_id"]
+    assert tick_plan["runtime"]["scheduler_daemon_enabled"] is False
+    assert tick_plan["runtime"]["scheduler_daemon_started"] is False
+    assert tick_plan["runtime"]["job_queue_available"] is True
+    assert tick_plan["runtime"]["in_batch_window"] is True
+    assert tick_plan["runtime"]["tick_interval_seconds"] == 900
+    assert tick_plan["runtime"]["batch_window"] == {
+        "timezone": "Asia/Seoul",
+        "start_local_time": "02:00",
+        "end_local_time": "05:00",
+    }
+    assert tick_plan["admission"] == {
+        "admission_ready": True,
+        "admission_performed": False,
+        "trigger_type": "scheduler_tick",
+        "requested_at": "2026-08-31T17:30:00Z",
+        "idempotency_key": "scheduler-tick-ready-001",
+        "max_jobs_per_tick": 1,
+    }
+    assert tick_plan["command_preview"]["trigger_type"] == "scheduler_tick"
+    assert tick_plan["command_preview"]["command_status"] == "READY"
+    assert tick_plan["command_preview"]["command_created_at"] == tick_plan["tick_at"]
+    assert tick_plan["metadata"] == {
+        "metadata_only": True,
+        "job_enqueued": False,
+        "worker_executed": False,
+        "history_write_executed": False,
+        "physical_delete_automation_enabled": False,
+        "dry_run": True,
+    }
+    assert validate_artifact_retention_scheduler_tick_plan(tick_plan) is tick_plan
+    assert "storage_ref" not in serialized
+    assert "postgresql://" not in serialized
+
+
+def test_artifact_retention_scheduler_tick_plan_skips_when_queue_unavailable() -> None:
+    store = ArtifactRecordStore()
+    save_rendered_retention_artifact(
+        store,
+        artifact_request_id="scheduler-tick-plan-noqueue-001",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    batch_plan = store.plan_retention_batch(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit="10",
+        max_delete_count="1",
+        checked_at="2026-09-01T02:10:00Z",
+    )
+
+    tick_plan = build_artifact_retention_scheduler_tick_plan(
+        batch_plan,
+        tick_at="2026-08-31T17:30:00Z",
+    )
+
+    assert tick_plan["tick_status"] == "SKIPPED"
+    assert tick_plan["skip_reason"] == "job_queue_unavailable"
+    assert tick_plan["command_preview"] is None
+    assert tick_plan["admission"]["admission_ready"] is False
+    assert tick_plan["runtime"]["job_queue_backend"] == "unconfigured"
+
+
+def test_artifact_retention_scheduler_tick_plan_skips_outside_batch_window() -> None:
+    store = ArtifactRecordStore()
+    save_rendered_retention_artifact(
+        store,
+        artifact_request_id="scheduler-tick-plan-window-001",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    batch_plan = store.plan_retention_batch(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit="10",
+        max_delete_count="1",
+        checked_at="2026-09-01T02:10:00Z",
+    )
+
+    tick_plan = build_artifact_retention_scheduler_tick_plan(
+        batch_plan,
+        scheduler_config=build_artifact_retention_scheduler_config(
+            job_queue=InMemoryJobQueue()
+        ),
+        tick_at="2026-09-01T10:00:00Z",
+    )
+
+    assert tick_plan["tick_status"] == "SKIPPED"
+    assert tick_plan["skip_reason"] == "outside_batch_window"
+    assert tick_plan["runtime"]["in_batch_window"] is False
+    assert tick_plan["command_preview"] is None
+
+
+def test_artifact_retention_scheduler_tick_plan_noop_when_no_candidates() -> None:
+    candidate_filter = build_artifact_retention_candidate_filter(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        limit="10",
+    )
+    batch_plan = build_artifact_retention_batch_plan(
+        build_artifact_retention_candidate_collection(
+            [],
+            candidate_filter=candidate_filter,
+        ),
+        checked_at="2026-09-01T02:10:00Z",
+    )
+
+    tick_plan = build_artifact_retention_scheduler_tick_plan(
+        batch_plan,
+        scheduler_config=build_artifact_retention_scheduler_config(
+            job_queue=InMemoryJobQueue()
+        ),
+        tick_at="2026-08-31T17:30:00Z",
+    )
+
+    assert tick_plan["tick_status"] == "NOOP"
+    assert tick_plan["skip_reason"] == "no_retention_candidates"
+    assert tick_plan["source_plan_summary"]["plan_status"] == "NOOP"
+    assert tick_plan["command_preview"] is None
+    assert tick_plan["admission"]["admission_ready"] is False
+
+
+def test_artifact_retention_scheduler_tick_plan_rejects_contract_drift() -> None:
+    store = ArtifactRecordStore()
+    save_rendered_retention_artifact(
+        store,
+        artifact_request_id="scheduler-tick-plan-invalid-001",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    batch_plan = store.plan_retention_batch(
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days="30",
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit="10",
+        max_delete_count="1",
+        checked_at="2026-09-01T02:10:00Z",
+    )
+    tick_plan = build_artifact_retention_scheduler_tick_plan(
+        batch_plan,
+        scheduler_config=build_artifact_retention_scheduler_config(
+            job_queue=InMemoryJobQueue()
+        ),
+        tick_at="2026-08-31T17:30:00Z",
+        idempotency_key="scheduler-tick-invalid-001",
+    )
+
+    with pytest.raises(ArtifactHandoffError) as type_exc:
+        validate_artifact_retention_scheduler_tick_plan([])  # type: ignore[arg-type]
+    assert type_exc.value.error_code == (
+        "ae.artifact_retention_scheduler_tick_plan_invalid"
+    )
+
+    invalid_cases = (
+        (
+            {"artifact_retention_scheduler_tick_plan_schema_version": "wrong"},
+            "ae.artifact_retention_scheduler_tick_plan_schema_invalid",
+            "schema version",
+        ),
+        (
+            {"service_id": "nex-ag"},
+            "ae.artifact_retention_scheduler_tick_plan_invalid",
+            "service id",
+        ),
+        (
+            {"source_plan_summary": []},
+            "ae.artifact_retention_scheduler_tick_plan_invalid",
+            "source_plan_summary",
+        ),
+        (
+            {"runtime": []},
+            "ae.artifact_retention_scheduler_tick_plan_invalid",
+            "runtime",
+        ),
+        (
+            {"scheduler_id": ""},
+            "ae.artifact_retention_scheduler_tick_plan_invalid",
+            "scheduler id",
+        ),
+        (
+            {"tick_id": ""},
+            "ae.artifact_retention_scheduler_tick_plan_invalid",
+            "tick id",
+        ),
+        (
+            {"source_plan_id": ""},
+            "ae.artifact_retention_scheduler_tick_plan_invalid",
+            "source plan id",
+        ),
+        (
+            {"tick_at": "not-a-date"},
+            "ae.artifact_retention_timestamp_invalid",
+            "tick_at",
+        ),
+        (
+            {"tick_status": "RUNNING"},
+            "ae.artifact_retention_scheduler_tick_plan_invalid",
+            "status",
+        ),
+        (
+            {"metadata": {**tick_plan["metadata"], "job_enqueued": True}},
+            "ae.artifact_retention_scheduler_tick_plan_invalid",
+            "metadata",
+        ),
+        (
+            {"skip_reason": "outside_batch_window"},
+            "ae.artifact_retention_scheduler_tick_plan_invalid",
+            "cannot skip",
+        ),
+        (
+            {"command_preview": None},
+            "ae.artifact_retention_scheduled_command_invalid",
+            "object",
+        ),
+        (
+            {
+                "command_preview": {
+                    **tick_plan["command_preview"],
+                    "trigger_type": "operator_dispatch",
+                }
+            },
+            "ae.artifact_retention_scheduler_tick_plan_invalid",
+            "command preview",
+        ),
+    )
+    for patch, error_code, detail in invalid_cases:
+        with pytest.raises(ArtifactHandoffError) as invalid_exc:
+            validate_artifact_retention_scheduler_tick_plan({**tick_plan, **patch})
+        assert invalid_exc.value.error_code == error_code
+        assert detail in invalid_exc.value.detail
+
+    runtime_invalid_cases = (
+        {"automation_profile": "enabled-local-v1"},
+        {"scheduler_daemon_enabled": True},
+        {"scheduler_daemon_started": True},
+        {"scheduler_tick_admission_enabled": False},
+        {"job_queue_available": "yes"},
+        {"job_queue_backend": ""},
+        {"worker_runner_available": False},
+        {"physical_delete_automation_enabled": True},
+        {"default_execution_mode": "EXECUTE"},
+        {"tick_interval_seconds": 60},
+        {"tick_jitter_seconds": 0},
+        {"tick_lock_ttl_seconds": 60},
+        {"tick_stale_after_seconds": 600},
+        {"max_jobs_per_tick": 2},
+        {"batch_window_enforced": False},
+        {"in_batch_window": "yes"},
+        {"batch_window": {"timezone": "UTC"}},
+    )
+    for patch in runtime_invalid_cases:
+        with pytest.raises(ArtifactHandoffError) as runtime_exc:
+            validate_artifact_retention_scheduler_tick_plan(
+                {**tick_plan, "runtime": {**tick_plan["runtime"], **patch}}
+            )
+        assert runtime_exc.value.error_code == (
+            "ae.artifact_retention_scheduler_tick_plan_invalid"
+        )
+        assert "runtime" in runtime_exc.value.detail
+
+    runtime_missing_key = dict(tick_plan["runtime"])
+    runtime_missing_key.pop("tick_interval_seconds")
+    for runtime in (
+        runtime_missing_key,
+        {**tick_plan["runtime"], "unexpected_runtime_field": True},
+    ):
+        with pytest.raises(ArtifactHandoffError) as runtime_key_exc:
+            validate_artifact_retention_scheduler_tick_plan(
+                {**tick_plan, "runtime": runtime}
+            )
+        assert runtime_key_exc.value.error_code == (
+            "ae.artifact_retention_scheduler_tick_plan_invalid"
+        )
+        assert "runtime" in runtime_key_exc.value.detail
+
+    admission_invalid_cases = (
+        {"admission_ready": False},
+        {"admission_performed": True},
+        {"trigger_type": "operator_dispatch"},
+        {"requested_at": ""},
+        {"idempotency_key": ""},
+        {"max_jobs_per_tick": 2},
+    )
+    for patch in admission_invalid_cases:
+        with pytest.raises(ArtifactHandoffError) as admission_exc:
+            validate_artifact_retention_scheduler_tick_plan(
+                {**tick_plan, "admission": {**tick_plan["admission"], **patch}}
+            )
+        assert admission_exc.value.error_code == (
+            "ae.artifact_retention_scheduler_tick_plan_invalid"
+        )
+        assert "admission" in admission_exc.value.detail
+
+    admission_missing_key = dict(tick_plan["admission"])
+    admission_missing_key.pop("max_jobs_per_tick")
+    with pytest.raises(ArtifactHandoffError) as admission_key_exc:
+        validate_artifact_retention_scheduler_tick_plan(
+            {**tick_plan, "admission": admission_missing_key}
+        )
+    assert admission_key_exc.value.error_code == (
+        "ae.artifact_retention_scheduler_tick_plan_invalid"
+    )
+
+    skipped = build_artifact_retention_scheduler_tick_plan(
+        batch_plan,
+        tick_at="2026-08-31T17:30:00Z",
+    )
+    skipped_invalid_cases = (
+        (
+            {"skip_reason": "no_retention_candidates"},
+            "ae.artifact_retention_scheduler_tick_plan_invalid",
+            "skipped reason",
+        ),
+        (
+            {"command_preview": tick_plan["command_preview"]},
+            "ae.artifact_retention_scheduler_tick_plan_invalid",
+            "skipped plan cannot carry command",
+        ),
+    )
+    for patch, error_code, detail in skipped_invalid_cases:
+        with pytest.raises(ArtifactHandoffError) as invalid_exc:
+            validate_artifact_retention_scheduler_tick_plan({**skipped, **patch})
+        assert invalid_exc.value.error_code == error_code
+        assert detail in invalid_exc.value.detail
+
+    noop = {
+        **skipped,
+        "tick_status": "NOOP",
+        "skip_reason": "outside_batch_window",
+    }
+    with pytest.raises(ArtifactHandoffError) as noop_exc:
+        validate_artifact_retention_scheduler_tick_plan(noop)
+    assert noop_exc.value.error_code == "ae.artifact_retention_scheduler_tick_plan_invalid"
+    assert "noop reason" in noop_exc.value.detail
+
+    skipped_unknown_reason = {**skipped, "skip_reason": "maintenance_window"}
+    with pytest.raises(ArtifactHandoffError) as skipped_reason_exc:
+        validate_artifact_retention_scheduler_tick_plan(skipped_unknown_reason)
+    assert skipped_reason_exc.value.error_code == (
+        "ae.artifact_retention_scheduler_tick_plan_invalid"
+    )
+    assert "skip reason" in skipped_reason_exc.value.detail
+
+    config = build_artifact_retention_scheduler_config(job_queue=InMemoryJobQueue())
+    disabled_config = {
+        **config,
+        "runtime": {**config["runtime"], "scheduler_tick_admission_enabled": False},
+    }
+    assert ae_artifacts._artifact_retention_scheduler_tick_skip_reason(
+        disabled_config,
+        batch_plan,
+        True,
+    ) == "scheduler_tick_admission_disabled"
 
 
 def test_artifact_retention_execution_contract_defaults_to_safe_dry_run() -> None:

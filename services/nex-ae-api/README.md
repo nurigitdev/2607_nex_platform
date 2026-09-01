@@ -570,3 +570,7 @@ Artifact library management:
   automation knobs: 15-minute tick interval, 60-second jitter, 10-minute lock
   TTL, one job per tick, enforced `Asia/Seoul` `02:00-05:00` batch window, and
   exact runtime validation that rejects missing, extra, or drifted knobs.
+- Slice 0503 adds a pure scheduler tick planner. It converts an existing
+  metadata-only batch plan into a READY, NOOP, or SKIPPED tick decision, emits a
+  dry-run `scheduler_tick` command preview only for READY ticks, and still does
+  not enqueue jobs, start the daemon, run workers, or enable physical deletion.

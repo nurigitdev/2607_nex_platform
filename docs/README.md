@@ -606,6 +606,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0500`](slices/0500_s50_ae_artifact_retention_scheduler_runtime_closure.md) | `S50-010` S50 AE artifact retention scheduler runtime closure checkpoint. |
 | [`Slice 0501`](slices/0501_ae_artifact_retention_automation_boundary_audit.md) | `S51-001` AE artifact retention automation boundary audit. |
 | [`Slice 0502`](slices/0502_ae_retention_scheduler_runtime_config_expansion.md) | `S51-002` AE retention scheduler runtime config expansion. |
+| [`Slice 0503`](slices/0503_ae_retention_scheduler_tick_planner_foundation.md) | `S51-003` AE retention scheduler tick planner foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
