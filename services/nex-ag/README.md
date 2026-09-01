@@ -389,6 +389,9 @@ Unified operations:
   plan, scheduled-job, and retention-history read models into one metadata-only
   operator summary while keeping physical delete automation disabled and
   operator approval visible.
+- Slice 0510 closes S51 by checking AG's automation projection stays connected
+  to AE scheduler tick admission, protected PostgreSQL smoke evidence, physical
+  purge approval guardrails, and read-only/metadata-only operator semantics.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

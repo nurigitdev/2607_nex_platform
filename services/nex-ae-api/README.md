@@ -596,3 +596,7 @@ Artifact library management:
   boundary. When enabled against `NEX_AE_TEST_DATABASE_URL`, it verifies the
   operator approval block, storage deletion, artifact graph row deletion,
   handoff lineage retention, and cleanup against the real AE test DB.
+- Slice 0510 closes S51 by checking the automation boundary audit, scheduler
+  tick admission, protected PostgreSQL smoke hooks, execute-mode operator
+  approval hardening, physical purge adapter, AG automation projection, and
+  metadata-only redaction posture remain connected end to end.
