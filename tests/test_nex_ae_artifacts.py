@@ -4251,6 +4251,9 @@ def test_artifact_sqlalchemy_storage_helpers_cover_dialects_and_nulls() -> None:
         ae_artifacts.datetime(2026, 8, 28, 0, 0, tzinfo=ae_artifacts.UTC)
     ) == "2026-08-28T00:00:00Z"
     assert ae_artifacts._datetime_value(
+        ae_artifacts.datetime.fromisoformat("2026-09-01T09:00:00+09:00")
+    ) == "2026-09-01T00:00:00Z"
+    assert ae_artifacts._datetime_value(
         type("FakeDate", (), {"isoformat": lambda self: "2026-08-28T00:00:00+00:00"})()
     ) == "2026-08-28T00:00:00Z"
     history_record = build_artifact_retention_execution_history_record(

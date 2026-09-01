@@ -453,3 +453,8 @@ Artifact library management:
   history store. The route reuses persisted idempotency history for duplicate
   commands, saves dry-run/blocked/succeeded execution evidence, and checks
   history store availability before guarded physical delete.
+- Slice 0475 adds protected PostgreSQL smoke evidence for retention execution
+  history. When `NEX_AE_ARTIFACT_RETENTION_HISTORY_POSTGRES_SMOKE=1` is set
+  against `NEX_AE_TEST_DATABASE_URL`, the runner migrates the test DB, exercises
+  dry-run/blocked/guarded execute plus idempotency replay, directly verifies
+  `ae_artifact_retention_executions`, and cleans up generated rows.

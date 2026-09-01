@@ -6264,6 +6264,9 @@ def _storage_ref_relative_path(storage_ref: str) -> str:
 def _datetime_value(value: Any) -> str:
     if value is None:
         return _utc_now()
+    if isinstance(value, datetime):
+        aware = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+        return aware.astimezone(UTC).isoformat().replace("+00:00", "Z")
     if hasattr(value, "isoformat"):
         return value.isoformat().replace("+00:00", "Z")
     return str(value)
