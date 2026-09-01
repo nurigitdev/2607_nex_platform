@@ -370,6 +370,11 @@ Unified operations:
   operations can now point at AE's protected scheduler config, scheduled-job
   list, and scheduled-job admission APIs while keeping AG read-only against AE
   persistence.
+- Slice 0499 adds protected cross-service PostgreSQL smoke evidence for the
+  scheduled retention operator path. The smoke drives AG's dispatch and list
+  routes against an AE TestClient backed by the real AE test DB, proves AG does
+  not write AE persistence directly, verifies the queued job through
+  `service_jobs`, and emits only metadata/redacted evidence.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

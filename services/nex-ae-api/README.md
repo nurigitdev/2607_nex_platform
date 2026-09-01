@@ -552,3 +552,8 @@ Artifact library management:
   scheduled job admission. Admission uses the shared JobQueue from AE
   persistence, keeps the scheduler daemon disabled, and preserves the
   AE-only enqueue boundary for AG dispatch requests.
+- Slice 0499 adds protected AE/AG PostgreSQL smoke evidence for that boundary.
+  When explicitly enabled against `NEX_AE_TEST_DATABASE_URL`, it migrates the
+  real AE test DB, lets AG dispatch through the AE scheduled-job admission API,
+  directly verifies the persisted `service_jobs` QUEUED row, lists it back via
+  AG's scheduled-job projection, and cleans up smoke artifacts and jobs.
