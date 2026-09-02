@@ -1353,6 +1353,99 @@ def register_artifact_operation_routes(
             request_trace_id=trace_id,
         )
 
+    @app.post(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
+        response_model=None,
+    )
+    def dispatch_artifact_retention_scheduler_daemon_manual_tick_once(
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key_header: str | None = Header(
+            default=None,
+            alias="Idempotency-Key",
+        ),
+        service_id: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        service_problem = _validate_artifact_service_filter(request, service_id)
+        if service_problem is not None:
+            return service_problem
+        dispatch_request = _validate_artifact_retention_daemon_manual_tick_request(
+            request,
+            payload=payload,
+            idempotency_key_header=idempotency_key_header,
+        )
+        if isinstance(dispatch_request, JSONResponse):
+            return dispatch_request
+
+        selected_client = (
+            configured_client or build_default_ae_artifact_operations_client()
+        )
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            daemon_config = (
+                selected_client.get_artifact_retention_scheduler_daemon_config(
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+            )
+        except AeArtifactOperationsError as exc:
+            return _artifact_operations_problem_response(request, exc)
+
+        projected_config = _project_retention_scheduler_daemon_config(daemon_config)
+        manual_action = _daemon_action_item(projected_config, "manual_tick_once")
+        if _text_or_none(manual_action.get("decision_status")) != "READY":
+            return problem_response(
+                request,
+                status_code=409,
+                error_code="ag.ae_artifact_retention_daemon_manual_tick_blocked",
+                title="Artifact retention daemon manual tick is blocked",
+                detail=(
+                    "Artifact retention daemon manual tick requires AE to "
+                    "report a READY manual_tick_once action."
+                ),
+                type_uri=(
+                    "https://nex-platform.local/problems/"
+                    "ae-artifact-retention-daemon-manual-tick-blocked"
+                ),
+            )
+
+        try:
+            dispatch_response = (
+                selected_client.dispatch_artifact_retention_scheduler_daemon_control(
+                    action="manual_tick_once",
+                    tenant_id=dispatch_request["tenant_id"],
+                    workspace_id=dispatch_request["workspace_id"],
+                    owner_user_id=dispatch_request["owner_user_id"],
+                    retention_days=dispatch_request["retention_days"],
+                    as_of=dispatch_request["as_of"],
+                    scan_limit=dispatch_request["scan_limit"],
+                    max_delete_count=dispatch_request["max_delete_count"],
+                    requested_at=dispatch_request["requested_at"],
+                    requested_by=dispatch_request["requested_by"],
+                    reason=dispatch_request["reason"],
+                    tick_at=dispatch_request["tick_at"],
+                    run_worker=dispatch_request["run_worker"],
+                    worker_id=dispatch_request["worker_id"],
+                    idempotency_key=dispatch_request["idempotency_key"],
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+            )
+        except AeArtifactOperationsError as exc:
+            return _artifact_operations_problem_response(request, exc)
+
+        return build_artifact_operation_retention_daemon_projection(
+            daemon_config=projected_config,
+            dispatch_response=dispatch_response,
+            source_client=selected_client,
+            request_trace_id=trace_id,
+        )
+
     @app.get("/admin/v1/operations/artifacts/{artifact_id}", response_model=None)
     def get_artifact_operation_detail(
         artifact_id: str,
@@ -3930,6 +4023,230 @@ def _validate_artifact_retention_scheduled_dispatch_request(
         "requested_at": _text_or_none(payload.get("requested_at")),
         "idempotency_key": _text_or_none(payload.get("idempotency_key")),
         "confirm_dispatch": True,
+    }
+
+
+def _validate_artifact_retention_daemon_manual_tick_request(
+    request: Request,
+    *,
+    payload: Any,
+    idempotency_key_header: str | None,
+) -> dict[str, Any] | JSONResponse:
+    if not isinstance(payload, Mapping):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_daemon_manual_tick_invalid",
+            title="Artifact retention daemon manual tick request is invalid",
+            detail="Artifact retention daemon manual tick request must be an object.",
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-manual-tick-invalid"
+            ),
+        )
+    if payload.get("confirm_dispatch") is not True:
+        return problem_response(
+            request,
+            status_code=409,
+            error_code=(
+                "ag.ae_artifact_retention_daemon_manual_tick_confirmation_required"
+            ),
+            title="Artifact retention daemon manual tick confirmation is required",
+            detail=(
+                "Artifact retention daemon manual tick requires "
+                "confirm_dispatch=true."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-manual-tick-confirmation-required"
+            ),
+        )
+
+    action = _normalized_daemon_action(payload.get("action") or "manual_tick_once")
+    if action != "manual_tick_once":
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_daemon_manual_tick_action_invalid",
+            title="Artifact retention daemon manual tick action is invalid",
+            detail=(
+                "Artifact retention daemon manual tick route only supports "
+                "manual_tick_once."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-manual-tick-action-invalid"
+            ),
+        )
+
+    required = {
+        "tenant_id": payload.get("tenant_id"),
+        "workspace_id": payload.get("workspace_id"),
+        "owner_user_id": payload.get("owner_user_id"),
+    }
+    missing = [name for name, value in required.items() if not _present_text(value)]
+    if missing:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_daemon_manual_tick_scope_missing",
+            title="Artifact retention daemon manual tick scope is required",
+            detail=(
+                "Artifact retention daemon manual tick requires tenant, "
+                "workspace, and owner scope."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-manual-tick-scope-missing"
+            ),
+        )
+
+    retention_days = _retention_days_filter(
+        _text_or_none(payload.get("retention_days"))
+    )
+    if retention_days is None and _present_text(payload.get("retention_days")):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code=(
+                "ag.ae_artifact_retention_daemon_manual_tick_retention_days_invalid"
+            ),
+            title="Artifact retention daemon manual tick retention days are invalid",
+            detail="Artifact retention daemon manual tick retention days must be 1-365.",
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-manual-tick-retention-days-invalid"
+            ),
+        )
+
+    scan_limit = _collection_limit(_text_or_none(payload.get("scan_limit")))
+    if scan_limit is None:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_daemon_manual_tick_scan_limit_invalid",
+            title="Artifact retention daemon manual tick scan limit is invalid",
+            detail=(
+                "Artifact retention daemon manual tick scan limit must be "
+                f"between 1 and {MAX_ARTIFACT_COLLECTION_LIMIT}."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-manual-tick-scan-limit-invalid"
+            ),
+        )
+
+    max_delete_count = _collection_limit(_text_or_none(payload.get("max_delete_count")))
+    if max_delete_count is None:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code=(
+                "ag.ae_artifact_retention_daemon_manual_tick_delete_limit_invalid"
+            ),
+            title="Artifact retention daemon manual tick delete limit is invalid",
+            detail=(
+                "Artifact retention daemon manual tick delete limit must be "
+                f"between 1 and {MAX_ARTIFACT_COLLECTION_LIMIT}."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-manual-tick-delete-limit-invalid"
+            ),
+        )
+
+    run_worker_raw = payload.get("run_worker")
+    if run_worker_raw is not None and not isinstance(run_worker_raw, bool):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code=(
+                "ag.ae_artifact_retention_daemon_manual_tick_worker_flag_invalid"
+            ),
+            title="Artifact retention daemon manual tick worker flag is invalid",
+            detail="Artifact retention daemon manual tick run_worker must be boolean.",
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-manual-tick-worker-flag-invalid"
+            ),
+        )
+    run_worker = run_worker_raw is True
+    if run_worker and payload.get("confirm_worker_run") is not True:
+        return problem_response(
+            request,
+            status_code=409,
+            error_code=(
+                "ag.ae_artifact_retention_daemon_manual_tick_worker_confirmation_required"
+            ),
+            title="Artifact retention daemon manual tick worker confirmation is required",
+            detail=(
+                "Artifact retention daemon manual tick with run_worker=true "
+                "requires confirm_worker_run=true."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-manual-tick-worker-confirmation-required"
+            ),
+        )
+
+    header_key = _text_or_none(idempotency_key_header)
+    payload_key = _text_or_none(payload.get("idempotency_key"))
+    idempotency_key = header_key if _present_text(header_key) else payload_key
+    tenant_id = str(payload["tenant_id"]).strip()
+    workspace_id = str(payload["workspace_id"]).strip()
+    return {
+        "action": "manual_tick_once",
+        "tenant_id": tenant_id,
+        "workspace_id": workspace_id,
+        "owner_user_id": str(payload["owner_user_id"]).strip(),
+        "retention_days": retention_days,
+        "as_of": _text_or_none(payload.get("as_of")),
+        "scan_limit": scan_limit,
+        "max_delete_count": max_delete_count,
+        "requested_at": _text_or_none(payload.get("requested_at")),
+        "requested_by": _artifact_retention_daemon_requested_by(
+            request=request,
+            payload=payload,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+        ),
+        "reason": _text_or_none(payload.get("reason")),
+        "tick_at": _text_or_none(payload.get("tick_at")),
+        "run_worker": run_worker,
+        "worker_id": _text_or_none(payload.get("worker_id")),
+        "idempotency_key": idempotency_key,
+        "confirm_dispatch": True,
+        "confirm_worker_run": payload.get("confirm_worker_run") is True,
+    }
+
+
+def _artifact_retention_daemon_requested_by(
+    *,
+    request: Request,
+    payload: Mapping[str, Any],
+    tenant_id: str,
+    workspace_id: str,
+) -> dict[str, Any]:
+    requested_by = _select_mapping(
+        payload.get("requested_by"),
+        (
+            "actor_type",
+            "actor_id",
+            "tenant_id",
+            "workspace_id",
+            "request_id",
+            "service_id",
+        ),
+    )
+    if requested_by:
+        return requested_by
+    return {
+        "actor_type": "operator",
+        "actor_id": "nex-ag-artifact-retention-operator",
+        "tenant_id": tenant_id,
+        "workspace_id": workspace_id,
+        "request_id": request_id_from_headers(request),
+        "service_id": "nex-ag",
     }
 
 

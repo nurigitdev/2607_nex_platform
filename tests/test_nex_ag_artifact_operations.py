@@ -5,6 +5,7 @@ from typing import Any
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from nex_ag.artifact_operations import (
     AG_ARTIFACT_OPERATION_COLLECTION_PROJECTION_SCHEMA_VERSION,
@@ -3446,6 +3447,289 @@ def test_artifact_retention_scheduler_daemon_operations_route_guardrails() -> No
     )
 
 
+def test_artifact_retention_scheduler_daemon_manual_tick_route_dispatches() -> None:
+    class CapturingDaemonControlClient(InMemoryAeArtifactOperationsClient):
+        def __init__(self) -> None:
+            super().__init__(
+                artifact_retention_scheduler_daemon_config=(
+                    artifact_retention_scheduler_daemon_config_payload()
+                )
+            )
+            self.captured_dispatch: dict[str, Any] | None = None
+
+        def dispatch_artifact_retention_scheduler_daemon_control(
+            self,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            self.captured_dispatch = dict(kwargs)
+            return super().dispatch_artifact_retention_scheduler_daemon_control(
+                **kwargs
+            )
+
+    source_client = CapturingDaemonControlClient()
+    client = build_app(source_client)
+
+    response = client.post(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
+        json={
+            "tenant_id": "tenant-0409",
+            "workspace_id": "workspace-0409",
+            "owner_user_id": "user-0409",
+            "retention_days": "30",
+            "as_of": "2026-09-01T00:00:00Z",
+            "scan_limit": "20",
+            "max_delete_count": "1",
+            "requested_at": "2026-09-01T02:35:00Z",
+            "requested_by": {
+                "actor_type": "operator",
+                "actor_id": "ag-retention-operator",
+                "tenant_id": "tenant-0409",
+                "workspace_id": "workspace-0409",
+                "database_url": "DATABASE_URL_SHOULD_NOT_LEAK",
+            },
+            "reason": "manual AG tick",
+            "tick_at": "2026-09-01T02:35:00Z",
+            "run_worker": True,
+            "confirm_worker_run": True,
+            "idempotency_key": "body-idem-0525",
+            "confirm_dispatch": True,
+        },
+        headers={**auth_headers(), "Idempotency-Key": "header-idem-0525"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["operation_type"] == "ae_artifact_retention_scheduler_daemon"
+    assert payload["dispatch_response"]["dispatch_status"] == "DISPATCHED"
+    assert payload["dispatch_response"]["control_plan"]["action"] == (
+        "manual_tick_once"
+    )
+    assert payload["summary"]["last_dispatch_action"] == "manual_tick_once"
+    assert payload["summary"]["manual_tick_once_available"] is True
+    assert payload["request_trace_id"] == TRACE_ID
+    assert "DATABASE_URL_SHOULD_NOT_LEAK" not in str(payload)
+    assert source_client.captured_dispatch is not None
+    assert source_client.captured_dispatch["action"] == "manual_tick_once"
+    assert source_client.captured_dispatch["idempotency_key"] == "header-idem-0525"
+    assert source_client.captured_dispatch["run_worker"] is True
+    assert source_client.captured_dispatch["requested_by"] == {
+        "actor_type": "operator",
+        "actor_id": "ag-retention-operator",
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+    }
+
+
+def test_artifact_retention_scheduler_daemon_manual_tick_route_guardrails() -> None:
+    client = build_app(artifact_client())
+    request_payload = {
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+        "owner_user_id": "user-0409",
+        "confirm_dispatch": True,
+    }
+
+    unauthorized = client.post(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
+        json=request_payload,
+    )
+    invalid_service = client.post(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
+        params={"service_id": "nex-cx"},
+        json=request_payload,
+        headers=auth_headers(),
+    )
+    confirmation_required = client.post(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
+        json={**request_payload, "confirm_dispatch": False},
+        headers=auth_headers(),
+    )
+    invalid_action = client.post(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
+        json={**request_payload, "action": "start_daemon"},
+        headers=auth_headers(),
+    )
+    missing_scope = client.post(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
+        json={
+            "tenant_id": "tenant-0409",
+            "workspace_id": "workspace-0409",
+            "confirm_dispatch": True,
+        },
+        headers=auth_headers(),
+    )
+    invalid_retention_days = client.post(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
+        json={**request_payload, "retention_days": "0"},
+        headers=auth_headers(),
+    )
+    invalid_scan_limit = client.post(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
+        json={**request_payload, "scan_limit": "101"},
+        headers=auth_headers(),
+    )
+    invalid_delete_limit = client.post(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
+        json={**request_payload, "max_delete_count": "many"},
+        headers=auth_headers(),
+    )
+    invalid_worker_flag = client.post(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
+        json={**request_payload, "run_worker": "yes"},
+        headers=auth_headers(),
+    )
+    worker_confirmation_required = client.post(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
+        json={**request_payload, "run_worker": True},
+        headers=auth_headers(),
+    )
+
+    blocked_client = InMemoryAeArtifactOperationsClient(
+        artifact_retention_scheduler_daemon_config=(
+            artifact_retention_scheduler_daemon_config_payload(
+                job_queue_available=False,
+                lease_available=True,
+            )
+        )
+    )
+    blocked = build_app(blocked_client).post(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
+        json=request_payload,
+        headers=auth_headers(),
+    )
+
+    class BrokenDaemonManualConfigClient(InMemoryAeArtifactOperationsClient):
+        def get_artifact_retention_scheduler_daemon_config(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            raise AeArtifactOperationsError(
+                error_code="ag.ae_artifact_retention_daemon_config_failed",
+                detail="AE scheduler daemon config unavailable",
+                status_code=503,
+            )
+
+    config_source_failed = build_app(BrokenDaemonManualConfigClient()).post(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
+        json=request_payload,
+        headers=auth_headers(),
+    )
+
+    class BrokenDaemonDispatchClient(InMemoryAeArtifactOperationsClient):
+        def __init__(self) -> None:
+            super().__init__(
+                artifact_retention_scheduler_daemon_config=(
+                    artifact_retention_scheduler_daemon_config_payload()
+                )
+            )
+
+        def dispatch_artifact_retention_scheduler_daemon_control(
+            self,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            raise AeArtifactOperationsError(
+                error_code="ag.ae_artifact_retention_daemon_dispatch_failed",
+                detail="AE scheduler daemon dispatch unavailable",
+                status_code=503,
+            )
+
+    source_failed = build_app(BrokenDaemonDispatchClient()).post(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
+        json=request_payload,
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert invalid_service.status_code == 400
+    assert confirmation_required.status_code == 409
+    assert confirmation_required.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_manual_tick_confirmation_required"
+    )
+    assert invalid_action.status_code == 400
+    assert invalid_action.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_manual_tick_action_invalid"
+    )
+    assert missing_scope.status_code == 400
+    assert missing_scope.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_manual_tick_scope_missing"
+    )
+    assert invalid_retention_days.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_manual_tick_retention_days_invalid"
+    )
+    assert invalid_scan_limit.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_manual_tick_scan_limit_invalid"
+    )
+    assert invalid_delete_limit.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_manual_tick_delete_limit_invalid"
+    )
+    assert invalid_worker_flag.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_manual_tick_worker_flag_invalid"
+    )
+    assert worker_confirmation_required.status_code == 409
+    assert worker_confirmation_required.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_manual_tick_worker_confirmation_required"
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_manual_tick_blocked"
+    )
+    assert config_source_failed.status_code == 503
+    assert config_source_failed.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_config_failed"
+    )
+    assert source_failed.status_code == 503
+    assert source_failed.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_dispatch_failed"
+    )
+
+
+def test_artifact_retention_scheduler_daemon_manual_tick_validator_edges() -> None:
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": (
+                "/admin/v1/operations/artifact-retention/"
+                "scheduler-daemon/manual-tick-once"
+            ),
+            "headers": [(b"x-request-id", REQUEST_ID.encode())],
+        }
+    )
+
+    invalid = artifact_operations._validate_artifact_retention_daemon_manual_tick_request(
+        request,
+        payload=[],
+        idempotency_key_header=None,
+    )
+    valid = artifact_operations._validate_artifact_retention_daemon_manual_tick_request(
+        request,
+        payload={
+            "tenant_id": " tenant-0409 ",
+            "workspace_id": " workspace-0409 ",
+            "owner_user_id": " user-0409 ",
+            "confirm_dispatch": True,
+            "idempotency_key": "body-idem-0525",
+        },
+        idempotency_key_header="",
+    )
+
+    assert isinstance(invalid, artifact_operations.JSONResponse)
+    assert invalid.status_code == 400
+    assert not isinstance(valid, artifact_operations.JSONResponse)
+    assert valid["tenant_id"] == "tenant-0409"
+    assert valid["scan_limit"] == artifact_operations.DEFAULT_ARTIFACT_COLLECTION_LIMIT
+    assert valid["idempotency_key"] == "body-idem-0525"
+    assert valid["requested_by"] == {
+        "actor_type": "operator",
+        "actor_id": "nex-ag-artifact-retention-operator",
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+        "request_id": REQUEST_ID,
+        "service_id": "nex-ag",
+    }
+
+
 def test_artifact_retention_scheduled_dispatch_route_returns_projection() -> None:
     client = build_app(artifact_client())
 
@@ -4210,6 +4494,10 @@ def test_artifact_operations_registered_on_main_app() -> None:
     assert "/admin/v1/operations/artifact-retention/batch-plan" in paths
     assert "/admin/v1/operations/artifact-retention/automation" in paths
     assert "/admin/v1/operations/artifact-retention/scheduler-daemon" in paths
+    assert (
+        "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once"
+        in paths
+    )
     assert "/admin/v1/operations/artifact-retention/scheduled-jobs" in paths
     assert "/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch" in paths
     assert "/admin/v1/operations/artifacts/{artifact_id}" in paths

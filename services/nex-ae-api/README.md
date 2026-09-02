@@ -663,3 +663,6 @@ Artifact library management:
 - Slice 0524 exposes the AG read-only projection route while keeping AE's
   daemon config API as the source route. Manual tick-once dispatch and daemon
   control decisions remain AE-owned.
+- Slice 0525 lets AG request AE's `manual_tick_once` control through a guarded
+  operator route. AE still evaluates daemon readiness, lease availability,
+  JobQueue dispatch, worker execution, and all retention persistence effects.

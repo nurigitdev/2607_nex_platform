@@ -430,6 +430,11 @@ Unified operations:
   `/admin/v1/operations/artifact-retention/scheduler-daemon`. The route is
   protected, read-only, and delegates daemon state reads to AE's daemon config
   API through the AG client adapter.
+- Slice 0525 adds the protected AG manual tick-once route at
+  `/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once`.
+  Operators must send `confirm_dispatch=true`; `start_daemon` and continuous
+  loop actions remain blocked, and `run_worker=true` requires an additional
+  `confirm_worker_run=true` guard.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
