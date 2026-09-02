@@ -620,3 +620,9 @@ Artifact library management:
   queue admission, and optional worker runner contracts, and releases the lease
   on success or failure. It remains dry-run by default and does not start a
   daemon loop.
+- Slice 0515 adds protected PostgreSQL smoke evidence for that tick-once path.
+  When enabled against `NEX_AE_TEST_DATABASE_URL`, it runs migrations, seeds
+  rendered deleted artifacts through AE API routes, executes the SQLAlchemy
+  scheduler lease, JobQueue, artifact store, and history store path, verifies
+  lease/job/history DB readback, confirms rows and storage files are retained,
+  and cleans up all smoke rows.
