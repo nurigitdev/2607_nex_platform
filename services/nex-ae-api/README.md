@@ -626,3 +626,8 @@ Artifact library management:
   scheduler lease, JobQueue, artifact store, and history store path, verifies
   lease/job/history DB readback, confirms rows and storage files are retained,
   and cleans up all smoke rows.
+- Slice 0516 adds the metadata-only scheduler daemon config/control contract.
+  The control plane can report status, no-op stop, block daemon start by
+  policy, and mark manual tick-once ready only when operator dispatch,
+  scheduler tick admission, lease repository, and JobQueue readiness all pass.
+  It still starts no daemon and no continuous loop.

@@ -396,6 +396,10 @@ Unified operations:
   AG may later project lease, last tick, and queue posture through AE APIs, but
   daemon control remains AE-owned and AG still performs no direct database write
   or direct job enqueue.
+- Slice 0516 keeps that boundary explicit by introducing AE-owned
+  daemon config/control contracts. AG can project the metadata-only decision
+  surface later, while `start_daemon` remains blocked and manual tick-once
+  readiness depends on AE lease and JobQueue posture.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
