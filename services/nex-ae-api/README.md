@@ -709,3 +709,8 @@ Artifact library management:
   idempotent `NOOP` evidence, and both prove no runtime state transition, stop
   signal, lease, JobQueue, worker, history write, daemon start, or continuous
   loop start occurred.
+- Slice 0536 adds protected PostgreSQL smoke evidence for the one-cycle daemon
+  runner itself. When enabled against `NEX_AE_TEST_DATABASE_URL`, the smoke
+  migrates AE test persistence, seeds deleted artifacts, runs one explicit
+  opt-in daemon cycle, reads back lease, JobQueue, worker, and retention-history
+  state, and confirms no daemon process or continuous loop was started.
