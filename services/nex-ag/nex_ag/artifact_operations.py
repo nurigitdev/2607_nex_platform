@@ -1316,6 +1316,43 @@ def register_artifact_operation_routes(
             request_trace_id=trace_id,
         )
 
+    @app.get(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon",
+        response_model=None,
+    )
+    def get_artifact_retention_scheduler_daemon_operations(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        service_problem = _validate_artifact_service_filter(request, service_id)
+        if service_problem is not None:
+            return service_problem
+
+        selected_client = (
+            configured_client or build_default_ae_artifact_operations_client()
+        )
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            daemon_config = (
+                selected_client.get_artifact_retention_scheduler_daemon_config(
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+            )
+        except AeArtifactOperationsError as exc:
+            return _artifact_operations_problem_response(request, exc)
+
+        return build_artifact_operation_retention_daemon_projection(
+            daemon_config=daemon_config,
+            source_client=selected_client,
+            request_trace_id=trace_id,
+        )
+
     @app.get("/admin/v1/operations/artifacts/{artifact_id}", response_model=None)
     def get_artifact_operation_detail(
         artifact_id: str,

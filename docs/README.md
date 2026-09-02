@@ -627,6 +627,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0521`](slices/0521_ag_scheduler_daemon_operations_boundary_audit.md) | `S53-001` AG scheduler daemon operations boundary audit. |
 | [`Slice 0522`](slices/0522_ag_ae_scheduler_daemon_client_adapter.md) | `S53-002` AG AE scheduler daemon client adapter. |
 | [`Slice 0523`](slices/0523_ag_scheduler_daemon_operations_projection.md) | `S53-003` AG scheduler daemon operations projection. |
+| [`Slice 0524`](slices/0524_ag_scheduler_daemon_operations_route.md) | `S53-004` AG scheduler daemon operations route. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

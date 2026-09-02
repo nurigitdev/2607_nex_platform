@@ -660,3 +660,6 @@ Artifact library management:
 - Slice 0523 lets AG project AE daemon config/control responses as
   metadata-only operator evidence. AE remains the source of record for daemon
   runtime, lease, JobQueue, artifact, and retention-history state.
+- Slice 0524 exposes the AG read-only projection route while keeping AE's
+  daemon config API as the source route. Manual tick-once dispatch and daemon
+  control decisions remain AE-owned.

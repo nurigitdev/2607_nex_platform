@@ -3377,6 +3377,75 @@ def test_artifact_retention_automation_operations_route_guardrails() -> None:
     )
 
 
+def test_artifact_retention_scheduler_daemon_operations_route_returns_projection() -> (
+    None
+):
+    client = build_app(artifact_client())
+
+    response = client.get(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon",
+        headers=auth_headers(),
+    )
+    filtered = client.get(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon",
+        params={"service_id": "nex-ae-api"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_PROJECTION_SCHEMA_VERSION
+    )
+    assert payload["operation_type"] == "ae_artifact_retention_scheduler_daemon"
+    assert payload["summary"]["manual_tick_once_available"] is True
+    assert payload["summary"]["start_daemon_available"] is False
+    assert payload["source_status"]["daemon_config_loaded"] is True
+    assert payload["operator_guidance"]["manual_tick_once_only"] is True
+    assert payload["operator_guidance"]["ag_direct_job_enqueue_allowed"] is False
+    assert payload["request_trace_id"] == TRACE_ID
+    assert filtered.status_code == 200
+    assert filtered.json()["source_status"]["service_id"] == "nex-ae-api"
+
+
+def test_artifact_retention_scheduler_daemon_operations_route_guardrails() -> None:
+    client = build_app(artifact_client())
+
+    unauthorized = client.get(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon",
+    )
+    invalid_service = client.get(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon",
+        params={"service_id": "nex-cx"},
+        headers=auth_headers(),
+    )
+
+    class BrokenDaemonConfigClient(InMemoryAeArtifactOperationsClient):
+        def get_artifact_retention_scheduler_daemon_config(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            raise AeArtifactOperationsError(
+                error_code="ag.ae_artifact_retention_daemon_source_failed",
+                detail="AE scheduler daemon source unavailable",
+                status_code=503,
+            )
+
+    source_failed = build_app(BrokenDaemonConfigClient()).get(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon",
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert invalid_service.status_code == 400
+    assert invalid_service.json()["error_code"] == "ag.ae_artifact_service_invalid"
+    assert source_failed.status_code == 503
+    assert source_failed.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_source_failed"
+    )
+
+
 def test_artifact_retention_scheduled_dispatch_route_returns_projection() -> None:
     client = build_app(artifact_client())
 
@@ -4140,6 +4209,7 @@ def test_artifact_operations_registered_on_main_app() -> None:
     assert "/admin/v1/operations/artifact-retention/executions" in paths
     assert "/admin/v1/operations/artifact-retention/batch-plan" in paths
     assert "/admin/v1/operations/artifact-retention/automation" in paths
+    assert "/admin/v1/operations/artifact-retention/scheduler-daemon" in paths
     assert "/admin/v1/operations/artifact-retention/scheduled-jobs" in paths
     assert "/admin/v1/operations/artifact-retention/scheduled-jobs/dispatch" in paths
     assert "/admin/v1/operations/artifacts/{artifact_id}" in paths
