@@ -17,6 +17,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import nex_ae_api.artifacts as ae_artifacts
+from nex_ae_api.artifact_retention_scheduler import ArtifactRetentionSchedulerLeaseStore
 from nex_ae_api.artifacts import (
     ArtifactHandoffError,
     ArtifactHandoffStore,
@@ -327,6 +328,7 @@ def build_client(
 def build_client_with_artifact_store(
     cx_client: FakeCxArtifactSourceClient | None = None,
     retention_history_store: ArtifactRetentionExecutionHistoryStore | None = None,
+    retention_scheduler_lease_store: ArtifactRetentionSchedulerLeaseStore | None = None,
     job_queue: Any | None = None,
 ) -> tuple[
     TestClient,
@@ -343,6 +345,7 @@ def build_client_with_artifact_store(
         store=store,
         artifact_store=artifact_store,
         retention_history_store=retention_history_store,
+        retention_scheduler_lease_store=retention_scheduler_lease_store,
         job_queue=job_queue,
         cx_client=client,
     )
@@ -6190,10 +6193,97 @@ def test_artifact_retention_scheduler_config_route_returns_runtime_surface() -> 
     assert payload["api_routes"]["scheduled_job_admission"] == (
         "/api/v1/artifact-retention/scheduled-jobs/admission"
     )
+    assert payload["api_routes"]["scheduler_daemon_config"] == (
+        "/api/v1/artifact-retention/scheduler-daemon-config"
+    )
+    assert payload["api_routes"]["scheduler_daemon_controls"] == (
+        "/api/v1/artifact-retention/scheduler-daemon-controls"
+    )
     assert payload["guardrails"]["queue_admission_requires_ae_api"] is True
     assert unauthorized.status_code == 401
     assert "postgresql://" not in serialized
     assert "storage_ref" not in serialized
+
+
+def test_artifact_retention_scheduler_daemon_routes_surface_control_dispatch() -> None:
+    queue = InMemoryJobQueue()
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+    client, _, artifact_store, _ = build_client_with_artifact_store(
+        job_queue=queue,
+        retention_scheduler_lease_store=lease_store,
+    )
+    save_rendered_retention_artifact(
+        artifact_store,
+        artifact_request_id="route-daemon-dispatch-old-001",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+
+    config_response = client.get(
+        "/api/v1/artifact-retention/scheduler-daemon-config",
+        headers=auth_headers(),
+    )
+    unauthorized = client.get("/api/v1/artifact-retention/scheduler-daemon-config")
+    start_response = client.post(
+        "/api/v1/artifact-retention/scheduler-daemon-controls",
+        json={
+            "action": "start_daemon",
+            "requested_at": "2026-08-31T17:30:00Z",
+        },
+        headers=auth_headers(),
+    )
+    manual_response = client.post(
+        "/api/v1/artifact-retention/scheduler-daemon-controls",
+        json={
+            "action": "manual_tick_once",
+            "tenant_id": "tenant-001",
+            "workspace_id": "workspace-001",
+            "owner_user_id": "user-001",
+            "retention_days": 30,
+            "as_of": "2026-09-01T00:00:00Z",
+            "scan_limit": 10,
+            "max_delete_count": 1,
+            "requested_at": "2026-08-31T17:30:00Z",
+            "requested_by": {
+                "actor_type": "operator",
+                "actor_id": "ag-retention-operator",
+            },
+            "reason": "manual API dispatch",
+        },
+        headers=auth_headers(),
+    )
+    config_payload = config_response.json()
+    start_payload = start_response.json()
+    manual_payload = manual_response.json()
+    serialized = json.dumps(manual_payload, ensure_ascii=False, sort_keys=True)
+
+    assert config_response.status_code == 200
+    assert unauthorized.status_code == 401
+    assert config_payload["daemon_config_schema_version"] == (
+        "ae_artifact_retention_scheduler_daemon_config.v1"
+    )
+    assert config_payload["runtime"]["scheduler_daemon_started"] is False
+    assert config_payload["lease_repository"]["available"] is True
+    assert start_response.status_code == 200
+    assert start_payload["dispatch_status"] == "BLOCKED"
+    assert start_payload["control_plan"]["block_reason"] == "daemon_disabled_by_policy"
+    assert start_payload["tick_once_result"] is None
+    assert manual_response.status_code == 200
+    assert manual_payload["daemon_dispatch_result_schema_version"] == (
+        "ae_artifact_retention_scheduler_daemon_dispatch_result.v1"
+    )
+    assert manual_payload["dispatch_status"] == "DISPATCHED"
+    assert manual_payload["control_plan"]["decision_status"] == "READY"
+    assert manual_payload["tick_once_result"]["result_status"] == "SUCCEEDED"
+    assert manual_payload["metadata"]["job_enqueued"] is True
+    assert manual_payload["metadata"]["scheduler_daemon_started"] is False
+    assert manual_payload["metadata"]["continuous_loop_started"] is False
+    assert queue.get_job(
+        manual_payload["tick_once_result"]["enqueue_result"][
+            "scheduled_job_enqueue_result"
+        ]["job_id"]
+    )
+    assert "postgresql://" not in serialized
+    assert "/data/nex-platform" not in serialized
 
 
 def test_artifact_retention_scheduled_job_routes_enqueue_and_list() -> None:

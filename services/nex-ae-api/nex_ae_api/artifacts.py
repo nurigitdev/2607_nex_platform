@@ -1823,6 +1823,7 @@ def register_artifact_handoff_routes(
     store: Any | None = None,
     artifact_store: Any | None = None,
     retention_history_store: Any | None = None,
+    retention_scheduler_lease_store: Any | None = None,
     job_queue: JobQueue | None = None,
     cx_client: CxArtifactSourceClient | None = None,
 ) -> None:
@@ -2036,6 +2037,92 @@ def register_artifact_handoff_routes(
         try:
             return build_artifact_retention_scheduler_config(
                 job_queue=artifact_retention_job_queue
+            )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.get("/api/v1/artifact-retention/scheduler-daemon-config", response_model=None)
+    def get_artifact_retention_scheduler_daemon_config(
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            from nex_ae_api.artifact_retention_scheduler import (
+                build_artifact_retention_scheduler_daemon_config,
+                build_default_artifact_retention_scheduler_lease_store,
+            )
+
+            return build_artifact_retention_scheduler_daemon_config(
+                scheduler_config=build_artifact_retention_scheduler_config(
+                    job_queue=artifact_retention_job_queue
+                ),
+                lease_store=(
+                    retention_scheduler_lease_store
+                    or build_default_artifact_retention_scheduler_lease_store(app)
+                ),
+            )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.post("/api/v1/artifact-retention/scheduler-daemon-controls", response_model=None)
+    def dispatch_artifact_retention_scheduler_daemon_control_route(
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        request_id = request_id_from_headers(request)
+        trace_id = payload.get("trace_id") or trace_id_from_headers(request)
+        requested_by = payload.get("requested_by")
+        if requested_by is None:
+            requested_by = {
+                "actor_type": "service",
+                "actor_id": "nex-ag",
+                "request_id": request_id,
+            }
+        try:
+            from nex_ae_api.artifact_retention_scheduler import (
+                build_default_artifact_retention_scheduler_lease_store,
+                dispatch_artifact_retention_scheduler_daemon_control,
+            )
+
+            return dispatch_artifact_retention_scheduler_daemon_control(
+                action=payload.get("action"),  # type: ignore[arg-type]
+                artifact_store=artifact_record_store,
+                job_queue=artifact_retention_job_queue,
+                tenant_id=payload.get("tenant_id"),  # type: ignore[arg-type]
+                workspace_id=payload.get("workspace_id"),  # type: ignore[arg-type]
+                owner_user_id=payload.get("owner_user_id"),  # type: ignore[arg-type]
+                lease_store=(
+                    retention_scheduler_lease_store
+                    or build_default_artifact_retention_scheduler_lease_store(app)
+                ),
+                history_store=artifact_retention_history_store,
+                scheduler_config=build_artifact_retention_scheduler_config(
+                    job_queue=artifact_retention_job_queue
+                ),
+                requested_at=optional_text(payload.get("requested_at")),
+                requested_by=requested_by,  # type: ignore[arg-type]
+                reason=optional_text(payload.get("reason")),
+                retention_days=payload.get("retention_days"),
+                as_of=optional_text(payload.get("as_of")),
+                scan_limit=payload.get("scan_limit"),
+                max_delete_count=payload.get("max_delete_count"),
+                tick_at=optional_text(payload.get("tick_at")),
+                trace_id=trace_id,
+                request_id=request_id,
+                idempotency_key=idempotency_key
+                or optional_text(payload.get("idempotency_key")),
+                run_worker=payload.get("run_worker") is True,
+                worker_id=optional_text(payload.get("worker_id")),
             )
         except ArtifactHandoffError as exc:
             return _artifact_problem_response(request, exc)
@@ -3351,6 +3438,12 @@ def build_artifact_retention_scheduler_config(
         ),
         "api_routes": {
             "scheduler_config": "/api/v1/artifact-retention/scheduler-config",
+            "scheduler_daemon_config": (
+                "/api/v1/artifact-retention/scheduler-daemon-config"
+            ),
+            "scheduler_daemon_controls": (
+                "/api/v1/artifact-retention/scheduler-daemon-controls"
+            ),
             "scheduled_jobs": "/api/v1/artifact-retention/scheduled-jobs",
             "scheduled_job_admission": (
                 "/api/v1/artifact-retention/scheduled-jobs/admission"
@@ -4037,6 +4130,12 @@ def _artifact_retention_scheduler_runtime_valid(runtime: dict[str, Any]) -> bool
 def _expected_artifact_retention_scheduler_api_routes() -> dict[str, str]:
     return {
         "scheduler_config": "/api/v1/artifact-retention/scheduler-config",
+        "scheduler_daemon_config": (
+            "/api/v1/artifact-retention/scheduler-daemon-config"
+        ),
+        "scheduler_daemon_controls": (
+            "/api/v1/artifact-retention/scheduler-daemon-controls"
+        ),
         "scheduled_jobs": "/api/v1/artifact-retention/scheduled-jobs",
         "scheduled_job_admission": (
             "/api/v1/artifact-retention/scheduled-jobs/admission"

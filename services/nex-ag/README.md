@@ -404,6 +404,9 @@ Unified operations:
   should call AE APIs rather than touching JobQueue or database state directly;
   blocked/no-op controls stay metadata-only and manual tick-once remains
   lease-protected.
+- Slice 0518 makes that surface callable through AE-owned API routes. AG can
+  later project or invoke the control route, but the route preserves AE
+  ownership over leases, JobQueue dispatch, artifact store access, and history.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

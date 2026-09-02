@@ -636,3 +636,8 @@ Artifact library management:
   blocked/no-op controls return metadata-only evidence without touching the
   artifact store or JobQueue. Daemon start and continuous loop execution remain
   disabled.
+- Slice 0518 exposes the daemon config/control surface through AE API routes:
+  `GET /api/v1/artifact-retention/scheduler-daemon-config` and
+  `POST /api/v1/artifact-retention/scheduler-daemon-controls`. The route map is
+  advertised from scheduler config, while AE still owns lease, JobQueue, and
+  artifact-store dispatch.
