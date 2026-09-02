@@ -413,6 +413,11 @@ Unified operations:
 - Slice 0520 closes S52 with AG still on the read-only side of the boundary:
   daemon control stays AE-owned, and AG should use AE routes for visibility or
   operator-mediated manual tick-once dispatch.
+- Slice 0521 starts S53 by freezing AG's scheduler-daemon operations boundary.
+  AG may project daemon config/control state and later request manual
+  tick-once through AE APIs, but AG still cannot write AE persistence or enqueue
+  AE retention jobs directly; `start_daemon` and continuous loop execution stay
+  blocked/deferred.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

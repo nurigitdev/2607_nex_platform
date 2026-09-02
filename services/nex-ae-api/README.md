@@ -650,3 +650,7 @@ Artifact library management:
   migration, tick-once runtime, daemon config/control contract, API wiring, and
   PostgreSQL evidence remain connected while daemon auto-start and continuous
   loop execution stay deferred.
+- Slice 0521 starts S53 by freezing the AG scheduler-daemon operations boundary:
+  AE remains the system of record for daemon config, controls, leases,
+  JobQueue, artifacts, and retention history while AG must use AE APIs for
+  operator visibility or manual tick-once requests.

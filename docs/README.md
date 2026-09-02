@@ -624,6 +624,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0518`](slices/0518_ae_scheduler_daemon_service_api_wiring.md) | `S52-008` AE scheduler daemon service API wiring. |
 | [`Slice 0519`](slices/0519_ae_scheduler_daemon_postgresql_smoke.md) | `S52-009` AE scheduler daemon PostgreSQL smoke evidence. |
 | [`Slice 0520`](slices/0520_s52_ae_scheduler_daemon_closure.md) | `S52-010` S52 AE scheduler daemon closure checkpoint. |
+| [`Slice 0521`](slices/0521_ag_scheduler_daemon_operations_boundary_audit.md) | `S53-001` AG scheduler daemon operations boundary audit. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
