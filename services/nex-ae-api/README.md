@@ -631,3 +631,8 @@ Artifact library management:
   policy, and mark manual tick-once ready only when operator dispatch,
   scheduler tick admission, lease repository, and JobQueue readiness all pass.
   It still starts no daemon and no continuous loop.
+- Slice 0517 wires the AE-owned daemon dispatch facade. A `READY`
+  `manual_tick_once` control plan can call the existing tick-once runner;
+  blocked/no-op controls return metadata-only evidence without touching the
+  artifact store or JobQueue. Daemon start and continuous loop execution remain
+  disabled.

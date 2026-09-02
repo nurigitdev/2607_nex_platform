@@ -400,6 +400,10 @@ Unified operations:
   daemon config/control contracts. AG can project the metadata-only decision
   surface later, while `start_daemon` remains blocked and manual tick-once
   readiness depends on AE lease and JobQueue posture.
+- Slice 0517 adds the AE dispatch facade behind that control surface. AG still
+  should call AE APIs rather than touching JobQueue or database state directly;
+  blocked/no-op controls stay metadata-only and manual tick-once remains
+  lease-protected.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -19,6 +19,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     AE_ARTIFACT_RETENTION_SCHEDULER_LEASE_REQUEST_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CONFIG_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CONTROL_PLAN_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_DISPATCH_RESULT_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_RESULT_SCHEMA_VERSION,
     DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_STORE,
     DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_OWNER_ID,
@@ -32,6 +33,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     build_artifact_retention_scheduler_lease_decision,
     build_artifact_retention_scheduler_lease_record,
     build_artifact_retention_scheduler_lease_request,
+    dispatch_artifact_retention_scheduler_daemon_control,
     normalize_artifact_retention_scheduler_daemon_control_action,
     normalize_artifact_retention_scheduler_lease_operation,
     normalize_artifact_retention_scheduler_lease_record_status,
@@ -40,10 +42,12 @@ from nex_ae_api.artifact_retention_scheduler import (
     run_artifact_retention_scheduler_tick_once,
     summarize_artifact_retention_scheduler_daemon_config,
     summarize_artifact_retention_scheduler_daemon_control_plan,
+    summarize_artifact_retention_scheduler_daemon_dispatch_result,
     summarize_artifact_retention_scheduler_lease_decision,
     summarize_artifact_retention_scheduler_tick_once_result,
     validate_artifact_retention_scheduler_daemon_config,
     validate_artifact_retention_scheduler_daemon_control_plan,
+    validate_artifact_retention_scheduler_daemon_dispatch_result,
     validate_artifact_retention_scheduler_lease_decision,
     validate_artifact_retention_scheduler_lease_record,
     validate_artifact_retention_scheduler_lease_request,
@@ -1066,6 +1070,265 @@ def test_artifact_retention_scheduler_daemon_control_plan_validation_edges() -> 
     assert action_exc.value.error_code == (
         "ae.artifact_retention_scheduler_daemon_control_action_invalid"
     )
+
+
+def test_artifact_retention_scheduler_daemon_dispatch_runs_manual_tick_once() -> None:
+    artifact_store = FakeArtifactRetentionStore(candidate_count=1)
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+    queue = InMemoryJobQueue()
+
+    result = dispatch_artifact_retention_scheduler_daemon_control(
+        action="manual_tick_once",
+        artifact_store=artifact_store,
+        job_queue=queue,
+        lease_store=lease_store,
+        scheduler_config=build_artifact_retention_scheduler_config(job_queue=queue),
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit=10,
+        max_delete_count=1,
+        requested_at=READY_TICK_AT,
+        requested_by={"actor_type": "operator", "actor_id": "ag-retention-operator"},
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        idempotency_key="daemon-dispatch-0517",
+    )
+    validated = validate_artifact_retention_scheduler_daemon_dispatch_result(result)
+    summary = summarize_artifact_retention_scheduler_daemon_dispatch_result(result)
+    job_id = result["tick_once_result"]["enqueue_result"][
+        "scheduled_job_enqueue_result"
+    ]["job_id"]
+
+    assert result["daemon_dispatch_result_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_DISPATCH_RESULT_SCHEMA_VERSION
+    )
+    assert validated == result
+    assert result["dispatch_status"] == "DISPATCHED"
+    assert result["control_plan"]["decision_status"] == "READY"
+    assert result["tick_once_result"]["result_status"] == "SUCCEEDED"
+    assert result["tick_once_result"]["guardrails"]["scheduler_daemon_started"] is False
+    assert result["metadata"] == {
+        "metadata_only": True,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "control_plan_ready": True,
+        "tick_once_dispatched": True,
+        "lease_acquired_before_tick": True,
+        "lease_released": True,
+        "job_enqueued": True,
+        "worker_executed": False,
+        "scheduler_daemon_started": False,
+        "continuous_loop_started": False,
+        "physical_delete_automation_enabled": False,
+    }
+    assert summary == {
+        "scheduler_id": "ae-artifact-retention-scheduler-local-v1",
+        "action": "manual_tick_once",
+        "dispatch_status": "DISPATCHED",
+        "tick_once_result_status": "SUCCEEDED",
+        "job_enqueued": True,
+        "lease_released": True,
+        "scheduler_daemon_started": False,
+        "continuous_loop_started": False,
+    }
+    assert queue.get_job(job_id) is not None
+    assert artifact_store.calls[0]["checked_at"] == READY_TICK_AT
+
+
+def test_artifact_retention_scheduler_daemon_dispatch_blocks_without_side_effects() -> None:
+    artifact_store = FakeArtifactRetentionStore(candidate_count=1)
+    queue = InMemoryJobQueue()
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+
+    start_result = dispatch_artifact_retention_scheduler_daemon_control(
+        action="start_daemon",
+        artifact_store=artifact_store,
+        job_queue=queue,
+        lease_store=lease_store,
+        scheduler_config=build_artifact_retention_scheduler_config(job_queue=queue),
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        requested_at=READY_TICK_AT,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+    )
+    status_result = dispatch_artifact_retention_scheduler_daemon_control(
+        action="status_probe",
+        artifact_store=artifact_store,
+        job_queue=queue,
+        lease_store=lease_store,
+        scheduler_config=build_artifact_retention_scheduler_config(job_queue=queue),
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        requested_at=READY_TICK_AT,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+    )
+    no_queue_result = dispatch_artifact_retention_scheduler_daemon_control(
+        action="manual_tick_once",
+        artifact_store=artifact_store,
+        job_queue=None,
+        lease_store=lease_store,
+        scheduler_config=build_artifact_retention_scheduler_config(),
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        requested_at=READY_TICK_AT,
+    )
+
+    assert start_result["dispatch_status"] == "BLOCKED"
+    assert start_result["control_plan"]["block_reason"] == "daemon_disabled_by_policy"
+    assert start_result["tick_once_result"] is None
+    assert status_result["dispatch_status"] == "NOOP"
+    assert status_result["tick_once_result"] is None
+    assert no_queue_result["dispatch_status"] == "BLOCKED"
+    assert no_queue_result["control_plan"]["block_reason"] == "job_queue_unavailable"
+    assert no_queue_result["tick_once_result"] is None
+    assert artifact_store.calls == []
+
+
+def test_artifact_retention_scheduler_daemon_dispatch_records_busy_tick_once() -> None:
+    artifact_store = FakeArtifactRetentionStore(candidate_count=1)
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+    queue = InMemoryJobQueue()
+    blocking_request = build_artifact_retention_scheduler_lease_request(
+        requested_at="2026-08-31T17:29:00Z",
+        lease_owner_id="active-daemon-runner",
+    )
+    lease_store.acquire(blocking_request)
+
+    result = dispatch_artifact_retention_scheduler_daemon_control(
+        action="manual_tick_once",
+        artifact_store=artifact_store,
+        job_queue=queue,
+        lease_store=lease_store,
+        scheduler_config=build_artifact_retention_scheduler_config(job_queue=queue),
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        requested_at=READY_TICK_AT,
+        lease_owner_id="second-daemon-runner",
+    )
+
+    assert result["dispatch_status"] == "DISPATCHED"
+    assert result["control_plan"]["decision_status"] == "READY"
+    assert result["tick_once_result"]["result_status"] == "SKIPPED"
+    assert result["tick_once_result"]["skip_reason"] == "lease_busy"
+    assert result["metadata"]["lease_acquired_before_tick"] is False
+    assert result["metadata"]["lease_released"] is False
+    assert result["metadata"]["job_enqueued"] is False
+    assert artifact_store.calls == []
+
+
+def test_artifact_retention_scheduler_daemon_dispatch_result_validation_edges() -> None:
+    artifact_store = FakeArtifactRetentionStore(candidate_count=1)
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+    queue = InMemoryJobQueue()
+    result = dispatch_artifact_retention_scheduler_daemon_control(
+        action="manual_tick_once",
+        artifact_store=artifact_store,
+        job_queue=queue,
+        lease_store=lease_store,
+        scheduler_config=build_artifact_retention_scheduler_config(job_queue=queue),
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        requested_at=READY_TICK_AT,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+    )
+    blocked = dispatch_artifact_retention_scheduler_daemon_control(
+        action="start_daemon",
+        artifact_store=artifact_store,
+        job_queue=queue,
+        lease_store=lease_store,
+        scheduler_config=build_artifact_retention_scheduler_config(job_queue=queue),
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        requested_at=READY_TICK_AT,
+    )
+
+    cases: tuple[tuple[Any, str, str], ...] = (
+        (
+            [],
+            "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
+            "object",
+        ),
+        (
+            {**result, "daemon_dispatch_result_schema_version": "wrong"},
+            "ae.artifact_retention_scheduler_daemon_dispatch_result_schema_invalid",
+            "schema version",
+        ),
+        (
+            {**result, "service_id": "nex-cx"},
+            "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
+            "service id",
+        ),
+        (
+            {**result, "daemon_dispatch_result_id": " "},
+            "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
+            "daemon_dispatch_result_id",
+        ),
+        (
+            {**result, "dispatch_status": "SUCCEEDED"},
+            "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
+            "dispatch status",
+        ),
+        (
+            {**result, "scheduler_id": "other-scheduler"},
+            "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
+            "scope",
+        ),
+        (
+            {**result, "tick_once_result": None},
+            "ae.artifact_retention_scheduler_tick_once_result_invalid",
+            "object",
+        ),
+        (
+            {**result, "dispatch_status": "BLOCKED"},
+            "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
+            "Ready",
+        ),
+        (
+            {**blocked, "tick_once_result": result["tick_once_result"]},
+            "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
+            "Blocked",
+        ),
+        (
+            {**result, "daemon_dispatch_result_id": "wrong"},
+            "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
+            "result id",
+        ),
+        (
+            {**result, "guardrails": {}},
+            "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
+            "guardrails",
+        ),
+        (
+            {**result, "metadata": {**result["metadata"], "job_enqueued": False}},
+            "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
+            "metadata",
+        ),
+        (
+            {**result, "raw_text": "private dispatch payload"},
+            "ae.artifact_retention_payload_unsafe",
+            "private material",
+        ),
+    )
+
+    for payload, error_code, detail in cases:
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_scheduler_daemon_dispatch_result(payload)  # type: ignore[arg-type]
+        assert exc_info.value.error_code == error_code
+        assert detail in exc_info.value.detail
 
 
 def test_artifact_retention_scheduler_tick_once_enqueues_ready_tick() -> None:

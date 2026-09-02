@@ -620,6 +620,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0514`](slices/0514_ae_scheduler_tick_once_runtime_wiring.md) | `S52-004` AE scheduler tick-once runtime wiring. |
 | [`Slice 0515`](slices/0515_ae_scheduler_tick_once_postgresql_smoke.md) | `S52-005` AE scheduler tick-once PostgreSQL smoke evidence. |
 | [`Slice 0516`](slices/0516_ae_scheduler_daemon_config_control_contract.md) | `S52-006` AE scheduler daemon config/control contract. |
+| [`Slice 0517`](slices/0517_ae_scheduler_daemon_dispatch_facade.md) | `S52-007` AE scheduler daemon dispatch facade. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
