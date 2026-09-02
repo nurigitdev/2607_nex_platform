@@ -454,6 +454,11 @@ Unified operations:
   operations chain, including AE-owned control, guarded manual tick-once,
   dashboard rollup, attention classification, runbook evidence, and protected
   PostgreSQL smoke references.
+- Slice 0531 starts S54 by freezing the AE scheduler daemon runtime enablement
+  boundary before any continuous loop is opened. AG remains read-only for daemon
+  runtime state, may request controls only through AE APIs, and must wait for
+  AE-owned config, loop planning, one-cycle smoke evidence, and heartbeat
+  metadata before adding richer runtime projections.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

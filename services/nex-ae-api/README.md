@@ -682,3 +682,9 @@ Artifact library management:
   mutates daemon, lease, JobQueue, artifact, and retention-history state.
 - Slice 0530 closes the AG scheduler daemon operations track while preserving
   AE as the source of record for daemon control and persistence effects.
+- Slice 0531 starts S54 by freezing the AE scheduler daemon runtime enablement
+  boundary. The daemon remains disabled by default, runtime enablement is
+  test-profile explicit opt-in only, continuous loop execution stays blocked
+  until config, pure planning, one-cycle execution, heartbeat observability, and
+  protected PostgreSQL evidence are in place, and scheduled execution remains
+  `DRY_RUN` with physical delete automation disabled.
