@@ -12,6 +12,7 @@ from nex_ag.artifact_operations import (
     AG_ARTIFACT_OPERATION_LIFECYCLE_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_AUTOMATION_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_BATCH_PROJECTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_RETENTION_DAEMON_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_DISPATCH_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_JOB_PROJECTION_SCHEMA_VERSION,
@@ -29,6 +30,7 @@ from nex_ag.artifact_operations import (
     build_artifact_operation_lifecycle_projection,
     build_artifact_operation_retention_automation_projection,
     build_artifact_operation_retention_batch_projection,
+    build_artifact_operation_retention_daemon_projection,
     build_artifact_operation_retention_history_projection,
     build_artifact_operation_retention_scheduled_dispatch_projection,
     build_artifact_operation_retention_scheduled_job_projection,
@@ -39,6 +41,7 @@ from nex_ag.artifact_operations import (
     summarize_artifact_operation_lifecycle,
     summarize_artifact_retention_batch_operations,
     summarize_artifact_retention_automation_operations,
+    summarize_artifact_retention_daemon_operations,
     summarize_artifact_retention_history_operations,
     summarize_artifact_retention_scheduled_dispatch,
     summarize_artifact_retention_scheduled_job_operations,
@@ -1547,6 +1550,177 @@ def test_artifact_operation_retention_scheduled_dispatch_projection_handles_spar
     assert projection["source_status"]["errors"][0]["error_code"] == (
         "ag.optional_retention_scheduled_dispatch_warning"
     )
+
+
+def test_artifact_operation_retention_daemon_projection_summarizes_and_redacts() -> (
+    None
+):
+    dispatch = artifact_retention_scheduler_daemon_dispatch_payload()
+    dispatch["tick_once_result"] = {
+        "tick_once_result_schema_version": (
+            "ae_artifact_retention_scheduler_tick_once_result.v1"
+        ),
+        "tick_once_result_id": "tick-once-result-0523",
+        "service_id": "nex-ae-api",
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "lease_owner_id": "ae-retention-manual-once",
+        "run_at": "2026-09-01T02:35:00Z",
+        "result_status": "SUCCEEDED",
+        "skip_reason": None,
+        "batch_plan": artifact_retention_batch_plan_payload(),
+        "metadata": {
+            "metadata_only": True,
+            "persistence_endpoint_included": False,
+            "storage_locator_included": False,
+            "artifact_payload_included": False,
+            "execution_payload_included": False,
+            "control_plan_ready": True,
+            "tick_once_dispatched": True,
+            "lease_acquired_before_tick": True,
+            "lease_released": True,
+            "job_enqueued": True,
+            "worker_executed": True,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+    }
+
+    projection = build_artifact_operation_retention_daemon_projection(
+        daemon_config=artifact_retention_scheduler_daemon_config_payload(),
+        dispatch_response=dispatch,
+        source_client=InMemoryAeArtifactOperationsClient(),
+        request_trace_id=TRACE_ID,
+    )
+
+    assert projection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["operation_type"] == "ae_artifact_retention_scheduler_daemon"
+    assert projection["projection_status"] == "READY"
+    assert projection["daemon_config"]["runtime"]["scheduler_daemon_started"] is False
+    assert projection["daemon_config"]["supported_actions"][1] == {
+        "action": "manual_tick_once",
+        "decision_status": "READY",
+        "requires_lease": True,
+        "runs_tick_once": True,
+        "starts_daemon": False,
+        "starts_continuous_loop": False,
+        "block_reason": None,
+    }
+    assert projection["dispatch_response"]["control_plan"]["action"] == (
+        "manual_tick_once"
+    )
+    assert projection["dispatch_response"]["tick_once_result"] == {
+        "tick_once_result_schema_version": (
+            "ae_artifact_retention_scheduler_tick_once_result.v1"
+        ),
+        "tick_once_result_id": "tick-once-result-0523",
+        "service_id": "nex-ae-api",
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "lease_owner_id": "ae-retention-manual-once",
+        "run_at": "2026-09-01T02:35:00Z",
+        "result_status": "SUCCEEDED",
+        "skip_reason": None,
+        "metadata": {
+            "metadata_only": True,
+            "persistence_endpoint_included": False,
+            "storage_locator_included": False,
+            "artifact_payload_included": False,
+            "execution_payload_included": False,
+            "control_plan_ready": True,
+            "tick_once_dispatched": True,
+            "lease_acquired_before_tick": True,
+            "lease_released": True,
+            "job_enqueued": True,
+            "worker_executed": True,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+    }
+    assert projection["summary"] == summarize_artifact_retention_daemon_operations(
+        daemon_config=projection["daemon_config"],
+        dispatch_response=projection["dispatch_response"],
+    )
+    assert projection["summary"]["manual_tick_once_available"] is True
+    assert projection["summary"]["start_daemon_available"] is False
+    assert projection["summary"]["last_dispatch_job_enqueued"] is True
+    assert projection["source_status"]["daemon_config_loaded"] is True
+    assert projection["source_status"]["dispatch_response_loaded"] is True
+    assert projection["operator_guidance"]["manual_tick_once_requires_ae_api"] is True
+    assert projection["operator_guidance"]["ag_direct_database_write_allowed"] is False
+    assert "batch_plan" not in str(projection["dispatch_response"]["tick_once_result"])
+    assert "storage_ref" not in str(projection)
+    assert "DATABASE_URL_SHOULD_NOT_LEAK" not in str(projection)
+    assert "nuri1004" not in str(projection)
+
+
+def test_artifact_operation_retention_daemon_projection_handles_sparse_edges() -> None:
+    config = artifact_retention_scheduler_daemon_config_payload(
+        job_queue_available=False,
+        lease_available=True,
+    )
+    config["runtime"] = "bad"
+    config["lease_repository"] = "bad"
+    config["supported_actions"] = [
+        {"action": "unknown", "decision_status": "READY"},
+        "not-a-mapping",
+    ]
+    dispatch = artifact_retention_scheduler_daemon_dispatch_payload(
+        action="start_daemon",
+        dispatch_status="BLOCKED",
+    )
+    dispatch["control_plan"] = {
+        **dispatch["control_plan"],
+        "action": "bad",
+        "requested_by": "bad",
+        "execution_plan": "bad",
+        "guardrails": "bad",
+        "metadata": "bad",
+    }
+    projection = build_artifact_operation_retention_daemon_projection(
+        daemon_config=config,
+        dispatch_response=dispatch,
+        source_errors=[
+            AeArtifactOperationsError(
+                error_code="ag.optional_daemon_warning",
+                detail="partial daemon source warning",
+                status_code=503,
+            )
+        ],
+    )
+
+    assert projection["projection_status"] == "DEGRADED"
+    assert projection["daemon_config"]["runtime"] == {}
+    assert projection["daemon_config"]["lease_repository"] == {}
+    assert projection["daemon_config"]["supported_actions"][0]["action"] is None
+    assert projection["dispatch_response"]["control_plan"]["action"] is None
+    assert projection["dispatch_response"]["control_plan"]["requested_by"] == {}
+    assert projection["dispatch_response"]["control_plan"]["execution_plan"] == {}
+    assert projection["dispatch_response"]["tick_once_result"] == {}
+    assert projection["summary"]["manual_tick_once_decision_status"] == "BLOCKED"
+    assert projection["summary"]["manual_tick_once_available"] is False
+    assert projection["summary"]["operator_attention_required"] is True
+    assert projection["source_status"]["daemon_config_loaded"] is False
+    assert projection["source_status"]["dispatch_response_loaded"] is False
+    assert projection["source_status"]["errors"][0]["error_code"] == (
+        "ag.optional_daemon_warning"
+    )
+    assert artifact_operations._project_retention_scheduler_daemon_config([]) == {}
+    assert artifact_operations._project_retention_scheduler_daemon_runtime([]) == {}
+    assert (
+        artifact_operations._project_retention_scheduler_daemon_lease_repository([])
+        == {}
+    )
+    assert artifact_operations._project_retention_scheduler_daemon_guardrails([]) == {}
+    assert artifact_operations._project_retention_scheduler_daemon_metadata([]) == {}
+    assert (
+        artifact_operations._project_retention_scheduler_daemon_dispatch_response([])
+        == {}
+    )
+    assert artifact_operations._project_retention_scheduler_daemon_control_plan([]) == {}
+    assert artifact_operations._project_retention_scheduler_tick_once_summary([]) == {}
 
 
 def test_artifact_operation_retention_automation_projection_summarizes_and_redacts() -> (

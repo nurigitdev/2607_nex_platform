@@ -657,3 +657,6 @@ Artifact library management:
 - Slice 0522 keeps that boundary intact by adding only the AG-side client
   adapter for the existing AE daemon config/control routes. AE still owns the
   route implementation and all scheduler persistence/dispatch decisions.
+- Slice 0523 lets AG project AE daemon config/control responses as
+  metadata-only operator evidence. AE remains the source of record for daemon
+  runtime, lease, JobQueue, artifact, and retention-history state.

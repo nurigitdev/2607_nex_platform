@@ -47,6 +47,9 @@ AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_DISPATCH_SCHEMA_VERSION = (
 AG_ARTIFACT_OPERATION_RETENTION_AUTOMATION_PROJECTION_SCHEMA_VERSION = (
     "ag_artifact_operation_retention_automation_projection.v1"
 )
+AG_ARTIFACT_OPERATION_RETENTION_DAEMON_PROJECTION_SCHEMA_VERSION = (
+    "ag_artifact_operation_retention_daemon_projection.v1"
+)
 AE_ARTIFACT_SOURCE_SERVICE_ID = "nex-ae-api"
 NEX_AG_AE_ARTIFACT_BASE_URL_ENV = "NEX_AG_AE_ARTIFACT_BASE_URL"
 NEX_AG_AE_ARTIFACT_SERVICE_TOKEN_ENV = "NEX_AG_AE_ARTIFACT_SERVICE_TOKEN"
@@ -1704,6 +1707,63 @@ def build_artifact_operation_retention_automation_projection(
     return projection
 
 
+def build_artifact_operation_retention_daemon_projection(
+    *,
+    daemon_config: Mapping[str, Any],
+    dispatch_response: Mapping[str, Any] | None = None,
+    source_client: AeArtifactOperationsClient | None = None,
+    source_errors: list[AeArtifactOperationsError] | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    projected_config = _project_retention_scheduler_daemon_config(daemon_config)
+    projected_dispatch = _project_retention_scheduler_daemon_dispatch_response(
+        dispatch_response
+    )
+    errors = source_errors or []
+    projection = {
+        "projection_schema_version": (
+            AG_ARTIFACT_OPERATION_RETENTION_DAEMON_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "DEGRADED" if errors else "READY",
+        "checked_at": _utc_now(),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "operation_type": "ae_artifact_retention_scheduler_daemon",
+        "daemon_config": projected_config,
+        "dispatch_response": projected_dispatch or None,
+        "summary": summarize_artifact_retention_daemon_operations(
+            daemon_config=projected_config,
+            dispatch_response=projected_dispatch,
+        ),
+        "source_status": _artifact_retention_daemon_source_status(
+            source_client=source_client,
+            config_loaded=bool(projected_config.get("scheduler_id")),
+            dispatch_response_loaded=bool(projected_dispatch),
+            errors=errors,
+        ),
+        "operator_guidance": {
+            "metadata_only": True,
+            "system_of_record": AE_ARTIFACT_SOURCE_SERVICE_ID,
+            "ae_daemon_config_route": (
+                "/api/v1/artifact-retention/scheduler-daemon-config"
+            ),
+            "ae_daemon_controls_route": (
+                "/api/v1/artifact-retention/scheduler-daemon-controls"
+            ),
+            "manual_tick_once_only": True,
+            "manual_tick_once_requires_ae_api": True,
+            "confirm_dispatch_required": True,
+            "start_daemon_allowed": False,
+            "continuous_loop_allowed": False,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+        },
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    assert_artifact_operation_projection_redacted(projection)
+    return projection
+
+
 def build_artifact_operation_retention_history_projection(
     *,
     collection: Mapping[str, Any],
@@ -2037,6 +2097,51 @@ def summarize_artifact_retention_scheduled_dispatch(
         ),
         "dry_run_required": True,
         "physical_delete_automation_enabled": False,
+    }
+
+
+def summarize_artifact_retention_daemon_operations(
+    *,
+    daemon_config: Mapping[str, Any],
+    dispatch_response: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    runtime = _mapping_or_empty(daemon_config.get("runtime"))
+    lease_repository = _mapping_or_empty(daemon_config.get("lease_repository"))
+    manual_action = _daemon_action_item(daemon_config, "manual_tick_once")
+    start_action = _daemon_action_item(daemon_config, "start_daemon")
+    dispatch = _mapping_or_empty(dispatch_response)
+    dispatch_metadata = _mapping_or_empty(dispatch.get("metadata"))
+    control_plan = _mapping_or_empty(dispatch.get("control_plan"))
+    manual_status = _text_or_none(manual_action.get("decision_status"))
+    start_status = _text_or_none(start_action.get("decision_status"))
+    return {
+        "scheduler_id": _text_or_none(daemon_config.get("scheduler_id")),
+        "scheduler_daemon_enabled": runtime.get("scheduler_daemon_enabled") is True,
+        "scheduler_daemon_started": runtime.get("scheduler_daemon_started") is True,
+        "continuous_loop_started": runtime.get("continuous_loop_started") is True,
+        "manual_tick_once_decision_status": manual_status,
+        "manual_tick_once_block_reason": _text_or_none(
+            manual_action.get("block_reason")
+        ),
+        "manual_tick_once_available": manual_status == "READY",
+        "start_daemon_decision_status": start_status,
+        "start_daemon_block_reason": _text_or_none(start_action.get("block_reason")),
+        "start_daemon_available": start_status == "READY",
+        "lease_repository_available": lease_repository.get("available") is True,
+        "lease_repository_backend": _text_or_none(lease_repository.get("backend")),
+        "job_queue_available": runtime.get("job_queue_available") is True,
+        "job_queue_backend": _text_or_none(runtime.get("job_queue_backend")),
+        "default_execution_mode": _text_or_none(runtime.get("default_execution_mode")),
+        "last_dispatch_status": _text_or_none(dispatch.get("dispatch_status")),
+        "last_dispatch_action": _text_or_none(control_plan.get("action")),
+        "last_dispatch_job_enqueued": dispatch_metadata.get("job_enqueued") is True,
+        "last_dispatch_tick_once_dispatched": (
+            dispatch_metadata.get("tick_once_dispatched") is True
+        ),
+        "operator_attention_required": manual_status != "READY"
+        or bool(dispatch)
+        or lease_repository.get("available") is not True,
+        "metadata_only": True,
     }
 
 
@@ -2667,6 +2772,255 @@ def _project_retention_scheduled_dispatch_response(raw_value: Any) -> dict[str, 
     }
 
 
+def _project_retention_scheduler_daemon_config(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "daemon_config_schema_version": _text_or_none(
+            raw_value.get("daemon_config_schema_version")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "checked_at": _text_or_none(raw_value.get("checked_at")),
+        "source_scheduler_config_schema_version": _text_or_none(
+            raw_value.get("source_scheduler_config_schema_version")
+        ),
+        "runtime": _project_retention_scheduler_daemon_runtime(
+            raw_value.get("runtime")
+        ),
+        "lease_repository": _project_retention_scheduler_daemon_lease_repository(
+            raw_value.get("lease_repository")
+        ),
+        "supported_actions": [
+            _project_retention_scheduler_daemon_action(item)
+            for item in _list_value(raw_value.get("supported_actions"))
+            if isinstance(item, Mapping)
+        ],
+        "guardrails": _project_retention_scheduler_daemon_guardrails(
+            raw_value.get("guardrails")
+        ),
+        "metadata": _project_retention_scheduler_daemon_metadata(
+            raw_value.get("metadata")
+        ),
+    }
+
+
+def _project_retention_scheduler_daemon_runtime(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return _select_mapping(
+        raw_value,
+        (
+            "scheduler_daemon_enabled",
+            "scheduler_daemon_started",
+            "daemon_auto_start_allowed",
+            "continuous_loop_enabled",
+            "continuous_loop_started",
+            "manual_tick_once_enabled",
+            "manual_tick_once_requires_lease",
+            "scheduler_tick_admission_enabled",
+            "operator_dispatch_admission_enabled",
+            "default_execution_mode",
+            "job_queue_available",
+            "job_queue_backend",
+            "scheduler_tick_interval_seconds",
+            "scheduler_tick_jitter_seconds",
+            "scheduler_tick_lock_ttl_seconds",
+            "scheduler_tick_stale_after_seconds",
+            "scheduler_tick_max_jobs_per_tick",
+            "scheduler_tick_batch_window_enforced",
+            "scheduler_tick_timezone",
+            "scheduler_tick_window_start",
+            "scheduler_tick_window_end",
+        ),
+    )
+
+
+def _project_retention_scheduler_daemon_lease_repository(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return _select_mapping(
+        raw_value,
+        (
+            "required",
+            "available",
+            "backend",
+            "lease_record_schema_version",
+            "failure_code",
+        ),
+    )
+
+
+def _project_retention_scheduler_daemon_action(
+    raw_value: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "action": _normalized_daemon_action(raw_value.get("action")),
+        "decision_status": _text_or_none(raw_value.get("decision_status")),
+        "requires_lease": raw_value.get("requires_lease") is True,
+        "runs_tick_once": raw_value.get("runs_tick_once") is True,
+        "starts_daemon": raw_value.get("starts_daemon") is True,
+        "starts_continuous_loop": raw_value.get("starts_continuous_loop") is True,
+        "block_reason": _text_or_none(raw_value.get("block_reason")),
+    }
+
+
+def _project_retention_scheduler_daemon_guardrails(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return _select_mapping(
+        raw_value,
+        (
+            "metadata_only",
+            "manual_tick_once_only",
+            "lease_required_before_tick",
+            "daemon_auto_start_allowed",
+            "scheduler_daemon_started",
+            "continuous_loop_started",
+            "continuous_loop_allowed_before_lease",
+            "physical_delete_automation_enabled",
+            "ag_direct_database_write_allowed",
+            "ag_direct_job_enqueue_allowed",
+            "daemon_control_plan_required",
+            "tick_once_requires_ready_control_plan",
+        ),
+    )
+
+
+def _project_retention_scheduler_daemon_metadata(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "metadata_only": raw_value.get("metadata_only") is True,
+        "persistence_endpoint_included": (
+            raw_value.get("persistence_endpoint_included") is True
+            or raw_value.get("database_url_included") is True
+        ),
+        "storage_locator_included": (
+            raw_value.get("storage_locator_included") is True
+            or raw_value.get("storage_path_included") is True
+            or raw_value.get("storage_ref_included") is True
+        ),
+        "artifact_payload_included": (
+            raw_value.get("artifact_payload_included") is True
+            or raw_value.get("raw_artifact_payload_included") is True
+        ),
+        "execution_payload_included": (
+            raw_value.get("execution_payload_included") is True
+            or raw_value.get("raw_execution_payload_included") is True
+        ),
+        "control_plan_ready": raw_value.get("control_plan_ready") is True,
+        "tick_once_dispatched": raw_value.get("tick_once_dispatched") is True,
+        "lease_acquired_before_tick": (
+            raw_value.get("lease_acquired_before_tick") is True
+        ),
+        "lease_released": raw_value.get("lease_released") is True,
+        "job_enqueued": raw_value.get("job_enqueued") is True,
+        "worker_executed": raw_value.get("worker_executed") is True,
+        "scheduler_daemon_started": raw_value.get("scheduler_daemon_started") is True,
+        "continuous_loop_started": raw_value.get("continuous_loop_started") is True,
+        "physical_delete_automation_enabled": (
+            raw_value.get("physical_delete_automation_enabled") is True
+        ),
+    }
+
+
+def _project_retention_scheduler_daemon_dispatch_response(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "daemon_dispatch_result_schema_version": _text_or_none(
+            raw_value.get("daemon_dispatch_result_schema_version")
+        ),
+        "daemon_dispatch_result_id": _text_or_none(
+            raw_value.get("daemon_dispatch_result_id")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "dispatch_status": _text_or_none(raw_value.get("dispatch_status")),
+        "control_plan": _project_retention_scheduler_daemon_control_plan(
+            raw_value.get("control_plan")
+        ),
+        "tick_once_result": _project_retention_scheduler_tick_once_summary(
+            raw_value.get("tick_once_result")
+        ),
+        "guardrails": _project_retention_scheduler_daemon_guardrails(
+            raw_value.get("guardrails")
+        ),
+        "metadata": _project_retention_scheduler_daemon_metadata(
+            raw_value.get("metadata")
+        ),
+    }
+
+
+def _project_retention_scheduler_daemon_control_plan(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "daemon_control_plan_schema_version": _text_or_none(
+            raw_value.get("daemon_control_plan_schema_version")
+        ),
+        "daemon_control_plan_id": _text_or_none(
+            raw_value.get("daemon_control_plan_id")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "action": _normalized_daemon_action(raw_value.get("action")),
+        "decision_status": _text_or_none(raw_value.get("decision_status")),
+        "block_reason": _text_or_none(raw_value.get("block_reason")),
+        "requested_at": _text_or_none(raw_value.get("requested_at")),
+        "requested_by": _select_mapping(
+            raw_value.get("requested_by"),
+            ("actor_type", "actor_id", "tenant_id", "workspace_id", "request_id"),
+        ),
+        "reason": _text_or_none(raw_value.get("reason")),
+        "execution_plan": _select_mapping(
+            raw_value.get("execution_plan"),
+            (
+                "requires_lease",
+                "runs_tick_once",
+                "dispatches_job_queue",
+                "starts_daemon",
+                "starts_continuous_loop",
+                "writes_history",
+                "physical_delete_enabled",
+            ),
+        ),
+        "guardrails": _project_retention_scheduler_daemon_guardrails(
+            raw_value.get("guardrails")
+        ),
+        "metadata": _project_retention_scheduler_daemon_metadata(
+            raw_value.get("metadata")
+        ),
+    }
+
+
+def _project_retention_scheduler_tick_once_summary(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "tick_once_result_schema_version": _text_or_none(
+            raw_value.get("tick_once_result_schema_version")
+        ),
+        "tick_once_result_id": _text_or_none(raw_value.get("tick_once_result_id")),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "lease_owner_id": _text_or_none(raw_value.get("lease_owner_id")),
+        "run_at": _text_or_none(raw_value.get("run_at")),
+        "result_status": _text_or_none(raw_value.get("result_status")),
+        "skip_reason": _text_or_none(raw_value.get("skip_reason")),
+        "metadata": _project_retention_scheduler_daemon_metadata(
+            raw_value.get("metadata")
+        ),
+    }
+
+
 def _project_retention_history_item(record: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "artifact_retention_execution_history_item_schema_version": _text_or_none(
@@ -3012,6 +3366,32 @@ def _artifact_retention_scheduled_dispatch_source_status(
         "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
         "source_kind": getattr(source_client, "source_kind", "provided"),
         "base_url": getattr(source_client, "base_url", None),
+        "dispatch_response_loaded": dispatch_response_loaded and not errors,
+        "errors": [
+            {
+                "error_code": error.error_code,
+                "detail": error.detail,
+                "status_code": error.status_code,
+            }
+            for error in errors
+        ],
+    }
+
+
+def _artifact_retention_daemon_source_status(
+    *,
+    source_client: AeArtifactOperationsClient | None,
+    config_loaded: bool,
+    dispatch_response_loaded: bool,
+    errors: list[AeArtifactOperationsError],
+) -> dict[str, Any]:
+    status = "DEGRADED" if errors else "READY"
+    return {
+        "status": status,
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "source_kind": getattr(source_client, "source_kind", "provided"),
+        "base_url": getattr(source_client, "base_url", None),
+        "daemon_config_loaded": config_loaded and not errors,
         "dispatch_response_loaded": dispatch_response_loaded and not errors,
         "errors": [
             {
@@ -4828,6 +5208,10 @@ def _deepcopy_or_none(value: dict[str, Any] | None) -> dict[str, Any] | None:
 
 def _list_value(raw_value: Any) -> list[Any]:
     return list(raw_value) if isinstance(raw_value, list) else []
+
+
+def _mapping_or_empty(raw_value: Any) -> dict[str, Any]:
+    return dict(raw_value) if isinstance(raw_value, Mapping) else {}
 
 
 def _first_mapping(raw_value: Any) -> dict[str, Any]:

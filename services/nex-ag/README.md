@@ -422,6 +422,10 @@ Unified operations:
   fetch daemon config and submit daemon control requests through AE API
   transport while route policy and operator dispatch guardrails remain staged
   for later S53 slices.
+- Slice 0523 adds the AG scheduler daemon operations projection. The projection
+  summarizes AE daemon runtime, lease repository, JobQueue readiness, supported
+  action decisions, and optional dispatch outcomes as metadata-only operator
+  evidence while redacting persistence/storage internals.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
