@@ -472,6 +472,10 @@ Unified operations:
   the adapter result, but one-cycle execution, lease acquisition, JobQueue
   enqueue, worker execution, and history effects remain behind AE-owned
   runtime APIs and still do not start a continuous daemon loop.
+- Slice 0535 exposes AE's start/stop control guardrail through AG projection.
+  AG can show metadata-only `start_daemon` blocked and `stop_daemon` no-op
+  evidence, while daemon state mutation, stop signals, leases, JobQueue work,
+  history writes, and continuous loop execution remain AE-owned and disabled.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

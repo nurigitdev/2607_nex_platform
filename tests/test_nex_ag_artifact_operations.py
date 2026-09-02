@@ -914,6 +914,80 @@ def artifact_retention_scheduler_daemon_dispatch_payload(
             "physical_delete_automation_enabled": False,
         },
     }
+    start_stop_guardrail = None
+    if action in {"start_daemon", "stop_daemon"}:
+        guardrail_status = "BLOCKED" if action == "start_daemon" else "NOOP"
+        guardrail_reason = (
+            "daemon_disabled_by_policy"
+            if action == "start_daemon"
+            else "daemon_not_running"
+        )
+        start_stop_guardrail = {
+            "daemon_start_stop_guardrail_schema_version": (
+                "ae_artifact_retention_scheduler_daemon_start_stop_guardrail.v1"
+            ),
+            "daemon_start_stop_guardrail_id": "daemon-start-stop-guardrail-0535",
+            "service_id": "nex-ae-api",
+            "scheduler_id": config["scheduler_id"],
+            "action": action,
+            "guardrail_status": guardrail_status,
+            "guardrail_reason": guardrail_reason,
+            "requested_at": "2026-09-01T02:35:00Z",
+            "control_plan": control_plan,
+            "action_allowed": False,
+            "runtime_state_transition": "NONE",
+            "execution_plan": {
+                "requires_control_plan": True,
+                "requires_lease": False,
+                "runs_tick_once": False,
+                "dispatches_job_queue": False,
+                "starts_daemon": False,
+                "stops_daemon": False,
+                "sends_stop_signal": False,
+                "starts_continuous_loop": False,
+                "runtime_state_mutated": False,
+                "writes_history": False,
+                "physical_delete_enabled": False,
+                "mirrors_control_action": action,
+            },
+            "guardrails": {
+                **config["guardrails"],
+                "start_stop_control_guardrail_required": True,
+                "start_control_enabled": False,
+                "stop_control_enabled": False,
+                "start_daemon_allowed": False,
+                "stop_runtime_mutation_allowed": False,
+                "stop_signal_allowed": False,
+                "runtime_state_mutation_allowed": False,
+                "future_supervisor_required_before_start": True,
+            },
+            "metadata": {
+                "metadata_only": True,
+                "database_url_included": False,
+                "storage_path_included": False,
+                "raw_artifact_payload_included": False,
+                "raw_execution_payload_included": False,
+                "safe_for_ag_projection": True,
+                "start_stop_guardrail_evaluated": True,
+                "start_action": action == "start_daemon",
+                "stop_action": action == "stop_daemon",
+                "guardrail_blocked": guardrail_status == "BLOCKED",
+                "guardrail_noop": guardrail_status == "NOOP",
+                "policy_reason_present": True,
+                "action_allowed": False,
+                "runtime_state_mutated": False,
+                "stop_signal_sent": False,
+                "tick_once_dispatched": False,
+                "lease_acquired_before_tick": False,
+                "lease_released": False,
+                "job_enqueued": False,
+                "worker_executed": False,
+                "history_write_executed": False,
+                "scheduler_daemon_started": False,
+                "continuous_loop_started": False,
+                "physical_delete_automation_enabled": False,
+            },
+        }
     return {
         "daemon_dispatch_result_schema_version": (
             "ae_artifact_retention_scheduler_daemon_dispatch_result.v1"
@@ -924,10 +998,14 @@ def artifact_retention_scheduler_daemon_dispatch_payload(
         "dispatch_status": dispatch_status,
         "control_plan": control_plan,
         "tick_once_result": None,
+        "start_stop_guardrail": start_stop_guardrail,
         "guardrails": {
             **config["guardrails"],
             "daemon_control_plan_required": True,
             "tick_once_requires_ready_control_plan": True,
+            "start_stop_guardrail_required_for_start_stop": True,
+            "start_stop_runtime_mutation_allowed": False,
+            "stop_signal_allowed": False,
         },
         "metadata": {
             "metadata_only": True,
@@ -937,10 +1015,13 @@ def artifact_retention_scheduler_daemon_dispatch_payload(
             "raw_execution_payload_included": False,
             "control_plan_ready": dispatch_status == "DISPATCHED",
             "tick_once_dispatched": dispatch_status == "DISPATCHED",
+            "start_stop_guardrail_evaluated": start_stop_guardrail is not None,
             "lease_acquired_before_tick": False,
             "lease_released": False,
             "job_enqueued": dispatch_status == "DISPATCHED",
             "worker_executed": False,
+            "runtime_state_mutated": False,
+            "stop_signal_sent": False,
             "scheduler_daemon_started": False,
             "continuous_loop_started": False,
             "physical_delete_automation_enabled": False,
@@ -1579,10 +1660,13 @@ def test_artifact_operation_retention_daemon_projection_summarizes_and_redacts()
             "execution_payload_included": False,
             "control_plan_ready": True,
             "tick_once_dispatched": True,
+            "start_stop_guardrail_evaluated": False,
             "lease_acquired_before_tick": True,
             "lease_released": True,
             "job_enqueued": True,
             "worker_executed": True,
+            "runtime_state_mutated": False,
+            "stop_signal_sent": False,
             "scheduler_daemon_started": False,
             "continuous_loop_started": False,
             "physical_delete_automation_enabled": False,
@@ -1633,15 +1717,19 @@ def test_artifact_operation_retention_daemon_projection_summarizes_and_redacts()
             "execution_payload_included": False,
             "control_plan_ready": True,
             "tick_once_dispatched": True,
+            "start_stop_guardrail_evaluated": False,
             "lease_acquired_before_tick": True,
             "lease_released": True,
             "job_enqueued": True,
             "worker_executed": True,
+            "runtime_state_mutated": False,
+            "stop_signal_sent": False,
             "scheduler_daemon_started": False,
             "continuous_loop_started": False,
             "physical_delete_automation_enabled": False,
         },
     }
+    assert projection["dispatch_response"]["start_stop_guardrail"] == {}
     assert projection["summary"] == summarize_artifact_retention_daemon_operations(
         daemon_config=projection["daemon_config"],
         dispatch_response=projection["dispatch_response"],
@@ -1730,6 +1818,27 @@ def test_artifact_operation_retention_daemon_projection_handles_sparse_edges() -
     assert projection["dispatch_response"]["control_plan"]["requested_by"] == {}
     assert projection["dispatch_response"]["control_plan"]["execution_plan"] == {}
     assert projection["dispatch_response"]["tick_once_result"] == {}
+    assert projection["dispatch_response"]["start_stop_guardrail"]["action"] == (
+        "start_daemon"
+    )
+    assert projection["dispatch_response"]["start_stop_guardrail"][
+        "guardrail_status"
+    ] == "BLOCKED"
+    assert projection["dispatch_response"]["start_stop_guardrail"][
+        "guardrail_reason"
+    ] == "daemon_disabled_by_policy"
+    assert projection["dispatch_response"]["start_stop_guardrail"][
+        "action_allowed"
+    ] is False
+    assert projection["dispatch_response"]["start_stop_guardrail"]["execution_plan"][
+        "starts_daemon"
+    ] is False
+    assert projection["dispatch_response"]["start_stop_guardrail"]["guardrails"][
+        "future_supervisor_required_before_start"
+    ] is True
+    assert projection["dispatch_response"]["start_stop_guardrail"]["metadata"][
+        "stop_signal_sent"
+    ] is False
     assert projection["summary"]["manual_tick_once_decision_status"] == "BLOCKED"
     assert projection["summary"]["manual_tick_once_available"] is False
     assert projection["summary"]["attention_status"] == "DISPATCH_ATTENTION"
@@ -1752,6 +1861,7 @@ def test_artifact_operation_retention_daemon_projection_handles_sparse_edges() -
         == {}
     )
     assert artifact_operations._project_retention_scheduler_daemon_control_plan([]) == {}
+    assert artifact_operations._project_retention_scheduler_start_stop_guardrail([]) == {}
     assert artifact_operations._project_retention_scheduler_tick_once_summary([]) == {}
 
 

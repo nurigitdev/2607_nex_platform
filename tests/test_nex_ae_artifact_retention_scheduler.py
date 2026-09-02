@@ -23,6 +23,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LOOP_PLAN_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ONE_CYCLE_RESULT_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_CONFIG_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_START_STOP_GUARDRAIL_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_RESULT_SCHEMA_VERSION,
     DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_STORE,
     DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_OWNER_ID,
@@ -35,6 +36,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     build_artifact_retention_scheduler_daemon_control_plan,
     build_artifact_retention_scheduler_daemon_loop_plan,
     build_artifact_retention_scheduler_daemon_runtime_config,
+    build_artifact_retention_scheduler_daemon_start_stop_guardrail,
     build_artifact_retention_scheduler_lease_decision,
     build_artifact_retention_scheduler_lease_record,
     build_artifact_retention_scheduler_lease_request,
@@ -52,6 +54,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     summarize_artifact_retention_scheduler_daemon_dispatch_result,
     summarize_artifact_retention_scheduler_daemon_loop_plan,
     summarize_artifact_retention_scheduler_daemon_runtime_config,
+    summarize_artifact_retention_scheduler_daemon_start_stop_guardrail,
     summarize_artifact_retention_scheduler_lease_decision,
     summarize_artifact_retention_scheduler_tick_once_result,
     validate_artifact_retention_scheduler_daemon_config,
@@ -60,6 +63,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     validate_artifact_retention_scheduler_daemon_loop_plan,
     validate_artifact_retention_scheduler_daemon_one_cycle_result,
     validate_artifact_retention_scheduler_daemon_runtime_config,
+    validate_artifact_retention_scheduler_daemon_start_stop_guardrail,
     validate_artifact_retention_scheduler_lease_decision,
     validate_artifact_retention_scheduler_lease_record,
     validate_artifact_retention_scheduler_lease_request,
@@ -2185,6 +2189,271 @@ def test_artifact_retention_scheduler_daemon_control_plan_validation_edges() -> 
     )
 
 
+def test_artifact_retention_scheduler_daemon_start_stop_guardrail_blocks_and_noops() -> (
+    None
+):
+    queue = InMemoryJobQueue()
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+
+    start_guardrail = build_artifact_retention_scheduler_daemon_start_stop_guardrail(
+        action="start_daemon",
+        scheduler_config=scheduler_config,
+        lease_store=lease_store,
+        requested_at=READY_TICK_AT,
+        requested_by={"actor_type": "operator", "actor_id": "ag-retention-operator"},
+        reason="operator start request",
+    )
+    stop_guardrail = build_artifact_retention_scheduler_daemon_start_stop_guardrail(
+        action="stop_daemon",
+        scheduler_config=scheduler_config,
+        lease_store=lease_store,
+        requested_at=READY_TICK_AT,
+        requested_by={"actor_type": "operator", "actor_id": "ag-retention-operator"},
+        reason="operator stop request",
+    )
+
+    assert start_guardrail["daemon_start_stop_guardrail_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_START_STOP_GUARDRAIL_SCHEMA_VERSION
+    )
+    assert start_guardrail["guardrail_status"] == "BLOCKED"
+    assert start_guardrail["guardrail_reason"] == "daemon_disabled_by_policy"
+    assert start_guardrail["action_allowed"] is False
+    assert start_guardrail["runtime_state_transition"] == "NONE"
+    assert start_guardrail["execution_plan"] == {
+        "requires_control_plan": True,
+        "requires_lease": False,
+        "runs_tick_once": False,
+        "dispatches_job_queue": False,
+        "starts_daemon": False,
+        "stops_daemon": False,
+        "sends_stop_signal": False,
+        "starts_continuous_loop": False,
+        "runtime_state_mutated": False,
+        "writes_history": False,
+        "physical_delete_enabled": False,
+        "mirrors_control_action": "start_daemon",
+    }
+    assert start_guardrail["guardrails"][
+        "future_supervisor_required_before_start"
+    ] is True
+    assert start_guardrail["metadata"] == {
+        "metadata_only": True,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "safe_for_ag_projection": True,
+        "start_stop_guardrail_evaluated": True,
+        "start_action": True,
+        "stop_action": False,
+        "guardrail_blocked": True,
+        "guardrail_noop": False,
+        "policy_reason_present": True,
+        "action_allowed": False,
+        "runtime_state_mutated": False,
+        "stop_signal_sent": False,
+        "tick_once_dispatched": False,
+        "lease_acquired_before_tick": False,
+        "lease_released": False,
+        "job_enqueued": False,
+        "worker_executed": False,
+        "history_write_executed": False,
+        "scheduler_daemon_started": False,
+        "continuous_loop_started": False,
+        "physical_delete_automation_enabled": False,
+    }
+    assert summarize_artifact_retention_scheduler_daemon_start_stop_guardrail(
+        start_guardrail
+    ) == {
+        "scheduler_id": "ae-artifact-retention-scheduler-local-v1",
+        "action": "start_daemon",
+        "guardrail_status": "BLOCKED",
+        "guardrail_reason": "daemon_disabled_by_policy",
+        "action_allowed": False,
+        "runtime_state_transition": "NONE",
+        "scheduler_daemon_started": False,
+        "continuous_loop_started": False,
+        "stop_signal_sent": False,
+    }
+    assert stop_guardrail["guardrail_status"] == "NOOP"
+    assert stop_guardrail["guardrail_reason"] == "daemon_not_running"
+    assert stop_guardrail["metadata"]["stop_action"] is True
+    assert stop_guardrail["metadata"]["guardrail_noop"] is True
+    assert stop_guardrail["execution_plan"]["mirrors_control_action"] == "stop_daemon"
+    assert validate_artifact_retention_scheduler_daemon_start_stop_guardrail(
+        start_guardrail
+    ) == start_guardrail
+    assert validate_artifact_retention_scheduler_daemon_start_stop_guardrail(
+        stop_guardrail
+    ) == stop_guardrail
+    assert queue.list_jobs() == []
+    assert lease_store.get("ae-artifact-retention-scheduler-local-v1") is None
+    assert "postgresql://" not in json.dumps(start_guardrail)
+    assert "/data/nex-platform" not in json.dumps(start_guardrail)
+    assert "dummy-secret-token" not in json.dumps(start_guardrail)
+
+
+def test_artifact_retention_scheduler_daemon_start_stop_guardrail_validation_edges() -> (
+    None
+):
+    queue = InMemoryJobQueue()
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+    start_guardrail = build_artifact_retention_scheduler_daemon_start_stop_guardrail(
+        action="start_daemon",
+        scheduler_config=scheduler_config,
+        lease_store=lease_store,
+        requested_at=READY_TICK_AT,
+    )
+    stop_guardrail = build_artifact_retention_scheduler_daemon_start_stop_guardrail(
+        action="stop_daemon",
+        scheduler_config=scheduler_config,
+        lease_store=lease_store,
+        requested_at=READY_TICK_AT,
+    )
+
+    cases: tuple[tuple[Any, str, str], ...] = (
+        (
+            [],
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+            "object",
+        ),
+        (
+            {
+                **start_guardrail,
+                "daemon_start_stop_guardrail_schema_version": "wrong",
+            },
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_schema_invalid",
+            "schema version",
+        ),
+        (
+            {**start_guardrail, "service_id": "nex-ag"},
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+            "service id",
+        ),
+        (
+            {**start_guardrail, "daemon_start_stop_guardrail_id": " "},
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+            "daemon_start_stop_guardrail_id",
+        ),
+        (
+            {**start_guardrail, "scheduler_id": "other-scheduler"},
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+            "scope",
+        ),
+        (
+            {**start_guardrail, "action": "manual_tick_once"},
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_action_invalid",
+            "action",
+        ),
+        (
+            {**start_guardrail, "requested_at": "not-a-time"},
+            "ae.artifact_retention_timestamp_invalid",
+            "requested_at",
+        ),
+        (
+            {**start_guardrail, "guardrail_status": "READY"},
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+            "status",
+        ),
+        (
+            {**start_guardrail, "guardrail_status": "NOOP"},
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+            "decision",
+        ),
+        (
+            {**start_guardrail, "guardrail_reason": "unknown"},
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+            "reason",
+        ),
+        (
+            {**stop_guardrail, "guardrail_reason": "daemon_disabled_by_policy"},
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+            "reason",
+        ),
+        (
+            {**start_guardrail, "action_allowed": True},
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+            "not allowed",
+        ),
+        (
+            {**start_guardrail, "runtime_state_transition": "STARTED"},
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+            "runtime state",
+        ),
+        (
+            {
+                **start_guardrail,
+                "execution_plan": {
+                    **start_guardrail["execution_plan"],
+                    "starts_daemon": True,
+                },
+            },
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+            "execution plan",
+        ),
+        (
+            {**start_guardrail, "guardrails": {}},
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+            "guardrails",
+        ),
+        (
+            {
+                **start_guardrail,
+                "metadata": {
+                    **start_guardrail["metadata"],
+                    "runtime_state_mutated": True,
+                },
+            },
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+            "metadata",
+        ),
+        (
+            {**start_guardrail, "daemon_start_stop_guardrail_id": "wrong"},
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+            "guardrail id",
+        ),
+        (
+            {**start_guardrail, "raw_text": "private start stop payload"},
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+            "keys",
+        ),
+    )
+
+    for payload, error_code, detail in cases:
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_scheduler_daemon_start_stop_guardrail(payload)  # type: ignore[arg-type]
+        assert exc_info.value.error_code == error_code
+        assert detail in exc_info.value.detail
+
+    with pytest.raises(ArtifactHandoffError) as start_decision_exc:
+        scheduler_module._scheduler_daemon_start_stop_guardrail_decision(
+            {
+                **start_guardrail["control_plan"],
+                "decision_status": "NOOP",
+                "block_reason": None,
+            }
+        )
+    assert start_decision_exc.value.error_code == (
+        "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+    )
+    assert "start guardrail decision" in start_decision_exc.value.detail
+
+    with pytest.raises(ArtifactHandoffError) as stop_decision_exc:
+        scheduler_module._scheduler_daemon_start_stop_guardrail_decision(
+            {
+                **stop_guardrail["control_plan"],
+                "decision_status": "BLOCKED",
+                "block_reason": "daemon_disabled_by_policy",
+            }
+        )
+    assert stop_decision_exc.value.error_code == (
+        "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+    )
+    assert "stop guardrail decision" in stop_decision_exc.value.detail
+
+
 def test_artifact_retention_scheduler_daemon_dispatch_runs_manual_tick_once() -> None:
     artifact_store = FakeArtifactRetentionStore(candidate_count=1)
     lease_store = ArtifactRetentionSchedulerLeaseStore()
@@ -2222,6 +2491,7 @@ def test_artifact_retention_scheduler_daemon_dispatch_runs_manual_tick_once() ->
     assert result["dispatch_status"] == "DISPATCHED"
     assert result["control_plan"]["decision_status"] == "READY"
     assert result["tick_once_result"]["result_status"] == "SUCCEEDED"
+    assert result["start_stop_guardrail"] is None
     assert result["tick_once_result"]["guardrails"]["scheduler_daemon_started"] is False
     assert result["metadata"] == {
         "metadata_only": True,
@@ -2231,10 +2501,13 @@ def test_artifact_retention_scheduler_daemon_dispatch_runs_manual_tick_once() ->
         "raw_execution_payload_included": False,
         "control_plan_ready": True,
         "tick_once_dispatched": True,
+        "start_stop_guardrail_evaluated": False,
         "lease_acquired_before_tick": True,
         "lease_released": True,
         "job_enqueued": True,
         "worker_executed": False,
+        "runtime_state_mutated": False,
+        "stop_signal_sent": False,
         "scheduler_daemon_started": False,
         "continuous_loop_started": False,
         "physical_delete_automation_enabled": False,
@@ -2244,6 +2517,8 @@ def test_artifact_retention_scheduler_daemon_dispatch_runs_manual_tick_once() ->
         "action": "manual_tick_once",
         "dispatch_status": "DISPATCHED",
         "tick_once_result_status": "SUCCEEDED",
+        "start_stop_guardrail_status": None,
+        "start_stop_guardrail_reason": None,
         "job_enqueued": True,
         "lease_released": True,
         "scheduler_daemon_started": False,
@@ -2284,6 +2559,19 @@ def test_artifact_retention_scheduler_daemon_dispatch_blocks_without_side_effect
         trace_id=TRACE_ID,
         request_id=REQUEST_ID,
     )
+    stop_result = dispatch_artifact_retention_scheduler_daemon_control(
+        action="stop_daemon",
+        artifact_store=artifact_store,
+        job_queue=queue,
+        lease_store=lease_store,
+        scheduler_config=build_artifact_retention_scheduler_config(job_queue=queue),
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        requested_at=READY_TICK_AT,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+    )
     no_queue_result = dispatch_artifact_retention_scheduler_daemon_control(
         action="manual_tick_once",
         artifact_store=artifact_store,
@@ -2299,11 +2587,31 @@ def test_artifact_retention_scheduler_daemon_dispatch_blocks_without_side_effect
     assert start_result["dispatch_status"] == "BLOCKED"
     assert start_result["control_plan"]["block_reason"] == "daemon_disabled_by_policy"
     assert start_result["tick_once_result"] is None
+    assert start_result["start_stop_guardrail"]["guardrail_status"] == "BLOCKED"
+    assert start_result["start_stop_guardrail"]["guardrail_reason"] == (
+        "daemon_disabled_by_policy"
+    )
+    assert start_result["metadata"]["start_stop_guardrail_evaluated"] is True
+    assert start_result["metadata"]["runtime_state_mutated"] is False
+    assert start_result["metadata"]["stop_signal_sent"] is False
     assert status_result["dispatch_status"] == "NOOP"
     assert status_result["tick_once_result"] is None
+    assert status_result["start_stop_guardrail"] is None
+    assert stop_result["dispatch_status"] == "NOOP"
+    assert stop_result["control_plan"]["block_reason"] is None
+    assert stop_result["tick_once_result"] is None
+    assert stop_result["start_stop_guardrail"]["guardrail_status"] == "NOOP"
+    assert stop_result["start_stop_guardrail"]["guardrail_reason"] == (
+        "daemon_not_running"
+    )
+    assert stop_result["start_stop_guardrail"]["metadata"]["stop_signal_sent"] is False
+    assert stop_result["start_stop_guardrail"]["metadata"][
+        "scheduler_daemon_started"
+    ] is False
     assert no_queue_result["dispatch_status"] == "BLOCKED"
     assert no_queue_result["control_plan"]["block_reason"] == "job_queue_unavailable"
     assert no_queue_result["tick_once_result"] is None
+    assert no_queue_result["start_stop_guardrail"] is None
     assert artifact_store.calls == []
 
 
@@ -2368,12 +2676,32 @@ def test_artifact_retention_scheduler_daemon_dispatch_result_validation_edges() 
         owner_user_id="user-001",
         requested_at=READY_TICK_AT,
     )
+    stopped = dispatch_artifact_retention_scheduler_daemon_control(
+        action="stop_daemon",
+        artifact_store=artifact_store,
+        job_queue=queue,
+        lease_store=lease_store,
+        scheduler_config=build_artifact_retention_scheduler_config(job_queue=queue),
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        requested_at=READY_TICK_AT,
+    )
 
     cases: tuple[tuple[Any, str, str], ...] = (
         (
             [],
             "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
             "object",
+        ),
+        (
+            {
+                key: value
+                for key, value in result.items()
+                if key != "start_stop_guardrail"
+            },
+            "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
+            "keys",
         ),
         (
             {**result, "daemon_dispatch_result_schema_version": "wrong"},
@@ -2416,6 +2744,21 @@ def test_artifact_retention_scheduler_daemon_dispatch_result_validation_edges() 
             "Blocked",
         ),
         (
+            {**blocked, "start_stop_guardrail": None},
+            "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+            "object",
+        ),
+        (
+            {**result, "start_stop_guardrail": blocked["start_stop_guardrail"]},
+            "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
+            "Non start/stop",
+        ),
+        (
+            {**blocked, "start_stop_guardrail": stopped["start_stop_guardrail"]},
+            "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
+            "start/stop guardrail",
+        ),
+        (
             {**result, "daemon_dispatch_result_id": "wrong"},
             "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
             "result id",
@@ -2432,8 +2775,8 @@ def test_artifact_retention_scheduler_daemon_dispatch_result_validation_edges() 
         ),
         (
             {**result, "raw_text": "private dispatch payload"},
-            "ae.artifact_retention_payload_unsafe",
-            "private material",
+            "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
+            "keys",
         ),
     )
 

@@ -704,3 +704,8 @@ Artifact library management:
   only when that plan is `READY`; disabled, blocked, and stop no-op states
   return before touching the artifact store, lease store, JobQueue, worker, or
   history path. It remains one-cycle only and still starts no daemon loop.
+- Slice 0535 adds the daemon start/stop control guardrail. `start_daemon`
+  dispatch now carries explicit `BLOCKED` evidence, `stop_daemon` carries
+  idempotent `NOOP` evidence, and both prove no runtime state transition, stop
+  signal, lease, JobQueue, worker, history write, daemon start, or continuous
+  loop start occurred.

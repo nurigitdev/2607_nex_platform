@@ -53,6 +53,9 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CONTROL_PLAN_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_DISPATCH_RESULT_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_dispatch_result.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_START_STOP_GUARDRAIL_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_start_stop_guardrail.v1"
+)
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_CONFIG_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_runtime_config.v1"
 )
@@ -109,6 +112,14 @@ ARTIFACT_RETENTION_SCHEDULER_DAEMON_DISPATCH_STATUSES = (
     "DISPATCHED",
     "BLOCKED",
     "NOOP",
+)
+ARTIFACT_RETENTION_SCHEDULER_DAEMON_START_STOP_GUARDRAIL_STATUSES = (
+    "BLOCKED",
+    "NOOP",
+)
+ARTIFACT_RETENTION_SCHEDULER_DAEMON_START_STOP_GUARDRAIL_REASONS = (
+    "daemon_disabled_by_policy",
+    "daemon_not_running",
 )
 ARTIFACT_RETENTION_SCHEDULER_DAEMON_CONTROL_BLOCK_REASONS = (
     "daemon_disabled_by_policy",
@@ -2148,6 +2159,297 @@ def summarize_artifact_retention_scheduler_daemon_control_plan(
     }
 
 
+def build_artifact_retention_scheduler_daemon_start_stop_guardrail(
+    *,
+    action: str,
+    daemon_config: Mapping[str, Any] | None = None,
+    scheduler_config: Mapping[str, Any] | None = None,
+    lease_store: Any | None = None,
+    requested_at: str | None = None,
+    requested_by: Mapping[str, Any] | None = None,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    normalized_action = _normalize_scheduler_daemon_start_stop_action(action)
+    control_plan = build_artifact_retention_scheduler_daemon_control_plan(
+        action=normalized_action,
+        daemon_config=daemon_config,
+        scheduler_config=scheduler_config,
+        lease_store=lease_store,
+        requested_at=requested_at,
+        requested_by=requested_by,
+        reason=reason,
+    )
+    return validate_artifact_retention_scheduler_daemon_start_stop_guardrail(
+        _build_artifact_retention_scheduler_daemon_start_stop_guardrail(
+            control_plan=control_plan
+        )
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_start_stop_guardrail(
+    guardrail: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(guardrail, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon start/stop guardrail must be "
+                "an object."
+            ),
+        )
+    normalized = dict(guardrail)
+    if set(normalized) != {
+        "daemon_start_stop_guardrail_schema_version",
+        "daemon_start_stop_guardrail_id",
+        "service_id",
+        "scheduler_id",
+        "action",
+        "guardrail_status",
+        "guardrail_reason",
+        "requested_at",
+        "control_plan",
+        "action_allowed",
+        "runtime_state_transition",
+        "execution_plan",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon start/stop guardrail keys "
+                "are invalid."
+            ),
+        )
+    if normalized.get("daemon_start_stop_guardrail_schema_version") != (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_START_STOP_GUARDRAIL_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon start/stop guardrail schema "
+                "version is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon start/stop guardrail service "
+                "id is invalid."
+            ),
+        )
+    _required_text(
+        normalized.get("daemon_start_stop_guardrail_id"),
+        "daemon_start_stop_guardrail_id",
+        "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+    )
+    _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+    )
+    action = _normalize_scheduler_daemon_start_stop_action(normalized.get("action"))
+    requested_at = format_artifact_retention_timestamp(
+        parse_artifact_retention_timestamp(
+            normalized.get("requested_at"),
+            field_name="requested_at",
+        )
+    )
+    control_plan = validate_artifact_retention_scheduler_daemon_control_plan(
+        normalized.get("control_plan")
+    )
+    if (
+        control_plan["scheduler_id"] != normalized["scheduler_id"]
+        or control_plan["action"] != action
+        or control_plan["requested_at"] != requested_at
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon start/stop guardrail scope "
+                "is invalid."
+            ),
+        )
+    expected_status, expected_reason = _scheduler_daemon_start_stop_guardrail_decision(
+        control_plan
+    )
+    if normalized.get("guardrail_status") not in (
+        ARTIFACT_RETENTION_SCHEDULER_DAEMON_START_STOP_GUARDRAIL_STATUSES
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon start/stop guardrail status "
+                "is invalid."
+            ),
+        )
+    if normalized.get("guardrail_status") != expected_status:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon start/stop guardrail decision "
+                "is invalid."
+            ),
+        )
+    if normalized.get("guardrail_reason") not in (
+        ARTIFACT_RETENTION_SCHEDULER_DAEMON_START_STOP_GUARDRAIL_REASONS
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon start/stop guardrail reason "
+                "is invalid."
+            ),
+        )
+    if normalized.get("guardrail_reason") != expected_reason:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon start/stop guardrail reason "
+                "is invalid."
+            ),
+        )
+    if _required_bool(
+        normalized.get("action_allowed"),
+        "action_allowed",
+        "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid",
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon start/stop action is not "
+                "allowed by policy."
+            ),
+        )
+    if normalized.get("runtime_state_transition") != "NONE":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon start/stop runtime state "
+                "transition is invalid."
+            ),
+        )
+    expected_execution_plan = _scheduler_daemon_start_stop_execution_plan(
+        control_plan
+    )
+    if normalized.get("execution_plan") != expected_execution_plan:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon start/stop execution plan "
+                "is invalid."
+            ),
+        )
+    if normalized.get("guardrails") != _scheduler_daemon_start_stop_guardrails():
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon start/stop guardrails are "
+                "invalid."
+            ),
+        )
+    if normalized.get("metadata") != _scheduler_daemon_start_stop_metadata(
+        control_plan=control_plan,
+        guardrail_status=expected_status,
+        guardrail_reason=expected_reason,
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon start/stop metadata is "
+                "invalid."
+            ),
+        )
+    expected_id = _scheduler_daemon_start_stop_guardrail_id(
+        control_plan=control_plan,
+        guardrail_status=expected_status,
+        guardrail_reason=expected_reason,
+    )
+    if normalized["daemon_start_stop_guardrail_id"] != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon start/stop guardrail id is "
+                "invalid."
+            ),
+        )
+    normalized["action"] = action
+    normalized["requested_at"] = requested_at
+    normalized["control_plan"] = control_plan
+    normalized["execution_plan"] = expected_execution_plan
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_start_stop_guardrail(
+    guardrail: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduler_daemon_start_stop_guardrail(
+        guardrail
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "action": validated["action"],
+        "guardrail_status": validated["guardrail_status"],
+        "guardrail_reason": validated["guardrail_reason"],
+        "action_allowed": validated["action_allowed"],
+        "runtime_state_transition": validated["runtime_state_transition"],
+        "scheduler_daemon_started": validated["metadata"][
+            "scheduler_daemon_started"
+        ],
+        "continuous_loop_started": validated["metadata"][
+            "continuous_loop_started"
+        ],
+        "stop_signal_sent": validated["metadata"]["stop_signal_sent"],
+    }
+
+
 def dispatch_artifact_retention_scheduler_daemon_control(
     *,
     action: str,
@@ -2192,6 +2494,15 @@ def dispatch_artifact_retention_scheduler_daemon_control(
         requested_by=requested_by,
         reason=reason,
     )
+    start_stop_guardrail = (
+        validate_artifact_retention_scheduler_daemon_start_stop_guardrail(
+            _build_artifact_retention_scheduler_daemon_start_stop_guardrail(
+                control_plan=control_plan
+            )
+        )
+        if _is_scheduler_daemon_start_stop_action(control_plan["action"])
+        else None
+    )
     tick_once_result = None
     if control_plan["execution_plan"]["runs_tick_once"] is True:
         tick_once_result = run_artifact_retention_scheduler_tick_once(
@@ -2220,6 +2531,7 @@ def dispatch_artifact_retention_scheduler_daemon_control(
         _build_artifact_retention_scheduler_daemon_dispatch_result(
             control_plan=control_plan,
             tick_once_result=tick_once_result,
+            start_stop_guardrail=start_stop_guardrail,
         )
     )
 
@@ -2234,6 +2546,23 @@ def validate_artifact_retention_scheduler_daemon_dispatch_result(
             detail="Artifact retention scheduler daemon dispatch result must be an object.",
         )
     normalized = dict(result)
+    if set(normalized) != {
+        "daemon_dispatch_result_schema_version",
+        "daemon_dispatch_result_id",
+        "service_id",
+        "scheduler_id",
+        "dispatch_status",
+        "control_plan",
+        "tick_once_result",
+        "start_stop_guardrail",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
+            detail="Artifact retention scheduler daemon dispatch result keys are invalid.",
+        )
     if (
         normalized.get("daemon_dispatch_result_schema_version")
         != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_DISPATCH_RESULT_SCHEMA_VERSION
@@ -2276,6 +2605,37 @@ def validate_artifact_retention_scheduler_daemon_dispatch_result(
             error_code="ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
             detail="Artifact retention scheduler daemon dispatch scope is invalid.",
         )
+    start_stop_guardrail = normalized.get("start_stop_guardrail")
+    if _is_scheduler_daemon_start_stop_action(control_plan["action"]):
+        start_stop_guardrail = (
+            validate_artifact_retention_scheduler_daemon_start_stop_guardrail(
+                start_stop_guardrail
+            )
+        )
+        if (
+            start_stop_guardrail["scheduler_id"] != normalized["scheduler_id"]
+            or start_stop_guardrail["action"] != control_plan["action"]
+            or start_stop_guardrail["control_plan"] != control_plan
+        ):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=(
+                    "ae.artifact_retention_scheduler_daemon_dispatch_result_invalid"
+                ),
+                detail=(
+                    "Artifact retention scheduler daemon dispatch start/stop "
+                    "guardrail is invalid."
+                ),
+            )
+    elif start_stop_guardrail is not None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_dispatch_result_invalid",
+            detail=(
+                "Non start/stop scheduler daemon dispatch result cannot include "
+                "a start/stop guardrail."
+            ),
+        )
     tick_once_result = normalized.get("tick_once_result")
     if control_plan["decision_status"] == "READY":
         validated_tick = validate_artifact_retention_scheduler_tick_once_result(
@@ -2306,6 +2666,7 @@ def validate_artifact_retention_scheduler_daemon_dispatch_result(
     expected_id = _scheduler_daemon_dispatch_result_id(
         control_plan=control_plan,
         tick_once_result=tick_once_result,
+        start_stop_guardrail=start_stop_guardrail,
     )
     if normalized["daemon_dispatch_result_id"] != expected_id:
         raise ArtifactHandoffError(
@@ -2322,6 +2683,7 @@ def validate_artifact_retention_scheduler_daemon_dispatch_result(
     if normalized.get("metadata") != _scheduler_daemon_dispatch_metadata(
         control_plan=control_plan,
         tick_once_result=tick_once_result,
+        start_stop_guardrail=start_stop_guardrail,
     ):
         raise ArtifactHandoffError(
             status_code=422,
@@ -2329,6 +2691,7 @@ def validate_artifact_retention_scheduler_daemon_dispatch_result(
             detail="Artifact retention scheduler daemon dispatch metadata is invalid.",
         )
     assert_artifact_retention_payload_safe(normalized)
+    normalized["start_stop_guardrail"] = start_stop_guardrail
     return normalized
 
 
@@ -2343,6 +2706,16 @@ def summarize_artifact_retention_scheduler_daemon_dispatch_result(
         "tick_once_result_status": (
             validated["tick_once_result"]["result_status"]
             if validated["tick_once_result"] is not None
+            else None
+        ),
+        "start_stop_guardrail_status": (
+            validated["start_stop_guardrail"]["guardrail_status"]
+            if validated["start_stop_guardrail"] is not None
+            else None
+        ),
+        "start_stop_guardrail_reason": (
+            validated["start_stop_guardrail"]["guardrail_reason"]
+            if validated["start_stop_guardrail"] is not None
             else None
         ),
         "job_enqueued": validated["metadata"]["job_enqueued"],
@@ -4074,6 +4447,7 @@ def _build_artifact_retention_scheduler_daemon_dispatch_result(
     *,
     control_plan: Mapping[str, Any],
     tick_once_result: Mapping[str, Any] | None,
+    start_stop_guardrail: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     validated_control = validate_artifact_retention_scheduler_daemon_control_plan(
         control_plan
@@ -4081,6 +4455,13 @@ def _build_artifact_retention_scheduler_daemon_dispatch_result(
     validated_tick = (
         validate_artifact_retention_scheduler_tick_once_result(tick_once_result)
         if tick_once_result is not None
+        else None
+    )
+    validated_start_stop = (
+        validate_artifact_retention_scheduler_daemon_start_stop_guardrail(
+            start_stop_guardrail
+        )
+        if start_stop_guardrail is not None
         else None
     )
     dispatch_status = (
@@ -4093,19 +4474,65 @@ def _build_artifact_retention_scheduler_daemon_dispatch_result(
         "daemon_dispatch_result_id": _scheduler_daemon_dispatch_result_id(
             control_plan=validated_control,
             tick_once_result=validated_tick,
+            start_stop_guardrail=validated_start_stop,
         ),
         "service_id": "nex-ae-api",
         "scheduler_id": validated_control["scheduler_id"],
         "dispatch_status": dispatch_status,
         "control_plan": deepcopy(validated_control),
         "tick_once_result": deepcopy(validated_tick),
+        "start_stop_guardrail": deepcopy(validated_start_stop),
         "guardrails": _scheduler_daemon_dispatch_guardrails(),
         "metadata": _scheduler_daemon_dispatch_metadata(
             control_plan=validated_control,
             tick_once_result=validated_tick,
+            start_stop_guardrail=validated_start_stop,
         ),
     }
     return result
+
+
+def _build_artifact_retention_scheduler_daemon_start_stop_guardrail(
+    *,
+    control_plan: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated_control = validate_artifact_retention_scheduler_daemon_control_plan(
+        control_plan
+    )
+    action = _normalize_scheduler_daemon_start_stop_action(
+        validated_control["action"]
+    )
+    guardrail_status, guardrail_reason = _scheduler_daemon_start_stop_guardrail_decision(
+        validated_control
+    )
+    return {
+        "daemon_start_stop_guardrail_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_START_STOP_GUARDRAIL_SCHEMA_VERSION
+        ),
+        "daemon_start_stop_guardrail_id": _scheduler_daemon_start_stop_guardrail_id(
+            control_plan=validated_control,
+            guardrail_status=guardrail_status,
+            guardrail_reason=guardrail_reason,
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": validated_control["scheduler_id"],
+        "action": action,
+        "guardrail_status": guardrail_status,
+        "guardrail_reason": guardrail_reason,
+        "requested_at": validated_control["requested_at"],
+        "control_plan": deepcopy(validated_control),
+        "action_allowed": False,
+        "runtime_state_transition": "NONE",
+        "execution_plan": _scheduler_daemon_start_stop_execution_plan(
+            validated_control
+        ),
+        "guardrails": _scheduler_daemon_start_stop_guardrails(),
+        "metadata": _scheduler_daemon_start_stop_metadata(
+            control_plan=validated_control,
+            guardrail_status=guardrail_status,
+            guardrail_reason=guardrail_reason,
+        ),
+    }
 
 
 def _build_artifact_retention_scheduler_daemon_one_cycle_result(
@@ -4157,6 +4584,7 @@ def _scheduler_daemon_dispatch_result_id(
     *,
     control_plan: Mapping[str, Any],
     tick_once_result: Mapping[str, Any] | None,
+    start_stop_guardrail: Mapping[str, Any] | None,
 ) -> str:
     basis = {
         "daemon_control_plan_id": control_plan["daemon_control_plan_id"],
@@ -4167,6 +4595,11 @@ def _scheduler_daemon_dispatch_result_id(
             if isinstance(tick_once_result, Mapping)
             else None
         ),
+        "start_stop_guardrail_id": (
+            start_stop_guardrail.get("daemon_start_stop_guardrail_id")
+            if isinstance(start_stop_guardrail, Mapping)
+            else None
+        ),
     }
     return str(
         uuid5(
@@ -4174,6 +4607,108 @@ def _scheduler_daemon_dispatch_result_id(
             f"ae-artifact-retention-scheduler-daemon-dispatch:{sha256_json(basis)}",
         )
     )
+
+
+def _scheduler_daemon_start_stop_guardrail_id(
+    *,
+    control_plan: Mapping[str, Any],
+    guardrail_status: str,
+    guardrail_reason: str,
+) -> str:
+    basis = {
+        "daemon_control_plan_id": control_plan["daemon_control_plan_id"],
+        "action": control_plan["action"],
+        "decision_status": control_plan["decision_status"],
+        "guardrail_status": guardrail_status,
+        "guardrail_reason": guardrail_reason,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            f"ae-artifact-retention-scheduler-daemon-start-stop:{sha256_json(basis)}",
+        )
+    )
+
+
+def _normalize_scheduler_daemon_start_stop_action(value: Any) -> str:
+    action = normalize_artifact_retention_scheduler_daemon_control_action(value)
+    if not _is_scheduler_daemon_start_stop_action(action):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_action_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon start/stop guardrail action "
+                "must be start_daemon or stop_daemon."
+            ),
+        )
+    return action
+
+
+def _is_scheduler_daemon_start_stop_action(action: Any) -> bool:
+    return action in {
+        ARTIFACT_RETENTION_SCHEDULER_DAEMON_CONTROL_ACTION_START_DAEMON,
+        ARTIFACT_RETENTION_SCHEDULER_DAEMON_CONTROL_ACTION_STOP_DAEMON,
+    }
+
+
+def _scheduler_daemon_start_stop_guardrail_decision(
+    control_plan: Mapping[str, Any],
+) -> tuple[str, str]:
+    action = _normalize_scheduler_daemon_start_stop_action(control_plan.get("action"))
+    if action == ARTIFACT_RETENTION_SCHEDULER_DAEMON_CONTROL_ACTION_START_DAEMON:
+        if (
+            control_plan.get("decision_status") != "BLOCKED"
+            or control_plan.get("block_reason") != "daemon_disabled_by_policy"
+        ):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=(
+                    "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+                ),
+                detail=(
+                    "Artifact retention scheduler daemon start guardrail decision "
+                    "is invalid."
+                ),
+            )
+        return "BLOCKED", "daemon_disabled_by_policy"
+    if (
+        control_plan.get("decision_status") != "NOOP"
+        or control_plan.get("block_reason") is not None
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_start_stop_guardrail_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon stop guardrail decision is "
+                "invalid."
+            ),
+        )
+    return "NOOP", "daemon_not_running"
+
+
+def _scheduler_daemon_start_stop_execution_plan(
+    control_plan: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "requires_control_plan": True,
+        "requires_lease": False,
+        "runs_tick_once": False,
+        "dispatches_job_queue": False,
+        "starts_daemon": False,
+        "stops_daemon": False,
+        "sends_stop_signal": False,
+        "starts_continuous_loop": False,
+        "runtime_state_mutated": False,
+        "writes_history": False,
+        "physical_delete_enabled": False,
+        "mirrors_control_action": _normalize_scheduler_daemon_start_stop_action(
+            control_plan.get("action")
+        ),
+    }
 
 
 def _scheduler_daemon_one_cycle_result_status(
@@ -4229,6 +4764,9 @@ def _scheduler_daemon_dispatch_guardrails() -> dict[str, bool]:
         **guardrails,
         "daemon_control_plan_required": True,
         "tick_once_requires_ready_control_plan": True,
+        "start_stop_guardrail_required_for_start_stop": True,
+        "start_stop_runtime_mutation_allowed": False,
+        "stop_signal_allowed": False,
     }
 
 
@@ -4236,6 +4774,7 @@ def _scheduler_daemon_dispatch_metadata(
     *,
     control_plan: Mapping[str, Any],
     tick_once_result: Mapping[str, Any] | None,
+    start_stop_guardrail: Mapping[str, Any] | None,
 ) -> dict[str, bool]:
     tick_metadata = (
         tick_once_result.get("metadata")
@@ -4251,12 +4790,15 @@ def _scheduler_daemon_dispatch_metadata(
         "raw_execution_payload_included": False,
         "control_plan_ready": control_plan.get("decision_status") == "READY",
         "tick_once_dispatched": tick_once_result is not None,
+        "start_stop_guardrail_evaluated": start_stop_guardrail is not None,
         "lease_acquired_before_tick": (
             tick_metadata.get("lease_acquired_before_tick") is True
         ),
         "lease_released": tick_metadata.get("lease_released") is True,
         "job_enqueued": tick_metadata.get("job_enqueued") is True,
         "worker_executed": tick_metadata.get("worker_executed") is True,
+        "runtime_state_mutated": False,
+        "stop_signal_sent": False,
         "scheduler_daemon_started": False,
         "continuous_loop_started": False,
         "physical_delete_automation_enabled": False,
@@ -4423,6 +4965,59 @@ def _scheduler_daemon_one_cycle_metadata(
         "history_write_executed": (
             tick_metadata.get("history_write_executed") is True
         ),
+        "scheduler_daemon_started": False,
+        "continuous_loop_started": False,
+        "physical_delete_automation_enabled": False,
+    }
+
+
+def _scheduler_daemon_start_stop_guardrails() -> dict[str, bool]:
+    return {
+        **_scheduler_daemon_guardrails(),
+        "start_stop_control_guardrail_required": True,
+        "start_control_enabled": False,
+        "stop_control_enabled": False,
+        "start_daemon_allowed": False,
+        "stop_runtime_mutation_allowed": False,
+        "stop_signal_allowed": False,
+        "runtime_state_mutation_allowed": False,
+        "future_supervisor_required_before_start": True,
+    }
+
+
+def _scheduler_daemon_start_stop_metadata(
+    *,
+    control_plan: Mapping[str, Any],
+    guardrail_status: str,
+    guardrail_reason: str,
+) -> dict[str, bool]:
+    action = control_plan.get("action")
+    return {
+        "metadata_only": True,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "safe_for_ag_projection": True,
+        "start_stop_guardrail_evaluated": True,
+        "start_action": (
+            action == ARTIFACT_RETENTION_SCHEDULER_DAEMON_CONTROL_ACTION_START_DAEMON
+        ),
+        "stop_action": (
+            action == ARTIFACT_RETENTION_SCHEDULER_DAEMON_CONTROL_ACTION_STOP_DAEMON
+        ),
+        "guardrail_blocked": guardrail_status == "BLOCKED",
+        "guardrail_noop": guardrail_status == "NOOP",
+        "policy_reason_present": bool(guardrail_reason),
+        "action_allowed": False,
+        "runtime_state_mutated": False,
+        "stop_signal_sent": False,
+        "tick_once_dispatched": False,
+        "lease_acquired_before_tick": False,
+        "lease_released": False,
+        "job_enqueued": False,
+        "worker_executed": False,
+        "history_write_executed": False,
         "scheduler_daemon_started": False,
         "continuous_loop_started": False,
         "physical_delete_automation_enabled": False,

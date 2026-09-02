@@ -3232,6 +3232,16 @@ def _project_retention_scheduler_daemon_guardrails(raw_value: Any) -> dict[str, 
             "ag_direct_job_enqueue_allowed",
             "daemon_control_plan_required",
             "tick_once_requires_ready_control_plan",
+            "start_stop_guardrail_required_for_start_stop",
+            "start_stop_runtime_mutation_allowed",
+            "stop_signal_allowed",
+            "start_stop_control_guardrail_required",
+            "start_control_enabled",
+            "stop_control_enabled",
+            "start_daemon_allowed",
+            "stop_runtime_mutation_allowed",
+            "runtime_state_mutation_allowed",
+            "future_supervisor_required_before_start",
         ),
     )
 
@@ -3260,12 +3270,17 @@ def _project_retention_scheduler_daemon_metadata(raw_value: Any) -> dict[str, An
         ),
         "control_plan_ready": raw_value.get("control_plan_ready") is True,
         "tick_once_dispatched": raw_value.get("tick_once_dispatched") is True,
+        "start_stop_guardrail_evaluated": (
+            raw_value.get("start_stop_guardrail_evaluated") is True
+        ),
         "lease_acquired_before_tick": (
             raw_value.get("lease_acquired_before_tick") is True
         ),
         "lease_released": raw_value.get("lease_released") is True,
         "job_enqueued": raw_value.get("job_enqueued") is True,
         "worker_executed": raw_value.get("worker_executed") is True,
+        "runtime_state_mutated": raw_value.get("runtime_state_mutated") is True,
+        "stop_signal_sent": raw_value.get("stop_signal_sent") is True,
         "scheduler_daemon_started": raw_value.get("scheduler_daemon_started") is True,
         "continuous_loop_started": raw_value.get("continuous_loop_started") is True,
         "physical_delete_automation_enabled": (
@@ -3294,6 +3309,9 @@ def _project_retention_scheduler_daemon_dispatch_response(
         ),
         "tick_once_result": _project_retention_scheduler_tick_once_summary(
             raw_value.get("tick_once_result")
+        ),
+        "start_stop_guardrail": _project_retention_scheduler_start_stop_guardrail(
+            raw_value.get("start_stop_guardrail")
         ),
         "guardrails": _project_retention_scheduler_daemon_guardrails(
             raw_value.get("guardrails")
@@ -3337,6 +3355,54 @@ def _project_retention_scheduler_daemon_control_plan(
                 "starts_continuous_loop",
                 "writes_history",
                 "physical_delete_enabled",
+            ),
+        ),
+        "guardrails": _project_retention_scheduler_daemon_guardrails(
+            raw_value.get("guardrails")
+        ),
+        "metadata": _project_retention_scheduler_daemon_metadata(
+            raw_value.get("metadata")
+        ),
+    }
+
+
+def _project_retention_scheduler_start_stop_guardrail(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "daemon_start_stop_guardrail_schema_version": _text_or_none(
+            raw_value.get("daemon_start_stop_guardrail_schema_version")
+        ),
+        "daemon_start_stop_guardrail_id": _text_or_none(
+            raw_value.get("daemon_start_stop_guardrail_id")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "action": _normalized_daemon_action(raw_value.get("action")),
+        "guardrail_status": _text_or_none(raw_value.get("guardrail_status")),
+        "guardrail_reason": _text_or_none(raw_value.get("guardrail_reason")),
+        "requested_at": _text_or_none(raw_value.get("requested_at")),
+        "action_allowed": raw_value.get("action_allowed") is True,
+        "runtime_state_transition": _text_or_none(
+            raw_value.get("runtime_state_transition")
+        ),
+        "execution_plan": _select_mapping(
+            raw_value.get("execution_plan"),
+            (
+                "requires_control_plan",
+                "requires_lease",
+                "runs_tick_once",
+                "dispatches_job_queue",
+                "starts_daemon",
+                "stops_daemon",
+                "sends_stop_signal",
+                "starts_continuous_loop",
+                "runtime_state_mutated",
+                "writes_history",
+                "physical_delete_enabled",
+                "mirrors_control_action",
             ),
         ),
         "guardrails": _project_retention_scheduler_daemon_guardrails(
