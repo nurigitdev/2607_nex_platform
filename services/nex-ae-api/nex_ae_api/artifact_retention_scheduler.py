@@ -52,6 +52,9 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CONTROL_PLAN_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_DISPATCH_RESULT_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_dispatch_result.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_CONFIG_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_runtime_config.v1"
+)
 
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_OWNER_ID = (
     "ae-artifact-retention-scheduler-manual-once"
@@ -111,6 +114,20 @@ ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_SKIP_REASONS = (
     "outside_batch_window",
     "no_retention_candidates",
 )
+ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_PROFILES = ("test",)
+ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_ENABLEMENT_STATUSES = (
+    "DISABLED",
+    "READY",
+    "BLOCKED",
+)
+ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_BLOCK_REASONS = (
+    "explicit_opt_in_required",
+)
+DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_MAX_TICKS_PER_RUN = 1
+MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_MAX_TICKS_PER_RUN = 1
+DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_BACKOFF_SECONDS = 60
+MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_INTERVAL_SECONDS = 86_400
+MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_BACKOFF_SECONDS = 3_600
 MIN_ARTIFACT_RETENTION_SCHEDULER_LEASE_TTL_SECONDS = 60
 MAX_ARTIFACT_RETENTION_SCHEDULER_LEASE_TTL_SECONDS = (
     ARTIFACT_RETENTION_SCHEDULER_TICK_STALE_AFTER_SECONDS
@@ -1102,6 +1119,280 @@ def summarize_artifact_retention_scheduler_daemon_config(
         "manual_tick_once_block_reason": manual_action["block_reason"],
         "lease_repository_available": validated["lease_repository"]["available"],
         "job_queue_available": validated["runtime"]["job_queue_available"],
+    }
+
+
+def build_artifact_retention_scheduler_daemon_runtime_config(
+    *,
+    scheduler_config: Mapping[str, Any] | None = None,
+    profile: str = "test",
+    enabled: bool = False,
+    explicit_opt_in: bool = False,
+    checked_at: str | None = None,
+    interval_seconds: int | str | None = None,
+    jitter_seconds: int | str | None = None,
+    max_ticks_per_run: int | str | None = None,
+    lease_ttl_seconds: int | str | None = None,
+    backoff_seconds: int | str | None = None,
+) -> dict[str, Any]:
+    config = validate_artifact_retention_scheduler_config(
+        dict(scheduler_config)
+        if scheduler_config is not None
+        else build_artifact_retention_scheduler_config()
+    )
+    runtime = dict(config["runtime"])
+    schedule = dict(config["schedule"])
+    normalized_profile = _normalize_scheduler_daemon_runtime_profile(profile)
+    normalized_enabled = _required_bool(
+        enabled,
+        "enabled",
+        "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+    )
+    normalized_explicit_opt_in = _required_bool(
+        explicit_opt_in,
+        "explicit_opt_in",
+        "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+    )
+    normalized_interval = _bounded_positive_int(
+        interval_seconds
+        if interval_seconds is not None
+        else runtime["scheduler_tick_interval_seconds"],
+        "interval_seconds",
+        "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_INTERVAL_SECONDS,
+    )
+    normalized_jitter = _non_negative_int(
+        jitter_seconds
+        if jitter_seconds is not None
+        else runtime["scheduler_tick_jitter_seconds"],
+        "jitter_seconds",
+        "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+    )
+    if normalized_jitter > normalized_interval:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon jitter cannot exceed interval.",
+        )
+    normalized_max_ticks = _bounded_positive_int(
+        max_ticks_per_run
+        if max_ticks_per_run is not None
+        else DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_MAX_TICKS_PER_RUN,
+        "max_ticks_per_run",
+        "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_MAX_TICKS_PER_RUN,
+    )
+    normalized_lease_ttl = normalize_artifact_retention_scheduler_lease_ttl_seconds(
+        lease_ttl_seconds
+    )
+    normalized_backoff = _bounded_positive_int(
+        backoff_seconds
+        if backoff_seconds is not None
+        else DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_BACKOFF_SECONDS,
+        "backoff_seconds",
+        "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_BACKOFF_SECONDS,
+    )
+    enablement_status, block_reason = _scheduler_daemon_runtime_enablement_status(
+        enabled=normalized_enabled,
+        explicit_opt_in=normalized_explicit_opt_in,
+    )
+    runtime_config = {
+        "daemon_runtime_config_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_CONFIG_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": config["scheduler_id"],
+        "checked_at": _scheduler_daemon_checked_at(
+            checked_at=checked_at,
+            scheduler_config=config,
+        ),
+        "source_scheduler_config_schema_version": config[
+            "artifact_retention_scheduler_config_schema_version"
+        ],
+        "enablement": {
+            "profile": normalized_profile,
+            "enabled": normalized_enabled,
+            "explicit_opt_in": normalized_explicit_opt_in,
+            "enablement_status": enablement_status,
+            "block_reason": block_reason,
+        },
+        "timing": {
+            "interval_seconds": normalized_interval,
+            "jitter_seconds": normalized_jitter,
+            "backoff_seconds": normalized_backoff,
+        },
+        "runtime": {
+            "scheduler_tick_admission_enabled": (
+                runtime.get("scheduler_tick_admission_enabled") is True
+            ),
+            "operator_dispatch_admission_enabled": (
+                runtime.get("operator_dispatch_admission_enabled") is True
+            ),
+            "default_execution_mode": runtime.get("default_execution_mode"),
+            "job_queue_available": runtime.get("job_queue_available") is True,
+            "job_queue_backend": runtime.get("job_queue_backend"),
+            "worker_runner_available": runtime.get("worker_runner_available") is True,
+            "physical_delete_automation_enabled": (
+                runtime.get("physical_delete_automation_enabled") is True
+            ),
+        },
+        "loop_policy": {
+            "one_cycle_runner_required_before_loop": True,
+            "max_ticks_per_run": normalized_max_ticks,
+            "daemon_auto_start_allowed": False,
+            "scheduler_daemon_started": False,
+            "continuous_loop_enabled": False,
+            "continuous_loop_started": False,
+            "start_control_enabled": False,
+            "stop_control_enabled": False,
+        },
+        "lease_policy": {
+            "lease_required_before_tick": True,
+            "fencing_token_required": True,
+            "lease_repository_required": True,
+            "lease_ttl_seconds": normalized_lease_ttl,
+            "stale_after_seconds": runtime.get("scheduler_tick_stale_after_seconds"),
+        },
+        "batch_window": deepcopy(schedule["batch_window"]),
+        "guardrails": _scheduler_daemon_runtime_config_guardrails(),
+        "metadata": _scheduler_daemon_runtime_config_metadata(),
+    }
+    return validate_artifact_retention_scheduler_daemon_runtime_config(runtime_config)
+
+
+def validate_artifact_retention_scheduler_daemon_runtime_config(
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(config, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime config must be an object.",
+        )
+    normalized = dict(config)
+    if set(normalized) != {
+        "daemon_runtime_config_schema_version",
+        "service_id",
+        "scheduler_id",
+        "checked_at",
+        "source_scheduler_config_schema_version",
+        "enablement",
+        "timing",
+        "runtime",
+        "loop_policy",
+        "lease_policy",
+        "batch_window",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime config keys are invalid.",
+        )
+    if (
+        normalized.get("daemon_runtime_config_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_CONFIG_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_runtime_config_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon runtime config schema version "
+                "is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime config service id is invalid.",
+        )
+    _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+    )
+    normalized["checked_at"] = format_artifact_retention_timestamp(
+        parse_artifact_retention_timestamp(
+            normalized.get("checked_at"),
+            field_name="checked_at",
+        )
+    )
+    if normalized.get("source_scheduler_config_schema_version") != (
+        "ae_artifact_retention_scheduler_config.v1"
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime source config is invalid.",
+        )
+    enablement = _validate_scheduler_daemon_runtime_enablement(
+        normalized.get("enablement")
+    )
+    timing = _validate_scheduler_daemon_runtime_timing(normalized.get("timing"))
+    runtime = _validate_scheduler_daemon_runtime_enablement_runtime(
+        normalized.get("runtime")
+    )
+    loop_policy = _validate_scheduler_daemon_runtime_loop_policy(
+        normalized.get("loop_policy")
+    )
+    lease_policy = _validate_scheduler_daemon_runtime_lease_policy(
+        normalized.get("lease_policy")
+    )
+    batch_window = _validate_scheduler_daemon_runtime_batch_window(
+        normalized.get("batch_window")
+    )
+    if normalized.get("guardrails") != _scheduler_daemon_runtime_config_guardrails():
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime guardrails are invalid.",
+        )
+    if normalized.get("metadata") != _scheduler_daemon_runtime_config_metadata():
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime metadata is invalid.",
+        )
+    normalized["enablement"] = enablement
+    normalized["timing"] = timing
+    normalized["runtime"] = runtime
+    normalized["loop_policy"] = loop_policy
+    normalized["lease_policy"] = lease_policy
+    normalized["batch_window"] = batch_window
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_runtime_config(
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduler_daemon_runtime_config(config)
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "profile": validated["enablement"]["profile"],
+        "enabled": validated["enablement"]["enabled"],
+        "explicit_opt_in": validated["enablement"]["explicit_opt_in"],
+        "enablement_status": validated["enablement"]["enablement_status"],
+        "block_reason": validated["enablement"]["block_reason"],
+        "interval_seconds": validated["timing"]["interval_seconds"],
+        "jitter_seconds": validated["timing"]["jitter_seconds"],
+        "max_ticks_per_run": validated["loop_policy"]["max_ticks_per_run"],
+        "lease_ttl_seconds": validated["lease_policy"]["lease_ttl_seconds"],
+        "job_queue_available": validated["runtime"]["job_queue_available"],
+        "scheduler_daemon_started": validated["loop_policy"][
+            "scheduler_daemon_started"
+        ],
+        "continuous_loop_started": validated["loop_policy"][
+            "continuous_loop_started"
+        ],
+        "physical_delete_automation_enabled": validated["runtime"][
+            "physical_delete_automation_enabled"
+        ],
     }
 
 
@@ -2308,6 +2599,342 @@ def normalize_artifact_retention_scheduler_daemon_control_action(value: Any) -> 
     return normalized
 
 
+def _normalize_scheduler_daemon_runtime_profile(value: Any) -> str:
+    normalized = optional_text(value)
+    if normalized is None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime profile is required.",
+        )
+    normalized = normalized.lower()
+    if normalized not in ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_PROFILES:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime profile is invalid.",
+        )
+    return normalized
+
+
+def _scheduler_daemon_runtime_enablement_status(
+    *,
+    enabled: bool,
+    explicit_opt_in: bool,
+) -> tuple[str, str | None]:
+    if not enabled:
+        return "DISABLED", None
+    if not explicit_opt_in:
+        return "BLOCKED", "explicit_opt_in_required"
+    return "READY", None
+
+
+def _validate_scheduler_daemon_runtime_enablement(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime enablement is required.",
+        )
+    enablement = dict(value)
+    if set(enablement) != {
+        "profile",
+        "enabled",
+        "explicit_opt_in",
+        "enablement_status",
+        "block_reason",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime enablement keys are invalid.",
+        )
+    profile = _normalize_scheduler_daemon_runtime_profile(enablement.get("profile"))
+    enabled = _required_bool(
+        enablement.get("enabled"),
+        "enabled",
+        "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+    )
+    explicit_opt_in = _required_bool(
+        enablement.get("explicit_opt_in"),
+        "explicit_opt_in",
+        "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+    )
+    status = enablement.get("enablement_status")
+    if status not in ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_ENABLEMENT_STATUSES:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime status is invalid.",
+        )
+    block_reason = enablement.get("block_reason")
+    if (
+        block_reason is not None
+        and block_reason
+        not in ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_BLOCK_REASONS
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime block reason is invalid.",
+        )
+    expected_status, expected_reason = _scheduler_daemon_runtime_enablement_status(
+        enabled=enabled,
+        explicit_opt_in=explicit_opt_in,
+    )
+    if status != expected_status or block_reason != expected_reason:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime enablement decision is invalid.",
+        )
+    return {
+        "profile": profile,
+        "enabled": enabled,
+        "explicit_opt_in": explicit_opt_in,
+        "enablement_status": status,
+        "block_reason": block_reason,
+    }
+
+
+def _validate_scheduler_daemon_runtime_timing(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime timing is required.",
+        )
+    timing = dict(value)
+    if set(timing) != {"interval_seconds", "jitter_seconds", "backoff_seconds"}:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime timing keys are invalid.",
+        )
+    interval_seconds = _bounded_positive_int(
+        timing.get("interval_seconds"),
+        "interval_seconds",
+        "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_INTERVAL_SECONDS,
+    )
+    jitter_seconds = _non_negative_int(
+        timing.get("jitter_seconds"),
+        "jitter_seconds",
+        "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+    )
+    if jitter_seconds > interval_seconds:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon jitter cannot exceed interval.",
+        )
+    backoff_seconds = _bounded_positive_int(
+        timing.get("backoff_seconds"),
+        "backoff_seconds",
+        "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_BACKOFF_SECONDS,
+    )
+    return {
+        "interval_seconds": interval_seconds,
+        "jitter_seconds": jitter_seconds,
+        "backoff_seconds": backoff_seconds,
+    }
+
+
+def _validate_scheduler_daemon_runtime_enablement_runtime(
+    value: Any,
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime section is required.",
+        )
+    runtime = dict(value)
+    if set(runtime) != {
+        "scheduler_tick_admission_enabled",
+        "operator_dispatch_admission_enabled",
+        "default_execution_mode",
+        "job_queue_available",
+        "job_queue_backend",
+        "worker_runner_available",
+        "physical_delete_automation_enabled",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime section keys are invalid.",
+        )
+    for field_name in (
+        "scheduler_tick_admission_enabled",
+        "operator_dispatch_admission_enabled",
+        "job_queue_available",
+        "worker_runner_available",
+    ):
+        runtime[field_name] = _required_bool(
+            runtime.get(field_name),
+            field_name,
+            "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+        )
+    if runtime.get("default_execution_mode") != "DRY_RUN":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon runtime mode is invalid.",
+        )
+    _required_text(
+        runtime.get("job_queue_backend"),
+        "job_queue_backend",
+        "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+    )
+    if runtime.get("physical_delete_automation_enabled") is not False:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon physical delete automation is invalid.",
+        )
+    return runtime
+
+
+def _validate_scheduler_daemon_runtime_loop_policy(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon loop policy is required.",
+        )
+    loop_policy = dict(value)
+    if set(loop_policy) != {
+        "one_cycle_runner_required_before_loop",
+        "max_ticks_per_run",
+        "daemon_auto_start_allowed",
+        "scheduler_daemon_started",
+        "continuous_loop_enabled",
+        "continuous_loop_started",
+        "start_control_enabled",
+        "stop_control_enabled",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon loop policy keys are invalid.",
+        )
+    if loop_policy.get("one_cycle_runner_required_before_loop") is not True:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon loop policy is invalid.",
+        )
+    for field_name in (
+        "daemon_auto_start_allowed",
+        "scheduler_daemon_started",
+        "continuous_loop_enabled",
+        "continuous_loop_started",
+        "start_control_enabled",
+        "stop_control_enabled",
+    ):
+        if loop_policy.get(field_name) is not False:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+                detail="Artifact retention scheduler daemon loop policy is invalid.",
+            )
+    loop_policy["max_ticks_per_run"] = _bounded_positive_int(
+        loop_policy.get("max_ticks_per_run"),
+        "max_ticks_per_run",
+        "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_MAX_TICKS_PER_RUN,
+    )
+    return loop_policy
+
+
+def _validate_scheduler_daemon_runtime_lease_policy(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon lease policy is required.",
+        )
+    lease_policy = dict(value)
+    if set(lease_policy) != {
+        "lease_required_before_tick",
+        "fencing_token_required",
+        "lease_repository_required",
+        "lease_ttl_seconds",
+        "stale_after_seconds",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon lease policy keys are invalid.",
+        )
+    for field_name in (
+        "lease_required_before_tick",
+        "fencing_token_required",
+        "lease_repository_required",
+    ):
+        if lease_policy.get(field_name) is not True:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+                detail="Artifact retention scheduler daemon lease policy is invalid.",
+            )
+    lease_ttl_seconds = normalize_artifact_retention_scheduler_lease_ttl_seconds(
+        lease_policy.get("lease_ttl_seconds")
+    )
+    stale_after_seconds = _positive_int(
+        lease_policy.get("stale_after_seconds"),
+        "stale_after_seconds",
+        "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+    )
+    if stale_after_seconds < lease_ttl_seconds:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon stale window is invalid.",
+        )
+    return {
+        "lease_required_before_tick": True,
+        "fencing_token_required": True,
+        "lease_repository_required": True,
+        "lease_ttl_seconds": lease_ttl_seconds,
+        "stale_after_seconds": stale_after_seconds,
+    }
+
+
+def _validate_scheduler_daemon_runtime_batch_window(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon batch window is required.",
+        )
+    batch_window = dict(value)
+    if set(batch_window) != {"timezone", "start_local_time", "end_local_time"}:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+            detail="Artifact retention scheduler daemon batch window keys are invalid.",
+        )
+    return {
+        "timezone": _required_text(
+            batch_window.get("timezone"),
+            "timezone",
+            "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+        ),
+        "start_local_time": _required_text(
+            batch_window.get("start_local_time"),
+            "start_local_time",
+            "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+        ),
+        "end_local_time": _required_text(
+            batch_window.get("end_local_time"),
+            "end_local_time",
+            "ae.artifact_retention_scheduler_daemon_runtime_config_invalid",
+        ),
+    }
+
+
 def _scheduler_daemon_checked_at(
     *,
     checked_at: str | None,
@@ -2902,6 +3529,42 @@ def _scheduler_daemon_metadata() -> dict[str, bool]:
     }
 
 
+def _scheduler_daemon_runtime_config_guardrails() -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "test_profile_only": True,
+        "explicit_opt_in_required": True,
+        "daemon_disabled_by_default": True,
+        "one_cycle_runner_required_before_loop": True,
+        "lease_required_before_tick": True,
+        "fencing_token_required": True,
+        "daemon_auto_start_allowed": False,
+        "scheduler_daemon_started": False,
+        "continuous_loop_started": False,
+        "continuous_loop_allowed_before_lease": False,
+        "physical_delete_automation_enabled": False,
+        "storage_mutation_enabled": False,
+        "database_row_delete_enabled": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+    }
+
+
+def _scheduler_daemon_runtime_config_metadata() -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "safe_for_ag_projection": True,
+        "scheduler_daemon_started": False,
+        "continuous_loop_started": False,
+        "physical_delete_automation_enabled": False,
+    }
+
+
 def _scheduler_lease_guardrails() -> dict[str, bool]:
     return {
         "lease_required_before_tick": True,
@@ -2958,6 +3621,51 @@ def _required_text(value: Any, field_name: str, error_code: str) -> str:
             status_code=422,
             error_code=error_code,
             detail=f"{field_name} is required for artifact retention scheduler lease.",
+        )
+    return normalized
+
+
+def _required_bool(value: Any, field_name: str, error_code: str) -> bool:
+    if not isinstance(value, bool):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=f"{field_name} must be a boolean.",
+        )
+    return value
+
+
+def _bounded_positive_int(
+    value: Any,
+    field_name: str,
+    error_code: str,
+    *,
+    max_value: int,
+) -> int:
+    normalized = _positive_int(value, field_name, error_code)
+    if normalized > max_value:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=f"{field_name} exceeds the supported maximum.",
+        )
+    return normalized
+
+
+def _non_negative_int(value: Any, field_name: str, error_code: str) -> int:
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=f"{field_name} must be a non-negative integer.",
+        ) from exc
+    if normalized < 0:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=f"{field_name} must be a non-negative integer.",
         )
     return normalized
 

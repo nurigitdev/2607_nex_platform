@@ -688,3 +688,9 @@ Artifact library management:
   until config, pure planning, one-cycle execution, heartbeat observability, and
   protected PostgreSQL evidence are in place, and scheduled execution remains
   `DRY_RUN` with physical delete automation disabled.
+- Slice 0532 adds the AE-owned scheduler daemon runtime config expansion.
+  Runtime profile support is limited to `test`; `enabled=true` without
+  `explicit_opt_in=true` is reported as blocked, while explicit opt-in can make
+  the config ready without starting the daemon or continuous loop. The config
+  exposes interval, jitter, backoff, lease TTL, stale-window, and batch-window
+  metadata while redacting database URLs, storage paths, and raw payloads.

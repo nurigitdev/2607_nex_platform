@@ -459,6 +459,11 @@ Unified operations:
   runtime state, may request controls only through AE APIs, and must wait for
   AE-owned config, loop planning, one-cycle smoke evidence, and heartbeat
   metadata before adding richer runtime projections.
+- Slice 0532 adds AE's runtime config expansion for that daemon. AG can later
+  project the metadata-only profile, opt-in, interval, jitter, lease, and
+  batch-window posture, but runtime enablement decisions, daemon start/stop,
+  lease state, JobQueue dispatch, and artifact persistence effects remain
+  AE-owned.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
