@@ -468,6 +468,10 @@ Unified operations:
   disabled, blocked, no-op, or ready decision as operator evidence, but the
   planner performs no lease acquisition, JobQueue enqueue, worker execution,
   history write, daemon start, or continuous loop start.
+- Slice 0534 adds AE's one-cycle daemon runner adapter. AG can later project
+  the adapter result, but one-cycle execution, lease acquisition, JobQueue
+  enqueue, worker execution, and history effects remain behind AE-owned
+  runtime APIs and still do not start a continuous daemon loop.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

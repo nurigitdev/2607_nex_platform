@@ -699,3 +699,8 @@ Artifact library management:
   batch-window blocked, stop no-op, or ready-for-one-cycle decisions, but it
   still performs no lease acquisition, JobQueue enqueue, worker execution,
   history write, daemon start, or continuous loop start.
+- Slice 0534 adds the one-cycle daemon runner adapter. The adapter builds the
+  loop plan first and invokes the existing lease-protected tick-once runner
+  only when that plan is `READY`; disabled, blocked, and stop no-op states
+  return before touching the artifact store, lease store, JobQueue, worker, or
+  history path. It remains one-cycle only and still starts no daemon loop.
