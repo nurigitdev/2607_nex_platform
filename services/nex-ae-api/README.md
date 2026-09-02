@@ -677,3 +677,6 @@ Artifact library management:
 - Slice 0528 lets AG classify AE scheduler daemon posture for operator
   attention while preserving AE ownership of lease, JobQueue, batch-window,
   dispatch, and daemon policy decisions.
+- Slice 0529 documents the AG operator runbook for scheduler daemon visibility
+  and protected PostgreSQL smoke evidence. AE remains the only service that
+  mutates daemon, lease, JobQueue, artifact, and retention-history state.

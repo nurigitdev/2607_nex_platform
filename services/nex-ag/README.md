@@ -447,6 +447,9 @@ Unified operations:
   ready, lease attention, queue attention, batch-window attention, policy
   blocked, and latest-dispatch review. The classification is metadata-only and
   keeps daemon execution decisions in AE.
+- Slice 0529 adds the AG scheduler daemon operations runbook and repository
+  evidence check. The runbook separates default metadata-only dashboard proof
+  from protected PostgreSQL smoke evidence and keeps all secrets redacted.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
