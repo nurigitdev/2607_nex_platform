@@ -78,6 +78,12 @@ SUPPORTED_ARTIFACT_RETENTION_SCHEDULED_TRIGGERS = (
     "scheduler_tick",
     "operator_dispatch",
 )
+SUPPORTED_ARTIFACT_RETENTION_DAEMON_ACTIONS = (
+    "status_probe",
+    "manual_tick_once",
+    "start_daemon",
+    "stop_daemon",
+)
 AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE = "ae.artifact_retention.scheduled_execution"
 ARCHIVABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED"}
 DELETABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED", "ARCHIVED"}
@@ -152,6 +158,35 @@ class AeArtifactOperationsClient(Protocol):
         trace_id: str,
     ) -> dict[str, Any]: ...
 
+    def get_artifact_retention_scheduler_daemon_config(
+        self,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]: ...
+
+    def dispatch_artifact_retention_scheduler_daemon_control(
+        self,
+        *,
+        action: str,
+        tenant_id: str | None,
+        workspace_id: str | None,
+        owner_user_id: str | None,
+        retention_days: int | None,
+        as_of: str | None,
+        scan_limit: int | None,
+        max_delete_count: int | None,
+        requested_at: str | None,
+        requested_by: Mapping[str, Any] | None,
+        reason: str | None,
+        tick_at: str | None,
+        run_worker: bool,
+        worker_id: str | None,
+        idempotency_key: str | None,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]: ...
+
     def get_artifact(
         self,
         artifact_id: str,
@@ -203,6 +238,10 @@ class InMemoryAeArtifactOperationsClient:
     artifact_retention_scheduled_dispatch_results: dict[str, dict[str, Any]] = field(
         default_factory=dict
     )
+    artifact_retention_scheduler_daemon_config: dict[str, Any] | None = None
+    artifact_retention_scheduler_daemon_dispatch_results: dict[
+        str, dict[str, Any]
+    ] = field(default_factory=dict)
     handoffs: dict[str, dict[str, Any]] = field(default_factory=dict)
     chat_artifact_refs: dict[str, list[dict[str, Any]] | dict[str, Any]] = field(
         default_factory=dict
@@ -419,6 +458,62 @@ class InMemoryAeArtifactOperationsClient:
             trace_id=trace_id,
         )
 
+    def get_artifact_retention_scheduler_daemon_config(
+        self,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        if self.artifact_retention_scheduler_daemon_config is not None:
+            return deepcopy(self.artifact_retention_scheduler_daemon_config)
+        return _empty_artifact_retention_scheduler_daemon_config_payload()
+
+    def dispatch_artifact_retention_scheduler_daemon_control(
+        self,
+        *,
+        action: str,
+        tenant_id: str | None,
+        workspace_id: str | None,
+        owner_user_id: str | None,
+        retention_days: int | None,
+        as_of: str | None,
+        scan_limit: int | None,
+        max_delete_count: int | None,
+        requested_at: str | None,
+        requested_by: Mapping[str, Any] | None,
+        reason: str | None,
+        tick_at: str | None,
+        run_worker: bool,
+        worker_id: str | None,
+        idempotency_key: str | None,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        dispatch_key = _artifact_retention_scheduler_daemon_dispatch_cache_key(
+            action=action,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            idempotency_key=idempotency_key,
+        )
+        if dispatch_key in self.artifact_retention_scheduler_daemon_dispatch_results:
+            return deepcopy(
+                self.artifact_retention_scheduler_daemon_dispatch_results[dispatch_key]
+            )
+        return _empty_artifact_retention_scheduler_daemon_dispatch_payload(
+            daemon_config=self.get_artifact_retention_scheduler_daemon_config(
+                request_id=request_id,
+                trace_id=trace_id,
+            ),
+            action=action,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
+            requested_at=requested_at,
+            requested_by=requested_by,
+            reason=reason,
+        )
+
     def get_artifact(
         self,
         artifact_id: str,
@@ -603,6 +698,75 @@ class HttpAeArtifactOperationsClient:
                 **({"requested_at": requested_at} if requested_at else {}),
                 **({"idempotency_key": idempotency_key} if idempotency_key else {}),
             },
+        )
+        return payload if isinstance(payload, dict) else {}
+
+    def get_artifact_retention_scheduler_daemon_config(
+        self,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        payload = self._get_json(
+            "/api/v1/artifact-retention/scheduler-daemon-config",
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+        return payload if isinstance(payload, dict) else {}
+
+    def dispatch_artifact_retention_scheduler_daemon_control(
+        self,
+        *,
+        action: str,
+        tenant_id: str | None,
+        workspace_id: str | None,
+        owner_user_id: str | None,
+        retention_days: int | None,
+        as_of: str | None,
+        scan_limit: int | None,
+        max_delete_count: int | None,
+        requested_at: str | None,
+        requested_by: Mapping[str, Any] | None,
+        reason: str | None,
+        tick_at: str | None,
+        run_worker: bool,
+        worker_id: str | None,
+        idempotency_key: str | None,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        json_body: dict[str, Any] = {
+            "action": action,
+            "run_worker": run_worker,
+            "trace_id": trace_id,
+            **({"tenant_id": tenant_id} if tenant_id else {}),
+            **({"workspace_id": workspace_id} if workspace_id else {}),
+            **({"owner_user_id": owner_user_id} if owner_user_id else {}),
+            **(
+                {"retention_days": retention_days}
+                if retention_days is not None
+                else {}
+            ),
+            **({"as_of": as_of} if as_of else {}),
+            **({"scan_limit": scan_limit} if scan_limit is not None else {}),
+            **(
+                {"max_delete_count": max_delete_count}
+                if max_delete_count is not None
+                else {}
+            ),
+            **({"requested_at": requested_at} if requested_at else {}),
+            **({"requested_by": dict(requested_by)} if requested_by else {}),
+            **({"reason": reason} if reason else {}),
+            **({"tick_at": tick_at} if tick_at else {}),
+            **({"worker_id": worker_id} if worker_id else {}),
+            **({"idempotency_key": idempotency_key} if idempotency_key else {}),
+        }
+        payload = self._post_json(
+            "/api/v1/artifact-retention/scheduler-daemon-controls",
+            request_id=request_id,
+            trace_id=trace_id,
+            idempotency_key=idempotency_key,
+            json_body=json_body,
         )
         return payload if isinstance(payload, dict) else {}
 
@@ -3603,6 +3767,25 @@ def _artifact_retention_scheduled_dispatch_cache_key(
     return "|".join((plan_id or "", trigger_type, idempotency_key or ""))
 
 
+def _artifact_retention_scheduler_daemon_dispatch_cache_key(
+    *,
+    action: str,
+    tenant_id: str | None,
+    workspace_id: str | None,
+    owner_user_id: str | None,
+    idempotency_key: str | None,
+) -> str:
+    return "|".join(
+        (
+            _normalized_daemon_action(action) or "",
+            tenant_id or "",
+            workspace_id or "",
+            owner_user_id or "",
+            idempotency_key or "",
+        )
+    )
+
+
 def _empty_artifact_retention_batch_plan_payload(
     *,
     tenant_id: str,
@@ -3701,6 +3884,270 @@ def _empty_artifact_retention_batch_plan_payload(
             "history_write_executed": False,
             "source_collection_count": 0,
         },
+    }
+
+
+def _empty_artifact_retention_scheduler_daemon_config_payload() -> dict[str, Any]:
+    runtime = {
+        "scheduler_daemon_enabled": False,
+        "scheduler_daemon_started": False,
+        "daemon_auto_start_allowed": False,
+        "continuous_loop_enabled": False,
+        "continuous_loop_started": False,
+        "manual_tick_once_enabled": True,
+        "manual_tick_once_requires_lease": True,
+        "scheduler_tick_admission_enabled": True,
+        "operator_dispatch_admission_enabled": True,
+        "default_execution_mode": "DRY_RUN",
+        "job_queue_available": False,
+        "job_queue_backend": "unconfigured",
+        "scheduler_tick_interval_seconds": 900,
+        "scheduler_tick_jitter_seconds": 60,
+        "scheduler_tick_lock_ttl_seconds": 120,
+        "scheduler_tick_stale_after_seconds": 900,
+        "scheduler_tick_max_jobs_per_tick": 1,
+        "scheduler_tick_batch_window_enforced": True,
+        "scheduler_tick_timezone": "Asia/Seoul",
+        "scheduler_tick_window_start": "02:00",
+        "scheduler_tick_window_end": "05:00",
+    }
+    lease_repository = {
+        "required": True,
+        "available": False,
+        "backend": "not_configured",
+        "lease_record_schema_version": (
+            "ae_artifact_retention_scheduler_lease_record.v1"
+        ),
+        "failure_code": "lease_repository_unavailable",
+    }
+    return {
+        "daemon_config_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_config.v1"
+        ),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "checked_at": "2026-09-01T00:00:00Z",
+        "source_scheduler_config_schema_version": (
+            "ae_artifact_retention_scheduler_config.v1"
+        ),
+        "runtime": runtime,
+        "lease_repository": lease_repository,
+        "supported_actions": _empty_artifact_retention_scheduler_daemon_actions(
+            runtime=runtime,
+            lease_repository=lease_repository,
+        ),
+        "guardrails": _empty_artifact_retention_scheduler_daemon_guardrails(),
+        "metadata": {
+            "metadata_only": True,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+    }
+
+
+def _empty_artifact_retention_scheduler_daemon_actions(
+    *,
+    runtime: Mapping[str, Any],
+    lease_repository: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    manual_status = "READY"
+    manual_block_reason = None
+    if runtime.get("operator_dispatch_admission_enabled") is not True:
+        manual_status = "BLOCKED"
+        manual_block_reason = "operator_dispatch_admission_disabled"
+    elif runtime.get("scheduler_tick_admission_enabled") is not True:
+        manual_status = "BLOCKED"
+        manual_block_reason = "scheduler_tick_admission_disabled"
+    elif lease_repository.get("available") is not True:
+        manual_status = "BLOCKED"
+        manual_block_reason = "lease_repository_unavailable"
+    elif runtime.get("job_queue_available") is not True:
+        manual_status = "BLOCKED"
+        manual_block_reason = "job_queue_unavailable"
+    return [
+        {
+            "action": "status_probe",
+            "decision_status": "NOOP",
+            "requires_lease": False,
+            "runs_tick_once": False,
+            "starts_daemon": False,
+            "starts_continuous_loop": False,
+            "block_reason": None,
+        },
+        {
+            "action": "manual_tick_once",
+            "decision_status": manual_status,
+            "requires_lease": True,
+            "runs_tick_once": manual_status == "READY",
+            "starts_daemon": False,
+            "starts_continuous_loop": False,
+            "block_reason": manual_block_reason,
+        },
+        {
+            "action": "start_daemon",
+            "decision_status": "BLOCKED",
+            "requires_lease": False,
+            "runs_tick_once": False,
+            "starts_daemon": False,
+            "starts_continuous_loop": False,
+            "block_reason": "daemon_disabled_by_policy",
+        },
+        {
+            "action": "stop_daemon",
+            "decision_status": "NOOP",
+            "requires_lease": False,
+            "runs_tick_once": False,
+            "starts_daemon": False,
+            "starts_continuous_loop": False,
+            "block_reason": None,
+        },
+    ]
+
+
+def _empty_artifact_retention_scheduler_daemon_guardrails() -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "manual_tick_once_only": True,
+        "lease_required_before_tick": True,
+        "daemon_auto_start_allowed": False,
+        "scheduler_daemon_started": False,
+        "continuous_loop_started": False,
+        "continuous_loop_allowed_before_lease": False,
+        "physical_delete_automation_enabled": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+    }
+
+
+def _empty_artifact_retention_scheduler_daemon_dispatch_payload(
+    *,
+    daemon_config: Mapping[str, Any],
+    action: str,
+    tenant_id: str | None,
+    workspace_id: str | None,
+    owner_user_id: str | None,
+    requested_at: str | None,
+    requested_by: Mapping[str, Any] | None,
+    reason: str | None,
+) -> dict[str, Any]:
+    normalized_action = _normalized_daemon_action(action) or "status_probe"
+    action_item = _daemon_action_item(daemon_config, normalized_action)
+    requested = requested_at or _text_or_none(daemon_config.get("checked_at"))
+    scheduler_id = _text_or_none(daemon_config.get("scheduler_id"))
+    control_plan = {
+        "daemon_control_plan_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_control_plan.v1"
+        ),
+        "daemon_control_plan_id": (
+            f"memory-daemon-control:{scheduler_id}:{normalized_action}:{requested}"
+        ),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "scheduler_id": scheduler_id,
+        "action": normalized_action,
+        "decision_status": action_item.get("decision_status"),
+        "block_reason": action_item.get("block_reason"),
+        "requested_at": requested,
+        "requested_by": (
+            dict(requested_by)
+            if requested_by is not None
+            else {"actor_type": "service", "actor_id": "nex-ag"}
+        ),
+        "reason": reason,
+        "daemon_config": deepcopy(dict(daemon_config)),
+        "execution_plan": {
+            "requires_lease": action_item.get("requires_lease") is True,
+            "runs_tick_once": action_item.get("runs_tick_once") is True,
+            "dispatches_job_queue": action_item.get("runs_tick_once") is True,
+            "starts_daemon": False,
+            "starts_continuous_loop": False,
+            "writes_history": False,
+            "physical_delete_enabled": False,
+        },
+        "guardrails": deepcopy(
+            dict(daemon_config.get("guardrails") or {})
+            or _empty_artifact_retention_scheduler_daemon_guardrails()
+        ),
+        "metadata": {
+            "metadata_only": True,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "tick_once_dispatched": action_item.get("runs_tick_once") is True,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+    }
+    guardrails = deepcopy(
+        dict(daemon_config.get("guardrails") or {})
+        or _empty_artifact_retention_scheduler_daemon_guardrails()
+    )
+    return {
+        "daemon_dispatch_result_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_dispatch_result.v1"
+        ),
+        "daemon_dispatch_result_id": (
+            f"memory-daemon-dispatch:{scheduler_id}:{normalized_action}:{requested}"
+        ),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "scheduler_id": scheduler_id,
+        "dispatch_status": (
+            "DISPATCHED"
+            if control_plan["decision_status"] == "READY"
+            else control_plan["decision_status"]
+        ),
+        "control_plan": control_plan,
+        "tick_once_result": None,
+        "guardrails": {
+            **guardrails,
+            "daemon_control_plan_required": True,
+            "tick_once_requires_ready_control_plan": True,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "control_plan_ready": control_plan["decision_status"] == "READY",
+            "tick_once_dispatched": False,
+            "lease_acquired_before_tick": False,
+            "lease_released": False,
+            "job_enqueued": False,
+            "worker_executed": False,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+        "debug_scope": {
+            "tenant_id": tenant_id,
+            "workspace_id": workspace_id,
+            "owner_user_id": owner_user_id,
+        },
+    }
+
+
+def _daemon_action_item(
+    daemon_config: Mapping[str, Any],
+    action: str,
+) -> dict[str, Any]:
+    for item in _list_value(daemon_config.get("supported_actions")):
+        if isinstance(item, Mapping) and item.get("action") == action:
+            return dict(item)
+    return {
+        "action": action,
+        "decision_status": "BLOCKED",
+        "requires_lease": False,
+        "runs_tick_once": False,
+        "starts_daemon": False,
+        "starts_continuous_loop": False,
+        "block_reason": "daemon_control_action_unavailable",
     }
 
 
@@ -4319,6 +4766,16 @@ def _normalized_scheduled_trigger(raw_value: Any) -> str | None:
         normalized
         if normalized in SUPPORTED_ARTIFACT_RETENTION_SCHEDULED_TRIGGERS
         else None
+    )
+
+
+def _normalized_daemon_action(raw_value: Any) -> str | None:
+    value = _text_or_none(raw_value)
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().lower().replace("-", "_")
+    return (
+        normalized if normalized in SUPPORTED_ARTIFACT_RETENTION_DAEMON_ACTIONS else None
     )
 
 

@@ -745,6 +745,203 @@ def artifact_retention_scheduled_dispatch_response_payload() -> dict[str, Any]:
     }
 
 
+def artifact_retention_scheduler_daemon_config_payload(
+    *,
+    job_queue_available: bool = True,
+    lease_available: bool = True,
+) -> dict[str, Any]:
+    manual_status = "READY" if job_queue_available and lease_available else "BLOCKED"
+    manual_block_reason = None
+    if not lease_available:
+        manual_block_reason = "lease_repository_unavailable"
+    elif not job_queue_available:
+        manual_block_reason = "job_queue_unavailable"
+    runtime = {
+        "scheduler_daemon_enabled": False,
+        "scheduler_daemon_started": False,
+        "daemon_auto_start_allowed": False,
+        "continuous_loop_enabled": False,
+        "continuous_loop_started": False,
+        "manual_tick_once_enabled": True,
+        "manual_tick_once_requires_lease": True,
+        "scheduler_tick_admission_enabled": True,
+        "operator_dispatch_admission_enabled": True,
+        "default_execution_mode": "DRY_RUN",
+        "job_queue_available": job_queue_available,
+        "job_queue_backend": "service_job_queue" if job_queue_available else "missing",
+        "scheduler_tick_interval_seconds": 900,
+        "scheduler_tick_jitter_seconds": 60,
+        "scheduler_tick_lock_ttl_seconds": 120,
+        "scheduler_tick_stale_after_seconds": 900,
+        "scheduler_tick_max_jobs_per_tick": 1,
+        "scheduler_tick_batch_window_enforced": True,
+        "scheduler_tick_timezone": "Asia/Seoul",
+        "scheduler_tick_window_start": "02:00",
+        "scheduler_tick_window_end": "05:00",
+    }
+    lease_repository = {
+        "required": True,
+        "available": lease_available,
+        "backend": "sqlalchemy" if lease_available else "not_configured",
+        "lease_record_schema_version": (
+            "ae_artifact_retention_scheduler_lease_record.v1"
+        ),
+        "failure_code": None if lease_available else "lease_repository_unavailable",
+    }
+    return {
+        "daemon_config_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_config.v1"
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "checked_at": "2026-09-01T02:30:00Z",
+        "source_scheduler_config_schema_version": (
+            "ae_artifact_retention_scheduler_config.v1"
+        ),
+        "runtime": runtime,
+        "lease_repository": lease_repository,
+        "supported_actions": [
+            {
+                "action": "status_probe",
+                "decision_status": "NOOP",
+                "requires_lease": False,
+                "runs_tick_once": False,
+                "starts_daemon": False,
+                "starts_continuous_loop": False,
+                "block_reason": None,
+            },
+            {
+                "action": "manual_tick_once",
+                "decision_status": manual_status,
+                "requires_lease": True,
+                "runs_tick_once": manual_status == "READY",
+                "starts_daemon": False,
+                "starts_continuous_loop": False,
+                "block_reason": manual_block_reason,
+            },
+            {
+                "action": "start_daemon",
+                "decision_status": "BLOCKED",
+                "requires_lease": False,
+                "runs_tick_once": False,
+                "starts_daemon": False,
+                "starts_continuous_loop": False,
+                "block_reason": "daemon_disabled_by_policy",
+            },
+            {
+                "action": "stop_daemon",
+                "decision_status": "NOOP",
+                "requires_lease": False,
+                "runs_tick_once": False,
+                "starts_daemon": False,
+                "starts_continuous_loop": False,
+                "block_reason": None,
+            },
+        ],
+        "guardrails": {
+            "metadata_only": True,
+            "manual_tick_once_only": True,
+            "lease_required_before_tick": True,
+            "daemon_auto_start_allowed": False,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "continuous_loop_allowed_before_lease": False,
+            "physical_delete_automation_enabled": False,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+    }
+
+
+def artifact_retention_scheduler_daemon_dispatch_payload(
+    *,
+    action: str = "manual_tick_once",
+    dispatch_status: str = "DISPATCHED",
+) -> dict[str, Any]:
+    config = artifact_retention_scheduler_daemon_config_payload()
+    control_plan = {
+        "daemon_control_plan_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_control_plan.v1"
+        ),
+        "daemon_control_plan_id": "daemon-control-plan-0522",
+        "service_id": "nex-ae-api",
+        "scheduler_id": config["scheduler_id"],
+        "action": action,
+        "decision_status": "READY" if dispatch_status == "DISPATCHED" else "BLOCKED",
+        "block_reason": None if dispatch_status == "DISPATCHED" else "blocked",
+        "requested_at": "2026-09-01T02:35:00Z",
+        "requested_by": {
+            "actor_type": "operator",
+            "actor_id": "ag-retention-operator",
+        },
+        "reason": "manual AG dispatch",
+        "daemon_config": config,
+        "execution_plan": {
+            "requires_lease": True,
+            "runs_tick_once": dispatch_status == "DISPATCHED",
+            "dispatches_job_queue": dispatch_status == "DISPATCHED",
+            "starts_daemon": False,
+            "starts_continuous_loop": False,
+            "writes_history": False,
+            "physical_delete_enabled": False,
+        },
+        "guardrails": config["guardrails"],
+        "metadata": {
+            "metadata_only": True,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "tick_once_dispatched": dispatch_status == "DISPATCHED",
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+    }
+    return {
+        "daemon_dispatch_result_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_dispatch_result.v1"
+        ),
+        "daemon_dispatch_result_id": "daemon-dispatch-result-0522",
+        "service_id": "nex-ae-api",
+        "scheduler_id": config["scheduler_id"],
+        "dispatch_status": dispatch_status,
+        "control_plan": control_plan,
+        "tick_once_result": None,
+        "guardrails": {
+            **config["guardrails"],
+            "daemon_control_plan_required": True,
+            "tick_once_requires_ready_control_plan": True,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "control_plan_ready": dispatch_status == "DISPATCHED",
+            "tick_once_dispatched": dispatch_status == "DISPATCHED",
+            "lease_acquired_before_tick": False,
+            "lease_released": False,
+            "job_enqueued": dispatch_status == "DISPATCHED",
+            "worker_executed": False,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+    }
+
+
 def artifact_client() -> InMemoryAeArtifactOperationsClient:
     return InMemoryAeArtifactOperationsClient(
         artifacts={ARTIFACT_ID: artifact_record()},
@@ -816,6 +1013,9 @@ def artifact_client() -> InMemoryAeArtifactOperationsClient:
                 "job_type": "ae.other",
             },
         },
+        artifact_retention_scheduler_daemon_config=(
+            artifact_retention_scheduler_daemon_config_payload()
+        ),
         handoffs={HANDOFF_ID: handoff_record()},
         chat_artifact_refs={INTERACTION_ID: {"artifact_refs": [chat_artifact_ref()]}},
     )
@@ -2180,6 +2380,141 @@ def test_in_memory_artifact_operations_client_dispatches_retention_scheduled_job
     assert synthesized["queue_admission"]["physical_delete_automation_enabled"] is False
 
 
+def test_in_memory_artifact_operations_client_gets_and_dispatches_daemon_controls() -> (
+    None
+):
+    cached_key = (
+        artifact_operations._artifact_retention_scheduler_daemon_dispatch_cache_key(
+            action="manual-tick-once",
+            tenant_id="tenant-0409",
+            workspace_id="workspace-0409",
+            owner_user_id="user-0409",
+            idempotency_key="daemon-idem-0522",
+        )
+    )
+    client = InMemoryAeArtifactOperationsClient(
+        artifact_retention_scheduler_daemon_config=(
+            artifact_retention_scheduler_daemon_config_payload()
+        ),
+        artifact_retention_scheduler_daemon_dispatch_results={
+            cached_key: artifact_retention_scheduler_daemon_dispatch_payload()
+        },
+    )
+
+    config = client.get_artifact_retention_scheduler_daemon_config(
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    cached = client.dispatch_artifact_retention_scheduler_daemon_control(
+        action="manual-tick-once",
+        tenant_id="tenant-0409",
+        workspace_id="workspace-0409",
+        owner_user_id="user-0409",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit=20,
+        max_delete_count=1,
+        requested_at="2026-09-01T02:35:00Z",
+        requested_by={"actor_type": "operator", "actor_id": "ag-operator"},
+        reason="manual dispatch",
+        tick_at=None,
+        run_worker=False,
+        worker_id=None,
+        idempotency_key="daemon-idem-0522",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    fallback = InMemoryAeArtifactOperationsClient()
+    default_config = fallback.get_artifact_retention_scheduler_daemon_config(
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    default_dispatch = fallback.dispatch_artifact_retention_scheduler_daemon_control(
+        action="unknown",
+        tenant_id=None,
+        workspace_id=None,
+        owner_user_id=None,
+        retention_days=None,
+        as_of=None,
+        scan_limit=None,
+        max_delete_count=None,
+        requested_at=None,
+        requested_by=None,
+        reason=None,
+        tick_at=None,
+        run_worker=False,
+        worker_id=None,
+        idempotency_key=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    cached["scheduler_id"] = "mutated"
+
+    assert config["daemon_config_schema_version"] == (
+        "ae_artifact_retention_scheduler_daemon_config.v1"
+    )
+    assert config["runtime"]["scheduler_daemon_started"] is False
+    assert config["supported_actions"][1]["action"] == "manual_tick_once"
+    assert (
+        client.artifact_retention_scheduler_daemon_dispatch_results[cached_key][
+            "scheduler_id"
+        ]
+        == "ae-artifact-retention-scheduler"
+    )
+    assert cached["dispatch_status"] == "DISPATCHED"
+    assert default_config["lease_repository"]["available"] is False
+    assert default_dispatch["dispatch_status"] == "NOOP"
+    assert default_dispatch["control_plan"]["action"] == "status_probe"
+    assert default_dispatch["metadata"]["scheduler_daemon_started"] is False
+    assert (
+        artifact_operations._normalized_daemon_action("manual-tick-once")
+        == "manual_tick_once"
+    )
+    assert artifact_operations._normalized_daemon_action("bad") is None
+    assert artifact_operations._normalized_daemon_action(None) is None
+    assert artifact_operations._normalized_scheduled_trigger(None) is None
+
+
+def test_in_memory_daemon_default_action_helpers_cover_blocked_edges() -> None:
+    base_runtime = (
+        artifact_retention_scheduler_daemon_config_payload()["runtime"] | {}
+    )
+    base_lease = (
+        artifact_retention_scheduler_daemon_config_payload()["lease_repository"] | {}
+    )
+
+    operator_blocked = artifact_operations._empty_artifact_retention_scheduler_daemon_actions(
+        runtime={**base_runtime, "operator_dispatch_admission_enabled": False},
+        lease_repository=base_lease,
+    )
+    scheduler_blocked = (
+        artifact_operations._empty_artifact_retention_scheduler_daemon_actions(
+            runtime={**base_runtime, "scheduler_tick_admission_enabled": False},
+            lease_repository=base_lease,
+        )
+    )
+    job_queue_blocked = (
+        artifact_operations._empty_artifact_retention_scheduler_daemon_actions(
+            runtime={**base_runtime, "job_queue_available": False},
+            lease_repository=base_lease,
+        )
+    )
+    missing_action = artifact_operations._daemon_action_item(
+        {"supported_actions": [{"action": "status_probe"}, "bad"]},
+        "manual_tick_once",
+    )
+
+    assert operator_blocked[1]["block_reason"] == (
+        "operator_dispatch_admission_disabled"
+    )
+    assert scheduler_blocked[1]["block_reason"] == (
+        "scheduler_tick_admission_disabled"
+    )
+    assert job_queue_blocked[1]["block_reason"] == "job_queue_unavailable"
+    assert missing_action["decision_status"] == "BLOCKED"
+    assert missing_action["block_reason"] == "daemon_control_action_unavailable"
+
+
 def test_in_memory_artifact_operations_client_skips_non_matching_scope() -> None:
     tenant_mismatch = {
         **artifact_record(include_private=False),
@@ -3236,6 +3571,11 @@ def test_http_artifact_operations_client_requests_expected_routes(
                 200,
                 artifact_retention_scheduled_job_collection_payload(),
             )
+        if url.endswith("/api/v1/artifact-retention/scheduler-daemon-config"):
+            return FakeHttpResponse(
+                200,
+                artifact_retention_scheduler_daemon_config_payload(),
+            )
         if url.endswith(f"/api/v1/artifacts/{ARTIFACT_ID}"):
             return FakeHttpResponse(200, artifact_record(include_private=False))
         if url.endswith(f"/api/v1/artifact-handoffs/{HANDOFF_ID}"):
@@ -3256,6 +3596,11 @@ def test_http_artifact_operations_client_requests_expected_routes(
             return FakeHttpResponse(
                 200,
                 artifact_retention_scheduled_dispatch_response_payload(),
+            )
+        if url.endswith("/api/v1/artifact-retention/scheduler-daemon-controls"):
+            return FakeHttpResponse(
+                200,
+                artifact_retention_scheduler_daemon_dispatch_payload(),
             )
         return FakeHttpResponse(404, {})
 
@@ -3328,6 +3673,32 @@ def test_http_artifact_operations_client_requests_expected_routes(
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     )
+    daemon_config = client.get_artifact_retention_scheduler_daemon_config(
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    daemon_dispatch = client.dispatch_artifact_retention_scheduler_daemon_control(
+        action="manual_tick_once",
+        tenant_id="tenant-0409",
+        workspace_id="workspace-0409",
+        owner_user_id="user-0409",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit=20,
+        max_delete_count=1,
+        requested_at="2026-09-01T02:35:00Z",
+        requested_by={
+            "actor_type": "operator",
+            "actor_id": "ag-retention-operator",
+        },
+        reason="manual AG dispatch",
+        tick_at="2026-09-01T02:35:00Z",
+        run_worker=True,
+        worker_id="ae-retention-worker-0522",
+        idempotency_key="daemon-idem-0522",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
 
     assert artifact["artifact_id"] == ARTIFACT_ID
     assert handoff["artifact_handoff_id"] == HANDOFF_ID
@@ -3337,6 +3708,10 @@ def test_http_artifact_operations_client_requests_expected_routes(
     assert retention_batch_plan["plan_id"] == "retention-batch-plan-0409"
     assert retention_scheduled_jobs["count"] == 3
     assert scheduled_dispatch["enqueue_status"] == "ENQUEUED"
+    assert daemon_config["daemon_config_schema_version"] == (
+        "ae_artifact_retention_scheduler_daemon_config.v1"
+    )
+    assert daemon_dispatch["dispatch_status"] == "DISPATCHED"
     assert calls[0]["url"] == f"http://ae.example.local/api/v1/artifacts/{ARTIFACT_ID}"
     assert calls[0]["headers"]["Authorization"] == "Bearer token-0409"
     assert calls[0]["headers"]["X-Service-ID"] == "nex-ag"
@@ -3391,6 +3766,37 @@ def test_http_artifact_operations_client_requests_expected_routes(
     assert calls[7]["json"]["requested_at"] == "2026-09-01T02:35:00Z"
     assert calls[7]["json"]["idempotency_key"] == "dispatch-idem-0409"
     assert calls[7]["json"]["batch_plan"]["plan_id"] == "retention-batch-plan-0409"
+    assert calls[8]["url"] == (
+        "http://ae.example.local/api/v1/artifact-retention/"
+        "scheduler-daemon-config"
+    )
+    assert calls[8]["params"] == {}
+    assert calls[9]["url"] == (
+        "http://ae.example.local/api/v1/artifact-retention/"
+        "scheduler-daemon-controls"
+    )
+    assert calls[9]["headers"]["Idempotency-Key"] == "daemon-idem-0522"
+    assert calls[9]["json"] == {
+        "action": "manual_tick_once",
+        "run_worker": True,
+        "trace_id": TRACE_ID,
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+        "owner_user_id": "user-0409",
+        "retention_days": 30,
+        "as_of": "2026-09-01T00:00:00Z",
+        "scan_limit": 20,
+        "max_delete_count": 1,
+        "requested_at": "2026-09-01T02:35:00Z",
+        "requested_by": {
+            "actor_type": "operator",
+            "actor_id": "ag-retention-operator",
+        },
+        "reason": "manual AG dispatch",
+        "tick_at": "2026-09-01T02:35:00Z",
+        "worker_id": "ae-retention-worker-0522",
+        "idempotency_key": "daemon-idem-0522",
+    }
 
 
 def test_http_artifact_operations_client_handles_404_and_errors(

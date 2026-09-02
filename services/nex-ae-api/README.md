@@ -654,3 +654,6 @@ Artifact library management:
   AE remains the system of record for daemon config, controls, leases,
   JobQueue, artifacts, and retention history while AG must use AE APIs for
   operator visibility or manual tick-once requests.
+- Slice 0522 keeps that boundary intact by adding only the AG-side client
+  adapter for the existing AE daemon config/control routes. AE still owns the
+  route implementation and all scheduler persistence/dispatch decisions.
