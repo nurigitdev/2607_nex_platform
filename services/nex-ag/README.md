@@ -450,6 +450,10 @@ Unified operations:
 - Slice 0529 adds the AG scheduler daemon operations runbook and repository
   evidence check. The runbook separates default metadata-only dashboard proof
   from protected PostgreSQL smoke evidence and keeps all secrets redacted.
+- Slice 0530 closes S53 with a quality-gate closure check for the AG daemon
+  operations chain, including AE-owned control, guarded manual tick-once,
+  dashboard rollup, attention classification, runbook evidence, and protected
+  PostgreSQL smoke references.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

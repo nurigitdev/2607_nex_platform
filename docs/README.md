@@ -633,6 +633,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0527`](slices/0527_ag_scheduler_daemon_dashboard_rollup.md) | `S53-007` AG scheduler daemon dashboard rollup. |
 | [`Slice 0528`](slices/0528_ag_scheduler_daemon_attention_classification.md) | `S53-008` AG scheduler daemon attention classification. |
 | [`Slice 0529`](slices/0529_ag_scheduler_daemon_operator_runbook_evidence.md) | `S53-009` AG scheduler daemon operator runbook evidence. |
+| [`Slice 0530`](slices/0530_s53_ag_scheduler_daemon_operations_closure.md) | `S53-010` S53 AG scheduler daemon operations closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

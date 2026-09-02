@@ -680,3 +680,5 @@ Artifact library management:
 - Slice 0529 documents the AG operator runbook for scheduler daemon visibility
   and protected PostgreSQL smoke evidence. AE remains the only service that
   mutates daemon, lease, JobQueue, artifact, and retention-history state.
+- Slice 0530 closes the AG scheduler daemon operations track while preserving
+  AE as the source of record for daemon control and persistence effects.
