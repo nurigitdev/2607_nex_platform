@@ -13,6 +13,7 @@ from nex_ag.artifact_operations import (
     AG_ARTIFACT_OPERATION_LIFECYCLE_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_AUTOMATION_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_BATCH_PROJECTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_RETENTION_DAEMON_ATTENTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_DISPATCH_SCHEMA_VERSION,
@@ -36,6 +37,7 @@ from nex_ag.artifact_operations import (
     build_artifact_operation_retention_scheduled_dispatch_projection,
     build_artifact_operation_retention_scheduled_job_projection,
     build_default_ae_artifact_operations_client,
+    classify_artifact_retention_daemon_attention,
     register_artifact_operation_routes,
     summarize_artifact_operation_collection,
     summarize_artifact_operation_detail,
@@ -1647,6 +1649,34 @@ def test_artifact_operation_retention_daemon_projection_summarizes_and_redacts()
     assert projection["summary"]["manual_tick_once_available"] is True
     assert projection["summary"]["start_daemon_available"] is False
     assert projection["summary"]["last_dispatch_job_enqueued"] is True
+    assert projection["summary"]["attention_status"] == "DISPATCH_ATTENTION"
+    assert projection["summary"]["attention_level"] == "INFO"
+    assert projection["summary"]["attention_reason_codes"] == [
+        "last_dispatch_observed",
+        "last_dispatch_dispatched",
+        "start_daemon_disabled_by_policy",
+        "continuous_loop_disabled_by_policy",
+    ]
+    assert projection["attention"] == {
+        "attention_schema_version": (
+            AG_ARTIFACT_OPERATION_RETENTION_DAEMON_ATTENTION_SCHEMA_VERSION
+        ),
+        "attention_status": "DISPATCH_ATTENTION",
+        "attention_level": "INFO",
+        "reason_codes": [
+            "last_dispatch_observed",
+            "last_dispatch_dispatched",
+            "start_daemon_disabled_by_policy",
+            "continuous_loop_disabled_by_policy",
+        ],
+        "operator_actions": ["review_last_daemon_dispatch"],
+        "operator_attention_required": True,
+        "manual_tick_once_safe": True,
+        "start_daemon_blocked_by_policy": True,
+        "continuous_loop_blocked_by_policy": True,
+        "batch_window_enforced": True,
+        "metadata_only": True,
+    }
     assert projection["source_status"]["daemon_config_loaded"] is True
     assert projection["source_status"]["dispatch_response_loaded"] is True
     assert projection["operator_guidance"]["manual_tick_once_requires_ae_api"] is True
@@ -1702,6 +1732,7 @@ def test_artifact_operation_retention_daemon_projection_handles_sparse_edges() -
     assert projection["dispatch_response"]["tick_once_result"] == {}
     assert projection["summary"]["manual_tick_once_decision_status"] == "BLOCKED"
     assert projection["summary"]["manual_tick_once_available"] is False
+    assert projection["summary"]["attention_status"] == "DISPATCH_ATTENTION"
     assert projection["summary"]["operator_attention_required"] is True
     assert projection["source_status"]["daemon_config_loaded"] is False
     assert projection["source_status"]["dispatch_response_loaded"] is False
@@ -1722,6 +1753,100 @@ def test_artifact_operation_retention_daemon_projection_handles_sparse_edges() -
     )
     assert artifact_operations._project_retention_scheduler_daemon_control_plan([]) == {}
     assert artifact_operations._project_retention_scheduler_tick_once_summary([]) == {}
+
+
+def test_artifact_retention_daemon_attention_classifies_operational_edges() -> None:
+    ready = classify_artifact_retention_daemon_attention(
+        daemon_config=artifact_retention_scheduler_daemon_config_payload()
+    )
+    lease_attention = classify_artifact_retention_daemon_attention(
+        daemon_config=artifact_retention_scheduler_daemon_config_payload(
+            lease_available=False
+        )
+    )
+    queue_attention = classify_artifact_retention_daemon_attention(
+        daemon_config=artifact_retention_scheduler_daemon_config_payload(
+            job_queue_available=False
+        )
+    )
+    dispatch_attention = classify_artifact_retention_daemon_attention(
+        daemon_config=artifact_retention_scheduler_daemon_config_payload(),
+        dispatch_response=artifact_retention_scheduler_daemon_dispatch_payload(
+            dispatch_status="FAILED"
+        ),
+    )
+
+    batch_window_config = artifact_retention_scheduler_daemon_config_payload()
+    batch_window_config["supported_actions"][1] = {
+        **batch_window_config["supported_actions"][1],
+        "decision_status": "BLOCKED",
+        "runs_tick_once": False,
+        "block_reason": "batch_window_closed",
+    }
+    batch_window_attention = classify_artifact_retention_daemon_attention(
+        daemon_config=batch_window_config
+    )
+    control_attention_config = artifact_retention_scheduler_daemon_config_payload()
+    control_attention_config["supported_actions"][1] = {
+        **control_attention_config["supported_actions"][1],
+        "decision_status": "BLOCKED",
+        "runs_tick_once": False,
+        "block_reason": "operator_dispatch_admission_disabled",
+    }
+    control_attention = classify_artifact_retention_daemon_attention(
+        daemon_config=control_attention_config
+    )
+    missing_attention = classify_artifact_retention_daemon_attention(
+        daemon_config={}
+    )
+
+    assert ready["attention_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_ATTENTION_SCHEMA_VERSION
+    )
+    assert ready["attention_status"] == "READY"
+    assert ready["attention_level"] == "OK"
+    assert ready["operator_attention_required"] is False
+    assert ready["manual_tick_once_safe"] is True
+    assert ready["reason_codes"] == [
+        "manual_tick_once_ready",
+        "start_daemon_disabled_by_policy",
+        "continuous_loop_disabled_by_policy",
+    ]
+    assert lease_attention["attention_status"] == "LEASE_ATTENTION"
+    assert lease_attention["reason_codes"][0] == "lease_repository_unavailable"
+    assert lease_attention["operator_actions"] == [
+        "configure_ae_scheduler_lease_repository"
+    ]
+    assert lease_attention["operator_attention_required"] is True
+    assert queue_attention["attention_status"] == "QUEUE_ATTENTION"
+    assert queue_attention["reason_codes"][0] == "job_queue_unavailable"
+    assert queue_attention["operator_actions"] == ["configure_ae_job_queue"]
+    assert dispatch_attention["attention_status"] == "DISPATCH_ATTENTION"
+    assert dispatch_attention["attention_level"] == "WARN"
+    assert "last_dispatch_failed" in dispatch_attention["reason_codes"]
+    assert batch_window_attention["attention_status"] == "BATCH_WINDOW_ATTENTION"
+    assert batch_window_attention["operator_actions"] == [
+        "retry_inside_retention_batch_window"
+    ]
+    assert control_attention["attention_status"] == "CONTROL_POLICY_BLOCKED"
+    assert control_attention["operator_actions"] == [
+        "review_ae_daemon_control_policy"
+    ]
+    assert missing_attention == {
+        "attention_schema_version": (
+            AG_ARTIFACT_OPERATION_RETENTION_DAEMON_ATTENTION_SCHEMA_VERSION
+        ),
+        "attention_status": "NO_DAEMON_CONFIG",
+        "attention_level": "INFO",
+        "reason_codes": ["daemon_config_missing"],
+        "operator_actions": ["load_ae_scheduler_daemon_config"],
+        "operator_attention_required": False,
+        "manual_tick_once_safe": False,
+        "start_daemon_blocked_by_policy": False,
+        "continuous_loop_blocked_by_policy": False,
+        "batch_window_enforced": False,
+        "metadata_only": True,
+    }
 
 
 def test_artifact_operation_retention_automation_projection_summarizes_and_redacts() -> (
@@ -1746,6 +1871,7 @@ def test_artifact_operation_retention_automation_projection_summarizes_and_redac
     assert projection["history"]["summary"]["blocked_count"] == 1
     assert projection["scheduler_daemon"]["summary"]["manual_tick_once_available"] is True
     assert projection["scheduler_daemon"]["summary"]["start_daemon_available"] is False
+    assert projection["scheduler_daemon"]["attention"]["attention_status"] == "READY"
     assert projection["summary"] == {
         "safety_status": "FAILED_ATTENTION",
         "dispatch_available": True,
@@ -1770,6 +1896,14 @@ def test_artifact_operation_retention_automation_projection_summarizes_and_redac
         "daemon_lease_repository_available": True,
         "daemon_job_queue_available": True,
         "daemon_operator_attention_required": False,
+        "daemon_attention_status": "READY",
+        "daemon_attention_level": "OK",
+        "daemon_attention_reason_codes": [
+            "manual_tick_once_ready",
+            "start_daemon_disabled_by_policy",
+            "continuous_loop_disabled_by_policy",
+        ],
+        "daemon_attention_operator_actions": ["manual_tick_once_available"],
         "approval_blocked_count": 0,
         "delete_guard_blocked_count": 1,
         "selected_artifact_count": 1,
@@ -1868,6 +2002,10 @@ def test_artifact_operation_retention_automation_projection_handles_sparse_edges
     assert projection["summary"]["approval_blocked_count"] == 1
     assert projection["summary"]["daemon_manual_tick_once_available"] is False
     assert projection["summary"]["daemon_operator_attention_required"] is False
+    assert projection["summary"]["daemon_attention_status"] == "NO_DAEMON_CONFIG"
+    assert projection["summary"]["daemon_attention_reason_codes"] == [
+        "daemon_config_missing"
+    ]
     assert projection["summary"]["latest_activity_at"] == "2026-09-01T02:05:00Z"
     assert projection["source_status"]["batch_plan_loaded"] is False
     assert projection["source_status"]["scheduled_jobs_loaded"] is False
@@ -3265,9 +3403,16 @@ def test_artifact_retention_automation_operations_route_returns_projection() -> 
         "manual_tick_once_available"
     ] is True
     assert payload["scheduler_daemon"]["summary"]["start_daemon_available"] is False
+    assert payload["scheduler_daemon"]["attention"]["attention_status"] == "READY"
     assert payload["summary"]["safety_status"] == "FAILED_ATTENTION"
     assert payload["summary"]["daemon_manual_tick_once_available"] is True
     assert payload["summary"]["daemon_start_daemon_available"] is False
+    assert payload["summary"]["daemon_attention_status"] == "READY"
+    assert payload["summary"]["daemon_attention_reason_codes"] == [
+        "manual_tick_once_ready",
+        "start_daemon_disabled_by_policy",
+        "continuous_loop_disabled_by_policy",
+    ]
     assert payload["summary"]["physical_delete_operator_approval_required"] is True
     assert payload["source_status"]["daemon_config_loaded"] is True
     assert payload["operator_guidance"]["ae_daemon_config_route"] == (
@@ -3472,6 +3617,8 @@ def test_artifact_retention_scheduler_daemon_operations_route_returns_projection
     assert payload["operation_type"] == "ae_artifact_retention_scheduler_daemon"
     assert payload["summary"]["manual_tick_once_available"] is True
     assert payload["summary"]["start_daemon_available"] is False
+    assert payload["summary"]["attention_status"] == "READY"
+    assert payload["attention"]["attention_status"] == "READY"
     assert payload["source_status"]["daemon_config_loaded"] is True
     assert payload["operator_guidance"]["manual_tick_once_only"] is True
     assert payload["operator_guidance"]["ag_direct_job_enqueue_allowed"] is False

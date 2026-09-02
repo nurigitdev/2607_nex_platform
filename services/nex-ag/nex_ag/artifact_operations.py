@@ -50,6 +50,9 @@ AG_ARTIFACT_OPERATION_RETENTION_AUTOMATION_PROJECTION_SCHEMA_VERSION = (
 AG_ARTIFACT_OPERATION_RETENTION_DAEMON_PROJECTION_SCHEMA_VERSION = (
     "ag_artifact_operation_retention_daemon_projection.v1"
 )
+AG_ARTIFACT_OPERATION_RETENTION_DAEMON_ATTENTION_SCHEMA_VERSION = (
+    "ag_artifact_operation_retention_daemon_attention.v1"
+)
 AE_ARTIFACT_SOURCE_SERVICE_ID = "nex-ae-api"
 NEX_AG_AE_ARTIFACT_BASE_URL_ENV = "NEX_AG_AE_ARTIFACT_BASE_URL"
 NEX_AG_AE_ARTIFACT_SERVICE_TOKEN_ENV = "NEX_AG_AE_ARTIFACT_SERVICE_TOKEN"
@@ -1771,6 +1774,9 @@ def build_artifact_operation_retention_automation_projection(
         daemon_config or {}
     )
     daemon_summary = _optional_retention_daemon_summary(projected_daemon_config)
+    daemon_attention = classify_artifact_retention_daemon_attention(
+        daemon_config=projected_daemon_config,
+    )
     scheduled_items = [
         _project_retention_scheduled_job_item(item)
         for item in _list_value(scheduled_jobs.get("items"))
@@ -1817,6 +1823,7 @@ def build_artifact_operation_retention_automation_projection(
         "scheduler_daemon": {
             "daemon_config": projected_daemon_config,
             "summary": daemon_summary,
+            "attention": daemon_attention,
         },
         "summary": summarize_artifact_retention_automation_operations(
             batch_plan=projected_plan,
@@ -1873,6 +1880,10 @@ def build_artifact_operation_retention_daemon_projection(
     projected_dispatch = _project_retention_scheduler_daemon_dispatch_response(
         dispatch_response
     )
+    daemon_attention = classify_artifact_retention_daemon_attention(
+        daemon_config=projected_config,
+        dispatch_response=projected_dispatch,
+    )
     errors = source_errors or []
     projection = {
         "projection_schema_version": (
@@ -1888,6 +1899,7 @@ def build_artifact_operation_retention_daemon_projection(
             daemon_config=projected_config,
             dispatch_response=projected_dispatch,
         ),
+        "attention": daemon_attention,
         "source_status": _artifact_retention_daemon_source_status(
             source_client=source_client,
             config_loaded=bool(projected_config.get("scheduler_id")),
@@ -2268,6 +2280,10 @@ def summarize_artifact_retention_daemon_operations(
     control_plan = _mapping_or_empty(dispatch.get("control_plan"))
     manual_status = _text_or_none(manual_action.get("decision_status"))
     start_status = _text_or_none(start_action.get("decision_status"))
+    attention = classify_artifact_retention_daemon_attention(
+        daemon_config=daemon_config,
+        dispatch_response=dispatch_response,
+    )
     return {
         "scheduler_id": _text_or_none(daemon_config.get("scheduler_id")),
         "scheduler_daemon_enabled": runtime.get("scheduler_daemon_enabled") is True,
@@ -2292,9 +2308,129 @@ def summarize_artifact_retention_daemon_operations(
         "last_dispatch_tick_once_dispatched": (
             dispatch_metadata.get("tick_once_dispatched") is True
         ),
-        "operator_attention_required": manual_status != "READY"
-        or bool(dispatch)
-        or lease_repository.get("available") is not True,
+        "attention_status": attention["attention_status"],
+        "attention_level": attention["attention_level"],
+        "attention_reason_codes": attention["reason_codes"],
+        "attention_operator_actions": attention["operator_actions"],
+        "batch_window_enforced": attention["batch_window_enforced"],
+        "operator_attention_required": attention["operator_attention_required"],
+        "metadata_only": True,
+    }
+
+
+def classify_artifact_retention_daemon_attention(
+    *,
+    daemon_config: Mapping[str, Any],
+    dispatch_response: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    projected_config = _project_retention_scheduler_daemon_config(daemon_config)
+    projected_dispatch = (
+        _project_retention_scheduler_daemon_dispatch_response(dispatch_response)
+        if isinstance(dispatch_response, Mapping) and bool(dispatch_response)
+        else {}
+    )
+    scheduler_id = _text_or_none(projected_config.get("scheduler_id"))
+    if scheduler_id is None:
+        return {
+            "attention_schema_version": (
+                AG_ARTIFACT_OPERATION_RETENTION_DAEMON_ATTENTION_SCHEMA_VERSION
+            ),
+            "attention_status": "NO_DAEMON_CONFIG",
+            "attention_level": "INFO",
+            "reason_codes": ["daemon_config_missing"],
+            "operator_actions": ["load_ae_scheduler_daemon_config"],
+            "operator_attention_required": False,
+            "manual_tick_once_safe": False,
+            "start_daemon_blocked_by_policy": False,
+            "continuous_loop_blocked_by_policy": False,
+            "batch_window_enforced": False,
+            "metadata_only": True,
+        }
+
+    runtime = _mapping_or_empty(projected_config.get("runtime"))
+    lease_repository = _mapping_or_empty(projected_config.get("lease_repository"))
+    manual_action = _daemon_action_item(projected_config, "manual_tick_once")
+    start_action = _daemon_action_item(projected_config, "start_daemon")
+    manual_status = _text_or_none(manual_action.get("decision_status"))
+    manual_block_reason = _text_or_none(manual_action.get("block_reason"))
+    start_block_reason = _text_or_none(start_action.get("block_reason"))
+    dispatch_status = _text_or_none(projected_dispatch.get("dispatch_status"))
+    dispatch = bool(projected_dispatch)
+    lease_available = lease_repository.get("available") is True
+    job_queue_available = runtime.get("job_queue_available") is True
+    batch_window_enforced = runtime.get("scheduler_tick_batch_window_enforced") is True
+    manual_tick_once_safe = manual_status == "READY" and lease_available and job_queue_available
+    start_daemon_blocked_by_policy = start_block_reason == "daemon_disabled_by_policy"
+    continuous_loop_blocked_by_policy = (
+        runtime.get("continuous_loop_enabled") is not True
+        and runtime.get("continuous_loop_started") is not True
+    )
+
+    attention_status = "READY"
+    attention_level = "OK"
+    operator_attention_required = False
+    reason_codes: list[str] = ["manual_tick_once_ready"]
+    operator_actions: list[str] = ["manual_tick_once_available"]
+
+    if dispatch:
+        attention_status = "DISPATCH_ATTENTION"
+        attention_level = "WARN" if dispatch_status in {"BLOCKED", "FAILED"} else "INFO"
+        operator_attention_required = True
+        reason_codes = ["last_dispatch_observed"]
+        if dispatch_status == "BLOCKED":
+            reason_codes.append("last_dispatch_blocked")
+        elif dispatch_status == "FAILED":
+            reason_codes.append("last_dispatch_failed")
+        elif dispatch_status == "DISPATCHED":
+            reason_codes.append("last_dispatch_dispatched")
+        else:
+            reason_codes.append("last_dispatch_status_unknown")
+        operator_actions = ["review_last_daemon_dispatch"]
+    elif not lease_available:
+        attention_status = "LEASE_ATTENTION"
+        attention_level = "WARN"
+        operator_attention_required = True
+        reason_codes = [
+            _text_or_none(lease_repository.get("failure_code"))
+            or "lease_repository_unavailable"
+        ]
+        operator_actions = ["configure_ae_scheduler_lease_repository"]
+    elif not job_queue_available:
+        attention_status = "QUEUE_ATTENTION"
+        attention_level = "WARN"
+        operator_attention_required = True
+        reason_codes = [manual_block_reason or "job_queue_unavailable"]
+        operator_actions = ["configure_ae_job_queue"]
+    elif manual_status != "READY":
+        normalized_reason = manual_block_reason or "manual_tick_once_not_ready"
+        reason_codes = [normalized_reason]
+        operator_attention_required = True
+        attention_level = "WARN"
+        if "batch" in normalized_reason or "window" in normalized_reason:
+            attention_status = "BATCH_WINDOW_ATTENTION"
+            operator_actions = ["retry_inside_retention_batch_window"]
+        else:
+            attention_status = "CONTROL_POLICY_BLOCKED"
+            operator_actions = ["review_ae_daemon_control_policy"]
+
+    if start_daemon_blocked_by_policy and "start_daemon_disabled_by_policy" not in reason_codes:
+        reason_codes.append("start_daemon_disabled_by_policy")
+    if continuous_loop_blocked_by_policy and "continuous_loop_disabled_by_policy" not in reason_codes:
+        reason_codes.append("continuous_loop_disabled_by_policy")
+
+    return {
+        "attention_schema_version": (
+            AG_ARTIFACT_OPERATION_RETENTION_DAEMON_ATTENTION_SCHEMA_VERSION
+        ),
+        "attention_status": attention_status,
+        "attention_level": attention_level,
+        "reason_codes": reason_codes,
+        "operator_actions": operator_actions,
+        "operator_attention_required": operator_attention_required,
+        "manual_tick_once_safe": manual_tick_once_safe,
+        "start_daemon_blocked_by_policy": start_daemon_blocked_by_policy,
+        "continuous_loop_blocked_by_policy": continuous_loop_blocked_by_policy,
+        "batch_window_enforced": batch_window_enforced,
         "metadata_only": True,
     }
 
@@ -2364,6 +2500,12 @@ def summarize_artifact_retention_automation_operations(
         "daemon_operator_attention_required": daemon_summary[
             "operator_attention_required"
         ],
+        "daemon_attention_status": daemon_summary["attention_status"],
+        "daemon_attention_level": daemon_summary["attention_level"],
+        "daemon_attention_reason_codes": daemon_summary["attention_reason_codes"],
+        "daemon_attention_operator_actions": daemon_summary[
+            "attention_operator_actions"
+        ],
         "approval_blocked_count": approval_blocked_count,
         "delete_guard_blocked_count": delete_guard_blocked_count,
         "selected_artifact_count": batch_summary["selected_count"],
@@ -2377,6 +2519,7 @@ def summarize_artifact_retention_automation_operations(
             batch_summary["operator_attention_required"]
             or job_summary["operator_attention_required"]
             or history_summary["operator_attention_count"] > 0
+            or daemon_summary["operator_attention_required"]
         ),
         "automated_execute_enabled": False,
         "physical_delete_automation_enabled": False,
@@ -2405,6 +2548,11 @@ def _optional_retention_daemon_summary(
             "job_queue_available": False,
             "job_queue_backend": None,
             "default_execution_mode": None,
+            "attention_status": "NO_DAEMON_CONFIG",
+            "attention_level": "INFO",
+            "attention_reason_codes": ["daemon_config_missing"],
+            "attention_operator_actions": ["load_ae_scheduler_daemon_config"],
+            "batch_window_enforced": False,
             "operator_attention_required": False,
             "metadata_only": True,
         }

@@ -674,3 +674,6 @@ Artifact library management:
   retention automation dashboard as a metadata-only rollup. AE remains the
   source of record for daemon config, lease state, JobQueue readiness, and
   runtime control decisions.
+- Slice 0528 lets AG classify AE scheduler daemon posture for operator
+  attention while preserving AE ownership of lease, JobQueue, batch-window,
+  dispatch, and daemon policy decisions.

@@ -443,6 +443,10 @@ Unified operations:
   retention automation dashboard. Operators can see manual tick-once readiness,
   daemon start blocking, lease repository availability, and JobQueue readiness
   in the dashboard without giving AG direct write or enqueue authority.
+- Slice 0528 classifies that daemon posture into AG operator attention states:
+  ready, lease attention, queue attention, batch-window attention, policy
+  blocked, and latest-dispatch review. The classification is metadata-only and
+  keeps daemon execution decisions in AE.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

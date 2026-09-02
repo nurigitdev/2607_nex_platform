@@ -490,6 +490,7 @@ def _smoke_checks(status_code: int, payload: Any) -> dict[str, bool]:
             "operator_attention": False,
             "approval_gate_visible": False,
             "daemon_rollup_visible": False,
+            "daemon_attention_classified": False,
             "no_direct_ag_mutation": False,
             "metadata_only": False,
             "redacted": False,
@@ -506,6 +507,9 @@ def _smoke_checks(status_code: int, payload: Any) -> dict[str, bool]:
     daemon_summary = scheduler_daemon.get("summary")
     if not isinstance(daemon_summary, Mapping):
         daemon_summary = {}
+    daemon_attention = scheduler_daemon.get("attention")
+    if not isinstance(daemon_attention, Mapping):
+        daemon_attention = {}
     return {
         "route_status_ok": status_code == 200,
         "schema_version": payload.get("projection_schema_version")
@@ -521,6 +525,16 @@ def _smoke_checks(status_code: int, payload: Any) -> dict[str, bool]:
         and daemon_summary.get("manual_tick_once_available") is True
         and guidance.get("ae_daemon_config_route")
         == "/api/v1/artifact-retention/scheduler-daemon-config",
+        "daemon_attention_classified": summary.get("daemon_attention_status")
+        == "READY"
+        and summary.get("daemon_attention_reason_codes")
+        == [
+            "manual_tick_once_ready",
+            "start_daemon_disabled_by_policy",
+            "continuous_loop_disabled_by_policy",
+        ]
+        and daemon_attention.get("attention_status") == "READY"
+        and daemon_attention.get("operator_attention_required") is False,
         "no_direct_ag_mutation": guidance.get("ag_direct_database_write_allowed")
         is False
         and guidance.get("ag_direct_job_enqueue_allowed") is False,
@@ -566,6 +580,7 @@ def summary_line(evidence: Mapping[str, Any]) -> str:
         f"scheduled_jobs={summary.get('scheduled_job_count')} "
         f"history={summary.get('history_count')} "
         f"daemon_manual={summary.get('daemon_manual_tick_once_available')} "
+        f"daemon_attention={summary.get('daemon_attention_status')} "
         f"approval_blocked={summary.get('approval_blocked_count')}"
     )
     if failing_checks:

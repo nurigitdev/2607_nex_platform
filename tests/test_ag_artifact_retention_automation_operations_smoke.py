@@ -18,7 +18,9 @@ def test_ag_artifact_retention_automation_operations_smoke_passes() -> None:
     assert evidence["summary"]["safety_status"] == "FAILED_ATTENTION"
     assert evidence["summary"]["approval_blocked_count"] == 1
     assert evidence["summary"]["daemon_manual_tick_once_available"] is True
+    assert evidence["summary"]["daemon_attention_status"] == "READY"
     assert evidence["checks"]["daemon_rollup_visible"] is True
+    assert evidence["checks"]["daemon_attention_classified"] is True
     assert all(evidence["checks"].values())
 
 
@@ -37,7 +39,7 @@ def test_ag_artifact_retention_automation_operations_smoke_detects_check_failure
     assert evidence["response_status"] == 200
     assert evidence["checks"]["schema_version"] is True
     assert evidence["checks"]["dispatch_available"] is False
-    assert evidence["checks"]["operator_attention"] is False
+    assert evidence["checks"]["operator_attention"] is True
     assert "failing_checks" in smoke.summary_line(evidence)
 
 
@@ -54,6 +56,7 @@ def test_ag_artifact_retention_automation_operations_smoke_redaction_guard() -> 
         "operator_attention": False,
         "approval_gate_visible": False,
         "daemon_rollup_visible": False,
+        "daemon_attention_classified": False,
         "no_direct_ag_mutation": False,
         "metadata_only": False,
         "redacted": False,
@@ -71,6 +74,7 @@ def test_ag_artifact_retention_automation_operations_smoke_redaction_guard() -> 
     assert malformed["schema_version"] is True
     assert malformed["dispatch_available"] is False
     assert malformed["daemon_rollup_visible"] is False
+    assert malformed["daemon_attention_classified"] is False
     assert malformed["no_direct_ag_mutation"] is False
     assert "safety=None" in smoke.summary_line(
         {"status": "FAIL", "response_status": 500, "summary": "bad", "checks": {}}
@@ -85,9 +89,9 @@ def test_ag_artifact_retention_automation_operations_smoke_cli_and_output(
     output_path = tmp_path / "ag-automation-smoke.json"
 
     assert smoke.main(["--summary", "--output", str(output_path)]) == 0
-    assert "ag_artifact_retention_automation_operations_smoke=pass" in (
-        capsys.readouterr().out
-    )
+    summary_output = capsys.readouterr().out
+    assert "ag_artifact_retention_automation_operations_smoke=pass" in summary_output
+    assert "daemon_attention=READY" in summary_output
     assert "FAILED_ATTENTION" in output_path.read_text(encoding="utf-8")
     assert smoke.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
