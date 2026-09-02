@@ -407,6 +407,9 @@ Unified operations:
 - Slice 0518 makes that surface callable through AE-owned API routes. AG can
   later project or invoke the control route, but the route preserves AE
   ownership over leases, JobQueue dispatch, artifact store access, and history.
+- Slice 0519 proves that boundary against PostgreSQL: the protected smoke drives
+  the AE daemon config/control routes with the real AE test DB and validates
+  lease, JobQueue, and history readback without any AG direct database writes.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

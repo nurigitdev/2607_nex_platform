@@ -641,3 +641,8 @@ Artifact library management:
   `POST /api/v1/artifact-retention/scheduler-daemon-controls`. The route map is
   advertised from scheduler config, while AE still owns lease, JobQueue, and
   artifact-store dispatch.
+- Slice 0519 adds protected PostgreSQL evidence for that daemon API surface.
+  When enabled against `NEX_AE_TEST_DATABASE_URL`, the smoke migrates the real
+  AE test DB, seeds deleted artifacts through AE routes, verifies blocked
+  `start_daemon`, dispatches `manual_tick_once` through the daemon controls
+  route, reads back lease/JobQueue/history rows, and cleans up the smoke data.
