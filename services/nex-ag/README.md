@@ -410,6 +410,9 @@ Unified operations:
 - Slice 0519 proves that boundary against PostgreSQL: the protected smoke drives
   the AE daemon config/control routes with the real AE test DB and validates
   lease, JobQueue, and history readback without any AG direct database writes.
+- Slice 0520 closes S52 with AG still on the read-only side of the boundary:
+  daemon control stays AE-owned, and AG should use AE routes for visibility or
+  operator-mediated manual tick-once dispatch.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

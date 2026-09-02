@@ -646,3 +646,7 @@ Artifact library management:
   AE test DB, seeds deleted artifacts through AE routes, verifies blocked
   `start_daemon`, dispatches `manual_tick_once` through the daemon controls
   route, reads back lease/JobQueue/history rows, and cleans up the smoke data.
+- Slice 0520 closes S52 by checking the daemon audit, lease contract and
+  migration, tick-once runtime, daemon config/control contract, API wiring, and
+  PostgreSQL evidence remain connected while daemon auto-start and continuous
+  loop execution stay deferred.
