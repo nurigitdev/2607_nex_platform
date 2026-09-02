@@ -145,6 +145,9 @@ def test_ae_ag_artifact_retention_scheduler_postgres_smoke_passes_with_sqlite_ha
         "scheduled_job_count": 1,
         "queued_job_count": 1,
         "history_count": 0,
+        "daemon_manual_tick_once_available": False,
+        "daemon_start_daemon_available": False,
+        "daemon_scheduler_daemon_started": False,
         "physical_delete_automation_enabled": False,
     }
     assert evidence["db_job"]["row_count"] == 1

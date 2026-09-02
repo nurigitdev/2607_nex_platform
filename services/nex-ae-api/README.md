@@ -670,3 +670,7 @@ Artifact library management:
   The smoke connects to the AE test database, seeds artifact rows through AE
   routes, dispatches AG's guarded manual tick-once route, and reads back AE
   lease, JobQueue, and retention-history state before cleanup.
+- Slice 0527 lets AG include AE scheduler daemon config in the artifact
+  retention automation dashboard as a metadata-only rollup. AE remains the
+  source of record for daemon config, lease state, JobQueue readiness, and
+  runtime control decisions.

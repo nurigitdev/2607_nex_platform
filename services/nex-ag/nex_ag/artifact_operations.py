@@ -1305,6 +1305,12 @@ def register_artifact_operation_routes(
                 request_id=request_id,
                 trace_id=trace_id,
             )
+            daemon_config = (
+                selected_client.get_artifact_retention_scheduler_daemon_config(
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+            )
         except AeArtifactOperationsError as exc:
             return _artifact_operations_problem_response(request, exc)
 
@@ -1312,6 +1318,7 @@ def register_artifact_operation_routes(
             plan=plan,
             scheduled_jobs=scheduled_jobs,
             history=history,
+            daemon_config=daemon_config,
             source_client=selected_client,
             request_trace_id=trace_id,
         )
@@ -1754,11 +1761,16 @@ def build_artifact_operation_retention_automation_projection(
     plan: Mapping[str, Any],
     scheduled_jobs: Mapping[str, Any],
     history: Mapping[str, Any],
+    daemon_config: Mapping[str, Any] | None = None,
     source_client: AeArtifactOperationsClient | None = None,
     source_errors: list[AeArtifactOperationsError] | None = None,
     request_trace_id: str | None = None,
 ) -> dict[str, Any]:
     projected_plan = _project_retention_batch_plan(plan)
+    projected_daemon_config = _project_retention_scheduler_daemon_config(
+        daemon_config or {}
+    )
+    daemon_summary = _optional_retention_daemon_summary(projected_daemon_config)
     scheduled_items = [
         _project_retention_scheduled_job_item(item)
         for item in _list_value(scheduled_jobs.get("items"))
@@ -1802,22 +1814,34 @@ def build_artifact_operation_retention_automation_projection(
             "items": history_items,
             "summary": summarize_artifact_retention_history_operations(history_items),
         },
+        "scheduler_daemon": {
+            "daemon_config": projected_daemon_config,
+            "summary": daemon_summary,
+        },
         "summary": summarize_artifact_retention_automation_operations(
             batch_plan=projected_plan,
             scheduled_jobs=scheduled_items,
             history=history_items,
+            daemon_config=projected_daemon_config,
         ),
         "source_status": _artifact_retention_automation_source_status(
             source_client=source_client,
             batch_plan_loaded=bool(projected_plan.get("plan_id")),
             scheduled_job_count=len(scheduled_items),
             history_count=len(history_items),
+            daemon_config_loaded=bool(projected_daemon_config.get("scheduler_id")),
             errors=errors,
         ),
         "operator_guidance": {
             "metadata_only": True,
             "system_of_record": AE_ARTIFACT_SOURCE_SERVICE_ID,
             "ae_scheduler_config_route": "/api/v1/artifact-retention/scheduler-config",
+            "ae_daemon_config_route": (
+                "/api/v1/artifact-retention/scheduler-daemon-config"
+            ),
+            "ag_daemon_operations_route": (
+                "/admin/v1/operations/artifact-retention/scheduler-daemon"
+            ),
             "ae_batch_plan_route": "/api/v1/artifact-retention/batch-plan",
             "ae_scheduled_jobs_route": ("/api/v1/artifact-retention/scheduled-jobs"),
             "ae_scheduled_job_admission_route": (
@@ -2280,10 +2304,14 @@ def summarize_artifact_retention_automation_operations(
     batch_plan: Mapping[str, Any],
     scheduled_jobs: list[dict[str, Any]],
     history: list[dict[str, Any]],
+    daemon_config: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     batch_summary = summarize_artifact_retention_batch_operations(batch_plan)
     job_summary = summarize_artifact_retention_scheduled_job_operations(scheduled_jobs)
     history_summary = summarize_artifact_retention_history_operations(history)
+    daemon_summary = _optional_retention_daemon_summary(
+        daemon_config=_project_retention_scheduler_daemon_config(daemon_config or {}),
+    )
     approval_blocked_count = sum(
         1
         for item in history
@@ -2299,6 +2327,7 @@ def summarize_artifact_retention_automation_operations(
         job_summary["active_count"]
         or history_summary["blocked_count"]
         or batch_summary["dispatch_available"]
+        or daemon_summary["operator_attention_required"]
     ):
         safety_status = "OPERATOR_ATTENTION"
     elif not scheduled_jobs and not history and not batch_summary["dispatch_available"]:
@@ -2319,6 +2348,22 @@ def summarize_artifact_retention_automation_operations(
         "history_failed_count": history_summary["failed_count"],
         "history_execute_count": history_summary["execute_count"],
         "history_dry_run_count": history_summary["dry_run_count"],
+        "daemon_scheduler_id": daemon_summary["scheduler_id"],
+        "daemon_manual_tick_once_available": daemon_summary[
+            "manual_tick_once_available"
+        ],
+        "daemon_start_daemon_available": daemon_summary["start_daemon_available"],
+        "daemon_scheduler_daemon_started": daemon_summary[
+            "scheduler_daemon_started"
+        ],
+        "daemon_continuous_loop_started": daemon_summary["continuous_loop_started"],
+        "daemon_lease_repository_available": daemon_summary[
+            "lease_repository_available"
+        ],
+        "daemon_job_queue_available": daemon_summary["job_queue_available"],
+        "daemon_operator_attention_required": daemon_summary[
+            "operator_attention_required"
+        ],
         "approval_blocked_count": approval_blocked_count,
         "delete_guard_blocked_count": delete_guard_blocked_count,
         "selected_artifact_count": batch_summary["selected_count"],
@@ -2342,6 +2387,30 @@ def summarize_artifact_retention_automation_operations(
             history_summary["latest_checked_at"],
         ),
     }
+
+
+def _optional_retention_daemon_summary(
+    daemon_config: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not daemon_config.get("scheduler_id"):
+        return {
+            "scheduler_id": None,
+            "scheduler_daemon_enabled": False,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "manual_tick_once_available": False,
+            "start_daemon_available": False,
+            "lease_repository_available": False,
+            "lease_repository_backend": None,
+            "job_queue_available": False,
+            "job_queue_backend": None,
+            "default_execution_mode": None,
+            "operator_attention_required": False,
+            "metadata_only": True,
+        }
+    return summarize_artifact_retention_daemon_operations(
+        daemon_config=daemon_config,
+    )
 
 
 def summarize_artifact_retention_history_operations(
@@ -3540,6 +3609,7 @@ def _artifact_retention_automation_source_status(
     batch_plan_loaded: bool,
     scheduled_job_count: int,
     history_count: int,
+    daemon_config_loaded: bool,
     errors: list[AeArtifactOperationsError],
 ) -> dict[str, Any]:
     status = "DEGRADED" if errors else "READY"
@@ -3551,6 +3621,7 @@ def _artifact_retention_automation_source_status(
         "batch_plan_loaded": batch_plan_loaded and not errors,
         "scheduled_jobs_loaded": not errors,
         "history_loaded": not errors,
+        "daemon_config_loaded": daemon_config_loaded and not errors,
         "scheduled_job_count": scheduled_job_count,
         "history_count": history_count,
         "errors": [

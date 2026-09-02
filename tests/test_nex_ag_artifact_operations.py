@@ -1731,6 +1731,7 @@ def test_artifact_operation_retention_automation_projection_summarizes_and_redac
         plan=artifact_retention_batch_plan_payload(),
         scheduled_jobs=artifact_retention_scheduled_job_collection_payload(),
         history=artifact_retention_history_collection_payload(),
+        daemon_config=artifact_retention_scheduler_daemon_config_payload(),
         source_client=InMemoryAeArtifactOperationsClient(),
         request_trace_id=TRACE_ID,
     )
@@ -1743,6 +1744,8 @@ def test_artifact_operation_retention_automation_projection_summarizes_and_redac
     assert projection["batch_plan"]["plan"]["plan_id"] == "retention-batch-plan-0409"
     assert projection["scheduled_jobs"]["summary"]["job_count"] == 3
     assert projection["history"]["summary"]["blocked_count"] == 1
+    assert projection["scheduler_daemon"]["summary"]["manual_tick_once_available"] is True
+    assert projection["scheduler_daemon"]["summary"]["start_daemon_available"] is False
     assert projection["summary"] == {
         "safety_status": "FAILED_ATTENTION",
         "dispatch_available": True,
@@ -1759,6 +1762,14 @@ def test_artifact_operation_retention_automation_projection_summarizes_and_redac
         "history_failed_count": 0,
         "history_execute_count": 2,
         "history_dry_run_count": 1,
+        "daemon_scheduler_id": "ae-artifact-retention-scheduler",
+        "daemon_manual_tick_once_available": True,
+        "daemon_start_daemon_available": False,
+        "daemon_scheduler_daemon_started": False,
+        "daemon_continuous_loop_started": False,
+        "daemon_lease_repository_available": True,
+        "daemon_job_queue_available": True,
+        "daemon_operator_attention_required": False,
         "approval_blocked_count": 0,
         "delete_guard_blocked_count": 1,
         "selected_artifact_count": 1,
@@ -1775,6 +1786,13 @@ def test_artifact_operation_retention_automation_projection_summarizes_and_redac
     assert projection["source_status"]["batch_plan_loaded"] is True
     assert projection["source_status"]["scheduled_jobs_loaded"] is True
     assert projection["source_status"]["history_loaded"] is True
+    assert projection["source_status"]["daemon_config_loaded"] is True
+    assert projection["operator_guidance"]["ae_daemon_config_route"] == (
+        "/api/v1/artifact-retention/scheduler-daemon-config"
+    )
+    assert projection["operator_guidance"]["ag_daemon_operations_route"] == (
+        "/admin/v1/operations/artifact-retention/scheduler-daemon"
+    )
     assert projection["operator_guidance"]["ag_direct_database_write_allowed"] is False
     assert projection["operator_guidance"]["ag_direct_job_enqueue_allowed"] is False
     assert (
@@ -1848,10 +1866,13 @@ def test_artifact_operation_retention_automation_projection_handles_sparse_edges
     )
     assert projection["summary"]["safety_status"] == "OPERATOR_ATTENTION"
     assert projection["summary"]["approval_blocked_count"] == 1
+    assert projection["summary"]["daemon_manual_tick_once_available"] is False
+    assert projection["summary"]["daemon_operator_attention_required"] is False
     assert projection["summary"]["latest_activity_at"] == "2026-09-01T02:05:00Z"
     assert projection["source_status"]["batch_plan_loaded"] is False
     assert projection["source_status"]["scheduled_jobs_loaded"] is False
     assert projection["source_status"]["history_loaded"] is False
+    assert projection["source_status"]["daemon_config_loaded"] is False
     assert projection["source_status"]["errors"][0]["error_code"] == (
         "ag.optional_retention_automation_warning"
     )
@@ -1870,6 +1891,7 @@ def test_artifact_operation_retention_automation_projection_handles_sparse_edges
     )
     assert idle_summary["safety_status"] == "IDLE"
     assert idle_summary["operator_attention_required"] is False
+    assert idle_summary["daemon_scheduler_id"] is None
     assert no_status_job_summary["job_count"] == 1
     assert no_status_job_summary["active_count"] == 0
 
@@ -3239,8 +3261,18 @@ def test_artifact_retention_automation_operations_route_returns_projection() -> 
     assert payload["batch_plan"]["summary"]["dispatch_available"] is True
     assert payload["scheduled_jobs"]["summary"]["failed_count"] == 1
     assert payload["history"]["summary"]["blocked_count"] == 1
+    assert payload["scheduler_daemon"]["summary"][
+        "manual_tick_once_available"
+    ] is True
+    assert payload["scheduler_daemon"]["summary"]["start_daemon_available"] is False
     assert payload["summary"]["safety_status"] == "FAILED_ATTENTION"
+    assert payload["summary"]["daemon_manual_tick_once_available"] is True
+    assert payload["summary"]["daemon_start_daemon_available"] is False
     assert payload["summary"]["physical_delete_operator_approval_required"] is True
+    assert payload["source_status"]["daemon_config_loaded"] is True
+    assert payload["operator_guidance"]["ae_daemon_config_route"] == (
+        "/api/v1/artifact-retention/scheduler-daemon-config"
+    )
     assert payload["operator_guidance"]["ag_direct_database_write_allowed"] is False
     assert payload["request_trace_id"] == TRACE_ID
     assert running.status_code == 200
@@ -3338,6 +3370,41 @@ def test_artifact_retention_automation_operations_route_guardrails() -> None:
         headers=auth_headers(),
     )
 
+    class BrokenRetentionAutomationDaemonClient(InMemoryAeArtifactOperationsClient):
+        def get_artifact_retention_scheduler_daemon_config(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            raise AeArtifactOperationsError(
+                error_code="ag.ae_artifact_retention_automation_daemon_failed",
+                detail="AE retention daemon config unavailable",
+                status_code=503,
+            )
+
+    daemon_source_failed = build_app(
+        BrokenRetentionAutomationDaemonClient(
+            artifact_retention_batch_plans=artifact_client().artifact_retention_batch_plans,
+            artifact_retention_scheduled_job_collections=(
+                artifact_client().artifact_retention_scheduled_job_collections
+            ),
+            artifact_retention_history_collections=(
+                artifact_client().artifact_retention_history_collections
+            ),
+        )
+    ).get(
+        "/admin/v1/operations/artifact-retention/automation",
+        params={
+            **params,
+            "retention_days": "30",
+            "as_of": "2026-09-01T00:00:00Z",
+            "scan_limit": "20",
+            "max_delete_count": "1",
+            "checked_at": "2026-09-01T02:30:00Z",
+        },
+        headers=auth_headers(),
+    )
+
     assert unauthorized.status_code == 401
     assert invalid_service.status_code == 400
     assert missing_scope.status_code == 400
@@ -3375,6 +3442,10 @@ def test_artifact_retention_automation_operations_route_guardrails() -> None:
     assert source_failed.status_code == 503
     assert source_failed.json()["error_code"] == (
         "ag.ae_artifact_retention_automation_source_failed"
+    )
+    assert daemon_source_failed.status_code == 503
+    assert daemon_source_failed.json()["error_code"] == (
+        "ag.ae_artifact_retention_automation_daemon_failed"
     )
 
 

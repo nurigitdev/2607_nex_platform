@@ -439,6 +439,10 @@ Unified operations:
   evidence. The smoke drives AG routes, confirms AG used AE daemon source
   routes, and validates that lease, JobQueue, history, and artifact persistence
   effects remain AE-owned and metadata-only from AG.
+- Slice 0527 rolls scheduler daemon posture into the existing artifact
+  retention automation dashboard. Operators can see manual tick-once readiness,
+  daemon start blocking, lease repository availability, and JobQueue readiness
+  in the dashboard without giving AG direct write or enqueue authority.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

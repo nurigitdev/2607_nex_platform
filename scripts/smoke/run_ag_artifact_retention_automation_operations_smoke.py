@@ -115,6 +115,7 @@ def _smoke_source_client() -> InMemoryAeArtifactOperationsClient:
                 limit=20,
             ): _history()
         },
+        artifact_retention_scheduler_daemon_config=_daemon_config(),
     )
 
 
@@ -365,6 +366,112 @@ def _history() -> dict[str, Any]:
     }
 
 
+def _daemon_config() -> dict[str, Any]:
+    return {
+        "daemon_config_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_config.v1"
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "checked_at": CHECKED_AT,
+        "source_scheduler_config_schema_version": (
+            "ae_artifact_retention_scheduler_config.v1"
+        ),
+        "runtime": {
+            "scheduler_daemon_enabled": False,
+            "scheduler_daemon_started": False,
+            "daemon_auto_start_allowed": False,
+            "continuous_loop_enabled": False,
+            "continuous_loop_started": False,
+            "manual_tick_once_enabled": True,
+            "manual_tick_once_requires_lease": True,
+            "scheduler_tick_admission_enabled": True,
+            "operator_dispatch_admission_enabled": True,
+            "default_execution_mode": "DRY_RUN",
+            "job_queue_available": True,
+            "job_queue_backend": "service_job_queue",
+            "scheduler_tick_interval_seconds": 900,
+            "scheduler_tick_jitter_seconds": 60,
+            "scheduler_tick_lock_ttl_seconds": 120,
+            "scheduler_tick_stale_after_seconds": 900,
+            "scheduler_tick_max_jobs_per_tick": 1,
+            "scheduler_tick_batch_window_enforced": True,
+            "scheduler_tick_timezone": "Asia/Seoul",
+            "scheduler_tick_window_start": "02:00",
+            "scheduler_tick_window_end": "05:00",
+        },
+        "lease_repository": {
+            "required": True,
+            "available": True,
+            "backend": "sqlalchemy",
+            "lease_record_schema_version": (
+                "ae_artifact_retention_scheduler_lease_record.v1"
+            ),
+            "failure_code": None,
+        },
+        "supported_actions": [
+            {
+                "action": "status_probe",
+                "decision_status": "NOOP",
+                "requires_lease": False,
+                "runs_tick_once": False,
+                "starts_daemon": False,
+                "starts_continuous_loop": False,
+                "block_reason": None,
+            },
+            {
+                "action": "manual_tick_once",
+                "decision_status": "READY",
+                "requires_lease": True,
+                "runs_tick_once": True,
+                "starts_daemon": False,
+                "starts_continuous_loop": False,
+                "block_reason": None,
+            },
+            {
+                "action": "start_daemon",
+                "decision_status": "BLOCKED",
+                "requires_lease": False,
+                "runs_tick_once": False,
+                "starts_daemon": False,
+                "starts_continuous_loop": False,
+                "block_reason": "daemon_disabled_by_policy",
+            },
+            {
+                "action": "stop_daemon",
+                "decision_status": "NOOP",
+                "requires_lease": False,
+                "runs_tick_once": False,
+                "starts_daemon": False,
+                "starts_continuous_loop": False,
+                "block_reason": None,
+            },
+        ],
+        "guardrails": {
+            "metadata_only": True,
+            "manual_tick_once_only": True,
+            "lease_required_before_tick": True,
+            "daemon_auto_start_allowed": False,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "continuous_loop_allowed_before_lease": False,
+            "physical_delete_automation_enabled": False,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+    }
+
+
 def _auth_headers() -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-oa", audience="nex-ag")
     return {
@@ -382,6 +489,7 @@ def _smoke_checks(status_code: int, payload: Any) -> dict[str, bool]:
             "dispatch_available": False,
             "operator_attention": False,
             "approval_gate_visible": False,
+            "daemon_rollup_visible": False,
             "no_direct_ag_mutation": False,
             "metadata_only": False,
             "redacted": False,
@@ -392,6 +500,12 @@ def _smoke_checks(status_code: int, payload: Any) -> dict[str, bool]:
     guidance = payload.get("operator_guidance")
     if not isinstance(guidance, Mapping):
         guidance = {}
+    scheduler_daemon = payload.get("scheduler_daemon")
+    if not isinstance(scheduler_daemon, Mapping):
+        scheduler_daemon = {}
+    daemon_summary = scheduler_daemon.get("summary")
+    if not isinstance(daemon_summary, Mapping):
+        daemon_summary = {}
     return {
         "route_status_ok": status_code == 200,
         "schema_version": payload.get("projection_schema_version")
@@ -400,6 +514,13 @@ def _smoke_checks(status_code: int, payload: Any) -> dict[str, bool]:
         "operator_attention": summary.get("operator_attention_required") is True,
         "approval_gate_visible": summary.get("approval_blocked_count") == 1
         and summary.get("physical_delete_operator_approval_required") is True,
+        "daemon_rollup_visible": summary.get("daemon_manual_tick_once_available")
+        is True
+        and summary.get("daemon_start_daemon_available") is False
+        and summary.get("daemon_scheduler_daemon_started") is False
+        and daemon_summary.get("manual_tick_once_available") is True
+        and guidance.get("ae_daemon_config_route")
+        == "/api/v1/artifact-retention/scheduler-daemon-config",
         "no_direct_ag_mutation": guidance.get("ag_direct_database_write_allowed")
         is False
         and guidance.get("ag_direct_job_enqueue_allowed") is False,
@@ -444,6 +565,7 @@ def summary_line(evidence: Mapping[str, Any]) -> str:
         f"safety={summary.get('safety_status')} "
         f"scheduled_jobs={summary.get('scheduled_job_count')} "
         f"history={summary.get('history_count')} "
+        f"daemon_manual={summary.get('daemon_manual_tick_once_available')} "
         f"approval_blocked={summary.get('approval_blocked_count')}"
     )
     if failing_checks:

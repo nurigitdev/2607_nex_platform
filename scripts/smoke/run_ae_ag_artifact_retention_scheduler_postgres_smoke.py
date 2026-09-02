@@ -173,6 +173,18 @@ class AeTestClientArtifactOperationsClient:
         )
         return self._json_or_error(response)
 
+    def get_artifact_retention_scheduler_daemon_config(
+        self,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        response = self.client.get(
+            "/api/v1/artifact-retention/scheduler-daemon-config",
+            headers=self._headers(request_id=request_id, trace_id=trace_id),
+        )
+        return self._json_or_error(response)
+
     def dispatch_artifact_retention_scheduled_job(
         self,
         *,
@@ -578,6 +590,21 @@ def _execute_ae_ag_artifact_retention_scheduler_smoke(
                         "history_count": automation_projection["summary"][
                             "history_count"
                         ],
+                        "daemon_manual_tick_once_available": (
+                            automation_projection["summary"][
+                                "daemon_manual_tick_once_available"
+                            ]
+                        ),
+                        "daemon_start_daemon_available": (
+                            automation_projection["summary"][
+                                "daemon_start_daemon_available"
+                            ]
+                        ),
+                        "daemon_scheduler_daemon_started": (
+                            automation_projection["summary"][
+                                "daemon_scheduler_daemon_started"
+                            ]
+                        ),
                         "physical_delete_automation_enabled": (
                             automation_projection["summary"][
                                 "physical_delete_automation_enabled"
@@ -644,6 +671,12 @@ def _scheduler_checks(
     automation_guidance = automation_projection.get("operator_guidance")
     if not isinstance(automation_guidance, Mapping):
         automation_guidance = {}
+    automation_daemon = automation_projection.get("scheduler_daemon")
+    if not isinstance(automation_daemon, Mapping):
+        automation_daemon = {}
+    daemon_summary = automation_daemon.get("summary")
+    if not isinstance(daemon_summary, Mapping):
+        daemon_summary = {}
     return {
         "scheduler_config_route_ok": scheduler_config_response == 200,
         "scheduler_daemon_disabled": _scheduler_status(scheduler_config) == "DISABLED",
@@ -679,6 +712,16 @@ def _scheduler_checks(
         and automation_projection.get("projection_status") == "READY",
         "ag_automation_sees_queue": automation_summary.get("scheduled_job_count") == 1
         and automation_summary.get("queued_job_count") == 1,
+        "ag_automation_sees_daemon": automation_summary.get(
+            "daemon_scheduler_id"
+        )
+        is not None
+        and automation_summary.get("daemon_start_daemon_available") is False
+        and automation_summary.get("daemon_scheduler_daemon_started") is False
+        and automation_summary.get("daemon_continuous_loop_started") is False
+        and daemon_summary.get("scheduler_id") is not None
+        and automation_guidance.get("ae_daemon_config_route")
+        == "/api/v1/artifact-retention/scheduler-daemon-config",
         "ag_automation_keeps_execute_disabled": automation_summary.get(
             "physical_delete_automation_enabled"
         )

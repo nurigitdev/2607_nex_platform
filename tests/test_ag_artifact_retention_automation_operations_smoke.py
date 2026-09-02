@@ -17,6 +17,8 @@ def test_ag_artifact_retention_automation_operations_smoke_passes() -> None:
     assert evidence["response_status"] == 200
     assert evidence["summary"]["safety_status"] == "FAILED_ATTENTION"
     assert evidence["summary"]["approval_blocked_count"] == 1
+    assert evidence["summary"]["daemon_manual_tick_once_available"] is True
+    assert evidence["checks"]["daemon_rollup_visible"] is True
     assert all(evidence["checks"].values())
 
 
@@ -51,6 +53,7 @@ def test_ag_artifact_retention_automation_operations_smoke_redaction_guard() -> 
         "dispatch_available": False,
         "operator_attention": False,
         "approval_gate_visible": False,
+        "daemon_rollup_visible": False,
         "no_direct_ag_mutation": False,
         "metadata_only": False,
         "redacted": False,
@@ -67,6 +70,7 @@ def test_ag_artifact_retention_automation_operations_smoke_redaction_guard() -> 
     )
     assert malformed["schema_version"] is True
     assert malformed["dispatch_available"] is False
+    assert malformed["daemon_rollup_visible"] is False
     assert malformed["no_direct_ag_mutation"] is False
     assert "safety=None" in smoke.summary_line(
         {"status": "FAIL", "response_status": 500, "summary": "bad", "checks": {}}
