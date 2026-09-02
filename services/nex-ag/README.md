@@ -435,6 +435,10 @@ Unified operations:
   Operators must send `confirm_dispatch=true`; `start_daemon` and continuous
   loop actions remain blocked, and `run_worker=true` requires an additional
   `confirm_worker_run=true` guard.
+- Slice 0526 proves the guarded AG-to-AE daemon flow against PostgreSQL test
+  evidence. The smoke drives AG routes, confirms AG used AE daemon source
+  routes, and validates that lease, JobQueue, history, and artifact persistence
+  effects remain AE-owned and metadata-only from AG.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

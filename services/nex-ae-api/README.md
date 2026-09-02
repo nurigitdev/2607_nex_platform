@@ -666,3 +666,7 @@ Artifact library management:
 - Slice 0525 lets AG request AE's `manual_tick_once` control through a guarded
   operator route. AE still evaluates daemon readiness, lease availability,
   JobQueue dispatch, worker execution, and all retention persistence effects.
+- Slice 0526 adds protected PostgreSQL smoke evidence for that AG-to-AE path.
+  The smoke connects to the AE test database, seeds artifact rows through AE
+  routes, dispatches AG's guarded manual tick-once route, and reads back AE
+  lease, JobQueue, and retention-history state before cleanup.
