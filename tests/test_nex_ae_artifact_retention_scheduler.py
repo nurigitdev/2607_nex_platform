@@ -20,6 +20,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CONFIG_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CONTROL_PLAN_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_DISPATCH_RESULT_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LOOP_PLAN_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_CONFIG_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_RESULT_SCHEMA_VERSION,
     DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_STORE,
@@ -31,6 +32,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     build_default_artifact_retention_scheduler_lease_store,
     build_artifact_retention_scheduler_daemon_config,
     build_artifact_retention_scheduler_daemon_control_plan,
+    build_artifact_retention_scheduler_daemon_loop_plan,
     build_artifact_retention_scheduler_daemon_runtime_config,
     build_artifact_retention_scheduler_lease_decision,
     build_artifact_retention_scheduler_lease_record,
@@ -45,12 +47,14 @@ from nex_ae_api.artifact_retention_scheduler import (
     summarize_artifact_retention_scheduler_daemon_config,
     summarize_artifact_retention_scheduler_daemon_control_plan,
     summarize_artifact_retention_scheduler_daemon_dispatch_result,
+    summarize_artifact_retention_scheduler_daemon_loop_plan,
     summarize_artifact_retention_scheduler_daemon_runtime_config,
     summarize_artifact_retention_scheduler_lease_decision,
     summarize_artifact_retention_scheduler_tick_once_result,
     validate_artifact_retention_scheduler_daemon_config,
     validate_artifact_retention_scheduler_daemon_control_plan,
     validate_artifact_retention_scheduler_daemon_dispatch_result,
+    validate_artifact_retention_scheduler_daemon_loop_plan,
     validate_artifact_retention_scheduler_daemon_runtime_config,
     validate_artifact_retention_scheduler_lease_decision,
     validate_artifact_retention_scheduler_lease_record,
@@ -1359,6 +1363,331 @@ def test_artifact_retention_scheduler_daemon_runtime_config_validation_edges() -
         build_artifact_retention_scheduler_daemon_runtime_config(profile="prod")
     assert profile_exc.value.error_code == (
         "ae.artifact_retention_scheduler_daemon_runtime_config_invalid"
+    )
+
+
+def test_artifact_retention_scheduler_daemon_loop_plan_ready_without_side_effects() -> None:
+    queue = InMemoryJobQueue()
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+    runtime_config = build_artifact_retention_scheduler_daemon_runtime_config(
+        scheduler_config=scheduler_config,
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+    )
+    daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=scheduler_config,
+        lease_store=lease_store,
+        checked_at=READY_TICK_AT,
+    )
+
+    plan = build_artifact_retention_scheduler_daemon_loop_plan(
+        scheduler_config=scheduler_config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        requested_at=READY_TICK_AT,
+    )
+    summary = summarize_artifact_retention_scheduler_daemon_loop_plan(plan)
+    serialized = json.dumps(plan, ensure_ascii=False, sort_keys=True)
+
+    assert plan["daemon_loop_plan_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LOOP_PLAN_SCHEMA_VERSION
+    )
+    assert plan["decision_status"] == "READY"
+    assert plan["decision_reason"] is None
+    assert plan["execution_plan"] == {
+        "pure_planning_only": True,
+        "evaluates_batch_window": True,
+        "in_batch_window": True,
+        "acquires_lease": True,
+        "runs_tick_once": True,
+        "dispatches_job_queue": True,
+        "max_ticks_this_run": 1,
+        "starts_daemon": False,
+        "starts_continuous_loop": False,
+        "writes_history": False,
+        "physical_delete_enabled": False,
+    }
+    assert plan["metadata"]["decision_ready"] is True
+    assert plan["metadata"]["lease_acquired"] is False
+    assert plan["metadata"]["job_enqueued"] is False
+    assert summary == {
+        "scheduler_id": "ae-artifact-retention-scheduler-local-v1",
+        "decision_status": "READY",
+        "decision_reason": None,
+        "runs_tick_once": True,
+        "in_batch_window": True,
+        "lease_repository_available": True,
+        "job_queue_available": True,
+        "scheduler_daemon_started": False,
+        "continuous_loop_started": False,
+    }
+    assert validate_artifact_retention_scheduler_daemon_loop_plan(plan) == plan
+    assert lease_store.get("ae-artifact-retention-scheduler-local-v1") is None
+    assert queue.list_jobs() == []
+    assert "postgresql://" not in serialized
+    assert "/data/nex-platform" not in serialized
+    assert "nuri1004" not in serialized
+
+
+def test_artifact_retention_scheduler_daemon_loop_plan_decision_states() -> None:
+    queue = InMemoryJobQueue()
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+    ready_runtime = build_artifact_retention_scheduler_daemon_runtime_config(
+        scheduler_config=scheduler_config,
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+    )
+    ready_daemon = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=scheduler_config,
+        lease_store=lease_store,
+        checked_at=READY_TICK_AT,
+    )
+    disabled = build_artifact_retention_scheduler_daemon_loop_plan(
+        scheduler_config=scheduler_config,
+        requested_at=READY_TICK_AT,
+    )
+    opt_in_blocked = build_artifact_retention_scheduler_daemon_loop_plan(
+        scheduler_config=scheduler_config,
+        runtime_config=build_artifact_retention_scheduler_daemon_runtime_config(
+            scheduler_config=scheduler_config,
+            enabled=True,
+            explicit_opt_in=False,
+            checked_at=READY_TICK_AT,
+        ),
+        daemon_config=ready_daemon,
+        requested_at=READY_TICK_AT,
+    )
+    outside_window = build_artifact_retention_scheduler_daemon_loop_plan(
+        scheduler_config=scheduler_config,
+        runtime_config=ready_runtime,
+        daemon_config=ready_daemon,
+        requested_at=REQUESTED_AT,
+    )
+    stopped = build_artifact_retention_scheduler_daemon_loop_plan(
+        scheduler_config=scheduler_config,
+        runtime_config=ready_runtime,
+        daemon_config=ready_daemon,
+        requested_at=READY_TICK_AT,
+        stop_requested=True,
+    )
+    no_queue_runtime = build_artifact_retention_scheduler_daemon_runtime_config(
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+    )
+    no_queue = build_artifact_retention_scheduler_daemon_loop_plan(
+        runtime_config=no_queue_runtime,
+        daemon_config=build_artifact_retention_scheduler_daemon_config(
+            lease_store=lease_store,
+            checked_at=READY_TICK_AT,
+        ),
+        requested_at=READY_TICK_AT,
+    )
+    no_lease = build_artifact_retention_scheduler_daemon_loop_plan(
+        scheduler_config=scheduler_config,
+        runtime_config=ready_runtime,
+        daemon_config=build_artifact_retention_scheduler_daemon_config(
+            scheduler_config=scheduler_config,
+            lease_store=object(),
+            checked_at=READY_TICK_AT,
+        ),
+        requested_at=READY_TICK_AT,
+    )
+    tick_admission_disabled_runtime = {
+        **ready_runtime,
+        "runtime": {
+            **ready_runtime["runtime"],
+            "scheduler_tick_admission_enabled": False,
+        },
+    }
+    operator_admission_disabled_runtime = {
+        **ready_runtime,
+        "runtime": {
+            **ready_runtime["runtime"],
+            "operator_dispatch_admission_enabled": False,
+        },
+    }
+    tick_admission_disabled = build_artifact_retention_scheduler_daemon_loop_plan(
+        scheduler_config=scheduler_config,
+        runtime_config=tick_admission_disabled_runtime,
+        daemon_config=ready_daemon,
+        requested_at=READY_TICK_AT,
+    )
+    operator_admission_disabled = build_artifact_retention_scheduler_daemon_loop_plan(
+        scheduler_config=scheduler_config,
+        runtime_config=operator_admission_disabled_runtime,
+        daemon_config=ready_daemon,
+        requested_at=READY_TICK_AT,
+    )
+
+    assert disabled["decision_status"] == "DISABLED"
+    assert disabled["decision_reason"] == "runtime_disabled"
+    assert disabled["execution_plan"]["runs_tick_once"] is False
+    assert opt_in_blocked["decision_status"] == "BLOCKED"
+    assert opt_in_blocked["decision_reason"] == "explicit_opt_in_required"
+    assert outside_window["decision_status"] == "BLOCKED"
+    assert outside_window["decision_reason"] == "outside_batch_window"
+    assert outside_window["execution_plan"]["in_batch_window"] is False
+    assert stopped["decision_status"] == "NOOP"
+    assert stopped["decision_reason"] == "stop_requested"
+    assert no_queue["decision_reason"] == "job_queue_unavailable"
+    assert no_lease["decision_reason"] == "lease_repository_unavailable"
+    assert tick_admission_disabled["decision_reason"] == (
+        "scheduler_tick_admission_disabled"
+    )
+    assert operator_admission_disabled["decision_reason"] == (
+        "operator_dispatch_admission_disabled"
+    )
+    assert queue.list_jobs() == []
+
+
+def test_artifact_retention_scheduler_daemon_loop_plan_validation_edges() -> None:
+    queue = InMemoryJobQueue()
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+    runtime_config = build_artifact_retention_scheduler_daemon_runtime_config(
+        scheduler_config=scheduler_config,
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+    )
+    daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=scheduler_config,
+        lease_store=ArtifactRetentionSchedulerLeaseStore(),
+        checked_at=READY_TICK_AT,
+    )
+    plan = build_artifact_retention_scheduler_daemon_loop_plan(
+        scheduler_config=scheduler_config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        requested_at=READY_TICK_AT,
+    )
+    runtime_with_bad_timezone = {
+        **runtime_config,
+        "batch_window": {**runtime_config["batch_window"], "timezone": "Moon/Base"},
+    }
+    runtime_with_bad_time = {
+        **runtime_config,
+        "batch_window": {
+            **runtime_config["batch_window"],
+            "start_local_time": "25:00",
+        },
+    }
+    scoped_runtime = {**runtime_config, "scheduler_id": "other-scheduler"}
+
+    cases: tuple[tuple[Any, str, str], ...] = (
+        (
+            [],
+            "ae.artifact_retention_scheduler_daemon_loop_plan_invalid",
+            "object",
+        ),
+        (
+            {**plan, "daemon_loop_plan_schema_version": "wrong"},
+            "ae.artifact_retention_scheduler_daemon_loop_plan_schema_invalid",
+            "schema version",
+        ),
+        (
+            {**plan, "service_id": "nex-ag"},
+            "ae.artifact_retention_scheduler_daemon_loop_plan_invalid",
+            "service id",
+        ),
+        (
+            {**plan, "daemon_loop_plan_id": " "},
+            "ae.artifact_retention_scheduler_daemon_loop_plan_invalid",
+            "daemon_loop_plan_id",
+        ),
+        (
+            {**plan, "scheduler_id": " "},
+            "ae.artifact_retention_scheduler_daemon_loop_plan_invalid",
+            "scheduler_id",
+        ),
+        (
+            {**plan, "requested_at": "not-a-time"},
+            "ae.artifact_retention_timestamp_invalid",
+            "requested_at",
+        ),
+        (
+            {**plan, "stop_requested": "no"},
+            "ae.artifact_retention_scheduler_daemon_loop_plan_invalid",
+            "stop_requested",
+        ),
+        (
+            {**plan, "runtime_config": scoped_runtime},
+            "ae.artifact_retention_scheduler_daemon_loop_plan_invalid",
+            "scope",
+        ),
+        (
+            {**plan, "runtime_config": runtime_with_bad_timezone},
+            "ae.artifact_retention_scheduler_daemon_loop_plan_invalid",
+            "timezone",
+        ),
+        (
+            {**plan, "runtime_config": runtime_with_bad_time},
+            "ae.artifact_retention_scheduler_daemon_loop_plan_invalid",
+            "time",
+        ),
+        (
+            {**plan, "decision_status": "BLOCKED"},
+            "ae.artifact_retention_scheduler_daemon_loop_plan_invalid",
+            "decision",
+        ),
+        (
+            {**plan, "decision_reason": "outside_batch_window"},
+            "ae.artifact_retention_scheduler_daemon_loop_plan_invalid",
+            "decision reason",
+        ),
+        (
+            {**plan, "daemon_loop_plan_id": "wrong"},
+            "ae.artifact_retention_scheduler_daemon_loop_plan_invalid",
+            "plan id",
+        ),
+        (
+            {
+                **plan,
+                "execution_plan": {
+                    **plan["execution_plan"],
+                    "runs_tick_once": False,
+                },
+            },
+            "ae.artifact_retention_scheduler_daemon_loop_plan_invalid",
+            "execution plan",
+        ),
+        (
+            {**plan, "guardrails": {}},
+            "ae.artifact_retention_scheduler_daemon_loop_plan_invalid",
+            "guardrails",
+        ),
+        (
+            {**plan, "metadata": {**plan["metadata"], "job_enqueued": True}},
+            "ae.artifact_retention_scheduler_daemon_loop_plan_invalid",
+            "metadata",
+        ),
+        (
+            {**plan, "storage_ref": "ae://private"},
+            "ae.artifact_retention_scheduler_daemon_loop_plan_invalid",
+            "keys",
+        ),
+    )
+
+    for payload, error_code, detail in cases:
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_scheduler_daemon_loop_plan(payload)  # type: ignore[arg-type]
+        assert exc_info.value.error_code == error_code
+        assert detail in exc_info.value.detail
+
+    with pytest.raises(ArtifactHandoffError) as stop_exc:
+        build_artifact_retention_scheduler_daemon_loop_plan(
+            scheduler_config=scheduler_config,
+            runtime_config=runtime_config,
+            daemon_config=daemon_config,
+            requested_at=READY_TICK_AT,
+            stop_requested="yes",  # type: ignore[arg-type]
+        )
+    assert stop_exc.value.error_code == (
+        "ae.artifact_retention_scheduler_daemon_loop_plan_invalid"
     )
 
 

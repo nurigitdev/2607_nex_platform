@@ -694,3 +694,8 @@ Artifact library management:
   the config ready without starting the daemon or continuous loop. The config
   exposes interval, jitter, backoff, lease TTL, stale-window, and batch-window
   metadata while redacting database URLs, storage paths, and raw payloads.
+- Slice 0533 adds a pure scheduler daemon loop planner state machine. It can
+  report disabled, opt-in blocked, admission blocked, lease/queue blocked,
+  batch-window blocked, stop no-op, or ready-for-one-cycle decisions, but it
+  still performs no lease acquisition, JobQueue enqueue, worker execution,
+  history write, daemon start, or continuous loop start.
