@@ -734,3 +734,7 @@ Artifact library management:
 - Slice 0542 adds the AE scheduler daemon runtime state snapshot contract. The
   builder is metadata-only, validates lifecycle rules, never persists state, and
   never starts the continuous loop.
+- Slice 0543 adds a plan-only daemon CLI entrypoint and worktree wrapper. The
+  CLI validates runtime config/state and reports readiness, but bounded-loop
+  execution, JobQueue enqueue, worker execution, database writes, and physical
+  purge remain disabled until later S55 slices.
