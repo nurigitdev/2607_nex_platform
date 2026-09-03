@@ -719,3 +719,7 @@ Artifact library management:
   final `IDLE`, or pre-raise `ERROR` summaries, while emitter storage failures
   remain non-blocking and the protected PostgreSQL smoke now verifies the daemon
   row in `service_worker_heartbeats`.
+- Slice 0538 exposes a protected, read-only scheduler daemon runtime route for
+  AG operations projection. The route returns metadata-only heartbeat-store and
+  latest-heartbeat evidence, and the one-cycle PostgreSQL smoke now verifies the
+  route reads back the actual daemon heartbeat written to `nex_ae_test`.

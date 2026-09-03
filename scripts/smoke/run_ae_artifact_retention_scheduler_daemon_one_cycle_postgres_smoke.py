@@ -192,6 +192,7 @@ def _execute_ae_artifact_retention_scheduler_daemon_one_cycle_smoke(
                 app.state.nex_persistence = SimpleNamespace(
                     api_session_factory=session_factory,
                     job_queue=job_queue,
+                    worker_heartbeat_store=heartbeat_store,
                 )
                 cx_client = artifact_pg.FakeCxArtifactSourceClient(
                     suffix=suffix,
@@ -346,6 +347,16 @@ def _execute_ae_artifact_retention_scheduler_daemon_one_cycle_smoke(
                     SERVICE_ID,
                     daemon_worker_id,
                 )
+                daemon_runtime_response = client.get(
+                    "/api/v1/artifact-retention/scheduler-daemon-runtime",
+                    params={"checked_at": TICK_AT},
+                    headers=headers,
+                )
+                daemon_runtime = (
+                    daemon_runtime_response.json()
+                    if daemon_runtime_response.status_code == 200
+                    else {}
+                )
                 after = batch_plan_pg._db_observations(
                     engine,
                     tenant_id=tenant_id,
@@ -367,6 +378,8 @@ def _execute_ae_artifact_retention_scheduler_daemon_one_cycle_smoke(
                     lease_observation=lease_observation,
                     job_observation=job_observation,
                     daemon_heartbeat=daemon_heartbeat,
+                    daemon_runtime_response=daemon_runtime_response.status_code,
+                    daemon_runtime=daemon_runtime,
                     history_rows=history_rows,
                     before=before,
                     after=after,
@@ -523,6 +536,9 @@ def _execute_ae_artifact_retention_scheduler_daemon_one_cycle_smoke(
                         one_cycle_result=one_cycle_result,
                         daemon_heartbeat=daemon_heartbeat,
                     ),
+                    "daemon_runtime": _daemon_runtime_evidence(
+                        daemon_runtime=daemon_runtime,
+                    ),
                     "history": {
                         "row_count": len(history_rows),
                         "retention_execution_id": once_pg._history_execution_id(
@@ -603,6 +619,8 @@ def _scheduler_daemon_one_cycle_checks(
     lease_observation: Mapping[str, Any],
     job_observation: Mapping[str, Any],
     daemon_heartbeat: Mapping[str, Any] | None,
+    daemon_runtime_response: int,
+    daemon_runtime: Mapping[str, Any],
     history_rows: list[dict[str, Any]],
     before: Mapping[str, int],
     after: Mapping[str, int],
@@ -627,11 +645,14 @@ def _scheduler_daemon_one_cycle_checks(
     loop_plan = once_pg._mapping_value(one_cycle_result.get("loop_plan"))
     execution_plan = once_pg._mapping_value(one_cycle_result.get("execution_plan"))
     metadata = once_pg._mapping_value(one_cycle_result.get("metadata"))
+    stored_daemon_heartbeat = once_pg._mapping_value(daemon_heartbeat)
     daemon_heartbeat_results = [
         once_pg._mapping_value(item)
         for item in one_cycle_result.get("daemon_heartbeat_results", [])
         if isinstance(item, Mapping)
     ]
+    runtime_heartbeat = once_pg._mapping_value(daemon_runtime.get("heartbeat"))
+    runtime_metadata = once_pg._mapping_value(daemon_runtime.get("metadata"))
     return {
         "one_cycle_contract": one_cycle_result.get(
             "daemon_one_cycle_result_schema_version"
@@ -690,6 +711,17 @@ def _scheduler_daemon_one_cycle_checks(
             "loop_decision_status"
         )
         == "READY",
+        "daemon_runtime_route_observed": daemon_runtime_response == 200
+        and daemon_runtime.get("service_id") == SERVICE_ID
+        and daemon_runtime.get("worker_type")
+        == AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE
+        and daemon_runtime.get("heartbeat_count") == 1
+        and runtime_heartbeat.get("worker_id")
+        == stored_daemon_heartbeat.get("worker_id")
+        and runtime_heartbeat.get("status") == "IDLE"
+        and runtime_heartbeat.get("active_job_id") is None
+        and runtime_metadata.get("heartbeat_observed") is True
+        and runtime_metadata.get("heartbeat_store_available") is True,
         "one_cycle_execution_plan": execution_plan.get("runs_tick_once") is True
         and execution_plan.get("starts_daemon") is False
         and execution_plan.get("starts_continuous_loop") is False
@@ -755,6 +787,23 @@ def _daemon_heartbeat_evidence(
             "metadata_phase": heartbeat_metadata.get("phase"),
             "loop_decision_status": heartbeat_metadata.get("loop_decision_status"),
         },
+    }
+
+
+def _daemon_runtime_evidence(*, daemon_runtime: Mapping[str, Any]) -> dict[str, Any]:
+    heartbeat = once_pg._mapping_value(daemon_runtime.get("heartbeat"))
+    metadata = once_pg._mapping_value(daemon_runtime.get("metadata"))
+    heartbeat_store = once_pg._mapping_value(daemon_runtime.get("heartbeat_store"))
+    return {
+        "schema_version": daemon_runtime.get("runtime_observation_schema_version"),
+        "service_id": daemon_runtime.get("service_id"),
+        "worker_type": daemon_runtime.get("worker_type"),
+        "heartbeat_store_available": heartbeat_store.get("available") is True,
+        "heartbeat_count": daemon_runtime.get("heartbeat_count"),
+        "heartbeat_status": heartbeat.get("status"),
+        "heartbeat_worker_id": heartbeat.get("worker_id"),
+        "heartbeat_active_job_id": heartbeat.get("active_job_id"),
+        "heartbeat_observed": metadata.get("heartbeat_observed") is True,
     }
 
 
@@ -849,6 +898,7 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"lease={evidence['lease']['lease_status']} "
             f"job={evidence['job']['status']} "
             f"daemon_heartbeat={evidence['daemon_heartbeat']['stored']['status']} "
+            f"daemon_runtime={evidence['daemon_runtime']['heartbeat_status']} "
             f"history_rows={evidence['history']['row_count']} "
             f"live_db={str(evidence['live_db']).lower()} "
             f"cleanup_leases={evidence['cleanup']['lease_rows']}"

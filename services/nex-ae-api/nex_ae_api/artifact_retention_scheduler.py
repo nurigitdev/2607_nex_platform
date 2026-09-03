@@ -65,6 +65,9 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LOOP_PLAN_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ONE_CYCLE_RESULT_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_one_cycle_result.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_OBSERVATION_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_runtime_observation.v1"
+)
 
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_OWNER_ID = (
     "ae-artifact-retention-scheduler-manual-once"
@@ -1166,6 +1169,71 @@ def summarize_artifact_retention_scheduler_daemon_config(
         "lease_repository_available": validated["lease_repository"]["available"],
         "job_queue_available": validated["runtime"]["job_queue_available"],
     }
+
+
+def build_artifact_retention_scheduler_daemon_runtime_observation(
+    *,
+    scheduler_config: Mapping[str, Any] | None = None,
+    daemon_config: Mapping[str, Any] | None = None,
+    worker_heartbeat_store: Any | None = None,
+    checked_at: str | None = None,
+) -> dict[str, Any]:
+    config = validate_artifact_retention_scheduler_config(
+        dict(scheduler_config)
+        if scheduler_config is not None
+        else build_artifact_retention_scheduler_config()
+    )
+    daemon = validate_artifact_retention_scheduler_daemon_config(
+        dict(daemon_config)
+        if daemon_config is not None
+        else build_artifact_retention_scheduler_daemon_config(
+            scheduler_config=config,
+        )
+    )
+    checked = _scheduler_daemon_checked_at(
+        checked_at=checked_at,
+        scheduler_config=config,
+    )
+    heartbeat_store, heartbeats = _scheduler_daemon_heartbeat_store_observation(
+        worker_heartbeat_store
+    )
+    latest_heartbeat = _latest_scheduler_daemon_heartbeat(heartbeats)
+    observation = {
+        "runtime_observation_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_OBSERVATION_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": daemon["scheduler_id"],
+        "checked_at": checked,
+        "worker_type": AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
+        "heartbeat_store": heartbeat_store,
+        "heartbeat": _project_scheduler_daemon_runtime_heartbeat(latest_heartbeat),
+        "heartbeat_count": len(heartbeats),
+        "daemon_config_checked_at": daemon["checked_at"],
+        "guardrails": {
+            "metadata_only": True,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+            "heartbeat_observation_read_only": True,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "heartbeat_observed": latest_heartbeat is not None,
+            "heartbeat_store_available": heartbeat_store["available"] is True,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+    }
+    assert_artifact_retention_payload_safe(observation)
+    return observation
 
 
 def build_artifact_retention_scheduler_daemon_runtime_config(
@@ -5018,6 +5086,118 @@ def _scheduler_daemon_one_cycle_guardrails() -> dict[str, bool]:
         "tick_once_requires_ready_loop_plan": True,
         "daemon_heartbeat_optional": True,
         "daemon_heartbeat_failure_non_blocking": True,
+    }
+
+
+def _scheduler_daemon_heartbeat_store_observation(
+    worker_heartbeat_store: Any | None,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    if worker_heartbeat_store is None:
+        return (
+            {
+                "available": False,
+                "backend": "not_configured",
+                "failure_code": "heartbeat_store_not_configured",
+            },
+            [],
+        )
+    backend = worker_heartbeat_store.__class__.__name__
+    list_heartbeats = getattr(worker_heartbeat_store, "list_heartbeats", None)
+    if list_heartbeats is None:
+        return (
+            {
+                "available": False,
+                "backend": backend,
+                "failure_code": "heartbeat_store_invalid",
+            },
+            [],
+        )
+    try:
+        raw_heartbeats = list_heartbeats(
+            service_id="nex-ae-api",
+            worker_type=AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
+        )
+    except Exception:
+        return (
+            {
+                "available": False,
+                "backend": backend,
+                "failure_code": "heartbeat_store_unavailable",
+            },
+            [],
+        )
+    if not isinstance(raw_heartbeats, list):
+        return (
+            {
+                "available": False,
+                "backend": backend,
+                "failure_code": "heartbeat_store_invalid",
+            },
+            [],
+        )
+    return (
+        {"available": True, "backend": backend, "failure_code": None},
+        [dict(item) for item in raw_heartbeats if isinstance(item, Mapping)],
+    )
+
+
+def _latest_scheduler_daemon_heartbeat(
+    heartbeats: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    if not heartbeats:
+        return None
+    return sorted(
+        heartbeats,
+        key=lambda heartbeat: (
+            optional_text(heartbeat.get("last_seen_at")) or "",
+            optional_text(heartbeat.get("worker_id")) or "",
+        ),
+        reverse=True,
+    )[0]
+
+
+def _project_scheduler_daemon_runtime_heartbeat(
+    heartbeat: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(heartbeat, Mapping):
+        return None
+    return {
+        "heartbeat_schema_version": optional_text(
+            heartbeat.get("heartbeat_schema_version")
+        ),
+        "service_id": optional_text(heartbeat.get("service_id")),
+        "worker_id": optional_text(heartbeat.get("worker_id")),
+        "worker_type": optional_text(heartbeat.get("worker_type")),
+        "status": optional_text(heartbeat.get("status")),
+        "active_job_id": optional_text(heartbeat.get("active_job_id")),
+        "trace_id": optional_text(heartbeat.get("trace_id")),
+        "started_at": optional_text(heartbeat.get("started_at")),
+        "last_seen_at": optional_text(heartbeat.get("last_seen_at")),
+        "metadata": _scheduler_daemon_runtime_heartbeat_metadata(
+            heartbeat.get("metadata")
+        ),
+    }
+
+
+def _scheduler_daemon_runtime_heartbeat_metadata(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        "scheduler_id": optional_text(value.get("scheduler_id")),
+        "daemon_loop_plan_id": optional_text(value.get("daemon_loop_plan_id")),
+        "phase": optional_text(value.get("phase")),
+        "loop_decision_status": optional_text(value.get("loop_decision_status")),
+        "loop_decision_reason": optional_text(value.get("loop_decision_reason")),
+        "tick_once_result_status": optional_text(
+            value.get("tick_once_result_status")
+        ),
+        "tick_once_skip_reason": optional_text(value.get("tick_once_skip_reason")),
+        "one_cycle_only": value.get("one_cycle_only") is True,
+        "scheduler_daemon_started": value.get("scheduler_daemon_started") is True,
+        "continuous_loop_started": value.get("continuous_loop_started") is True,
+        "physical_delete_automation_enabled": (
+            value.get("physical_delete_automation_enabled") is True
+        ),
     }
 
 

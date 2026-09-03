@@ -869,6 +869,84 @@ def artifact_retention_scheduler_daemon_config_payload(
     }
 
 
+def artifact_retention_scheduler_daemon_runtime_payload(
+    *,
+    status: str = "BUSY",
+    active_job_id: str | None = "daemon-loop-plan-0538",
+    observed: bool = True,
+    heartbeat_store_available: bool = True,
+) -> dict[str, Any]:
+    heartbeat = None
+    if observed:
+        heartbeat = {
+            "heartbeat_schema_version": "worker_heartbeat.v1",
+            "service_id": "nex-ae-api",
+            "worker_id": "ae-retention-daemon-runtime-0538",
+            "worker_type": "ae.artifact_retention.scheduler_daemon",
+            "status": status,
+            "active_job_id": active_job_id,
+            "trace_id": TRACE_ID,
+            "started_at": "2026-09-01T02:30:00Z",
+            "last_seen_at": "2026-09-01T02:40:00Z",
+            "metadata": {
+                "scheduler_id": "ae-artifact-retention-scheduler",
+                "daemon_loop_plan_id": "daemon-loop-plan-0538",
+                "phase": "tick_once_running",
+                "loop_decision_status": "READY",
+                "loop_decision_reason": None,
+                "tick_once_result_status": None,
+                "tick_once_skip_reason": None,
+                "database_url": "DATABASE_URL_SHOULD_NOT_LEAK",
+                "one_cycle_only": True,
+                "scheduler_daemon_started": False,
+                "continuous_loop_started": False,
+                "physical_delete_automation_enabled": False,
+            },
+        }
+    return {
+        "runtime_observation_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_runtime_observation.v1"
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "checked_at": "2026-09-01T02:41:00Z",
+        "worker_type": "ae.artifact_retention.scheduler_daemon",
+        "heartbeat_store": {
+            "available": heartbeat_store_available,
+            "backend": (
+                "SqlAlchemyWorkerHeartbeatStore"
+                if heartbeat_store_available
+                else "not_configured"
+            ),
+            "failure_code": None if heartbeat_store_available else "unavailable",
+        },
+        "heartbeat": heartbeat,
+        "heartbeat_count": 1 if observed else 0,
+        "daemon_config_checked_at": "2026-09-01T02:30:00Z",
+        "guardrails": {
+            "metadata_only": True,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+            "heartbeat_observation_read_only": True,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "heartbeat_observed": observed,
+            "heartbeat_store_available": heartbeat_store_available,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+    }
+
+
 def artifact_retention_scheduler_daemon_dispatch_payload(
     *,
     action: str = "manual_tick_once",
@@ -1102,6 +1180,9 @@ def artifact_client() -> InMemoryAeArtifactOperationsClient:
         },
         artifact_retention_scheduler_daemon_config=(
             artifact_retention_scheduler_daemon_config_payload()
+        ),
+        artifact_retention_scheduler_daemon_runtime=(
+            artifact_retention_scheduler_daemon_runtime_payload()
         ),
         handoffs={HANDOFF_ID: handoff_record()},
         chat_artifact_refs={INTERACTION_ID: {"artifact_refs": [chat_artifact_ref()]}},
@@ -1675,6 +1756,7 @@ def test_artifact_operation_retention_daemon_projection_summarizes_and_redacts()
 
     projection = build_artifact_operation_retention_daemon_projection(
         daemon_config=artifact_retention_scheduler_daemon_config_payload(),
+        daemon_runtime=artifact_retention_scheduler_daemon_runtime_payload(),
         dispatch_response=dispatch,
         source_client=InMemoryAeArtifactOperationsClient(),
         request_trace_id=TRACE_ID,
@@ -1686,6 +1768,17 @@ def test_artifact_operation_retention_daemon_projection_summarizes_and_redacts()
     assert projection["operation_type"] == "ae_artifact_retention_scheduler_daemon"
     assert projection["projection_status"] == "READY"
     assert projection["daemon_config"]["runtime"]["scheduler_daemon_started"] is False
+    assert projection["daemon_runtime"]["runtime_projection_schema_version"] == (
+        artifact_operations.AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["daemon_runtime"]["heartbeat_store"]["available"] is True
+    assert projection["daemon_runtime"]["heartbeat"]["status"] == "BUSY"
+    assert projection["daemon_runtime"]["heartbeat"]["active_job_id"] == (
+        "daemon-loop-plan-0538"
+    )
+    assert projection["daemon_runtime"]["heartbeat"]["metadata"]["phase"] == (
+        "tick_once_running"
+    )
     assert projection["daemon_config"]["supported_actions"][1] == {
         "action": "manual_tick_once",
         "decision_status": "READY",
@@ -1732,11 +1825,25 @@ def test_artifact_operation_retention_daemon_projection_summarizes_and_redacts()
     assert projection["dispatch_response"]["start_stop_guardrail"] == {}
     assert projection["summary"] == summarize_artifact_retention_daemon_operations(
         daemon_config=projection["daemon_config"],
+        daemon_runtime=projection["daemon_runtime"],
         dispatch_response=projection["dispatch_response"],
     )
     assert projection["summary"]["manual_tick_once_available"] is True
     assert projection["summary"]["start_daemon_available"] is False
     assert projection["summary"]["last_dispatch_job_enqueued"] is True
+    assert projection["summary"]["runtime_observation_available"] is True
+    assert projection["summary"]["runtime_heartbeat_store_available"] is True
+    assert projection["summary"]["runtime_heartbeat_observed"] is True
+    assert projection["summary"]["runtime_heartbeat_status"] == "BUSY"
+    assert projection["summary"]["runtime_heartbeat_worker_id"] == (
+        "ae-retention-daemon-runtime-0538"
+    )
+    assert projection["summary"]["runtime_heartbeat_active_job_id"] == (
+        "daemon-loop-plan-0538"
+    )
+    assert projection["summary"]["runtime_heartbeat_last_seen_at"] == (
+        "2026-09-01T02:40:00Z"
+    )
     assert projection["summary"]["attention_status"] == "DISPATCH_ATTENTION"
     assert projection["summary"]["attention_level"] == "INFO"
     assert projection["summary"]["attention_reason_codes"] == [
@@ -1766,7 +1873,11 @@ def test_artifact_operation_retention_daemon_projection_summarizes_and_redacts()
         "metadata_only": True,
     }
     assert projection["source_status"]["daemon_config_loaded"] is True
+    assert projection["source_status"]["daemon_runtime_loaded"] is True
     assert projection["source_status"]["dispatch_response_loaded"] is True
+    assert projection["operator_guidance"]["ae_daemon_runtime_route"] == (
+        "/api/v1/artifact-retention/scheduler-daemon-runtime"
+    )
     assert projection["operator_guidance"]["manual_tick_once_requires_ae_api"] is True
     assert projection["operator_guidance"]["ag_direct_database_write_allowed"] is False
     assert "batch_plan" not in str(projection["dispatch_response"]["tick_once_result"])
@@ -1800,6 +1911,18 @@ def test_artifact_operation_retention_daemon_projection_handles_sparse_edges() -
     }
     projection = build_artifact_operation_retention_daemon_projection(
         daemon_config=config,
+        daemon_runtime={
+            "runtime_observation_schema_version": "runtime.v1",
+            "service_id": "nex-ae-api",
+            "scheduler_id": "ae-artifact-retention-scheduler",
+            "checked_at": "2026-09-01T02:41:00Z",
+            "worker_type": "ae.artifact_retention.scheduler_daemon",
+            "heartbeat_store": "bad",
+            "heartbeat": "bad",
+            "heartbeat_count": "bad",
+            "guardrails": "bad",
+            "metadata": "bad",
+        },
         dispatch_response=dispatch,
         source_errors=[
             AeArtifactOperationsError(
@@ -1814,6 +1937,11 @@ def test_artifact_operation_retention_daemon_projection_handles_sparse_edges() -
     assert projection["daemon_config"]["runtime"] == {}
     assert projection["daemon_config"]["lease_repository"] == {}
     assert projection["daemon_config"]["supported_actions"][0]["action"] is None
+    assert projection["daemon_runtime"]["heartbeat_store"] == {}
+    assert projection["daemon_runtime"]["heartbeat"] == {}
+    assert projection["daemon_runtime"]["heartbeat_count"] == 0
+    assert projection["daemon_runtime"]["guardrails"] == {}
+    assert projection["daemon_runtime"]["metadata"] == {}
     assert projection["dispatch_response"]["control_plan"]["action"] is None
     assert projection["dispatch_response"]["control_plan"]["requested_by"] == {}
     assert projection["dispatch_response"]["control_plan"]["execution_plan"] == {}
@@ -1844,6 +1972,7 @@ def test_artifact_operation_retention_daemon_projection_handles_sparse_edges() -
     assert projection["summary"]["attention_status"] == "DISPATCH_ATTENTION"
     assert projection["summary"]["operator_attention_required"] is True
     assert projection["source_status"]["daemon_config_loaded"] is False
+    assert projection["source_status"]["daemon_runtime_loaded"] is False
     assert projection["source_status"]["dispatch_response_loaded"] is False
     assert projection["source_status"]["errors"][0]["error_code"] == (
         "ag.optional_daemon_warning"
@@ -1856,6 +1985,28 @@ def test_artifact_operation_retention_daemon_projection_handles_sparse_edges() -
     )
     assert artifact_operations._project_retention_scheduler_daemon_guardrails([]) == {}
     assert artifact_operations._project_retention_scheduler_daemon_metadata([]) == {}
+    assert (
+        artifact_operations._project_retention_scheduler_daemon_runtime_observation([])
+        == {}
+    )
+    assert (
+        artifact_operations._project_retention_scheduler_daemon_heartbeat_store([])
+        == {}
+    )
+    assert artifact_operations._project_retention_scheduler_daemon_heartbeat([]) == {}
+    assert (
+        artifact_operations._project_retention_scheduler_daemon_heartbeat_metadata([])
+        == {}
+    )
+    assert (
+        artifact_operations._project_retention_scheduler_daemon_runtime_guardrails([])
+        == {}
+    )
+    assert (
+        artifact_operations._project_retention_scheduler_daemon_runtime_metadata([])
+        == {}
+    )
+    assert artifact_operations._normalized_daemon_heartbeat_status("BROKEN") is None
     assert (
         artifact_operations._project_retention_scheduler_daemon_dispatch_response([])
         == {}
@@ -3728,9 +3879,18 @@ def test_artifact_retention_scheduler_daemon_operations_route_returns_projection
     assert payload["summary"]["manual_tick_once_available"] is True
     assert payload["summary"]["start_daemon_available"] is False
     assert payload["summary"]["attention_status"] == "READY"
+    assert payload["summary"]["runtime_heartbeat_status"] == "BUSY"
+    assert payload["summary"]["runtime_heartbeat_observed"] is True
     assert payload["attention"]["attention_status"] == "READY"
+    assert payload["daemon_runtime"]["heartbeat"]["worker_id"] == (
+        "ae-retention-daemon-runtime-0538"
+    )
     assert payload["source_status"]["daemon_config_loaded"] is True
+    assert payload["source_status"]["daemon_runtime_loaded"] is True
     assert payload["operator_guidance"]["manual_tick_once_only"] is True
+    assert payload["operator_guidance"]["ae_daemon_runtime_route"] == (
+        "/api/v1/artifact-retention/scheduler-daemon-runtime"
+    )
     assert payload["operator_guidance"]["ag_direct_job_enqueue_allowed"] is False
     assert payload["request_trace_id"] == TRACE_ID
     assert filtered.status_code == 200
@@ -3766,12 +3926,44 @@ def test_artifact_retention_scheduler_daemon_operations_route_guardrails() -> No
         headers=auth_headers(),
     )
 
+    class BrokenDaemonRuntimeClient(InMemoryAeArtifactOperationsClient):
+        def __init__(self) -> None:
+            super().__init__(
+                artifact_retention_scheduler_daemon_config=(
+                    artifact_retention_scheduler_daemon_config_payload()
+                )
+            )
+
+        def get_artifact_retention_scheduler_daemon_runtime(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            raise AeArtifactOperationsError(
+                error_code="ag.ae_artifact_retention_daemon_runtime_failed",
+                detail="AE scheduler daemon runtime unavailable",
+                status_code=503,
+            )
+
+    runtime_failed = build_app(BrokenDaemonRuntimeClient()).get(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon",
+        headers=auth_headers(),
+    )
+
     assert unauthorized.status_code == 401
     assert invalid_service.status_code == 400
     assert invalid_service.json()["error_code"] == "ag.ae_artifact_service_invalid"
     assert source_failed.status_code == 503
     assert source_failed.json()["error_code"] == (
         "ag.ae_artifact_retention_daemon_source_failed"
+    )
+    assert runtime_failed.status_code == 200
+    runtime_payload = runtime_failed.json()
+    assert runtime_payload["projection_status"] == "DEGRADED"
+    assert runtime_payload["source_status"]["daemon_config_loaded"] is False
+    assert runtime_payload["source_status"]["daemon_runtime_loaded"] is False
+    assert runtime_payload["source_status"]["errors"][0]["error_code"] == (
+        "ag.ae_artifact_retention_daemon_runtime_warning"
     )
 
 
@@ -4431,6 +4623,11 @@ def test_http_artifact_operations_client_requests_expected_routes(
                 200,
                 artifact_retention_scheduler_daemon_config_payload(),
             )
+        if url.endswith("/api/v1/artifact-retention/scheduler-daemon-runtime"):
+            return FakeHttpResponse(
+                200,
+                artifact_retention_scheduler_daemon_runtime_payload(),
+            )
         if url.endswith(f"/api/v1/artifacts/{ARTIFACT_ID}"):
             return FakeHttpResponse(200, artifact_record(include_private=False))
         if url.endswith(f"/api/v1/artifact-handoffs/{HANDOFF_ID}"):
@@ -4532,6 +4729,10 @@ def test_http_artifact_operations_client_requests_expected_routes(
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     )
+    daemon_runtime = client.get_artifact_retention_scheduler_daemon_runtime(
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
     daemon_dispatch = client.dispatch_artifact_retention_scheduler_daemon_control(
         action="manual_tick_once",
         tenant_id="tenant-0409",
@@ -4566,6 +4767,7 @@ def test_http_artifact_operations_client_requests_expected_routes(
     assert daemon_config["daemon_config_schema_version"] == (
         "ae_artifact_retention_scheduler_daemon_config.v1"
     )
+    assert daemon_runtime["heartbeat"]["status"] == "BUSY"
     assert daemon_dispatch["dispatch_status"] == "DISPATCHED"
     assert calls[0]["url"] == f"http://ae.example.local/api/v1/artifacts/{ARTIFACT_ID}"
     assert calls[0]["headers"]["Authorization"] == "Bearer token-0409"
@@ -4628,10 +4830,15 @@ def test_http_artifact_operations_client_requests_expected_routes(
     assert calls[8]["params"] == {}
     assert calls[9]["url"] == (
         "http://ae.example.local/api/v1/artifact-retention/"
+        "scheduler-daemon-runtime"
+    )
+    assert calls[9]["params"] == {}
+    assert calls[10]["url"] == (
+        "http://ae.example.local/api/v1/artifact-retention/"
         "scheduler-daemon-controls"
     )
-    assert calls[9]["headers"]["Idempotency-Key"] == "daemon-idem-0522"
-    assert calls[9]["json"] == {
+    assert calls[10]["headers"]["Idempotency-Key"] == "daemon-idem-0522"
+    assert calls[10]["json"] == {
         "action": "manual_tick_once",
         "run_worker": True,
         "trace_id": TRACE_ID,

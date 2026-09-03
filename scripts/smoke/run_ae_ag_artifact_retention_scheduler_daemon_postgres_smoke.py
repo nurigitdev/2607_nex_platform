@@ -53,6 +53,7 @@ from nex_ag.artifact_operations import (  # noqa: E402
 from nex_runtime import (  # noqa: E402
     SERVICE_SPECS,
     SqlAlchemyJobQueue,
+    SqlAlchemyWorkerHeartbeatStore,
     build_engine,
     build_service_app,
     build_session_factory,
@@ -90,6 +91,7 @@ class AeTestClientSchedulerDaemonOperationsClient:
         self.client = client
         self.headers = dict(headers)
         self.daemon_config_statuses: list[int] = []
+        self.daemon_runtime_statuses: list[int] = []
         self.daemon_control_statuses: list[int] = []
         self.last_daemon_dispatch: dict[str, Any] = {}
 
@@ -104,6 +106,19 @@ class AeTestClientSchedulerDaemonOperationsClient:
             headers=self._headers(request_id=request_id, trace_id=trace_id),
         )
         self.daemon_config_statuses.append(response.status_code)
+        return self._json_or_error(response)
+
+    def get_artifact_retention_scheduler_daemon_runtime(
+        self,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        response = self.client.get(
+            "/api/v1/artifact-retention/scheduler-daemon-runtime",
+            headers=self._headers(request_id=request_id, trace_id=trace_id),
+        )
+        self.daemon_runtime_statuses.append(response.status_code)
         return self._json_or_error(response)
 
     def dispatch_artifact_retention_scheduler_daemon_control(
@@ -272,6 +287,9 @@ def _execute_ae_ag_artifact_retention_scheduler_daemon_smoke(
                 ae_app.state.nex_persistence = SimpleNamespace(
                     api_session_factory=session_factory,
                     job_queue=job_queue,
+                    worker_heartbeat_store=SqlAlchemyWorkerHeartbeatStore(
+                        session_factory
+                    ),
                 )
                 cx_client = artifact_pg.FakeCxArtifactSourceClient(
                     suffix=suffix,
@@ -488,6 +506,9 @@ def _execute_ae_ag_artifact_retention_scheduler_daemon_smoke(
                         "ag_daemon_config_status": config_response.status_code,
                         "ag_manual_tick_once_status": manual_response.status_code,
                         "ae_daemon_config_statuses": bridge.daemon_config_statuses,
+                        "ae_daemon_runtime_statuses": (
+                            bridge.daemon_runtime_statuses
+                        ),
                         "ae_daemon_control_statuses": bridge.daemon_control_statuses,
                     },
                     "ag_daemon_config": {
@@ -501,6 +522,18 @@ def _execute_ae_ag_artifact_retention_scheduler_daemon_smoke(
                         ],
                         "start_daemon_available": config_summary[
                             "start_daemon_available"
+                        ],
+                        "runtime_observation_available": config_summary[
+                            "runtime_observation_available"
+                        ],
+                        "runtime_heartbeat_store_available": config_summary[
+                            "runtime_heartbeat_store_available"
+                        ],
+                        "runtime_heartbeat_observed": config_summary[
+                            "runtime_heartbeat_observed"
+                        ],
+                        "runtime_heartbeat_status": config_summary[
+                            "runtime_heartbeat_status"
                         ],
                         "source_kind": config_projection["source_status"][
                             "source_kind"
@@ -521,6 +554,18 @@ def _execute_ae_ag_artifact_retention_scheduler_daemon_smoke(
                         ],
                         "tick_once_result_status": projected_tick_once[
                             "result_status"
+                        ],
+                        "runtime_observation_available": manual_summary[
+                            "runtime_observation_available"
+                        ],
+                        "runtime_heartbeat_store_available": manual_summary[
+                            "runtime_heartbeat_store_available"
+                        ],
+                        "runtime_heartbeat_observed": manual_summary[
+                            "runtime_heartbeat_observed"
+                        ],
+                        "runtime_heartbeat_status": manual_summary[
+                            "runtime_heartbeat_status"
                         ],
                     },
                     "ae_raw_dispatch": {
@@ -631,6 +676,11 @@ def _ag_scheduler_daemon_checks(
         "ag_config_manual_ready": config_summary.get("manual_tick_once_available")
         is True
         and config_summary.get("start_daemon_available") is False,
+        "ag_config_runtime_projected": config_summary.get(
+            "runtime_observation_available"
+        )
+        is True
+        and config_summary.get("runtime_heartbeat_store_available") is True,
         "ag_manual_tick_route_ok": manual_response == 200,
         "ag_manual_tick_projection_ready": manual_projection.get(
             "projection_schema_version"
@@ -643,7 +693,13 @@ def _ag_scheduler_daemon_checks(
         and manual_summary.get("last_dispatch_job_enqueued") is True
         and manual_summary.get("last_dispatch_tick_once_dispatched") is True
         and projected_tick_once.get("result_status") == "SUCCEEDED",
+        "ag_manual_tick_runtime_projected": manual_summary.get(
+            "runtime_observation_available"
+        )
+        is True
+        and manual_summary.get("runtime_heartbeat_store_available") is True,
         "ae_bridge_called_source_routes": bridge.daemon_config_statuses == [200, 200]
+        and bridge.daemon_runtime_statuses == [200, 200]
         and bridge.daemon_control_statuses == [200],
         "ae_raw_dispatch_contract": raw_dispatch.get(
             "daemon_dispatch_result_schema_version"
@@ -801,6 +857,10 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"dispatch={evidence['ag_manual_tick']['dispatch_status']} "
             f"tick_once={evidence['ag_manual_tick']['tick_once_result_status']} "
             f"job={evidence['job']['status']} "
+            f"runtime_store="
+            f"{str(evidence['ag_manual_tick']['runtime_heartbeat_store_available']).lower()} "
+            f"runtime_observed="
+            f"{str(evidence['ag_manual_tick']['runtime_heartbeat_observed']).lower()} "
             f"history_rows={evidence['history']['row_count']} "
             f"live_db={str(evidence['live_db']).lower()} "
             f"cleanup_leases={evidence['cleanup']['lease_rows']}"

@@ -476,6 +476,11 @@ Unified operations:
   AG can show metadata-only `start_daemon` blocked and `stop_daemon` no-op
   evidence, while daemon state mutation, stop signals, leases, JobQueue work,
   history writes, and continuous loop execution remain AE-owned and disabled.
+- Slice 0538 projects AE scheduler daemon runtime heartbeat observation into
+  AG operations. AG fetches AE's read-only runtime route, summarizes heartbeat
+  status and store availability for operators, treats runtime fetch failures as
+  degraded warning evidence, and still leaves all daemon runtime persistence and
+  execution authority in AE.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -113,6 +113,7 @@ def test_ae_ag_artifact_retention_scheduler_daemon_postgres_smoke_passes_sqlite_
         "ag_daemon_config_status": 200,
         "ag_manual_tick_once_status": 200,
         "ae_daemon_config_statuses": [200, 200],
+        "ae_daemon_runtime_statuses": [200, 200],
         "ae_daemon_control_statuses": [200],
     }
     assert evidence["ag_daemon_config"] == {
@@ -123,6 +124,10 @@ def test_ae_ag_artifact_retention_scheduler_daemon_postgres_smoke_passes_sqlite_
         "scheduler_id": "ae-artifact-retention-scheduler-local-v1",
         "manual_tick_once_available": True,
         "start_daemon_available": False,
+        "runtime_observation_available": True,
+        "runtime_heartbeat_store_available": True,
+        "runtime_heartbeat_observed": False,
+        "runtime_heartbeat_status": None,
         "source_kind": "ae_test_client",
     }
     assert evidence["ag_manual_tick"] == {
@@ -135,6 +140,10 @@ def test_ae_ag_artifact_retention_scheduler_daemon_postgres_smoke_passes_sqlite_
         "job_enqueued": True,
         "tick_once_dispatched": True,
         "tick_once_result_status": "SUCCEEDED",
+        "runtime_observation_available": True,
+        "runtime_heartbeat_store_available": True,
+        "runtime_heartbeat_observed": False,
+        "runtime_heartbeat_status": None,
     }
     assert evidence["ae_raw_dispatch"] == {
         "schema_version": (

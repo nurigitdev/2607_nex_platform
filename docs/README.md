@@ -641,6 +641,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0535`](slices/0535_ae_scheduler_daemon_start_stop_control_guardrail.md) | `S54-005` AE scheduler daemon start/stop control guardrail. |
 | [`Slice 0536`](slices/0536_ae_scheduler_daemon_one_cycle_postgresql_smoke.md) | `S54-006` AE scheduler daemon one-cycle PostgreSQL smoke evidence. |
 | [`Slice 0537`](slices/0537_ae_scheduler_daemon_runtime_heartbeat_observability.md) | `S54-007` AE scheduler daemon runtime heartbeat observability. |
+| [`Slice 0538`](slices/0538_ag_scheduler_daemon_runtime_operations_projection.md) | `S54-008` AG scheduler daemon runtime operations projection. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

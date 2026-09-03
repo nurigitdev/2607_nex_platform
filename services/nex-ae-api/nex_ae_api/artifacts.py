@@ -46,6 +46,7 @@ from nex_runtime import (
     run_worker_once,
     validate_common_job,
     validate_authorization_header,
+    worker_heartbeat_store_from_app,
 )
 
 
@@ -2068,6 +2069,42 @@ def register_artifact_handoff_routes(
         except ArtifactHandoffError as exc:
             return _artifact_problem_response(request, exc)
 
+    @app.get("/api/v1/artifact-retention/scheduler-daemon-runtime", response_model=None)
+    def get_artifact_retention_scheduler_daemon_runtime(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        checked_at: str | None = None,
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            from nex_ae_api.artifact_retention_scheduler import (
+                build_artifact_retention_scheduler_daemon_config,
+                build_artifact_retention_scheduler_daemon_runtime_observation,
+                build_default_artifact_retention_scheduler_lease_store,
+            )
+
+            scheduler_config = build_artifact_retention_scheduler_config(
+                job_queue=artifact_retention_job_queue
+            )
+            daemon_config = build_artifact_retention_scheduler_daemon_config(
+                scheduler_config=scheduler_config,
+                lease_store=(
+                    retention_scheduler_lease_store
+                    or build_default_artifact_retention_scheduler_lease_store(app)
+                ),
+            )
+            return build_artifact_retention_scheduler_daemon_runtime_observation(
+                scheduler_config=scheduler_config,
+                daemon_config=daemon_config,
+                worker_heartbeat_store=worker_heartbeat_store_from_app(app),
+                checked_at=checked_at,
+            )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
     @app.post("/api/v1/artifact-retention/scheduler-daemon-controls", response_model=None)
     def dispatch_artifact_retention_scheduler_daemon_control_route(
         payload: dict[str, Any],
@@ -3441,6 +3478,9 @@ def build_artifact_retention_scheduler_config(
             "scheduler_daemon_config": (
                 "/api/v1/artifact-retention/scheduler-daemon-config"
             ),
+            "scheduler_daemon_runtime": (
+                "/api/v1/artifact-retention/scheduler-daemon-runtime"
+            ),
             "scheduler_daemon_controls": (
                 "/api/v1/artifact-retention/scheduler-daemon-controls"
             ),
@@ -4132,6 +4172,9 @@ def _expected_artifact_retention_scheduler_api_routes() -> dict[str, str]:
         "scheduler_config": "/api/v1/artifact-retention/scheduler-config",
         "scheduler_daemon_config": (
             "/api/v1/artifact-retention/scheduler-daemon-config"
+        ),
+        "scheduler_daemon_runtime": (
+            "/api/v1/artifact-retention/scheduler-daemon-runtime"
         ),
         "scheduler_daemon_controls": (
             "/api/v1/artifact-retention/scheduler-daemon-controls"

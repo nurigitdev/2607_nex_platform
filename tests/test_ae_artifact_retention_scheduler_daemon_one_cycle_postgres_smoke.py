@@ -151,6 +151,19 @@ def test_ae_artifact_retention_scheduler_daemon_one_cycle_passes_sqlite_harness(
         "metadata_phase": "one_cycle_finished",
         "loop_decision_status": "READY",
     }
+    assert evidence["daemon_runtime"] == {
+        "schema_version": (
+            "ae_artifact_retention_scheduler_daemon_runtime_observation.v1"
+        ),
+        "service_id": "nex-ae-api",
+        "worker_type": smoke.AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
+        "heartbeat_store_available": True,
+        "heartbeat_count": 1,
+        "heartbeat_status": "IDLE",
+        "heartbeat_worker_id": evidence["daemon_heartbeat"]["worker_id"],
+        "heartbeat_active_job_id": None,
+        "heartbeat_observed": True,
+    }
     assert evidence["history"]["row_count"] == 1
     assert evidence["history"]["mode"] == "DRY_RUN"
     assert evidence["history"]["execution_status"] == "SUCCEEDED"
@@ -170,10 +183,12 @@ def test_ae_artifact_retention_scheduler_daemon_one_cycle_passes_sqlite_harness(
         "lease_rows": 1,
     }
     assert evidence["live_db"] is True
+    assert evidence["checks"]["daemon_runtime_route_observed"] is True
     assert smoke.summary_line(evidence).startswith(
         "ae_artifact_retention_scheduler_daemon_one_cycle_postgres_smoke=pass "
         "service=nex-ae-api"
     )
+    assert "daemon_runtime=IDLE" in smoke.summary_line(evidence)
     assert "secret-0536" not in serialized
     assert "/data/nex-platform" not in serialized
     assert "storage_ref" not in serialized

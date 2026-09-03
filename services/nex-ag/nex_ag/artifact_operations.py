@@ -53,7 +53,13 @@ AG_ARTIFACT_OPERATION_RETENTION_DAEMON_PROJECTION_SCHEMA_VERSION = (
 AG_ARTIFACT_OPERATION_RETENTION_DAEMON_ATTENTION_SCHEMA_VERSION = (
     "ag_artifact_operation_retention_daemon_attention.v1"
 )
+AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION = (
+    "ag_artifact_operation_retention_daemon_runtime_projection.v1"
+)
 AE_ARTIFACT_SOURCE_SERVICE_ID = "nex-ae-api"
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE = (
+    "ae.artifact_retention.scheduler_daemon"
+)
 NEX_AG_AE_ARTIFACT_BASE_URL_ENV = "NEX_AG_AE_ARTIFACT_BASE_URL"
 NEX_AG_AE_ARTIFACT_SERVICE_TOKEN_ENV = "NEX_AG_AE_ARTIFACT_SERVICE_TOKEN"
 NEX_AG_AE_ARTIFACT_TIMEOUT_SECONDS_ENV = "NEX_AG_AE_ARTIFACT_TIMEOUT_SECONDS"
@@ -171,6 +177,13 @@ class AeArtifactOperationsClient(Protocol):
         trace_id: str,
     ) -> dict[str, Any]: ...
 
+    def get_artifact_retention_scheduler_daemon_runtime(
+        self,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]: ...
+
     def dispatch_artifact_retention_scheduler_daemon_control(
         self,
         *,
@@ -245,6 +258,7 @@ class InMemoryAeArtifactOperationsClient:
         default_factory=dict
     )
     artifact_retention_scheduler_daemon_config: dict[str, Any] | None = None
+    artifact_retention_scheduler_daemon_runtime: dict[str, Any] | None = None
     artifact_retention_scheduler_daemon_dispatch_results: dict[
         str, dict[str, Any]
     ] = field(default_factory=dict)
@@ -473,6 +487,21 @@ class InMemoryAeArtifactOperationsClient:
         if self.artifact_retention_scheduler_daemon_config is not None:
             return deepcopy(self.artifact_retention_scheduler_daemon_config)
         return _empty_artifact_retention_scheduler_daemon_config_payload()
+
+    def get_artifact_retention_scheduler_daemon_runtime(
+        self,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        if self.artifact_retention_scheduler_daemon_runtime is not None:
+            return deepcopy(self.artifact_retention_scheduler_daemon_runtime)
+        return _empty_artifact_retention_scheduler_daemon_runtime_payload(
+            daemon_config=self.get_artifact_retention_scheduler_daemon_config(
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        )
 
     def dispatch_artifact_retention_scheduler_daemon_control(
         self,
@@ -715,6 +744,19 @@ class HttpAeArtifactOperationsClient:
     ) -> dict[str, Any]:
         payload = self._get_json(
             "/api/v1/artifact-retention/scheduler-daemon-config",
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+        return payload if isinstance(payload, dict) else {}
+
+    def get_artifact_retention_scheduler_daemon_runtime(
+        self,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        payload = self._get_json(
+            "/api/v1/artifact-retention/scheduler-daemon-runtime",
             request_id=request_id,
             trace_id=trace_id,
         )
@@ -1356,10 +1398,29 @@ def register_artifact_operation_routes(
             )
         except AeArtifactOperationsError as exc:
             return _artifact_operations_problem_response(request, exc)
+        runtime_errors: list[AeArtifactOperationsError] = []
+        try:
+            daemon_runtime = (
+                selected_client.get_artifact_retention_scheduler_daemon_runtime(
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+            )
+        except AeArtifactOperationsError as exc:
+            daemon_runtime = {}
+            runtime_errors.append(
+                AeArtifactOperationsError(
+                    error_code="ag.ae_artifact_retention_daemon_runtime_warning",
+                    detail=exc.detail,
+                    status_code=exc.status_code,
+                )
+            )
 
         return build_artifact_operation_retention_daemon_projection(
             daemon_config=daemon_config,
+            daemon_runtime=daemon_runtime,
             source_client=selected_client,
+            source_errors=runtime_errors,
             request_trace_id=trace_id,
         )
 
@@ -1448,11 +1509,30 @@ def register_artifact_operation_routes(
             )
         except AeArtifactOperationsError as exc:
             return _artifact_operations_problem_response(request, exc)
+        runtime_errors: list[AeArtifactOperationsError] = []
+        try:
+            daemon_runtime = (
+                selected_client.get_artifact_retention_scheduler_daemon_runtime(
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+            )
+        except AeArtifactOperationsError as exc:
+            daemon_runtime = {}
+            runtime_errors.append(
+                AeArtifactOperationsError(
+                    error_code="ag.ae_artifact_retention_daemon_runtime_warning",
+                    detail=exc.detail,
+                    status_code=exc.status_code,
+                )
+            )
 
         return build_artifact_operation_retention_daemon_projection(
             daemon_config=projected_config,
+            daemon_runtime=daemon_runtime,
             dispatch_response=dispatch_response,
             source_client=selected_client,
+            source_errors=runtime_errors,
             request_trace_id=trace_id,
         )
 
@@ -1871,12 +1951,16 @@ def build_artifact_operation_retention_automation_projection(
 def build_artifact_operation_retention_daemon_projection(
     *,
     daemon_config: Mapping[str, Any],
+    daemon_runtime: Mapping[str, Any] | None = None,
     dispatch_response: Mapping[str, Any] | None = None,
     source_client: AeArtifactOperationsClient | None = None,
     source_errors: list[AeArtifactOperationsError] | None = None,
     request_trace_id: str | None = None,
 ) -> dict[str, Any]:
     projected_config = _project_retention_scheduler_daemon_config(daemon_config)
+    projected_runtime = _project_retention_scheduler_daemon_runtime_observation(
+        daemon_runtime
+    )
     projected_dispatch = _project_retention_scheduler_daemon_dispatch_response(
         dispatch_response
     )
@@ -1894,15 +1978,18 @@ def build_artifact_operation_retention_daemon_projection(
         "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
         "operation_type": "ae_artifact_retention_scheduler_daemon",
         "daemon_config": projected_config,
+        "daemon_runtime": projected_runtime or None,
         "dispatch_response": projected_dispatch or None,
         "summary": summarize_artifact_retention_daemon_operations(
             daemon_config=projected_config,
+            daemon_runtime=projected_runtime,
             dispatch_response=projected_dispatch,
         ),
         "attention": daemon_attention,
         "source_status": _artifact_retention_daemon_source_status(
             source_client=source_client,
             config_loaded=bool(projected_config.get("scheduler_id")),
+            runtime_observation_loaded=bool(projected_runtime),
             dispatch_response_loaded=bool(projected_dispatch),
             errors=errors,
         ),
@@ -1914,6 +2001,9 @@ def build_artifact_operation_retention_daemon_projection(
             ),
             "ae_daemon_controls_route": (
                 "/api/v1/artifact-retention/scheduler-daemon-controls"
+            ),
+            "ae_daemon_runtime_route": (
+                "/api/v1/artifact-retention/scheduler-daemon-runtime"
             ),
             "manual_tick_once_only": True,
             "manual_tick_once_requires_ae_api": True,
@@ -2269,9 +2359,16 @@ def summarize_artifact_retention_scheduled_dispatch(
 def summarize_artifact_retention_daemon_operations(
     *,
     daemon_config: Mapping[str, Any],
+    daemon_runtime: Mapping[str, Any] | None = None,
     dispatch_response: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     runtime = _mapping_or_empty(daemon_config.get("runtime"))
+    runtime_observation = _mapping_or_empty(daemon_runtime)
+    runtime_heartbeat = _mapping_or_empty(runtime_observation.get("heartbeat"))
+    heartbeat_store = _mapping_or_empty(
+        runtime_observation.get("heartbeat_store")
+    )
+    runtime_metadata = _mapping_or_empty(runtime_observation.get("metadata"))
     lease_repository = _mapping_or_empty(daemon_config.get("lease_repository"))
     manual_action = _daemon_action_item(daemon_config, "manual_tick_once")
     start_action = _daemon_action_item(daemon_config, "start_daemon")
@@ -2307,6 +2404,23 @@ def summarize_artifact_retention_daemon_operations(
         "last_dispatch_job_enqueued": dispatch_metadata.get("job_enqueued") is True,
         "last_dispatch_tick_once_dispatched": (
             dispatch_metadata.get("tick_once_dispatched") is True
+        ),
+        "runtime_observation_available": bool(runtime_observation),
+        "runtime_heartbeat_store_available": (
+            heartbeat_store.get("available") is True
+        ),
+        "runtime_heartbeat_observed": (
+            runtime_metadata.get("heartbeat_observed") is True
+        ),
+        "runtime_heartbeat_status": _text_or_none(runtime_heartbeat.get("status")),
+        "runtime_heartbeat_worker_id": _text_or_none(
+            runtime_heartbeat.get("worker_id")
+        ),
+        "runtime_heartbeat_active_job_id": _text_or_none(
+            runtime_heartbeat.get("active_job_id")
+        ),
+        "runtime_heartbeat_last_seen_at": _text_or_none(
+            runtime_heartbeat.get("last_seen_at")
         ),
         "attention_status": attention["attention_status"],
         "attention_level": attention["attention_level"],
@@ -3152,6 +3266,155 @@ def _project_retention_scheduler_daemon_config(raw_value: Any) -> dict[str, Any]
     }
 
 
+def _project_retention_scheduler_daemon_runtime_observation(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "runtime_projection_schema_version": (
+            AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION
+        ),
+        "source_runtime_observation_schema_version": _text_or_none(
+            raw_value.get("runtime_observation_schema_version")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "checked_at": _text_or_none(raw_value.get("checked_at")),
+        "worker_type": _text_or_none(raw_value.get("worker_type")),
+        "heartbeat_store": _project_retention_scheduler_daemon_heartbeat_store(
+            raw_value.get("heartbeat_store")
+        ),
+        "heartbeat": _project_retention_scheduler_daemon_heartbeat(
+            raw_value.get("heartbeat")
+        ),
+        "heartbeat_count": _int_or_zero(raw_value.get("heartbeat_count")),
+        "daemon_config_checked_at": _text_or_none(
+            raw_value.get("daemon_config_checked_at")
+        ),
+        "guardrails": _project_retention_scheduler_daemon_runtime_guardrails(
+            raw_value.get("guardrails")
+        ),
+        "metadata": _project_retention_scheduler_daemon_runtime_metadata(
+            raw_value.get("metadata")
+        ),
+    }
+
+
+def _project_retention_scheduler_daemon_heartbeat_store(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "available": raw_value.get("available") is True,
+        "backend": _text_or_none(raw_value.get("backend")),
+        "failure_code": _text_or_none(raw_value.get("failure_code")),
+    }
+
+
+def _project_retention_scheduler_daemon_heartbeat(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "heartbeat_schema_version": _text_or_none(
+            raw_value.get("heartbeat_schema_version")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "worker_id": _text_or_none(raw_value.get("worker_id")),
+        "worker_type": _text_or_none(raw_value.get("worker_type")),
+        "status": _normalized_daemon_heartbeat_status(raw_value.get("status")),
+        "active_job_id": _text_or_none(raw_value.get("active_job_id")),
+        "trace_id": _text_or_none(raw_value.get("trace_id")),
+        "started_at": _text_or_none(raw_value.get("started_at")),
+        "last_seen_at": _text_or_none(raw_value.get("last_seen_at")),
+        "metadata": _project_retention_scheduler_daemon_heartbeat_metadata(
+            raw_value.get("metadata")
+        ),
+    }
+
+
+def _project_retention_scheduler_daemon_heartbeat_metadata(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "daemon_loop_plan_id": _text_or_none(raw_value.get("daemon_loop_plan_id")),
+        "phase": _text_or_none(raw_value.get("phase")),
+        "loop_decision_status": _text_or_none(
+            raw_value.get("loop_decision_status")
+        ),
+        "loop_decision_reason": _text_or_none(raw_value.get("loop_decision_reason")),
+        "tick_once_result_status": _text_or_none(
+            raw_value.get("tick_once_result_status")
+        ),
+        "tick_once_skip_reason": _text_or_none(raw_value.get("tick_once_skip_reason")),
+        "one_cycle_only": raw_value.get("one_cycle_only") is True,
+        "scheduler_daemon_started": raw_value.get("scheduler_daemon_started") is True,
+        "continuous_loop_started": raw_value.get("continuous_loop_started") is True,
+        "physical_delete_automation_enabled": (
+            raw_value.get("physical_delete_automation_enabled") is True
+        ),
+    }
+
+
+def _project_retention_scheduler_daemon_runtime_guardrails(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return _select_mapping(
+        raw_value,
+        (
+            "metadata_only",
+            "ag_direct_database_write_allowed",
+            "ag_direct_job_enqueue_allowed",
+            "scheduler_daemon_started",
+            "continuous_loop_started",
+            "physical_delete_automation_enabled",
+            "heartbeat_observation_read_only",
+        ),
+    )
+
+
+def _project_retention_scheduler_daemon_runtime_metadata(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "metadata_only": raw_value.get("metadata_only") is True,
+        "heartbeat_observed": raw_value.get("heartbeat_observed") is True,
+        "heartbeat_store_available": (
+            raw_value.get("heartbeat_store_available") is True
+        ),
+        "persistence_endpoint_included": (
+            raw_value.get("persistence_endpoint_included") is True
+            or raw_value.get("database_url_included") is True
+        ),
+        "storage_locator_included": (
+            raw_value.get("storage_locator_included") is True
+            or raw_value.get("storage_path_included") is True
+            or raw_value.get("storage_ref_included") is True
+        ),
+        "artifact_payload_included": (
+            raw_value.get("artifact_payload_included") is True
+            or raw_value.get("raw_artifact_payload_included") is True
+        ),
+        "execution_payload_included": (
+            raw_value.get("execution_payload_included") is True
+            or raw_value.get("raw_execution_payload_included") is True
+        ),
+        "scheduler_daemon_started": raw_value.get("scheduler_daemon_started") is True,
+        "continuous_loop_started": raw_value.get("continuous_loop_started") is True,
+        "physical_delete_automation_enabled": (
+            raw_value.get("physical_delete_automation_enabled") is True
+        ),
+    }
+
+
 def _project_retention_scheduler_daemon_runtime(raw_value: Any) -> dict[str, Any]:
     if not isinstance(raw_value, Mapping):
         return {}
@@ -3796,6 +4059,7 @@ def _artifact_retention_daemon_source_status(
     source_client: AeArtifactOperationsClient | None,
     config_loaded: bool,
     dispatch_response_loaded: bool,
+    runtime_observation_loaded: bool,
     errors: list[AeArtifactOperationsError],
 ) -> dict[str, Any]:
     status = "DEGRADED" if errors else "READY"
@@ -3805,6 +4069,7 @@ def _artifact_retention_daemon_source_status(
         "source_kind": getattr(source_client, "source_kind", "provided"),
         "base_url": getattr(source_client, "base_url", None),
         "daemon_config_loaded": config_loaded and not errors,
+        "daemon_runtime_loaded": runtime_observation_loaded and not errors,
         "dispatch_response_loaded": dispatch_response_loaded and not errors,
         "errors": [
             {
@@ -4969,6 +5234,50 @@ def _empty_artifact_retention_scheduler_daemon_config_payload() -> dict[str, Any
     }
 
 
+def _empty_artifact_retention_scheduler_daemon_runtime_payload(
+    *,
+    daemon_config: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "runtime_observation_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_runtime_observation.v1"
+        ),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "scheduler_id": _text_or_none(daemon_config.get("scheduler_id")),
+        "checked_at": _text_or_none(daemon_config.get("checked_at")),
+        "worker_type": AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
+        "heartbeat_store": {
+            "available": False,
+            "backend": "not_configured",
+            "failure_code": "heartbeat_not_observed",
+        },
+        "heartbeat": None,
+        "heartbeat_count": 0,
+        "daemon_config_checked_at": _text_or_none(daemon_config.get("checked_at")),
+        "guardrails": {
+            "metadata_only": True,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+            "heartbeat_observation_read_only": True,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "heartbeat_observed": False,
+            "heartbeat_store_available": False,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+    }
+
+
 def _empty_artifact_retention_scheduler_daemon_actions(
     *,
     runtime: Mapping[str, Any],
@@ -5612,6 +5921,13 @@ def _owner_scope(raw_value: Any) -> dict[str, str | None]:
         "user_id": _text_or_none(raw_value.get("user_id")),
         "actor_type": _text_or_none(raw_value.get("actor_type")),
     }
+
+
+def _normalized_daemon_heartbeat_status(raw_value: Any) -> str | None:
+    value = _text_or_none(raw_value)
+    if value in {"STARTING", "BUSY", "IDLE", "ERROR"}:
+        return value
+    return None
 
 
 def _select_mapping(raw_value: Any, allowed_keys: tuple[str, ...]) -> dict[str, Any]:

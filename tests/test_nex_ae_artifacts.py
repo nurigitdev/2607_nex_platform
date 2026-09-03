@@ -17,7 +17,11 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import nex_ae_api.artifacts as ae_artifacts
-from nex_ae_api.artifact_retention_scheduler import ArtifactRetentionSchedulerLeaseStore
+from nex_ae_api.artifact_retention_scheduler import (
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_OBSERVATION_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
+    ArtifactRetentionSchedulerLeaseStore,
+)
 from nex_ae_api.artifacts import (
     ArtifactHandoffError,
     ArtifactHandoffStore,
@@ -330,6 +334,7 @@ def build_client_with_artifact_store(
     retention_history_store: ArtifactRetentionExecutionHistoryStore | None = None,
     retention_scheduler_lease_store: ArtifactRetentionSchedulerLeaseStore | None = None,
     job_queue: Any | None = None,
+    worker_heartbeat_store: InMemoryWorkerHeartbeatStore | None = None,
 ) -> tuple[
     TestClient,
     ArtifactHandoffStore,
@@ -337,6 +342,10 @@ def build_client_with_artifact_store(
     FakeCxArtifactSourceClient,
 ]:
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    if worker_heartbeat_store is not None:
+        app.state.nex_persistence = SimpleNamespace(
+            worker_heartbeat_store=worker_heartbeat_store
+        )
     store = ArtifactHandoffStore()
     artifact_store = ArtifactRecordStore()
     client = cx_client or FakeCxArtifactSourceClient()
@@ -6196,6 +6205,9 @@ def test_artifact_retention_scheduler_config_route_returns_runtime_surface() -> 
     assert payload["api_routes"]["scheduler_daemon_config"] == (
         "/api/v1/artifact-retention/scheduler-daemon-config"
     )
+    assert payload["api_routes"]["scheduler_daemon_runtime"] == (
+        "/api/v1/artifact-retention/scheduler-daemon-runtime"
+    )
     assert payload["api_routes"]["scheduler_daemon_controls"] == (
         "/api/v1/artifact-retention/scheduler-daemon-controls"
     )
@@ -6284,6 +6296,101 @@ def test_artifact_retention_scheduler_daemon_routes_surface_control_dispatch() -
     )
     assert "postgresql://" not in serialized
     assert "/data/nex-platform" not in serialized
+
+
+def test_artifact_retention_scheduler_daemon_runtime_route_observes_heartbeat() -> None:
+    queue = InMemoryJobQueue()
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_emitter = WorkerHeartbeatEmitter(
+        service_id="nex-ae-api",
+        worker_id="ae-retention-daemon-route-0538",
+        worker_type=AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
+        store=heartbeat_store,
+        started_at="2026-09-01T02:30:00Z",
+    )
+    heartbeat_emitter.safe_emit(
+        status="BUSY",
+        active_job_id="daemon-loop-plan-0538",
+        trace_id=TRACE_ID,
+        observed_at="2026-09-01T02:40:00Z",
+        metadata={
+            "scheduler_id": "ae-artifact-retention-scheduler-local-v1",
+            "daemon_loop_plan_id": "daemon-loop-plan-0538",
+            "phase": "tick_once_running",
+            "loop_decision_status": "READY",
+            "database_url": "DATABASE_URL_SHOULD_NOT_LEAK",
+            "one_cycle_only": True,
+            "scheduler_daemon_started": False,
+            "continuous_loop_started": False,
+            "physical_delete_automation_enabled": False,
+        },
+    )
+    client, _, _, _ = build_client_with_artifact_store(
+        job_queue=queue,
+        worker_heartbeat_store=heartbeat_store,
+    )
+
+    response = client.get(
+        "/api/v1/artifact-retention/scheduler-daemon-runtime",
+        params={"checked_at": "2026-09-01T02:41:00Z"},
+        headers=auth_headers(),
+    )
+    unauthorized = client.get("/api/v1/artifact-retention/scheduler-daemon-runtime")
+    invalid_checked_at = client.get(
+        "/api/v1/artifact-retention/scheduler-daemon-runtime",
+        params={"checked_at": "bad"},
+        headers=auth_headers(),
+    )
+    payload = response.json()
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+    assert response.status_code == 200
+    assert payload["runtime_observation_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_OBSERVATION_SCHEMA_VERSION
+    )
+    assert payload["service_id"] == "nex-ae-api"
+    assert payload["worker_type"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE
+    )
+    assert payload["checked_at"] == "2026-09-01T02:41:00Z"
+    assert payload["heartbeat_store"] == {
+        "available": True,
+        "backend": "InMemoryWorkerHeartbeatStore",
+        "failure_code": None,
+    }
+    assert payload["heartbeat_count"] == 1
+    assert payload["heartbeat"]["worker_id"] == "ae-retention-daemon-route-0538"
+    assert payload["heartbeat"]["status"] == "BUSY"
+    assert payload["heartbeat"]["active_job_id"] == "daemon-loop-plan-0538"
+    assert payload["heartbeat"]["metadata"]["phase"] == "tick_once_running"
+    assert payload["heartbeat"]["metadata"]["loop_decision_status"] == "READY"
+    assert payload["heartbeat"]["metadata"]["one_cycle_only"] is True
+    assert payload["metadata"]["heartbeat_observed"] is True
+    assert payload["guardrails"]["heartbeat_observation_read_only"] is True
+    assert unauthorized.status_code == 401
+    assert invalid_checked_at.status_code == 422
+    assert "DATABASE_URL_SHOULD_NOT_LEAK" not in serialized
+    assert "postgresql://" not in serialized
+    assert "/data/nex-platform" not in serialized
+
+
+def test_artifact_retention_scheduler_daemon_runtime_route_handles_empty_store() -> None:
+    client, _, _, _ = build_client_with_artifact_store(
+        job_queue=InMemoryJobQueue(),
+        worker_heartbeat_store=InMemoryWorkerHeartbeatStore(),
+    )
+
+    response = client.get(
+        "/api/v1/artifact-retention/scheduler-daemon-runtime",
+        headers=auth_headers(),
+    )
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["heartbeat"] is None
+    assert payload["heartbeat_count"] == 0
+    assert payload["metadata"]["heartbeat_observed"] is False
+    assert payload["metadata"]["heartbeat_store_available"] is True
 
 
 def test_artifact_retention_scheduled_job_routes_enqueue_and_list() -> None:
