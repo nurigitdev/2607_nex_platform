@@ -503,6 +503,10 @@ Unified operations:
 - Slice 0549 hardens the protected AE/AG daemon PostgreSQL smoke so it writes a
   DB-backed AE daemon heartbeat, reads it through the AG operations route, and
   verifies lifecycle `RUNNING` projection plus cleanup against the AE test DB.
+- Slice 0550 closes S55 by adding a default quality-gate closure audit for the
+  AE daemon process/lifecycle boundary. AG remains read-only and metadata-only
+  for lifecycle projection, while AE retains daemon process ownership,
+  persistence writes, JobQueue admission, and physical purge authority.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
