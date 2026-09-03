@@ -746,3 +746,8 @@ Artifact library management:
   adapter. The smoke runs two explicit-opt-in cycles against the AE test DB,
   reads back lease, JobQueue, retention-history, and daemon heartbeat state, and
   cleans up seeded rows afterward.
+- Slice 0546 adds the graceful shutdown transition contract. `STARTING`,
+  `RUNNING`, and `ERROR` snapshots project a safe `STOPPING` next state, while
+  already stopping, stopped, or disabled snapshots remain no-op metadata-only
+  transitions with no process signal, JobQueue enqueue, worker run, DB write, or
+  physical purge.

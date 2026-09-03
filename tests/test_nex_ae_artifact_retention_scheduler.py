@@ -29,6 +29,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ONE_CYCLE_RESULT_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_CONFIG_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_STATE_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SHUTDOWN_TRANSITION_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_START_STOP_GUARDRAIL_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
     AE_ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_RESULT_SCHEMA_VERSION,
@@ -44,6 +45,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     build_artifact_retention_scheduler_daemon_loop_plan,
     build_artifact_retention_scheduler_daemon_runtime_config,
     build_artifact_retention_scheduler_daemon_runtime_state,
+    build_artifact_retention_scheduler_daemon_shutdown_transition,
     build_artifact_retention_scheduler_daemon_start_stop_guardrail,
     build_artifact_retention_scheduler_lease_decision,
     build_artifact_retention_scheduler_lease_record,
@@ -65,6 +67,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     summarize_artifact_retention_scheduler_daemon_loop_plan,
     summarize_artifact_retention_scheduler_daemon_runtime_config,
     summarize_artifact_retention_scheduler_daemon_runtime_state,
+    summarize_artifact_retention_scheduler_daemon_shutdown_transition,
     summarize_artifact_retention_scheduler_daemon_start_stop_guardrail,
     summarize_artifact_retention_scheduler_lease_decision,
     summarize_artifact_retention_scheduler_tick_once_result,
@@ -76,6 +79,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     validate_artifact_retention_scheduler_daemon_one_cycle_result,
     validate_artifact_retention_scheduler_daemon_runtime_config,
     validate_artifact_retention_scheduler_daemon_runtime_state,
+    validate_artifact_retention_scheduler_daemon_shutdown_transition,
     validate_artifact_retention_scheduler_daemon_start_stop_guardrail,
     validate_artifact_retention_scheduler_lease_decision,
     validate_artifact_retention_scheduler_lease_record,
@@ -3304,6 +3308,356 @@ def test_artifact_retention_scheduler_daemon_bounded_loop_validation_edges() -> 
         "ae.artifact_retention_scheduler_daemon_bounded_loop_result_invalid"
     )
     assert "trace_id" in trace_exc.value.detail
+
+
+def test_artifact_retention_scheduler_daemon_shutdown_transition_running_state() -> None:
+    queue = InMemoryJobQueue()
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+    runtime_config = build_artifact_retention_scheduler_daemon_runtime_config(
+        scheduler_config=scheduler_config,
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+    )
+    daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=scheduler_config,
+        lease_store=ArtifactRetentionSchedulerLeaseStore(),
+        checked_at=READY_TICK_AT,
+    )
+    current_state = build_artifact_retention_scheduler_daemon_runtime_state(
+        scheduler_config=scheduler_config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        daemon_instance_id="ae-daemon-shutdown-0546",
+        lifecycle_status="RUNNING",
+        lifecycle_reason=None,
+        observed_at=READY_TICK_AT,
+        next_tick_at="2026-08-31T17:32:00Z",
+        cycle_count=1,
+        heartbeat_worker_id="ae-retention-daemon-0546",
+    )
+
+    transition = build_artifact_retention_scheduler_daemon_shutdown_transition(
+        current_state=current_state,
+        requested_at="2026-08-31T17:31:00Z",
+        requested_by={
+            "actor_type": "operator",
+            "actor_id": "ag-console",
+            "request_id": REQUEST_ID,
+        },
+        reason="operator requested graceful shutdown",
+    )
+    summary = summarize_artifact_retention_scheduler_daemon_shutdown_transition(
+        transition
+    )
+    serialized = json.dumps(transition, ensure_ascii=False, sort_keys=True)
+
+    assert transition["daemon_shutdown_transition_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SHUTDOWN_TRANSITION_SCHEMA_VERSION
+    )
+    assert transition["decision_status"] == "READY"
+    assert transition["decision_reason"] == "stop_requested"
+    assert transition["previous_state"]["lifecycle_status"] == "RUNNING"
+    assert transition["next_state"]["lifecycle_status"] == "STOPPING"
+    assert transition["next_state"]["lifecycle_reason"] == "stop_requested"
+    assert transition["next_state"]["stop_requested"] is True
+    assert transition["next_state"]["shutdown_requested_at"] == (
+        "2026-08-31T17:31:00Z"
+    )
+    assert transition["next_state"]["next_tick_at"] is None
+    assert transition["next_state"]["cycle_count"] == 1
+    assert transition["next_state"]["heartbeat_worker_id"] == (
+        "ae-retention-daemon-0546"
+    )
+    assert transition["execution_plan"]["bounded_loop_should_stop_before_next_cycle"]
+    assert transition["execution_plan"]["runs_tick_once"] is False
+    assert transition["guardrails"]["runtime_state_mutated"] is False
+    assert transition["guardrails"]["database_write_performed"] is False
+    assert transition["metadata"]["from_running"] is True
+    assert transition["metadata"]["to_stopping"] is True
+    assert transition["metadata"]["shutdown_requested"] is True
+    assert summary == {
+        "scheduler_id": "ae-artifact-retention-scheduler-local-v1",
+        "daemon_instance_id": "ae-daemon-shutdown-0546",
+        "requested_at": "2026-08-31T17:31:00Z",
+        "decision_status": "READY",
+        "decision_reason": "stop_requested",
+        "from_lifecycle_status": "RUNNING",
+        "to_lifecycle_status": "STOPPING",
+        "stop_requested": True,
+        "shutdown_requested": True,
+        "runtime_state_mutated": False,
+        "continuous_loop_started": False,
+    }
+    assert validate_artifact_retention_scheduler_daemon_shutdown_transition(
+        transition
+    ) == transition
+    assert "postgresql://" not in serialized
+    assert "/data/nex-platform" not in serialized
+    assert "dummy-secret-token" not in serialized
+
+
+def test_artifact_retention_scheduler_daemon_shutdown_transition_noop_states() -> None:
+    stopped = build_artifact_retention_scheduler_daemon_runtime_state(
+        observed_at=READY_TICK_AT,
+    )
+    blocked_runtime = build_artifact_retention_scheduler_daemon_runtime_config(
+        enabled=True,
+        explicit_opt_in=False,
+        checked_at=READY_TICK_AT,
+    )
+    disabled = build_artifact_retention_scheduler_daemon_runtime_state(
+        runtime_config=blocked_runtime,
+        lifecycle_status="DISABLED",
+        lifecycle_reason=None,
+        observed_at=READY_TICK_AT,
+    )
+    stopping_runtime = build_artifact_retention_scheduler_daemon_runtime_config(
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+    )
+    stopping_daemon = build_artifact_retention_scheduler_daemon_config(
+        checked_at=READY_TICK_AT,
+    )
+    stopping = build_artifact_retention_scheduler_daemon_runtime_state(
+        runtime_config=stopping_runtime,
+        daemon_config=stopping_daemon,
+        lifecycle_status="STOPPING",
+        lifecycle_reason=None,
+        observed_at=READY_TICK_AT,
+        stop_requested=True,
+        shutdown_requested_at=READY_TICK_AT,
+    )
+
+    stopped_transition = (
+        build_artifact_retention_scheduler_daemon_shutdown_transition(
+            current_state=stopped,
+            requested_at="2026-08-31T17:40:00Z",
+        )
+    )
+    disabled_transition = (
+        build_artifact_retention_scheduler_daemon_shutdown_transition(
+            current_state=disabled,
+            requested_at="2026-08-31T17:40:00Z",
+        )
+    )
+    stopping_transition = (
+        build_artifact_retention_scheduler_daemon_shutdown_transition(
+            current_state=stopping,
+            requested_at="2026-08-31T17:40:00Z",
+        )
+    )
+
+    assert stopped_transition["decision_status"] == "NOOP"
+    assert stopped_transition["decision_reason"] == "already_stopped"
+    assert stopped_transition["next_state"] == stopped
+    assert stopped_transition["metadata"]["to_terminal"] is True
+    assert disabled_transition["decision_status"] == "NOOP"
+    assert disabled_transition["decision_reason"] == "explicit_opt_in_required"
+    assert disabled_transition["next_state"] == disabled
+    assert disabled_transition["execution_plan"]["already_terminal"] is True
+    assert stopping_transition["decision_status"] == "NOOP"
+    assert stopping_transition["decision_reason"] == "stop_already_requested"
+    assert stopping_transition["next_state"] == stopping
+    assert stopping_transition["metadata"]["stop_already_requested"] is True
+
+
+def test_artifact_retention_scheduler_daemon_shutdown_transition_error_state() -> None:
+    queue = InMemoryJobQueue()
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+    runtime_config = build_artifact_retention_scheduler_daemon_runtime_config(
+        scheduler_config=scheduler_config,
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+    )
+    daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=scheduler_config,
+        lease_store=ArtifactRetentionSchedulerLeaseStore(),
+        checked_at=READY_TICK_AT,
+    )
+    failed_cycle_summary = {
+        "daemon_one_cycle_result_id": "daemon-one-cycle-shutdown-error-0546",
+        "run_at": READY_TICK_AT,
+        "result_status": "FAILED",
+        "skip_reason": "tick_failed",
+        "loop_decision_status": "READY",
+        "loop_decision_reason": None,
+        "tick_once_ran": True,
+        "job_enqueued": False,
+        "worker_executed": False,
+        "history_write_executed": False,
+    }
+    current_state = build_artifact_retention_scheduler_daemon_runtime_state(
+        scheduler_config=scheduler_config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        daemon_instance_id="ae-daemon-error-shutdown-0546",
+        lifecycle_status="ERROR",
+        lifecycle_reason=None,
+        observed_at=READY_TICK_AT,
+        last_cycle_result=failed_cycle_summary,
+        consecutive_failure_count=3,
+    )
+
+    transition = build_artifact_retention_scheduler_daemon_shutdown_transition(
+        current_state=current_state,
+        requested_at="2026-08-31T17:34:00Z",
+    )
+
+    assert transition["decision_status"] == "READY"
+    assert transition["decision_reason"] == "stop_requested"
+    assert transition["metadata"]["from_error"] is True
+    assert transition["next_state"]["lifecycle_status"] == "STOPPING"
+    assert transition["next_state"]["last_cycle"] == failed_cycle_summary
+    assert transition["next_state"]["consecutive_failure_count"] == 3
+    assert transition["next_state"]["metadata"]["last_cycle_failed"] is True
+
+
+def test_artifact_retention_scheduler_daemon_shutdown_transition_validation_edges() -> None:
+    queue = InMemoryJobQueue()
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+    runtime_config = build_artifact_retention_scheduler_daemon_runtime_config(
+        scheduler_config=scheduler_config,
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+    )
+    daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=scheduler_config,
+        lease_store=ArtifactRetentionSchedulerLeaseStore(),
+        checked_at=READY_TICK_AT,
+    )
+    current_state = build_artifact_retention_scheduler_daemon_runtime_state(
+        scheduler_config=scheduler_config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        daemon_instance_id="ae-daemon-shutdown-validation-0546",
+        lifecycle_status="RUNNING",
+        lifecycle_reason=None,
+        observed_at=READY_TICK_AT,
+    )
+    base = build_artifact_retention_scheduler_daemon_shutdown_transition(
+        current_state=current_state,
+        requested_at="2026-08-31T17:31:00Z",
+    )
+    wrong_next_state = build_artifact_retention_scheduler_daemon_runtime_state(
+        scheduler_config=scheduler_config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        daemon_instance_id=current_state["daemon_instance_id"],
+        lifecycle_status="STOPPED",
+        lifecycle_reason="stopped",
+        observed_at="2026-08-31T17:31:00Z",
+    )
+
+    cases: tuple[tuple[Any, str, str], ...] = (
+        (
+            [],
+            "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+            "object",
+        ),
+        (
+            {**base, "daemon_shutdown_transition_schema_version": "wrong"},
+            "ae.artifact_retention_scheduler_daemon_shutdown_transition_schema_invalid",
+            "schema",
+        ),
+        (
+            {**base, "service_id": "nex-ag"},
+            "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+            "service id",
+        ),
+        (
+            {**base, "scheduler_id": " "},
+            "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+            "scheduler_id",
+        ),
+        (
+            {**base, "requested_at": "not-a-time"},
+            "ae.artifact_retention_timestamp_invalid",
+            "requested_at",
+        ),
+        (
+            {**base, "requested_by": "bad"},
+            "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+            "requested_by",
+        ),
+        (
+            {**base, "decision_status": "BLOCKED"},
+            "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+            "decision status",
+        ),
+        (
+            {**base, "decision_reason": "wrong"},
+            "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+            "decision reason",
+        ),
+        (
+            {**base, "previous_state": {**current_state, "service_id": "nex-ag"}},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "service id",
+        ),
+        (
+            {**base, "decision_status": "NOOP"},
+            "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+            "decision",
+        ),
+        (
+            {**base, "next_state": wrong_next_state},
+            "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+            "next state",
+        ),
+        (
+            {
+                **base,
+                "execution_plan": {
+                    **base["execution_plan"],
+                    "runs_tick_once": True,
+                },
+            },
+            "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+            "execution plan",
+        ),
+        (
+            {
+                **base,
+                "guardrails": {
+                    **base["guardrails"],
+                    "database_write_performed": True,
+                },
+            },
+            "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+            "guardrails",
+        ),
+        (
+            {
+                **base,
+                "metadata": {
+                    **base["metadata"],
+                    "job_enqueued": True,
+                },
+            },
+            "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+            "metadata",
+        ),
+        (
+            {**base, "daemon_shutdown_transition_id": "wrong"},
+            "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+            "transition id",
+        ),
+        (
+            {**base, "raw_daemon_runtime_payload": {}},
+            "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+            "keys",
+        ),
+    )
+
+    for payload, error_code, detail in cases:
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_scheduler_daemon_shutdown_transition(payload)  # type: ignore[arg-type]
+        assert exc_info.value.error_code == error_code
+        assert detail in exc_info.value.detail
 
 
 def test_artifact_retention_scheduler_daemon_control_plan_validation_edges() -> None:

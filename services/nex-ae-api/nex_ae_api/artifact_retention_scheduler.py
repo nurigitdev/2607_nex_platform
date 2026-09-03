@@ -68,6 +68,9 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ONE_CYCLE_RESULT_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_BOUNDED_LOOP_RESULT_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_bounded_loop_result.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SHUTDOWN_TRANSITION_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_shutdown_transition.v1"
+)
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_OBSERVATION_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_runtime_observation.v1"
 )
@@ -190,6 +193,17 @@ ARTIFACT_RETENTION_SCHEDULER_DAEMON_BOUNDED_LOOP_STOP_REASONS = (
     "explicit_opt_in_required",
     "stop_requested",
     "cycle_failed",
+)
+ARTIFACT_RETENTION_SCHEDULER_DAEMON_SHUTDOWN_TRANSITION_DECISION_STATUSES = (
+    "READY",
+    "NOOP",
+)
+ARTIFACT_RETENTION_SCHEDULER_DAEMON_SHUTDOWN_TRANSITION_DECISION_REASONS = (
+    "stop_requested",
+    "stop_already_requested",
+    "already_stopped",
+    "runtime_disabled",
+    "explicit_opt_in_required",
 )
 ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_STATE_STATUSES = (
     "DISABLED",
@@ -3005,6 +3019,295 @@ def summarize_artifact_retention_scheduler_daemon_bounded_loop_result(
         "tick_once_ran": validated["metadata"]["tick_once_ran"],
         "job_enqueued": validated["metadata"]["job_enqueued"],
         "worker_executed": validated["metadata"]["worker_executed"],
+        "continuous_loop_started": validated["guardrails"][
+            "continuous_loop_started"
+        ],
+    }
+
+
+def build_artifact_retention_scheduler_daemon_shutdown_transition(
+    *,
+    current_state: Mapping[str, Any],
+    requested_at: str | None = None,
+    requested_by: Mapping[str, Any] | None = None,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    previous_state = validate_artifact_retention_scheduler_daemon_runtime_state(
+        current_state
+    )
+    requested = _scheduler_daemon_checked_at(
+        checked_at=requested_at or previous_state["observed_at"],
+        scheduler_config=previous_state["runtime_config"],
+    )
+    decision_status, decision_reason, next_state = (
+        _scheduler_daemon_shutdown_transition_next_state(
+            previous_state=previous_state,
+            requested_at=requested,
+        )
+    )
+    requested_actor = _scheduler_daemon_shutdown_transition_requested_by(
+        requested_by
+    )
+    transition = {
+        "daemon_shutdown_transition_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SHUTDOWN_TRANSITION_SCHEMA_VERSION
+        ),
+        "daemon_shutdown_transition_id": (
+            _scheduler_daemon_shutdown_transition_id(
+                scheduler_id=previous_state["scheduler_id"],
+                daemon_instance_id=previous_state["daemon_instance_id"],
+                requested_at=requested,
+                requested_by=requested_actor,
+                reason=optional_text(reason),
+                decision_status=decision_status,
+                decision_reason=decision_reason,
+                previous_state=previous_state,
+                next_state=next_state,
+            )
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": previous_state["scheduler_id"],
+        "daemon_instance_id": previous_state["daemon_instance_id"],
+        "requested_at": requested,
+        "requested_by": requested_actor,
+        "reason": optional_text(reason),
+        "decision_status": decision_status,
+        "decision_reason": decision_reason,
+        "previous_state": deepcopy(previous_state),
+        "next_state": deepcopy(next_state),
+        "execution_plan": _scheduler_daemon_shutdown_transition_execution_plan(
+            decision_status=decision_status,
+            decision_reason=decision_reason,
+            next_state=next_state,
+        ),
+        "guardrails": _scheduler_daemon_shutdown_transition_guardrails(),
+        "metadata": _scheduler_daemon_shutdown_transition_metadata(
+            decision_status=decision_status,
+            decision_reason=decision_reason,
+            previous_state=previous_state,
+            next_state=next_state,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_shutdown_transition(
+        transition
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_shutdown_transition(
+    transition: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(transition, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon shutdown transition must be "
+                "an object."
+            ),
+        )
+    normalized = dict(transition)
+    if set(normalized) != {
+        "daemon_shutdown_transition_schema_version",
+        "daemon_shutdown_transition_id",
+        "service_id",
+        "scheduler_id",
+        "daemon_instance_id",
+        "requested_at",
+        "requested_by",
+        "reason",
+        "decision_status",
+        "decision_reason",
+        "previous_state",
+        "next_state",
+        "execution_plan",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon shutdown transition keys are "
+                "invalid."
+            ),
+        )
+    if (
+        normalized.get("daemon_shutdown_transition_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SHUTDOWN_TRANSITION_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_shutdown_transition_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon shutdown transition schema "
+                "version is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon shutdown transition service "
+                "id is invalid."
+            ),
+        )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+    )
+    daemon_instance_id = _required_text(
+        normalized.get("daemon_instance_id"),
+        "daemon_instance_id",
+        "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+    )
+    requested_at = format_artifact_retention_timestamp(
+        parse_artifact_retention_timestamp(
+            normalized.get("requested_at"),
+            field_name="requested_at",
+        )
+    )
+    requested_by = _scheduler_daemon_shutdown_transition_requested_by(
+        normalized.get("requested_by")
+    )
+    reason = optional_text(normalized.get("reason"))
+    decision_status = _normalize_scheduler_daemon_shutdown_transition_status(
+        normalized.get("decision_status")
+    )
+    decision_reason = _normalize_scheduler_daemon_shutdown_transition_reason(
+        normalized.get("decision_reason")
+    )
+    previous_state = validate_artifact_retention_scheduler_daemon_runtime_state(
+        normalized.get("previous_state")
+    )
+    next_state = validate_artifact_retention_scheduler_daemon_runtime_state(
+        normalized.get("next_state")
+    )
+    _validate_scheduler_daemon_shutdown_transition_scope(
+        scheduler_id=scheduler_id,
+        daemon_instance_id=daemon_instance_id,
+        previous_state=previous_state,
+        next_state=next_state,
+    )
+    _validate_scheduler_daemon_shutdown_transition_decision(
+        requested_at=requested_at,
+        decision_status=decision_status,
+        decision_reason=decision_reason,
+        previous_state=previous_state,
+        next_state=next_state,
+    )
+    expected_execution_plan = (
+        _scheduler_daemon_shutdown_transition_execution_plan(
+            decision_status=decision_status,
+            decision_reason=decision_reason,
+            next_state=next_state,
+        )
+    )
+    if normalized.get("execution_plan") != expected_execution_plan:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon shutdown transition "
+                "execution plan is invalid."
+            ),
+        )
+    if (
+        normalized.get("guardrails")
+        != _scheduler_daemon_shutdown_transition_guardrails()
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon shutdown transition "
+                "guardrails are invalid."
+            ),
+        )
+    expected_metadata = _scheduler_daemon_shutdown_transition_metadata(
+        decision_status=decision_status,
+        decision_reason=decision_reason,
+        previous_state=previous_state,
+        next_state=next_state,
+    )
+    if normalized.get("metadata") != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon shutdown transition metadata "
+                "is invalid."
+            ),
+        )
+    expected_id = _scheduler_daemon_shutdown_transition_id(
+        scheduler_id=scheduler_id,
+        daemon_instance_id=daemon_instance_id,
+        requested_at=requested_at,
+        requested_by=requested_by,
+        reason=reason,
+        decision_status=decision_status,
+        decision_reason=decision_reason,
+        previous_state=previous_state,
+        next_state=next_state,
+    )
+    if normalized.get("daemon_shutdown_transition_id") != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon shutdown transition id is "
+                "invalid."
+            ),
+        )
+    normalized["requested_at"] = requested_at
+    normalized["requested_by"] = requested_by
+    normalized["reason"] = reason
+    normalized["decision_status"] = decision_status
+    normalized["decision_reason"] = decision_reason
+    normalized["previous_state"] = previous_state
+    normalized["next_state"] = next_state
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_shutdown_transition(
+    transition: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduler_daemon_shutdown_transition(
+        transition
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "daemon_instance_id": validated["daemon_instance_id"],
+        "requested_at": validated["requested_at"],
+        "decision_status": validated["decision_status"],
+        "decision_reason": validated["decision_reason"],
+        "from_lifecycle_status": validated["previous_state"][
+            "lifecycle_status"
+        ],
+        "to_lifecycle_status": validated["next_state"]["lifecycle_status"],
+        "stop_requested": validated["next_state"]["stop_requested"],
+        "shutdown_requested": validated["metadata"]["shutdown_requested"],
+        "runtime_state_mutated": validated["guardrails"][
+            "runtime_state_mutated"
+        ],
         "continuous_loop_started": validated["guardrails"][
             "continuous_loop_started"
         ],
@@ -6122,6 +6425,319 @@ def _scheduler_daemon_runtime_state_metadata(
         "continuous_loop_started": False,
         "physical_delete_automation_enabled": False,
     }
+
+
+def _scheduler_daemon_shutdown_transition_next_state(
+    *,
+    previous_state: Mapping[str, Any],
+    requested_at: str,
+) -> tuple[str, str, dict[str, Any]]:
+    lifecycle_status = previous_state["lifecycle_status"]
+    if lifecycle_status in {"STARTING", "RUNNING", "ERROR"}:
+        next_state = build_artifact_retention_scheduler_daemon_runtime_state(
+            runtime_config=previous_state["runtime_config"],
+            daemon_config=previous_state["daemon_config"],
+            daemon_instance_id=previous_state["daemon_instance_id"],
+            lifecycle_status="STOPPING",
+            lifecycle_reason="stop_requested",
+            observed_at=requested_at,
+            stop_requested=True,
+            shutdown_requested_at=requested_at,
+            last_cycle_result=previous_state["last_cycle"],
+            next_tick_at=None,
+            cycle_count=previous_state["cycle_count"],
+            consecutive_failure_count=previous_state[
+                "consecutive_failure_count"
+            ],
+            heartbeat_worker_id=previous_state["heartbeat_worker_id"],
+        )
+        return "READY", "stop_requested", next_state
+    if lifecycle_status == "STOPPING":
+        return "NOOP", "stop_already_requested", deepcopy(dict(previous_state))
+    if lifecycle_status == "DISABLED":
+        return "NOOP", previous_state["lifecycle_reason"], deepcopy(
+            dict(previous_state)
+        )
+    return "NOOP", "already_stopped", deepcopy(dict(previous_state))
+
+
+def _scheduler_daemon_shutdown_transition_requested_by(
+    value: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    if value is None:
+        return {"actor_type": "service", "actor_id": "nex-ae-api"}
+    if not isinstance(value, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon shutdown transition "
+                "requested_by is invalid."
+            ),
+        )
+    actor_type = _required_text(
+        value.get("actor_type"),
+        "actor_type",
+        "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+    )
+    actor_id = _required_text(
+        value.get("actor_id"),
+        "actor_id",
+        "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid",
+    )
+    requested_by = {"actor_type": actor_type, "actor_id": actor_id}
+    for field_name in ("tenant_id", "workspace_id", "request_id"):
+        field_value = optional_text(value.get(field_name))
+        if field_value is not None:
+            requested_by[field_name] = field_value
+    return requested_by
+
+
+def _normalize_scheduler_daemon_shutdown_transition_status(value: Any) -> str:
+    status = optional_text(value)
+    if (
+        status
+        not in ARTIFACT_RETENTION_SCHEDULER_DAEMON_SHUTDOWN_TRANSITION_DECISION_STATUSES
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon shutdown transition "
+                "decision status is invalid."
+            ),
+        )
+    return status
+
+
+def _normalize_scheduler_daemon_shutdown_transition_reason(value: Any) -> str:
+    reason = optional_text(value)
+    if (
+        reason
+        not in ARTIFACT_RETENTION_SCHEDULER_DAEMON_SHUTDOWN_TRANSITION_DECISION_REASONS
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon shutdown transition "
+                "decision reason is invalid."
+            ),
+        )
+    return reason
+
+
+def _validate_scheduler_daemon_shutdown_transition_scope(
+    *,
+    scheduler_id: str,
+    daemon_instance_id: str,
+    previous_state: Mapping[str, Any],
+    next_state: Mapping[str, Any],
+) -> None:
+    for label, state in (("previous", previous_state), ("next", next_state)):
+        if state["scheduler_id"] != scheduler_id:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=(
+                    "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid"
+                ),
+                detail=(
+                    "Artifact retention scheduler daemon shutdown transition "
+                    f"{label} state scope is invalid."
+                ),
+            )
+        if state["daemon_instance_id"] != daemon_instance_id:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=(
+                    "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid"
+                ),
+                detail=(
+                    "Artifact retention scheduler daemon shutdown transition "
+                    f"{label} state instance is invalid."
+                ),
+            )
+    if previous_state["runtime_config"] != next_state["runtime_config"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon shutdown transition runtime "
+                "scope is invalid."
+            ),
+        )
+    if previous_state["daemon_config"] != next_state["daemon_config"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon shutdown transition daemon "
+                "scope is invalid."
+            ),
+        )
+
+
+def _validate_scheduler_daemon_shutdown_transition_decision(
+    *,
+    requested_at: str,
+    decision_status: str,
+    decision_reason: str,
+    previous_state: Mapping[str, Any],
+    next_state: Mapping[str, Any],
+) -> None:
+    expected_status, expected_reason, expected_next_state = (
+        _scheduler_daemon_shutdown_transition_next_state(
+            previous_state=previous_state,
+            requested_at=requested_at,
+        )
+    )
+    if decision_status != expected_status or decision_reason != expected_reason:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon shutdown transition "
+                "decision is invalid."
+            ),
+        )
+    if next_state != expected_next_state:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_shutdown_transition_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon shutdown transition next "
+                "state is invalid."
+            ),
+        )
+
+
+def _scheduler_daemon_shutdown_transition_execution_plan(
+    *,
+    decision_status: str,
+    decision_reason: str,
+    next_state: Mapping[str, Any],
+) -> dict[str, Any]:
+    stop_signal_requested = decision_status == "READY"
+    return {
+        "requires_runtime_state": True,
+        "validates_current_state": True,
+        "projects_next_state": True,
+        "next_state_lifecycle_status": next_state["lifecycle_status"],
+        "stop_signal_requested": stop_signal_requested,
+        "stop_already_requested": decision_reason == "stop_already_requested",
+        "already_terminal": decision_reason in {
+            "already_stopped",
+            "runtime_disabled",
+            "explicit_opt_in_required",
+        },
+        "bounded_loop_should_stop_before_next_cycle": stop_signal_requested,
+        "starts_continuous_loop": False,
+        "runs_tick_once": False,
+        "enqueues_job_queue": False,
+        "runs_worker": False,
+        "writes_database": False,
+        "physical_delete_enabled": False,
+    }
+
+
+def _scheduler_daemon_shutdown_transition_guardrails() -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "daemon_process_owner_ae": True,
+        "state_transition_only": True,
+        "runtime_state_mutated": False,
+        "stop_signal_delivered": False,
+        "continuous_loop_started": False,
+        "retention_work_uses_job_queue": True,
+        "job_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "database_write_performed": False,
+        "physical_delete_automation_enabled": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+    }
+
+
+def _scheduler_daemon_shutdown_transition_metadata(
+    *,
+    decision_status: str,
+    decision_reason: str,
+    previous_state: Mapping[str, Any],
+    next_state: Mapping[str, Any],
+) -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "safe_for_ag_projection": True,
+        "shutdown_requested": decision_status == "READY",
+        "shutdown_noop": decision_status == "NOOP",
+        "from_running": previous_state["lifecycle_status"] == "RUNNING",
+        "from_starting": previous_state["lifecycle_status"] == "STARTING",
+        "from_error": previous_state["lifecycle_status"] == "ERROR",
+        "to_stopping": next_state["lifecycle_status"] == "STOPPING",
+        "to_terminal": next_state["lifecycle_status"] in {
+            "STOPPED",
+            "DISABLED",
+        },
+        "stop_already_requested": decision_reason == "stop_already_requested",
+        "runtime_state_mutated": False,
+        "continuous_loop_started": False,
+        "job_enqueued": False,
+        "worker_executed": False,
+        "physical_delete_automation_enabled": False,
+    }
+
+
+def _scheduler_daemon_shutdown_transition_id(
+    *,
+    scheduler_id: str,
+    daemon_instance_id: str,
+    requested_at: str,
+    requested_by: Mapping[str, Any],
+    reason: str | None,
+    decision_status: str,
+    decision_reason: str,
+    previous_state: Mapping[str, Any],
+    next_state: Mapping[str, Any],
+) -> str:
+    basis = {
+        "scheduler_id": scheduler_id,
+        "daemon_instance_id": daemon_instance_id,
+        "requested_at": requested_at,
+        "requested_by": dict(requested_by),
+        "reason": reason,
+        "decision_status": decision_status,
+        "decision_reason": decision_reason,
+        "previous_state_id": previous_state["daemon_runtime_state_id"],
+        "next_state_id": next_state["daemon_runtime_state_id"],
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            (
+                "ae-artifact-retention-scheduler-daemon-shutdown-"
+                f"transition:{sha256_json(basis)}"
+            ),
+        )
+    )
 
 
 def _scheduler_daemon_bounded_loop_started_at(
