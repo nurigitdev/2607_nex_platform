@@ -723,3 +723,7 @@ Artifact library management:
   AG operations projection. The route returns metadata-only heartbeat-store and
   latest-heartbeat evidence, and the one-cycle PostgreSQL smoke now verifies the
   route reads back the actual daemon heartbeat written to `nex_ae_test`.
+- Slice 0540 closes S54 by locking the runtime audit, runtime config, loop
+  planner, one-cycle runner, start/stop guardrail, heartbeat observability,
+  protected PostgreSQL smoke, and AG runtime projection/attention evidence into
+  the default quality gate.

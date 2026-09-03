@@ -643,6 +643,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0537`](slices/0537_ae_scheduler_daemon_runtime_heartbeat_observability.md) | `S54-007` AE scheduler daemon runtime heartbeat observability. |
 | [`Slice 0538`](slices/0538_ag_scheduler_daemon_runtime_operations_projection.md) | `S54-008` AG scheduler daemon runtime operations projection. |
 | [`Slice 0539`](slices/0539_ag_scheduler_daemon_runtime_attention_issue_candidates.md) | `S54-009` AG scheduler daemon runtime attention and issue candidates. |
+| [`Slice 0540`](slices/0540_s54_ae_scheduler_daemon_runtime_closure.md) | `S54-010` S54 AE scheduler daemon runtime closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

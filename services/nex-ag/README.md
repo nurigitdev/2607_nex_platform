@@ -485,6 +485,10 @@ Unified operations:
   heartbeat-store unavailability, `ERROR` heartbeats, and unknown heartbeat
   statuses as `HEARTBEAT_ATTENTION`, and emits metadata-only runtime issue
   candidates while preserving normal `BUSY`/`IDLE` and latest-dispatch behavior.
+- Slice 0540 closes S54 by registering the AE scheduler daemon runtime closure
+  evidence in the default quality gate. AG remains read-only and metadata-only
+  for AE daemon runtime state, while runtime attention and issue candidates are
+  covered by closure checks.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
