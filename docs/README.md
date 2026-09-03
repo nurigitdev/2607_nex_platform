@@ -647,6 +647,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0541`](slices/0541_ae_scheduler_daemon_process_boundary_audit.md) | `S55-001` AE scheduler daemon process boundary audit. |
 | [`Slice 0542`](slices/0542_ae_scheduler_daemon_runtime_state_contract_schema.md) | `S55-002` AE scheduler daemon runtime state contract/schema. |
 | [`Slice 0543`](slices/0543_ae_scheduler_daemon_cli_entrypoint_foundation.md) | `S55-003` AE scheduler daemon CLI entrypoint foundation. |
+| [`Slice 0544`](slices/0544_ae_scheduler_daemon_bounded_loop_adapter.md) | `S55-004` AE scheduler daemon bounded loop adapter. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
