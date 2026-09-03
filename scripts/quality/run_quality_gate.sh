@@ -165,6 +165,7 @@ node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
 "$PYTHON_BIN" scripts/smoke/run_s54_ae_scheduler_daemon_runtime_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_scheduler_daemon_process_boundary_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s55_ae_scheduler_daemon_process_lifecycle_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_scheduler_daemon_executable_runtime_boundary_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary

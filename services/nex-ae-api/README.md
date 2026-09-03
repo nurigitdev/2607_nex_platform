@@ -764,3 +764,9 @@ Artifact library management:
   work behind finite JobQueue jobs, the CLI plan-first, bounded loops finite,
   shutdown/retry contracts metadata-only, and physical delete automation
   disabled unless a later protected Slice changes that decision.
+- Slice 0551 starts S56 by freezing the executable runtime boundary before the
+  daemon CLI can run bounded loops. The default command remains plan-only;
+  future execution must require explicit opt-in, test profile, bounded
+  `max_cycles`, process lock/pid/run metadata, graceful shutdown handling,
+  PostgreSQL smoke evidence, and physical delete automation disabled by
+  default.

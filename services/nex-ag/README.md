@@ -507,6 +507,10 @@ Unified operations:
   AE daemon process/lifecycle boundary. AG remains read-only and metadata-only
   for lifecycle projection, while AE retains daemon process ownership,
   persistence writes, JobQueue admission, and physical purge authority.
+- Slice 0551 starts S56 by freezing the executable daemon runtime boundary from
+  the AG side. AG may observe protected bounded-loop execution evidence through
+  AE APIs, but it still cannot start the process directly, write AE
+  persistence, enqueue AE jobs, or receive unredacted daemon/runtime payloads.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
