@@ -1823,6 +1823,7 @@ def test_artifact_operation_retention_daemon_projection_summarizes_and_redacts()
         },
     }
     assert projection["dispatch_response"]["start_stop_guardrail"] == {}
+    assert projection["issue_candidates"] == []
     assert projection["summary"] == summarize_artifact_retention_daemon_operations(
         daemon_config=projection["daemon_config"],
         daemon_runtime=projection["daemon_runtime"],
@@ -1844,6 +1845,7 @@ def test_artifact_operation_retention_daemon_projection_summarizes_and_redacts()
     assert projection["summary"]["runtime_heartbeat_last_seen_at"] == (
         "2026-09-01T02:40:00Z"
     )
+    assert projection["summary"]["runtime_issue_candidate_count"] == 0
     assert projection["summary"]["attention_status"] == "DISPATCH_ATTENTION"
     assert projection["summary"]["attention_level"] == "INFO"
     assert projection["summary"]["attention_reason_codes"] == [
@@ -1967,6 +1969,7 @@ def test_artifact_operation_retention_daemon_projection_handles_sparse_edges() -
     assert projection["dispatch_response"]["start_stop_guardrail"]["metadata"][
         "stop_signal_sent"
     ] is False
+    assert projection["issue_candidates"] == []
     assert projection["summary"]["manual_tick_once_decision_status"] == "BLOCKED"
     assert projection["summary"]["manual_tick_once_available"] is False
     assert projection["summary"]["attention_status"] == "DISPATCH_ATTENTION"
@@ -2006,6 +2009,13 @@ def test_artifact_operation_retention_daemon_projection_handles_sparse_edges() -
         artifact_operations._project_retention_scheduler_daemon_runtime_metadata([])
         == {}
     )
+    assert (
+        artifact_operations.build_artifact_retention_daemon_runtime_issue_candidates(
+            daemon_runtime=None
+        )
+        == []
+    )
+    assert artifact_operations._retention_daemon_runtime_issue_signals({}) == []
     assert artifact_operations._normalized_daemon_heartbeat_status("BROKEN") is None
     assert (
         artifact_operations._project_retention_scheduler_daemon_dispatch_response([])
@@ -2034,6 +2044,27 @@ def test_artifact_retention_daemon_attention_classifies_operational_edges() -> N
         daemon_config=artifact_retention_scheduler_daemon_config_payload(),
         dispatch_response=artifact_retention_scheduler_daemon_dispatch_payload(
             dispatch_status="FAILED"
+        ),
+    )
+    heartbeat_store_attention = classify_artifact_retention_daemon_attention(
+        daemon_config=artifact_retention_scheduler_daemon_config_payload(),
+        daemon_runtime=artifact_retention_scheduler_daemon_runtime_payload(
+            observed=False,
+            heartbeat_store_available=False,
+        ),
+    )
+    heartbeat_error_attention = classify_artifact_retention_daemon_attention(
+        daemon_config=artifact_retention_scheduler_daemon_config_payload(),
+        daemon_runtime=artifact_retention_scheduler_daemon_runtime_payload(
+            status="ERROR",
+            active_job_id="daemon-loop-error",
+        ),
+    )
+    unknown_status_attention = classify_artifact_retention_daemon_attention(
+        daemon_config=artifact_retention_scheduler_daemon_config_payload(),
+        daemon_runtime=artifact_retention_scheduler_daemon_runtime_payload(
+            status="MAYBE",
+            active_job_id=None,
         ),
     )
 
@@ -2085,6 +2116,27 @@ def test_artifact_retention_daemon_attention_classifies_operational_edges() -> N
     assert dispatch_attention["attention_status"] == "DISPATCH_ATTENTION"
     assert dispatch_attention["attention_level"] == "WARN"
     assert "last_dispatch_failed" in dispatch_attention["reason_codes"]
+    assert heartbeat_store_attention["attention_status"] == "HEARTBEAT_ATTENTION"
+    assert heartbeat_store_attention["reason_codes"] == [
+        "heartbeat_store_unavailable",
+        "start_daemon_disabled_by_policy",
+        "continuous_loop_disabled_by_policy",
+    ]
+    assert heartbeat_store_attention["operator_actions"] == [
+        "inspect_ae_scheduler_daemon_runtime_route",
+        "configure_ae_scheduler_daemon_heartbeat_store",
+    ]
+    assert heartbeat_store_attention["operator_attention_required"] is True
+    assert heartbeat_error_attention["attention_status"] == "HEARTBEAT_ATTENTION"
+    assert heartbeat_error_attention["reason_codes"][0] == "daemon_heartbeat_error"
+    assert heartbeat_error_attention["operator_actions"] == [
+        "review_ae_scheduler_daemon_error_heartbeat",
+        "inspect_ae_artifact_retention_history",
+    ]
+    assert unknown_status_attention["attention_status"] == "HEARTBEAT_ATTENTION"
+    assert unknown_status_attention["reason_codes"][0] == (
+        "daemon_heartbeat_status_unknown"
+    )
     assert batch_window_attention["attention_status"] == "BATCH_WINDOW_ATTENTION"
     assert batch_window_attention["operator_actions"] == [
         "retry_inside_retention_batch_window"
@@ -2108,6 +2160,76 @@ def test_artifact_retention_daemon_attention_classifies_operational_edges() -> N
         "batch_window_enforced": False,
         "metadata_only": True,
     }
+
+
+def test_artifact_retention_daemon_runtime_issue_candidates_are_metadata_only() -> (
+    None
+):
+    runtime = artifact_retention_scheduler_daemon_runtime_payload(
+        status="ERROR",
+        active_job_id="daemon-loop-error",
+    )
+    projection = build_artifact_operation_retention_daemon_projection(
+        daemon_config=artifact_retention_scheduler_daemon_config_payload(),
+        daemon_runtime=runtime,
+        source_client=InMemoryAeArtifactOperationsClient(),
+    )
+    store_candidates = (
+        artifact_operations.build_artifact_retention_daemon_runtime_issue_candidates(
+            daemon_runtime=artifact_retention_scheduler_daemon_runtime_payload(
+                observed=False,
+                heartbeat_store_available=False,
+            )
+        )
+    )
+    unknown_candidates = (
+        artifact_operations.build_artifact_retention_daemon_runtime_issue_candidates(
+            daemon_runtime=artifact_retention_scheduler_daemon_runtime_payload(
+                status="MAYBE",
+                active_job_id=None,
+            )
+        )
+    )
+
+    assert projection["summary"]["attention_status"] == "HEARTBEAT_ATTENTION"
+    assert projection["summary"]["attention_reason_codes"][0] == (
+        "daemon_heartbeat_error"
+    )
+    assert projection["summary"]["runtime_issue_candidate_count"] == 1
+    assert projection["attention"]["operator_attention_required"] is True
+    assert len(projection["issue_candidates"]) == 1
+    candidate = projection["issue_candidates"][0]
+    assert candidate["candidate_schema_version"] == (
+        artifact_operations.AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUNTIME_ISSUE_CANDIDATE_SCHEMA_VERSION
+    )
+    assert candidate["rule_id"] == "ae_scheduler_daemon_heartbeat_error.v1"
+    assert candidate["service_id"] == "nex-ae-api"
+    assert candidate["severity"] == "ERROR"
+    assert candidate["signal"] == {
+        "worker_type": "ae.artifact_retention.scheduler_daemon",
+        "worker_id": "ae-retention-daemon-runtime-0538",
+        "active_job_id": "daemon-loop-error",
+        "last_seen_at": "2026-09-01T02:40:00Z",
+        "phase": "tick_once_running",
+    }
+    assert candidate["recommended_operator_actions"] == [
+        "review_ae_scheduler_daemon_error_heartbeat",
+        "inspect_ae_artifact_retention_history",
+    ]
+    assert candidate["metadata_only"] is True
+    assert store_candidates[0]["rule_id"] == (
+        "ae_scheduler_daemon_heartbeat_store_unavailable.v1"
+    )
+    assert store_candidates[0]["severity"] == "WARNING"
+    assert store_candidates[0]["signal"]["failure_code"] == (
+        "heartbeat_store_unavailable"
+    )
+    assert unknown_candidates[0]["rule_id"] == (
+        "ae_scheduler_daemon_heartbeat_status_unknown.v1"
+    )
+    assert unknown_candidates[0]["severity"] == "WARNING"
+    assert "DATABASE_URL_SHOULD_NOT_LEAK" not in str(projection)
+    assert "nuri1004" not in str(projection)
 
 
 def test_artifact_operation_retention_automation_projection_summarizes_and_redacts() -> (

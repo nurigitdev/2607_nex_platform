@@ -39,8 +39,26 @@ when AE reports a safe manual tick-once path.
   outside the configured retention batch window.
 - `DISPATCH_ATTENTION`: AG is showing a latest dispatch snapshot that an
   operator should review before another manual request.
+- `HEARTBEAT_ATTENTION`: AE runtime observation reports heartbeat-store
+  unavailability, an `ERROR` daemon heartbeat, or an observed heartbeat with an
+  unknown status.
 - `CONTROL_POLICY_BLOCKED`: AE blocks the requested control path by policy or
   admission configuration.
+
+## Runtime Issue Candidates
+
+AG emits metadata-only daemon runtime issue candidates when the runtime
+observation shows heartbeat-store or heartbeat-status problems. Expected rule
+ids are:
+
+- `ae_scheduler_daemon_heartbeat_store_unavailable.v1`
+- `ae_scheduler_daemon_heartbeat_error.v1`
+- `ae_scheduler_daemon_heartbeat_status_unknown.v1`
+
+These candidates should carry only service id, scheduler id, worker type,
+worker id, status metadata, and recommended operator actions. They must not
+include database URLs, local storage paths, raw artifact payloads, execution
+payloads, or service tokens.
 
 ## Manual Tick-Once
 

@@ -56,6 +56,9 @@ AG_ARTIFACT_OPERATION_RETENTION_DAEMON_ATTENTION_SCHEMA_VERSION = (
 AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION = (
     "ag_artifact_operation_retention_daemon_runtime_projection.v1"
 )
+AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUNTIME_ISSUE_CANDIDATE_SCHEMA_VERSION = (
+    "ag_artifact_operation_retention_daemon_runtime_issue_candidate.v1"
+)
 AE_ARTIFACT_SOURCE_SERVICE_ID = "nex-ae-api"
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE = (
     "ae.artifact_retention.scheduler_daemon"
@@ -1958,7 +1961,7 @@ def build_artifact_operation_retention_daemon_projection(
     request_trace_id: str | None = None,
 ) -> dict[str, Any]:
     projected_config = _project_retention_scheduler_daemon_config(daemon_config)
-    projected_runtime = _project_retention_scheduler_daemon_runtime_observation(
+    projected_runtime = _normalize_retention_scheduler_daemon_runtime_observation(
         daemon_runtime
     )
     projected_dispatch = _project_retention_scheduler_daemon_dispatch_response(
@@ -1966,7 +1969,11 @@ def build_artifact_operation_retention_daemon_projection(
     )
     daemon_attention = classify_artifact_retention_daemon_attention(
         daemon_config=projected_config,
+        daemon_runtime=projected_runtime,
         dispatch_response=projected_dispatch,
+    )
+    issue_candidates = build_artifact_retention_daemon_runtime_issue_candidates(
+        daemon_runtime=projected_runtime,
     )
     errors = source_errors or []
     projection = {
@@ -1980,6 +1987,7 @@ def build_artifact_operation_retention_daemon_projection(
         "daemon_config": projected_config,
         "daemon_runtime": projected_runtime or None,
         "dispatch_response": projected_dispatch or None,
+        "issue_candidates": issue_candidates,
         "summary": summarize_artifact_retention_daemon_operations(
             daemon_config=projected_config,
             daemon_runtime=projected_runtime,
@@ -2375,10 +2383,14 @@ def summarize_artifact_retention_daemon_operations(
     dispatch = _mapping_or_empty(dispatch_response)
     dispatch_metadata = _mapping_or_empty(dispatch.get("metadata"))
     control_plan = _mapping_or_empty(dispatch.get("control_plan"))
+    runtime_issue_candidates = build_artifact_retention_daemon_runtime_issue_candidates(
+        daemon_runtime=runtime_observation,
+    )
     manual_status = _text_or_none(manual_action.get("decision_status"))
     start_status = _text_or_none(start_action.get("decision_status"))
     attention = classify_artifact_retention_daemon_attention(
         daemon_config=daemon_config,
+        daemon_runtime=runtime_observation,
         dispatch_response=dispatch_response,
     )
     return {
@@ -2422,6 +2434,7 @@ def summarize_artifact_retention_daemon_operations(
         "runtime_heartbeat_last_seen_at": _text_or_none(
             runtime_heartbeat.get("last_seen_at")
         ),
+        "runtime_issue_candidate_count": len(runtime_issue_candidates),
         "attention_status": attention["attention_status"],
         "attention_level": attention["attention_level"],
         "attention_reason_codes": attention["reason_codes"],
@@ -2435,9 +2448,13 @@ def summarize_artifact_retention_daemon_operations(
 def classify_artifact_retention_daemon_attention(
     *,
     daemon_config: Mapping[str, Any],
+    daemon_runtime: Mapping[str, Any] | None = None,
     dispatch_response: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     projected_config = _project_retention_scheduler_daemon_config(daemon_config)
+    projected_runtime = _project_retention_scheduler_daemon_runtime_observation(
+        daemon_runtime
+    )
     projected_dispatch = (
         _project_retention_scheduler_daemon_dispatch_response(dispatch_response)
         if isinstance(dispatch_response, Mapping) and bool(dispatch_response)
@@ -2479,6 +2496,8 @@ def classify_artifact_retention_daemon_attention(
         runtime.get("continuous_loop_enabled") is not True
         and runtime.get("continuous_loop_started") is not True
     )
+    runtime_signals = _retention_daemon_runtime_issue_signals(projected_runtime)
+    runtime_signal = runtime_signals[0] if runtime_signals else None
 
     attention_status = "READY"
     attention_level = "OK"
@@ -2500,6 +2519,12 @@ def classify_artifact_retention_daemon_attention(
         else:
             reason_codes.append("last_dispatch_status_unknown")
         operator_actions = ["review_last_daemon_dispatch"]
+    elif runtime_signal is not None:
+        attention_status = "HEARTBEAT_ATTENTION"
+        attention_level = "WARN"
+        operator_attention_required = True
+        reason_codes = [runtime_signal["reason_code"]]
+        operator_actions = list(runtime_signal["operator_actions"])
     elif not lease_available:
         attention_status = "LEASE_ATTENTION"
         attention_level = "WARN"
@@ -2546,6 +2571,189 @@ def classify_artifact_retention_daemon_attention(
         "continuous_loop_blocked_by_policy": continuous_loop_blocked_by_policy,
         "batch_window_enforced": batch_window_enforced,
         "metadata_only": True,
+    }
+
+
+def build_artifact_retention_daemon_runtime_issue_candidates(
+    *,
+    daemon_runtime: Mapping[str, Any] | None,
+) -> list[dict[str, Any]]:
+    runtime = _normalize_retention_scheduler_daemon_runtime_observation(
+        daemon_runtime
+    )
+    candidates: list[dict[str, Any]] = []
+    for signal in _retention_daemon_runtime_issue_signals(runtime):
+        candidates.append(
+            {
+                "candidate_schema_version": (
+                    AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUNTIME_ISSUE_CANDIDATE_SCHEMA_VERSION
+                ),
+                "candidate_id": (
+                    f"{signal['service_id']}:{signal['signal_key']}:"
+                    f"{signal['rule_id']}"
+                ),
+                "rule_id": signal["rule_id"],
+                "service_id": signal["service_id"],
+                "scheduler_id": signal["scheduler_id"],
+                "severity": signal["severity"],
+                "title": signal["title"],
+                "detail": signal["detail"],
+                "signal": signal["signal"],
+                "recommended_operator_actions": list(signal["operator_actions"]),
+                "metadata_only": True,
+            }
+        )
+    return candidates
+
+
+def _retention_daemon_runtime_issue_signals(
+    daemon_runtime: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    if not daemon_runtime:
+        return []
+
+    store = _mapping_or_empty(daemon_runtime.get("heartbeat_store"))
+    heartbeat = _mapping_or_empty(daemon_runtime.get("heartbeat"))
+    metadata = _mapping_or_empty(daemon_runtime.get("metadata"))
+    service_id = (
+        _text_or_none(daemon_runtime.get("service_id"))
+        or AE_ARTIFACT_SOURCE_SERVICE_ID
+    )
+    scheduler_id = _text_or_none(daemon_runtime.get("scheduler_id"))
+    checked_at = _text_or_none(daemon_runtime.get("checked_at"))
+    worker_type = (
+        _text_or_none(daemon_runtime.get("worker_type"))
+        or AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE
+    )
+    signals: list[dict[str, Any]] = []
+
+    if store and store.get("available") is not True:
+        raw_failure_code = (
+            _text_or_none(store.get("failure_code"))
+            or "heartbeat_store_unavailable"
+        )
+        failure_code = (
+            "heartbeat_store_unavailable"
+            if raw_failure_code == "unavailable"
+            else raw_failure_code
+        )
+        signals.append(
+            _retention_daemon_runtime_issue_signal(
+                rule_id="ae_scheduler_daemon_heartbeat_store_unavailable.v1",
+                service_id=service_id,
+                scheduler_id=scheduler_id,
+                signal_key="heartbeat_store",
+                severity="WARNING",
+                title="AE scheduler daemon heartbeat store unavailable",
+                detail=(
+                    "AE scheduler daemon runtime observation cannot use a "
+                    "healthy heartbeat store."
+                ),
+                signal={
+                    "worker_type": worker_type,
+                    "checked_at": checked_at,
+                    "backend": _text_or_none(store.get("backend")),
+                    "failure_code": failure_code,
+                },
+                reason_code=failure_code,
+                operator_actions=[
+                    "inspect_ae_scheduler_daemon_runtime_route",
+                    "configure_ae_scheduler_daemon_heartbeat_store",
+                ],
+            )
+        )
+
+    if metadata.get("heartbeat_observed") is True:
+        heartbeat_status = _text_or_none(heartbeat.get("status"))
+        if heartbeat_status == "ERROR":
+            signals.append(
+                _retention_daemon_runtime_issue_signal(
+                    rule_id="ae_scheduler_daemon_heartbeat_error.v1",
+                    service_id=service_id,
+                    scheduler_id=scheduler_id,
+                    signal_key="heartbeat_error",
+                    severity="ERROR",
+                    title="AE scheduler daemon heartbeat error observed",
+                    detail=(
+                        "AE scheduler daemon reported an ERROR heartbeat in "
+                        "runtime observation."
+                    ),
+                    signal={
+                        "worker_type": worker_type,
+                        "worker_id": _text_or_none(heartbeat.get("worker_id")),
+                        "active_job_id": _text_or_none(
+                            heartbeat.get("active_job_id")
+                        ),
+                        "last_seen_at": _text_or_none(
+                            heartbeat.get("last_seen_at")
+                        ),
+                        "phase": _text_or_none(
+                            _mapping_or_empty(heartbeat.get("metadata")).get(
+                                "phase"
+                            )
+                        ),
+                    },
+                    reason_code="daemon_heartbeat_error",
+                    operator_actions=[
+                        "review_ae_scheduler_daemon_error_heartbeat",
+                        "inspect_ae_artifact_retention_history",
+                    ],
+                )
+            )
+        elif heartbeat_status is None:
+            signals.append(
+                _retention_daemon_runtime_issue_signal(
+                    rule_id="ae_scheduler_daemon_heartbeat_status_unknown.v1",
+                    service_id=service_id,
+                    scheduler_id=scheduler_id,
+                    signal_key="heartbeat_status_unknown",
+                    severity="WARNING",
+                    title="AE scheduler daemon heartbeat status unknown",
+                    detail=(
+                        "AE scheduler daemon heartbeat was observed, but AG "
+                        "could not classify its status."
+                    ),
+                    signal={
+                        "worker_type": worker_type,
+                        "worker_id": _text_or_none(heartbeat.get("worker_id")),
+                        "last_seen_at": _text_or_none(
+                            heartbeat.get("last_seen_at")
+                        ),
+                    },
+                    reason_code="daemon_heartbeat_status_unknown",
+                    operator_actions=[
+                        "inspect_ae_scheduler_daemon_runtime_route",
+                        "verify_ae_worker_heartbeat_status_mapping",
+                    ],
+                )
+            )
+    return signals
+
+
+def _retention_daemon_runtime_issue_signal(
+    *,
+    rule_id: str,
+    service_id: str,
+    scheduler_id: str | None,
+    signal_key: str,
+    severity: str,
+    title: str,
+    detail: str,
+    signal: dict[str, Any],
+    reason_code: str,
+    operator_actions: list[str],
+) -> dict[str, Any]:
+    return {
+        "rule_id": rule_id,
+        "service_id": service_id,
+        "scheduler_id": scheduler_id,
+        "signal_key": signal_key,
+        "severity": severity,
+        "title": title,
+        "detail": detail,
+        "signal": signal,
+        "reason_code": reason_code,
+        "operator_actions": operator_actions,
     }
 
 
@@ -3299,6 +3507,19 @@ def _project_retention_scheduler_daemon_runtime_observation(
             raw_value.get("metadata")
         ),
     }
+
+
+def _normalize_retention_scheduler_daemon_runtime_observation(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    if (
+        raw_value.get("runtime_projection_schema_version")
+        == AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION
+    ):
+        return dict(raw_value)
+    return _project_retention_scheduler_daemon_runtime_observation(raw_value)
 
 
 def _project_retention_scheduler_daemon_heartbeat_store(

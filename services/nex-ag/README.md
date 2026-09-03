@@ -481,6 +481,10 @@ Unified operations:
   status and store availability for operators, treats runtime fetch failures as
   degraded warning evidence, and still leaves all daemon runtime persistence and
   execution authority in AE.
+- Slice 0539 makes that runtime observation actionable. AG now classifies
+  heartbeat-store unavailability, `ERROR` heartbeats, and unknown heartbeat
+  statuses as `HEARTBEAT_ATTENTION`, and emits metadata-only runtime issue
+  candidates while preserving normal `BUSY`/`IDLE` and latest-dispatch behavior.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
