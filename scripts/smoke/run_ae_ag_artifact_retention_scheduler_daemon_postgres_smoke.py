@@ -13,6 +13,7 @@ from urllib.parse import unquote, urlsplit
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,6 +38,7 @@ import run_ae_artifact_retention_scheduler_tick_once_postgres_smoke as once_pg  
 import run_ae_oa_auth_postgres_smoke as base_auth  # noqa: E402
 from nex_ae_api.artifact_retention_scheduler import (  # noqa: E402
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_DISPATCH_RESULT_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
     AE_ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_RESULT_SCHEMA_VERSION,
     DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_OWNER_ID,
 )
@@ -54,6 +56,7 @@ from nex_runtime import (  # noqa: E402
     SERVICE_SPECS,
     SqlAlchemyJobQueue,
     SqlAlchemyWorkerHeartbeatStore,
+    WorkerHeartbeatEmitter,
     build_engine,
     build_service_app,
     build_session_factory,
@@ -264,6 +267,8 @@ def _execute_ae_ag_artifact_retention_scheduler_daemon_smoke(
     workspace_id = f"workspace-artifact-ag-daemon-{suffix}"
     owner_user_id = f"owner-artifact-ag-daemon-{suffix}"
     worker_id = f"ae-artifact-ag-daemon-worker-{suffix}"
+    daemon_worker_id = f"ae-artifact-ag-daemon-heartbeat-{suffix}"
+    daemon_active_job_id = f"ae-artifact-ag-daemon-lifecycle-{suffix}"
     idempotency_key = f"ag-retention-daemon-{suffix}"
     artifact_ids: list[str] = []
     handoff_ids: list[str] = []
@@ -274,6 +279,7 @@ def _execute_ae_ag_artifact_retention_scheduler_daemon_smoke(
         session_factory = build_session_factory(engine)
         once_pg._ensure_sqlite_scheduler_lease_table(engine)
         job_queue = SqlAlchemyJobQueue(session_factory)
+        heartbeat_store = SqlAlchemyWorkerHeartbeatStore(session_factory)
         history_store = SqlAlchemyArtifactRetentionExecutionHistoryStore(
             session_factory
         )
@@ -287,9 +293,7 @@ def _execute_ae_ag_artifact_retention_scheduler_daemon_smoke(
                 ae_app.state.nex_persistence = SimpleNamespace(
                     api_session_factory=session_factory,
                     job_queue=job_queue,
-                    worker_heartbeat_store=SqlAlchemyWorkerHeartbeatStore(
-                        session_factory
-                    ),
+                    worker_heartbeat_store=heartbeat_store,
                 )
                 cx_client = artifact_pg.FakeCxArtifactSourceClient(
                     suffix=suffix,
@@ -350,6 +354,31 @@ def _execute_ae_ag_artifact_retention_scheduler_daemon_smoke(
                     cutoff_at=CUTOFF_AT,
                 )
                 materialized_before = candidate_pg._count_files(storage_root)
+                daemon_heartbeat = WorkerHeartbeatEmitter(
+                    service_id=SERVICE_ID,
+                    worker_id=daemon_worker_id,
+                    worker_type=AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
+                    store=heartbeat_store,
+                    started_at=TICK_AT,
+                    metadata={
+                        "smoke_schema_version": SCHEMA_VERSION,
+                        "scheduler_id": "ae-artifact-retention-scheduler-local-v1",
+                    },
+                ).emit(
+                    status="BUSY",
+                    active_job_id=daemon_active_job_id,
+                    trace_id=trace_id,
+                    observed_at="2026-09-01T02:40:00Z",
+                    metadata={
+                        "phase": "ag_lifecycle_projection_smoke",
+                        "loop_decision_status": "READY",
+                        "loop_decision_reason": None,
+                        "one_cycle_only": True,
+                        "scheduler_daemon_started": False,
+                        "continuous_loop_started": False,
+                        "physical_delete_automation_enabled": False,
+                    },
+                )
 
                 bridge = AeTestClientSchedulerDaemonOperationsClient(
                     ae_client,
@@ -452,6 +481,9 @@ def _execute_ae_ag_artifact_retention_scheduler_daemon_smoke(
                     manual_response=manual_response.status_code,
                     manual_projection=manual_projection,
                     bridge=bridge,
+                    daemon_heartbeat=daemon_heartbeat,
+                    daemon_worker_id=daemon_worker_id,
+                    daemon_active_job_id=daemon_active_job_id,
                     raw_dispatch=raw_dispatch,
                     raw_tick_once=raw_tick_once,
                     lease_observation=lease_observation,
@@ -481,6 +513,10 @@ def _execute_ae_ag_artifact_retention_scheduler_daemon_smoke(
                     idempotency_key=idempotency_key,
                     worker_id=worker_id,
                 )
+                cleanup_daemon_heartbeat = _cleanup_worker_heartbeat_rows(
+                    engine,
+                    worker_id=daemon_worker_id,
+                )
                 cleanup_lease = once_pg._cleanup_scheduler_once_lease_rows(
                     engine,
                     scheduler_id=scheduler_id,
@@ -493,6 +529,18 @@ def _execute_ae_ag_artifact_retention_scheduler_daemon_smoke(
                 )
                 manual_summary = _mapping_value(manual_projection.get("summary"))
                 config_summary = _mapping_value(config_projection.get("summary"))
+                config_lifecycle = _mapping_value(
+                    config_projection.get("lifecycle_projection")
+                )
+                config_lifecycle_state = _mapping_value(
+                    config_lifecycle.get("lifecycle")
+                )
+                manual_lifecycle = _mapping_value(
+                    manual_projection.get("lifecycle_projection")
+                )
+                manual_lifecycle_state = _mapping_value(
+                    manual_lifecycle.get("lifecycle")
+                )
                 projected_tick_once = _mapping_value(
                     _mapping_value(manual_projection.get("dispatch_response")).get(
                         "tick_once_result"
@@ -535,6 +583,14 @@ def _execute_ae_ag_artifact_retention_scheduler_daemon_smoke(
                         "runtime_heartbeat_status": config_summary[
                             "runtime_heartbeat_status"
                         ],
+                        "lifecycle_status": config_summary["lifecycle_status"],
+                        "lifecycle_source": config_summary["lifecycle_source"],
+                        "lifecycle_attention_status": config_summary[
+                            "lifecycle_attention_status"
+                        ],
+                        "lifecycle_projection_status": config_lifecycle_state[
+                            "status"
+                        ],
                         "source_kind": config_projection["source_status"][
                             "source_kind"
                         ],
@@ -567,6 +623,20 @@ def _execute_ae_ag_artifact_retention_scheduler_daemon_smoke(
                         "runtime_heartbeat_status": manual_summary[
                             "runtime_heartbeat_status"
                         ],
+                        "lifecycle_status": manual_summary["lifecycle_status"],
+                        "lifecycle_source": manual_summary["lifecycle_source"],
+                        "lifecycle_attention_status": manual_summary[
+                            "lifecycle_attention_status"
+                        ],
+                        "lifecycle_projection_status": manual_lifecycle_state[
+                            "status"
+                        ],
+                    },
+                    "daemon_heartbeat": {
+                        "worker_id": daemon_heartbeat["worker_id"],
+                        "status": daemon_heartbeat["status"],
+                        "active_job_id": daemon_heartbeat["active_job_id"],
+                        "worker_type": daemon_heartbeat["worker_type"],
                     },
                     "ae_raw_dispatch": {
                         "schema_version": raw_dispatch[
@@ -609,6 +679,7 @@ def _execute_ae_ag_artifact_retention_scheduler_daemon_smoke(
                         **cleanup,
                         "history_rows": cleanup_history,
                         **cleanup_worker,
+                        "daemon_heartbeat_rows": cleanup_daemon_heartbeat,
                         "lease_rows": cleanup_lease,
                     },
                     "live_db": True,
@@ -623,6 +694,7 @@ def _execute_ae_ag_artifact_retention_scheduler_daemon_smoke(
                 idempotency_key=idempotency_key,
                 worker_id=worker_id,
             )
+        _cleanup_worker_heartbeat_rows(engine, worker_id=daemon_worker_id)
         history_pg._cleanup_history_rows(
             engine,
             tenant_id=tenant_id,
@@ -653,6 +725,9 @@ def _ag_scheduler_daemon_checks(
     manual_response: int,
     manual_projection: Mapping[str, Any],
     bridge: AeTestClientSchedulerDaemonOperationsClient,
+    daemon_heartbeat: Mapping[str, Any],
+    daemon_worker_id: str,
+    daemon_active_job_id: str,
     raw_dispatch: Mapping[str, Any],
     raw_tick_once: Mapping[str, Any],
     lease_observation: Mapping[str, Any],
@@ -665,6 +740,12 @@ def _ag_scheduler_daemon_checks(
 ) -> dict[str, bool]:
     config_summary = _mapping_value(config_projection.get("summary"))
     manual_summary = _mapping_value(manual_projection.get("summary"))
+    config_lifecycle = _mapping_value(config_projection.get("lifecycle_projection"))
+    manual_lifecycle = _mapping_value(manual_projection.get("lifecycle_projection"))
+    config_lifecycle_state = _mapping_value(config_lifecycle.get("lifecycle"))
+    manual_lifecycle_state = _mapping_value(manual_lifecycle.get("lifecycle"))
+    config_lifecycle_attention = _mapping_value(config_lifecycle.get("attention"))
+    manual_lifecycle_attention = _mapping_value(manual_lifecycle.get("attention"))
     manual_dispatch = _mapping_value(manual_projection.get("dispatch_response"))
     projected_tick_once = _mapping_value(manual_dispatch.get("tick_once_result"))
     raw_metadata = _mapping_value(raw_dispatch.get("metadata"))
@@ -680,7 +761,15 @@ def _ag_scheduler_daemon_checks(
             "runtime_observation_available"
         )
         is True
-        and config_summary.get("runtime_heartbeat_store_available") is True,
+        and config_summary.get("runtime_heartbeat_store_available") is True
+        and config_summary.get("runtime_heartbeat_observed") is True
+        and config_summary.get("runtime_heartbeat_status") == "BUSY",
+        "ag_config_lifecycle_projected": config_summary.get("lifecycle_status")
+        == "RUNNING"
+        and config_summary.get("lifecycle_source") == "heartbeat"
+        and config_summary.get("lifecycle_attention_status") == "READY"
+        and config_lifecycle_state.get("status") == "RUNNING"
+        and config_lifecycle_attention.get("attention_status") == "READY",
         "ag_manual_tick_route_ok": manual_response == 200,
         "ag_manual_tick_projection_ready": manual_projection.get(
             "projection_schema_version"
@@ -697,10 +786,24 @@ def _ag_scheduler_daemon_checks(
             "runtime_observation_available"
         )
         is True
-        and manual_summary.get("runtime_heartbeat_store_available") is True,
+        and manual_summary.get("runtime_heartbeat_store_available") is True
+        and manual_summary.get("runtime_heartbeat_observed") is True
+        and manual_summary.get("runtime_heartbeat_status") == "BUSY",
+        "ag_manual_tick_lifecycle_projected": manual_summary.get("lifecycle_status")
+        == "RUNNING"
+        and manual_summary.get("lifecycle_source") == "heartbeat"
+        and manual_summary.get("lifecycle_attention_status") == "READY"
+        and manual_lifecycle_state.get("status") == "RUNNING"
+        and manual_lifecycle_attention.get("attention_status") == "READY",
         "ae_bridge_called_source_routes": bridge.daemon_config_statuses == [200, 200]
         and bridge.daemon_runtime_statuses == [200, 200]
         and bridge.daemon_control_statuses == [200],
+        "ae_daemon_heartbeat_persisted": daemon_heartbeat.get("worker_id")
+        == daemon_worker_id
+        and daemon_heartbeat.get("worker_type")
+        == AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE
+        and daemon_heartbeat.get("status") == "BUSY"
+        and daemon_heartbeat.get("active_job_id") == daemon_active_job_id,
         "ae_raw_dispatch_contract": raw_dispatch.get(
             "daemon_dispatch_result_schema_version"
         )
@@ -766,6 +869,28 @@ def _metadata_only(*payloads: Any, forbidden_fragments: list[str | None]) -> boo
     return all(
         fragment not in serialized for fragment in forbidden_fragments if fragment
     )
+
+
+def _cleanup_worker_heartbeat_rows(
+    engine: Any,
+    *,
+    worker_id: str,
+) -> int:
+    try:
+        with engine.begin() as connection:
+            result = connection.execute(
+                text(
+                    """
+                    DELETE FROM service_worker_heartbeats
+                    WHERE service_id = :service_id
+                      AND worker_id = :worker_id
+                    """
+                ),
+                {"service_id": SERVICE_ID, "worker_id": worker_id},
+            )
+            return int(result.rowcount or 0)
+    except SQLAlchemyError:
+        return 0
 
 
 def _failure(
@@ -861,6 +986,7 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"{str(evidence['ag_manual_tick']['runtime_heartbeat_store_available']).lower()} "
             f"runtime_observed="
             f"{str(evidence['ag_manual_tick']['runtime_heartbeat_observed']).lower()} "
+            f"lifecycle={evidence['ag_manual_tick']['lifecycle_status']} "
             f"history_rows={evidence['history']['row_count']} "
             f"live_db={str(evidence['live_db']).lower()} "
             f"cleanup_leases={evidence['cleanup']['lease_rows']}"

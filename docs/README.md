@@ -652,6 +652,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0546`](slices/0546_ae_scheduler_daemon_graceful_shutdown_state_transition.md) | `S55-006` AE scheduler daemon graceful shutdown/state transition. |
 | [`Slice 0547`](slices/0547_ae_scheduler_daemon_retry_backoff_circuit_guard.md) | `S55-007` AE scheduler daemon retry/backoff/circuit guard. |
 | [`Slice 0548`](slices/0548_ag_scheduler_daemon_lifecycle_projection.md) | `S55-008` AG scheduler daemon lifecycle projection. |
+| [`Slice 0549`](slices/0549_ag_scheduler_daemon_lifecycle_postgresql_smoke.md) | `S55-009` AG scheduler daemon lifecycle PostgreSQL smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

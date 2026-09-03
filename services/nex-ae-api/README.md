@@ -755,3 +755,7 @@ Artifact library management:
   daemon runtime state, applies runtime `backoff_seconds`, opens a circuit after
   repeated failures, and still remains metadata-only with no loop start,
   JobQueue enqueue, worker run, DB write, or physical purge.
+- Slice 0549 hardens the protected AE/AG daemon PostgreSQL smoke by inserting a
+  DB-backed AE daemon heartbeat, verifying AG lifecycle `RUNNING` projection,
+  and cleaning up the heartbeat row, lease, JobQueue, history, and seeded
+  artifact rows in the AE test database.

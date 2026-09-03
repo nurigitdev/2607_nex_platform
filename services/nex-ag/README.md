@@ -500,6 +500,9 @@ Unified operations:
   state, bounded-loop, shutdown, and retry-circuit metadata in its daemon
   operations response while keeping daemon process control, persistence writes,
   JobQueue admission, and physical purge authority inside AE.
+- Slice 0549 hardens the protected AE/AG daemon PostgreSQL smoke so it writes a
+  DB-backed AE daemon heartbeat, reads it through the AG operations route, and
+  verifies lifecycle `RUNNING` projection plus cleanup against the AE test DB.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

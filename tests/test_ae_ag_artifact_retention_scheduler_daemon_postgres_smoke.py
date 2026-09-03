@@ -126,8 +126,12 @@ def test_ae_ag_artifact_retention_scheduler_daemon_postgres_smoke_passes_sqlite_
         "start_daemon_available": False,
         "runtime_observation_available": True,
         "runtime_heartbeat_store_available": True,
-        "runtime_heartbeat_observed": False,
-        "runtime_heartbeat_status": None,
+        "runtime_heartbeat_observed": True,
+        "runtime_heartbeat_status": "BUSY",
+        "lifecycle_status": "RUNNING",
+        "lifecycle_source": "heartbeat",
+        "lifecycle_attention_status": "READY",
+        "lifecycle_projection_status": "RUNNING",
         "source_kind": "ae_test_client",
     }
     assert evidence["ag_manual_tick"] == {
@@ -142,8 +146,18 @@ def test_ae_ag_artifact_retention_scheduler_daemon_postgres_smoke_passes_sqlite_
         "tick_once_result_status": "SUCCEEDED",
         "runtime_observation_available": True,
         "runtime_heartbeat_store_available": True,
-        "runtime_heartbeat_observed": False,
-        "runtime_heartbeat_status": None,
+        "runtime_heartbeat_observed": True,
+        "runtime_heartbeat_status": "BUSY",
+        "lifecycle_status": "RUNNING",
+        "lifecycle_source": "heartbeat",
+        "lifecycle_attention_status": "READY",
+        "lifecycle_projection_status": "RUNNING",
+    }
+    assert evidence["daemon_heartbeat"] == {
+        "worker_id": evidence["daemon_heartbeat"]["worker_id"],
+        "status": "BUSY",
+        "active_job_id": evidence["daemon_heartbeat"]["active_job_id"],
+        "worker_type": smoke.AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
     }
     assert evidence["ae_raw_dispatch"] == {
         "schema_version": (
@@ -172,6 +186,7 @@ def test_ae_ag_artifact_retention_scheduler_daemon_postgres_smoke_passes_sqlite_
         "history_rows": 1,
         "job_rows": 1,
         "heartbeat_rows": 0,
+        "daemon_heartbeat_rows": 1,
         "lease_rows": 1,
     }
     assert evidence["live_db"] is True
@@ -277,7 +292,14 @@ def test_ae_ag_artifact_retention_scheduler_daemon_helpers_and_redaction(
         config_projection={},
         manual_response=503,
         manual_projection={},
-        bridge=SimpleNamespace(daemon_config_statuses=[], daemon_control_statuses=[]),
+        bridge=SimpleNamespace(
+            daemon_config_statuses=[],
+            daemon_runtime_statuses=[],
+            daemon_control_statuses=[],
+        ),
+        daemon_heartbeat={},
+        daemon_worker_id="ae-daemon-heartbeat-helper",
+        daemon_active_job_id="ae-daemon-active-helper",
         raw_dispatch={},
         raw_tick_once={},
         lease_observation={},
