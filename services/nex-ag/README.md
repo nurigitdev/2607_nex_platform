@@ -496,6 +496,10 @@ Unified operations:
 - Slice 0542 defines the AE-owned daemon runtime state snapshot that AG can later
   project as metadata-only lifecycle evidence without gaining write access to AE
   persistence or JobQueue admission.
+- Slice 0548 adds that AG lifecycle projection. AG now preserves AE runtime
+  state, bounded-loop, shutdown, and retry-circuit metadata in its daemon
+  operations response while keeping daemon process control, persistence writes,
+  JobQueue admission, and physical purge authority inside AE.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -59,6 +59,9 @@ AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION = (
 AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUNTIME_ISSUE_CANDIDATE_SCHEMA_VERSION = (
     "ag_artifact_operation_retention_daemon_runtime_issue_candidate.v1"
 )
+AG_ARTIFACT_OPERATION_RETENTION_DAEMON_LIFECYCLE_PROJECTION_SCHEMA_VERSION = (
+    "ag_artifact_operation_retention_daemon_lifecycle_projection.v1"
+)
 AE_ARTIFACT_SOURCE_SERVICE_ID = "nex-ae-api"
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE = (
     "ae.artifact_retention.scheduler_daemon"
@@ -98,6 +101,15 @@ SUPPORTED_ARTIFACT_RETENTION_DAEMON_ACTIONS = (
     "manual_tick_once",
     "start_daemon",
     "stop_daemon",
+)
+SUPPORTED_ARTIFACT_RETENTION_DAEMON_LIFECYCLE_STATUSES = (
+    "STARTING",
+    "RUNNING",
+    "STOPPING",
+    "STOPPED",
+    "DISABLED",
+    "ERROR",
+    "UNKNOWN",
 )
 AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE = "ae.artifact_retention.scheduled_execution"
 ARCHIVABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED"}
@@ -1972,6 +1984,11 @@ def build_artifact_operation_retention_daemon_projection(
         daemon_runtime=projected_runtime,
         dispatch_response=projected_dispatch,
     )
+    lifecycle_projection = build_artifact_retention_daemon_lifecycle_projection(
+        daemon_config=projected_config,
+        daemon_runtime=projected_runtime,
+        dispatch_response=projected_dispatch,
+    )
     issue_candidates = build_artifact_retention_daemon_runtime_issue_candidates(
         daemon_runtime=projected_runtime,
     )
@@ -1987,6 +2004,7 @@ def build_artifact_operation_retention_daemon_projection(
         "daemon_config": projected_config,
         "daemon_runtime": projected_runtime or None,
         "dispatch_response": projected_dispatch or None,
+        "lifecycle_projection": lifecycle_projection,
         "issue_candidates": issue_candidates,
         "summary": summarize_artifact_retention_daemon_operations(
             daemon_config=projected_config,
@@ -2013,6 +2031,7 @@ def build_artifact_operation_retention_daemon_projection(
             "ae_daemon_runtime_route": (
                 "/api/v1/artifact-retention/scheduler-daemon-runtime"
             ),
+            "ae_daemon_lifecycle_projection": "metadata_only",
             "manual_tick_once_only": True,
             "manual_tick_once_requires_ae_api": True,
             "confirm_dispatch_required": True,
@@ -2364,6 +2383,204 @@ def summarize_artifact_retention_scheduled_dispatch(
     }
 
 
+def build_artifact_retention_daemon_lifecycle_projection(
+    *,
+    daemon_config: Mapping[str, Any],
+    daemon_runtime: Mapping[str, Any] | None = None,
+    dispatch_response: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    projected_config = _project_retention_scheduler_daemon_config(daemon_config)
+    projected_runtime = _normalize_retention_scheduler_daemon_runtime_observation(
+        daemon_runtime
+    )
+    projected_dispatch = _project_retention_scheduler_daemon_dispatch_response(
+        dispatch_response
+    )
+    runtime_state = _mapping_or_empty(projected_runtime.get("runtime_state"))
+    heartbeat = _mapping_or_empty(projected_runtime.get("heartbeat"))
+    bounded_loop_result = _mapping_or_empty(
+        projected_runtime.get("bounded_loop_result")
+    )
+    shutdown_transition = _mapping_or_empty(
+        projected_runtime.get("shutdown_transition")
+    )
+    retry_circuit_guard = _mapping_or_empty(
+        projected_runtime.get("retry_circuit_guard")
+    )
+    lifecycle_status, lifecycle_source = _daemon_lifecycle_status_and_source(
+        daemon_config=projected_config,
+        runtime_state=runtime_state,
+        heartbeat=heartbeat,
+    )
+    lifecycle_reason = _daemon_lifecycle_reason(
+        lifecycle_status=lifecycle_status,
+        lifecycle_source=lifecycle_source,
+        daemon_config=projected_config,
+        runtime_state=runtime_state,
+        heartbeat=heartbeat,
+    )
+    lifecycle_attention = _daemon_lifecycle_attention(
+        lifecycle_status=lifecycle_status,
+        lifecycle_reason=lifecycle_reason,
+        bounded_loop_result=bounded_loop_result,
+        shutdown_transition=shutdown_transition,
+        retry_circuit_guard=retry_circuit_guard,
+    )
+    runtime_last_cycle = _mapping_or_empty(runtime_state.get("last_cycle"))
+    control_plan = _mapping_or_empty(projected_dispatch.get("control_plan"))
+    projection = {
+        "lifecycle_projection_schema_version": (
+            AG_ARTIFACT_OPERATION_RETENTION_DAEMON_LIFECYCLE_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": (
+            "READY" if projected_config.get("scheduler_id") else "NO_DAEMON_CONFIG"
+        ),
+        "checked_at": _latest_timestamp_text(
+            _text_or_none(projected_runtime.get("checked_at")),
+            _text_or_none(projected_config.get("checked_at")),
+        )
+        or _utc_now(),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "scheduler_id": _text_or_none(projected_config.get("scheduler_id")),
+        "lifecycle": {
+            "status": lifecycle_status,
+            "reason": lifecycle_reason,
+            "source": lifecycle_source,
+            "stop_requested": runtime_state.get("stop_requested") is True,
+            "shutdown_requested_at": _text_or_none(
+                runtime_state.get("shutdown_requested_at")
+            ),
+            "runtime_state_observed": bool(runtime_state),
+            "heartbeat_observed": bool(heartbeat),
+            "heartbeat_status": _text_or_none(heartbeat.get("status")),
+            "heartbeat_worker_id": _text_or_none(heartbeat.get("worker_id")),
+            "last_cycle_status": _text_or_none(runtime_last_cycle.get("result_status")),
+            "next_tick_at": _text_or_none(runtime_state.get("next_tick_at")),
+            "cycle_count": _int_or_zero(runtime_state.get("cycle_count")),
+            "consecutive_failure_count": _int_or_zero(
+                runtime_state.get("consecutive_failure_count")
+            ),
+        },
+        "bounded_loop": {
+            "result_status": _text_or_none(bounded_loop_result.get("result_status")),
+            "stop_reason": _text_or_none(bounded_loop_result.get("stop_reason")),
+            "cycle_count": _int_or_zero(bounded_loop_result.get("cycle_count")),
+            "consecutive_failure_count": _int_or_zero(
+                bounded_loop_result.get("consecutive_failure_count")
+            ),
+        },
+        "shutdown_transition": {
+            "decision_status": _text_or_none(
+                shutdown_transition.get("decision_status")
+            ),
+            "decision_reason": _text_or_none(
+                shutdown_transition.get("decision_reason")
+            ),
+            "requested_at": _text_or_none(shutdown_transition.get("requested_at")),
+        },
+        "retry_circuit_guard": {
+            "decision_status": _text_or_none(
+                retry_circuit_guard.get("decision_status")
+            ),
+            "decision_reason": _text_or_none(
+                retry_circuit_guard.get("decision_reason")
+            ),
+            "retry_allowed": retry_circuit_guard.get("retry_allowed") is True,
+            "next_retry_at": _text_or_none(retry_circuit_guard.get("next_retry_at")),
+            "failure_threshold": _int_or_zero(
+                retry_circuit_guard.get("failure_threshold")
+            ),
+        },
+        "last_control_action": _text_or_none(control_plan.get("action")),
+        "attention": lifecycle_attention,
+        "operator_guidance": {
+            "metadata_only": True,
+            "system_of_record": AE_ARTIFACT_SOURCE_SERVICE_ID,
+            "review_runtime_state_in_ae": bool(runtime_state),
+            "review_heartbeat_when_runtime_state_missing": not bool(runtime_state),
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "ag_direct_daemon_process_control_allowed": False,
+        },
+        "guardrails": {
+            "metadata_only": True,
+            "safe_for_ag_projection": True,
+            "daemon_process_owner_ae": True,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "ag_direct_daemon_process_control_allowed": False,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "runtime_state_observed": bool(runtime_state),
+            "heartbeat_observed": bool(heartbeat),
+            "bounded_loop_observed": bool(bounded_loop_result),
+            "shutdown_transition_observed": bool(shutdown_transition),
+            "retry_circuit_guard_observed": bool(retry_circuit_guard),
+        },
+    }
+    assert_artifact_operation_projection_redacted(projection)
+    return projection
+
+
+def summarize_artifact_retention_daemon_lifecycle_projection(
+    *,
+    daemon_config: Mapping[str, Any],
+    daemon_runtime: Mapping[str, Any] | None = None,
+    dispatch_response: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    projection = build_artifact_retention_daemon_lifecycle_projection(
+        daemon_config=daemon_config,
+        daemon_runtime=daemon_runtime,
+        dispatch_response=dispatch_response,
+    )
+    lifecycle = _mapping_or_empty(projection.get("lifecycle"))
+    bounded_loop = _mapping_or_empty(projection.get("bounded_loop"))
+    shutdown_transition = _mapping_or_empty(projection.get("shutdown_transition"))
+    retry_circuit_guard = _mapping_or_empty(projection.get("retry_circuit_guard"))
+    attention = _mapping_or_empty(projection.get("attention"))
+    return {
+        "lifecycle_status": _text_or_none(lifecycle.get("status")),
+        "lifecycle_reason": _text_or_none(lifecycle.get("reason")),
+        "lifecycle_source": _text_or_none(lifecycle.get("source")),
+        "stop_requested": lifecycle.get("stop_requested") is True,
+        "shutdown_requested_at": _text_or_none(
+            lifecycle.get("shutdown_requested_at")
+        ),
+        "runtime_state_observed": lifecycle.get("runtime_state_observed") is True,
+        "heartbeat_observed": lifecycle.get("heartbeat_observed") is True,
+        "heartbeat_status": _text_or_none(lifecycle.get("heartbeat_status")),
+        "last_cycle_status": _text_or_none(lifecycle.get("last_cycle_status")),
+        "consecutive_failure_count": _int_or_zero(
+            lifecycle.get("consecutive_failure_count")
+        ),
+        "bounded_loop_result_status": _text_or_none(
+            bounded_loop.get("result_status")
+        ),
+        "bounded_loop_stop_reason": _text_or_none(bounded_loop.get("stop_reason")),
+        "shutdown_transition_status": _text_or_none(
+            shutdown_transition.get("decision_status")
+        ),
+        "shutdown_transition_reason": _text_or_none(
+            shutdown_transition.get("decision_reason")
+        ),
+        "retry_circuit_status": _text_or_none(
+            retry_circuit_guard.get("decision_status")
+        ),
+        "retry_circuit_reason": _text_or_none(
+            retry_circuit_guard.get("decision_reason")
+        ),
+        "retry_allowed": retry_circuit_guard.get("retry_allowed") is True,
+        "attention_status": _text_or_none(attention.get("attention_status")),
+        "attention_level": _text_or_none(attention.get("attention_level")),
+        "operator_attention_required": (
+            attention.get("operator_attention_required") is True
+        ),
+        "operator_action": _text_or_none(attention.get("operator_action")),
+        "metadata_only": True,
+    }
+
+
 def summarize_artifact_retention_daemon_operations(
     *,
     daemon_config: Mapping[str, Any],
@@ -2389,6 +2606,11 @@ def summarize_artifact_retention_daemon_operations(
     manual_status = _text_or_none(manual_action.get("decision_status"))
     start_status = _text_or_none(start_action.get("decision_status"))
     attention = classify_artifact_retention_daemon_attention(
+        daemon_config=daemon_config,
+        daemon_runtime=runtime_observation,
+        dispatch_response=dispatch_response,
+    )
+    lifecycle_summary = summarize_artifact_retention_daemon_lifecycle_projection(
         daemon_config=daemon_config,
         daemon_runtime=runtime_observation,
         dispatch_response=dispatch_response,
@@ -2434,6 +2656,22 @@ def summarize_artifact_retention_daemon_operations(
         "runtime_heartbeat_last_seen_at": _text_or_none(
             runtime_heartbeat.get("last_seen_at")
         ),
+        "lifecycle_status": lifecycle_summary["lifecycle_status"],
+        "lifecycle_reason": lifecycle_summary["lifecycle_reason"],
+        "lifecycle_source": lifecycle_summary["lifecycle_source"],
+        "lifecycle_attention_status": lifecycle_summary["attention_status"],
+        "lifecycle_attention_level": lifecycle_summary["attention_level"],
+        "lifecycle_operator_attention_required": lifecycle_summary[
+            "operator_attention_required"
+        ],
+        "bounded_loop_result_status": lifecycle_summary[
+            "bounded_loop_result_status"
+        ],
+        "shutdown_transition_status": lifecycle_summary[
+            "shutdown_transition_status"
+        ],
+        "retry_circuit_status": lifecycle_summary["retry_circuit_status"],
+        "retry_allowed": lifecycle_summary["retry_allowed"],
         "runtime_issue_candidate_count": len(runtime_issue_candidates),
         "attention_status": attention["attention_status"],
         "attention_level": attention["attention_level"],
@@ -3500,6 +3738,18 @@ def _project_retention_scheduler_daemon_runtime_observation(
         "daemon_config_checked_at": _text_or_none(
             raw_value.get("daemon_config_checked_at")
         ),
+        "runtime_state": _project_retention_scheduler_daemon_runtime_state(
+            raw_value.get("runtime_state")
+        ),
+        "bounded_loop_result": _project_retention_scheduler_daemon_bounded_loop_result(
+            raw_value.get("bounded_loop_result")
+        ),
+        "shutdown_transition": _project_retention_scheduler_daemon_shutdown_transition(
+            raw_value.get("shutdown_transition")
+        ),
+        "retry_circuit_guard": _project_retention_scheduler_daemon_retry_circuit_guard(
+            raw_value.get("retry_circuit_guard")
+        ),
         "guardrails": _project_retention_scheduler_daemon_runtime_guardrails(
             raw_value.get("guardrails")
         ),
@@ -3634,6 +3884,248 @@ def _project_retention_scheduler_daemon_runtime_metadata(
             raw_value.get("physical_delete_automation_enabled") is True
         ),
     }
+
+
+def _project_retention_scheduler_daemon_runtime_state(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "daemon_runtime_state_schema_version": _text_or_none(
+            raw_value.get("daemon_runtime_state_schema_version")
+        ),
+        "daemon_runtime_state_id": _text_or_none(
+            raw_value.get("daemon_runtime_state_id")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "daemon_instance_id": _text_or_none(raw_value.get("daemon_instance_id")),
+        "observed_at": _text_or_none(raw_value.get("observed_at")),
+        "lifecycle_status": _normalized_daemon_lifecycle_status(
+            raw_value.get("lifecycle_status")
+        ),
+        "lifecycle_reason": _text_or_none(raw_value.get("lifecycle_reason")),
+        "stop_requested": raw_value.get("stop_requested") is True,
+        "shutdown_requested_at": _text_or_none(raw_value.get("shutdown_requested_at")),
+        "last_cycle": _project_retention_scheduler_daemon_runtime_state_last_cycle(
+            raw_value.get("last_cycle")
+        ),
+        "next_tick_at": _text_or_none(raw_value.get("next_tick_at")),
+        "cycle_count": _int_or_zero(raw_value.get("cycle_count")),
+        "consecutive_failure_count": _int_or_zero(
+            raw_value.get("consecutive_failure_count")
+        ),
+        "heartbeat_worker_id": _text_or_none(raw_value.get("heartbeat_worker_id")),
+        "guardrails": _project_retention_scheduler_daemon_lifecycle_guardrails(
+            raw_value.get("guardrails")
+        ),
+        "metadata": _project_retention_scheduler_daemon_lifecycle_metadata(
+            raw_value.get("metadata")
+        ),
+    }
+
+
+def _project_retention_scheduler_daemon_runtime_state_last_cycle(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return _select_mapping(
+        raw_value,
+        (
+            "run_at",
+            "result_status",
+            "skip_reason",
+            "error_code",
+            "duration_ms",
+            "planned_delete_count",
+            "deleted_count",
+        ),
+    )
+
+
+def _project_retention_scheduler_daemon_bounded_loop_result(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "daemon_bounded_loop_result_schema_version": _text_or_none(
+            raw_value.get("daemon_bounded_loop_result_schema_version")
+        ),
+        "daemon_bounded_loop_result_id": _text_or_none(
+            raw_value.get("daemon_bounded_loop_result_id")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "daemon_instance_id": _text_or_none(raw_value.get("daemon_instance_id")),
+        "result_status": _text_or_none(raw_value.get("result_status")),
+        "stop_reason": _text_or_none(raw_value.get("stop_reason")),
+        "started_at": _text_or_none(raw_value.get("started_at")),
+        "finished_at": _text_or_none(raw_value.get("finished_at")),
+        "max_cycles": _int_or_zero(raw_value.get("max_cycles")),
+        "cycle_count": _int_or_zero(raw_value.get("cycle_count")),
+        "consecutive_failure_count": _int_or_zero(
+            raw_value.get("consecutive_failure_count")
+        ),
+        "final_state": _project_retention_scheduler_daemon_runtime_state(
+            raw_value.get("final_state")
+        ),
+        "guardrails": _project_retention_scheduler_daemon_lifecycle_guardrails(
+            raw_value.get("guardrails")
+        ),
+        "metadata": _project_retention_scheduler_daemon_lifecycle_metadata(
+            raw_value.get("metadata")
+        ),
+    }
+
+
+def _project_retention_scheduler_daemon_shutdown_transition(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "daemon_shutdown_transition_schema_version": _text_or_none(
+            raw_value.get("daemon_shutdown_transition_schema_version")
+        ),
+        "daemon_shutdown_transition_id": _text_or_none(
+            raw_value.get("daemon_shutdown_transition_id")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "daemon_instance_id": _text_or_none(raw_value.get("daemon_instance_id")),
+        "requested_at": _text_or_none(raw_value.get("requested_at")),
+        "decision_status": _text_or_none(raw_value.get("decision_status")),
+        "decision_reason": _text_or_none(raw_value.get("decision_reason")),
+        "previous_state": _project_retention_scheduler_daemon_runtime_state(
+            raw_value.get("previous_state")
+        ),
+        "next_state": _project_retention_scheduler_daemon_runtime_state(
+            raw_value.get("next_state")
+        ),
+        "execution_plan": _select_mapping(
+            raw_value.get("execution_plan"),
+            (
+                "requires_runtime_state",
+                "sends_stop_signal",
+                "runs_tick_once",
+                "dispatches_job_queue",
+                "bounded_loop_should_stop_before_next_cycle",
+                "writes_history",
+                "physical_delete_enabled",
+            ),
+        ),
+        "guardrails": _project_retention_scheduler_daemon_lifecycle_guardrails(
+            raw_value.get("guardrails")
+        ),
+        "metadata": _project_retention_scheduler_daemon_lifecycle_metadata(
+            raw_value.get("metadata")
+        ),
+    }
+
+
+def _project_retention_scheduler_daemon_retry_circuit_guard(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "daemon_retry_circuit_guard_schema_version": _text_or_none(
+            raw_value.get("daemon_retry_circuit_guard_schema_version")
+        ),
+        "daemon_retry_circuit_guard_id": _text_or_none(
+            raw_value.get("daemon_retry_circuit_guard_id")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "daemon_instance_id": _text_or_none(raw_value.get("daemon_instance_id")),
+        "requested_at": _text_or_none(raw_value.get("requested_at")),
+        "decision_status": _text_or_none(raw_value.get("decision_status")),
+        "decision_reason": _text_or_none(raw_value.get("decision_reason")),
+        "retry_allowed": raw_value.get("retry_allowed") is True,
+        "next_retry_at": _text_or_none(raw_value.get("next_retry_at")),
+        "failure_threshold": _int_or_zero(raw_value.get("failure_threshold")),
+        "backoff_seconds": _int_or_zero(raw_value.get("backoff_seconds")),
+        "execution_plan": _select_mapping(
+            raw_value.get("execution_plan"),
+            (
+                "requires_runtime_state",
+                "retry_allowed",
+                "runs_tick_once",
+                "dispatches_job_queue",
+                "writes_history",
+                "physical_delete_enabled",
+            ),
+        ),
+        "guardrails": _project_retention_scheduler_daemon_lifecycle_guardrails(
+            raw_value.get("guardrails")
+        ),
+        "metadata": _project_retention_scheduler_daemon_lifecycle_metadata(
+            raw_value.get("metadata")
+        ),
+    }
+
+
+def _project_retention_scheduler_daemon_lifecycle_guardrails(
+    raw_value: Any,
+) -> dict[str, Any]:
+    return _select_mapping(
+        raw_value,
+        (
+            "metadata_only",
+            "state_snapshot_only",
+            "daemon_process_owner_ae",
+            "daemon_as_jobqueue_job_allowed",
+            "retention_work_uses_job_queue",
+            "job_enqueue_performed",
+            "worker_execution_performed",
+            "runtime_state_persisted_by_builder",
+            "bounded_loop_is_finite",
+            "bounded_loop_stop_requested",
+            "retry_decision_only",
+            "runtime_state_mutated",
+            "database_write_performed",
+            "ag_direct_database_write_allowed",
+            "ag_direct_job_enqueue_allowed",
+            "continuous_loop_started",
+            "physical_delete_automation_enabled",
+        ),
+    )
+
+
+def _project_retention_scheduler_daemon_lifecycle_metadata(
+    raw_value: Any,
+) -> dict[str, Any]:
+    return _select_mapping(
+        raw_value,
+        (
+            "metadata_only",
+            "safe_for_ag_projection",
+            "state_snapshot_only",
+            "lifecycle_running",
+            "lifecycle_stopped",
+            "lifecycle_error",
+            "stop_requested",
+            "shutdown_requested",
+            "last_cycle_present",
+            "last_cycle_failed",
+            "next_tick_scheduled",
+            "consecutive_failures_present",
+            "bounded_loop_started",
+            "stopped_by_max_cycles",
+            "stopped_by_request",
+            "tick_once_ran",
+            "job_enqueued",
+            "worker_executed",
+            "retry_ready",
+            "backing_off",
+            "circuit_open",
+            "runtime_state_mutated",
+            "database_write_performed",
+            "continuous_loop_started",
+            "physical_delete_automation_enabled",
+        ),
+    )
 
 
 def _project_retention_scheduler_daemon_runtime(raw_value: Any) -> dict[str, Any]:
@@ -6149,6 +6641,131 @@ def _normalized_daemon_heartbeat_status(raw_value: Any) -> str | None:
     if value in {"STARTING", "BUSY", "IDLE", "ERROR"}:
         return value
     return None
+
+
+def _normalized_daemon_lifecycle_status(raw_value: Any) -> str | None:
+    value = _text_or_none(raw_value)
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().replace("-", "_").upper()
+    return (
+        normalized
+        if normalized in SUPPORTED_ARTIFACT_RETENTION_DAEMON_LIFECYCLE_STATUSES
+        else None
+    )
+
+
+def _daemon_lifecycle_status_and_source(
+    *,
+    daemon_config: Mapping[str, Any],
+    runtime_state: Mapping[str, Any],
+    heartbeat: Mapping[str, Any],
+) -> tuple[str, str]:
+    runtime_status = _normalized_daemon_lifecycle_status(
+        runtime_state.get("lifecycle_status")
+    )
+    if runtime_status is not None:
+        return runtime_status, "runtime_state"
+
+    heartbeat_status = _normalized_daemon_heartbeat_status(heartbeat.get("status"))
+    if heartbeat_status == "STARTING":
+        return "STARTING", "heartbeat"
+    if heartbeat_status == "BUSY":
+        return "RUNNING", "heartbeat"
+    if heartbeat_status == "IDLE":
+        return "STOPPED", "heartbeat"
+    if heartbeat_status == "ERROR":
+        return "ERROR", "heartbeat"
+
+    runtime_config = _mapping_or_empty(daemon_config.get("runtime"))
+    if (
+        daemon_config.get("scheduler_id")
+        and runtime_config.get("scheduler_daemon_enabled") is False
+    ):
+        return "DISABLED", "daemon_config"
+    return "UNKNOWN", "missing"
+
+
+def _daemon_lifecycle_reason(
+    *,
+    lifecycle_status: str,
+    lifecycle_source: str,
+    daemon_config: Mapping[str, Any],
+    runtime_state: Mapping[str, Any],
+    heartbeat: Mapping[str, Any],
+) -> str:
+    runtime_reason = _text_or_none(runtime_state.get("lifecycle_reason"))
+    if lifecycle_source == "runtime_state" and runtime_reason:
+        return runtime_reason
+
+    heartbeat_status = _normalized_daemon_heartbeat_status(heartbeat.get("status"))
+    if lifecycle_source == "heartbeat" and heartbeat_status is not None:
+        return f"heartbeat_{heartbeat_status.lower()}"
+
+    runtime_config = _mapping_or_empty(daemon_config.get("runtime"))
+    if lifecycle_status == "DISABLED":
+        if runtime_config.get("daemon_auto_start_allowed") is False:
+            return "explicit_opt_in_required"
+        return "scheduler_daemon_disabled"
+    return "runtime_state_missing"
+
+
+def _daemon_lifecycle_attention(
+    *,
+    lifecycle_status: str,
+    lifecycle_reason: str,
+    bounded_loop_result: Mapping[str, Any],
+    shutdown_transition: Mapping[str, Any],
+    retry_circuit_guard: Mapping[str, Any],
+) -> dict[str, Any]:
+    retry_status = _text_or_none(retry_circuit_guard.get("decision_status"))
+    retry_reason = _text_or_none(retry_circuit_guard.get("decision_reason"))
+    shutdown_status = _text_or_none(shutdown_transition.get("decision_status"))
+    bounded_status = _text_or_none(bounded_loop_result.get("result_status"))
+
+    attention_status = "READY"
+    attention_level = "OK"
+    reason_code = lifecycle_reason
+    operator_action = "monitor_ae_scheduler_daemon_lifecycle"
+    operator_attention_required = False
+
+    if lifecycle_status == "ERROR" or retry_status == "CIRCUIT_OPEN":
+        attention_status = "ACTION_REQUIRED"
+        attention_level = "ERROR"
+        reason_code = retry_reason or lifecycle_reason
+        operator_action = "review_ae_scheduler_daemon_failure"
+        operator_attention_required = True
+    elif bounded_status == "FAILED":
+        attention_status = "ACTION_REQUIRED"
+        attention_level = "ERROR"
+        reason_code = "bounded_loop_failed"
+        operator_action = "review_ae_scheduler_daemon_bounded_loop"
+        operator_attention_required = True
+    elif lifecycle_status == "STOPPING" or shutdown_status == "READY":
+        attention_status = "SHUTDOWN_IN_PROGRESS"
+        attention_level = "WARN"
+        reason_code = lifecycle_reason
+        operator_action = "wait_for_ae_scheduler_daemon_shutdown"
+        operator_attention_required = True
+    elif retry_status == "BACKING_OFF":
+        attention_status = "RETRY_BACKOFF"
+        attention_level = "INFO"
+        reason_code = retry_reason or "backoff_window_active"
+        operator_action = "wait_for_ae_scheduler_daemon_retry_window"
+    elif lifecycle_status in {"DISABLED", "UNKNOWN"}:
+        attention_status = "OBSERVATION_GAP"
+        attention_level = "INFO"
+        reason_code = lifecycle_reason
+        operator_action = "inspect_ae_scheduler_daemon_runtime_route"
+
+    return {
+        "attention_status": attention_status,
+        "attention_level": attention_level,
+        "reason_code": reason_code,
+        "operator_action": operator_action,
+        "operator_attention_required": operator_attention_required,
+        "metadata_only": True,
+    }
 
 
 def _select_mapping(raw_value: Any, allowed_keys: tuple[str, ...]) -> dict[str, Any]:

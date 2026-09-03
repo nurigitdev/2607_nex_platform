@@ -14,6 +14,7 @@ from nex_ag.artifact_operations import (
     AG_ARTIFACT_OPERATION_RETENTION_AUTOMATION_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_BATCH_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_ATTENTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_RETENTION_DAEMON_LIFECYCLE_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_DISPATCH_SCHEMA_VERSION,
@@ -36,6 +37,7 @@ from nex_ag.artifact_operations import (
     build_artifact_operation_retention_history_projection,
     build_artifact_operation_retention_scheduled_dispatch_projection,
     build_artifact_operation_retention_scheduled_job_projection,
+    build_artifact_retention_daemon_lifecycle_projection,
     build_default_ae_artifact_operations_client,
     classify_artifact_retention_daemon_attention,
     register_artifact_operation_routes,
@@ -45,6 +47,7 @@ from nex_ag.artifact_operations import (
     summarize_artifact_retention_batch_operations,
     summarize_artifact_retention_automation_operations,
     summarize_artifact_retention_daemon_operations,
+    summarize_artifact_retention_daemon_lifecycle_projection,
     summarize_artifact_retention_history_operations,
     summarize_artifact_retention_scheduled_dispatch,
     summarize_artifact_retention_scheduled_job_operations,
@@ -875,6 +878,10 @@ def artifact_retention_scheduler_daemon_runtime_payload(
     active_job_id: str | None = "daemon-loop-plan-0538",
     observed: bool = True,
     heartbeat_store_available: bool = True,
+    runtime_state: dict[str, Any] | None = None,
+    bounded_loop_result: dict[str, Any] | None = None,
+    shutdown_transition: dict[str, Any] | None = None,
+    retry_circuit_guard: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     heartbeat = None
     if observed:
@@ -903,7 +910,7 @@ def artifact_retention_scheduler_daemon_runtime_payload(
                 "physical_delete_automation_enabled": False,
             },
         }
-    return {
+    payload = {
         "runtime_observation_schema_version": (
             "ae_artifact_retention_scheduler_daemon_runtime_observation.v1"
         ),
@@ -943,6 +950,120 @@ def artifact_retention_scheduler_daemon_runtime_payload(
             "scheduler_daemon_started": False,
             "continuous_loop_started": False,
             "physical_delete_automation_enabled": False,
+        },
+    }
+    if runtime_state is not None:
+        payload["runtime_state"] = runtime_state
+    if bounded_loop_result is not None:
+        payload["bounded_loop_result"] = bounded_loop_result
+    if shutdown_transition is not None:
+        payload["shutdown_transition"] = shutdown_transition
+    if retry_circuit_guard is not None:
+        payload["retry_circuit_guard"] = retry_circuit_guard
+    return payload
+
+
+def artifact_retention_scheduler_daemon_runtime_state_payload(
+    *,
+    lifecycle_status: str = "RUNNING",
+    lifecycle_reason: str | None = "started",
+    stop_requested: bool = False,
+    shutdown_requested_at: str | None = None,
+    last_cycle_status: str | None = "SUCCEEDED",
+    consecutive_failure_count: int = 0,
+) -> dict[str, Any]:
+    last_cycle = None
+    if last_cycle_status is not None:
+        last_cycle = {
+            "run_at": "2026-09-01T02:39:00Z",
+            "result_status": last_cycle_status,
+            "skip_reason": None,
+            "error_code": (
+                "ae.retention_daemon_cycle_failed"
+                if last_cycle_status == "FAILED"
+                else None
+            ),
+            "duration_ms": 1500,
+        }
+    return {
+        "daemon_runtime_state_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_runtime_state.v1"
+        ),
+        "daemon_runtime_state_id": "ae-daemon-runtime-state-0548",
+        "service_id": "nex-ae-api",
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "daemon_instance_id": "ae-retention-daemon-runtime-0548",
+        "observed_at": "2026-09-01T02:41:00Z",
+        "lifecycle_status": lifecycle_status,
+        "lifecycle_reason": lifecycle_reason,
+        "stop_requested": stop_requested,
+        "shutdown_requested_at": shutdown_requested_at,
+        "last_cycle": last_cycle,
+        "next_tick_at": None if stop_requested else "2026-09-01T02:55:00Z",
+        "cycle_count": 3,
+        "consecutive_failure_count": consecutive_failure_count,
+        "heartbeat_worker_id": "ae-retention-daemon-runtime-0538",
+        "guardrails": {
+            "metadata_only": True,
+            "state_snapshot_only": True,
+            "daemon_process_owner_ae": True,
+            "daemon_as_jobqueue_job_allowed": False,
+            "retention_work_uses_job_queue": True,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "safe_for_ag_projection": True,
+            "state_snapshot_only": True,
+            "lifecycle_running": lifecycle_status == "RUNNING",
+            "lifecycle_stopped": lifecycle_status == "STOPPED",
+            "lifecycle_error": lifecycle_status == "ERROR",
+            "stop_requested": stop_requested,
+            "shutdown_requested": shutdown_requested_at is not None,
+            "last_cycle_present": last_cycle is not None,
+            "last_cycle_failed": last_cycle_status == "FAILED",
+            "consecutive_failures_present": consecutive_failure_count > 0,
+        },
+    }
+
+
+def artifact_retention_scheduler_daemon_bounded_loop_result_payload(
+    *,
+    result_status: str = "SUCCEEDED",
+    stop_reason: str = "max_cycles_reached",
+    final_state: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "daemon_bounded_loop_result_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_bounded_loop_result.v1"
+        ),
+        "daemon_bounded_loop_result_id": "ae-daemon-bounded-loop-0548",
+        "service_id": "nex-ae-api",
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "daemon_instance_id": "ae-retention-daemon-runtime-0548",
+        "result_status": result_status,
+        "stop_reason": stop_reason,
+        "started_at": "2026-09-01T02:30:00Z",
+        "finished_at": "2026-09-01T02:41:00Z",
+        "max_cycles": 3,
+        "cycle_count": 3,
+        "consecutive_failure_count": 1 if result_status == "FAILED" else 0,
+        "final_state": final_state,
+        "guardrails": {
+            "metadata_only": True,
+            "bounded_loop_is_finite": True,
+            "continuous_loop_started": False,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "safe_for_ag_projection": True,
+            "bounded_loop_started": True,
+            "stopped_by_max_cycles": stop_reason == "max_cycles_reached",
+            "tick_once_ran": True,
+            "job_enqueued": True,
         },
     }
 
@@ -1779,6 +1900,20 @@ def test_artifact_operation_retention_daemon_projection_summarizes_and_redacts()
     assert projection["daemon_runtime"]["heartbeat"]["metadata"]["phase"] == (
         "tick_once_running"
     )
+    assert projection["lifecycle_projection"]["lifecycle_projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_LIFECYCLE_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["lifecycle_projection"]["lifecycle"]["status"] == "RUNNING"
+    assert projection["lifecycle_projection"]["lifecycle"]["source"] == "heartbeat"
+    assert projection["lifecycle_projection"]["lifecycle"]["heartbeat_status"] == (
+        "BUSY"
+    )
+    assert projection["lifecycle_projection"]["attention"]["attention_status"] == (
+        "READY"
+    )
+    assert projection["lifecycle_projection"]["guardrails"][
+        "ag_direct_database_write_allowed"
+    ] is False
     assert projection["daemon_config"]["supported_actions"][1] == {
         "action": "manual_tick_once",
         "decision_status": "READY",
@@ -1845,6 +1980,12 @@ def test_artifact_operation_retention_daemon_projection_summarizes_and_redacts()
     assert projection["summary"]["runtime_heartbeat_last_seen_at"] == (
         "2026-09-01T02:40:00Z"
     )
+    assert projection["summary"]["lifecycle_status"] == "RUNNING"
+    assert projection["summary"]["lifecycle_reason"] == "heartbeat_busy"
+    assert projection["summary"]["lifecycle_source"] == "heartbeat"
+    assert projection["summary"]["lifecycle_attention_status"] == "READY"
+    assert projection["summary"]["lifecycle_operator_attention_required"] is False
+    assert projection["summary"]["retry_allowed"] is False
     assert projection["summary"]["runtime_issue_candidate_count"] == 0
     assert projection["summary"]["attention_status"] == "DISPATCH_ATTENTION"
     assert projection["summary"]["attention_level"] == "INFO"
@@ -1879,6 +2020,9 @@ def test_artifact_operation_retention_daemon_projection_summarizes_and_redacts()
     assert projection["source_status"]["dispatch_response_loaded"] is True
     assert projection["operator_guidance"]["ae_daemon_runtime_route"] == (
         "/api/v1/artifact-retention/scheduler-daemon-runtime"
+    )
+    assert projection["operator_guidance"]["ae_daemon_lifecycle_projection"] == (
+        "metadata_only"
     )
     assert projection["operator_guidance"]["manual_tick_once_requires_ae_api"] is True
     assert projection["operator_guidance"]["ag_direct_database_write_allowed"] is False
@@ -1942,8 +2086,16 @@ def test_artifact_operation_retention_daemon_projection_handles_sparse_edges() -
     assert projection["daemon_runtime"]["heartbeat_store"] == {}
     assert projection["daemon_runtime"]["heartbeat"] == {}
     assert projection["daemon_runtime"]["heartbeat_count"] == 0
+    assert projection["daemon_runtime"]["runtime_state"] == {}
+    assert projection["daemon_runtime"]["bounded_loop_result"] == {}
+    assert projection["daemon_runtime"]["shutdown_transition"] == {}
+    assert projection["daemon_runtime"]["retry_circuit_guard"] == {}
     assert projection["daemon_runtime"]["guardrails"] == {}
     assert projection["daemon_runtime"]["metadata"] == {}
+    assert projection["lifecycle_projection"]["lifecycle"]["status"] == "UNKNOWN"
+    assert projection["lifecycle_projection"]["attention"]["attention_status"] == (
+        "OBSERVATION_GAP"
+    )
     assert projection["dispatch_response"]["control_plan"]["action"] is None
     assert projection["dispatch_response"]["control_plan"]["requested_by"] == {}
     assert projection["dispatch_response"]["control_plan"]["execution_plan"] == {}
@@ -2010,6 +2162,30 @@ def test_artifact_operation_retention_daemon_projection_handles_sparse_edges() -
         == {}
     )
     assert (
+        artifact_operations._project_retention_scheduler_daemon_runtime_state([])
+        == {}
+    )
+    assert (
+        artifact_operations._project_retention_scheduler_daemon_bounded_loop_result([])
+        == {}
+    )
+    assert (
+        artifact_operations._project_retention_scheduler_daemon_shutdown_transition([])
+        == {}
+    )
+    assert (
+        artifact_operations._project_retention_scheduler_daemon_retry_circuit_guard([])
+        == {}
+    )
+    assert (
+        artifact_operations._project_retention_scheduler_daemon_lifecycle_guardrails([])
+        == {}
+    )
+    assert (
+        artifact_operations._project_retention_scheduler_daemon_lifecycle_metadata([])
+        == {}
+    )
+    assert (
         artifact_operations.build_artifact_retention_daemon_runtime_issue_candidates(
             daemon_runtime=None
         )
@@ -2024,6 +2200,281 @@ def test_artifact_operation_retention_daemon_projection_handles_sparse_edges() -
     assert artifact_operations._project_retention_scheduler_daemon_control_plan([]) == {}
     assert artifact_operations._project_retention_scheduler_start_stop_guardrail([]) == {}
     assert artifact_operations._project_retention_scheduler_tick_once_summary([]) == {}
+
+
+def test_artifact_retention_daemon_lifecycle_projection_reads_runtime_contracts() -> (
+    None
+):
+    runtime_state = artifact_retention_scheduler_daemon_runtime_state_payload(
+        lifecycle_status="ERROR",
+        lifecycle_reason="cycle_failed",
+        last_cycle_status="FAILED",
+        consecutive_failure_count=3,
+    )
+    bounded_loop_result = artifact_retention_scheduler_daemon_bounded_loop_result_payload(
+        result_status="FAILED",
+        stop_reason="cycle_failed",
+        final_state=runtime_state,
+    )
+    shutdown_transition = {
+        "daemon_shutdown_transition_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_shutdown_transition.v1"
+        ),
+        "daemon_shutdown_transition_id": "ae-daemon-shutdown-0548",
+        "service_id": "nex-ae-api",
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "daemon_instance_id": "ae-retention-daemon-runtime-0548",
+        "requested_at": "2026-09-01T02:42:00Z",
+        "decision_status": "READY",
+        "decision_reason": "stop_requested",
+        "previous_state": runtime_state,
+        "next_state": artifact_retention_scheduler_daemon_runtime_state_payload(
+            lifecycle_status="STOPPING",
+            lifecycle_reason="stop_requested",
+            stop_requested=True,
+            shutdown_requested_at="2026-09-01T02:42:00Z",
+            last_cycle_status="FAILED",
+            consecutive_failure_count=3,
+        ),
+        "execution_plan": {
+            "requires_runtime_state": True,
+            "sends_stop_signal": True,
+            "runs_tick_once": False,
+            "dispatches_job_queue": False,
+            "bounded_loop_should_stop_before_next_cycle": True,
+            "writes_history": False,
+            "physical_delete_enabled": False,
+        },
+        "guardrails": {
+            "metadata_only": True,
+            "runtime_state_mutated": False,
+            "database_write_performed": False,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "safe_for_ag_projection": True,
+            "shutdown_requested": True,
+            "runtime_state_mutated": False,
+            "database_write_performed": False,
+        },
+    }
+    retry_circuit_guard = {
+        "daemon_retry_circuit_guard_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_retry_circuit_guard.v1"
+        ),
+        "daemon_retry_circuit_guard_id": "ae-daemon-retry-0548",
+        "service_id": "nex-ae-api",
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "daemon_instance_id": "ae-retention-daemon-runtime-0548",
+        "requested_at": "2026-09-01T02:43:00Z",
+        "decision_status": "CIRCUIT_OPEN",
+        "decision_reason": "max_consecutive_failures_reached",
+        "retry_allowed": False,
+        "next_retry_at": None,
+        "failure_threshold": 3,
+        "backoff_seconds": 120,
+        "execution_plan": {
+            "requires_runtime_state": True,
+            "retry_allowed": False,
+            "runs_tick_once": False,
+            "dispatches_job_queue": False,
+            "writes_history": False,
+            "physical_delete_enabled": False,
+        },
+        "guardrails": {
+            "metadata_only": True,
+            "retry_decision_only": True,
+            "runtime_state_mutated": False,
+            "database_write_performed": False,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "safe_for_ag_projection": True,
+            "circuit_open": True,
+            "runtime_state_mutated": False,
+            "database_write_performed": False,
+        },
+    }
+    runtime = artifact_retention_scheduler_daemon_runtime_payload(
+        status="ERROR",
+        active_job_id="daemon-loop-error",
+        runtime_state=runtime_state,
+        bounded_loop_result=bounded_loop_result,
+        shutdown_transition=shutdown_transition,
+        retry_circuit_guard=retry_circuit_guard,
+    )
+
+    projection = build_artifact_retention_daemon_lifecycle_projection(
+        daemon_config=artifact_retention_scheduler_daemon_config_payload(),
+        daemon_runtime=runtime,
+        dispatch_response=artifact_retention_scheduler_daemon_dispatch_payload(
+            action="stop_daemon",
+            dispatch_status="BLOCKED",
+        ),
+    )
+    summary = summarize_artifact_retention_daemon_lifecycle_projection(
+        daemon_config=artifact_retention_scheduler_daemon_config_payload(),
+        daemon_runtime=runtime,
+    )
+    parent_projection = build_artifact_operation_retention_daemon_projection(
+        daemon_config=artifact_retention_scheduler_daemon_config_payload(),
+        daemon_runtime=runtime,
+    )
+
+    assert projection["lifecycle_projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_LIFECYCLE_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["lifecycle"]["status"] == "ERROR"
+    assert projection["lifecycle"]["reason"] == "cycle_failed"
+    assert projection["lifecycle"]["source"] == "runtime_state"
+    assert projection["lifecycle"]["last_cycle_status"] == "FAILED"
+    assert projection["lifecycle"]["consecutive_failure_count"] == 3
+    assert projection["bounded_loop"]["result_status"] == "FAILED"
+    assert projection["bounded_loop"]["stop_reason"] == "cycle_failed"
+    assert projection["shutdown_transition"]["decision_status"] == "READY"
+    assert projection["retry_circuit_guard"]["decision_status"] == "CIRCUIT_OPEN"
+    assert projection["retry_circuit_guard"]["retry_allowed"] is False
+    assert projection["last_control_action"] == "stop_daemon"
+    assert projection["attention"] == {
+        "attention_status": "ACTION_REQUIRED",
+        "attention_level": "ERROR",
+        "reason_code": "max_consecutive_failures_reached",
+        "operator_action": "review_ae_scheduler_daemon_failure",
+        "operator_attention_required": True,
+        "metadata_only": True,
+    }
+    assert projection["operator_guidance"]["ag_direct_daemon_process_control_allowed"] is False
+    assert summary["lifecycle_status"] == "ERROR"
+    assert summary["retry_circuit_status"] == "CIRCUIT_OPEN"
+    assert summary["operator_attention_required"] is True
+    assert parent_projection["summary"]["lifecycle_status"] == "ERROR"
+    assert parent_projection["summary"]["retry_circuit_status"] == "CIRCUIT_OPEN"
+    assert parent_projection["summary"]["lifecycle_operator_attention_required"] is True
+    assert "database_url" not in str(projection)
+    assert "nuri1004" not in str(parent_projection)
+
+
+def test_artifact_retention_daemon_lifecycle_projection_status_matrix() -> None:
+    config = artifact_retention_scheduler_daemon_config_payload()
+    stopping_state = artifact_retention_scheduler_daemon_runtime_state_payload(
+        lifecycle_status="STOPPING",
+        lifecycle_reason="stop_requested",
+        stop_requested=True,
+        shutdown_requested_at="2026-09-01T02:42:00Z",
+        last_cycle_status=None,
+    )
+    backoff_runtime = artifact_retention_scheduler_daemon_runtime_payload(
+        status="BUSY",
+        runtime_state=artifact_retention_scheduler_daemon_runtime_state_payload(
+            lifecycle_status="RUNNING",
+            lifecycle_reason="cycle_failed",
+            last_cycle_status="FAILED",
+            consecutive_failure_count=1,
+        ),
+        retry_circuit_guard={
+            "decision_status": "BACKING_OFF",
+            "decision_reason": "backoff_window_active",
+            "retry_allowed": False,
+            "next_retry_at": "2026-09-01T02:45:00Z",
+            "failure_threshold": 3,
+        },
+    )
+    idle_runtime = artifact_retention_scheduler_daemon_runtime_payload(
+        status="IDLE",
+        active_job_id=None,
+    )
+    bounded_failed_runtime = artifact_retention_scheduler_daemon_runtime_payload(
+        status="BUSY",
+        runtime_state=artifact_retention_scheduler_daemon_runtime_state_payload(
+            lifecycle_status="RUNNING",
+            lifecycle_reason="started",
+        ),
+        bounded_loop_result=artifact_retention_scheduler_daemon_bounded_loop_result_payload(
+            result_status="FAILED",
+            stop_reason="cycle_failed",
+        ),
+    )
+    configured_disabled = artifact_retention_scheduler_daemon_config_payload()
+    configured_disabled["runtime"] = {
+        **configured_disabled["runtime"],
+        "daemon_auto_start_allowed": True,
+    }
+
+    stopping_projection = build_artifact_retention_daemon_lifecycle_projection(
+        daemon_config=config,
+        daemon_runtime=artifact_retention_scheduler_daemon_runtime_payload(
+            runtime_state=stopping_state,
+            shutdown_transition={
+                "decision_status": "READY",
+                "decision_reason": "stop_requested",
+                "requested_at": "2026-09-01T02:42:00Z",
+            },
+        ),
+    )
+    backoff_projection = build_artifact_retention_daemon_lifecycle_projection(
+        daemon_config=config,
+        daemon_runtime=backoff_runtime,
+    )
+    idle_projection = build_artifact_retention_daemon_lifecycle_projection(
+        daemon_config=config,
+        daemon_runtime=idle_runtime,
+    )
+    disabled_projection = build_artifact_retention_daemon_lifecycle_projection(
+        daemon_config=artifact_retention_scheduler_daemon_config_payload(),
+        daemon_runtime=None,
+    )
+    configured_disabled_projection = (
+        build_artifact_retention_daemon_lifecycle_projection(
+            daemon_config=configured_disabled,
+            daemon_runtime=None,
+        )
+    )
+    bounded_failed_projection = build_artifact_retention_daemon_lifecycle_projection(
+        daemon_config=config,
+        daemon_runtime=bounded_failed_runtime,
+    )
+    unknown_projection = build_artifact_retention_daemon_lifecycle_projection(
+        daemon_config={},
+        daemon_runtime={"heartbeat": {"status": "MAYBE"}},
+    )
+
+    assert stopping_projection["lifecycle"]["status"] == "STOPPING"
+    assert stopping_projection["lifecycle"]["stop_requested"] is True
+    assert stopping_projection["attention"]["attention_status"] == (
+        "SHUTDOWN_IN_PROGRESS"
+    )
+    assert stopping_projection["attention"]["operator_attention_required"] is True
+    assert backoff_projection["lifecycle"]["status"] == "RUNNING"
+    assert backoff_projection["attention"]["attention_status"] == "RETRY_BACKOFF"
+    assert backoff_projection["attention"]["attention_level"] == "INFO"
+    assert idle_projection["lifecycle"]["status"] == "STOPPED"
+    assert idle_projection["lifecycle"]["reason"] == "heartbeat_idle"
+    assert disabled_projection["lifecycle"]["status"] == "DISABLED"
+    assert disabled_projection["lifecycle"]["reason"] == "explicit_opt_in_required"
+    assert disabled_projection["attention"]["attention_status"] == "OBSERVATION_GAP"
+    assert configured_disabled_projection["lifecycle"]["reason"] == (
+        "scheduler_daemon_disabled"
+    )
+    assert bounded_failed_projection["attention"] == {
+        "attention_status": "ACTION_REQUIRED",
+        "attention_level": "ERROR",
+        "reason_code": "bounded_loop_failed",
+        "operator_action": "review_ae_scheduler_daemon_bounded_loop",
+        "operator_attention_required": True,
+        "metadata_only": True,
+    }
+    assert unknown_projection["projection_status"] == "NO_DAEMON_CONFIG"
+    assert unknown_projection["lifecycle"]["status"] == "UNKNOWN"
+    assert artifact_operations._normalized_daemon_lifecycle_status("bad") is None
+    assert artifact_operations._daemon_lifecycle_status_and_source(
+        daemon_config={},
+        runtime_state={},
+        heartbeat={"status": "STARTING"},
+    ) == ("STARTING", "heartbeat")
 
 
 def test_artifact_retention_daemon_attention_classifies_operational_edges() -> None:
@@ -4003,7 +4454,15 @@ def test_artifact_retention_scheduler_daemon_operations_route_returns_projection
     assert payload["summary"]["attention_status"] == "READY"
     assert payload["summary"]["runtime_heartbeat_status"] == "BUSY"
     assert payload["summary"]["runtime_heartbeat_observed"] is True
+    assert payload["summary"]["lifecycle_status"] == "RUNNING"
+    assert payload["summary"]["lifecycle_source"] == "heartbeat"
+    assert payload["summary"]["lifecycle_attention_status"] == "READY"
     assert payload["attention"]["attention_status"] == "READY"
+    assert payload["lifecycle_projection"]["lifecycle"]["status"] == "RUNNING"
+    assert payload["lifecycle_projection"]["lifecycle"]["source"] == "heartbeat"
+    assert payload["lifecycle_projection"]["operator_guidance"][
+        "ag_direct_daemon_process_control_allowed"
+    ] is False
     assert payload["daemon_runtime"]["heartbeat"]["worker_id"] == (
         "ae-retention-daemon-runtime-0538"
     )
