@@ -71,6 +71,9 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_BOUNDED_LOOP_RESULT_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SHUTDOWN_TRANSITION_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_shutdown_transition.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RETRY_CIRCUIT_GUARD_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_retry_circuit_guard.v1"
+)
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_OBSERVATION_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_runtime_observation.v1"
 )
@@ -205,6 +208,22 @@ ARTIFACT_RETENTION_SCHEDULER_DAEMON_SHUTDOWN_TRANSITION_DECISION_REASONS = (
     "runtime_disabled",
     "explicit_opt_in_required",
 )
+ARTIFACT_RETENTION_SCHEDULER_DAEMON_RETRY_CIRCUIT_GUARD_DECISION_STATUSES = (
+    "READY",
+    "BACKING_OFF",
+    "CIRCUIT_OPEN",
+    "NOOP",
+)
+ARTIFACT_RETENTION_SCHEDULER_DAEMON_RETRY_CIRCUIT_GUARD_DECISION_REASONS = (
+    "no_retry_needed",
+    "retry_window_open",
+    "backoff_window_active",
+    "max_consecutive_failures_reached",
+    "daemon_not_running",
+    "stop_requested",
+    "runtime_disabled",
+    "explicit_opt_in_required",
+)
 ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_STATE_STATUSES = (
     "DISABLED",
     "STARTING",
@@ -229,6 +248,8 @@ DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_BACKOFF_SECONDS = 60
 MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_INTERVAL_SECONDS = 86_400
 MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_BACKOFF_SECONDS = 3_600
 MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_BOUNDED_LOOP_CYCLES = 100
+DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CIRCUIT_FAILURE_THRESHOLD = 3
+MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CIRCUIT_FAILURE_THRESHOLD = 25
 MIN_ARTIFACT_RETENTION_SCHEDULER_LEASE_TTL_SECONDS = 60
 MAX_ARTIFACT_RETENTION_SCHEDULER_LEASE_TTL_SECONDS = (
     ARTIFACT_RETENTION_SCHEDULER_TICK_STALE_AFTER_SECONDS
@@ -3311,6 +3332,325 @@ def summarize_artifact_retention_scheduler_daemon_shutdown_transition(
         "continuous_loop_started": validated["guardrails"][
             "continuous_loop_started"
         ],
+    }
+
+
+def build_artifact_retention_scheduler_daemon_retry_circuit_guard(
+    *,
+    current_state: Mapping[str, Any],
+    requested_at: str | None = None,
+    failure_threshold: int | str | None = None,
+    backoff_seconds: int | str | None = None,
+) -> dict[str, Any]:
+    state = validate_artifact_retention_scheduler_daemon_runtime_state(
+        current_state
+    )
+    requested = _scheduler_daemon_checked_at(
+        checked_at=requested_at or state["observed_at"],
+        scheduler_config=state["runtime_config"],
+    )
+    threshold = _bounded_positive_int(
+        failure_threshold
+        if failure_threshold is not None
+        else DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CIRCUIT_FAILURE_THRESHOLD,
+        "failure_threshold",
+        "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CIRCUIT_FAILURE_THRESHOLD,
+    )
+    backoff = _bounded_positive_int(
+        backoff_seconds
+        if backoff_seconds is not None
+        else state["runtime_config"]["timing"]["backoff_seconds"],
+        "backoff_seconds",
+        "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_BACKOFF_SECONDS,
+    )
+    decision = _scheduler_daemon_retry_circuit_guard_decision(
+        current_state=state,
+        requested_at=requested,
+        failure_threshold=threshold,
+        backoff_seconds=backoff,
+    )
+    guard = {
+        "daemon_retry_circuit_guard_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RETRY_CIRCUIT_GUARD_SCHEMA_VERSION
+        ),
+        "daemon_retry_circuit_guard_id": (
+            _scheduler_daemon_retry_circuit_guard_id(
+                scheduler_id=state["scheduler_id"],
+                daemon_instance_id=state["daemon_instance_id"],
+                requested_at=requested,
+                decision=decision,
+                failure_threshold=threshold,
+                backoff_seconds=backoff,
+                current_state=state,
+            )
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": state["scheduler_id"],
+        "daemon_instance_id": state["daemon_instance_id"],
+        "requested_at": requested,
+        "decision_status": decision["decision_status"],
+        "decision_reason": decision["decision_reason"],
+        "retry_allowed": decision["retry_allowed"],
+        "next_retry_at": decision["next_retry_at"],
+        "failure_threshold": threshold,
+        "backoff_seconds": backoff,
+        "current_state": deepcopy(state),
+        "execution_plan": _scheduler_daemon_retry_circuit_guard_execution_plan(
+            decision=decision,
+            failure_threshold=threshold,
+            backoff_seconds=backoff,
+        ),
+        "guardrails": _scheduler_daemon_retry_circuit_guard_guardrails(),
+        "metadata": _scheduler_daemon_retry_circuit_guard_metadata(
+            decision=decision,
+            current_state=state,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_retry_circuit_guard(
+        guard
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_retry_circuit_guard(
+    guard: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(guard, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon retry circuit guard must be "
+                "an object."
+            ),
+        )
+    normalized = dict(guard)
+    if set(normalized) != {
+        "daemon_retry_circuit_guard_schema_version",
+        "daemon_retry_circuit_guard_id",
+        "service_id",
+        "scheduler_id",
+        "daemon_instance_id",
+        "requested_at",
+        "decision_status",
+        "decision_reason",
+        "retry_allowed",
+        "next_retry_at",
+        "failure_threshold",
+        "backoff_seconds",
+        "current_state",
+        "execution_plan",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon retry circuit guard keys are "
+                "invalid."
+            ),
+        )
+    if (
+        normalized.get("daemon_retry_circuit_guard_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RETRY_CIRCUIT_GUARD_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon retry circuit guard schema "
+                "version is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon retry circuit guard service "
+                "id is invalid."
+            ),
+        )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+    )
+    daemon_instance_id = _required_text(
+        normalized.get("daemon_instance_id"),
+        "daemon_instance_id",
+        "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+    )
+    requested_at = format_artifact_retention_timestamp(
+        parse_artifact_retention_timestamp(
+            normalized.get("requested_at"),
+            field_name="requested_at",
+        )
+    )
+    decision_status = _normalize_scheduler_daemon_retry_circuit_guard_status(
+        normalized.get("decision_status")
+    )
+    decision_reason = _normalize_scheduler_daemon_retry_circuit_guard_reason(
+        normalized.get("decision_reason")
+    )
+    retry_allowed = _required_bool(
+        normalized.get("retry_allowed"),
+        "retry_allowed",
+        "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+    )
+    next_retry_at = _optional_artifact_retention_timestamp(
+        normalized.get("next_retry_at"),
+        field_name="next_retry_at",
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid"
+        ),
+    )
+    failure_threshold = _bounded_positive_int(
+        normalized.get("failure_threshold"),
+        "failure_threshold",
+        "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CIRCUIT_FAILURE_THRESHOLD,
+    )
+    backoff_seconds = _bounded_positive_int(
+        normalized.get("backoff_seconds"),
+        "backoff_seconds",
+        "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_BACKOFF_SECONDS,
+    )
+    current_state = validate_artifact_retention_scheduler_daemon_runtime_state(
+        normalized.get("current_state")
+    )
+    _validate_scheduler_daemon_retry_circuit_guard_scope(
+        scheduler_id=scheduler_id,
+        daemon_instance_id=daemon_instance_id,
+        current_state=current_state,
+    )
+    decision = {
+        "decision_status": decision_status,
+        "decision_reason": decision_reason,
+        "retry_allowed": retry_allowed,
+        "next_retry_at": next_retry_at,
+    }
+    _validate_scheduler_daemon_retry_circuit_guard_decision(
+        requested_at=requested_at,
+        decision=decision,
+        current_state=current_state,
+        failure_threshold=failure_threshold,
+        backoff_seconds=backoff_seconds,
+    )
+    expected_execution_plan = (
+        _scheduler_daemon_retry_circuit_guard_execution_plan(
+            decision=decision,
+            failure_threshold=failure_threshold,
+            backoff_seconds=backoff_seconds,
+        )
+    )
+    if normalized.get("execution_plan") != expected_execution_plan:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon retry circuit guard "
+                "execution plan is invalid."
+            ),
+        )
+    if (
+        normalized.get("guardrails")
+        != _scheduler_daemon_retry_circuit_guard_guardrails()
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon retry circuit guard "
+                "guardrails are invalid."
+            ),
+        )
+    expected_metadata = _scheduler_daemon_retry_circuit_guard_metadata(
+        decision=decision,
+        current_state=current_state,
+    )
+    if normalized.get("metadata") != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon retry circuit guard metadata "
+                "is invalid."
+            ),
+        )
+    expected_id = _scheduler_daemon_retry_circuit_guard_id(
+        scheduler_id=scheduler_id,
+        daemon_instance_id=daemon_instance_id,
+        requested_at=requested_at,
+        decision=decision,
+        failure_threshold=failure_threshold,
+        backoff_seconds=backoff_seconds,
+        current_state=current_state,
+    )
+    if normalized.get("daemon_retry_circuit_guard_id") != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon retry circuit guard id is "
+                "invalid."
+            ),
+        )
+    normalized["requested_at"] = requested_at
+    normalized["decision_status"] = decision_status
+    normalized["decision_reason"] = decision_reason
+    normalized["retry_allowed"] = retry_allowed
+    normalized["next_retry_at"] = next_retry_at
+    normalized["failure_threshold"] = failure_threshold
+    normalized["backoff_seconds"] = backoff_seconds
+    normalized["current_state"] = current_state
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_retry_circuit_guard(
+    guard: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduler_daemon_retry_circuit_guard(
+        guard
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "daemon_instance_id": validated["daemon_instance_id"],
+        "requested_at": validated["requested_at"],
+        "decision_status": validated["decision_status"],
+        "decision_reason": validated["decision_reason"],
+        "retry_allowed": validated["retry_allowed"],
+        "next_retry_at": validated["next_retry_at"],
+        "failure_threshold": validated["failure_threshold"],
+        "backoff_seconds": validated["backoff_seconds"],
+        "current_lifecycle_status": validated["current_state"][
+            "lifecycle_status"
+        ],
+        "consecutive_failure_count": validated["current_state"][
+            "consecutive_failure_count"
+        ],
+        "circuit_open": validated["metadata"]["circuit_open"],
+        "backing_off": validated["metadata"]["backing_off"],
     }
 
 
@@ -6735,6 +7075,317 @@ def _scheduler_daemon_shutdown_transition_id(
             (
                 "ae-artifact-retention-scheduler-daemon-shutdown-"
                 f"transition:{sha256_json(basis)}"
+            ),
+        )
+    )
+
+
+def _scheduler_daemon_retry_circuit_guard_decision(
+    *,
+    current_state: Mapping[str, Any],
+    requested_at: str,
+    failure_threshold: int,
+    backoff_seconds: int,
+) -> dict[str, Any]:
+    lifecycle_status = current_state["lifecycle_status"]
+    lifecycle_reason = current_state["lifecycle_reason"]
+    if lifecycle_status == "DISABLED":
+        return _scheduler_daemon_retry_circuit_guard_decision_payload(
+            decision_status="NOOP",
+            decision_reason=lifecycle_reason,
+            retry_allowed=False,
+            next_retry_at=None,
+        )
+    if lifecycle_status == "STOPPED":
+        return _scheduler_daemon_retry_circuit_guard_decision_payload(
+            decision_status="NOOP",
+            decision_reason="daemon_not_running",
+            retry_allowed=False,
+            next_retry_at=None,
+        )
+    if lifecycle_status == "STOPPING" or current_state["stop_requested"] is True:
+        return _scheduler_daemon_retry_circuit_guard_decision_payload(
+            decision_status="NOOP",
+            decision_reason="stop_requested",
+            retry_allowed=False,
+            next_retry_at=None,
+        )
+    failure_count = current_state["consecutive_failure_count"]
+    last_cycle = current_state["last_cycle"]
+    if (
+        failure_count < 1
+        or not isinstance(last_cycle, Mapping)
+        or last_cycle.get("result_status") != "FAILED"
+    ):
+        return _scheduler_daemon_retry_circuit_guard_decision_payload(
+            decision_status="READY",
+            decision_reason="no_retry_needed",
+            retry_allowed=True,
+            next_retry_at=requested_at,
+        )
+    if failure_count >= failure_threshold:
+        return _scheduler_daemon_retry_circuit_guard_decision_payload(
+            decision_status="CIRCUIT_OPEN",
+            decision_reason="max_consecutive_failures_reached",
+            retry_allowed=False,
+            next_retry_at=None,
+        )
+    next_retry_at = _scheduler_daemon_retry_circuit_guard_next_retry_at(
+        last_cycle=last_cycle,
+        consecutive_failure_count=failure_count,
+        backoff_seconds=backoff_seconds,
+    )
+    if _artifact_retention_timestamp_order(requested_at, next_retry_at) < 0:
+        return _scheduler_daemon_retry_circuit_guard_decision_payload(
+            decision_status="BACKING_OFF",
+            decision_reason="backoff_window_active",
+            retry_allowed=False,
+            next_retry_at=next_retry_at,
+        )
+    return _scheduler_daemon_retry_circuit_guard_decision_payload(
+        decision_status="READY",
+        decision_reason="retry_window_open",
+        retry_allowed=True,
+        next_retry_at=requested_at,
+    )
+
+
+def _scheduler_daemon_retry_circuit_guard_decision_payload(
+    *,
+    decision_status: str,
+    decision_reason: str,
+    retry_allowed: bool,
+    next_retry_at: str | None,
+) -> dict[str, Any]:
+    return {
+        "decision_status": decision_status,
+        "decision_reason": decision_reason,
+        "retry_allowed": retry_allowed,
+        "next_retry_at": next_retry_at,
+    }
+
+
+def _scheduler_daemon_retry_circuit_guard_next_retry_at(
+    *,
+    last_cycle: Mapping[str, Any],
+    consecutive_failure_count: int,
+    backoff_seconds: int,
+) -> str:
+    run_at = parse_artifact_retention_timestamp(
+        last_cycle["run_at"],
+        field_name="run_at",
+    )
+    return format_artifact_retention_timestamp(
+        run_at + timedelta(seconds=backoff_seconds * consecutive_failure_count)
+    )
+
+
+def _artifact_retention_timestamp_order(left: str, right: str) -> int:
+    left_dt = parse_artifact_retention_timestamp(left, field_name="left")
+    right_dt = parse_artifact_retention_timestamp(right, field_name="right")
+    if left_dt < right_dt:
+        return -1
+    if left_dt > right_dt:
+        return 1
+    return 0
+
+
+def _normalize_scheduler_daemon_retry_circuit_guard_status(value: Any) -> str:
+    status = optional_text(value)
+    if (
+        status
+        not in ARTIFACT_RETENTION_SCHEDULER_DAEMON_RETRY_CIRCUIT_GUARD_DECISION_STATUSES
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon retry circuit guard decision "
+                "status is invalid."
+            ),
+        )
+    return status
+
+
+def _normalize_scheduler_daemon_retry_circuit_guard_reason(value: Any) -> str:
+    reason = optional_text(value)
+    if (
+        reason
+        not in ARTIFACT_RETENTION_SCHEDULER_DAEMON_RETRY_CIRCUIT_GUARD_DECISION_REASONS
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon retry circuit guard decision "
+                "reason is invalid."
+            ),
+        )
+    return reason
+
+
+def _validate_scheduler_daemon_retry_circuit_guard_scope(
+    *,
+    scheduler_id: str,
+    daemon_instance_id: str,
+    current_state: Mapping[str, Any],
+) -> None:
+    if current_state["scheduler_id"] != scheduler_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon retry circuit guard scope is "
+                "invalid."
+            ),
+        )
+    if current_state["daemon_instance_id"] != daemon_instance_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon retry circuit guard instance "
+                "is invalid."
+            ),
+        )
+
+
+def _validate_scheduler_daemon_retry_circuit_guard_decision(
+    *,
+    requested_at: str,
+    decision: Mapping[str, Any],
+    current_state: Mapping[str, Any],
+    failure_threshold: int,
+    backoff_seconds: int,
+) -> None:
+    expected = _scheduler_daemon_retry_circuit_guard_decision(
+        current_state=current_state,
+        requested_at=requested_at,
+        failure_threshold=failure_threshold,
+        backoff_seconds=backoff_seconds,
+    )
+    if dict(decision) != expected:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon retry circuit guard decision "
+                "is invalid."
+            ),
+        )
+
+
+def _scheduler_daemon_retry_circuit_guard_execution_plan(
+    *,
+    decision: Mapping[str, Any],
+    failure_threshold: int,
+    backoff_seconds: int,
+) -> dict[str, Any]:
+    return {
+        "requires_runtime_state": True,
+        "validates_current_state": True,
+        "failure_threshold": failure_threshold,
+        "backoff_seconds": backoff_seconds,
+        "retry_allowed": decision["retry_allowed"] is True,
+        "backing_off": decision["decision_status"] == "BACKING_OFF",
+        "circuit_open": decision["decision_status"] == "CIRCUIT_OPEN",
+        "noop": decision["decision_status"] == "NOOP",
+        "starts_continuous_loop": False,
+        "runs_tick_once": False,
+        "enqueues_job_queue": False,
+        "runs_worker": False,
+        "writes_database": False,
+        "physical_delete_enabled": False,
+    }
+
+
+def _scheduler_daemon_retry_circuit_guard_guardrails() -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "daemon_process_owner_ae": True,
+        "retry_decision_only": True,
+        "backoff_enforced_by_guard": True,
+        "circuit_breaker_supported": True,
+        "runtime_state_mutated": False,
+        "continuous_loop_started": False,
+        "retention_work_uses_job_queue": True,
+        "job_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "database_write_performed": False,
+        "physical_delete_automation_enabled": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+    }
+
+
+def _scheduler_daemon_retry_circuit_guard_metadata(
+    *,
+    decision: Mapping[str, Any],
+    current_state: Mapping[str, Any],
+) -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "safe_for_ag_projection": True,
+        "has_consecutive_failures": (
+            current_state["consecutive_failure_count"] > 0
+        ),
+        "last_cycle_failed": (
+            isinstance(current_state["last_cycle"], Mapping)
+            and current_state["last_cycle"].get("result_status") == "FAILED"
+        ),
+        "retry_ready": decision["decision_status"] == "READY",
+        "backing_off": decision["decision_status"] == "BACKING_OFF",
+        "circuit_open": decision["decision_status"] == "CIRCUIT_OPEN",
+        "noop": decision["decision_status"] == "NOOP",
+        "next_retry_scheduled": decision["next_retry_at"] is not None,
+        "runtime_state_mutated": False,
+        "continuous_loop_started": False,
+        "job_enqueued": False,
+        "worker_executed": False,
+        "physical_delete_automation_enabled": False,
+    }
+
+
+def _scheduler_daemon_retry_circuit_guard_id(
+    *,
+    scheduler_id: str,
+    daemon_instance_id: str,
+    requested_at: str,
+    decision: Mapping[str, Any],
+    failure_threshold: int,
+    backoff_seconds: int,
+    current_state: Mapping[str, Any],
+) -> str:
+    basis = {
+        "scheduler_id": scheduler_id,
+        "daemon_instance_id": daemon_instance_id,
+        "requested_at": requested_at,
+        "decision": dict(decision),
+        "failure_threshold": failure_threshold,
+        "backoff_seconds": backoff_seconds,
+        "current_state_id": current_state["daemon_runtime_state_id"],
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            (
+                "ae-artifact-retention-scheduler-daemon-retry-circuit-"
+                f"guard:{sha256_json(basis)}"
             ),
         )
     )

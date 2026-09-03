@@ -751,3 +751,7 @@ Artifact library management:
   already stopping, stopped, or disabled snapshots remain no-op metadata-only
   transitions with no process signal, JobQueue enqueue, worker run, DB write, or
   physical purge.
+- Slice 0547 adds the retry/backoff/circuit guard contract. It evaluates the
+  daemon runtime state, applies runtime `backoff_seconds`, opens a circuit after
+  repeated failures, and still remains metadata-only with no loop start,
+  JobQueue enqueue, worker run, DB write, or physical purge.

@@ -650,6 +650,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0544`](slices/0544_ae_scheduler_daemon_bounded_loop_adapter.md) | `S55-004` AE scheduler daemon bounded loop adapter. |
 | [`Slice 0545`](slices/0545_ae_scheduler_daemon_bounded_loop_postgresql_smoke.md) | `S55-005` AE scheduler daemon bounded-loop PostgreSQL smoke evidence. |
 | [`Slice 0546`](slices/0546_ae_scheduler_daemon_graceful_shutdown_state_transition.md) | `S55-006` AE scheduler daemon graceful shutdown/state transition. |
+| [`Slice 0547`](slices/0547_ae_scheduler_daemon_retry_backoff_circuit_guard.md) | `S55-007` AE scheduler daemon retry/backoff/circuit guard. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

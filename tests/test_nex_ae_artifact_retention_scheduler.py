@@ -27,6 +27,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_DISPATCH_RESULT_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LOOP_PLAN_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ONE_CYCLE_RESULT_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RETRY_CIRCUIT_GUARD_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_CONFIG_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_STATE_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SHUTDOWN_TRANSITION_SCHEMA_VERSION,
@@ -43,6 +44,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     build_artifact_retention_scheduler_daemon_config,
     build_artifact_retention_scheduler_daemon_control_plan,
     build_artifact_retention_scheduler_daemon_loop_plan,
+    build_artifact_retention_scheduler_daemon_retry_circuit_guard,
     build_artifact_retention_scheduler_daemon_runtime_config,
     build_artifact_retention_scheduler_daemon_runtime_state,
     build_artifact_retention_scheduler_daemon_shutdown_transition,
@@ -65,6 +67,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     summarize_artifact_retention_scheduler_daemon_bounded_loop_result,
     summarize_artifact_retention_scheduler_daemon_dispatch_result,
     summarize_artifact_retention_scheduler_daemon_loop_plan,
+    summarize_artifact_retention_scheduler_daemon_retry_circuit_guard,
     summarize_artifact_retention_scheduler_daemon_runtime_config,
     summarize_artifact_retention_scheduler_daemon_runtime_state,
     summarize_artifact_retention_scheduler_daemon_shutdown_transition,
@@ -77,6 +80,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     validate_artifact_retention_scheduler_daemon_dispatch_result,
     validate_artifact_retention_scheduler_daemon_loop_plan,
     validate_artifact_retention_scheduler_daemon_one_cycle_result,
+    validate_artifact_retention_scheduler_daemon_retry_circuit_guard,
     validate_artifact_retention_scheduler_daemon_runtime_config,
     validate_artifact_retention_scheduler_daemon_runtime_state,
     validate_artifact_retention_scheduler_daemon_shutdown_transition,
@@ -3658,6 +3662,380 @@ def test_artifact_retention_scheduler_daemon_shutdown_transition_validation_edge
             validate_artifact_retention_scheduler_daemon_shutdown_transition(payload)  # type: ignore[arg-type]
         assert exc_info.value.error_code == error_code
         assert detail in exc_info.value.detail
+
+
+def test_artifact_retention_scheduler_daemon_retry_circuit_guard_ready_state() -> None:
+    queue = InMemoryJobQueue()
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+    runtime_config = build_artifact_retention_scheduler_daemon_runtime_config(
+        scheduler_config=scheduler_config,
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+        backoff_seconds=90,
+    )
+    daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=scheduler_config,
+        lease_store=ArtifactRetentionSchedulerLeaseStore(),
+        checked_at=READY_TICK_AT,
+    )
+    current_state = build_artifact_retention_scheduler_daemon_runtime_state(
+        scheduler_config=scheduler_config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        daemon_instance_id="ae-daemon-retry-ready-0547",
+        lifecycle_status="RUNNING",
+        lifecycle_reason=None,
+        observed_at=READY_TICK_AT,
+        cycle_count=2,
+    )
+
+    guard = build_artifact_retention_scheduler_daemon_retry_circuit_guard(
+        current_state=current_state,
+        requested_at="2026-08-31T17:31:00Z",
+    )
+    summary = summarize_artifact_retention_scheduler_daemon_retry_circuit_guard(
+        guard
+    )
+    serialized = json.dumps(guard, ensure_ascii=False, sort_keys=True)
+
+    assert guard["daemon_retry_circuit_guard_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RETRY_CIRCUIT_GUARD_SCHEMA_VERSION
+    )
+    assert guard["decision_status"] == "READY"
+    assert guard["decision_reason"] == "no_retry_needed"
+    assert guard["retry_allowed"] is True
+    assert guard["next_retry_at"] == "2026-08-31T17:31:00Z"
+    assert guard["failure_threshold"] == 3
+    assert guard["backoff_seconds"] == 90
+    assert guard["execution_plan"]["retry_allowed"] is True
+    assert guard["execution_plan"]["runs_tick_once"] is False
+    assert guard["guardrails"]["retry_decision_only"] is True
+    assert guard["guardrails"]["database_write_performed"] is False
+    assert guard["metadata"]["retry_ready"] is True
+    assert guard["metadata"]["has_consecutive_failures"] is False
+    assert summary == {
+        "scheduler_id": "ae-artifact-retention-scheduler-local-v1",
+        "daemon_instance_id": "ae-daemon-retry-ready-0547",
+        "requested_at": "2026-08-31T17:31:00Z",
+        "decision_status": "READY",
+        "decision_reason": "no_retry_needed",
+        "retry_allowed": True,
+        "next_retry_at": "2026-08-31T17:31:00Z",
+        "failure_threshold": 3,
+        "backoff_seconds": 90,
+        "current_lifecycle_status": "RUNNING",
+        "consecutive_failure_count": 0,
+        "circuit_open": False,
+        "backing_off": False,
+    }
+    assert validate_artifact_retention_scheduler_daemon_retry_circuit_guard(
+        guard
+    ) == guard
+    assert "postgresql://" not in serialized
+    assert "/data/nex-platform" not in serialized
+    assert "dummy-secret-token" not in serialized
+
+
+def test_artifact_retention_scheduler_daemon_retry_circuit_guard_backoff_window() -> None:
+    queue = InMemoryJobQueue()
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+    runtime_config = build_artifact_retention_scheduler_daemon_runtime_config(
+        scheduler_config=scheduler_config,
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+        backoff_seconds=120,
+    )
+    daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=scheduler_config,
+        lease_store=ArtifactRetentionSchedulerLeaseStore(),
+        checked_at=READY_TICK_AT,
+    )
+    failed_cycle_summary = {
+        "daemon_one_cycle_result_id": "daemon-one-cycle-retry-backoff-0547",
+        "run_at": READY_TICK_AT,
+        "result_status": "FAILED",
+        "skip_reason": "tick_failed",
+        "loop_decision_status": "READY",
+        "loop_decision_reason": None,
+        "tick_once_ran": True,
+        "job_enqueued": False,
+        "worker_executed": False,
+        "history_write_executed": False,
+    }
+    current_state = build_artifact_retention_scheduler_daemon_runtime_state(
+        scheduler_config=scheduler_config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        daemon_instance_id="ae-daemon-retry-backoff-0547",
+        lifecycle_status="ERROR",
+        lifecycle_reason=None,
+        observed_at=READY_TICK_AT,
+        last_cycle_result=failed_cycle_summary,
+        consecutive_failure_count=1,
+    )
+
+    backing_off = build_artifact_retention_scheduler_daemon_retry_circuit_guard(
+        current_state=current_state,
+        requested_at="2026-08-31T17:31:00Z",
+    )
+    retry_ready = build_artifact_retention_scheduler_daemon_retry_circuit_guard(
+        current_state=current_state,
+        requested_at="2026-08-31T17:32:00Z",
+    )
+
+    assert backing_off["decision_status"] == "BACKING_OFF"
+    assert backing_off["decision_reason"] == "backoff_window_active"
+    assert backing_off["retry_allowed"] is False
+    assert backing_off["next_retry_at"] == "2026-08-31T17:32:00Z"
+    assert backing_off["metadata"]["backing_off"] is True
+    assert retry_ready["decision_status"] == "READY"
+    assert retry_ready["decision_reason"] == "retry_window_open"
+    assert retry_ready["retry_allowed"] is True
+    assert retry_ready["next_retry_at"] == "2026-08-31T17:32:00Z"
+    assert retry_ready["metadata"]["last_cycle_failed"] is True
+
+
+def test_artifact_retention_scheduler_daemon_retry_circuit_guard_terminal_states() -> None:
+    ready_runtime = build_artifact_retention_scheduler_daemon_runtime_config(
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+    )
+    failed_cycle_summary = {
+        "daemon_one_cycle_result_id": "daemon-one-cycle-retry-circuit-0547",
+        "run_at": READY_TICK_AT,
+        "result_status": "FAILED",
+        "skip_reason": "tick_failed",
+        "loop_decision_status": "READY",
+        "loop_decision_reason": None,
+        "tick_once_ran": True,
+        "job_enqueued": False,
+        "worker_executed": False,
+        "history_write_executed": False,
+    }
+    error_state = build_artifact_retention_scheduler_daemon_runtime_state(
+        runtime_config=ready_runtime,
+        lifecycle_status="ERROR",
+        lifecycle_reason=None,
+        observed_at=READY_TICK_AT,
+        last_cycle_result=failed_cycle_summary,
+        consecutive_failure_count=3,
+    )
+    stopping = build_artifact_retention_scheduler_daemon_runtime_state(
+        runtime_config=ready_runtime,
+        lifecycle_status="STOPPING",
+        lifecycle_reason=None,
+        observed_at=READY_TICK_AT,
+        stop_requested=True,
+        shutdown_requested_at=READY_TICK_AT,
+    )
+    stopped = build_artifact_retention_scheduler_daemon_runtime_state(
+        runtime_config=ready_runtime,
+        observed_at=READY_TICK_AT,
+    )
+    blocked_runtime = build_artifact_retention_scheduler_daemon_runtime_config(
+        enabled=True,
+        explicit_opt_in=False,
+        checked_at=READY_TICK_AT,
+    )
+    disabled = build_artifact_retention_scheduler_daemon_runtime_state(
+        runtime_config=blocked_runtime,
+        lifecycle_status="DISABLED",
+        lifecycle_reason=None,
+        observed_at=READY_TICK_AT,
+    )
+
+    circuit_open = build_artifact_retention_scheduler_daemon_retry_circuit_guard(
+        current_state=error_state,
+        requested_at="2026-08-31T17:40:00Z",
+    )
+    stop_noop = build_artifact_retention_scheduler_daemon_retry_circuit_guard(
+        current_state=stopping,
+        requested_at="2026-08-31T17:40:00Z",
+    )
+    stopped_noop = build_artifact_retention_scheduler_daemon_retry_circuit_guard(
+        current_state=stopped,
+        requested_at="2026-08-31T17:40:00Z",
+    )
+    disabled_noop = build_artifact_retention_scheduler_daemon_retry_circuit_guard(
+        current_state=disabled,
+        requested_at="2026-08-31T17:40:00Z",
+    )
+
+    assert circuit_open["decision_status"] == "CIRCUIT_OPEN"
+    assert circuit_open["decision_reason"] == "max_consecutive_failures_reached"
+    assert circuit_open["retry_allowed"] is False
+    assert circuit_open["next_retry_at"] is None
+    assert circuit_open["metadata"]["circuit_open"] is True
+    assert stop_noop["decision_status"] == "NOOP"
+    assert stop_noop["decision_reason"] == "stop_requested"
+    assert stopped_noop["decision_status"] == "NOOP"
+    assert stopped_noop["decision_reason"] == "daemon_not_running"
+    assert disabled_noop["decision_status"] == "NOOP"
+    assert disabled_noop["decision_reason"] == "explicit_opt_in_required"
+
+
+def test_artifact_retention_scheduler_daemon_retry_circuit_guard_validation_edges() -> None:
+    queue = InMemoryJobQueue()
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+    runtime_config = build_artifact_retention_scheduler_daemon_runtime_config(
+        scheduler_config=scheduler_config,
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+    )
+    daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=scheduler_config,
+        lease_store=ArtifactRetentionSchedulerLeaseStore(),
+        checked_at=READY_TICK_AT,
+    )
+    current_state = build_artifact_retention_scheduler_daemon_runtime_state(
+        scheduler_config=scheduler_config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        daemon_instance_id="ae-daemon-retry-validation-0547",
+        lifecycle_status="RUNNING",
+        lifecycle_reason=None,
+        observed_at=READY_TICK_AT,
+    )
+    base = build_artifact_retention_scheduler_daemon_retry_circuit_guard(
+        current_state=current_state,
+        requested_at="2026-08-31T17:31:00Z",
+    )
+
+    cases: tuple[tuple[Any, str, str], ...] = (
+        (
+            [],
+            "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+            "object",
+        ),
+        (
+            {**base, "daemon_retry_circuit_guard_schema_version": "wrong"},
+            "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_schema_invalid",
+            "schema",
+        ),
+        (
+            {**base, "service_id": "nex-ag"},
+            "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+            "service id",
+        ),
+        (
+            {**base, "scheduler_id": " "},
+            "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+            "scheduler_id",
+        ),
+        (
+            {**base, "requested_at": "not-a-time"},
+            "ae.artifact_retention_timestamp_invalid",
+            "requested_at",
+        ),
+        (
+            {**base, "decision_status": "WAIT"},
+            "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+            "decision status",
+        ),
+        (
+            {**base, "decision_reason": "wrong"},
+            "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+            "decision reason",
+        ),
+        (
+            {**base, "retry_allowed": False},
+            "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+            "decision",
+        ),
+        (
+            {**base, "next_retry_at": "not-a-time"},
+            "ae.artifact_retention_timestamp_invalid",
+            "next_retry_at",
+        ),
+        (
+            {**base, "failure_threshold": 0},
+            "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+            "failure_threshold",
+        ),
+        (
+            {**base, "backoff_seconds": 0},
+            "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+            "backoff_seconds",
+        ),
+        (
+            {**base, "current_state": {**current_state, "service_id": "nex-ag"}},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "service id",
+        ),
+        (
+            {
+                **base,
+                "execution_plan": {
+                    **base["execution_plan"],
+                    "runs_tick_once": True,
+                },
+            },
+            "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+            "execution plan",
+        ),
+        (
+            {
+                **base,
+                "guardrails": {
+                    **base["guardrails"],
+                    "job_enqueue_performed": True,
+                },
+            },
+            "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+            "guardrails",
+        ),
+        (
+            {
+                **base,
+                "metadata": {
+                    **base["metadata"],
+                    "worker_executed": True,
+                },
+            },
+            "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+            "metadata",
+        ),
+        (
+            {**base, "daemon_retry_circuit_guard_id": "wrong"},
+            "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+            "guard id",
+        ),
+        (
+            {**base, "raw_daemon_runtime_payload": {}},
+            "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid",
+            "keys",
+        ),
+    )
+
+    for payload, error_code, detail in cases:
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_scheduler_daemon_retry_circuit_guard(payload)  # type: ignore[arg-type]
+        assert exc_info.value.error_code == error_code
+        assert detail in exc_info.value.detail
+
+    with pytest.raises(ArtifactHandoffError) as threshold_exc:
+        build_artifact_retention_scheduler_daemon_retry_circuit_guard(
+            current_state=current_state,
+            failure_threshold=26,
+        )
+    assert threshold_exc.value.error_code == (
+        "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid"
+    )
+    assert "failure_threshold" in threshold_exc.value.detail
+
+    with pytest.raises(ArtifactHandoffError) as backoff_exc:
+        build_artifact_retention_scheduler_daemon_retry_circuit_guard(
+            current_state=current_state,
+            backoff_seconds="bad",
+        )
+    assert backoff_exc.value.error_code == (
+        "ae.artifact_retention_scheduler_daemon_retry_circuit_guard_invalid"
+    )
+    assert "backoff_seconds" in backoff_exc.value.detail
 
 
 def test_artifact_retention_scheduler_daemon_control_plan_validation_edges() -> None:
