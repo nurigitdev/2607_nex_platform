@@ -714,3 +714,8 @@ Artifact library management:
   migrates AE test persistence, seeds deleted artifacts, runs one explicit
   opt-in daemon cycle, reads back lease, JobQueue, worker, and retention-history
   state, and confirms no daemon process or continuous loop was started.
+- Slice 0537 adds optional runtime heartbeat observability to the one-cycle
+  daemon runner. A provided shared heartbeat emitter records `STARTING`, `BUSY`,
+  final `IDLE`, or pre-raise `ERROR` summaries, while emitter storage failures
+  remain non-blocking and the protected PostgreSQL smoke now verifies the daemon
+  row in `service_worker_heartbeats`.

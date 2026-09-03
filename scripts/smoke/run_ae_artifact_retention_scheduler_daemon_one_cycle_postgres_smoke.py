@@ -35,6 +35,7 @@ import run_ae_artifact_retention_scheduled_worker_postgres_smoke as worker_pg  #
 import run_ae_artifact_retention_scheduler_tick_once_postgres_smoke as once_pg  # noqa: E402
 from nex_ae_api.artifact_retention_scheduler import (  # noqa: E402
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ONE_CYCLE_RESULT_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
     SqlAlchemyArtifactRetentionSchedulerLeaseStore,
     build_artifact_retention_scheduler_daemon_config,
     build_artifact_retention_scheduler_daemon_runtime_config,
@@ -50,6 +51,8 @@ from nex_ae_api.artifacts import (  # noqa: E402
 from nex_runtime import (  # noqa: E402
     SERVICE_SPECS,
     SqlAlchemyJobQueue,
+    SqlAlchemyWorkerHeartbeatStore,
+    WorkerHeartbeatEmitter,
     build_engine,
     build_service_app,
     build_session_factory,
@@ -162,6 +165,7 @@ def _execute_ae_artifact_retention_scheduler_daemon_one_cycle_smoke(
     scheduler_id = f"ae-artifact-retention-daemon-one-cycle-{suffix}"
     lease_owner_id = f"ae-retention-daemon-one-cycle-runner-{suffix}"
     worker_id = f"ae-artifact-retention-daemon-one-cycle-worker-{suffix}"
+    daemon_worker_id = f"ae-artifact-retention-daemon-one-cycle-heartbeat-{suffix}"
     idempotency_key = f"retention-daemon-one-cycle-{suffix}"
     artifact_ids: list[str] = []
     handoff_ids: list[str] = []
@@ -172,6 +176,7 @@ def _execute_ae_artifact_retention_scheduler_daemon_one_cycle_smoke(
         once_pg._ensure_sqlite_scheduler_lease_table(engine)
         job_queue = SqlAlchemyJobQueue(session_factory)
         lease_store = SqlAlchemyArtifactRetentionSchedulerLeaseStore(session_factory)
+        heartbeat_store = SqlAlchemyWorkerHeartbeatStore(session_factory)
         history_store = SqlAlchemyArtifactRetentionExecutionHistoryStore(
             session_factory
         )
@@ -267,6 +272,17 @@ def _execute_ae_artifact_retention_scheduler_daemon_one_cycle_smoke(
                     explicit_opt_in=True,
                     checked_at=TICK_AT,
                 )
+                daemon_heartbeat_emitter = WorkerHeartbeatEmitter(
+                    service_id=SERVICE_ID,
+                    worker_id=daemon_worker_id,
+                    worker_type=AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
+                    store=heartbeat_store,
+                    started_at=TICK_AT,
+                    metadata={
+                        "smoke_schema_version": SCHEMA_VERSION,
+                        "one_cycle_only": True,
+                    },
+                )
                 daemon_config = build_artifact_retention_scheduler_daemon_config(
                     scheduler_config=scheduler_config,
                     lease_store=lease_store,
@@ -295,6 +311,7 @@ def _execute_ae_artifact_retention_scheduler_daemon_one_cycle_smoke(
                     run_worker=True,
                     worker_id=worker_id,
                     clock=worker_pg._clock_from_sequence(WORKER_CLOCK_TICKS),
+                    daemon_heartbeat_emitter=daemon_heartbeat_emitter,
                 )
                 tick_once_result = once_pg._mapping_value(
                     one_cycle_result.get("tick_once_result")
@@ -325,6 +342,10 @@ def _execute_ae_artifact_retention_scheduler_daemon_one_cycle_smoke(
                     owner_user_id=owner_user_id,
                     limit=5,
                 )
+                daemon_heartbeat = heartbeat_store.get_heartbeat(
+                    SERVICE_ID,
+                    daemon_worker_id,
+                )
                 after = batch_plan_pg._db_observations(
                     engine,
                     tenant_id=tenant_id,
@@ -345,6 +366,7 @@ def _execute_ae_artifact_retention_scheduler_daemon_one_cycle_smoke(
                     tick_once_result=tick_once_result,
                     lease_observation=lease_observation,
                     job_observation=job_observation,
+                    daemon_heartbeat=daemon_heartbeat,
                     history_rows=history_rows,
                     before=before,
                     after=after,
@@ -368,6 +390,12 @@ def _execute_ae_artifact_retention_scheduler_daemon_one_cycle_smoke(
                     job_id=job_id,
                     idempotency_key=idempotency_key,
                     worker_id=worker_id,
+                )
+                cleanup_daemon_heartbeat = worker_pg._cleanup_worker_rows(
+                    engine,
+                    job_id="",
+                    idempotency_key=f"{idempotency_key}-heartbeat",
+                    worker_id=daemon_worker_id,
                 )
                 cleanup_lease = once_pg._cleanup_scheduler_once_lease_rows(
                     engine,
@@ -403,6 +431,14 @@ def _execute_ae_artifact_retention_scheduler_daemon_one_cycle_smoke(
                         "tick_once_ran": one_cycle_result["metadata"][
                             "tick_once_ran"
                         ],
+                        "daemon_heartbeat_emitted": one_cycle_result["metadata"][
+                            "daemon_heartbeat_emitted"
+                        ],
+                        "daemon_heartbeat_error_observed": (
+                            one_cycle_result["metadata"][
+                                "daemon_heartbeat_error_observed"
+                            ]
+                        ),
                         "job_enqueued": one_cycle_result["metadata"]["job_enqueued"],
                         "lease_released": one_cycle_result["metadata"][
                             "lease_released"
@@ -482,6 +518,11 @@ def _execute_ae_artifact_retention_scheduler_daemon_one_cycle_smoke(
                         "worker_id": worker_id,
                         "runner_status": worker_result.get("status"),
                     },
+                    "daemon_heartbeat": _daemon_heartbeat_evidence(
+                        daemon_worker_id=daemon_worker_id,
+                        one_cycle_result=one_cycle_result,
+                        daemon_heartbeat=daemon_heartbeat,
+                    ),
                     "history": {
                         "row_count": len(history_rows),
                         "retention_execution_id": once_pg._history_execution_id(
@@ -504,7 +545,11 @@ def _execute_ae_artifact_retention_scheduler_daemon_one_cycle_smoke(
                     "cleanup": {
                         **cleanup,
                         "history_rows": cleanup_history,
-                        **cleanup_worker,
+                        "job_rows": cleanup_worker["job_rows"],
+                        "worker_heartbeat_rows": cleanup_worker["heartbeat_rows"],
+                        "daemon_heartbeat_rows": cleanup_daemon_heartbeat[
+                            "heartbeat_rows"
+                        ],
                         "lease_rows": cleanup_lease,
                     },
                     "live_db": True,
@@ -519,6 +564,12 @@ def _execute_ae_artifact_retention_scheduler_daemon_one_cycle_smoke(
                 idempotency_key=idempotency_key,
                 worker_id=worker_id,
             )
+        worker_pg._cleanup_worker_rows(
+            engine,
+            job_id="",
+            idempotency_key=f"{idempotency_key}-heartbeat",
+            worker_id=daemon_worker_id,
+        )
         history_pg._cleanup_history_rows(
             engine,
             tenant_id=tenant_id,
@@ -551,6 +602,7 @@ def _scheduler_daemon_one_cycle_checks(
     tick_once_result: Mapping[str, Any],
     lease_observation: Mapping[str, Any],
     job_observation: Mapping[str, Any],
+    daemon_heartbeat: Mapping[str, Any] | None,
     history_rows: list[dict[str, Any]],
     before: Mapping[str, int],
     after: Mapping[str, int],
@@ -575,6 +627,11 @@ def _scheduler_daemon_one_cycle_checks(
     loop_plan = once_pg._mapping_value(one_cycle_result.get("loop_plan"))
     execution_plan = once_pg._mapping_value(one_cycle_result.get("execution_plan"))
     metadata = once_pg._mapping_value(one_cycle_result.get("metadata"))
+    daemon_heartbeat_results = [
+        once_pg._mapping_value(item)
+        for item in one_cycle_result.get("daemon_heartbeat_results", [])
+        if isinstance(item, Mapping)
+    ]
     return {
         "one_cycle_contract": one_cycle_result.get(
             "daemon_one_cycle_result_schema_version"
@@ -610,8 +667,29 @@ def _scheduler_daemon_one_cycle_checks(
         and metadata.get("job_enqueued") is True
         and metadata.get("worker_executed") is True
         and metadata.get("history_write_executed") is True
+        and metadata.get("daemon_heartbeat_emitted") is True
+        and metadata.get("daemon_heartbeat_failed") is False
+        and metadata.get("daemon_heartbeat_error_observed") is False
         and metadata.get("scheduler_daemon_started") is False
         and metadata.get("continuous_loop_started") is False,
+        "daemon_heartbeat_result_sequence": [
+            item.get("status") for item in daemon_heartbeat_results
+        ]
+        == ["STARTING", "BUSY", "IDLE"]
+        and daemon_heartbeat_results[1].get("active_job_id")
+        == loop_plan.get("daemon_loop_plan_id")
+        and daemon_heartbeat_results[2].get("active_job_id") is None,
+        "daemon_heartbeat_persisted": isinstance(daemon_heartbeat, Mapping)
+        and daemon_heartbeat.get("worker_type")
+        == AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE
+        and daemon_heartbeat.get("status") == "IDLE"
+        and daemon_heartbeat.get("active_job_id") is None
+        and once_pg._mapping_value(daemon_heartbeat.get("metadata")).get("phase")
+        == "one_cycle_finished"
+        and once_pg._mapping_value(daemon_heartbeat.get("metadata")).get(
+            "loop_decision_status"
+        )
+        == "READY",
         "one_cycle_execution_plan": execution_plan.get("runs_tick_once") is True
         and execution_plan.get("starts_daemon") is False
         and execution_plan.get("starts_continuous_loop") is False
@@ -632,6 +710,51 @@ def _scheduler_daemon_one_cycle_checks(
             ],
         ),
         **tick_once_checks,
+    }
+
+
+def _daemon_heartbeat_evidence(
+    *,
+    daemon_worker_id: str,
+    one_cycle_result: Mapping[str, Any],
+    daemon_heartbeat: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    heartbeat_results = [
+        once_pg._mapping_value(item)
+        for item in one_cycle_result.get("daemon_heartbeat_results", [])
+        if isinstance(item, Mapping)
+    ]
+    heartbeat_metadata = (
+        once_pg._mapping_value(daemon_heartbeat.get("metadata"))
+        if isinstance(daemon_heartbeat, Mapping)
+        else {}
+    )
+    return {
+        "worker_id": daemon_worker_id,
+        "worker_type": AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
+        "result_sequence": [
+            {
+                "ok": item.get("ok"),
+                "status": item.get("status"),
+                "active_job_id": item.get("active_job_id"),
+            }
+            for item in heartbeat_results
+        ],
+        "stored": {
+            "row_found": isinstance(daemon_heartbeat, Mapping),
+            "status": (
+                daemon_heartbeat.get("status")
+                if isinstance(daemon_heartbeat, Mapping)
+                else None
+            ),
+            "active_job_id": (
+                daemon_heartbeat.get("active_job_id")
+                if isinstance(daemon_heartbeat, Mapping)
+                else None
+            ),
+            "metadata_phase": heartbeat_metadata.get("phase"),
+            "loop_decision_status": heartbeat_metadata.get("loop_decision_status"),
+        },
     }
 
 
@@ -725,6 +848,7 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"tick_once={evidence['tick_once']['result_status']} "
             f"lease={evidence['lease']['lease_status']} "
             f"job={evidence['job']['status']} "
+            f"daemon_heartbeat={evidence['daemon_heartbeat']['stored']['status']} "
             f"history_rows={evidence['history']['row_count']} "
             f"live_db={str(evidence['live_db']).lower()} "
             f"cleanup_leases={evidence['cleanup']['lease_rows']}"

@@ -72,6 +72,9 @@ DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_OWNER_ID = (
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ONE_CYCLE_LEASE_OWNER_ID = (
     "ae-artifact-retention-scheduler-daemon-one-cycle"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE = (
+    "ae.artifact_retention.scheduler_daemon"
+)
 ARTIFACT_RETENTION_SCHEDULER_LEASE_OPERATION_MANUAL_TICK_ONCE = "manual_tick_once"
 ARTIFACT_RETENTION_SCHEDULER_LEASE_OPERATIONS = (
     ARTIFACT_RETENTION_SCHEDULER_LEASE_OPERATION_MANUAL_TICK_ONCE,
@@ -1731,6 +1734,7 @@ def run_artifact_retention_scheduler_daemon_one_cycle(
     worker_id: str | None = None,
     stop_requested: bool = False,
     clock: Callable[[], str] | None = None,
+    daemon_heartbeat_emitter: Any | None = None,
 ) -> dict[str, Any]:
     config = validate_artifact_retention_scheduler_config(
         dict(scheduler_config)
@@ -1747,34 +1751,99 @@ def run_artifact_retention_scheduler_daemon_one_cycle(
         requested_at=observed_at,
         stop_requested=stop_requested,
     )
-    tick_once_result = None
-    if loop_plan["execution_plan"]["runs_tick_once"] is True:
-        tick_once_result = run_artifact_retention_scheduler_tick_once(
-            artifact_store=artifact_store,
-            job_queue=job_queue,
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            owner_user_id=owner_user_id,
-            lease_store=lease_store,
-            history_store=history_store,
-            scheduler_config=config,
-            lease_owner_id=lease_owner_id,
-            retention_days=retention_days,
-            as_of=as_of,
-            scan_limit=scan_limit,
-            max_delete_count=max_delete_count,
-            tick_at=loop_plan["requested_at"],
+    daemon_heartbeat_results: list[dict[str, Any]] = []
+    _append_scheduler_daemon_heartbeat_result(
+        daemon_heartbeat_results,
+        _emit_scheduler_daemon_heartbeat(
+            daemon_heartbeat_emitter,
+            status="STARTING",
             trace_id=trace_id,
-            request_id=request_id,
-            idempotency_key=idempotency_key,
-            run_worker=run_worker,
-            worker_id=worker_id,
-            clock=clock,
+            observed_at=loop_plan["requested_at"],
+            metadata=_scheduler_daemon_heartbeat_metadata(
+                loop_plan=loop_plan,
+                phase="loop_plan_built",
+            ),
+        ),
+    )
+    tick_once_result = None
+    try:
+        if loop_plan["execution_plan"]["runs_tick_once"] is True:
+            _append_scheduler_daemon_heartbeat_result(
+                daemon_heartbeat_results,
+                _emit_scheduler_daemon_heartbeat(
+                    daemon_heartbeat_emitter,
+                    status="BUSY",
+                    active_job_id=loop_plan["daemon_loop_plan_id"],
+                    trace_id=trace_id,
+                    observed_at=loop_plan["requested_at"],
+                    metadata=_scheduler_daemon_heartbeat_metadata(
+                        loop_plan=loop_plan,
+                        phase="tick_once_running",
+                    ),
+                ),
+            )
+            tick_once_result = run_artifact_retention_scheduler_tick_once(
+                artifact_store=artifact_store,
+                job_queue=job_queue,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
+                lease_store=lease_store,
+                history_store=history_store,
+                scheduler_config=config,
+                lease_owner_id=lease_owner_id,
+                retention_days=retention_days,
+                as_of=as_of,
+                scan_limit=scan_limit,
+                max_delete_count=max_delete_count,
+                tick_at=loop_plan["requested_at"],
+                trace_id=trace_id,
+                request_id=request_id,
+                idempotency_key=idempotency_key,
+                run_worker=run_worker,
+                worker_id=worker_id,
+                clock=clock,
+            )
+    except Exception:
+        _append_scheduler_daemon_heartbeat_result(
+            daemon_heartbeat_results,
+            _emit_scheduler_daemon_heartbeat(
+                daemon_heartbeat_emitter,
+                status="ERROR",
+                active_job_id=loop_plan["daemon_loop_plan_id"],
+                trace_id=trace_id,
+                observed_at=loop_plan["requested_at"],
+                metadata=_scheduler_daemon_heartbeat_metadata(
+                    loop_plan=loop_plan,
+                    phase="tick_once_failed",
+                    tick_once_result=tick_once_result,
+                ),
+            ),
         )
+        raise
+    final_status = _scheduler_daemon_one_cycle_heartbeat_final_status(
+        loop_plan=loop_plan,
+        tick_once_result=tick_once_result,
+    )
+    _append_scheduler_daemon_heartbeat_result(
+        daemon_heartbeat_results,
+        _emit_scheduler_daemon_heartbeat(
+            daemon_heartbeat_emitter,
+            status=final_status,
+            trace_id=trace_id,
+            observed_at=loop_plan["requested_at"],
+            metadata=_scheduler_daemon_heartbeat_metadata(
+                loop_plan=loop_plan,
+                phase="one_cycle_finished",
+                tick_once_result=tick_once_result,
+            ),
+        ),
+    )
     return validate_artifact_retention_scheduler_daemon_one_cycle_result(
         _build_artifact_retention_scheduler_daemon_one_cycle_result(
             loop_plan=loop_plan,
             tick_once_result=tick_once_result,
+            daemon_heartbeat_results=daemon_heartbeat_results,
         )
     )
 
@@ -1799,6 +1868,7 @@ def validate_artifact_retention_scheduler_daemon_one_cycle_result(
         "skip_reason",
         "loop_plan",
         "tick_once_result",
+        "daemon_heartbeat_results",
         "execution_plan",
         "guardrails",
         "metadata",
@@ -1891,6 +1961,9 @@ def validate_artifact_retention_scheduler_daemon_one_cycle_result(
         loop_plan=loop_plan,
         tick_once_result=tick_once_result,
     )
+    daemon_heartbeat_results = _validate_scheduler_daemon_heartbeat_results(
+        normalized.get("daemon_heartbeat_results")
+    )
     if result_status != expected_status:
         raise ArtifactHandoffError(
             status_code=422,
@@ -1930,6 +2003,7 @@ def validate_artifact_retention_scheduler_daemon_one_cycle_result(
     if normalized.get("metadata") != _scheduler_daemon_one_cycle_metadata(
         loop_plan=loop_plan,
         tick_once_result=tick_once_result,
+        daemon_heartbeat_results=daemon_heartbeat_results,
     ):
         raise ArtifactHandoffError(
             status_code=422,
@@ -1939,6 +2013,7 @@ def validate_artifact_retention_scheduler_daemon_one_cycle_result(
     normalized["run_at"] = run_at
     normalized["loop_plan"] = loop_plan
     normalized["tick_once_result"] = tick_once_result
+    normalized["daemon_heartbeat_results"] = daemon_heartbeat_results
     assert_artifact_retention_payload_safe(normalized)
     return normalized
 
@@ -1954,6 +2029,12 @@ def summarize_artifact_retention_scheduler_daemon_one_cycle_result(
         "loop_decision_status": validated["loop_plan"]["decision_status"],
         "loop_decision_reason": validated["loop_plan"]["decision_reason"],
         "tick_once_ran": validated["metadata"]["tick_once_ran"],
+        "daemon_heartbeat_emitted": validated["metadata"][
+            "daemon_heartbeat_emitted"
+        ],
+        "daemon_heartbeat_error_observed": validated["metadata"][
+            "daemon_heartbeat_error_observed"
+        ],
         "job_enqueued": validated["metadata"]["job_enqueued"],
         "lease_released": validated["metadata"]["lease_released"],
         "scheduler_daemon_started": validated["metadata"][
@@ -4539,6 +4620,7 @@ def _build_artifact_retention_scheduler_daemon_one_cycle_result(
     *,
     loop_plan: Mapping[str, Any],
     tick_once_result: Mapping[str, Any] | None,
+    daemon_heartbeat_results: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     validated_loop = validate_artifact_retention_scheduler_daemon_loop_plan(loop_plan)
     validated_tick = (
@@ -4553,6 +4635,9 @@ def _build_artifact_retention_scheduler_daemon_one_cycle_result(
     skip_reason = _scheduler_daemon_one_cycle_skip_reason(
         loop_plan=validated_loop,
         tick_once_result=validated_tick,
+    )
+    validated_heartbeats = _validate_scheduler_daemon_heartbeat_results(
+        daemon_heartbeat_results or []
     )
     return {
         "daemon_one_cycle_result_schema_version": (
@@ -4571,11 +4656,13 @@ def _build_artifact_retention_scheduler_daemon_one_cycle_result(
         "skip_reason": skip_reason,
         "loop_plan": deepcopy(validated_loop),
         "tick_once_result": deepcopy(validated_tick),
+        "daemon_heartbeat_results": deepcopy(validated_heartbeats),
         "execution_plan": deepcopy(validated_loop["execution_plan"]),
         "guardrails": _scheduler_daemon_one_cycle_guardrails(),
         "metadata": _scheduler_daemon_one_cycle_metadata(
             loop_plan=validated_loop,
             tick_once_result=validated_tick,
+            daemon_heartbeat_results=validated_heartbeats,
         ),
     }
 
@@ -4929,13 +5016,189 @@ def _scheduler_daemon_one_cycle_guardrails() -> dict[str, bool]:
         "one_cycle_only": True,
         "loop_plan_required": True,
         "tick_once_requires_ready_loop_plan": True,
+        "daemon_heartbeat_optional": True,
+        "daemon_heartbeat_failure_non_blocking": True,
     }
+
+
+def _emit_scheduler_daemon_heartbeat(
+    daemon_heartbeat_emitter: Any | None,
+    *,
+    status: str,
+    active_job_id: str | None = None,
+    trace_id: str | None = None,
+    observed_at: str,
+    metadata: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    if daemon_heartbeat_emitter is None:
+        return None
+    safe_emit = getattr(daemon_heartbeat_emitter, "safe_emit", None)
+    if safe_emit is None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+            detail="Artifact retention scheduler daemon heartbeat emitter is invalid.",
+        )
+    result = safe_emit(
+        status=status,
+        active_job_id=active_job_id,
+        trace_id=trace_id,
+        metadata=dict(metadata),
+        observed_at=observed_at,
+    )
+    to_summary = getattr(result, "to_summary", None)
+    if to_summary is None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+            detail="Artifact retention scheduler daemon heartbeat result is invalid.",
+        )
+    return _validate_scheduler_daemon_heartbeat_summary(to_summary())
+
+
+def _append_scheduler_daemon_heartbeat_result(
+    daemon_heartbeat_results: list[dict[str, Any]],
+    result: dict[str, Any] | None,
+) -> None:
+    if result is not None:
+        daemon_heartbeat_results.append(result)
+
+
+def _scheduler_daemon_heartbeat_metadata(
+    *,
+    loop_plan: Mapping[str, Any],
+    phase: str,
+    tick_once_result: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    metadata = {
+        "scheduler_id": loop_plan["scheduler_id"],
+        "daemon_loop_plan_id": loop_plan["daemon_loop_plan_id"],
+        "phase": phase,
+        "loop_decision_status": loop_plan["decision_status"],
+        "loop_decision_reason": loop_plan["decision_reason"],
+        "one_cycle_only": True,
+        "scheduler_daemon_started": False,
+        "continuous_loop_started": False,
+        "physical_delete_automation_enabled": False,
+    }
+    if isinstance(tick_once_result, Mapping):
+        metadata["tick_once_result_status"] = tick_once_result.get("result_status")
+        metadata["tick_once_skip_reason"] = tick_once_result.get("skip_reason")
+    return metadata
+
+
+def _scheduler_daemon_one_cycle_heartbeat_final_status(
+    *,
+    loop_plan: Mapping[str, Any],
+    tick_once_result: Mapping[str, Any] | None,
+) -> str:
+    if isinstance(tick_once_result, Mapping):
+        return "ERROR" if tick_once_result.get("result_status") == "FAILED" else "IDLE"
+    return "IDLE" if loop_plan.get("decision_status") != "READY" else "ERROR"
+
+
+def _validate_scheduler_daemon_heartbeat_results(value: Any) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+            detail="Artifact retention scheduler daemon heartbeat results must be a list.",
+        )
+    return [_validate_scheduler_daemon_heartbeat_summary(item) for item in value]
+
+
+def _validate_scheduler_daemon_heartbeat_summary(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+            detail="Artifact retention scheduler daemon heartbeat summary must be an object.",
+        )
+    summary = dict(value)
+    ok = _required_bool(
+        summary.get("ok"),
+        "ok",
+        "ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+    )
+    if ok:
+        if set(summary) != {
+            "ok",
+            "service_id",
+            "worker_id",
+            "worker_type",
+            "status",
+            "active_job_id",
+        }:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+                detail="Artifact retention scheduler daemon heartbeat keys are invalid.",
+            )
+        if summary.get("service_id") != "nex-ae-api":
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+                detail="Artifact retention scheduler daemon heartbeat service is invalid.",
+            )
+        if (
+            summary.get("worker_type")
+            != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE
+        ):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+                detail="Artifact retention scheduler daemon heartbeat worker type is invalid.",
+            )
+        _required_text(
+            summary.get("worker_id"),
+            "worker_id",
+            "ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+        )
+        if summary.get("status") not in {"STARTING", "BUSY", "IDLE", "ERROR"}:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+                detail="Artifact retention scheduler daemon heartbeat status is invalid.",
+            )
+        active_job_id = summary.get("active_job_id")
+        if active_job_id is not None:
+            _required_text(
+                active_job_id,
+                "active_job_id",
+                "ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+            )
+        return summary
+    if set(summary) != {"ok", "error_code", "detail", "status_code"}:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+            detail="Artifact retention scheduler daemon heartbeat failure keys are invalid.",
+        )
+    _required_text(
+        summary.get("error_code"),
+        "error_code",
+        "ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+    )
+    _required_text(
+        summary.get("detail"),
+        "detail",
+        "ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+    )
+    summary["status_code"] = _positive_int(
+        summary.get("status_code"),
+        "status_code",
+        "ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+    )
+    return summary
 
 
 def _scheduler_daemon_one_cycle_metadata(
     *,
     loop_plan: Mapping[str, Any],
     tick_once_result: Mapping[str, Any] | None,
+    daemon_heartbeat_results: list[dict[str, Any]],
 ) -> dict[str, bool]:
     tick_metadata = (
         tick_once_result.get("metadata")
@@ -4953,6 +5216,13 @@ def _scheduler_daemon_one_cycle_metadata(
         "safe_for_ag_projection": True,
         "loop_plan_ready": loop_plan.get("decision_status") == "READY",
         "tick_once_ran": tick_once_result is not None,
+        "daemon_heartbeat_emitted": bool(daemon_heartbeat_results),
+        "daemon_heartbeat_failed": any(
+            result.get("ok") is False for result in daemon_heartbeat_results
+        ),
+        "daemon_heartbeat_error_observed": any(
+            result.get("status") == "ERROR" for result in daemon_heartbeat_results
+        ),
         "skipped_before_tick": (
             tick_once_result is None and loop_plan.get("decision_status") != "READY"
         ),

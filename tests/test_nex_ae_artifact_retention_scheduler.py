@@ -12,7 +12,11 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import nex_ae_api.artifact_retention_scheduler as scheduler_module
-from nex_runtime import InMemoryJobQueue
+from nex_runtime import (
+    InMemoryJobQueue,
+    InMemoryWorkerHeartbeatStore,
+    WorkerHeartbeatEmitter,
+)
 from nex_ae_api.artifact_retention_scheduler import (
     AE_ARTIFACT_RETENTION_SCHEDULER_LEASE_DECISION_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_LEASE_RECORD_SCHEMA_VERSION,
@@ -24,6 +28,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ONE_CYCLE_RESULT_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_CONFIG_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_START_STOP_GUARDRAIL_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
     AE_ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_RESULT_SCHEMA_VERSION,
     DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_STORE,
     DEFAULT_ARTIFACT_RETENTION_SCHEDULER_LEASE_OWNER_ID,
@@ -158,6 +163,17 @@ class FakeArtifactRetentionStore:
             requested_by=requested_by,
             idempotency_key=idempotency_key,
         )
+
+
+class FailingArtifactRetentionStore(FakeArtifactRetentionStore):
+    def plan_retention_batch(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(dict(kwargs))
+        raise RuntimeError("artifact store unavailable")
+
+
+class FailingHeartbeatStore:
+    def upsert_heartbeat(self, heartbeat: dict[str, Any]) -> dict[str, Any]:
+        raise RuntimeError("heartbeat store unavailable")
 
 
 def sqlite_scheduler_session_factory() -> sessionmaker:
@@ -1753,11 +1769,15 @@ def test_artifact_retention_scheduler_daemon_one_cycle_runs_ready_tick_once() ->
     )
     assert result["metadata"]["loop_plan_ready"] is True
     assert result["metadata"]["tick_once_ran"] is True
+    assert result["metadata"]["daemon_heartbeat_emitted"] is False
+    assert result["metadata"]["daemon_heartbeat_failed"] is False
+    assert result["metadata"]["daemon_heartbeat_error_observed"] is False
     assert result["metadata"]["lease_acquired_before_tick"] is True
     assert result["metadata"]["lease_released"] is True
     assert result["metadata"]["job_enqueued"] is True
     assert result["metadata"]["scheduler_daemon_started"] is False
     assert result["metadata"]["continuous_loop_started"] is False
+    assert result["daemon_heartbeat_results"] == []
     assert summary == {
         "scheduler_id": "ae-artifact-retention-scheduler-local-v1",
         "result_status": "SUCCEEDED",
@@ -1765,6 +1785,8 @@ def test_artifact_retention_scheduler_daemon_one_cycle_runs_ready_tick_once() ->
         "loop_decision_status": "READY",
         "loop_decision_reason": None,
         "tick_once_ran": True,
+        "daemon_heartbeat_emitted": False,
+        "daemon_heartbeat_error_observed": False,
         "job_enqueued": True,
         "lease_released": True,
         "scheduler_daemon_started": False,
@@ -1778,6 +1800,208 @@ def test_artifact_retention_scheduler_daemon_one_cycle_runs_ready_tick_once() ->
     assert "postgresql://" not in serialized
     assert "/data/nex-platform" not in serialized
     assert "dummy-secret-token" not in serialized
+
+
+def test_artifact_retention_scheduler_daemon_one_cycle_emits_heartbeat() -> None:
+    artifact_store = FakeArtifactRetentionStore(candidate_count=1)
+    queue = InMemoryJobQueue()
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_emitter = WorkerHeartbeatEmitter(
+        service_id="nex-ae-api",
+        worker_id="ae-retention-daemon-heartbeat-test",
+        worker_type=AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
+        store=heartbeat_store,
+        started_at=READY_TICK_AT,
+        metadata={"slice": "0537"},
+    )
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+    runtime_config = build_artifact_retention_scheduler_daemon_runtime_config(
+        scheduler_config=scheduler_config,
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+    )
+    daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=scheduler_config,
+        lease_store=lease_store,
+        checked_at=READY_TICK_AT,
+    )
+
+    result = run_artifact_retention_scheduler_daemon_one_cycle(
+        artifact_store=artifact_store,
+        job_queue=queue,
+        lease_store=lease_store,
+        scheduler_config=scheduler_config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit=10,
+        max_delete_count=1,
+        requested_at=READY_TICK_AT,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        idempotency_key="daemon-one-cycle-heartbeat-0537",
+        daemon_heartbeat_emitter=heartbeat_emitter,
+    )
+    heartbeat_results = result["daemon_heartbeat_results"]
+    heartbeat = heartbeat_store.get_heartbeat(
+        "nex-ae-api",
+        "ae-retention-daemon-heartbeat-test",
+    )
+    summary = summarize_artifact_retention_scheduler_daemon_one_cycle_result(result)
+    serialized = json.dumps(result, ensure_ascii=False, sort_keys=True)
+
+    assert [item["status"] for item in heartbeat_results] == [
+        "STARTING",
+        "BUSY",
+        "IDLE",
+    ]
+    assert heartbeat_results[1]["active_job_id"] == (
+        result["loop_plan"]["daemon_loop_plan_id"]
+    )
+    assert heartbeat_results[2]["active_job_id"] is None
+    assert result["metadata"]["daemon_heartbeat_emitted"] is True
+    assert result["metadata"]["daemon_heartbeat_failed"] is False
+    assert result["metadata"]["daemon_heartbeat_error_observed"] is False
+    assert summary["daemon_heartbeat_emitted"] is True
+    assert summary["daemon_heartbeat_error_observed"] is False
+    assert heartbeat is not None
+    assert heartbeat["status"] == "IDLE"
+    assert heartbeat["active_job_id"] is None
+    assert heartbeat["metadata"]["slice"] == "0537"
+    assert heartbeat["metadata"]["phase"] == "one_cycle_finished"
+    assert heartbeat["metadata"]["one_cycle_only"] is True
+    assert heartbeat["metadata"]["scheduler_daemon_started"] is False
+    assert heartbeat["metadata"]["continuous_loop_started"] is False
+    assert validate_artifact_retention_scheduler_daemon_one_cycle_result(result) == (
+        result
+    )
+    assert "postgresql://" not in serialized
+    assert "/data/nex-platform" not in serialized
+
+
+def test_artifact_retention_scheduler_daemon_one_cycle_heartbeat_failure_is_safe() -> None:
+    artifact_store = FakeArtifactRetentionStore(candidate_count=1)
+    queue = InMemoryJobQueue()
+    heartbeat_emitter = WorkerHeartbeatEmitter(
+        service_id="nex-ae-api",
+        worker_id="ae-retention-daemon-heartbeat-failing-store",
+        worker_type=AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
+        store=FailingHeartbeatStore(),
+        started_at=READY_TICK_AT,
+    )
+
+    result = run_artifact_retention_scheduler_daemon_one_cycle(
+        artifact_store=artifact_store,
+        job_queue=queue,
+        scheduler_config=build_artifact_retention_scheduler_config(job_queue=queue),
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        requested_at=READY_TICK_AT,
+        daemon_heartbeat_emitter=heartbeat_emitter,
+    )
+
+    assert result["result_status"] == "SKIPPED"
+    assert result["skip_reason"] == "runtime_disabled"
+    assert result["daemon_heartbeat_results"] == [
+        {
+            "ok": False,
+            "error_code": "worker_heartbeat.emit_failed",
+            "detail": "worker heartbeat emission failed",
+            "status_code": 503,
+        },
+        {
+            "ok": False,
+            "error_code": "worker_heartbeat.emit_failed",
+            "detail": "worker heartbeat emission failed",
+            "status_code": 503,
+        },
+    ]
+    assert result["metadata"]["daemon_heartbeat_emitted"] is True
+    assert result["metadata"]["daemon_heartbeat_failed"] is True
+    assert result["metadata"]["daemon_heartbeat_error_observed"] is False
+    assert artifact_store.calls == []
+    assert queue.list_jobs() == []
+
+
+def test_artifact_retention_scheduler_daemon_one_cycle_rejects_bad_heartbeat_emitter() -> None:
+    with pytest.raises(ArtifactHandoffError) as exc_info:
+        run_artifact_retention_scheduler_daemon_one_cycle(
+            artifact_store=FakeArtifactRetentionStore(candidate_count=1),
+            job_queue=InMemoryJobQueue(),
+            tenant_id="tenant-001",
+            workspace_id="workspace-001",
+            owner_user_id="user-001",
+            requested_at=READY_TICK_AT,
+            daemon_heartbeat_emitter=object(),
+        )
+
+    assert exc_info.value.error_code == (
+        "ae.artifact_retention_scheduler_daemon_heartbeat_invalid"
+    )
+    assert "emitter" in exc_info.value.detail
+
+
+def test_artifact_retention_scheduler_daemon_one_cycle_emits_error_heartbeat() -> None:
+    artifact_store = FailingArtifactRetentionStore(candidate_count=1)
+    queue = InMemoryJobQueue()
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_emitter = WorkerHeartbeatEmitter(
+        service_id="nex-ae-api",
+        worker_id="ae-retention-daemon-heartbeat-error-test",
+        worker_type=AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
+        store=heartbeat_store,
+        started_at=READY_TICK_AT,
+    )
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+    runtime_config = build_artifact_retention_scheduler_daemon_runtime_config(
+        scheduler_config=scheduler_config,
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+    )
+    daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=scheduler_config,
+        lease_store=lease_store,
+        checked_at=READY_TICK_AT,
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        run_artifact_retention_scheduler_daemon_one_cycle(
+            artifact_store=artifact_store,
+            job_queue=queue,
+            lease_store=lease_store,
+            scheduler_config=scheduler_config,
+            runtime_config=runtime_config,
+            daemon_config=daemon_config,
+            tenant_id="tenant-001",
+            workspace_id="workspace-001",
+            owner_user_id="user-001",
+            requested_at=READY_TICK_AT,
+            daemon_heartbeat_emitter=heartbeat_emitter,
+        )
+    heartbeat = heartbeat_store.get_heartbeat(
+        "nex-ae-api",
+        "ae-retention-daemon-heartbeat-error-test",
+    )
+
+    assert "artifact store unavailable" in str(exc_info.value)
+    assert heartbeat is not None
+    assert heartbeat["status"] == "ERROR"
+    assert heartbeat["active_job_id"] is not None
+    assert heartbeat["metadata"]["phase"] == "tick_once_failed"
+    assert heartbeat["metadata"]["loop_decision_status"] == "READY"
+    assert artifact_store.calls[0]["checked_at"] == READY_TICK_AT
+    released_lease = lease_store.get("ae-artifact-retention-scheduler-local-v1")
+    assert released_lease is not None
+    assert released_lease["lease_status"] == "RELEASED"
 
 
 def test_artifact_retention_scheduler_daemon_one_cycle_skips_before_tick() -> None:
@@ -1967,6 +2191,14 @@ def test_artifact_retention_scheduler_daemon_one_cycle_validation_edges() -> Non
         requested_at=READY_TICK_AT,
     )
     scoped_loop_plan = {**result["loop_plan"], "scheduler_id": "other-scheduler"}
+    valid_heartbeat = {
+        "ok": True,
+        "service_id": "nex-ae-api",
+        "worker_id": "ae-retention-daemon-validation",
+        "worker_type": AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
+        "status": "STARTING",
+        "active_job_id": None,
+    }
 
     cases: tuple[tuple[Any, str, str], ...] = (
         (
@@ -2025,6 +2257,36 @@ def test_artifact_retention_scheduler_daemon_one_cycle_validation_edges() -> Non
             "object",
         ),
         (
+            {**result, "daemon_heartbeat_results": "bad"},
+            "ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+            "list",
+        ),
+        (
+            {
+                **result,
+                "daemon_heartbeat_results": [
+                    {**valid_heartbeat, "worker_type": "wrong-worker-type"}
+                ],
+            },
+            "ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+            "worker type",
+        ),
+        (
+            {
+                **result,
+                "daemon_heartbeat_results": [
+                    {
+                        "ok": False,
+                        "error_code": "worker_heartbeat.emit_failed",
+                        "detail": "worker heartbeat emission failed",
+                        "status_code": 0,
+                    }
+                ],
+            },
+            "ae.artifact_retention_scheduler_daemon_heartbeat_invalid",
+            "status_code",
+        ),
+        (
             {**skipped, "tick_once_result": result["tick_once_result"]},
             "ae.artifact_retention_scheduler_daemon_one_cycle_result_invalid",
             "cannot include a tick",
@@ -2057,6 +2319,18 @@ def test_artifact_retention_scheduler_daemon_one_cycle_validation_edges() -> Non
         ),
         (
             {**result, "metadata": {**result["metadata"], "job_enqueued": False}},
+            "ae.artifact_retention_scheduler_daemon_one_cycle_result_invalid",
+            "metadata",
+        ),
+        (
+            {
+                **result,
+                "daemon_heartbeat_results": [valid_heartbeat],
+                "metadata": {
+                    **result["metadata"],
+                    "daemon_heartbeat_emitted": False,
+                },
+            },
             "ae.artifact_retention_scheduler_daemon_one_cycle_result_invalid",
             "metadata",
         ),

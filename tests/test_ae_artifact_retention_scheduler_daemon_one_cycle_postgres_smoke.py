@@ -119,6 +119,8 @@ def test_ae_artifact_retention_scheduler_daemon_one_cycle_passes_sqlite_harness(
         "loop_decision_status": "READY",
         "loop_decision_reason": None,
         "tick_once_ran": True,
+        "daemon_heartbeat_emitted": True,
+        "daemon_heartbeat_error_observed": False,
         "job_enqueued": True,
         "lease_released": True,
     }
@@ -134,6 +136,21 @@ def test_ae_artifact_retention_scheduler_daemon_one_cycle_passes_sqlite_harness(
     assert evidence["tick_once"]["lease_released"] is True
     assert evidence["tick_once"]["job_enqueued"] is True
     assert evidence["tick_once"]["worker_executed"] is True
+    assert evidence["daemon_heartbeat"]["worker_type"] == (
+        smoke.AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE
+    )
+    assert [item["status"] for item in evidence["daemon_heartbeat"]["result_sequence"]] == [
+        "STARTING",
+        "BUSY",
+        "IDLE",
+    ]
+    assert evidence["daemon_heartbeat"]["stored"] == {
+        "row_found": True,
+        "status": "IDLE",
+        "active_job_id": None,
+        "metadata_phase": "one_cycle_finished",
+        "loop_decision_status": "READY",
+    }
     assert evidence["history"]["row_count"] == 1
     assert evidence["history"]["mode"] == "DRY_RUN"
     assert evidence["history"]["execution_status"] == "SUCCEEDED"
@@ -148,7 +165,8 @@ def test_ae_artifact_retention_scheduler_daemon_one_cycle_passes_sqlite_harness(
         "handoffs": 3,
         "history_rows": 1,
         "job_rows": 1,
-        "heartbeat_rows": 0,
+        "worker_heartbeat_rows": 0,
+        "daemon_heartbeat_rows": 1,
         "lease_rows": 1,
     }
     assert evidence["live_db"] is True
