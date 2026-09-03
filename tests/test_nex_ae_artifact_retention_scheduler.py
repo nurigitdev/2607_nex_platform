@@ -27,6 +27,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LOOP_PLAN_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ONE_CYCLE_RESULT_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_CONFIG_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_STATE_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_START_STOP_GUARDRAIL_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
     AE_ARTIFACT_RETENTION_SCHEDULER_TICK_ONCE_RESULT_SCHEMA_VERSION,
@@ -41,6 +42,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     build_artifact_retention_scheduler_daemon_control_plan,
     build_artifact_retention_scheduler_daemon_loop_plan,
     build_artifact_retention_scheduler_daemon_runtime_config,
+    build_artifact_retention_scheduler_daemon_runtime_state,
     build_artifact_retention_scheduler_daemon_start_stop_guardrail,
     build_artifact_retention_scheduler_lease_decision,
     build_artifact_retention_scheduler_lease_record,
@@ -59,6 +61,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     summarize_artifact_retention_scheduler_daemon_dispatch_result,
     summarize_artifact_retention_scheduler_daemon_loop_plan,
     summarize_artifact_retention_scheduler_daemon_runtime_config,
+    summarize_artifact_retention_scheduler_daemon_runtime_state,
     summarize_artifact_retention_scheduler_daemon_start_stop_guardrail,
     summarize_artifact_retention_scheduler_lease_decision,
     summarize_artifact_retention_scheduler_tick_once_result,
@@ -68,6 +71,7 @@ from nex_ae_api.artifact_retention_scheduler import (
     validate_artifact_retention_scheduler_daemon_loop_plan,
     validate_artifact_retention_scheduler_daemon_one_cycle_result,
     validate_artifact_retention_scheduler_daemon_runtime_config,
+    validate_artifact_retention_scheduler_daemon_runtime_state,
     validate_artifact_retention_scheduler_daemon_start_stop_guardrail,
     validate_artifact_retention_scheduler_lease_decision,
     validate_artifact_retention_scheduler_lease_record,
@@ -2346,6 +2350,447 @@ def test_artifact_retention_scheduler_daemon_one_cycle_validation_edges() -> Non
             validate_artifact_retention_scheduler_daemon_one_cycle_result(payload)  # type: ignore[arg-type]
         assert exc_info.value.error_code == error_code
         assert detail in exc_info.value.detail
+
+
+def test_artifact_retention_scheduler_daemon_runtime_state_defaults() -> None:
+    state = build_artifact_retention_scheduler_daemon_runtime_state(
+        observed_at=READY_TICK_AT,
+    )
+    summary = summarize_artifact_retention_scheduler_daemon_runtime_state(state)
+    serialized = json.dumps(state, ensure_ascii=False, sort_keys=True)
+
+    assert state["daemon_runtime_state_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUNTIME_STATE_SCHEMA_VERSION
+    )
+    assert state["service_id"] == "nex-ae-api"
+    assert state["scheduler_id"] == "ae-artifact-retention-scheduler-local-v1"
+    assert state["daemon_instance_id"]
+    assert state["observed_at"] == READY_TICK_AT
+    assert state["lifecycle_status"] == "STOPPED"
+    assert state["lifecycle_reason"] == "initialized"
+    assert state["stop_requested"] is False
+    assert state["shutdown_requested_at"] is None
+    assert state["last_cycle"] is None
+    assert state["next_tick_at"] is None
+    assert state["cycle_count"] == 0
+    assert state["consecutive_failure_count"] == 0
+    assert state["heartbeat_worker_id"] is None
+    assert state["runtime_config"]["enablement"]["enablement_status"] == "DISABLED"
+    assert state["daemon_config"]["service_id"] == "nex-ae-api"
+    assert state["guardrails"] == {
+        "metadata_only": True,
+        "state_snapshot_only": True,
+        "daemon_process_owner_ae": True,
+        "daemon_as_jobqueue_job_allowed": False,
+        "retention_work_uses_job_queue": True,
+        "job_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "runtime_state_persisted_by_builder": False,
+        "continuous_loop_started_by_builder": False,
+        "physical_delete_automation_enabled": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+    }
+    assert state["metadata"] == {
+        "metadata_only": True,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "safe_for_ag_projection": True,
+        "state_snapshot_only": True,
+        "lifecycle_running": False,
+        "lifecycle_stopped": True,
+        "lifecycle_error": False,
+        "stop_requested": False,
+        "shutdown_requested": False,
+        "last_cycle_present": False,
+        "last_cycle_failed": False,
+        "next_tick_scheduled": False,
+        "consecutive_failures_present": False,
+        "job_enqueued": False,
+        "worker_executed": False,
+        "runtime_state_persisted": False,
+        "continuous_loop_started": False,
+        "physical_delete_automation_enabled": False,
+    }
+    assert summary == {
+        "scheduler_id": "ae-artifact-retention-scheduler-local-v1",
+        "daemon_instance_id": state["daemon_instance_id"],
+        "lifecycle_status": "STOPPED",
+        "lifecycle_reason": "initialized",
+        "stop_requested": False,
+        "shutdown_requested": False,
+        "last_cycle_status": None,
+        "next_tick_at": None,
+        "cycle_count": 0,
+        "consecutive_failure_count": 0,
+        "heartbeat_worker_id": None,
+        "state_snapshot_only": True,
+        "retention_work_uses_job_queue": True,
+        "continuous_loop_started_by_builder": False,
+    }
+    assert validate_artifact_retention_scheduler_daemon_runtime_state(state) == state
+    assert "postgresql://" not in serialized
+    assert "/data/nex-platform" not in serialized
+    assert "dummy-secret-token" not in serialized
+
+
+def test_artifact_retention_scheduler_daemon_runtime_state_running_last_cycle() -> None:
+    artifact_store = FakeArtifactRetentionStore(candidate_count=1)
+    queue = InMemoryJobQueue()
+    lease_store = ArtifactRetentionSchedulerLeaseStore()
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+    runtime_config = build_artifact_retention_scheduler_daemon_runtime_config(
+        scheduler_config=scheduler_config,
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+        interval_seconds=120,
+        jitter_seconds=10,
+    )
+    daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=scheduler_config,
+        lease_store=lease_store,
+        checked_at=READY_TICK_AT,
+    )
+    one_cycle = run_artifact_retention_scheduler_daemon_one_cycle(
+        artifact_store=artifact_store,
+        job_queue=queue,
+        lease_store=lease_store,
+        scheduler_config=scheduler_config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        requested_at=READY_TICK_AT,
+        as_of="2026-09-01T00:00:00Z",
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        idempotency_key="daemon-runtime-state-0542",
+    )
+
+    state = build_artifact_retention_scheduler_daemon_runtime_state(
+        scheduler_config=scheduler_config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        lifecycle_status="RUNNING",
+        lifecycle_reason=None,
+        observed_at=READY_TICK_AT,
+        last_cycle_result=one_cycle,
+        next_tick_at="2026-08-31T17:32:00Z",
+        cycle_count="1",
+        heartbeat_worker_id="ae-retention-daemon-001",
+    )
+    summary = summarize_artifact_retention_scheduler_daemon_runtime_state(state)
+
+    assert state["lifecycle_reason"] == "bounded_loop_running"
+    assert state["last_cycle"] == {
+        "daemon_one_cycle_result_id": one_cycle["daemon_one_cycle_result_id"],
+        "run_at": READY_TICK_AT,
+        "result_status": "SUCCEEDED",
+        "skip_reason": None,
+        "loop_decision_status": "READY",
+        "loop_decision_reason": None,
+        "tick_once_ran": True,
+        "job_enqueued": True,
+        "worker_executed": False,
+        "history_write_executed": False,
+    }
+    assert state["metadata"]["lifecycle_running"] is True
+    assert state["metadata"]["last_cycle_present"] is True
+    assert state["metadata"]["next_tick_scheduled"] is True
+    assert state["metadata"]["job_enqueued"] is False
+    assert summary["last_cycle_status"] == "SUCCEEDED"
+    assert summary["next_tick_at"] == "2026-08-31T17:32:00Z"
+    assert summary["cycle_count"] == 1
+    assert summary["heartbeat_worker_id"] == "ae-retention-daemon-001"
+    assert len(queue.list_jobs()) == 1
+    assert validate_artifact_retention_scheduler_daemon_runtime_state(state) == state
+
+
+def test_artifact_retention_scheduler_daemon_runtime_state_disabled_reason_defaults() -> None:
+    queue = InMemoryJobQueue()
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+    blocked_runtime = build_artifact_retention_scheduler_daemon_runtime_config(
+        scheduler_config=scheduler_config,
+        enabled=True,
+        explicit_opt_in=False,
+        checked_at=READY_TICK_AT,
+    )
+
+    disabled = build_artifact_retention_scheduler_daemon_runtime_state(
+        scheduler_config=scheduler_config,
+        runtime_config=blocked_runtime,
+        lifecycle_status="DISABLED",
+        lifecycle_reason=None,
+        observed_at=READY_TICK_AT,
+    )
+
+    assert blocked_runtime["enablement"]["enablement_status"] == "BLOCKED"
+    assert disabled["lifecycle_reason"] == "explicit_opt_in_required"
+    assert disabled["metadata"]["lifecycle_stopped"] is False
+    assert disabled["metadata"]["lifecycle_running"] is False
+
+
+def test_artifact_retention_scheduler_daemon_runtime_state_error_lifecycle() -> None:
+    queue = InMemoryJobQueue()
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+    runtime_config = build_artifact_retention_scheduler_daemon_runtime_config(
+        scheduler_config=scheduler_config,
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+    )
+    daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=scheduler_config,
+        lease_store=ArtifactRetentionSchedulerLeaseStore(),
+        checked_at=READY_TICK_AT,
+    )
+    failed_cycle = {
+        "daemon_one_cycle_result_id": "daemon-one-cycle-error-0542",
+        "run_at": READY_TICK_AT,
+        "result_status": "FAILED",
+        "skip_reason": "tick_failed",
+        "loop_decision_status": "READY",
+        "loop_decision_reason": None,
+        "tick_once_ran": True,
+        "job_enqueued": False,
+        "worker_executed": False,
+        "history_write_executed": False,
+    }
+
+    state = build_artifact_retention_scheduler_daemon_runtime_state(
+        scheduler_config=scheduler_config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        lifecycle_status="ERROR",
+        lifecycle_reason=None,
+        observed_at=READY_TICK_AT,
+        last_cycle_result=failed_cycle,
+        consecutive_failure_count=2,
+    )
+
+    assert state["lifecycle_reason"] == "cycle_failed"
+    assert state["metadata"]["lifecycle_error"] is True
+    assert state["metadata"]["last_cycle_failed"] is True
+    assert state["metadata"]["consecutive_failures_present"] is True
+
+
+def test_artifact_retention_scheduler_daemon_runtime_state_validation_edges() -> None:
+    queue = InMemoryJobQueue()
+    scheduler_config = build_artifact_retention_scheduler_config(job_queue=queue)
+    runtime_config = build_artifact_retention_scheduler_daemon_runtime_config(
+        scheduler_config=scheduler_config,
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=READY_TICK_AT,
+    )
+    daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=scheduler_config,
+        lease_store=ArtifactRetentionSchedulerLeaseStore(),
+        checked_at=READY_TICK_AT,
+    )
+    stopped = build_artifact_retention_scheduler_daemon_runtime_state(
+        scheduler_config=scheduler_config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        observed_at=READY_TICK_AT,
+    )
+    failed_cycle_summary = {
+        "daemon_one_cycle_result_id": "daemon-one-cycle-failed-001",
+        "run_at": READY_TICK_AT,
+        "result_status": "FAILED",
+        "skip_reason": "tick_failed",
+        "loop_decision_status": "READY",
+        "loop_decision_reason": None,
+        "tick_once_ran": True,
+        "job_enqueued": False,
+        "worker_executed": False,
+        "history_write_executed": False,
+    }
+    error_state = build_artifact_retention_scheduler_daemon_runtime_state(
+        scheduler_config=scheduler_config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        lifecycle_status="ERROR",
+        lifecycle_reason=None,
+        observed_at=READY_TICK_AT,
+        last_cycle_result=failed_cycle_summary,
+        consecutive_failure_count=1,
+    )
+    disabled_state = build_artifact_retention_scheduler_daemon_runtime_state(
+        observed_at=READY_TICK_AT,
+        lifecycle_status="DISABLED",
+        lifecycle_reason=None,
+    )
+    summary_with_bad_bool = {
+        **failed_cycle_summary,
+        "worker_executed": "yes",
+    }
+
+    cases: tuple[tuple[Any, str, str], ...] = (
+        (
+            [],
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "object",
+        ),
+        (
+            {**stopped, "daemon_runtime_state_schema_version": "wrong"},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_schema_invalid",
+            "schema version",
+        ),
+        (
+            {**stopped, "service_id": "nex-ag"},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "service id",
+        ),
+        (
+            {**stopped, "daemon_instance_id": " "},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "daemon_instance_id",
+        ),
+        (
+            {**stopped, "observed_at": "not-a-time"},
+            "ae.artifact_retention_timestamp_invalid",
+            "observed_at",
+        ),
+        (
+            {**stopped, "lifecycle_status": "UNKNOWN"},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "status",
+        ),
+        (
+            {**stopped, "lifecycle_reason": "wrong"},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "reason",
+        ),
+        (
+            {**stopped, "stop_requested": "yes"},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "stop_requested",
+        ),
+        (
+            {**stopped, "last_cycle": {"bad": "payload"}},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "last cycle keys",
+        ),
+        (
+            {**stopped, "last_cycle": summary_with_bad_bool},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "worker_executed",
+        ),
+        (
+            {**stopped, "next_tick_at": "not-a-time"},
+            "ae.artifact_retention_timestamp_invalid",
+            "next_tick_at",
+        ),
+        (
+            {**stopped, "cycle_count": -1},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "cycle_count",
+        ),
+        (
+            {**stopped, "consecutive_failure_count": "bad"},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "consecutive_failure_count",
+        ),
+        (
+            {
+                **stopped,
+                "runtime_config": {
+                    **runtime_config,
+                    "scheduler_id": "other-scheduler",
+                },
+            },
+            "ae.artifact_retention_scheduler_daemon_loop_plan_invalid",
+            "scope",
+        ),
+        (
+            {**disabled_state, "lifecycle_reason": "initialized"},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "disabled state reason",
+        ),
+        (
+            {
+                **stopped,
+                "lifecycle_status": "RUNNING",
+                "lifecycle_reason": "bounded_loop_running",
+            },
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "state id",
+        ),
+        (
+            {
+                **stopped,
+                "lifecycle_status": "STOPPING",
+                "lifecycle_reason": "stop_requested",
+            },
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "stop request",
+        ),
+        (
+            {**error_state, "last_cycle": None},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "failed cycle",
+        ),
+        (
+            {**error_state, "lifecycle_reason": "bounded_loop_running"},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "error reason",
+        ),
+        (
+            {**stopped, "daemon_runtime_state_id": "wrong"},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "state id",
+        ),
+        (
+            {**stopped, "guardrails": {}},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "guardrails",
+        ),
+        (
+            {
+                **stopped,
+                "metadata": {
+                    **stopped["metadata"],
+                    "runtime_state_persisted": True,
+                },
+            },
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "metadata",
+        ),
+        (
+            {**stopped, "storage_ref": "ae://private"},
+            "ae.artifact_retention_scheduler_daemon_runtime_state_invalid",
+            "keys",
+        ),
+    )
+
+    for payload, error_code, detail in cases:
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_scheduler_daemon_runtime_state(payload)  # type: ignore[arg-type]
+        assert exc_info.value.error_code == error_code
+        assert detail in exc_info.value.detail
+
+    stopping = build_artifact_retention_scheduler_daemon_runtime_state(
+        scheduler_config=scheduler_config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        lifecycle_status="STOPPING",
+        lifecycle_reason=None,
+        observed_at=READY_TICK_AT,
+        stop_requested=True,
+        shutdown_requested_at=READY_TICK_AT,
+        cycle_count=1,
+    )
+    assert stopping["lifecycle_reason"] == "stop_requested"
+    assert stopping["metadata"]["shutdown_requested"] is True
+    assert validate_artifact_retention_scheduler_daemon_runtime_state(stopping) == (
+        stopping
+    )
 
 
 def test_artifact_retention_scheduler_daemon_control_plan_validation_edges() -> None:

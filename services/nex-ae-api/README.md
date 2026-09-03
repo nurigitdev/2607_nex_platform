@@ -731,3 +731,6 @@ Artifact library management:
   an AE-owned coordinator process rather than a long-running JobQueue job, while
   actual artifact retention work must still flow through JobQueue admission and
   finite worker execution.
+- Slice 0542 adds the AE scheduler daemon runtime state snapshot contract. The
+  builder is metadata-only, validates lifecycle rules, never persists state, and
+  never starts the continuous loop.
