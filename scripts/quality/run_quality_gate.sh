@@ -153,6 +153,7 @@ node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_retention_scheduler_daemon_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_ag_artifact_retention_scheduler_daemon_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_retention_scheduler_daemon_one_cycle_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_artifact_retention_scheduler_daemon_bounded_loop_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_retention_physical_purge_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s51_ae_artifact_retention_automation_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_retention_scheduler_daemon_boundary_audit.py --summary

@@ -742,3 +742,7 @@ Artifact library management:
   runtime state, delegates each cycle to the one-cycle runner, generates safe
   trace/request identifiers when needed, and still keeps retention work behind
   JobQueue admission with physical purge automation disabled.
+- Slice 0545 adds protected PostgreSQL smoke evidence for that bounded-loop
+  adapter. The smoke runs two explicit-opt-in cycles against the AE test DB,
+  reads back lease, JobQueue, retention-history, and daemon heartbeat state, and
+  cleans up seeded rows afterward.
