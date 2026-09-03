@@ -489,6 +489,10 @@ Unified operations:
   evidence in the default quality gate. AG remains read-only and metadata-only
   for AE daemon runtime state, while runtime attention and issue candidates are
   covered by closure checks.
+- Slice 0541 starts S55 by freezing the AE daemon process boundary. AG can
+  observe AE-owned process/runtime state and request AE-owned controls, but AG
+  still cannot write AE persistence, enqueue AE jobs directly, or host the
+  daemon coordinator.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

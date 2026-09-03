@@ -727,3 +727,7 @@ Artifact library management:
   planner, one-cycle runner, start/stop guardrail, heartbeat observability,
   protected PostgreSQL smoke, and AG runtime projection/attention evidence into
   the default quality gate.
+- Slice 0541 starts S55 by freezing the daemon process boundary. The daemon is
+  an AE-owned coordinator process rather than a long-running JobQueue job, while
+  actual artifact retention work must still flow through JobQueue admission and
+  finite worker execution.
