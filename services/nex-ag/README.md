@@ -559,6 +559,10 @@ Unified operations:
   adapter foundation. AG may later distinguish no-adapter and fake-adapter
   outcomes from AE evidence, but process execution remains AE-owned and still
   side-effect free.
+- Slice 0564 gives AG a future supervisor read-model target without write
+  authority. AE persists supervisor result/event summaries in its own database;
+  AG may later project those rows through AE APIs only and still cannot control
+  AE daemon processes, enqueue AE jobs, or write AE persistence directly.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

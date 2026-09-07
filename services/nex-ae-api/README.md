@@ -829,3 +829,8 @@ Artifact library management:
   mark supervisor evidence as adapter-invoked, but it never starts/stops a
   process, delegates CLI execution, enqueues JobQueue work, writes a database
   row, or enables physical deletion.
+- Slice 0564 persists supervisor result evidence in AE-owned storage. The new
+  SQLAlchemy store records safe supervisor result rows plus operational event
+  rows, keeps `scheduler_id`/`action`/`result_status` as indexed columns for
+  later operations views, and still performs no process start/stop side effect,
+  JobQueue admission, worker execution, or physical delete automation.
