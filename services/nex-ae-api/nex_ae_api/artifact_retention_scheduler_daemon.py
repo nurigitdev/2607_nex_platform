@@ -90,6 +90,12 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_DETAIL_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_supervised_process.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_RECORD_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_supervised_process_record.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_EVENT_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_supervised_process_event.v1"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
@@ -98,6 +104,7 @@ MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_PROCESS_ID = 2_147_483_647
 MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_PROCESS_LOCK_STALE_AFTER_SECONDS = 86_400
 MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_COLLECTION_LIMIT = 100
 MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_RECORD_LIMIT = 100
+MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_RECORD_LIMIT = 100
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_EXECUTE_MODE = "bounded_loop"
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_PROCESS_LOCK_SCOPE = (
     "ae_artifact_retention_scheduler_daemon"
@@ -3338,6 +3345,750 @@ class SqlAlchemyArtifactRetentionSchedulerDaemonSupervisorStore:
             return deleted
         except SQLAlchemyError as exc:
             raise _daemon_supervisor_store_unavailable() from exc
+
+
+class SqlAlchemyArtifactRetentionSchedulerDaemonSupervisedProcessStore:
+    def __init__(self, session_factory: Any) -> None:
+        self._session_factory = session_factory
+
+    def ensure_schema(self) -> None:
+        try:
+            with self._session_factory() as session:
+                _ensure_daemon_supervised_process_store_schema(session)
+                session.commit()
+        except SQLAlchemyError as exc:
+            raise _daemon_supervised_process_store_unavailable() from exc
+
+    def ensure_available(self) -> None:
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    text(
+                        "SELECT 1 FROM "
+                        "ae_artifact_retention_scheduler_daemon_process_snapshots "
+                        "LIMIT 1"
+                    )
+                )
+        except SQLAlchemyError as exc:
+            raise _daemon_supervised_process_store_unavailable() from exc
+
+    def record_supervised_process_snapshot(
+        self,
+        supervised_process_snapshot: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        record = build_artifact_retention_scheduler_daemon_supervised_process_record(
+            supervised_process_snapshot
+        )
+        event = build_artifact_retention_scheduler_daemon_supervised_process_event(
+            supervised_process_record=record,
+            supervised_process_snapshot=supervised_process_snapshot,
+        )
+        try:
+            with self._session_factory() as session:
+                _ensure_daemon_supervised_process_store_schema(session)
+                dialect_name = _daemon_store_dialect_name(session)
+                session.execute(
+                    text(_daemon_supervised_process_record_upsert_sql(dialect_name)),
+                    _daemon_supervised_process_record_params(record),
+                )
+                session.execute(
+                    text(_daemon_supervised_process_event_upsert_sql(dialect_name)),
+                    _daemon_supervised_process_event_params(event),
+                )
+                session.commit()
+            return {
+                "supervised_process_record": record,
+                "supervised_process_event": event,
+            }
+        except SQLAlchemyError as exc:
+            raise _daemon_supervised_process_store_unavailable() from exc
+
+    def get_supervised_process_record(
+        self,
+        daemon_supervised_process_record_id: str,
+    ) -> dict[str, Any] | None:
+        normalized_id = _required_text(
+            daemon_supervised_process_record_id,
+            "daemon_supervised_process_record_id",
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_supervised_process_record_invalid"
+            ),
+        )
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _daemon_supervised_process_record_select_sql(
+                                "daemon_supervised_process_record_id = "
+                                ":daemon_supervised_process_record_id"
+                            )
+                        ),
+                        {
+                            "daemon_supervised_process_record_id": (
+                                normalized_id
+                            )
+                        },
+                    )
+                    .mappings()
+                    .first()
+                )
+            return (
+                _daemon_supervised_process_record_from_row(row)
+                if row is not None
+                else None
+            )
+        except SQLAlchemyError as exc:
+            raise _daemon_supervised_process_store_unavailable() from exc
+
+    def get_supervised_process_record_by_snapshot_id(
+        self,
+        daemon_supervised_process_id: str,
+    ) -> dict[str, Any] | None:
+        normalized_id = _required_text(
+            daemon_supervised_process_id,
+            "daemon_supervised_process_id",
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_supervised_process_record_invalid"
+            ),
+        )
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _daemon_supervised_process_record_select_sql(
+                                "daemon_supervised_process_id = "
+                                ":daemon_supervised_process_id"
+                            )
+                        ),
+                        {"daemon_supervised_process_id": normalized_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+            return (
+                _daemon_supervised_process_record_from_row(row)
+                if row is not None
+                else None
+            )
+        except SQLAlchemyError as exc:
+            raise _daemon_supervised_process_store_unavailable() from exc
+
+    def list_supervised_process_records(
+        self,
+        *,
+        scheduler_id: str | None = None,
+        action: str | None = None,
+        process_status: str | None = None,
+        limit: int | str | None = None,
+    ) -> list[dict[str, Any]]:
+        normalized_scheduler_id = optional_text(scheduler_id)
+        normalized_action = _optional_daemon_supervisor_action(
+            action,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_supervised_process_collection_invalid"
+            ),
+        )
+        normalized_process_status = _optional_daemon_supervised_process_status(
+            process_status,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_supervised_process_collection_invalid"
+            ),
+        )
+        normalized_limit = (
+            normalize_artifact_retention_scheduler_daemon_supervised_process_limit(
+                limit
+            )
+        )
+        where_clauses = ["service_id = 'nex-ae-api'"]
+        params: dict[str, Any] = {"limit": normalized_limit}
+        if normalized_scheduler_id is not None:
+            where_clauses.append("scheduler_id = :scheduler_id")
+            params["scheduler_id"] = normalized_scheduler_id
+        if normalized_action is not None:
+            where_clauses.append("action = :action")
+            params["action"] = normalized_action
+        if normalized_process_status is not None:
+            where_clauses.append("process_status = :process_status")
+            params["process_status"] = normalized_process_status
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            _daemon_supervised_process_record_select_sql(
+                                " AND ".join(where_clauses)
+                            )
+                            + """
+                            ORDER BY observed_at DESC,
+                                     created_at DESC,
+                                     daemon_supervised_process_record_id ASC
+                            LIMIT :limit
+                            """
+                        ),
+                        params,
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [_daemon_supervised_process_record_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _daemon_supervised_process_store_unavailable() from exc
+
+    def list_supervised_process_events(
+        self,
+        daemon_supervised_process_record_id: str,
+    ) -> list[dict[str, Any]]:
+        normalized_id = _required_text(
+            daemon_supervised_process_record_id,
+            "daemon_supervised_process_record_id",
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_supervised_process_event_invalid"
+            ),
+        )
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            _daemon_supervised_process_event_select_sql(
+                                "daemon_supervised_process_record_id = "
+                                ":daemon_supervised_process_record_id"
+                            )
+                            + """
+                            ORDER BY occurred_at ASC,
+                                     daemon_supervised_process_event_id ASC
+                            """
+                        ),
+                        {
+                            "daemon_supervised_process_record_id": (
+                                normalized_id
+                            )
+                        },
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [_daemon_supervised_process_event_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _daemon_supervised_process_store_unavailable() from exc
+
+    def delete_supervised_process_record(
+        self,
+        daemon_supervised_process_record_id: str,
+    ) -> dict[str, int]:
+        normalized_id = _required_text(
+            daemon_supervised_process_record_id,
+            "daemon_supervised_process_record_id",
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_supervised_process_record_invalid"
+            ),
+        )
+        deleted = {
+            "daemon_supervised_process_events": 0,
+            "daemon_supervised_process_records": 0,
+        }
+        try:
+            with self._session_factory() as session:
+                event_result = session.execute(
+                    text(
+                        """
+                        DELETE FROM
+                            ae_artifact_retention_scheduler_daemon_process_events
+                        WHERE daemon_supervised_process_record_id =
+                              :daemon_supervised_process_record_id
+                        """
+                    ),
+                    {
+                        "daemon_supervised_process_record_id": normalized_id,
+                    },
+                )
+                record_result = session.execute(
+                    text(
+                        """
+                        DELETE FROM
+                            ae_artifact_retention_scheduler_daemon_process_snapshots
+                        WHERE daemon_supervised_process_record_id =
+                              :daemon_supervised_process_record_id
+                        """
+                    ),
+                    {
+                        "daemon_supervised_process_record_id": normalized_id,
+                    },
+                )
+                session.commit()
+            deleted["daemon_supervised_process_events"] = int(
+                event_result.rowcount or 0
+            )
+            deleted["daemon_supervised_process_records"] = int(
+                record_result.rowcount or 0
+            )
+            return deleted
+        except SQLAlchemyError as exc:
+            raise _daemon_supervised_process_store_unavailable() from exc
+
+
+def build_artifact_retention_scheduler_daemon_supervised_process_record(
+    supervised_process_snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
+    snapshot = validate_artifact_retention_scheduler_daemon_supervised_process_snapshot(
+        supervised_process_snapshot
+    )
+    summary = summarize_artifact_retention_scheduler_daemon_supervised_process_snapshot(
+        snapshot
+    )
+    lifecycle = snapshot["lifecycle"]
+    process = snapshot["process"]
+    metadata = snapshot["metadata"]
+    record = {
+        "daemon_supervised_process_record_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_RECORD_SCHEMA_VERSION
+        ),
+        "daemon_supervised_process_record_id": (
+            _daemon_supervised_process_record_id(snapshot)
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": snapshot["scheduler_id"],
+        "daemon_supervisor_command_id": snapshot["daemon_supervisor_command_id"],
+        "daemon_supervised_process_id": snapshot["daemon_supervised_process_id"],
+        "action": snapshot["action"],
+        "process_status": lifecycle["process_status"],
+        "process_mode": snapshot["process_mode"],
+        "process_id": process["process_id"],
+        "host_id": process["host_id"],
+        "observed_at": lifecycle["observed_at"],
+        "started_at": lifecycle["started_at"],
+        "completed_at": lifecycle["completed_at"],
+        "exit_code": lifecycle["exit_code"],
+        "termination_signal": lifecycle["termination_signal"],
+        "process_running": metadata["process_running"],
+        "process_started_observed": metadata["process_started_observed"],
+        "process_stopped_observed": metadata["process_stopped_observed"],
+        "subprocess_adapter_required": snapshot["guardrails"][
+            "subprocess_adapter_required"
+        ],
+        "message": metadata["message"],
+        "summary": summary,
+        "metadata": _daemon_supervised_process_record_metadata(snapshot),
+        "supervised_process_snapshot": deepcopy(snapshot),
+        "supervised_process_snapshot_hash": sha256_json(dict(snapshot)),
+        "created_at": lifecycle["observed_at"],
+    }
+    return validate_artifact_retention_scheduler_daemon_supervised_process_record(
+        record
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_supervised_process_record(
+    supervised_process_record: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = (
+        "ae.artifact_retention_scheduler_daemon_supervised_process_record_invalid"
+    )
+    if not isinstance(supervised_process_record, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process record "
+                "must be an object."
+            ),
+        )
+    normalized = dict(supervised_process_record)
+    if set(normalized) != {
+        "daemon_supervised_process_record_schema_version",
+        "daemon_supervised_process_record_id",
+        "service_id",
+        "scheduler_id",
+        "daemon_supervisor_command_id",
+        "daemon_supervised_process_id",
+        "action",
+        "process_status",
+        "process_mode",
+        "process_id",
+        "host_id",
+        "observed_at",
+        "started_at",
+        "completed_at",
+        "exit_code",
+        "termination_signal",
+        "process_running",
+        "process_started_observed",
+        "process_stopped_observed",
+        "subprocess_adapter_required",
+        "message",
+        "summary",
+        "metadata",
+        "supervised_process_snapshot",
+        "supervised_process_snapshot_hash",
+        "created_at",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process record "
+                "keys are invalid."
+            ),
+        )
+    if (
+        normalized.get("daemon_supervised_process_record_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_RECORD_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process record "
+                "schema is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process record "
+                "service is invalid."
+            ),
+        )
+    for field_name in (
+        "daemon_supervised_process_record_id",
+        "scheduler_id",
+        "daemon_supervisor_command_id",
+        "daemon_supervised_process_id",
+        "observed_at",
+        "host_id",
+        "created_at",
+    ):
+        normalized[field_name] = _required_text(
+            normalized.get(field_name),
+            field_name,
+            error_code=error_code,
+        )
+    normalized["action"] = _daemon_supervisor_action_for_context(
+        normalized.get("action"),
+        error_code=error_code,
+    )
+    normalized["process_status"] = _optional_daemon_supervised_process_status(
+        normalized.get("process_status"),
+        error_code=error_code,
+    )
+    normalized["process_id"] = _optional_daemon_supervised_process_id(
+        normalized.get("process_id"),
+        error_code=error_code,
+    )
+    normalized["started_at"] = optional_text(normalized.get("started_at"))
+    normalized["completed_at"] = optional_text(normalized.get("completed_at"))
+    normalized["exit_code"] = _optional_daemon_supervised_exit_code(
+        normalized.get("exit_code"),
+        error_code=error_code,
+    )
+    normalized["termination_signal"] = optional_text(
+        normalized.get("termination_signal")
+    )
+    if normalized.get("process_mode") != (
+        DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_MODE
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process record "
+                "mode is invalid."
+            ),
+        )
+    for field_name in (
+        "process_running",
+        "process_started_observed",
+        "process_stopped_observed",
+        "subprocess_adapter_required",
+    ):
+        normalized[field_name] = _required_bool(
+            normalized.get(field_name),
+            field_name,
+            error_code=error_code,
+        )
+    normalized["message"] = optional_text(normalized.get("message"))
+    if not isinstance(normalized.get("summary"), Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process record "
+                "summary is invalid."
+            ),
+        )
+    if not isinstance(normalized.get("metadata"), Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process record "
+                "metadata is invalid."
+            ),
+        )
+    snapshot = validate_artifact_retention_scheduler_daemon_supervised_process_snapshot(
+        normalized.get("supervised_process_snapshot")
+    )
+    normalized["summary"] = dict(normalized["summary"])
+    normalized["metadata"] = dict(normalized["metadata"])
+    normalized["supervised_process_snapshot"] = snapshot
+    _ensure_daemon_supervised_process_record_scope(
+        normalized,
+        error_code=error_code,
+    )
+    expected_summary = (
+        summarize_artifact_retention_scheduler_daemon_supervised_process_snapshot(
+            snapshot
+        )
+    )
+    if normalized["summary"] != expected_summary:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process record "
+                "summary is invalid."
+            ),
+        )
+    expected_metadata = _daemon_supervised_process_record_metadata(snapshot)
+    if normalized["metadata"] != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process record "
+                "metadata is invalid."
+            ),
+        )
+    if normalized["daemon_supervised_process_record_id"] != (
+        _daemon_supervised_process_record_id(snapshot)
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process record "
+                "id is invalid."
+            ),
+        )
+    if normalized["supervised_process_snapshot_hash"] != sha256_json(dict(snapshot)):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process record "
+                "hash is invalid."
+            ),
+        )
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def build_artifact_retention_scheduler_daemon_supervised_process_event(
+    *,
+    supervised_process_record: Mapping[str, Any],
+    supervised_process_snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
+    record = validate_artifact_retention_scheduler_daemon_supervised_process_record(
+        supervised_process_record
+    )
+    snapshot = validate_artifact_retention_scheduler_daemon_supervised_process_snapshot(
+        supervised_process_snapshot
+    )
+    if record["daemon_supervised_process_id"] != snapshot[
+        "daemon_supervised_process_id"
+    ]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_supervised_process_event_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon supervised process event "
+                "scope is invalid."
+            ),
+        )
+    event = {
+        "daemon_supervised_process_event_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_EVENT_SCHEMA_VERSION
+        ),
+        "daemon_supervised_process_event_id": (
+            _daemon_supervised_process_event_id(record)
+        ),
+        "daemon_supervised_process_record_id": record[
+            "daemon_supervised_process_record_id"
+        ],
+        "daemon_supervised_process_id": record["daemon_supervised_process_id"],
+        "daemon_supervisor_command_id": record["daemon_supervisor_command_id"],
+        "service_id": "nex-ae-api",
+        "scheduler_id": record["scheduler_id"],
+        "action": record["action"],
+        "process_status": record["process_status"],
+        "event_type": "SUPERVISED_PROCESS_SNAPSHOT_RECORDED",
+        "occurred_at": record["observed_at"],
+        "summary": {
+            "scheduler_id": record["scheduler_id"],
+            "action": record["action"],
+            "process_status": record["process_status"],
+            "process_id": record["process_id"],
+            "host_id": record["host_id"],
+            "process_running": record["process_running"],
+        },
+        "metadata": _daemon_supervised_process_event_metadata(
+            supervised_process_record=record,
+            supervised_process_snapshot=snapshot,
+        ),
+        "created_at": record["created_at"],
+    }
+    return validate_artifact_retention_scheduler_daemon_supervised_process_event(
+        event
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_supervised_process_event(
+    supervised_process_event: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = (
+        "ae.artifact_retention_scheduler_daemon_supervised_process_event_invalid"
+    )
+    if not isinstance(supervised_process_event, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process event "
+                "must be an object."
+            ),
+        )
+    normalized = dict(supervised_process_event)
+    if set(normalized) != {
+        "daemon_supervised_process_event_schema_version",
+        "daemon_supervised_process_event_id",
+        "daemon_supervised_process_record_id",
+        "daemon_supervised_process_id",
+        "daemon_supervisor_command_id",
+        "service_id",
+        "scheduler_id",
+        "action",
+        "process_status",
+        "event_type",
+        "occurred_at",
+        "summary",
+        "metadata",
+        "created_at",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process event "
+                "keys are invalid."
+            ),
+        )
+    if (
+        normalized.get("daemon_supervised_process_event_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_EVENT_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process event "
+                "schema is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process event "
+                "service is invalid."
+            ),
+        )
+    for field_name in (
+        "daemon_supervised_process_event_id",
+        "daemon_supervised_process_record_id",
+        "daemon_supervised_process_id",
+        "daemon_supervisor_command_id",
+        "scheduler_id",
+        "event_type",
+        "occurred_at",
+        "created_at",
+    ):
+        normalized[field_name] = _required_text(
+            normalized.get(field_name),
+            field_name,
+            error_code=error_code,
+        )
+    if normalized["event_type"] != "SUPERVISED_PROCESS_SNAPSHOT_RECORDED":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process event "
+                "type is invalid."
+            ),
+        )
+    normalized["action"] = _daemon_supervisor_action_for_context(
+        normalized.get("action"),
+        error_code=error_code,
+    )
+    normalized["process_status"] = _optional_daemon_supervised_process_status(
+        normalized.get("process_status"),
+        error_code=error_code,
+    )
+    if not isinstance(normalized.get("summary"), Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process event "
+                "summary is invalid."
+            ),
+        )
+    if not isinstance(normalized.get("metadata"), Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process event "
+                "metadata is invalid."
+            ),
+        )
+    normalized["summary"] = dict(normalized["summary"])
+    normalized["metadata"] = dict(normalized["metadata"])
+    if normalized["daemon_supervised_process_event_id"] != (
+        _daemon_supervised_process_event_id(normalized)
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process event "
+                "id is invalid."
+            ),
+        )
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def normalize_artifact_retention_scheduler_daemon_supervised_process_limit(
+    limit: int | str | None,
+) -> int:
+    if limit is None:
+        return 20
+    return _bounded_positive_int(
+        limit,
+        "limit",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_RECORD_LIMIT,
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_supervised_process_collection_invalid"
+        ),
+    )
 
 
 def build_artifact_retention_scheduler_daemon_supervisor_record(
@@ -7706,6 +8457,170 @@ def _daemon_lifecycle_event_from_row(row: Any) -> dict[str, Any]:
     )
 
 
+def _ensure_daemon_supervised_process_record_scope(
+    record: Mapping[str, Any],
+    *,
+    error_code: str,
+) -> None:
+    snapshot = record["supervised_process_snapshot"]
+    lifecycle = snapshot["lifecycle"]
+    process = snapshot["process"]
+    metadata = snapshot["metadata"]
+    expected_values = {
+        "scheduler_id": snapshot["scheduler_id"],
+        "daemon_supervisor_command_id": snapshot[
+            "daemon_supervisor_command_id"
+        ],
+        "daemon_supervised_process_id": snapshot[
+            "daemon_supervised_process_id"
+        ],
+        "action": snapshot["action"],
+        "process_status": lifecycle["process_status"],
+        "process_mode": snapshot["process_mode"],
+        "process_id": process["process_id"],
+        "host_id": process["host_id"],
+        "observed_at": lifecycle["observed_at"],
+        "started_at": lifecycle["started_at"],
+        "completed_at": lifecycle["completed_at"],
+        "exit_code": lifecycle["exit_code"],
+        "termination_signal": lifecycle["termination_signal"],
+        "process_running": metadata["process_running"],
+        "process_started_observed": metadata["process_started_observed"],
+        "process_stopped_observed": metadata["process_stopped_observed"],
+        "subprocess_adapter_required": snapshot["guardrails"][
+            "subprocess_adapter_required"
+        ],
+        "message": metadata["message"],
+        "created_at": lifecycle["observed_at"],
+    }
+    for field_name, expected_value in expected_values.items():
+        if record[field_name] != expected_value:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon supervised process "
+                    f"record {field_name} is invalid."
+                ),
+            )
+
+
+def _daemon_supervised_process_record_metadata(
+    supervised_process_snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
+    snapshot = validate_artifact_retention_scheduler_daemon_supervised_process_snapshot(
+        supervised_process_snapshot
+    )
+    return {
+        "safe_for_ag_projection": True,
+        "read_model": (
+            "ae_artifact_retention_scheduler_daemon_process_snapshots"
+        ),
+        "source_supervised_process_hash": sha256_json(dict(snapshot)),
+        "supervised_process_record_persisted": True,
+        "supervised_process_event_persisted": True,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "database_write_performed": True,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "runtime_state_persisted": False,
+        "process_started": False,
+        "process_stopped": False,
+        "physical_delete_automation_enabled": False,
+        "secrets_redacted": True,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+    }
+
+
+def _daemon_supervised_process_event_metadata(
+    *,
+    supervised_process_record: Mapping[str, Any],
+    supervised_process_snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
+    record = validate_artifact_retention_scheduler_daemon_supervised_process_record(
+        supervised_process_record
+    )
+    snapshot = validate_artifact_retention_scheduler_daemon_supervised_process_snapshot(
+        supervised_process_snapshot
+    )
+    return {
+        "safe_for_ag_projection": True,
+        "read_model": (
+            "ae_artifact_retention_scheduler_daemon_process_events"
+        ),
+        "daemon_supervised_process_record_id": record[
+            "daemon_supervised_process_record_id"
+        ],
+        "source_supervised_process_hash": sha256_json(dict(snapshot)),
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "database_write_performed": True,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "runtime_state_persisted": False,
+        "process_started": False,
+        "process_stopped": False,
+        "physical_delete_automation_enabled": False,
+        "secrets_redacted": True,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+    }
+
+
+def _daemon_supervised_process_record_id(
+    supervised_process_snapshot: Mapping[str, Any],
+) -> str:
+    snapshot = validate_artifact_retention_scheduler_daemon_supervised_process_snapshot(
+        supervised_process_snapshot
+    )
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            (
+                "ae-artifact-retention-scheduler-daemon-supervised-process-record:"
+                f"{snapshot['daemon_supervised_process_id']}"
+            ),
+        )
+    )
+
+
+def _daemon_supervised_process_event_id(
+    supervised_process_record: Mapping[str, Any],
+) -> str:
+    event_type = supervised_process_record.get(
+        "event_type",
+        "SUPERVISED_PROCESS_SNAPSHOT_RECORDED",
+    )
+    basis = {
+        "daemon_supervised_process_record_id": supervised_process_record[
+            "daemon_supervised_process_record_id"
+        ],
+        "daemon_supervised_process_id": supervised_process_record[
+            "daemon_supervised_process_id"
+        ],
+        "event_type": event_type,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            (
+                "ae-artifact-retention-scheduler-daemon-supervised-process-event:"
+                f"{sha256_json(basis)}"
+            ),
+        )
+    )
+
+
 def _daemon_run_record_metadata(result: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "safe_for_ag_projection": True,
@@ -8038,6 +8953,407 @@ def _daemon_supervisor_event_id(supervisor_record: Mapping[str, Any]) -> str:
                 f"{sha256_json(basis)}"
             ),
         )
+    )
+
+
+def _ensure_daemon_supervised_process_store_schema(session: Any) -> None:
+    dialect_name = _daemon_store_dialect_name(session)
+    json_type = "JSONB" if dialect_name == "postgresql" else "TEXT"
+    session.execute(
+        text(
+            f"""
+            CREATE TABLE IF NOT EXISTS
+                ae_artifact_retention_scheduler_daemon_process_snapshots (
+                    daemon_supervised_process_record_id TEXT PRIMARY KEY,
+                    daemon_supervised_process_record_schema_version TEXT NOT NULL,
+                    service_id TEXT NOT NULL,
+                    scheduler_id TEXT NOT NULL,
+                    daemon_supervisor_command_id TEXT NOT NULL,
+                    daemon_supervised_process_id TEXT NOT NULL UNIQUE,
+                    action TEXT NOT NULL,
+                    process_status TEXT NOT NULL,
+                    process_mode TEXT NOT NULL,
+                    process_id INTEGER,
+                    host_id TEXT NOT NULL,
+                    observed_at TIMESTAMPTZ NOT NULL,
+                    started_at TIMESTAMPTZ,
+                    completed_at TIMESTAMPTZ,
+                    exit_code INTEGER,
+                    termination_signal TEXT,
+                    process_running BOOLEAN NOT NULL,
+                    process_started_observed BOOLEAN NOT NULL,
+                    process_stopped_observed BOOLEAN NOT NULL,
+                    subprocess_adapter_required BOOLEAN NOT NULL,
+                    message TEXT,
+                    summary {json_type} NOT NULL,
+                    metadata {json_type} NOT NULL,
+                    supervised_process_snapshot {json_type} NOT NULL,
+                    supervised_process_snapshot_hash TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL
+                )
+            """
+        )
+    )
+    session.execute(
+        text(
+            f"""
+            CREATE TABLE IF NOT EXISTS
+                ae_artifact_retention_scheduler_daemon_process_events (
+                    daemon_supervised_process_event_id TEXT PRIMARY KEY,
+                    daemon_supervised_process_event_schema_version TEXT NOT NULL,
+                    daemon_supervised_process_record_id TEXT NOT NULL,
+                    daemon_supervised_process_id TEXT NOT NULL,
+                    daemon_supervisor_command_id TEXT NOT NULL,
+                    service_id TEXT NOT NULL,
+                    scheduler_id TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    process_status TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    occurred_at TIMESTAMPTZ NOT NULL,
+                    summary {json_type} NOT NULL,
+                    metadata {json_type} NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL
+                )
+            """
+        )
+    )
+    for statement in (
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_ae_daemon_process_snapshots_observed
+        ON ae_artifact_retention_scheduler_daemon_process_snapshots
+            (scheduler_id, observed_at DESC)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_ae_daemon_process_snapshots_action_status
+        ON ae_artifact_retention_scheduler_daemon_process_snapshots
+            (action, process_status, observed_at DESC)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_ae_daemon_process_snapshots_pid
+        ON ae_artifact_retention_scheduler_daemon_process_snapshots
+            (host_id, process_id, observed_at DESC)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_ae_daemon_process_events_record
+        ON ae_artifact_retention_scheduler_daemon_process_events
+            (daemon_supervised_process_record_id, occurred_at ASC)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_ae_daemon_process_events_scheduler
+        ON ae_artifact_retention_scheduler_daemon_process_events
+            (scheduler_id, occurred_at DESC)
+        """,
+    ):
+        session.execute(text(statement))
+
+
+def _daemon_supervised_process_record_upsert_sql(dialect_name: str) -> str:
+    json_exprs = {
+        field_name: _daemon_json_param_expr(field_name, dialect_name)
+        for field_name in (
+            "summary",
+            "metadata",
+            "supervised_process_snapshot",
+        )
+    }
+    return f"""
+        INSERT INTO ae_artifact_retention_scheduler_daemon_process_snapshots (
+            daemon_supervised_process_record_id,
+            daemon_supervised_process_record_schema_version,
+            service_id,
+            scheduler_id,
+            daemon_supervisor_command_id,
+            daemon_supervised_process_id,
+            action,
+            process_status,
+            process_mode,
+            process_id,
+            host_id,
+            observed_at,
+            started_at,
+            completed_at,
+            exit_code,
+            termination_signal,
+            process_running,
+            process_started_observed,
+            process_stopped_observed,
+            subprocess_adapter_required,
+            message,
+            summary,
+            metadata,
+            supervised_process_snapshot,
+            supervised_process_snapshot_hash,
+            created_at
+        )
+        VALUES (
+            :daemon_supervised_process_record_id,
+            :daemon_supervised_process_record_schema_version,
+            :service_id,
+            :scheduler_id,
+            :daemon_supervisor_command_id,
+            :daemon_supervised_process_id,
+            :action,
+            :process_status,
+            :process_mode,
+            :process_id,
+            :host_id,
+            :observed_at,
+            :started_at,
+            :completed_at,
+            :exit_code,
+            :termination_signal,
+            :process_running,
+            :process_started_observed,
+            :process_stopped_observed,
+            :subprocess_adapter_required,
+            :message,
+            {json_exprs['summary']},
+            {json_exprs['metadata']},
+            {json_exprs['supervised_process_snapshot']},
+            :supervised_process_snapshot_hash,
+            :created_at
+        )
+        ON CONFLICT (daemon_supervised_process_record_id) DO UPDATE SET
+            process_status = excluded.process_status,
+            process_id = excluded.process_id,
+            host_id = excluded.host_id,
+            observed_at = excluded.observed_at,
+            started_at = excluded.started_at,
+            completed_at = excluded.completed_at,
+            exit_code = excluded.exit_code,
+            termination_signal = excluded.termination_signal,
+            process_running = excluded.process_running,
+            process_started_observed = excluded.process_started_observed,
+            process_stopped_observed = excluded.process_stopped_observed,
+            subprocess_adapter_required = excluded.subprocess_adapter_required,
+            message = excluded.message,
+            summary = excluded.summary,
+            metadata = excluded.metadata,
+            supervised_process_snapshot = excluded.supervised_process_snapshot,
+            supervised_process_snapshot_hash =
+                excluded.supervised_process_snapshot_hash,
+            created_at = excluded.created_at
+    """
+
+
+def _daemon_supervised_process_event_upsert_sql(dialect_name: str) -> str:
+    summary_expr = _daemon_json_param_expr("summary", dialect_name)
+    metadata_expr = _daemon_json_param_expr("metadata", dialect_name)
+    return f"""
+        INSERT INTO ae_artifact_retention_scheduler_daemon_process_events (
+            daemon_supervised_process_event_id,
+            daemon_supervised_process_event_schema_version,
+            daemon_supervised_process_record_id,
+            daemon_supervised_process_id,
+            daemon_supervisor_command_id,
+            service_id,
+            scheduler_id,
+            action,
+            process_status,
+            event_type,
+            occurred_at,
+            summary,
+            metadata,
+            created_at
+        )
+        VALUES (
+            :daemon_supervised_process_event_id,
+            :daemon_supervised_process_event_schema_version,
+            :daemon_supervised_process_record_id,
+            :daemon_supervised_process_id,
+            :daemon_supervisor_command_id,
+            :service_id,
+            :scheduler_id,
+            :action,
+            :process_status,
+            :event_type,
+            :occurred_at,
+            {summary_expr},
+            {metadata_expr},
+            :created_at
+        )
+        ON CONFLICT (daemon_supervised_process_event_id) DO UPDATE SET
+            process_status = excluded.process_status,
+            occurred_at = excluded.occurred_at,
+            summary = excluded.summary,
+            metadata = excluded.metadata,
+            created_at = excluded.created_at
+    """
+
+
+def _daemon_supervised_process_record_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            daemon_supervised_process_record_id,
+            daemon_supervised_process_record_schema_version,
+            service_id,
+            scheduler_id,
+            daemon_supervisor_command_id,
+            daemon_supervised_process_id,
+            action,
+            process_status,
+            process_mode,
+            process_id,
+            host_id,
+            observed_at,
+            started_at,
+            completed_at,
+            exit_code,
+            termination_signal,
+            process_running,
+            process_started_observed,
+            process_stopped_observed,
+            subprocess_adapter_required,
+            message,
+            summary,
+            metadata,
+            supervised_process_snapshot,
+            supervised_process_snapshot_hash,
+            created_at
+        FROM ae_artifact_retention_scheduler_daemon_process_snapshots
+        WHERE {where_clause}
+    """
+
+
+def _daemon_supervised_process_event_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            daemon_supervised_process_event_id,
+            daemon_supervised_process_event_schema_version,
+            daemon_supervised_process_record_id,
+            daemon_supervised_process_id,
+            daemon_supervisor_command_id,
+            service_id,
+            scheduler_id,
+            action,
+            process_status,
+            event_type,
+            occurred_at,
+            summary,
+            metadata,
+            created_at
+        FROM ae_artifact_retention_scheduler_daemon_process_events
+        WHERE {where_clause}
+    """
+
+
+def _daemon_supervised_process_record_params(
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    params = validate_artifact_retention_scheduler_daemon_supervised_process_record(
+        record
+    )
+    for field_name in ("summary", "metadata", "supervised_process_snapshot"):
+        params[field_name] = json.dumps(params[field_name])
+    return params
+
+
+def _daemon_supervised_process_event_params(
+    event: Mapping[str, Any],
+) -> dict[str, Any]:
+    params = validate_artifact_retention_scheduler_daemon_supervised_process_event(
+        event
+    )
+    params["summary"] = json.dumps(params["summary"])
+    params["metadata"] = json.dumps(params["metadata"])
+    return params
+
+
+def _daemon_supervised_process_record_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return validate_artifact_retention_scheduler_daemon_supervised_process_record(
+        {
+            "daemon_supervised_process_record_id": data[
+                "daemon_supervised_process_record_id"
+            ],
+            "daemon_supervised_process_record_schema_version": data[
+                "daemon_supervised_process_record_schema_version"
+            ],
+            "service_id": data["service_id"],
+            "scheduler_id": data["scheduler_id"],
+            "daemon_supervisor_command_id": data[
+                "daemon_supervisor_command_id"
+            ],
+            "daemon_supervised_process_id": data[
+                "daemon_supervised_process_id"
+            ],
+            "action": data["action"],
+            "process_status": data["process_status"],
+            "process_mode": data["process_mode"],
+            "process_id": data["process_id"],
+            "host_id": data["host_id"],
+            "observed_at": _daemon_datetime_value(data["observed_at"]),
+            "started_at": (
+                _daemon_datetime_value(data["started_at"])
+                if data["started_at"] is not None
+                else None
+            ),
+            "completed_at": (
+                _daemon_datetime_value(data["completed_at"])
+                if data["completed_at"] is not None
+                else None
+            ),
+            "exit_code": data["exit_code"],
+            "termination_signal": data["termination_signal"],
+            "process_running": bool(data["process_running"]),
+            "process_started_observed": bool(
+                data["process_started_observed"]
+            ),
+            "process_stopped_observed": bool(
+                data["process_stopped_observed"]
+            ),
+            "subprocess_adapter_required": bool(
+                data["subprocess_adapter_required"]
+            ),
+            "message": data["message"],
+            "summary": _daemon_json_value(data["summary"], {}),
+            "metadata": _daemon_json_value(data["metadata"], {}),
+            "supervised_process_snapshot": _daemon_json_value(
+                data["supervised_process_snapshot"],
+                {},
+            ),
+            "supervised_process_snapshot_hash": data[
+                "supervised_process_snapshot_hash"
+            ],
+            "created_at": _daemon_datetime_value(data["created_at"]),
+        }
+    )
+
+
+def _daemon_supervised_process_event_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return validate_artifact_retention_scheduler_daemon_supervised_process_event(
+        {
+            "daemon_supervised_process_event_id": data[
+                "daemon_supervised_process_event_id"
+            ],
+            "daemon_supervised_process_event_schema_version": data[
+                "daemon_supervised_process_event_schema_version"
+            ],
+            "daemon_supervised_process_record_id": data[
+                "daemon_supervised_process_record_id"
+            ],
+            "daemon_supervised_process_id": data[
+                "daemon_supervised_process_id"
+            ],
+            "daemon_supervisor_command_id": data[
+                "daemon_supervisor_command_id"
+            ],
+            "service_id": data["service_id"],
+            "scheduler_id": data["scheduler_id"],
+            "action": data["action"],
+            "process_status": data["process_status"],
+            "event_type": data["event_type"],
+            "occurred_at": _daemon_datetime_value(data["occurred_at"]),
+            "summary": _daemon_json_value(data["summary"], {}),
+            "metadata": _daemon_json_value(data["metadata"], {}),
+            "created_at": _daemon_datetime_value(data["created_at"]),
+        }
     )
 
 
@@ -8481,8 +9797,13 @@ def _default_daemon_supervised_process_status(action: str) -> str:
     return "MISSING"
 
 
-def _normalize_daemon_supervised_process_status(value: Any) -> str:
-    error_code = "ae.artifact_retention_scheduler_daemon_supervised_process_invalid"
+def _normalize_daemon_supervised_process_status(
+    value: Any,
+    *,
+    error_code: str = (
+        "ae.artifact_retention_scheduler_daemon_supervised_process_invalid"
+    ),
+) -> str:
     status = _required_text(
         value,
         "process_status",
@@ -8498,6 +9819,20 @@ def _normalize_daemon_supervised_process_status(value: Any) -> str:
             ),
         )
     return status
+
+
+def _optional_daemon_supervised_process_status(
+    value: Any,
+    *,
+    error_code: str,
+) -> str | None:
+    status = optional_text(value)
+    if status is None:
+        return None
+    return _normalize_daemon_supervised_process_status(
+        status,
+        error_code=error_code,
+    )
 
 
 def _optional_daemon_supervised_process_id(
@@ -8948,6 +10283,20 @@ def _daemon_supervisor_store_unavailable() -> ArtifactHandoffError:
         detail=(
             "AE artifact retention scheduler daemon supervisor store is "
             "unavailable."
+        ),
+        retryable=True,
+    )
+
+
+def _daemon_supervised_process_store_unavailable() -> ArtifactHandoffError:
+    return ArtifactHandoffError(
+        status_code=503,
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_supervised_process_store_unavailable"
+        ),
+        detail=(
+            "AE artifact retention scheduler daemon supervised process store "
+            "is unavailable."
         ),
         retryable=True,
     )

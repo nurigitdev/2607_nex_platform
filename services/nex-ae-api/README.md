@@ -863,3 +863,7 @@ Artifact library management:
   and termination signal metadata tied to supervisor commands, but it still
   starts no subprocess, writes no database row, exposes no storage path, and
   keeps production continuous start disabled.
+- Slice 0573 persists those supervised process snapshots in AE-owned storage.
+  The new SQLAlchemy store creates process snapshot/event tables with indexed
+  scheduler/action/status/pid metadata, but the persistence path still performs
+  no process control, JobQueue admission, worker execution, or physical delete.

@@ -595,6 +595,9 @@ Unified operations:
   snapshot contract. AG may later project safe process status and lifecycle
   metadata through AE APIs only; it still cannot start/stop processes, write AE
   persistence, enqueue AE jobs, or receive raw runtime payloads.
+- Slice 0573 keeps supervised process persistence AE-owned. AG can later read
+  safe process snapshot/event summaries through AE service APIs, but it still
+  cannot write those tables or directly control the daemon subprocess.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -676,6 +676,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0570`](slices/0570_s57_ae_scheduler_daemon_supervisor_operations_closure.md) | `S57-010` S57 AE scheduler daemon supervisor operations closure checkpoint. |
 | [`Slice 0571`](slices/0571_ae_supervised_daemon_process_activation_boundary_audit.md) | `S58-001` AE supervised daemon process activation boundary audit. |
 | [`Slice 0572`](slices/0572_ae_supervised_process_contract_schema.md) | `S58-002` AE supervised process contract/schema. |
+| [`Slice 0573`](slices/0573_ae_supervised_process_persistence_foundation.md) | `S58-003` AE supervised process persistence foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
