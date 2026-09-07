@@ -575,6 +575,10 @@ Unified operations:
   in-memory and HTTP client adapters, but it still cannot control AE daemon
   processes, enqueue AE retention jobs, write AE persistence, or expose raw
   command/result payloads.
+- Slice 0568 exposes that supervisor projection through AG admin read-only
+  routes for collection and detail views. AG validates service/action/status
+  filters locally, then calls AE APIs only; process control, JobQueue admission,
+  and AE supervisor persistence remain outside AG.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

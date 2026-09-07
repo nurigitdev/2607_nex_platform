@@ -5297,6 +5297,158 @@ def test_in_memory_artifact_operations_client_returns_supervisor_read_models() -
     assert missing is None
 
 
+def test_artifact_retention_scheduler_daemon_supervisor_routes_return_read_models() -> (
+    None
+):
+    client = build_app(artifact_client())
+
+    collection_response = client.get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-supervisor-results"
+        ),
+        params={
+            "service_id": "nex-ae-api",
+            "scheduler_id": "ae-artifact-retention-scheduler",
+            "action": "start-daemon",
+            "result_status": "blocked",
+            "limit": "1",
+        },
+        headers=auth_headers(),
+    )
+    detail_response = client.get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-supervisor-results/daemon-supervisor-record-0567"
+        ),
+        headers=auth_headers(),
+    )
+
+    assert collection_response.status_code == 200
+    collection = collection_response.json()
+    assert collection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISOR_COLLECTION_PROJECTION_SCHEMA_VERSION
+    )
+    assert collection["filter"] == {
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "action": "start_daemon",
+        "result_status": "BLOCKED",
+    }
+    assert collection["limit"] == 1
+    assert collection["summary"]["blocked_count"] == 1
+    assert collection["items"][0]["routes"]["ag_detail"].endswith(
+        "/scheduler-daemon-supervisor-results/daemon-supervisor-record-0567"
+    )
+    assert collection["operator_guidance"][
+        "ag_direct_daemon_process_control_allowed"
+    ] is False
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISOR_DETAIL_PROJECTION_SCHEMA_VERSION
+    )
+    assert detail["daemon_supervisor_record_id"] == "daemon-supervisor-record-0567"
+    assert detail["supervisor_event_count"] == 2
+    assert detail["request_trace_id"] == TRACE_ID
+    assert "database_url" not in str(collection)
+    assert "/data/nex-platform" not in str(detail)
+
+
+def test_artifact_retention_scheduler_daemon_supervisor_route_guardrails() -> None:
+    client = build_app(artifact_client())
+
+    unauthorized = client.get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-supervisor-results"
+        ),
+    )
+    invalid_service = client.get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-supervisor-results"
+        ),
+        params={"service_id": "nex-cx"},
+        headers=auth_headers(),
+    )
+    invalid_action = client.get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-supervisor-results"
+        ),
+        params={"action": "manual_tick_once"},
+        headers=auth_headers(),
+    )
+    invalid_status = client.get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-supervisor-results"
+        ),
+        params={"result_status": "SUCCEEDED"},
+        headers=auth_headers(),
+    )
+    invalid_limit = client.get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-supervisor-results"
+        ),
+        params={"limit": "101"},
+        headers=auth_headers(),
+    )
+    missing_detail = client.get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-supervisor-results/missing"
+        ),
+        headers=auth_headers(),
+    )
+
+    class BrokenDaemonSupervisorClient(InMemoryAeArtifactOperationsClient):
+        def list_artifact_retention_scheduler_daemon_supervisor_results(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            raise AeArtifactOperationsError(
+                error_code=(
+                    "ag.ae_artifact_retention_daemon_supervisor_source_failed"
+                ),
+                detail="AE scheduler daemon supervisor source unavailable",
+                status_code=503,
+            )
+
+    source_failed = build_app(BrokenDaemonSupervisorClient()).get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-supervisor-results"
+        ),
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert invalid_service.status_code == 400
+    assert invalid_action.status_code == 400
+    assert invalid_action.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_supervisor_action_invalid"
+    )
+    assert invalid_status.status_code == 400
+    assert invalid_status.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_supervisor_status_invalid"
+    )
+    assert invalid_limit.status_code == 400
+    assert invalid_limit.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_supervisor_limit_invalid"
+    )
+    assert missing_detail.status_code == 404
+    assert missing_detail.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_supervisor_not_found"
+    )
+    assert source_failed.status_code == 503
+    assert source_failed.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_supervisor_source_failed"
+    )
+
+
 def test_artifact_retention_scheduler_daemon_run_routes_return_read_models() -> None:
     client = build_app(artifact_client())
 
