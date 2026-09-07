@@ -1815,6 +1815,22 @@ def build_default_artifact_retention_scheduler_daemon_run_store(app: Any) -> Any
     return SqlAlchemyArtifactRetentionSchedulerDaemonRunStore(session_factory)
 
 
+def build_default_artifact_retention_scheduler_daemon_supervisor_store(
+    app: Any,
+) -> Any | None:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is None:
+        return None
+    from nex_ae_api.artifact_retention_scheduler_daemon import (
+        SqlAlchemyArtifactRetentionSchedulerDaemonSupervisorStore,
+    )
+
+    return SqlAlchemyArtifactRetentionSchedulerDaemonSupervisorStore(
+        session_factory
+    )
+
+
 def build_default_artifact_retention_scheduled_job_queue(app: Any) -> JobQueue:
     persistence = getattr(app.state, "nex_persistence", None)
     job_queue = getattr(persistence, "job_queue", None)
@@ -1838,6 +1854,8 @@ def register_artifact_handoff_routes(
     retention_history_store: Any | None = None,
     retention_scheduler_lease_store: Any | None = None,
     retention_scheduler_daemon_run_store: Any | None = None,
+    retention_scheduler_daemon_supervisor_store: Any | None = None,
+    retention_scheduler_daemon_supervisor_adapter: Any | None = None,
     job_queue: JobQueue | None = None,
     cx_client: CxArtifactSourceClient | None = None,
 ) -> None:
@@ -1851,9 +1869,25 @@ def register_artifact_handoff_routes(
         retention_scheduler_daemon_run_store
         or build_default_artifact_retention_scheduler_daemon_run_store(app)
     )
+    artifact_retention_daemon_supervisor_store = (
+        retention_scheduler_daemon_supervisor_store
+        or build_default_artifact_retention_scheduler_daemon_supervisor_store(app)
+    )
     artifact_retention_job_queue = (
         job_queue or build_default_artifact_retention_scheduled_job_queue(app)
     )
+    if retention_scheduler_daemon_supervisor_adapter is None:
+        from nex_ae_api.artifact_retention_scheduler_daemon import (
+            FakeArtifactRetentionSchedulerDaemonSupervisorAdapter,
+        )
+
+        artifact_retention_daemon_supervisor_adapter = (
+            FakeArtifactRetentionSchedulerDaemonSupervisorAdapter()
+        )
+    else:
+        artifact_retention_daemon_supervisor_adapter = (
+            retention_scheduler_daemon_supervisor_adapter
+        )
     client = cx_client or build_default_cx_artifact_source_client()
 
     @app.post("/api/v1/artifact-handoffs", response_model=None)
@@ -2223,6 +2257,208 @@ def register_artifact_handoff_routes(
             return build_artifact_retention_scheduler_daemon_run_detail(
                 run_record=run_record,
                 lifecycle_events=lifecycle_events,
+            )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.post(
+        "/api/v1/artifact-retention/scheduler-daemon-supervisor-controls",
+        response_model=None,
+    )
+    def dispatch_artifact_retention_scheduler_daemon_supervisor_route(
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        if artifact_retention_daemon_supervisor_store is None:
+            return _artifact_problem_response(
+                request,
+                ArtifactHandoffError(
+                    status_code=503,
+                    error_code=(
+                        "ae.artifact_retention_scheduler_daemon_supervisor_store_unavailable"
+                    ),
+                    detail=(
+                        "AE artifact retention scheduler daemon supervisor store "
+                        "is unavailable."
+                    ),
+                    retryable=True,
+                ),
+            )
+
+        request_id = request_id_from_headers(request)
+        requested_by = payload.get("requested_by")
+        if requested_by is None:
+            requested_by = {
+                "actor_type": "service",
+                "actor_id": "nex-ag",
+                "request_id": request_id,
+            }
+        try:
+            from nex_ae_api.artifact_retention_scheduler_daemon import (
+                build_artifact_retention_scheduler_daemon_supervisor_command,
+                build_artifact_retention_scheduler_daemon_supervisor_dispatch,
+                run_artifact_retention_scheduler_daemon_supervisor_command,
+            )
+
+            command = (
+                build_artifact_retention_scheduler_daemon_supervisor_command(
+                    action=optional_text(payload.get("action"))
+                    or "status_probe",
+                    scheduler_config=build_artifact_retention_scheduler_config(
+                        job_queue=artifact_retention_job_queue
+                    ),
+                    profile=optional_text(payload.get("profile")) or "test",
+                    enabled=payload.get("enabled") is True,
+                    explicit_opt_in=payload.get("explicit_opt_in") is True,
+                    checked_at=optional_text(payload.get("checked_at"))
+                    or optional_text(payload.get("requested_at")),
+                    max_cycles=payload.get("max_cycles") or 1,
+                    run_worker=payload.get("run_worker") is True,
+                    requested_by=requested_by,  # type: ignore[arg-type]
+                    reason=optional_text(payload.get("reason")),
+                    supervisor_mode=optional_text(payload.get("supervisor_mode"))
+                    or "fake_dry_run",
+                    output_format=optional_text(payload.get("output_format"))
+                    or "json",
+                )
+            )
+            result = run_artifact_retention_scheduler_daemon_supervisor_command(
+                supervisor_command=command,
+                supervisor_adapter=artifact_retention_daemon_supervisor_adapter,
+                observed_at=optional_text(payload.get("observed_at")),
+            )
+            persisted = (
+                artifact_retention_daemon_supervisor_store.record_supervisor_result(
+                    result
+                )
+            )
+            return build_artifact_retention_scheduler_daemon_supervisor_dispatch(
+                supervisor_result=result,
+                supervisor_record=persisted["supervisor_record"],
+                supervisor_event=persisted["supervisor_event"],
+            )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.get(
+        "/api/v1/artifact-retention/scheduler-daemon-supervisor-results",
+        response_model=None,
+    )
+    def list_artifact_retention_scheduler_daemon_supervisor_results(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        scheduler_id: str | None = None,
+        action: str | None = None,
+        result_status: str | None = None,
+        limit: str | None = None,
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        if artifact_retention_daemon_supervisor_store is None:
+            return _artifact_problem_response(
+                request,
+                ArtifactHandoffError(
+                    status_code=503,
+                    error_code=(
+                        "ae.artifact_retention_scheduler_daemon_supervisor_store_unavailable"
+                    ),
+                    detail=(
+                        "AE artifact retention scheduler daemon supervisor store "
+                        "is unavailable."
+                    ),
+                    retryable=True,
+                ),
+            )
+
+        try:
+            from nex_ae_api.artifact_retention_scheduler_daemon import (
+                build_artifact_retention_scheduler_daemon_supervisor_collection,
+            )
+
+            records = artifact_retention_daemon_supervisor_store.list_supervisor_records(
+                scheduler_id=scheduler_id,
+                action=action,
+                result_status=result_status,
+                limit=limit,
+            )
+            return build_artifact_retention_scheduler_daemon_supervisor_collection(
+                records,
+                scheduler_id=scheduler_id,
+                action=action,
+                result_status=result_status,
+                limit=limit,
+            )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.get(
+        (
+            "/api/v1/artifact-retention/scheduler-daemon-supervisor-results/"
+            "{daemon_supervisor_record_id}"
+        ),
+        response_model=None,
+    )
+    def get_artifact_retention_scheduler_daemon_supervisor_detail(
+        daemon_supervisor_record_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        if artifact_retention_daemon_supervisor_store is None:
+            return _artifact_problem_response(
+                request,
+                ArtifactHandoffError(
+                    status_code=503,
+                    error_code=(
+                        "ae.artifact_retention_scheduler_daemon_supervisor_store_unavailable"
+                    ),
+                    detail=(
+                        "AE artifact retention scheduler daemon supervisor store "
+                        "is unavailable."
+                    ),
+                    retryable=True,
+                ),
+            )
+
+        try:
+            from nex_ae_api.artifact_retention_scheduler_daemon import (
+                build_artifact_retention_scheduler_daemon_supervisor_detail,
+            )
+
+            supervisor_record = (
+                artifact_retention_daemon_supervisor_store.get_supervisor_record(
+                    daemon_supervisor_record_id
+                )
+            )
+            if supervisor_record is None:
+                raise ArtifactHandoffError(
+                    status_code=404,
+                    error_code=(
+                        "ae.artifact_retention_scheduler_daemon_supervisor_record_not_found"
+                    ),
+                    detail=(
+                        "AE artifact retention scheduler daemon supervisor record "
+                        f"was not found: {daemon_supervisor_record_id}"
+                    ),
+                )
+            supervisor_events = (
+                artifact_retention_daemon_supervisor_store.list_supervisor_events(
+                    supervisor_record["daemon_supervisor_record_id"]
+                )
+            )
+            return build_artifact_retention_scheduler_daemon_supervisor_detail(
+                supervisor_record=supervisor_record,
+                supervisor_events=supervisor_events,
             )
         except ArtifactHandoffError as exc:
             return _artifact_problem_response(request, exc)
@@ -3609,6 +3845,12 @@ def build_artifact_retention_scheduler_config(
             "scheduler_daemon_controls": (
                 "/api/v1/artifact-retention/scheduler-daemon-controls"
             ),
+            "scheduler_daemon_supervisor_controls": (
+                "/api/v1/artifact-retention/scheduler-daemon-supervisor-controls"
+            ),
+            "scheduler_daemon_supervisor_results": (
+                "/api/v1/artifact-retention/scheduler-daemon-supervisor-results"
+            ),
             "scheduled_jobs": "/api/v1/artifact-retention/scheduled-jobs",
             "scheduled_job_admission": (
                 "/api/v1/artifact-retention/scheduled-jobs/admission"
@@ -4306,6 +4548,12 @@ def _expected_artifact_retention_scheduler_api_routes() -> dict[str, str]:
         ),
         "scheduler_daemon_controls": (
             "/api/v1/artifact-retention/scheduler-daemon-controls"
+        ),
+        "scheduler_daemon_supervisor_controls": (
+            "/api/v1/artifact-retention/scheduler-daemon-supervisor-controls"
+        ),
+        "scheduler_daemon_supervisor_results": (
+            "/api/v1/artifact-retention/scheduler-daemon-supervisor-results"
         ),
         "scheduled_jobs": "/api/v1/artifact-retention/scheduled-jobs",
         "scheduled_job_admission": (

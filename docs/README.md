@@ -668,6 +668,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0562`](slices/0562_ae_daemon_supervisor_command_result_contract.md) | `S57-002` AE daemon supervisor command/result contract. |
 | [`Slice 0563`](slices/0563_ae_daemon_supervisor_adapter_foundation.md) | `S57-003` AE daemon supervisor adapter foundation. |
 | [`Slice 0564`](slices/0564_ae_daemon_supervisor_persistence_foundation.md) | `S57-004` AE daemon supervisor persistence foundation. |
+| [`Slice 0565`](slices/0565_ae_daemon_supervisor_service_api_wiring.md) | `S57-005` AE daemon supervisor service API wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

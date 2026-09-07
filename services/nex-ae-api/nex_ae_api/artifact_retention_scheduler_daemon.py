@@ -78,6 +78,15 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_RECORD_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_EVENT_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_supervisor_event.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_DISPATCH_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_supervisor_dispatch.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_COLLECTION_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_supervisor_collection.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_DETAIL_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_supervisor_detail.v1"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
@@ -3459,6 +3468,176 @@ def normalize_artifact_retention_scheduler_daemon_supervisor_limit(
             "ae.artifact_retention_scheduler_daemon_supervisor_collection_invalid"
         ),
     )
+
+
+def build_artifact_retention_scheduler_daemon_supervisor_dispatch(
+    *,
+    supervisor_result: Mapping[str, Any],
+    supervisor_record: Mapping[str, Any],
+    supervisor_event: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = validate_artifact_retention_scheduler_daemon_supervisor_result(
+        supervisor_result
+    )
+    record = validate_artifact_retention_scheduler_daemon_supervisor_record(
+        supervisor_record
+    )
+    event = validate_artifact_retention_scheduler_daemon_supervisor_event(
+        supervisor_event
+    )
+    if (
+        record["daemon_supervisor_result_id"]
+        != result["daemon_supervisor_result_id"]
+        or event["daemon_supervisor_record_id"]
+        != record["daemon_supervisor_record_id"]
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_supervisor_dispatch_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon supervisor dispatch scope "
+                "is invalid."
+            ),
+        )
+    dispatch = {
+        "daemon_supervisor_dispatch_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_DISPATCH_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": result["scheduler_id"],
+        "action": result["action"],
+        "result_status": result["result_status"],
+        "decision_reason": result["decision_reason"],
+        "supervisor_result": result,
+        "supervisor_record": record,
+        "supervisor_event": event,
+        "guardrails": _daemon_supervisor_route_guardrails(
+            read_only=False,
+            process_control_allowed=False,
+        ),
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "persistence_performed": True,
+            "supervisor_record_persisted": True,
+            "supervisor_event_persisted": True,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+            "process_started": False,
+            "process_stopped": False,
+        },
+    }
+    assert_artifact_retention_payload_safe(dispatch)
+    return dispatch
+
+
+def build_artifact_retention_scheduler_daemon_supervisor_collection(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    scheduler_id: str | None = None,
+    action: str | None = None,
+    result_status: str | None = None,
+    limit: int | str | None = None,
+) -> dict[str, Any]:
+    normalized_limit = normalize_artifact_retention_scheduler_daemon_supervisor_limit(
+        limit
+    )
+    normalized_scheduler_id = optional_text(scheduler_id)
+    normalized_action = _optional_daemon_supervisor_action(
+        action,
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_supervisor_collection_invalid"
+        ),
+    )
+    normalized_result_status = _optional_daemon_supervisor_result_status(
+        result_status,
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_supervisor_collection_invalid"
+        ),
+    )
+    normalized_records = [
+        validate_artifact_retention_scheduler_daemon_supervisor_record(record)
+        for record in records
+    ]
+    collection = {
+        "daemon_supervisor_collection_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_COLLECTION_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "filter": {
+            "scheduler_id": normalized_scheduler_id,
+            "action": normalized_action,
+            "result_status": normalized_result_status,
+        },
+        "count": len(normalized_records),
+        "limit": normalized_limit,
+        "items": [
+            _daemon_supervisor_collection_item(record)
+            for record in normalized_records
+        ],
+        "guardrails": _daemon_supervisor_route_guardrails(
+            read_only=True,
+            process_control_allowed=False,
+        ),
+        "metadata": _daemon_supervisor_collection_metadata(
+            records=normalized_records,
+            limit=normalized_limit,
+        ),
+    }
+    assert_artifact_retention_payload_safe(collection)
+    return collection
+
+
+def build_artifact_retention_scheduler_daemon_supervisor_detail(
+    *,
+    supervisor_record: Mapping[str, Any],
+    supervisor_events: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    record = validate_artifact_retention_scheduler_daemon_supervisor_record(
+        supervisor_record
+    )
+    events = [
+        validate_artifact_retention_scheduler_daemon_supervisor_event(event)
+        for event in supervisor_events
+    ]
+    for event in events:
+        if event["daemon_supervisor_record_id"] != record[
+            "daemon_supervisor_record_id"
+        ]:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=(
+                    "ae.artifact_retention_scheduler_daemon_supervisor_detail_invalid"
+                ),
+                detail=(
+                    "Artifact retention scheduler daemon supervisor detail event "
+                    "scope is invalid."
+                ),
+            )
+    detail = {
+        "daemon_supervisor_detail_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_DETAIL_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "daemon_supervisor_record_id": record["daemon_supervisor_record_id"],
+        "supervisor_record": record,
+        "supervisor_event_count": len(events),
+        "supervisor_events": events,
+        "guardrails": _daemon_supervisor_route_guardrails(
+            read_only=True,
+            process_control_allowed=False,
+        ),
+        "metadata": _daemon_supervisor_detail_metadata(
+            supervisor_record=record,
+            supervisor_events=events,
+        ),
+    }
+    assert_artifact_retention_payload_safe(detail)
+    return detail
 
 
 def build_artifact_retention_scheduler_daemon_run_record(
@@ -7408,6 +7587,119 @@ def _daemon_supervisor_event_metadata(
         "ag_direct_database_write_allowed": False,
         "ag_direct_job_enqueue_allowed": False,
         "ag_direct_process_control_allowed": False,
+    }
+
+
+def _daemon_supervisor_route_guardrails(
+    *,
+    read_only: bool,
+    process_control_allowed: bool,
+) -> dict[str, bool]:
+    return {
+        "read_only": read_only,
+        "ae_owned_supervisor": True,
+        "ae_owned_persistence": True,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+        "process_control_allowed": process_control_allowed,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "physical_delete_automation_enabled": False,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "secrets_redacted": True,
+    }
+
+
+def _daemon_supervisor_collection_item(
+    supervisor_record: Mapping[str, Any],
+) -> dict[str, Any]:
+    record = validate_artifact_retention_scheduler_daemon_supervisor_record(
+        supervisor_record
+    )
+    return {
+        "daemon_supervisor_record_id": record["daemon_supervisor_record_id"],
+        "scheduler_id": record["scheduler_id"],
+        "daemon_supervisor_command_id": record[
+            "daemon_supervisor_command_id"
+        ],
+        "daemon_supervisor_result_id": record["daemon_supervisor_result_id"],
+        "action": record["action"],
+        "result_status": record["result_status"],
+        "decision_reason": record["decision_reason"],
+        "observed_at": record["observed_at"],
+        "checked_at": record["checked_at"],
+        "runtime_ready": record["runtime_ready"],
+        "supervisor_adapter_available": record[
+            "supervisor_adapter_available"
+        ],
+        "supervisor_adapter_invoked": record["supervisor_adapter_invoked"],
+        "adapter_name": record["adapter_name"],
+        "process_started": False,
+        "process_stopped": False,
+        "message": record["message"],
+        "summary": dict(record["summary"]),
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "read_model": (
+                "ae_artifact_retention_scheduler_daemon_supervisor_results"
+            ),
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+            "process_started": False,
+            "process_stopped": False,
+        },
+    }
+
+
+def _daemon_supervisor_collection_metadata(
+    *,
+    records: Sequence[Mapping[str, Any]],
+    limit: int,
+) -> dict[str, Any]:
+    newest_observed_at = records[0]["observed_at"] if records else None
+    return {
+        "safe_for_ag_projection": True,
+        "read_model": "ae_artifact_retention_scheduler_daemon_supervisor_results",
+        "item_count": len(records),
+        "limit": limit,
+        "has_more": len(records) == limit,
+        "newest_observed_at": newest_observed_at,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+    }
+
+
+def _daemon_supervisor_detail_metadata(
+    *,
+    supervisor_record: Mapping[str, Any],
+    supervisor_events: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "safe_for_ag_projection": True,
+        "read_model": (
+            "ae_artifact_retention_scheduler_daemon_supervisor_detail"
+        ),
+        "daemon_supervisor_record_id": supervisor_record[
+            "daemon_supervisor_record_id"
+        ],
+        "supervisor_event_count": len(supervisor_events),
+        "event_types": [event["event_type"] for event in supervisor_events],
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
     }
 
 

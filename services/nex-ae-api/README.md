@@ -834,3 +834,9 @@ Artifact library management:
   rows, keeps `scheduler_id`/`action`/`result_status` as indexed columns for
   later operations views, and still performs no process start/stop side effect,
   JobQueue admission, worker execution, or physical delete automation.
+- Slice 0565 wires AE-owned supervisor service APIs:
+  `/api/v1/artifact-retention/scheduler-daemon-supervisor-controls`,
+  `/api/v1/artifact-retention/scheduler-daemon-supervisor-results`, and the
+  result detail route. Dispatch persists supervisor result/event evidence via
+  the AE store, but the default adapter remains fake/dry-run and process
+  control remains disabled.

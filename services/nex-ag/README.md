@@ -563,6 +563,10 @@ Unified operations:
   authority. AE persists supervisor result/event summaries in its own database;
   AG may later project those rows through AE APIs only and still cannot control
   AE daemon processes, enqueue AE jobs, or write AE persistence directly.
+- Slice 0565 opens that AE API target. AG can later call the supervisor
+  control/result routes for safe evidence projection, but process control,
+  persistence writes, JobQueue admission, and physical delete automation remain
+  AE-owned.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
