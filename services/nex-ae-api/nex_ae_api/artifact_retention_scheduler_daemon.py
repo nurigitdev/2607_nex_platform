@@ -5,7 +5,7 @@ import json
 import os
 import sys
 from copy import deepcopy
-from typing import Any, Mapping, Sequence, TextIO
+from typing import Any, Callable, Mapping, Sequence, TextIO
 from uuid import NAMESPACE_URL, uuid5
 
 from nex_ae_api.artifact_retention_scheduler import (
@@ -13,9 +13,12 @@ from nex_ae_api.artifact_retention_scheduler import (
     build_artifact_retention_scheduler_daemon_runtime_config,
     build_artifact_retention_scheduler_daemon_runtime_state,
     build_artifact_retention_scheduler_daemon_shutdown_transition,
+    run_artifact_retention_scheduler_daemon_bounded_loop,
+    summarize_artifact_retention_scheduler_daemon_bounded_loop_result,
     summarize_artifact_retention_scheduler_daemon_runtime_state,
     summarize_artifact_retention_scheduler_daemon_shutdown_transition,
     validate_artifact_retention_scheduler_daemon_config,
+    validate_artifact_retention_scheduler_daemon_bounded_loop_result,
     validate_artifact_retention_scheduler_daemon_runtime_config,
     validate_artifact_retention_scheduler_daemon_runtime_state,
     validate_artifact_retention_scheduler_daemon_shutdown_transition,
@@ -43,6 +46,9 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_METADATA_SCHEMA_VERSION = (
 )
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SIGNAL_SHUTDOWN_ADAPTER_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_signal_shutdown_adapter.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_EXECUTION_RESULT_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_cli_execution_result.v1"
 )
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
@@ -1349,6 +1355,443 @@ def signal_shutdown_adapter_summary_line(adapter: Mapping[str, Any]) -> str:
     )
 
 
+def run_artifact_retention_scheduler_daemon_cli_execution(
+    *,
+    artifact_store: Any,
+    job_queue: Any | None,
+    tenant_id: str,
+    workspace_id: str,
+    owner_user_id: str,
+    lease_store: Any | None = None,
+    history_store: Any | None = None,
+    scheduler_config: Mapping[str, Any] | None = None,
+    profile: str = "test",
+    enabled: bool = True,
+    explicit_opt_in: bool = True,
+    checked_at: str | None = None,
+    interval_seconds: int | str | None = None,
+    jitter_seconds: int | str | None = None,
+    backoff_seconds: int | str | None = None,
+    max_cycles: int | str = 1,
+    run_worker: bool = False,
+    output_format: str = "json",
+    process_id: int | str | None = None,
+    host_id: str = "localhost",
+    stale_after_seconds: int | str = 600,
+    retention_days: int | str | None = None,
+    as_of: str | None = None,
+    scan_limit: int | str | None = None,
+    max_delete_count: int | str | None = None,
+    trace_id: str | None = None,
+    request_id: str | None = None,
+    idempotency_key: str | None = None,
+    worker_id: str | None = None,
+    stop_requested: bool = False,
+    stop_after_cycle: Callable[[int, Mapping[str, Any]], bool] | None = None,
+    shutdown_signal_name: str | None = None,
+    shutdown_received_at: str | None = None,
+    clock: Callable[[], str] | None = None,
+    daemon_heartbeat_emitter: Any | None = None,
+) -> dict[str, Any]:
+    config = (
+        dict(scheduler_config)
+        if scheduler_config is not None
+        else build_artifact_retention_scheduler_config(job_queue=job_queue)
+    )
+    execute_command = build_artifact_retention_scheduler_daemon_cli_execute_command(
+        scheduler_config=config,
+        profile=profile,
+        enabled=enabled,
+        explicit_opt_in=explicit_opt_in,
+        checked_at=checked_at,
+        interval_seconds=interval_seconds,
+        jitter_seconds=jitter_seconds,
+        backoff_seconds=backoff_seconds,
+        max_cycles=max_cycles,
+        run_worker=run_worker,
+        output_format=output_format,
+    )
+    command = execute_command["command"]
+    process_lock = build_artifact_retention_scheduler_daemon_process_lock(
+        execute_command=execute_command,
+        process_id=process_id,
+        host_id=host_id,
+        requested_at=command["checked_at"],
+        stale_after_seconds=stale_after_seconds,
+    )
+    started_run_metadata = build_artifact_retention_scheduler_daemon_run_metadata(
+        execute_command=execute_command,
+        process_lock=process_lock,
+        run_status="RUNNING",
+        requested_at=process_lock["timing"]["requested_at"],
+        started_at=command["checked_at"],
+    )
+    shutdown_signal_adapter = None
+    signal_stop_requested = False
+    if shutdown_signal_name is not None:
+        shutdown_signal_adapter = (
+            build_artifact_retention_scheduler_daemon_signal_shutdown_adapter(
+                current_state=execute_command["runtime_state"],
+                process_lock=process_lock,
+                run_metadata=started_run_metadata,
+                signal_name=shutdown_signal_name,
+                received_at=shutdown_received_at,
+            )
+        )
+        signal_stop_requested = shutdown_signal_adapter["execution_plan"][
+            "stop_signal_requested"
+        ]
+    live_daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=config,
+        lease_store=lease_store,
+        checked_at=command["checked_at"],
+    )
+    bounded_loop_result = run_artifact_retention_scheduler_daemon_bounded_loop(
+        artifact_store=artifact_store,
+        job_queue=job_queue,
+        lease_store=lease_store,
+        history_store=history_store,
+        scheduler_config=config,
+        runtime_config=execute_command["runtime_config"],
+        daemon_config=live_daemon_config,
+        daemon_instance_id=execute_command["runtime_state"]["daemon_instance_id"],
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
+        retention_days=retention_days,
+        as_of=as_of,
+        scan_limit=scan_limit,
+        max_delete_count=max_delete_count,
+        requested_at=command["checked_at"],
+        trace_id=trace_id,
+        request_id=request_id,
+        idempotency_key=idempotency_key,
+        max_cycles=command["max_cycles"],
+        run_worker=command["run_worker"],
+        worker_id=worker_id,
+        stop_requested=(
+            _required_bool(
+                stop_requested,
+                "stop_requested",
+                error_code="ae.artifact_retention_scheduler_daemon_cli_execution_result_invalid",
+            )
+            or signal_stop_requested
+        ),
+        stop_after_cycle=stop_after_cycle,
+        clock=clock,
+        daemon_heartbeat_emitter=daemon_heartbeat_emitter,
+    )
+    completed_run_metadata = build_artifact_retention_scheduler_daemon_run_metadata(
+        execute_command=execute_command,
+        process_lock=process_lock,
+        run_status=_daemon_cli_execution_completed_run_status(bounded_loop_result),
+        requested_at=process_lock["timing"]["requested_at"],
+        started_at=command["checked_at"],
+        completed_at=bounded_loop_result["finished_at"],
+    )
+    execution_result = {
+        "daemon_cli_execution_result_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_EXECUTION_RESULT_SCHEMA_VERSION
+        ),
+        "daemon_cli_execution_result_id": _daemon_cli_execution_result_id(
+            execute_command=execute_command,
+            process_lock=process_lock,
+            started_run_metadata=started_run_metadata,
+            completed_run_metadata=completed_run_metadata,
+            bounded_loop_result=bounded_loop_result,
+            shutdown_signal_adapter=shutdown_signal_adapter,
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": execute_command["scheduler_id"],
+        "daemon_cli_execute_command_id": (
+            execute_command["daemon_cli_execute_command_id"]
+        ),
+        "daemon_process_lock_id": process_lock["daemon_process_lock_id"],
+        "started_daemon_run_id": started_run_metadata["daemon_run_id"],
+        "completed_daemon_run_id": completed_run_metadata["daemon_run_id"],
+        "result_status": bounded_loop_result["result_status"],
+        "stop_reason": bounded_loop_result["stop_reason"],
+        "execute_command": execute_command,
+        "process_lock": process_lock,
+        "started_run_metadata": started_run_metadata,
+        "completed_run_metadata": completed_run_metadata,
+        "bounded_loop_result": bounded_loop_result,
+        "shutdown_signal_adapter": shutdown_signal_adapter,
+        "execution_plan": _daemon_cli_execution_result_execution_plan(
+            bounded_loop_result=bounded_loop_result,
+            shutdown_signal_adapter=shutdown_signal_adapter,
+        ),
+        "guardrails": _daemon_cli_execution_result_guardrails(),
+        "metadata": _daemon_cli_execution_result_metadata(
+            process_lock=process_lock,
+            started_run_metadata=started_run_metadata,
+            completed_run_metadata=completed_run_metadata,
+            bounded_loop_result=bounded_loop_result,
+            shutdown_signal_adapter=shutdown_signal_adapter,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_cli_execution_result(
+        execution_result
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_cli_execution_result(
+    result: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_cli_execution_result_invalid"
+    if not isinstance(result, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result must "
+                "be an object."
+            ),
+        )
+    normalized = dict(result)
+    if set(normalized) != {
+        "daemon_cli_execution_result_schema_version",
+        "daemon_cli_execution_result_id",
+        "service_id",
+        "scheduler_id",
+        "daemon_cli_execute_command_id",
+        "daemon_process_lock_id",
+        "started_daemon_run_id",
+        "completed_daemon_run_id",
+        "result_status",
+        "stop_reason",
+        "execute_command",
+        "process_lock",
+        "started_run_metadata",
+        "completed_run_metadata",
+        "bounded_loop_result",
+        "shutdown_signal_adapter",
+        "execution_plan",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result keys "
+                "are invalid."
+            ),
+        )
+    if (
+        normalized.get("daemon_cli_execution_result_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_EXECUTION_RESULT_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_cli_execution_result_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result schema "
+                "is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result service "
+                "id is invalid."
+            ),
+        )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        error_code=error_code,
+    )
+    command_id = _required_text(
+        normalized.get("daemon_cli_execute_command_id"),
+        "daemon_cli_execute_command_id",
+        error_code=error_code,
+    )
+    process_lock_id = _required_text(
+        normalized.get("daemon_process_lock_id"),
+        "daemon_process_lock_id",
+        error_code=error_code,
+    )
+    started_run_id = _required_text(
+        normalized.get("started_daemon_run_id"),
+        "started_daemon_run_id",
+        error_code=error_code,
+    )
+    completed_run_id = _required_text(
+        normalized.get("completed_daemon_run_id"),
+        "completed_daemon_run_id",
+        error_code=error_code,
+    )
+    execute_command = validate_artifact_retention_scheduler_daemon_cli_execute_command(
+        normalized.get("execute_command")
+    )
+    process_lock = validate_artifact_retention_scheduler_daemon_process_lock(
+        normalized.get("process_lock")
+    )
+    started_run_metadata = validate_artifact_retention_scheduler_daemon_run_metadata(
+        normalized.get("started_run_metadata")
+    )
+    completed_run_metadata = validate_artifact_retention_scheduler_daemon_run_metadata(
+        normalized.get("completed_run_metadata")
+    )
+    bounded_loop_result = validate_artifact_retention_scheduler_daemon_bounded_loop_result(
+        normalized.get("bounded_loop_result")
+    )
+    shutdown_signal_adapter = _validate_optional_daemon_signal_shutdown_adapter(
+        normalized.get("shutdown_signal_adapter")
+    )
+    if normalized.get("result_status") != bounded_loop_result["result_status"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result status "
+                "is invalid."
+            ),
+        )
+    if normalized.get("stop_reason") != bounded_loop_result["stop_reason"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result stop "
+                "reason is invalid."
+            ),
+        )
+    _ensure_daemon_cli_execution_result_scope(
+        scheduler_id=scheduler_id,
+        command_id=command_id,
+        process_lock_id=process_lock_id,
+        started_run_id=started_run_id,
+        completed_run_id=completed_run_id,
+        execute_command=execute_command,
+        process_lock=process_lock,
+        started_run_metadata=started_run_metadata,
+        completed_run_metadata=completed_run_metadata,
+        bounded_loop_result=bounded_loop_result,
+        shutdown_signal_adapter=shutdown_signal_adapter,
+    )
+    expected_execution_plan = _daemon_cli_execution_result_execution_plan(
+        bounded_loop_result=bounded_loop_result,
+        shutdown_signal_adapter=shutdown_signal_adapter,
+    )
+    if normalized.get("execution_plan") != expected_execution_plan:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result "
+                "execution plan is invalid."
+            ),
+        )
+    if normalized.get("guardrails") != _daemon_cli_execution_result_guardrails():
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result "
+                "guardrails are invalid."
+            ),
+        )
+    expected_metadata = _daemon_cli_execution_result_metadata(
+        process_lock=process_lock,
+        started_run_metadata=started_run_metadata,
+        completed_run_metadata=completed_run_metadata,
+        bounded_loop_result=bounded_loop_result,
+        shutdown_signal_adapter=shutdown_signal_adapter,
+    )
+    if normalized.get("metadata") != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result "
+                "metadata is invalid."
+            ),
+        )
+    expected_id = _daemon_cli_execution_result_id(
+        execute_command=execute_command,
+        process_lock=process_lock,
+        started_run_metadata=started_run_metadata,
+        completed_run_metadata=completed_run_metadata,
+        bounded_loop_result=bounded_loop_result,
+        shutdown_signal_adapter=shutdown_signal_adapter,
+    )
+    if normalized.get("daemon_cli_execution_result_id") != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result id is "
+                "invalid."
+            ),
+        )
+    normalized["execute_command"] = execute_command
+    normalized["process_lock"] = process_lock
+    normalized["started_run_metadata"] = started_run_metadata
+    normalized["completed_run_metadata"] = completed_run_metadata
+    normalized["bounded_loop_result"] = bounded_loop_result
+    normalized["shutdown_signal_adapter"] = shutdown_signal_adapter
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_cli_execution_result(
+    result: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduler_daemon_cli_execution_result(
+        result
+    )
+    bounded_summary = summarize_artifact_retention_scheduler_daemon_bounded_loop_result(
+        validated["bounded_loop_result"]
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "daemon_cli_execute_command_id": validated[
+            "daemon_cli_execute_command_id"
+        ],
+        "daemon_process_lock_id": validated["daemon_process_lock_id"],
+        "started_daemon_run_id": validated["started_daemon_run_id"],
+        "completed_daemon_run_id": validated["completed_daemon_run_id"],
+        "result_status": validated["result_status"],
+        "stop_reason": validated["stop_reason"],
+        "max_cycles": bounded_summary["max_cycles"],
+        "cycle_count": bounded_summary["cycle_count"],
+        "process_id": validated["process_lock"]["process"]["process_id"],
+        "host_id": validated["process_lock"]["process"]["host_id"],
+        "completed_run_status": validated["completed_run_metadata"]["lifecycle"][
+            "run_status"
+        ],
+        "bounded_loop_started": bounded_summary["bounded_loop_started"],
+        "job_enqueued": bounded_summary["job_enqueued"],
+        "worker_executed": bounded_summary["worker_executed"],
+        "shutdown_signal_adapter_invoked": validated["metadata"][
+            "shutdown_signal_adapter_invoked"
+        ],
+        "run_record_persisted": validated["guardrails"]["run_record_persisted"],
+    }
+
+
+def execution_result_summary_line(result: Mapping[str, Any]) -> str:
+    summary = summarize_artifact_retention_scheduler_daemon_cli_execution_result(
+        result
+    )
+    return (
+        "ae_scheduler_daemon_cli_execution=pass "
+        f"scheduler_id={summary['scheduler_id']} "
+        f"result={summary['result_status']} "
+        f"stop_reason={summary['stop_reason']} "
+        f"max_cycles={summary['max_cycles']} "
+        f"cycles={summary['cycle_count']} "
+        f"job_enqueued={int(summary['job_enqueued'])} "
+        f"persisted={int(summary['run_record_persisted'])}"
+    )
+
+
 def summarize_artifact_retention_scheduler_daemon_cli_plan(
     plan: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -1396,6 +1839,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Build an AE artifact retention scheduler daemon CLI plan."
     )
+    parser.add_argument("--execute", action="store_true")
     parser.add_argument("--profile", default="test")
     parser.add_argument("--enabled", action="store_true")
     parser.add_argument("--explicit-opt-in", action="store_true")
@@ -1409,22 +1853,43 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None, out: TextIO | None = None) -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    out: TextIO | None = None,
+    *,
+    execution_context: Mapping[str, Any] | None = None,
+) -> int:
     stream = out if out is not None else sys.stdout
     args = build_parser().parse_args(argv)
     try:
-        plan = build_artifact_retention_scheduler_daemon_cli_plan(
-            profile=args.profile,
-            enabled=args.enabled,
-            explicit_opt_in=args.explicit_opt_in,
-            checked_at=args.checked_at,
-            interval_seconds=args.interval_seconds,
-            jitter_seconds=args.jitter_seconds,
-            backoff_seconds=args.backoff_seconds,
-            max_cycles=args.max_cycles,
-            run_worker=args.run_worker,
-            output_format="summary" if args.summary else "json",
-        )
+        if args.execute:
+            result = _run_daemon_cli_execution_from_context(
+                args=args,
+                execution_context=execution_context,
+            )
+            output = (
+                execution_result_summary_line(result)
+                if args.summary
+                else json.dumps(result, ensure_ascii=False, sort_keys=True)
+            )
+        else:
+            plan = build_artifact_retention_scheduler_daemon_cli_plan(
+                profile=args.profile,
+                enabled=args.enabled,
+                explicit_opt_in=args.explicit_opt_in,
+                checked_at=args.checked_at,
+                interval_seconds=args.interval_seconds,
+                jitter_seconds=args.jitter_seconds,
+                backoff_seconds=args.backoff_seconds,
+                max_cycles=args.max_cycles,
+                run_worker=args.run_worker,
+                output_format="summary" if args.summary else "json",
+            )
+            output = (
+                summary_line(plan)
+                if args.summary
+                else json.dumps(plan, ensure_ascii=False, sort_keys=True)
+            )
     except ArtifactHandoffError as exc:
         print(
             json.dumps(
@@ -1439,13 +1904,99 @@ def main(argv: Sequence[str] | None = None, out: TextIO | None = None) -> int:
             file=stream,
         )
         return 1
-    output = (
-        summary_line(plan)
-        if args.summary
-        else json.dumps(plan, ensure_ascii=False, sort_keys=True)
-    )
     print(output, file=stream)
     return 0
+
+
+def _run_daemon_cli_execution_from_context(
+    *,
+    args: argparse.Namespace,
+    execution_context: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    context = _daemon_cli_execution_context(execution_context)
+    return run_artifact_retention_scheduler_daemon_cli_execution(
+        artifact_store=_required_daemon_cli_execution_context_value(
+            context,
+            "artifact_store",
+        ),
+        job_queue=_required_daemon_cli_execution_context_value(
+            context,
+            "job_queue",
+        ),
+        tenant_id=_required_daemon_cli_execution_context_value(
+            context,
+            "tenant_id",
+        ),
+        workspace_id=_required_daemon_cli_execution_context_value(
+            context,
+            "workspace_id",
+        ),
+        owner_user_id=_required_daemon_cli_execution_context_value(
+            context,
+            "owner_user_id",
+        ),
+        lease_store=context.get("lease_store"),
+        history_store=context.get("history_store"),
+        scheduler_config=context.get("scheduler_config"),
+        profile=args.profile,
+        enabled=args.enabled,
+        explicit_opt_in=args.explicit_opt_in,
+        checked_at=args.checked_at,
+        interval_seconds=args.interval_seconds,
+        jitter_seconds=args.jitter_seconds,
+        backoff_seconds=args.backoff_seconds,
+        max_cycles=args.max_cycles,
+        run_worker=args.run_worker,
+        output_format="summary" if args.summary else "json",
+        process_id=context.get("process_id"),
+        host_id=context.get("host_id", "localhost"),
+        stale_after_seconds=context.get("stale_after_seconds", 600),
+        retention_days=context.get("retention_days"),
+        as_of=context.get("as_of"),
+        scan_limit=context.get("scan_limit"),
+        max_delete_count=context.get("max_delete_count"),
+        trace_id=context.get("trace_id"),
+        request_id=context.get("request_id"),
+        idempotency_key=context.get("idempotency_key"),
+        worker_id=context.get("worker_id"),
+        stop_requested=context.get("stop_requested", False),
+        stop_after_cycle=context.get("stop_after_cycle"),
+        shutdown_signal_name=context.get("shutdown_signal_name"),
+        shutdown_received_at=context.get("shutdown_received_at"),
+        clock=context.get("clock"),
+        daemon_heartbeat_emitter=context.get("daemon_heartbeat_emitter"),
+    )
+
+
+def _daemon_cli_execution_context(
+    execution_context: Mapping[str, Any] | None,
+) -> Mapping[str, Any]:
+    if not isinstance(execution_context, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_cli_execution_result_invalid",
+            detail=(
+                "Artifact retention scheduler daemon CLI execution context is "
+                "required."
+            ),
+        )
+    return execution_context
+
+
+def _required_daemon_cli_execution_context_value(
+    context: Mapping[str, Any],
+    field_name: str,
+) -> Any:
+    if field_name not in context or context.get(field_name) is None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_cli_execution_result_invalid",
+            detail=(
+                "Artifact retention scheduler daemon CLI execution context "
+                f"{field_name} is required."
+            ),
+        )
+    return context[field_name]
 
 
 def _validate_daemon_cli_command(value: Any) -> dict[str, Any]:
@@ -2244,6 +2795,351 @@ def _daemon_signal_shutdown_adapter_metadata(
     }
 
 
+def _validate_optional_daemon_signal_shutdown_adapter(
+    value: Any,
+) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    return validate_artifact_retention_scheduler_daemon_signal_shutdown_adapter(value)
+
+
+def _ensure_daemon_cli_execution_result_scope(
+    *,
+    scheduler_id: str,
+    command_id: str,
+    process_lock_id: str,
+    started_run_id: str,
+    completed_run_id: str,
+    execute_command: Mapping[str, Any],
+    process_lock: Mapping[str, Any],
+    started_run_metadata: Mapping[str, Any],
+    completed_run_metadata: Mapping[str, Any],
+    bounded_loop_result: Mapping[str, Any],
+    shutdown_signal_adapter: Mapping[str, Any] | None,
+) -> None:
+    error_code = "ae.artifact_retention_scheduler_daemon_cli_execution_result_invalid"
+    if execute_command["scheduler_id"] != scheduler_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result command "
+                "scope is invalid."
+            ),
+        )
+    if execute_command["daemon_cli_execute_command_id"] != command_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result command "
+                "id is invalid."
+            ),
+        )
+    if process_lock["scheduler_id"] != scheduler_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result process "
+                "scope is invalid."
+            ),
+        )
+    if process_lock["daemon_process_lock_id"] != process_lock_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result process "
+                "lock id is invalid."
+            ),
+        )
+    if process_lock["daemon_cli_execute_command_id"] != command_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result process "
+                "command scope is invalid."
+            ),
+        )
+    _ensure_daemon_cli_execution_run_scope(
+        label="started",
+        scheduler_id=scheduler_id,
+        command_id=command_id,
+        process_lock_id=process_lock_id,
+        expected_run_id=started_run_id,
+        run_metadata=started_run_metadata,
+    )
+    _ensure_daemon_cli_execution_run_scope(
+        label="completed",
+        scheduler_id=scheduler_id,
+        command_id=command_id,
+        process_lock_id=process_lock_id,
+        expected_run_id=completed_run_id,
+        run_metadata=completed_run_metadata,
+    )
+    started_lifecycle = started_run_metadata["lifecycle"]
+    completed_lifecycle = completed_run_metadata["lifecycle"]
+    if started_lifecycle["run_status"] != "RUNNING":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result started "
+                "run status is invalid."
+            ),
+        )
+    expected_completed_status = _daemon_cli_execution_completed_run_status(
+        bounded_loop_result
+    )
+    if completed_lifecycle["run_status"] != expected_completed_status:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result completed "
+                "run status is invalid."
+            ),
+        )
+    if completed_lifecycle["requested_at"] != started_lifecycle["requested_at"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result lifecycle "
+                "request scope is invalid."
+            ),
+        )
+    if completed_lifecycle["started_at"] != started_lifecycle["started_at"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result lifecycle "
+                "start scope is invalid."
+            ),
+        )
+    if completed_lifecycle["completed_at"] != bounded_loop_result["finished_at"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result lifecycle "
+                "completion time is invalid."
+            ),
+        )
+    command = execute_command["command"]
+    if bounded_loop_result["scheduler_id"] != scheduler_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result bounded "
+                "loop scope is invalid."
+            ),
+        )
+    if bounded_loop_result["started_at"] != command["checked_at"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result bounded "
+                "loop start time is invalid."
+            ),
+        )
+    if bounded_loop_result["max_cycles"] != command["max_cycles"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result bounded "
+                "loop max_cycles is invalid."
+            ),
+        )
+    if bounded_loop_result["worker_requested"] != command["run_worker"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result bounded "
+                "loop worker flag is invalid."
+            ),
+        )
+    if shutdown_signal_adapter is not None:
+        if shutdown_signal_adapter["scheduler_id"] != scheduler_id:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon CLI execution result "
+                    "shutdown signal scope is invalid."
+                ),
+            )
+        if shutdown_signal_adapter["daemon_run_id"] != started_run_id:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon CLI execution result "
+                    "shutdown signal run scope is invalid."
+                ),
+            )
+        if bounded_loop_result["stop_reason"] != "stop_requested":
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon CLI execution result "
+                    "shutdown signal stop reason is invalid."
+                ),
+            )
+
+
+def _ensure_daemon_cli_execution_run_scope(
+    *,
+    label: str,
+    scheduler_id: str,
+    command_id: str,
+    process_lock_id: str,
+    expected_run_id: str,
+    run_metadata: Mapping[str, Any],
+) -> None:
+    error_code = "ae.artifact_retention_scheduler_daemon_cli_execution_result_invalid"
+    if run_metadata["scheduler_id"] != scheduler_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result "
+                f"{label} run scope is invalid."
+            ),
+        )
+    if run_metadata["daemon_cli_execute_command_id"] != command_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result "
+                f"{label} run command scope is invalid."
+            ),
+        )
+    if run_metadata["daemon_process_lock_id"] != process_lock_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result "
+                f"{label} run process scope is invalid."
+            ),
+        )
+    if run_metadata["daemon_run_id"] != expected_run_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI execution result "
+                f"{label} run id is invalid."
+            ),
+        )
+
+
+def _daemon_cli_execution_completed_run_status(
+    bounded_loop_result: Mapping[str, Any],
+) -> str:
+    if bounded_loop_result["result_status"] == "FAILED":
+        return "FAILED"
+    return "SUCCEEDED"
+
+
+def _daemon_cli_execution_result_execution_plan(
+    *,
+    bounded_loop_result: Mapping[str, Any],
+    shutdown_signal_adapter: Mapping[str, Any] | None,
+) -> dict[str, bool | int]:
+    bounded_plan = bounded_loop_result["execution_plan"]
+    bounded_metadata = bounded_loop_result["metadata"]
+    return {
+        "loads_execute_command": True,
+        "builds_process_lock_metadata": True,
+        "builds_started_run_metadata": True,
+        "runs_existing_bounded_loop_adapter": True,
+        "max_cycles_enforced": bounded_plan["max_cycles_enforced"],
+        "cycles_executed": bounded_loop_result["cycle_count"],
+        "stop_after_cycle_supported": True,
+        "shutdown_signal_adapter_available": True,
+        "shutdown_signal_adapter_invoked": shutdown_signal_adapter is not None,
+        "job_queue_enqueue_performed": bounded_metadata["job_enqueued"],
+        "worker_execution_performed": bounded_metadata["worker_executed"],
+        "writes_run_record": False,
+        "writes_lifecycle_event": False,
+        "runtime_state_persisted": False,
+        "physical_delete_enabled": False,
+    }
+
+
+def _daemon_cli_execution_result_guardrails() -> dict[str, bool]:
+    return {
+        "daemon_process_owner_ae": True,
+        "execute_requires_test_profile": True,
+        "execute_requires_explicit_opt_in": True,
+        "bounded_loop_is_finite": True,
+        "max_cycles_hard_cap_enforced": True,
+        "process_lock_required": True,
+        "process_lock_acquired": False,
+        "run_metadata_required": True,
+        "run_record_persisted": False,
+        "lifecycle_event_persisted": False,
+        "shutdown_signal_adapter_available": True,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "runtime_state_persisted": False,
+        "physical_delete_automation_enabled": False,
+        "secrets_redacted": True,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+    }
+
+
+def _daemon_cli_execution_result_metadata(
+    *,
+    process_lock: Mapping[str, Any],
+    started_run_metadata: Mapping[str, Any],
+    completed_run_metadata: Mapping[str, Any],
+    bounded_loop_result: Mapping[str, Any],
+    shutdown_signal_adapter: Mapping[str, Any] | None,
+) -> dict[str, bool | int | str]:
+    bounded_metadata = bounded_loop_result["metadata"]
+    return {
+        "safe_for_ag_projection": True,
+        "execute_mode": True,
+        "bounded_loop_started": bounded_metadata["bounded_loop_started"],
+        "bounded_loop_result_status": bounded_loop_result["result_status"],
+        "bounded_loop_stop_reason": bounded_loop_result["stop_reason"],
+        "cycle_count": bounded_loop_result["cycle_count"],
+        "max_cycles": bounded_loop_result["max_cycles"],
+        "job_enqueued": bounded_metadata["job_enqueued"],
+        "worker_executed": bounded_metadata["worker_executed"],
+        "run_started": started_run_metadata["lifecycle"]["started_at"] is not None,
+        "run_completed": completed_run_metadata["lifecycle"]["completed_at"] is not None,
+        "completed_run_status": completed_run_metadata["lifecycle"]["run_status"],
+        "process_id": process_lock["process"]["process_id"],
+        "host_id": process_lock["process"]["host_id"],
+        "shutdown_signal_adapter_invoked": shutdown_signal_adapter is not None,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "run_record_persisted": False,
+        "lifecycle_event_persisted": False,
+        "runtime_state_persisted": False,
+    }
+
+
 def _daemon_process_lock_guardrails() -> dict[str, bool]:
     return {
         "metadata_only": True,
@@ -2477,6 +3373,37 @@ def _daemon_signal_shutdown_adapter_id(
         uuid5(
             NAMESPACE_URL,
             f"ae-artifact-retention-scheduler-daemon-signal-adapter:{sha256_json(basis)}",
+        )
+    )
+
+
+def _daemon_cli_execution_result_id(
+    *,
+    execute_command: Mapping[str, Any],
+    process_lock: Mapping[str, Any],
+    started_run_metadata: Mapping[str, Any],
+    completed_run_metadata: Mapping[str, Any],
+    bounded_loop_result: Mapping[str, Any],
+    shutdown_signal_adapter: Mapping[str, Any] | None,
+) -> str:
+    basis = {
+        "command_id": execute_command["daemon_cli_execute_command_id"],
+        "process_lock_id": process_lock["daemon_process_lock_id"],
+        "started_run_id": started_run_metadata["daemon_run_id"],
+        "completed_run_id": completed_run_metadata["daemon_run_id"],
+        "bounded_loop_result_id": bounded_loop_result[
+            "daemon_bounded_loop_result_id"
+        ],
+        "shutdown_signal_adapter_id": (
+            shutdown_signal_adapter["daemon_signal_shutdown_adapter_id"]
+            if shutdown_signal_adapter is not None
+            else None
+        ),
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            f"ae-artifact-retention-scheduler-daemon-cli-execution:{sha256_json(basis)}",
         )
     )
 

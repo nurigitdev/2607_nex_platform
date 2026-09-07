@@ -784,3 +784,9 @@ Artifact library management:
   supported `SIGTERM`/`SIGINT` names, binds process/run metadata to the existing
   shutdown transition contract, and still installs no handler, delivers no
   signal, terminates no process, writes no database row, and enqueues no work.
+- Slice 0555 wires explicit bounded-loop CLI execution to the existing daemon
+  runner through a safe execution-result envelope. The default CLI remains
+  plan-only; execute mode requires injected runtime dependencies, the `test`
+  profile, explicit opt-in, bounded `max_cycles`, process/run metadata, and
+  optional shutdown-signal evidence while keeping daemon run persistence
+  deferred.

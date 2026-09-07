@@ -523,6 +523,10 @@ Unified operations:
   observe safe signal/shutdown transition summaries, but it cannot install
   handlers, deliver stop signals, terminate AE processes, persist lifecycle
   state, or enqueue AE retention work.
+- Slice 0555 keeps bounded-loop CLI execution AE-owned. AG may later read the
+  redacted execution-result envelope, but it still cannot provide execution
+  dependencies, acquire locks, run bounded loops, enqueue AE jobs, persist AE
+  lifecycle records, or access raw runtime payloads.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
