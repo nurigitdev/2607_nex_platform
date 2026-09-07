@@ -87,6 +87,9 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_COLLECTION_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_DETAIL_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_supervisor_detail.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_supervised_process.v1"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
@@ -118,12 +121,28 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_ACTIONS = frozenset(
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_RESULT_STATUSES = frozenset(
     {"READY", "BLOCKED", "NOOP", "FAILED"}
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_STATUSES = frozenset(
+    {
+        "MISSING",
+        "START_REQUESTED",
+        "RUNNING",
+        "STOP_REQUESTED",
+        "STOPPED",
+        "EXITED",
+        "STALE",
+        "FAILED",
+        "BLOCKED",
+    }
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_MODE = "fake_dry_run"
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_ADAPTER_NAME = (
     "fake_dry_run_supervisor"
 )
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_START_BLOCK_REASON = (
     "supervisor_adapter_not_configured"
+)
+DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_MODE = (
+    "bounded_loop_subprocess_test_only"
 )
 
 
@@ -1158,7 +1177,10 @@ def validate_artifact_retention_scheduler_daemon_supervisor_result(
         "scheduler_id",
         error_code=error_code,
     )
-    action = _normalize_daemon_supervisor_action(normalized.get("action"))
+    action = _daemon_supervisor_action_for_context(
+        normalized.get("action"),
+        error_code=error_code,
+    )
     result_status = _normalize_daemon_supervisor_result_status(
         normalized.get("result_status")
     )
@@ -1360,6 +1382,282 @@ class FakeArtifactRetentionSchedulerDaemonSupervisorAdapter:
             process_started=False,
             process_stopped=False,
         )
+
+
+def build_artifact_retention_scheduler_daemon_supervised_process_snapshot(
+    *,
+    supervisor_command: Mapping[str, Any],
+    process_status: str | None = None,
+    process_id: int | str | None = None,
+    host_id: str = "localhost",
+    observed_at: str | None = None,
+    started_at: str | None = None,
+    completed_at: str | None = None,
+    exit_code: int | str | None = None,
+    termination_signal: str | None = None,
+    message: str | None = None,
+) -> dict[str, Any]:
+    command = validate_artifact_retention_scheduler_daemon_supervisor_command(
+        supervisor_command
+    )
+    status = _normalize_daemon_supervised_process_status(
+        process_status
+        or _default_daemon_supervised_process_status(command["command"]["action"])
+    )
+    process = _daemon_supervised_process_process(
+        command=command,
+        process_id=process_id,
+        host_id=host_id,
+    )
+    lifecycle = _daemon_supervised_process_lifecycle(
+        process_status=status,
+        observed_at=observed_at or command["command"]["checked_at"],
+        started_at=started_at,
+        completed_at=completed_at,
+        exit_code=exit_code,
+        termination_signal=termination_signal,
+    )
+    snapshot = {
+        "daemon_supervised_process_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_SCHEMA_VERSION
+        ),
+        "daemon_supervised_process_id": _daemon_supervised_process_id(
+            scheduler_id=command["scheduler_id"],
+            command_id=command["daemon_supervisor_command_id"],
+            process=process,
+            lifecycle=lifecycle,
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": command["scheduler_id"],
+        "daemon_supervisor_command_id": command["daemon_supervisor_command_id"],
+        "action": command["command"]["action"],
+        "process_mode": (
+            DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_MODE
+        ),
+        "process": process,
+        "lifecycle": lifecycle,
+        "guardrails": _daemon_supervised_process_guardrails(
+            command=command,
+            lifecycle=lifecycle,
+        ),
+        "metadata": _daemon_supervised_process_metadata(
+            command=command,
+            process=process,
+            lifecycle=lifecycle,
+            message=message,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_supervised_process_snapshot(
+        snapshot
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_supervised_process_snapshot(
+    snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_supervised_process_invalid"
+    if not isinstance(snapshot, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process snapshot "
+                "must be an object."
+            ),
+        )
+    normalized = dict(snapshot)
+    if set(normalized) != {
+        "daemon_supervised_process_schema_version",
+        "daemon_supervised_process_id",
+        "service_id",
+        "scheduler_id",
+        "daemon_supervisor_command_id",
+        "action",
+        "process_mode",
+        "process",
+        "lifecycle",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process snapshot "
+                "keys are invalid."
+            ),
+        )
+    if (
+        normalized.get("daemon_supervised_process_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_supervised_process_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon supervised process snapshot "
+                "schema is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process snapshot "
+                "service id is invalid."
+            ),
+        )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        error_code=error_code,
+    )
+    command_id = _required_text(
+        normalized.get("daemon_supervisor_command_id"),
+        "daemon_supervisor_command_id",
+        error_code=error_code,
+    )
+    action = _daemon_supervisor_action_for_context(
+        normalized.get("action"),
+        error_code=error_code,
+    )
+    if normalized.get("process_mode") != (
+        DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_MODE
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process snapshot "
+                "mode is invalid."
+            ),
+        )
+    process = _validate_daemon_supervised_process_process(
+        normalized.get("process"),
+        error_code=error_code,
+    )
+    lifecycle = _validate_daemon_supervised_process_lifecycle(
+        normalized.get("lifecycle"),
+        error_code=error_code,
+    )
+    _ensure_daemon_supervised_process_consistency(
+        action=action,
+        scheduler_id=scheduler_id,
+        command_id=command_id,
+        process=process,
+        lifecycle=lifecycle,
+        error_code=error_code,
+    )
+    expected_guardrails = _daemon_supervised_process_guardrails(
+        command={
+            "scheduler_id": scheduler_id,
+            "daemon_supervisor_command_id": command_id,
+            "command": {"action": action},
+        },
+        lifecycle=lifecycle,
+    )
+    if normalized.get("guardrails") != expected_guardrails:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process snapshot "
+                "guardrails are invalid."
+            ),
+        )
+    metadata_value = normalized.get("metadata")
+    metadata_mapping = metadata_value if isinstance(metadata_value, Mapping) else {}
+    expected_metadata = _daemon_supervised_process_metadata(
+        command={
+            "scheduler_id": scheduler_id,
+            "daemon_supervisor_command_id": command_id,
+            "command": {"action": action},
+        },
+        process=process,
+        lifecycle=lifecycle,
+        message=metadata_mapping.get("message"),
+    )
+    if normalized.get("metadata") != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process snapshot "
+                "metadata is invalid."
+            ),
+        )
+    expected_id = _daemon_supervised_process_id(
+        scheduler_id=scheduler_id,
+        command_id=command_id,
+        process=process,
+        lifecycle=lifecycle,
+    )
+    if normalized.get("daemon_supervised_process_id") != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process snapshot "
+                "id is invalid."
+            ),
+        )
+    normalized["action"] = action
+    normalized["process"] = process
+    normalized["lifecycle"] = lifecycle
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_supervised_process_snapshot(
+    snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduler_daemon_supervised_process_snapshot(
+        snapshot
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "daemon_supervised_process_id": validated["daemon_supervised_process_id"],
+        "daemon_supervisor_command_id": validated["daemon_supervisor_command_id"],
+        "action": validated["action"],
+        "process_mode": validated["process_mode"],
+        "process_status": validated["lifecycle"]["process_status"],
+        "process_id": validated["process"]["process_id"],
+        "host_id": validated["process"]["host_id"],
+        "observed_at": validated["lifecycle"]["observed_at"],
+        "started_at": validated["lifecycle"]["started_at"],
+        "completed_at": validated["lifecycle"]["completed_at"],
+        "exit_code": validated["lifecycle"]["exit_code"],
+        "termination_signal": validated["lifecycle"]["termination_signal"],
+        "process_running": validated["metadata"]["process_running"],
+        "process_started_observed": validated["metadata"][
+            "process_started_observed"
+        ],
+        "process_stopped_observed": validated["metadata"][
+            "process_stopped_observed"
+        ],
+        "subprocess_adapter_required": validated["guardrails"][
+            "subprocess_adapter_required"
+        ],
+        "safe_for_ag_projection": validated["metadata"]["safe_for_ag_projection"],
+    }
+
+
+def supervised_process_snapshot_summary_line(snapshot: Mapping[str, Any]) -> str:
+    summary = summarize_artifact_retention_scheduler_daemon_supervised_process_snapshot(
+        snapshot
+    )
+    process_id = summary["process_id"] if summary["process_id"] is not None else "none"
+    return (
+        "ae_scheduler_daemon_supervised_process_snapshot=pass "
+        f"scheduler_id={summary['scheduler_id']} "
+        f"action={summary['action']} "
+        f"status={summary['process_status']} "
+        f"process_id={process_id} "
+        f"running={int(summary['process_running'])}"
+    )
 
 
 def build_artifact_retention_scheduler_daemon_process_lock(
@@ -8172,6 +8470,472 @@ def _optional_daemon_supervisor_result_status(
     return _daemon_supervisor_result_status_for_context(
         status,
         error_code=error_code,
+    )
+
+
+def _default_daemon_supervised_process_status(action: str) -> str:
+    if action == "start_daemon":
+        return "START_REQUESTED"
+    if action == "stop_daemon":
+        return "STOP_REQUESTED"
+    return "MISSING"
+
+
+def _normalize_daemon_supervised_process_status(value: Any) -> str:
+    error_code = "ae.artifact_retention_scheduler_daemon_supervised_process_invalid"
+    status = _required_text(
+        value,
+        "process_status",
+        error_code=error_code,
+    ).upper()
+    if status not in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_STATUSES:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process status "
+                "is invalid."
+            ),
+        )
+    return status
+
+
+def _optional_daemon_supervised_process_id(
+    value: Any,
+    *,
+    error_code: str,
+) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip() == "":
+        return None
+    return _bounded_positive_int(
+        value,
+        "process_id",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_PROCESS_ID,
+        error_code=error_code,
+    )
+
+
+def _optional_daemon_supervised_exit_code(
+    value: Any,
+    *,
+    error_code: str,
+) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip() == "":
+        return None
+    if isinstance(value, bool):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process exit "
+                "code must be an integer."
+            ),
+        )
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process exit "
+                "code must be an integer."
+            ),
+        ) from exc
+    if normalized < -255 or normalized > 255:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process exit "
+                "code exceeds supported range."
+            ),
+        )
+    return normalized
+
+
+def _daemon_supervised_process_process(
+    *,
+    command: Mapping[str, Any],
+    process_id: int | str | None,
+    host_id: str,
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_supervised_process_invalid"
+    supervisor_command = command["command"]
+    return {
+        "process_id": _optional_daemon_supervised_process_id(
+            process_id,
+            error_code=error_code,
+        ),
+        "host_id": _required_text(host_id, "host_id", error_code=error_code),
+        "entrypoint": supervisor_command["entrypoint"],
+        "supervisor_mode": supervisor_command["supervisor_mode"],
+        "max_cycles": supervisor_command["max_cycles"],
+        "run_worker": supervisor_command["run_worker"],
+        "output_format": supervisor_command["output_format"],
+    }
+
+
+def _validate_daemon_supervised_process_process(
+    value: Any,
+    *,
+    error_code: str,
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process payload "
+                "is invalid."
+            ),
+        )
+    process = dict(value)
+    if set(process) != {
+        "process_id",
+        "host_id",
+        "entrypoint",
+        "supervisor_mode",
+        "max_cycles",
+        "run_worker",
+        "output_format",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process payload "
+                "keys are invalid."
+            ),
+        )
+    return {
+        "process_id": _optional_daemon_supervised_process_id(
+            process.get("process_id"),
+            error_code=error_code,
+        ),
+        "host_id": _required_text(
+            process.get("host_id"),
+            "host_id",
+            error_code=error_code,
+        ),
+        "entrypoint": _required_text(
+            process.get("entrypoint"),
+            "entrypoint",
+            error_code=error_code,
+        ),
+        "supervisor_mode": _required_text(
+            process.get("supervisor_mode"),
+            "supervisor_mode",
+            error_code=error_code,
+        ),
+        "max_cycles": _bounded_positive_int(
+            process.get("max_cycles"),
+            "max_cycles",
+            max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_MAX_CYCLES,
+            error_code=error_code,
+        ),
+        "run_worker": _required_bool(
+            process.get("run_worker"),
+            "run_worker",
+            error_code=error_code,
+        ),
+        "output_format": _normalize_output_format(
+            process.get("output_format"),
+            error_code=error_code,
+        ),
+    }
+
+
+def _daemon_supervised_process_lifecycle(
+    *,
+    process_status: str,
+    observed_at: str,
+    started_at: str | None,
+    completed_at: str | None,
+    exit_code: int | str | None,
+    termination_signal: str | None,
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_supervised_process_invalid"
+    return {
+        "process_status": process_status,
+        "observed_at": _required_text(
+            observed_at,
+            "observed_at",
+            error_code=error_code,
+        ),
+        "started_at": optional_text(started_at),
+        "completed_at": optional_text(completed_at),
+        "exit_code": _optional_daemon_supervised_exit_code(
+            exit_code,
+            error_code=error_code,
+        ),
+        "termination_signal": optional_text(termination_signal),
+    }
+
+
+def _validate_daemon_supervised_process_lifecycle(
+    value: Any,
+    *,
+    error_code: str,
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process "
+                "lifecycle is invalid."
+            ),
+        )
+    lifecycle = dict(value)
+    if set(lifecycle) != {
+        "process_status",
+        "observed_at",
+        "started_at",
+        "completed_at",
+        "exit_code",
+        "termination_signal",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process "
+                "lifecycle keys are invalid."
+            ),
+        )
+    return {
+        "process_status": _normalize_daemon_supervised_process_status(
+            lifecycle.get("process_status")
+        ),
+        "observed_at": _required_text(
+            lifecycle.get("observed_at"),
+            "observed_at",
+            error_code=error_code,
+        ),
+        "started_at": optional_text(lifecycle.get("started_at")),
+        "completed_at": optional_text(lifecycle.get("completed_at")),
+        "exit_code": _optional_daemon_supervised_exit_code(
+            lifecycle.get("exit_code"),
+            error_code=error_code,
+        ),
+        "termination_signal": optional_text(lifecycle.get("termination_signal")),
+    }
+
+
+def _ensure_daemon_supervised_process_consistency(
+    *,
+    action: str,
+    scheduler_id: str,
+    command_id: str,
+    process: Mapping[str, Any],
+    lifecycle: Mapping[str, Any],
+    error_code: str,
+) -> None:
+    if not scheduler_id or not command_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process scope "
+                "is invalid."
+            ),
+        )
+    status = lifecycle["process_status"]
+    process_id = process["process_id"]
+    started_at = lifecycle["started_at"]
+    completed_at = lifecycle["completed_at"]
+    exit_code = lifecycle["exit_code"]
+    termination_signal = lifecycle["termination_signal"]
+    allowed_by_action = {
+        "status_probe": {"MISSING", "RUNNING", "STALE", "EXITED", "FAILED"},
+        "start_daemon": {"START_REQUESTED", "RUNNING", "BLOCKED", "FAILED"},
+        "stop_daemon": {"STOP_REQUESTED", "STOPPED", "MISSING", "FAILED"},
+    }
+    if status not in allowed_by_action[action]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process action "
+                "and status are inconsistent."
+            ),
+        )
+    if status in {"RUNNING", "STOP_REQUESTED", "STOPPED", "EXITED", "STALE", "FAILED"}:
+        if process_id is None:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon supervised process id "
+                    "is required for observed processes."
+                ),
+            )
+    elif process_id is not None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process id must "
+                "not be present before process creation."
+            ),
+        )
+    if status in {"RUNNING", "STOP_REQUESTED", "STALE"} and (
+        started_at is None or completed_at is not None
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon active supervised process "
+                "timestamps are invalid."
+            ),
+        )
+    if status == "STOPPED" and (
+        started_at is None or completed_at is None or termination_signal is None
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon stopped supervised process "
+                "metadata is invalid."
+            ),
+        )
+    if status == "EXITED" and (
+        started_at is None or completed_at is None or exit_code is None
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon exited supervised process "
+                "metadata is invalid."
+            ),
+        )
+    if status in {"MISSING", "START_REQUESTED", "BLOCKED"} and (
+        started_at is not None or completed_at is not None
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon inactive supervised "
+                "process timestamps are invalid."
+            ),
+        )
+    if status not in {"STOPPED"} and termination_signal is not None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process "
+                "termination signal is invalid."
+            ),
+        )
+    if status != "EXITED" and exit_code is not None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervised process exit "
+                "code is invalid."
+            ),
+        )
+
+
+def _daemon_supervised_process_guardrails(
+    *,
+    command: Mapping[str, Any],
+    lifecycle: Mapping[str, Any],
+) -> dict[str, bool]:
+    action = command["command"]["action"]
+    return {
+        "metadata_only": True,
+        "daemon_process_owner_ae": True,
+        "supervisor_owner_ae": True,
+        "subprocess_adapter_required": action in {"start_daemon", "stop_daemon"},
+        "contract_starts_process": False,
+        "contract_stops_process": False,
+        "process_lock_required": True,
+        "pid_metadata_required": True,
+        "test_profile_required": True,
+        "explicit_opt_in_required": action == "start_daemon",
+        "bounded_max_cycles_required": True,
+        "postgres_smoke_required_before_enablement": True,
+        "production_continuous_start_enabled": False,
+        "database_url_included": False,
+        "local_storage_path_included": False,
+        "execution_payload_included": False,
+        "secrets_redacted": True,
+        "ag_direct_process_control_allowed": False,
+        "ag_direct_database_write_allowed": False,
+        "process_running_observed": lifecycle["process_status"]
+        in {"RUNNING", "STOP_REQUESTED"},
+    }
+
+
+def _daemon_supervised_process_metadata(
+    *,
+    command: Mapping[str, Any],
+    process: Mapping[str, Any],
+    lifecycle: Mapping[str, Any],
+    message: Any,
+) -> dict[str, Any]:
+    status = lifecycle["process_status"]
+    started_observed = lifecycle["started_at"] is not None
+    stopped_observed = status in {"STOPPED", "EXITED"}
+    return {
+        "safe_for_ag_projection": True,
+        "metadata_only": True,
+        "message": optional_text(message),
+        "scheduler_id": command["scheduler_id"],
+        "daemon_supervisor_command_id": command["daemon_supervisor_command_id"],
+        "action": command["command"]["action"],
+        "process_status": status,
+        "process_running": status in {"RUNNING", "STOP_REQUESTED"},
+        "process_started_observed": started_observed,
+        "process_stopped_observed": stopped_observed,
+        "process_exit_observed": lifecycle["exit_code"] is not None,
+        "termination_signal_observed": lifecycle["termination_signal"] is not None,
+        "host_id_recorded": process["host_id"] is not None,
+        "process_id_recorded": process["process_id"] is not None,
+        "database_url_included": False,
+        "local_storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "secrets_redacted": True,
+    }
+
+
+def _daemon_supervised_process_id(
+    *,
+    scheduler_id: str,
+    command_id: str,
+    process: Mapping[str, Any],
+    lifecycle: Mapping[str, Any],
+) -> str:
+    basis = {
+        "scheduler_id": scheduler_id,
+        "daemon_supervisor_command_id": command_id,
+        "process_id": process["process_id"],
+        "host_id": process["host_id"],
+        "process_status": lifecycle["process_status"],
+        "observed_at": lifecycle["observed_at"],
+        "started_at": lifecycle["started_at"],
+        "completed_at": lifecycle["completed_at"],
+        "exit_code": lifecycle["exit_code"],
+        "termination_signal": lifecycle["termination_signal"],
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            f"ae-artifact-retention-scheduler-daemon-supervised-process:{sha256_json(basis)}",
+        )
     )
 
 

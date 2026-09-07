@@ -858,3 +858,8 @@ Artifact library management:
   process owner, production continuous start remains disabled, and the first
   process mode is bounded-loop subprocess execution under the `test` profile
   only.
+- Slice 0572 adds the AE-owned supervised process snapshot contract. It records
+  safe process status, optional pid, host id, lifecycle timestamps, exit code,
+  and termination signal metadata tied to supervisor commands, but it still
+  starts no subprocess, writes no database row, exposes no storage path, and
+  keeps production continuous start disabled.

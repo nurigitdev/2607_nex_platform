@@ -591,6 +591,10 @@ Unified operations:
   evidence. AG may later observe AE-owned process status and guarded outcomes,
   but it must not start or stop AE subprocesses, enqueue AE retention work, or
   write AE persistence directly.
+- Slice 0572 keeps the same AG boundary while AE defines the supervised process
+  snapshot contract. AG may later project safe process status and lifecycle
+  metadata through AE APIs only; it still cannot start/stop processes, write AE
+  persistence, enqueue AE jobs, or receive raw runtime payloads.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
