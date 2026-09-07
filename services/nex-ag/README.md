@@ -579,6 +579,10 @@ Unified operations:
   routes for collection and detail views. AG validates service/action/status
   filters locally, then calls AE APIs only; process control, JobQueue admission,
   and AE supervisor persistence remain outside AG.
+- Slice 0569 proves those AG routes against AE PostgreSQL test storage. The
+  protected smoke writes AE supervisor result/event evidence through AE APIs,
+  reads it back through AG admin projection routes, and verifies cleanup while
+  keeping `start_daemon` fake/dry-run and blocked.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -845,3 +845,8 @@ Artifact library management:
   applies AE migrations, dispatches `status_probe` and guarded `start_daemon`,
   verifies record/event rows through API and direct DB reads, confirms cleanup,
   and keeps database URLs, storage paths, and secrets out of evidence.
+- Slice 0569 reuses the same AE-owned supervisor API and PostgreSQL tables as
+  the source of record for AG read-model projection. The protected smoke writes
+  supervisor result/event evidence through AE, reads it through AG admin
+  routes, and still leaves process control, JobQueue admission, and physical
+  deletion disabled.
