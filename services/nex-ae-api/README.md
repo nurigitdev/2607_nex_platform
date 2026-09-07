@@ -775,3 +775,8 @@ Artifact library management:
   explicit-opt-in only, finite bounded-loop only, and still redacts database
   URLs, storage paths, raw payloads, and secrets until execution wiring is
   proven by later slices.
+- Slice 0553 adds metadata-only process lock, pid, and daemon run metadata
+  contracts. The contracts bind execute command id, scheduler id, host id, pid,
+  lock owner, stale window, and lifecycle timestamps, but still perform no lock
+  acquisition, database write, JobQueue enqueue, worker execution, runtime state
+  persistence, or physical purge automation.

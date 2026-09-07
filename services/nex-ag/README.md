@@ -515,6 +515,10 @@ Unified operations:
   CLI command envelope. AG may later project safe command metadata, but
   execution authority, database URLs, process locking, JobQueue admission, and
   physical purge policy remain AE-owned.
+- Slice 0553 keeps process lock, pid, and daemon run metadata AE-owned and
+  metadata-only. AG may consume safe lifecycle summaries later, but it still
+  cannot acquire locks, persist run records, enqueue AE jobs, or receive raw
+  daemon/runtime payloads.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
