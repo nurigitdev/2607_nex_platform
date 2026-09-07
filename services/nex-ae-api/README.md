@@ -819,3 +819,8 @@ Artifact library management:
   supervisor/process owner, production continuous start stays disabled, and the
   first supervisor implementation should be an injectable metadata-only
   fake/dry-run adapter with test-profile explicit opt-in guardrails.
+- Slice 0562 adds AE-owned supervisor command/result contracts for
+  `status_probe`, `start_daemon`, and `stop_daemon`. The contracts are
+  schema-bound, AG-safe, and side-effect free: `start_daemon` requires test
+  profile plus explicit opt-in but still returns a blocked metadata result
+  until the supervisor adapter is introduced.

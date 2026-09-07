@@ -66,6 +66,12 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_COLLECTION_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_DETAIL_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_run_detail.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_COMMAND_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_supervisor_command.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_RESULT_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_supervisor_result.v1"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
@@ -89,6 +95,16 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LIFECYCLE_EVENT_TYPES = frozenset(
 )
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SHUTDOWN_SIGNALS = frozenset(
     {"SIGINT", "SIGTERM"}
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_ACTIONS = frozenset(
+    {"status_probe", "start_daemon", "stop_daemon"}
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_RESULT_STATUSES = frozenset(
+    {"READY", "BLOCKED", "NOOP", "FAILED"}
+)
+DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_MODE = "fake_dry_run"
+DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_START_BLOCK_REASON = (
+    "supervisor_adapter_not_configured"
 )
 
 
@@ -646,6 +662,609 @@ def execute_command_summary_line(execute_command: Mapping[str, Any]) -> str:
         f"max_cycles={summary['max_cycles']} "
         f"plan_only={int(summary['plan_only'])} "
         f"bounded_loop_requested={int(summary['bounded_loop_requested'])}"
+    )
+
+
+def build_artifact_retention_scheduler_daemon_supervisor_command(
+    *,
+    action: str = "status_probe",
+    scheduler_config: Mapping[str, Any] | None = None,
+    profile: str = "test",
+    enabled: bool = False,
+    explicit_opt_in: bool = False,
+    checked_at: str | None = None,
+    interval_seconds: int | str | None = None,
+    jitter_seconds: int | str | None = None,
+    backoff_seconds: int | str | None = None,
+    max_cycles: int | str = 1,
+    run_worker: bool = False,
+    requested_by: Mapping[str, Any] | None = None,
+    reason: str | None = None,
+    supervisor_mode: str = DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_MODE,
+    output_format: str = "json",
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_supervisor_command_invalid"
+    normalized_action = _normalize_daemon_supervisor_action(action)
+    normalized_supervisor_mode = _normalize_daemon_supervisor_mode(supervisor_mode)
+    normalized_max_cycles = _bounded_positive_int(
+        max_cycles,
+        "max_cycles",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_MAX_CYCLES,
+        error_code=error_code,
+    )
+    normalized_run_worker = _required_bool(
+        run_worker,
+        "run_worker",
+        error_code=error_code,
+    )
+    normalized_output_format = _normalize_output_format(
+        output_format,
+        error_code=error_code,
+    )
+    config = (
+        dict(scheduler_config)
+        if scheduler_config is not None
+        else build_artifact_retention_scheduler_config()
+    )
+    runtime_config = build_artifact_retention_scheduler_daemon_runtime_config(
+        scheduler_config=config,
+        profile=profile,
+        enabled=enabled,
+        explicit_opt_in=explicit_opt_in,
+        checked_at=checked_at,
+        interval_seconds=interval_seconds,
+        jitter_seconds=jitter_seconds,
+        backoff_seconds=backoff_seconds,
+    )
+    _ensure_daemon_supervisor_command_enablement(
+        action=normalized_action,
+        runtime_config=runtime_config,
+        error_code=error_code,
+    )
+    daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=config,
+        checked_at=runtime_config["checked_at"],
+    )
+    lifecycle_status = (
+        "STARTING"
+        if normalized_action == "start_daemon"
+        and runtime_config["enablement"]["enablement_status"] == "READY"
+        else "DISABLED"
+    )
+    runtime_state = build_artifact_retention_scheduler_daemon_runtime_state(
+        scheduler_config=config,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        lifecycle_status=lifecycle_status,
+        lifecycle_reason=None,
+        observed_at=runtime_config["checked_at"],
+    )
+    command = {
+        "action": normalized_action,
+        "entrypoint": DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT,
+        "profile": runtime_config["enablement"]["profile"],
+        "enabled": runtime_config["enablement"]["enabled"],
+        "explicit_opt_in": runtime_config["enablement"]["explicit_opt_in"],
+        "checked_at": runtime_config["checked_at"],
+        "max_cycles": normalized_max_cycles,
+        "run_worker": normalized_run_worker,
+        "output_format": normalized_output_format,
+        "supervisor_mode": normalized_supervisor_mode,
+    }
+    supervisor_command = {
+        "daemon_supervisor_command_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_COMMAND_SCHEMA_VERSION
+        ),
+        "daemon_supervisor_command_id": _daemon_supervisor_command_id(
+            scheduler_id=runtime_config["scheduler_id"],
+            command=command,
+            runtime_state=runtime_state,
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": runtime_config["scheduler_id"],
+        "command": command,
+        "runtime_config": deepcopy(runtime_config),
+        "daemon_config": deepcopy(daemon_config),
+        "runtime_state": deepcopy(runtime_state),
+        "execution_plan": _daemon_supervisor_command_execution_plan(
+            action=normalized_action,
+            runtime_config=runtime_config,
+        ),
+        "guardrails": _daemon_supervisor_command_guardrails(action=normalized_action),
+        "metadata": _daemon_supervisor_command_metadata(
+            action=normalized_action,
+            runtime_config=runtime_config,
+            runtime_state=runtime_state,
+            command=command,
+            requested_by=requested_by,
+            reason=reason,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_supervisor_command(
+        supervisor_command
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_supervisor_command(
+    supervisor_command: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_supervisor_command_invalid"
+    if not isinstance(supervisor_command, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command must be "
+                "an object."
+            ),
+        )
+    normalized = dict(supervisor_command)
+    if set(normalized) != {
+        "daemon_supervisor_command_schema_version",
+        "daemon_supervisor_command_id",
+        "service_id",
+        "scheduler_id",
+        "command",
+        "runtime_config",
+        "daemon_config",
+        "runtime_state",
+        "execution_plan",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command keys "
+                "are invalid."
+            ),
+        )
+    if (
+        normalized.get("daemon_supervisor_command_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_COMMAND_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_supervisor_command_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon supervisor command schema "
+                "is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command service "
+                "id is invalid."
+            ),
+        )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        error_code=error_code,
+    )
+    command = _validate_daemon_supervisor_command_payload(
+        normalized.get("command")
+    )
+    runtime_config = validate_artifact_retention_scheduler_daemon_runtime_config(
+        normalized.get("runtime_config")
+    )
+    daemon_config = validate_artifact_retention_scheduler_daemon_config(
+        normalized.get("daemon_config")
+    )
+    runtime_state = validate_artifact_retention_scheduler_daemon_runtime_state(
+        normalized.get("runtime_state")
+    )
+    _ensure_daemon_supervisor_command_scope(
+        scheduler_id=scheduler_id,
+        command=command,
+        runtime_config=runtime_config,
+        daemon_config=daemon_config,
+        runtime_state=runtime_state,
+        error_code=error_code,
+    )
+    _ensure_daemon_supervisor_command_enablement(
+        action=command["action"],
+        runtime_config=runtime_config,
+        error_code=error_code,
+    )
+    expected_plan = _daemon_supervisor_command_execution_plan(
+        action=command["action"],
+        runtime_config=runtime_config,
+    )
+    if normalized.get("execution_plan") != expected_plan:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command "
+                "execution plan is invalid."
+            ),
+        )
+    if normalized.get("guardrails") != _daemon_supervisor_command_guardrails(
+        action=command["action"]
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command "
+                "guardrails are invalid."
+            ),
+        )
+    metadata_value = normalized.get("metadata")
+    metadata_mapping = metadata_value if isinstance(metadata_value, Mapping) else {}
+    expected_metadata = _daemon_supervisor_command_metadata(
+        action=command["action"],
+        runtime_config=runtime_config,
+        runtime_state=runtime_state,
+        command=command,
+        requested_by=metadata_mapping.get("requested_by"),
+        reason=metadata_mapping.get("reason"),
+    )
+    if normalized.get("metadata") != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command "
+                "metadata is invalid."
+            ),
+        )
+    expected_id = _daemon_supervisor_command_id(
+        scheduler_id=scheduler_id,
+        command=command,
+        runtime_state=runtime_state,
+    )
+    if normalized.get("daemon_supervisor_command_id") != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command id is "
+                "invalid."
+            ),
+        )
+    normalized["command"] = command
+    normalized["runtime_config"] = runtime_config
+    normalized["daemon_config"] = daemon_config
+    normalized["runtime_state"] = runtime_state
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_supervisor_command(
+    supervisor_command: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduler_daemon_supervisor_command(
+        supervisor_command
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "action": validated["command"]["action"],
+        "profile": validated["command"]["profile"],
+        "enabled": validated["command"]["enabled"],
+        "explicit_opt_in": validated["command"]["explicit_opt_in"],
+        "supervisor_mode": validated["command"]["supervisor_mode"],
+        "max_cycles": validated["command"]["max_cycles"],
+        "run_worker": validated["command"]["run_worker"],
+        "output_format": validated["command"]["output_format"],
+        "runtime_ready": validated["metadata"]["runtime_ready"],
+        "supervisor_adapter_required": validated["guardrails"][
+            "supervisor_adapter_required"
+        ],
+        "supervisor_adapter_invoked": validated["metadata"][
+            "supervisor_adapter_invoked"
+        ],
+        "starts_process": validated["execution_plan"]["starts_process"],
+        "stops_process": validated["execution_plan"]["stops_process"],
+        "safe_for_ag_projection": validated["metadata"]["safe_for_ag_projection"],
+    }
+
+
+def supervisor_command_summary_line(
+    supervisor_command: Mapping[str, Any],
+) -> str:
+    summary = summarize_artifact_retention_scheduler_daemon_supervisor_command(
+        supervisor_command
+    )
+    return (
+        "ae_scheduler_daemon_supervisor_command=pass "
+        f"scheduler_id={summary['scheduler_id']} "
+        f"action={summary['action']} "
+        f"profile={summary['profile']} "
+        f"ready={int(summary['runtime_ready'])} "
+        f"adapter_required={int(summary['supervisor_adapter_required'])} "
+        f"adapter_invoked={int(summary['supervisor_adapter_invoked'])} "
+        f"starts_process={int(summary['starts_process'])} "
+        f"stops_process={int(summary['stops_process'])}"
+    )
+
+
+def build_artifact_retention_scheduler_daemon_supervisor_result(
+    *,
+    supervisor_command: Mapping[str, Any],
+    result_status: str | None = None,
+    observed_at: str | None = None,
+    message: str | None = None,
+) -> dict[str, Any]:
+    command = validate_artifact_retention_scheduler_daemon_supervisor_command(
+        supervisor_command
+    )
+    normalized_observed_at = _required_text(
+        observed_at or _daemon_datetime_value(datetime.now(UTC)),
+        "observed_at",
+        error_code="ae.artifact_retention_scheduler_daemon_supervisor_result_invalid",
+    )
+    normalized_status = _normalize_daemon_supervisor_result_status(
+        result_status
+        or _default_daemon_supervisor_result_status(command["command"]["action"])
+    )
+    decision_reason = _daemon_supervisor_result_decision_reason(
+        action=command["command"]["action"],
+        result_status=normalized_status,
+    )
+    result = {
+        "daemon_supervisor_result_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_RESULT_SCHEMA_VERSION
+        ),
+        "daemon_supervisor_result_id": _daemon_supervisor_result_id(
+            supervisor_command=command,
+            result_status=normalized_status,
+            observed_at=normalized_observed_at,
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": command["scheduler_id"],
+        "action": command["command"]["action"],
+        "result_status": normalized_status,
+        "decision_reason": decision_reason,
+        "observed_at": normalized_observed_at,
+        "message": optional_text(message),
+        "supervisor_command": deepcopy(command),
+        "runtime_state": deepcopy(command["runtime_state"]),
+        "execution_plan": _daemon_supervisor_result_execution_plan(
+            action=command["command"]["action"],
+            result_status=normalized_status,
+        ),
+        "guardrails": _daemon_supervisor_result_guardrails(
+            action=command["command"]["action"],
+            result_status=normalized_status,
+        ),
+        "metadata": _daemon_supervisor_result_metadata(
+            command=command,
+            result_status=normalized_status,
+            decision_reason=decision_reason,
+            observed_at=normalized_observed_at,
+            message=message,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_supervisor_result(result)
+
+
+def validate_artifact_retention_scheduler_daemon_supervisor_result(
+    supervisor_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_supervisor_result_invalid"
+    if not isinstance(supervisor_result, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor result must be "
+                "an object."
+            ),
+        )
+    normalized = dict(supervisor_result)
+    if set(normalized) != {
+        "daemon_supervisor_result_schema_version",
+        "daemon_supervisor_result_id",
+        "service_id",
+        "scheduler_id",
+        "action",
+        "result_status",
+        "decision_reason",
+        "observed_at",
+        "message",
+        "supervisor_command",
+        "runtime_state",
+        "execution_plan",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor result keys "
+                "are invalid."
+            ),
+        )
+    if (
+        normalized.get("daemon_supervisor_result_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_RESULT_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_supervisor_result_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon supervisor result schema "
+                "is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor result service "
+                "id is invalid."
+            ),
+        )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        error_code=error_code,
+    )
+    action = _normalize_daemon_supervisor_action(normalized.get("action"))
+    result_status = _normalize_daemon_supervisor_result_status(
+        normalized.get("result_status")
+    )
+    decision_reason = _required_text(
+        normalized.get("decision_reason"),
+        "decision_reason",
+        error_code=error_code,
+    )
+    observed_at = _required_text(
+        normalized.get("observed_at"),
+        "observed_at",
+        error_code=error_code,
+    )
+    command = validate_artifact_retention_scheduler_daemon_supervisor_command(
+        normalized.get("supervisor_command")
+    )
+    runtime_state = validate_artifact_retention_scheduler_daemon_runtime_state(
+        normalized.get("runtime_state")
+    )
+    if command["scheduler_id"] != scheduler_id or command["command"]["action"] != action:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor result command "
+                "scope is invalid."
+            ),
+        )
+    if runtime_state != command["runtime_state"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor result runtime "
+                "state is invalid."
+            ),
+        )
+    expected_reason = _daemon_supervisor_result_decision_reason(
+        action=action,
+        result_status=result_status,
+    )
+    if decision_reason != expected_reason:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor result decision "
+                "reason is invalid."
+            ),
+        )
+    expected_plan = _daemon_supervisor_result_execution_plan(
+        action=action,
+        result_status=result_status,
+    )
+    if normalized.get("execution_plan") != expected_plan:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor result execution "
+                "plan is invalid."
+            ),
+        )
+    expected_guardrails = _daemon_supervisor_result_guardrails(
+        action=action,
+        result_status=result_status,
+    )
+    if normalized.get("guardrails") != expected_guardrails:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor result guardrails "
+                "are invalid."
+            ),
+        )
+    expected_metadata = _daemon_supervisor_result_metadata(
+        command=command,
+        result_status=result_status,
+        decision_reason=decision_reason,
+        observed_at=observed_at,
+        message=normalized.get("message"),
+    )
+    if normalized.get("metadata") != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor result metadata "
+                "is invalid."
+            ),
+        )
+    expected_id = _daemon_supervisor_result_id(
+        supervisor_command=command,
+        result_status=result_status,
+        observed_at=observed_at,
+    )
+    if normalized.get("daemon_supervisor_result_id") != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor result id is "
+                "invalid."
+            ),
+        )
+    normalized["action"] = action
+    normalized["result_status"] = result_status
+    normalized["message"] = optional_text(normalized.get("message"))
+    normalized["supervisor_command"] = command
+    normalized["runtime_state"] = runtime_state
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_supervisor_result(
+    supervisor_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduler_daemon_supervisor_result(
+        supervisor_result
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "action": validated["action"],
+        "result_status": validated["result_status"],
+        "decision_reason": validated["decision_reason"],
+        "observed_at": validated["observed_at"],
+        "supervisor_adapter_invoked": validated["metadata"][
+            "supervisor_adapter_invoked"
+        ],
+        "process_started": validated["metadata"]["process_started"],
+        "process_stopped": validated["metadata"]["process_stopped"],
+        "database_write_performed": validated["metadata"][
+            "database_write_performed"
+        ],
+        "safe_for_ag_projection": validated["metadata"]["safe_for_ag_projection"],
+    }
+
+
+def supervisor_result_summary_line(supervisor_result: Mapping[str, Any]) -> str:
+    summary = summarize_artifact_retention_scheduler_daemon_supervisor_result(
+        supervisor_result
+    )
+    return (
+        "ae_scheduler_daemon_supervisor_result=pass "
+        f"scheduler_id={summary['scheduler_id']} "
+        f"action={summary['action']} "
+        f"status={summary['result_status']} "
+        f"reason={summary['decision_reason']} "
+        f"adapter_invoked={int(summary['supervisor_adapter_invoked'])} "
+        f"process_started={int(summary['process_started'])} "
+        f"process_stopped={int(summary['process_stopped'])}"
     )
 
 
@@ -4478,6 +5097,541 @@ def _daemon_cli_execution_result_metadata(
         "lifecycle_event_persisted": normalized_lifecycle_event_persisted,
         "runtime_state_persisted": False,
     }
+
+
+def _normalize_daemon_supervisor_action(value: Any) -> str:
+    action = _required_text(
+        value,
+        "action",
+        error_code="ae.artifact_retention_scheduler_daemon_supervisor_command_invalid",
+    ).lower()
+    if action not in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_ACTIONS:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_supervisor_command_invalid",
+            detail=(
+                "Artifact retention scheduler daemon supervisor command action "
+                "is invalid."
+            ),
+        )
+    return action
+
+
+def _normalize_daemon_supervisor_mode(value: Any) -> str:
+    mode = _required_text(
+        value,
+        "supervisor_mode",
+        error_code="ae.artifact_retention_scheduler_daemon_supervisor_command_invalid",
+    ).lower()
+    if mode != DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_MODE:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_supervisor_command_invalid",
+            detail=(
+                "Artifact retention scheduler daemon supervisor command mode "
+                "is invalid."
+            ),
+        )
+    return mode
+
+
+def _normalize_daemon_supervisor_result_status(value: Any) -> str:
+    status = _required_text(
+        value,
+        "result_status",
+        error_code="ae.artifact_retention_scheduler_daemon_supervisor_result_invalid",
+    ).upper()
+    if status not in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_RESULT_STATUSES:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_supervisor_result_invalid",
+            detail=(
+                "Artifact retention scheduler daemon supervisor result status "
+                "is invalid."
+            ),
+        )
+    return status
+
+
+def _ensure_daemon_supervisor_command_enablement(
+    *,
+    action: str,
+    runtime_config: Mapping[str, Any],
+    error_code: str,
+) -> None:
+    if runtime_config["enablement"]["profile"] != "test":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command profile "
+                "must be test."
+            ),
+        )
+    if action == "start_daemon" and (
+        runtime_config["enablement"]["enabled"] is not True
+        or runtime_config["enablement"]["explicit_opt_in"] is not True
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command start "
+                "requires enabled runtime and explicit opt-in."
+            ),
+        )
+
+
+def _validate_daemon_supervisor_command_payload(value: Any) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_supervisor_command_invalid"
+    if not isinstance(value, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command command "
+                "is invalid."
+            ),
+        )
+    command = dict(value)
+    if set(command) != {
+        "action",
+        "entrypoint",
+        "profile",
+        "enabled",
+        "explicit_opt_in",
+        "checked_at",
+        "max_cycles",
+        "run_worker",
+        "output_format",
+        "supervisor_mode",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command command "
+                "keys are invalid."
+            ),
+        )
+    command["action"] = _normalize_daemon_supervisor_action(command.get("action"))
+    command["entrypoint"] = _required_text(
+        command.get("entrypoint"),
+        "entrypoint",
+        error_code=error_code,
+    )
+    if command["entrypoint"] != DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command "
+                "entrypoint is invalid."
+            ),
+        )
+    command["profile"] = _required_text(
+        command.get("profile"),
+        "profile",
+        error_code=error_code,
+    ).lower()
+    command["enabled"] = _required_bool(
+        command.get("enabled"),
+        "enabled",
+        error_code=error_code,
+    )
+    command["explicit_opt_in"] = _required_bool(
+        command.get("explicit_opt_in"),
+        "explicit_opt_in",
+        error_code=error_code,
+    )
+    command["checked_at"] = _required_text(
+        command.get("checked_at"),
+        "checked_at",
+        error_code=error_code,
+    )
+    command["max_cycles"] = _bounded_positive_int(
+        command.get("max_cycles"),
+        "max_cycles",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_MAX_CYCLES,
+        error_code=error_code,
+    )
+    command["run_worker"] = _required_bool(
+        command.get("run_worker"),
+        "run_worker",
+        error_code=error_code,
+    )
+    command["output_format"] = _normalize_output_format(
+        command.get("output_format"),
+        error_code=error_code,
+    )
+    command["supervisor_mode"] = _normalize_daemon_supervisor_mode(
+        command.get("supervisor_mode")
+    )
+    return command
+
+
+def _ensure_daemon_supervisor_command_scope(
+    *,
+    scheduler_id: str,
+    command: Mapping[str, Any],
+    runtime_config: Mapping[str, Any],
+    daemon_config: Mapping[str, Any],
+    runtime_state: Mapping[str, Any],
+    error_code: str,
+) -> None:
+    if scheduler_id != runtime_config["scheduler_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command scope "
+                "is invalid."
+            ),
+        )
+    if daemon_config["scheduler_id"] != scheduler_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command daemon "
+                "scope is invalid."
+            ),
+        )
+    if runtime_state["scheduler_id"] != scheduler_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command state "
+                "scope is invalid."
+            ),
+        )
+    if command["profile"] != runtime_config["enablement"]["profile"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command profile "
+                "is invalid."
+            ),
+        )
+    if command["enabled"] != runtime_config["enablement"]["enabled"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command enabled "
+                "flag is invalid."
+            ),
+        )
+    if command["explicit_opt_in"] != runtime_config["enablement"]["explicit_opt_in"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command explicit "
+                "opt-in is invalid."
+            ),
+        )
+    if command["checked_at"] != runtime_config["checked_at"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command "
+                "checked_at is invalid."
+            ),
+        )
+    expected_lifecycle = (
+        "STARTING"
+        if command["action"] == "start_daemon"
+        and runtime_config["enablement"]["enablement_status"] == "READY"
+        else "DISABLED"
+    )
+    if runtime_state["lifecycle_status"] != expected_lifecycle:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor command runtime "
+                "state lifecycle is invalid."
+            ),
+        )
+
+
+def _daemon_supervisor_command_execution_plan(
+    *,
+    action: str,
+    runtime_config: Mapping[str, Any],
+) -> dict[str, bool]:
+    runtime_ready = runtime_config["enablement"]["enablement_status"] == "READY"
+    return {
+        "loads_runtime_config": True,
+        "validates_daemon_config": True,
+        "builds_runtime_state": True,
+        "reads_status": action == "status_probe",
+        "requests_start": action == "start_daemon",
+        "requests_stop": action == "stop_daemon",
+        "runtime_ready": runtime_ready,
+        "supervisor_adapter_required": action in {"start_daemon", "stop_daemon"},
+        "supervisor_adapter_available": False,
+        "supervisor_adapter_invoked": False,
+        "starts_process": False,
+        "stops_process": False,
+        "delegates_cli_execution": False,
+        "bounded_loop_is_finite": True,
+        "writes_database": False,
+        "enqueues_job_queue": False,
+        "runs_worker": False,
+        "physical_delete_enabled": False,
+    }
+
+
+def _daemon_supervisor_command_guardrails(*, action: str) -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "daemon_process_owner_ae": True,
+        "supervisor_owner_ae": True,
+        "default_supervisor_disabled": True,
+        "production_continuous_start_enabled": False,
+        "start_daemon_requires_supervisor_adapter": action == "start_daemon",
+        "stop_daemon_requires_supervisor_adapter": action == "stop_daemon",
+        "supervisor_adapter_required": action in {"start_daemon", "stop_daemon"},
+        "supervisor_adapter_invoked": False,
+        "execution_requires_test_profile": True,
+        "execution_requires_explicit_opt_in": action == "start_daemon",
+        "bounded_max_cycles_required": True,
+        "database_url_included": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "runtime_state_persisted": False,
+        "process_started": False,
+        "process_stopped": False,
+        "physical_delete_automation_enabled": False,
+        "secrets_redacted": True,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+    }
+
+
+def _daemon_supervisor_command_metadata(
+    *,
+    action: str,
+    runtime_config: Mapping[str, Any],
+    runtime_state: Mapping[str, Any],
+    command: Mapping[str, Any],
+    requested_by: Any,
+    reason: Any,
+) -> dict[str, Any]:
+    runtime_ready = runtime_config["enablement"]["enablement_status"] == "READY"
+    return {
+        "safe_for_ag_projection": True,
+        "metadata_only": True,
+        "requested_by": _safe_optional_actor(requested_by),
+        "reason": optional_text(reason),
+        "action": action,
+        "supervisor_mode": command["supervisor_mode"],
+        "runtime_ready": runtime_ready,
+        "runtime_block_reason": runtime_config["enablement"]["block_reason"],
+        "lifecycle_status": runtime_state["lifecycle_status"],
+        "lifecycle_reason": runtime_state["lifecycle_reason"],
+        "bounded_loop_requested": action == "start_daemon",
+        "bounded_loop_started": False,
+        "supervisor_adapter_required": action in {"start_daemon", "stop_daemon"},
+        "supervisor_adapter_invoked": False,
+        "process_started": False,
+        "process_stopped": False,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "runtime_state_persisted": False,
+    }
+
+
+def _safe_optional_actor(value: Any) -> dict[str, str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_supervisor_command_invalid",
+            detail=(
+                "Artifact retention scheduler daemon supervisor command actor "
+                "is invalid."
+            ),
+        )
+    actor_type = _required_text(
+        value.get("actor_type"),
+        "actor_type",
+        error_code="ae.artifact_retention_scheduler_daemon_supervisor_command_invalid",
+    )
+    actor_id = _required_text(
+        value.get("actor_id"),
+        "actor_id",
+        error_code="ae.artifact_retention_scheduler_daemon_supervisor_command_invalid",
+    )
+    return {"actor_type": actor_type, "actor_id": actor_id}
+
+
+def _default_daemon_supervisor_result_status(action: str) -> str:
+    if action == "start_daemon":
+        return "BLOCKED"
+    if action == "stop_daemon":
+        return "NOOP"
+    return "READY"
+
+
+def _daemon_supervisor_result_decision_reason(
+    *,
+    action: str,
+    result_status: str,
+) -> str:
+    if result_status == "FAILED":
+        return "supervisor_result_failed"
+    if action == "start_daemon":
+        return DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_START_BLOCK_REASON
+    if action == "stop_daemon":
+        return "daemon_not_running"
+    return "status_probe_metadata_only"
+
+
+def _daemon_supervisor_result_execution_plan(
+    *,
+    action: str,
+    result_status: str,
+) -> dict[str, bool]:
+    return {
+        "loads_supervisor_command": True,
+        "reads_runtime_state": True,
+        "supervisor_adapter_required": action in {"start_daemon", "stop_daemon"},
+        "supervisor_adapter_available": False,
+        "supervisor_adapter_invoked": False,
+        "start_blocked_by_missing_supervisor_adapter": (
+            action == "start_daemon" and result_status == "BLOCKED"
+        ),
+        "stop_noop_without_running_process": (
+            action == "stop_daemon" and result_status == "NOOP"
+        ),
+        "status_probe_metadata_only": action == "status_probe",
+        "starts_process": False,
+        "stops_process": False,
+        "delegates_cli_execution": False,
+        "writes_database": False,
+        "enqueues_job_queue": False,
+        "runs_worker": False,
+        "physical_delete_enabled": False,
+    }
+
+
+def _daemon_supervisor_result_guardrails(
+    *,
+    action: str,
+    result_status: str,
+) -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "daemon_process_owner_ae": True,
+        "supervisor_owner_ae": True,
+        "result_status_terminal": result_status in {"READY", "BLOCKED", "NOOP", "FAILED"},
+        "start_daemon_requires_supervisor_adapter": action == "start_daemon",
+        "stop_daemon_requires_supervisor_adapter": action == "stop_daemon",
+        "supervisor_adapter_invoked": False,
+        "process_started": False,
+        "process_stopped": False,
+        "database_url_included": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "runtime_state_persisted": False,
+        "physical_delete_automation_enabled": False,
+        "secrets_redacted": True,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+    }
+
+
+def _daemon_supervisor_result_metadata(
+    *,
+    command: Mapping[str, Any],
+    result_status: str,
+    decision_reason: str,
+    observed_at: str,
+    message: Any,
+) -> dict[str, Any]:
+    command_metadata = command["metadata"]
+    return {
+        "safe_for_ag_projection": True,
+        "metadata_only": True,
+        "action": command["command"]["action"],
+        "result_status": result_status,
+        "decision_reason": decision_reason,
+        "observed_at": observed_at,
+        "message": optional_text(message),
+        "runtime_ready": command_metadata["runtime_ready"],
+        "supervisor_mode": command_metadata["supervisor_mode"],
+        "supervisor_adapter_invoked": False,
+        "process_started": False,
+        "process_stopped": False,
+        "bounded_loop_started": False,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "runtime_state_persisted": False,
+    }
+
+
+def _daemon_supervisor_command_id(
+    *,
+    scheduler_id: str,
+    command: Mapping[str, Any],
+    runtime_state: Mapping[str, Any],
+) -> str:
+    basis = {
+        "scheduler_id": scheduler_id,
+        "command": dict(command),
+        "runtime_state_id": runtime_state["daemon_runtime_state_id"],
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            f"ae-artifact-retention-scheduler-daemon-supervisor-command:{sha256_json(basis)}",
+        )
+    )
+
+
+def _daemon_supervisor_result_id(
+    *,
+    supervisor_command: Mapping[str, Any],
+    result_status: str,
+    observed_at: str,
+) -> str:
+    basis = {
+        "scheduler_id": supervisor_command["scheduler_id"],
+        "daemon_supervisor_command_id": supervisor_command[
+            "daemon_supervisor_command_id"
+        ],
+        "result_status": result_status,
+        "observed_at": observed_at,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            f"ae-artifact-retention-scheduler-daemon-supervisor-result:{sha256_json(basis)}",
+        )
+    )
 
 
 def _daemon_process_lock_guardrails() -> dict[str, bool]:

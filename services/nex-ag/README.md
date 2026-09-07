@@ -551,6 +551,10 @@ Unified operations:
   project AE supervisor status and guarded outcomes later, but it must still
   call AE APIs only and cannot write AE daemon persistence, enqueue AE retention
   jobs, or control local daemon processes directly.
+- Slice 0562 keeps that AG boundary unchanged while AE defines the supervisor
+  command/result contracts. AG can later display `status_probe`, blocked
+  `start_daemon`, and no-op `stop_daemon` outcomes, but the contract performs
+  no process control or AE database writes.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
