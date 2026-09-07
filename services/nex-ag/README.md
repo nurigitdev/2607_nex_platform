@@ -610,6 +610,11 @@ Unified operations:
   status, event, and adapter metadata from AE APIs while redacting raw process
   snapshots, database URLs, storage paths, artifact payloads, execution
   payloads, and daemon runtime payloads.
+- Slice 0577 exposes the supervised process projection through protected AG
+  admin read-only routes under
+  `/admin/v1/operations/artifact-retention/scheduler-daemon-process-snapshots`.
+  The routes validate action/status/limit filters and keep AE as the only
+  persistence and subprocess-control owner.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

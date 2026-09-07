@@ -883,3 +883,6 @@ Artifact library management:
   responses. AE still exposes only safe metadata; raw process snapshots,
   database URLs, storage paths, artifact payloads, execution payloads, and
   daemon runtime payloads remain out of AG projections.
+- Slice 0577 wires the matching AG admin read-only routes over the same AE API
+  responses. AE remains the only owner of supervised process persistence and
+  any future subprocess-control adapter.

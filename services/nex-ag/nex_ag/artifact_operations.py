@@ -2020,6 +2020,114 @@ def register_artifact_operation_routes(
             request_trace_id=trace_id,
         )
 
+    @app.get(
+        "/admin/v1/operations/artifact-retention/"
+        "scheduler-daemon-process-snapshots",
+        response_model=None,
+    )
+    def list_artifact_retention_scheduler_daemon_process_snapshot_operations(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        scheduler_id: str | None = None,
+        action: str | None = None,
+        process_status: str | None = None,
+        limit: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        service_problem = _validate_artifact_service_filter(request, service_id)
+        if service_problem is not None:
+            return service_problem
+        filter_result = (
+            _validate_artifact_retention_daemon_supervised_process_query(
+                request,
+                scheduler_id=scheduler_id,
+                action=action,
+                process_status=process_status,
+                limit=limit,
+            )
+        )
+        if isinstance(filter_result, JSONResponse):
+            return filter_result
+
+        selected_client = (
+            configured_client or build_default_ae_artifact_operations_client()
+        )
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            collection = selected_client.list_artifact_retention_scheduler_daemon_process_snapshots(
+                scheduler_id=filter_result["scheduler_id"],
+                action=filter_result["action"],
+                process_status=filter_result["process_status"],
+                limit=filter_result["limit"],
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        except AeArtifactOperationsError as exc:
+            return _artifact_operations_problem_response(request, exc)
+
+        return build_artifact_operation_retention_daemon_supervised_process_collection_projection(
+            collection=collection,
+            source_client=selected_client,
+            request_trace_id=trace_id,
+        )
+
+    @app.get(
+        "/admin/v1/operations/artifact-retention/"
+        "scheduler-daemon-process-snapshots/{daemon_supervised_process_record_id}",
+        response_model=None,
+    )
+    def get_artifact_retention_scheduler_daemon_process_snapshot_operation_detail(
+        daemon_supervised_process_record_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        service_problem = _validate_artifact_service_filter(request, service_id)
+        if service_problem is not None:
+            return service_problem
+
+        selected_client = (
+            configured_client or build_default_ae_artifact_operations_client()
+        )
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            detail = selected_client.get_artifact_retention_scheduler_daemon_process_snapshot_detail(
+                daemon_supervised_process_record_id,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        except AeArtifactOperationsError as exc:
+            return _artifact_operations_problem_response(request, exc)
+        if detail is None:
+            return problem_response(
+                request,
+                status_code=404,
+                error_code="ag.ae_artifact_retention_daemon_process_not_found",
+                title="AE artifact retention daemon process snapshot not found",
+                detail=(
+                    "AE artifact retention scheduler daemon process snapshot "
+                    f"{daemon_supervised_process_record_id} was not found."
+                ),
+                type_uri=(
+                    "https://nex-platform.local/problems/"
+                    "ae-artifact-retention-daemon-process-not-found"
+                ),
+            )
+
+        return build_artifact_operation_retention_daemon_supervised_process_detail_projection(
+            detail=detail,
+            source_client=selected_client,
+            request_trace_id=trace_id,
+        )
+
     @app.post(
         "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
         response_model=None,
@@ -6715,6 +6823,84 @@ def _validate_artifact_retention_daemon_supervisor_query(
         "scheduler_id": _text_or_none(scheduler_id.strip() if scheduler_id else None),
         "action": normalized_action,
         "result_status": normalized_status,
+        "limit": normalized_limit,
+    }
+
+
+def _validate_artifact_retention_daemon_supervised_process_query(
+    request: Request,
+    *,
+    scheduler_id: str | None,
+    action: str | None,
+    process_status: str | None,
+    limit: str | None,
+) -> dict[str, Any] | JSONResponse:
+    normalized_action = _normalized_daemon_supervisor_action(action)
+    if (
+        _present_text(action)
+        and normalized_action
+        not in SUPPORTED_ARTIFACT_RETENTION_DAEMON_SUPERVISOR_ACTIONS
+    ):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_daemon_process_action_invalid",
+            title="Invalid artifact retention daemon process action",
+            detail=(
+                "Artifact retention daemon process action must be one of "
+                "status_probe, start_daemon, or stop_daemon."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-process-action-invalid"
+            ),
+        )
+
+    normalized_status = _normalized_daemon_supervised_process_status(
+        process_status
+    )
+    if (
+        _present_text(process_status)
+        and normalized_status
+        not in SUPPORTED_ARTIFACT_RETENTION_DAEMON_SUPERVISED_PROCESS_STATUSES
+    ):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_daemon_process_status_invalid",
+            title="Invalid artifact retention daemon process status",
+            detail=(
+                "Artifact retention daemon process_status must be one of "
+                "MISSING, START_REQUESTED, RUNNING, STOP_REQUESTED, STOPPED, "
+                "EXITED, STALE, FAILED, or BLOCKED."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-process-status-invalid"
+            ),
+        )
+
+    normalized_limit = _collection_limit(limit)
+    if normalized_limit is None:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_daemon_process_limit_invalid",
+            title="Invalid artifact retention daemon process limit",
+            detail=(
+                "Artifact retention daemon process limit must be between 1 "
+                f"and {MAX_ARTIFACT_COLLECTION_LIMIT}."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-process-limit-invalid"
+            ),
+        )
+
+    return {
+        "scheduler_id": _text_or_none(scheduler_id.strip() if scheduler_id else None),
+        "action": normalized_action,
+        "process_status": normalized_status,
         "limit": normalized_limit,
     }
 
