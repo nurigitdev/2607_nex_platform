@@ -6,6 +6,7 @@ from copy import deepcopy
 from typing import Any
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 import nex_ae_api.artifact_retention_scheduler_daemon as daemon_module
 from nex_ae_api.artifact_retention_scheduler import (
@@ -13,14 +14,21 @@ from nex_ae_api.artifact_retention_scheduler import (
 )
 from nex_ae_api.artifact_retention_scheduler_daemon import (
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_EXECUTION_RESULT_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LIFECYCLE_EVENT_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_RECORD_SCHEMA_VERSION,
+    SqlAlchemyArtifactRetentionSchedulerDaemonRunStore,
+    build_artifact_retention_scheduler_daemon_lifecycle_events,
     build_artifact_retention_scheduler_daemon_process_lock,
+    build_artifact_retention_scheduler_daemon_run_record,
     build_artifact_retention_scheduler_daemon_run_metadata,
     build_artifact_retention_scheduler_daemon_signal_shutdown_adapter,
     execution_result_summary_line,
     main,
     run_artifact_retention_scheduler_daemon_cli_execution,
     summarize_artifact_retention_scheduler_daemon_cli_execution_result,
+    validate_artifact_retention_scheduler_daemon_lifecycle_event,
     validate_artifact_retention_scheduler_daemon_cli_execution_result,
+    validate_artifact_retention_scheduler_daemon_run_record,
 )
 from nex_ae_api.artifacts import (
     AE_ARTIFACT_RETENTION_CANDIDATE_COLLECTION_SCHEMA_VERSION,
@@ -30,6 +38,7 @@ from nex_ae_api.artifacts import (
     build_artifact_retention_scheduler_config,
 )
 from nex_runtime import InMemoryJobQueue
+from test_nex_ae_artifacts import sqlite_artifact_session_factory
 
 
 CHECKED_AT = "2026-08-31T17:30:00Z"
@@ -297,6 +306,150 @@ def test_artifact_retention_scheduler_daemon_cli_execution_marks_failed_run() ->
     assert result["metadata"]["completed_run_status"] == "FAILED"
     assert len(artifact_store.calls) == 1
     assert job_queue.list_jobs() == []
+
+
+def test_artifact_retention_scheduler_daemon_cli_execution_persists_run_store() -> None:
+    session_factory = sqlite_artifact_session_factory()
+    run_store = SqlAlchemyArtifactRetentionSchedulerDaemonRunStore(session_factory)
+    run_store.ensure_schema()
+
+    result, artifact_store, job_queue = _run_execution(
+        run_store=run_store,
+        idempotency_key="daemon-cli-execution-persisted-0557",
+    )
+    summary = summarize_artifact_retention_scheduler_daemon_cli_execution_result(
+        result
+    )
+    run_record = run_store.get_run_record_by_execution_result_id(
+        result["daemon_cli_execution_result_id"]
+    )
+    assert run_record is not None
+    lifecycle_events = run_store.list_lifecycle_events(
+        run_record["daemon_run_record_id"]
+    )
+
+    assert result["execution_plan"]["writes_run_record"] is True
+    assert result["execution_plan"]["writes_lifecycle_event"] is True
+    assert result["guardrails"]["run_record_persisted"] is True
+    assert result["guardrails"]["lifecycle_event_persisted"] is True
+    assert result["metadata"]["run_record_persisted"] is True
+    assert result["metadata"]["lifecycle_event_persisted"] is True
+    assert summary["run_record_persisted"] is True
+    assert run_record["daemon_run_record_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_RECORD_SCHEMA_VERSION
+    )
+    assert run_record["daemon_cli_execution_result_id"] == (
+        result["daemon_cli_execution_result_id"]
+    )
+    assert run_record["run_status"] == "SUCCEEDED"
+    assert run_record["result_status"] == "SUCCEEDED"
+    assert run_record["cycle_count"] == 2
+    assert run_record["job_enqueued"] is True
+    assert run_record["worker_executed"] is False
+    assert len(lifecycle_events) == 2
+    assert [item["daemon_lifecycle_event_schema_version"] for item in lifecycle_events] == [
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LIFECYCLE_EVENT_SCHEMA_VERSION,
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LIFECYCLE_EVENT_SCHEMA_VERSION,
+    ]
+    assert [item["event_type"] for item in lifecycle_events] == [
+        "RUN_STARTED",
+        "RUN_COMPLETED",
+    ]
+    assert [item["run_status"] for item in lifecycle_events] == [
+        "RUNNING",
+        "SUCCEEDED",
+    ]
+    assert lifecycle_events[0]["result_status"] is None
+    assert lifecycle_events[1]["result_status"] == "SUCCEEDED"
+    assert len(artifact_store.calls) == 2
+    assert len(job_queue.list_jobs()) == 2
+
+    second_save = run_store.record_cli_execution(result)
+    assert second_save["run_record"] == run_record
+    assert run_store.delete_run_record(run_record["daemon_run_record_id"]) == {
+        "daemon_lifecycle_events": 2,
+        "daemon_run_records": 1,
+    }
+    assert run_store.get_run_record(run_record["daemon_run_record_id"]) is None
+    assert run_store.list_lifecycle_events(run_record["daemon_run_record_id"]) == []
+
+
+def test_artifact_retention_scheduler_daemon_run_record_validation_edges() -> None:
+    session_factory = sqlite_artifact_session_factory()
+    run_store = SqlAlchemyArtifactRetentionSchedulerDaemonRunStore(session_factory)
+    run_store.ensure_schema()
+    result, _, _ = _run_execution(
+        run_store=run_store,
+        idempotency_key="daemon-cli-execution-validation-0557",
+    )
+    run_record = build_artifact_retention_scheduler_daemon_run_record(result)
+    lifecycle_events = build_artifact_retention_scheduler_daemon_lifecycle_events(
+        run_record=run_record,
+        execution_result=result,
+    )
+
+    run_record_cases: tuple[tuple[object, str], ...] = (
+        ([], "object"),
+        ({**run_record, "daemon_run_record_schema_version": "wrong"}, "schema"),
+        ({**run_record, "service_id": "nex-ag"}, "service"),
+        ({**run_record, "cycle_count": 3}, "cycle count"),
+        ({**run_record, "run_status": "STOPPED"}, "run status"),
+        ({**run_record, "result_status": "UNKNOWN"}, "result status"),
+        ({**run_record, "summary": []}, "summary"),
+        ({**run_record, "metadata": []}, "metadata"),
+        ({**run_record, "execution_result_hash": "bad"}, "hash"),
+        ({**run_record, "extra": True}, "keys"),
+    )
+    for payload, detail in run_record_cases:
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_scheduler_daemon_run_record(payload)  # type: ignore[arg-type]
+        assert exc_info.value.error_code == (
+            "ae.artifact_retention_scheduler_daemon_run_record_invalid"
+        )
+        assert detail in exc_info.value.detail
+
+    started_event = lifecycle_events[0]
+    completed_event = lifecycle_events[1]
+    event_cases: tuple[tuple[object, str], ...] = (
+        ([], "object"),
+        (
+            {
+                **started_event,
+                "daemon_lifecycle_event_schema_version": "wrong",
+            },
+            "schema",
+        ),
+        ({**started_event, "service_id": "nex-ag"}, "service"),
+        ({**started_event, "event_type": "RUN_PAUSED"}, "type"),
+        ({**started_event, "result_status": "SUCCEEDED"}, "start event"),
+        ({**completed_event, "result_status": None}, "completion event"),
+        ({**completed_event, "summary": []}, "summary"),
+        ({**completed_event, "metadata": []}, "metadata"),
+        ({**completed_event, "extra": True}, "keys"),
+    )
+    for payload, detail in event_cases:
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_scheduler_daemon_lifecycle_event(payload)  # type: ignore[arg-type]
+        assert exc_info.value.error_code == (
+            "ae.artifact_retention_scheduler_daemon_lifecycle_event_invalid"
+        )
+        assert detail in exc_info.value.detail
+
+
+def test_artifact_retention_scheduler_daemon_run_store_unavailable() -> None:
+    class BrokenSessionFactory:
+        def __call__(self) -> object:
+            raise SQLAlchemyError("database offline")
+
+    store = SqlAlchemyArtifactRetentionSchedulerDaemonRunStore(
+        BrokenSessionFactory()
+    )
+
+    with pytest.raises(ArtifactHandoffError) as exc_info:
+        store.ensure_schema()
+    assert exc_info.value.error_code == (
+        "ae.artifact_retention_scheduler_daemon_run_store_unavailable"
+    )
 
 
 def test_artifact_retention_scheduler_daemon_cli_execution_validation_edges() -> None:

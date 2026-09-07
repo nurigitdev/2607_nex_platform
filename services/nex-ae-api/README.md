@@ -795,3 +795,8 @@ Artifact library management:
   calls the CLI `--execute` path with injected AE runtime dependencies, runs two
   bounded-loop cycles, reads back JobQueue, lease, heartbeat, and retention
   history rows, and cleans up all seeded test DB rows afterward.
+- Slice 0557 persists safe daemon run and lifecycle event summaries. The new AE
+  migration creates daemon run/event tables, `run_store` injection updates CLI
+  execution evidence to `run_record_persisted=true`, and the protected
+  PostgreSQL smoke now verifies one run row and two lifecycle event rows before
+  cleanup.

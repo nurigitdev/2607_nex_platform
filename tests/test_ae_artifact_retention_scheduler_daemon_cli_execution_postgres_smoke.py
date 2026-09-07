@@ -132,12 +132,12 @@ def test_ae_artifact_retention_scheduler_daemon_cli_execution_passes_sqlite_harn
         "bounded_loop_started": True,
         "job_enqueued": True,
         "worker_executed": True,
-        "run_record_persisted": False,
+        "run_record_persisted": True,
         "summary_line": (
             "ae_scheduler_daemon_cli_execution=pass "
             f"scheduler_id={evidence['daemon_config']['scheduler_id']} "
             "result=SUCCEEDED stop_reason=max_cycles_reached max_cycles=2 "
-            "cycles=2 job_enqueued=1 persisted=0"
+            "cycles=2 job_enqueued=1 persisted=1"
         ),
     }
     assert evidence["bounded_loop"]["result_status"] == "SUCCEEDED"
@@ -173,6 +173,24 @@ def test_ae_artifact_retention_scheduler_daemon_cli_execution_passes_sqlite_harn
         "loop_decision_status": "READY",
     }
     assert evidence["daemon_runtime"]["heartbeat_status"] == "IDLE"
+    assert evidence["run_record"] == {
+        "row_found": True,
+        "schema_version": "ae_artifact_retention_scheduler_daemon_run_record.v1",
+        "run_status": "SUCCEEDED",
+        "result_status": "SUCCEEDED",
+        "stop_reason": "max_cycles_reached",
+        "cycle_count": 2,
+        "job_enqueued": True,
+        "worker_executed": True,
+        "process_id": 5556,
+        "host_id": evidence["process"]["host_id"],
+    }
+    assert evidence["lifecycle_events"] == {
+        "row_count": 2,
+        "event_types": ["RUN_STARTED", "RUN_COMPLETED"],
+        "run_statuses": ["RUNNING", "SUCCEEDED"],
+        "cycle_counts": [0, 2],
+    }
     assert evidence["db_before"] == good_observations()
     assert evidence["db_after_worker"] == good_observations()
     assert evidence["materialized_file_count"] == {"before": 6, "after_worker": 6}
@@ -185,6 +203,8 @@ def test_ae_artifact_retention_scheduler_daemon_cli_execution_passes_sqlite_harn
         "worker_heartbeat_rows": 0,
         "daemon_heartbeat_rows": 1,
         "lease_rows": 1,
+        "daemon_lifecycle_events": 2,
+        "daemon_run_records": 1,
     }
     assert evidence["live_db"] is True
     assert smoke.summary_line(evidence).startswith(

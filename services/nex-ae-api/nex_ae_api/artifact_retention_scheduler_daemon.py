@@ -5,8 +5,12 @@ import json
 import os
 import sys
 from copy import deepcopy
+from datetime import UTC, datetime
 from typing import Any, Callable, Mapping, Sequence, TextIO
 from uuid import NAMESPACE_URL, uuid5
+
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from nex_ae_api.artifact_retention_scheduler import (
     build_artifact_retention_scheduler_daemon_config,
@@ -50,6 +54,12 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SIGNAL_SHUTDOWN_ADAPTER_SCHEMA_VERSION = 
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_EXECUTION_RESULT_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_cli_execution_result.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_RECORD_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_run_record.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LIFECYCLE_EVENT_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_lifecycle_event.v1"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
@@ -63,6 +73,12 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_PROCESS_LOCK_SCOPE = (
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_PROCESS_LOCK_STATUS = "READY_TO_ACQUIRE"
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_STATUSES = frozenset(
     {"PENDING", "RUNNING", "STOPPING", "SUCCEEDED", "FAILED"}
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RESULT_STATUSES = frozenset(
+    {"SUCCEEDED", "FAILED", "STOPPED", "SKIPPED"}
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LIFECYCLE_EVENT_TYPES = frozenset(
+    {"RUN_STARTED", "RUN_COMPLETED"}
 )
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SHUTDOWN_SIGNALS = frozenset(
     {"SIGINT", "SIGTERM"}
@@ -1364,6 +1380,7 @@ def run_artifact_retention_scheduler_daemon_cli_execution(
     owner_user_id: str,
     lease_store: Any | None = None,
     history_store: Any | None = None,
+    run_store: Any | None = None,
     scheduler_config: Mapping[str, Any] | None = None,
     profile: str = "test",
     enabled: bool = True,
@@ -1489,6 +1506,8 @@ def run_artifact_retention_scheduler_daemon_cli_execution(
         started_at=command["checked_at"],
         completed_at=bounded_loop_result["finished_at"],
     )
+    run_record_persisted = run_store is not None
+    lifecycle_event_persisted = run_store is not None
     execution_result = {
         "daemon_cli_execution_result_schema_version": (
             AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_EXECUTION_RESULT_SCHEMA_VERSION
@@ -1520,19 +1539,29 @@ def run_artifact_retention_scheduler_daemon_cli_execution(
         "execution_plan": _daemon_cli_execution_result_execution_plan(
             bounded_loop_result=bounded_loop_result,
             shutdown_signal_adapter=shutdown_signal_adapter,
+            run_record_persisted=run_record_persisted,
+            lifecycle_event_persisted=lifecycle_event_persisted,
         ),
-        "guardrails": _daemon_cli_execution_result_guardrails(),
+        "guardrails": _daemon_cli_execution_result_guardrails(
+            run_record_persisted=run_record_persisted,
+            lifecycle_event_persisted=lifecycle_event_persisted,
+        ),
         "metadata": _daemon_cli_execution_result_metadata(
             process_lock=process_lock,
             started_run_metadata=started_run_metadata,
             completed_run_metadata=completed_run_metadata,
             bounded_loop_result=bounded_loop_result,
             shutdown_signal_adapter=shutdown_signal_adapter,
+            run_record_persisted=run_record_persisted,
+            lifecycle_event_persisted=lifecycle_event_persisted,
         ),
     }
-    return validate_artifact_retention_scheduler_daemon_cli_execution_result(
+    validated_result = validate_artifact_retention_scheduler_daemon_cli_execution_result(
         execution_result
     )
+    if run_store is not None:
+        run_store.record_cli_execution(validated_result)
+    return validated_result
 
 
 def validate_artifact_retention_scheduler_daemon_cli_execution_result(
@@ -1675,9 +1704,23 @@ def validate_artifact_retention_scheduler_daemon_cli_execution_result(
         bounded_loop_result=bounded_loop_result,
         shutdown_signal_adapter=shutdown_signal_adapter,
     )
+    metadata_value = normalized.get("metadata")
+    metadata = dict(metadata_value) if isinstance(metadata_value, Mapping) else {}
+    run_record_persisted = _required_bool(
+        metadata.get("run_record_persisted"),
+        "run_record_persisted",
+        error_code=error_code,
+    )
+    lifecycle_event_persisted = _required_bool(
+        metadata.get("lifecycle_event_persisted"),
+        "lifecycle_event_persisted",
+        error_code=error_code,
+    )
     expected_execution_plan = _daemon_cli_execution_result_execution_plan(
         bounded_loop_result=bounded_loop_result,
         shutdown_signal_adapter=shutdown_signal_adapter,
+        run_record_persisted=run_record_persisted,
+        lifecycle_event_persisted=lifecycle_event_persisted,
     )
     if normalized.get("execution_plan") != expected_execution_plan:
         raise ArtifactHandoffError(
@@ -1688,7 +1731,10 @@ def validate_artifact_retention_scheduler_daemon_cli_execution_result(
                 "execution plan is invalid."
             ),
         )
-    if normalized.get("guardrails") != _daemon_cli_execution_result_guardrails():
+    if normalized.get("guardrails") != _daemon_cli_execution_result_guardrails(
+        run_record_persisted=run_record_persisted,
+        lifecycle_event_persisted=lifecycle_event_persisted,
+    ):
         raise ArtifactHandoffError(
             status_code=422,
             error_code=error_code,
@@ -1703,6 +1749,8 @@ def validate_artifact_retention_scheduler_daemon_cli_execution_result(
         completed_run_metadata=completed_run_metadata,
         bounded_loop_result=bounded_loop_result,
         shutdown_signal_adapter=shutdown_signal_adapter,
+        run_record_persisted=run_record_persisted,
+        lifecycle_event_persisted=lifecycle_event_persisted,
     )
     if normalized.get("metadata") != expected_metadata:
         raise ArtifactHandoffError(
@@ -1790,6 +1838,656 @@ def execution_result_summary_line(result: Mapping[str, Any]) -> str:
         f"job_enqueued={int(summary['job_enqueued'])} "
         f"persisted={int(summary['run_record_persisted'])}"
     )
+
+
+class SqlAlchemyArtifactRetentionSchedulerDaemonRunStore:
+    def __init__(self, session_factory: Any) -> None:
+        self._session_factory = session_factory
+
+    def ensure_schema(self) -> None:
+        try:
+            with self._session_factory() as session:
+                _ensure_daemon_run_store_schema(session)
+                session.commit()
+        except SQLAlchemyError as exc:
+            raise _daemon_run_store_unavailable() from exc
+
+    def ensure_available(self) -> None:
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    text(
+                        "SELECT 1 FROM "
+                        "ae_artifact_retention_scheduler_daemon_runs LIMIT 1"
+                    )
+                )
+        except SQLAlchemyError as exc:
+            raise _daemon_run_store_unavailable() from exc
+
+    def record_cli_execution(
+        self,
+        result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        record = build_artifact_retention_scheduler_daemon_run_record(result)
+        events = build_artifact_retention_scheduler_daemon_lifecycle_events(
+            run_record=record,
+            execution_result=result,
+        )
+        try:
+            with self._session_factory() as session:
+                _ensure_daemon_run_store_schema(session)
+                dialect_name = _daemon_store_dialect_name(session)
+                session.execute(
+                    text(_daemon_run_record_upsert_sql(dialect_name)),
+                    _daemon_run_record_params(record),
+                )
+                for event in events:
+                    session.execute(
+                        text(_daemon_lifecycle_event_upsert_sql(dialect_name)),
+                        _daemon_lifecycle_event_params(event),
+                    )
+                session.commit()
+            return {
+                "run_record": record,
+                "lifecycle_events": events,
+            }
+        except SQLAlchemyError as exc:
+            raise _daemon_run_store_unavailable() from exc
+
+    def get_run_record(self, daemon_run_record_id: str) -> dict[str, Any] | None:
+        normalized_id = _required_text(
+            daemon_run_record_id,
+            "daemon_run_record_id",
+            error_code="ae.artifact_retention_scheduler_daemon_run_record_invalid",
+        )
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _daemon_run_record_select_sql(
+                                "daemon_run_record_id = :daemon_run_record_id"
+                            )
+                        ),
+                        {"daemon_run_record_id": normalized_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+            return _daemon_run_record_from_row(row) if row is not None else None
+        except SQLAlchemyError as exc:
+            raise _daemon_run_store_unavailable() from exc
+
+    def get_run_record_by_execution_result_id(
+        self,
+        daemon_cli_execution_result_id: str,
+    ) -> dict[str, Any] | None:
+        normalized_id = _required_text(
+            daemon_cli_execution_result_id,
+            "daemon_cli_execution_result_id",
+            error_code="ae.artifact_retention_scheduler_daemon_run_record_invalid",
+        )
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _daemon_run_record_select_sql(
+                                "daemon_cli_execution_result_id = "
+                                ":daemon_cli_execution_result_id"
+                            )
+                        ),
+                        {"daemon_cli_execution_result_id": normalized_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+            return _daemon_run_record_from_row(row) if row is not None else None
+        except SQLAlchemyError as exc:
+            raise _daemon_run_store_unavailable() from exc
+
+    def list_lifecycle_events(
+        self,
+        daemon_run_record_id: str,
+    ) -> list[dict[str, Any]]:
+        normalized_id = _required_text(
+            daemon_run_record_id,
+            "daemon_run_record_id",
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_lifecycle_event_invalid"
+            ),
+        )
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            _daemon_lifecycle_event_select_sql(
+                                "daemon_run_record_id = :daemon_run_record_id"
+                            )
+                            + """
+                            ORDER BY occurred_at ASC, event_type ASC
+                            """
+                        ),
+                        {"daemon_run_record_id": normalized_id},
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [_daemon_lifecycle_event_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _daemon_run_store_unavailable() from exc
+
+    def delete_run_record(self, daemon_run_record_id: str) -> dict[str, int]:
+        normalized_id = _required_text(
+            daemon_run_record_id,
+            "daemon_run_record_id",
+            error_code="ae.artifact_retention_scheduler_daemon_run_record_invalid",
+        )
+        deleted = {"daemon_lifecycle_events": 0, "daemon_run_records": 0}
+        try:
+            with self._session_factory() as session:
+                event_result = session.execute(
+                    text(
+                        """
+                        DELETE FROM
+                            ae_artifact_retention_scheduler_daemon_lifecycle_events
+                        WHERE daemon_run_record_id = :daemon_run_record_id
+                        """
+                    ),
+                    {"daemon_run_record_id": normalized_id},
+                )
+                run_result = session.execute(
+                    text(
+                        """
+                        DELETE FROM ae_artifact_retention_scheduler_daemon_runs
+                        WHERE daemon_run_record_id = :daemon_run_record_id
+                        """
+                    ),
+                    {"daemon_run_record_id": normalized_id},
+                )
+                session.commit()
+            deleted["daemon_lifecycle_events"] = int(event_result.rowcount or 0)
+            deleted["daemon_run_records"] = int(run_result.rowcount or 0)
+            return deleted
+        except SQLAlchemyError as exc:
+            raise _daemon_run_store_unavailable() from exc
+
+
+def build_artifact_retention_scheduler_daemon_run_record(
+    result: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduler_daemon_cli_execution_result(
+        result
+    )
+    bounded_loop = validated["bounded_loop_result"]
+    process = validated["process_lock"]["process"]
+    started_lifecycle = validated["started_run_metadata"]["lifecycle"]
+    completed_lifecycle = validated["completed_run_metadata"]["lifecycle"]
+    summary = summarize_artifact_retention_scheduler_daemon_cli_execution_result(
+        validated
+    )
+    record = {
+        "daemon_run_record_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_RECORD_SCHEMA_VERSION
+        ),
+        "daemon_run_record_id": _daemon_run_record_id(validated),
+        "service_id": "nex-ae-api",
+        "scheduler_id": validated["scheduler_id"],
+        "daemon_instance_id": bounded_loop["daemon_instance_id"],
+        "daemon_cli_execution_result_id": validated[
+            "daemon_cli_execution_result_id"
+        ],
+        "daemon_cli_execute_command_id": validated[
+            "daemon_cli_execute_command_id"
+        ],
+        "daemon_process_lock_id": validated["daemon_process_lock_id"],
+        "started_daemon_run_id": validated["started_daemon_run_id"],
+        "completed_daemon_run_id": validated["completed_daemon_run_id"],
+        "process_id": process["process_id"],
+        "host_id": process["host_id"],
+        "run_status": completed_lifecycle["run_status"],
+        "result_status": validated["result_status"],
+        "stop_reason": validated["stop_reason"],
+        "max_cycles": bounded_loop["max_cycles"],
+        "cycle_count": bounded_loop["cycle_count"],
+        "worker_requested": bounded_loop["worker_requested"],
+        "job_enqueued": validated["metadata"]["job_enqueued"],
+        "worker_executed": validated["metadata"]["worker_executed"],
+        "started_at": started_lifecycle["started_at"],
+        "completed_at": completed_lifecycle["completed_at"],
+        "checked_at": validated["execute_command"]["command"]["checked_at"],
+        "summary": summary,
+        "metadata": _daemon_run_record_metadata(validated),
+        "execution_result_hash": sha256_json(dict(validated)),
+        "created_at": completed_lifecycle["completed_at"],
+    }
+    return validate_artifact_retention_scheduler_daemon_run_record(record)
+
+
+def validate_artifact_retention_scheduler_daemon_run_record(
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_run_record_invalid"
+    if not isinstance(record, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail="Artifact retention scheduler daemon run record must be an object.",
+        )
+    normalized = dict(record)
+    if set(normalized) != {
+        "daemon_run_record_schema_version",
+        "daemon_run_record_id",
+        "service_id",
+        "scheduler_id",
+        "daemon_instance_id",
+        "daemon_cli_execution_result_id",
+        "daemon_cli_execute_command_id",
+        "daemon_process_lock_id",
+        "started_daemon_run_id",
+        "completed_daemon_run_id",
+        "process_id",
+        "host_id",
+        "run_status",
+        "result_status",
+        "stop_reason",
+        "max_cycles",
+        "cycle_count",
+        "worker_requested",
+        "job_enqueued",
+        "worker_executed",
+        "started_at",
+        "completed_at",
+        "checked_at",
+        "summary",
+        "metadata",
+        "execution_result_hash",
+        "created_at",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail="Artifact retention scheduler daemon run record keys are invalid.",
+        )
+    if (
+        normalized.get("daemon_run_record_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_RECORD_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail="Artifact retention scheduler daemon run record schema is invalid.",
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail="Artifact retention scheduler daemon run record service is invalid.",
+        )
+    for field_name in (
+        "daemon_run_record_id",
+        "scheduler_id",
+        "daemon_instance_id",
+        "daemon_cli_execution_result_id",
+        "daemon_cli_execute_command_id",
+        "daemon_process_lock_id",
+        "started_daemon_run_id",
+        "completed_daemon_run_id",
+        "host_id",
+        "stop_reason",
+        "started_at",
+        "completed_at",
+        "checked_at",
+        "created_at",
+    ):
+        normalized[field_name] = _required_text(
+            normalized.get(field_name),
+            field_name,
+            error_code=error_code,
+        )
+    normalized["process_id"] = _positive_int(
+        normalized.get("process_id"),
+        "process_id",
+        error_code=error_code,
+    )
+    normalized["run_status"] = _daemon_run_status(
+        normalized.get("run_status"),
+        error_code=error_code,
+    )
+    normalized["result_status"] = _daemon_result_status(
+        normalized.get("result_status"),
+        error_code=error_code,
+    )
+    normalized["max_cycles"] = _bounded_positive_int(
+        normalized.get("max_cycles"),
+        "max_cycles",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_MAX_CYCLES,
+        error_code=error_code,
+    )
+    normalized["cycle_count"] = _non_negative_int(
+        normalized.get("cycle_count"),
+        "cycle_count",
+        error_code=error_code,
+    )
+    if normalized["cycle_count"] > normalized["max_cycles"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail="Artifact retention scheduler daemon run record cycle count is invalid.",
+        )
+    for field_name in ("worker_requested", "job_enqueued", "worker_executed"):
+        normalized[field_name] = _required_bool(
+            normalized.get(field_name),
+            field_name,
+            error_code=error_code,
+        )
+    if not isinstance(normalized.get("summary"), Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail="Artifact retention scheduler daemon run record summary is invalid.",
+        )
+    normalized["summary"] = dict(normalized["summary"])
+    if not isinstance(normalized.get("metadata"), Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail="Artifact retention scheduler daemon run record metadata is invalid.",
+        )
+    normalized["metadata"] = dict(normalized["metadata"])
+    if (
+        _required_text(
+            normalized.get("execution_result_hash"),
+            "execution_result_hash",
+            error_code=error_code,
+        )
+        != normalized["execution_result_hash"]
+        or len(normalized["execution_result_hash"]) != 64
+        or any(char not in "0123456789abcdef" for char in normalized["execution_result_hash"])
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail="Artifact retention scheduler daemon run record hash is invalid.",
+        )
+    assert_artifact_retention_payload_safe(
+        {
+            "summary": normalized["summary"],
+            "metadata": normalized["metadata"],
+        }
+    )
+    return normalized
+
+
+def build_artifact_retention_scheduler_daemon_lifecycle_events(
+    *,
+    run_record: Mapping[str, Any],
+    execution_result: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    record = validate_artifact_retention_scheduler_daemon_run_record(run_record)
+    result = validate_artifact_retention_scheduler_daemon_cli_execution_result(
+        execution_result
+    )
+    events = [
+        _daemon_lifecycle_event(
+            run_record=record,
+            execution_result=result,
+            event_type="RUN_STARTED",
+            daemon_run_metadata_id=record["started_daemon_run_id"],
+            run_status="RUNNING",
+            occurred_at=record["started_at"],
+            result_status=None,
+            stop_reason=None,
+            cycle_count=0,
+        ),
+        _daemon_lifecycle_event(
+            run_record=record,
+            execution_result=result,
+            event_type="RUN_COMPLETED",
+            daemon_run_metadata_id=record["completed_daemon_run_id"],
+            run_status=record["run_status"],
+            occurred_at=record["completed_at"],
+            result_status=record["result_status"],
+            stop_reason=record["stop_reason"],
+            cycle_count=record["cycle_count"],
+        ),
+    ]
+    return [
+        validate_artifact_retention_scheduler_daemon_lifecycle_event(event)
+        for event in events
+    ]
+
+
+def validate_artifact_retention_scheduler_daemon_lifecycle_event(
+    event: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_lifecycle_event_invalid"
+    if not isinstance(event, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon lifecycle event must be an "
+                "object."
+            ),
+        )
+    normalized = dict(event)
+    if set(normalized) != {
+        "daemon_lifecycle_event_schema_version",
+        "daemon_lifecycle_event_id",
+        "daemon_run_record_id",
+        "daemon_cli_execution_result_id",
+        "daemon_run_metadata_id",
+        "service_id",
+        "scheduler_id",
+        "daemon_instance_id",
+        "event_type",
+        "run_status",
+        "result_status",
+        "stop_reason",
+        "cycle_count",
+        "occurred_at",
+        "process_id",
+        "host_id",
+        "summary",
+        "metadata",
+        "created_at",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon lifecycle event keys are "
+                "invalid."
+            ),
+        )
+    if (
+        normalized.get("daemon_lifecycle_event_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LIFECYCLE_EVENT_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon lifecycle event schema is "
+                "invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon lifecycle event service is "
+                "invalid."
+            ),
+        )
+    for field_name in (
+        "daemon_lifecycle_event_id",
+        "daemon_run_record_id",
+        "daemon_cli_execution_result_id",
+        "daemon_run_metadata_id",
+        "scheduler_id",
+        "daemon_instance_id",
+        "event_type",
+        "run_status",
+        "occurred_at",
+        "host_id",
+        "created_at",
+    ):
+        normalized[field_name] = _required_text(
+            normalized.get(field_name),
+            field_name,
+            error_code=error_code,
+        )
+    if normalized["event_type"] not in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LIFECYCLE_EVENT_TYPES:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon lifecycle event type is "
+                "invalid."
+            ),
+        )
+    normalized["run_status"] = _daemon_run_status(
+        normalized["run_status"],
+        error_code=error_code,
+    )
+    if normalized.get("result_status") is not None:
+        normalized["result_status"] = _daemon_result_status(
+            normalized.get("result_status"),
+            error_code=error_code,
+        )
+    if normalized.get("stop_reason") is not None:
+        normalized["stop_reason"] = _required_text(
+            normalized.get("stop_reason"),
+            "stop_reason",
+            error_code=error_code,
+        )
+    normalized["cycle_count"] = _non_negative_int(
+        normalized.get("cycle_count"),
+        "cycle_count",
+        error_code=error_code,
+    )
+    normalized["process_id"] = _positive_int(
+        normalized.get("process_id"),
+        "process_id",
+        error_code=error_code,
+    )
+    if normalized["event_type"] == "RUN_STARTED":
+        if (
+            normalized["run_status"] != "RUNNING"
+            or normalized["result_status"] is not None
+            or normalized["stop_reason"] is not None
+            or normalized["cycle_count"] != 0
+        ):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon lifecycle start event "
+                    "is invalid."
+                ),
+            )
+    if normalized["event_type"] == "RUN_COMPLETED":
+        if normalized["result_status"] is None or normalized["stop_reason"] is None:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon lifecycle completion "
+                    "event is invalid."
+                ),
+            )
+    if not isinstance(normalized.get("summary"), Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon lifecycle event summary is "
+                "invalid."
+            ),
+        )
+    normalized["summary"] = dict(normalized["summary"])
+    if not isinstance(normalized.get("metadata"), Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon lifecycle event metadata is "
+                "invalid."
+            ),
+        )
+    normalized["metadata"] = dict(normalized["metadata"])
+    assert_artifact_retention_payload_safe(
+        {
+            "summary": normalized["summary"],
+            "metadata": normalized["metadata"],
+        }
+    )
+    return normalized
+
+
+def _daemon_lifecycle_event(
+    *,
+    run_record: Mapping[str, Any],
+    execution_result: Mapping[str, Any],
+    event_type: str,
+    daemon_run_metadata_id: str,
+    run_status: str,
+    occurred_at: str,
+    result_status: str | None,
+    stop_reason: str | None,
+    cycle_count: int,
+) -> dict[str, Any]:
+    event = {
+        "daemon_lifecycle_event_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LIFECYCLE_EVENT_SCHEMA_VERSION
+        ),
+        "daemon_lifecycle_event_id": _daemon_lifecycle_event_id(
+            run_record=run_record,
+            event_type=event_type,
+            daemon_run_metadata_id=daemon_run_metadata_id,
+        ),
+        "daemon_run_record_id": run_record["daemon_run_record_id"],
+        "daemon_cli_execution_result_id": run_record[
+            "daemon_cli_execution_result_id"
+        ],
+        "daemon_run_metadata_id": daemon_run_metadata_id,
+        "service_id": "nex-ae-api",
+        "scheduler_id": run_record["scheduler_id"],
+        "daemon_instance_id": run_record["daemon_instance_id"],
+        "event_type": event_type,
+        "run_status": run_status,
+        "result_status": result_status,
+        "stop_reason": stop_reason,
+        "cycle_count": cycle_count,
+        "occurred_at": occurred_at,
+        "process_id": run_record["process_id"],
+        "host_id": run_record["host_id"],
+        "summary": {
+            "scheduler_id": run_record["scheduler_id"],
+            "event_type": event_type,
+            "run_status": run_status,
+            "result_status": result_status,
+            "stop_reason": stop_reason,
+            "cycle_count": cycle_count,
+        },
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "source_execution_result_hash": sha256_json(dict(execution_result)),
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+            "runtime_state_persisted": False,
+            "physical_delete_automation_enabled": False,
+        },
+        "created_at": run_record["created_at"],
+    }
+    return event
 
 
 def summarize_artifact_retention_scheduler_daemon_cli_plan(
@@ -1937,6 +2635,7 @@ def _run_daemon_cli_execution_from_context(
         ),
         lease_store=context.get("lease_store"),
         history_store=context.get("history_store"),
+        run_store=context.get("run_store"),
         scheduler_config=context.get("scheduler_config"),
         profile=args.profile,
         enabled=args.enabled,
@@ -3056,9 +3755,21 @@ def _daemon_cli_execution_result_execution_plan(
     *,
     bounded_loop_result: Mapping[str, Any],
     shutdown_signal_adapter: Mapping[str, Any] | None,
+    run_record_persisted: bool = False,
+    lifecycle_event_persisted: bool = False,
 ) -> dict[str, bool | int]:
     bounded_plan = bounded_loop_result["execution_plan"]
     bounded_metadata = bounded_loop_result["metadata"]
+    normalized_run_record_persisted = _required_bool(
+        run_record_persisted,
+        "run_record_persisted",
+        error_code="ae.artifact_retention_scheduler_daemon_cli_execution_result_invalid",
+    )
+    normalized_lifecycle_event_persisted = _required_bool(
+        lifecycle_event_persisted,
+        "lifecycle_event_persisted",
+        error_code="ae.artifact_retention_scheduler_daemon_cli_execution_result_invalid",
+    )
     return {
         "loads_execute_command": True,
         "builds_process_lock_metadata": True,
@@ -3071,14 +3782,28 @@ def _daemon_cli_execution_result_execution_plan(
         "shutdown_signal_adapter_invoked": shutdown_signal_adapter is not None,
         "job_queue_enqueue_performed": bounded_metadata["job_enqueued"],
         "worker_execution_performed": bounded_metadata["worker_executed"],
-        "writes_run_record": False,
-        "writes_lifecycle_event": False,
+        "writes_run_record": normalized_run_record_persisted,
+        "writes_lifecycle_event": normalized_lifecycle_event_persisted,
         "runtime_state_persisted": False,
         "physical_delete_enabled": False,
     }
 
 
-def _daemon_cli_execution_result_guardrails() -> dict[str, bool]:
+def _daemon_cli_execution_result_guardrails(
+    *,
+    run_record_persisted: bool = False,
+    lifecycle_event_persisted: bool = False,
+) -> dict[str, bool]:
+    normalized_run_record_persisted = _required_bool(
+        run_record_persisted,
+        "run_record_persisted",
+        error_code="ae.artifact_retention_scheduler_daemon_cli_execution_result_invalid",
+    )
+    normalized_lifecycle_event_persisted = _required_bool(
+        lifecycle_event_persisted,
+        "lifecycle_event_persisted",
+        error_code="ae.artifact_retention_scheduler_daemon_cli_execution_result_invalid",
+    )
     return {
         "daemon_process_owner_ae": True,
         "execute_requires_test_profile": True,
@@ -3088,8 +3813,8 @@ def _daemon_cli_execution_result_guardrails() -> dict[str, bool]:
         "process_lock_required": True,
         "process_lock_acquired": False,
         "run_metadata_required": True,
-        "run_record_persisted": False,
-        "lifecycle_event_persisted": False,
+        "run_record_persisted": normalized_run_record_persisted,
+        "lifecycle_event_persisted": normalized_lifecycle_event_persisted,
         "shutdown_signal_adapter_available": True,
         "database_url_included": False,
         "storage_path_included": False,
@@ -3111,8 +3836,20 @@ def _daemon_cli_execution_result_metadata(
     completed_run_metadata: Mapping[str, Any],
     bounded_loop_result: Mapping[str, Any],
     shutdown_signal_adapter: Mapping[str, Any] | None,
+    run_record_persisted: bool = False,
+    lifecycle_event_persisted: bool = False,
 ) -> dict[str, bool | int | str]:
     bounded_metadata = bounded_loop_result["metadata"]
+    normalized_run_record_persisted = _required_bool(
+        run_record_persisted,
+        "run_record_persisted",
+        error_code="ae.artifact_retention_scheduler_daemon_cli_execution_result_invalid",
+    )
+    normalized_lifecycle_event_persisted = _required_bool(
+        lifecycle_event_persisted,
+        "lifecycle_event_persisted",
+        error_code="ae.artifact_retention_scheduler_daemon_cli_execution_result_invalid",
+    )
     return {
         "safe_for_ag_projection": True,
         "execute_mode": True,
@@ -3134,8 +3871,8 @@ def _daemon_cli_execution_result_metadata(
         "raw_artifact_payload_included": False,
         "raw_execution_payload_included": False,
         "raw_daemon_runtime_payload_included": False,
-        "run_record_persisted": False,
-        "lifecycle_event_persisted": False,
+        "run_record_persisted": normalized_run_record_persisted,
+        "lifecycle_event_persisted": normalized_lifecycle_event_persisted,
         "runtime_state_persisted": False,
     }
 
@@ -3405,6 +4142,547 @@ def _daemon_cli_execution_result_id(
             NAMESPACE_URL,
             f"ae-artifact-retention-scheduler-daemon-cli-execution:{sha256_json(basis)}",
         )
+    )
+
+
+def _ensure_daemon_run_store_schema(session: Any) -> None:
+    dialect_name = _daemon_store_dialect_name(session)
+    json_type = "JSONB" if dialect_name == "postgresql" else "TEXT"
+    session.execute(
+        text(
+            f"""
+            CREATE TABLE IF NOT EXISTS ae_artifact_retention_scheduler_daemon_runs (
+                daemon_run_record_id TEXT PRIMARY KEY,
+                daemon_run_record_schema_version TEXT NOT NULL,
+                service_id TEXT NOT NULL,
+                scheduler_id TEXT NOT NULL,
+                daemon_instance_id TEXT NOT NULL,
+                daemon_cli_execution_result_id TEXT NOT NULL UNIQUE,
+                daemon_cli_execute_command_id TEXT NOT NULL,
+                daemon_process_lock_id TEXT NOT NULL,
+                started_daemon_run_id TEXT NOT NULL,
+                completed_daemon_run_id TEXT NOT NULL,
+                process_id INTEGER NOT NULL,
+                host_id TEXT NOT NULL,
+                run_status TEXT NOT NULL,
+                result_status TEXT NOT NULL,
+                stop_reason TEXT NOT NULL,
+                max_cycles INTEGER NOT NULL,
+                cycle_count INTEGER NOT NULL,
+                worker_requested BOOLEAN NOT NULL,
+                job_enqueued BOOLEAN NOT NULL,
+                worker_executed BOOLEAN NOT NULL,
+                started_at TIMESTAMPTZ NOT NULL,
+                completed_at TIMESTAMPTZ NOT NULL,
+                checked_at TIMESTAMPTZ NOT NULL,
+                summary {json_type} NOT NULL,
+                metadata {json_type} NOT NULL,
+                execution_result_hash TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            """
+        )
+    )
+    session.execute(
+        text(
+            f"""
+            CREATE TABLE IF NOT EXISTS ae_artifact_retention_scheduler_daemon_lifecycle_events (
+                daemon_lifecycle_event_id TEXT PRIMARY KEY,
+                daemon_lifecycle_event_schema_version TEXT NOT NULL,
+                daemon_run_record_id TEXT NOT NULL,
+                daemon_cli_execution_result_id TEXT NOT NULL,
+                daemon_run_metadata_id TEXT NOT NULL,
+                service_id TEXT NOT NULL,
+                scheduler_id TEXT NOT NULL,
+                daemon_instance_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                run_status TEXT NOT NULL,
+                result_status TEXT,
+                stop_reason TEXT,
+                cycle_count INTEGER NOT NULL,
+                occurred_at TIMESTAMPTZ NOT NULL,
+                process_id INTEGER NOT NULL,
+                host_id TEXT NOT NULL,
+                summary {json_type} NOT NULL,
+                metadata {json_type} NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            """
+        )
+    )
+    for statement in (
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_ae_artifact_retention_scheduler_daemon_runs_scheduler_completed
+        ON ae_artifact_retention_scheduler_daemon_runs
+            (scheduler_id, completed_at DESC)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_ae_artifact_retention_scheduler_daemon_runs_status_completed
+        ON ae_artifact_retention_scheduler_daemon_runs
+            (result_status, completed_at DESC)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_ae_artifact_retention_scheduler_daemon_lifecycle_events_run
+        ON ae_artifact_retention_scheduler_daemon_lifecycle_events
+            (daemon_run_record_id, occurred_at ASC)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_ae_artifact_retention_scheduler_daemon_lifecycle_events_scheduler
+        ON ae_artifact_retention_scheduler_daemon_lifecycle_events
+            (scheduler_id, occurred_at DESC)
+        """,
+    ):
+        session.execute(text(statement))
+
+
+def _daemon_run_record_upsert_sql(dialect_name: str) -> str:
+    summary_expr = _daemon_json_param_expr("summary", dialect_name)
+    metadata_expr = _daemon_json_param_expr("metadata", dialect_name)
+    return f"""
+        INSERT INTO ae_artifact_retention_scheduler_daemon_runs (
+            daemon_run_record_id,
+            daemon_run_record_schema_version,
+            service_id,
+            scheduler_id,
+            daemon_instance_id,
+            daemon_cli_execution_result_id,
+            daemon_cli_execute_command_id,
+            daemon_process_lock_id,
+            started_daemon_run_id,
+            completed_daemon_run_id,
+            process_id,
+            host_id,
+            run_status,
+            result_status,
+            stop_reason,
+            max_cycles,
+            cycle_count,
+            worker_requested,
+            job_enqueued,
+            worker_executed,
+            started_at,
+            completed_at,
+            checked_at,
+            summary,
+            metadata,
+            execution_result_hash,
+            created_at
+        )
+        VALUES (
+            :daemon_run_record_id,
+            :daemon_run_record_schema_version,
+            :service_id,
+            :scheduler_id,
+            :daemon_instance_id,
+            :daemon_cli_execution_result_id,
+            :daemon_cli_execute_command_id,
+            :daemon_process_lock_id,
+            :started_daemon_run_id,
+            :completed_daemon_run_id,
+            :process_id,
+            :host_id,
+            :run_status,
+            :result_status,
+            :stop_reason,
+            :max_cycles,
+            :cycle_count,
+            :worker_requested,
+            :job_enqueued,
+            :worker_executed,
+            :started_at,
+            :completed_at,
+            :checked_at,
+            {summary_expr},
+            {metadata_expr},
+            :execution_result_hash,
+            :created_at
+        )
+        ON CONFLICT (daemon_run_record_id) DO UPDATE SET
+            run_status = excluded.run_status,
+            result_status = excluded.result_status,
+            stop_reason = excluded.stop_reason,
+            max_cycles = excluded.max_cycles,
+            cycle_count = excluded.cycle_count,
+            worker_requested = excluded.worker_requested,
+            job_enqueued = excluded.job_enqueued,
+            worker_executed = excluded.worker_executed,
+            completed_at = excluded.completed_at,
+            summary = excluded.summary,
+            metadata = excluded.metadata,
+            execution_result_hash = excluded.execution_result_hash,
+            created_at = excluded.created_at
+    """
+
+
+def _daemon_lifecycle_event_upsert_sql(dialect_name: str) -> str:
+    summary_expr = _daemon_json_param_expr("summary", dialect_name)
+    metadata_expr = _daemon_json_param_expr("metadata", dialect_name)
+    return f"""
+        INSERT INTO ae_artifact_retention_scheduler_daemon_lifecycle_events (
+            daemon_lifecycle_event_id,
+            daemon_lifecycle_event_schema_version,
+            daemon_run_record_id,
+            daemon_cli_execution_result_id,
+            daemon_run_metadata_id,
+            service_id,
+            scheduler_id,
+            daemon_instance_id,
+            event_type,
+            run_status,
+            result_status,
+            stop_reason,
+            cycle_count,
+            occurred_at,
+            process_id,
+            host_id,
+            summary,
+            metadata,
+            created_at
+        )
+        VALUES (
+            :daemon_lifecycle_event_id,
+            :daemon_lifecycle_event_schema_version,
+            :daemon_run_record_id,
+            :daemon_cli_execution_result_id,
+            :daemon_run_metadata_id,
+            :service_id,
+            :scheduler_id,
+            :daemon_instance_id,
+            :event_type,
+            :run_status,
+            :result_status,
+            :stop_reason,
+            :cycle_count,
+            :occurred_at,
+            :process_id,
+            :host_id,
+            {summary_expr},
+            {metadata_expr},
+            :created_at
+        )
+        ON CONFLICT (daemon_lifecycle_event_id) DO UPDATE SET
+            run_status = excluded.run_status,
+            result_status = excluded.result_status,
+            stop_reason = excluded.stop_reason,
+            cycle_count = excluded.cycle_count,
+            occurred_at = excluded.occurred_at,
+            summary = excluded.summary,
+            metadata = excluded.metadata,
+            created_at = excluded.created_at
+    """
+
+
+def _daemon_run_record_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            daemon_run_record_id,
+            daemon_run_record_schema_version,
+            service_id,
+            scheduler_id,
+            daemon_instance_id,
+            daemon_cli_execution_result_id,
+            daemon_cli_execute_command_id,
+            daemon_process_lock_id,
+            started_daemon_run_id,
+            completed_daemon_run_id,
+            process_id,
+            host_id,
+            run_status,
+            result_status,
+            stop_reason,
+            max_cycles,
+            cycle_count,
+            worker_requested,
+            job_enqueued,
+            worker_executed,
+            started_at,
+            completed_at,
+            checked_at,
+            summary,
+            metadata,
+            execution_result_hash,
+            created_at
+        FROM ae_artifact_retention_scheduler_daemon_runs
+        WHERE {where_clause}
+    """
+
+
+def _daemon_lifecycle_event_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            daemon_lifecycle_event_id,
+            daemon_lifecycle_event_schema_version,
+            daemon_run_record_id,
+            daemon_cli_execution_result_id,
+            daemon_run_metadata_id,
+            service_id,
+            scheduler_id,
+            daemon_instance_id,
+            event_type,
+            run_status,
+            result_status,
+            stop_reason,
+            cycle_count,
+            occurred_at,
+            process_id,
+            host_id,
+            summary,
+            metadata,
+            created_at
+        FROM ae_artifact_retention_scheduler_daemon_lifecycle_events
+        WHERE {where_clause}
+    """
+
+
+def _daemon_run_record_params(record: Mapping[str, Any]) -> dict[str, Any]:
+    params = validate_artifact_retention_scheduler_daemon_run_record(record)
+    params["summary"] = json.dumps(params["summary"])
+    params["metadata"] = json.dumps(params["metadata"])
+    return params
+
+
+def _daemon_lifecycle_event_params(event: Mapping[str, Any]) -> dict[str, Any]:
+    params = validate_artifact_retention_scheduler_daemon_lifecycle_event(event)
+    params["summary"] = json.dumps(params["summary"])
+    params["metadata"] = json.dumps(params["metadata"])
+    return params
+
+
+def _daemon_run_record_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return validate_artifact_retention_scheduler_daemon_run_record(
+        {
+            "daemon_run_record_id": data["daemon_run_record_id"],
+            "daemon_run_record_schema_version": data[
+                "daemon_run_record_schema_version"
+            ],
+            "service_id": data["service_id"],
+            "scheduler_id": data["scheduler_id"],
+            "daemon_instance_id": data["daemon_instance_id"],
+            "daemon_cli_execution_result_id": data[
+                "daemon_cli_execution_result_id"
+            ],
+            "daemon_cli_execute_command_id": data[
+                "daemon_cli_execute_command_id"
+            ],
+            "daemon_process_lock_id": data["daemon_process_lock_id"],
+            "started_daemon_run_id": data["started_daemon_run_id"],
+            "completed_daemon_run_id": data["completed_daemon_run_id"],
+            "process_id": data["process_id"],
+            "host_id": data["host_id"],
+            "run_status": data["run_status"],
+            "result_status": data["result_status"],
+            "stop_reason": data["stop_reason"],
+            "max_cycles": data["max_cycles"],
+            "cycle_count": data["cycle_count"],
+            "worker_requested": bool(data["worker_requested"]),
+            "job_enqueued": bool(data["job_enqueued"]),
+            "worker_executed": bool(data["worker_executed"]),
+            "started_at": _daemon_datetime_value(data["started_at"]),
+            "completed_at": _daemon_datetime_value(data["completed_at"]),
+            "checked_at": _daemon_datetime_value(data["checked_at"]),
+            "summary": _daemon_json_value(data["summary"], {}),
+            "metadata": _daemon_json_value(data["metadata"], {}),
+            "execution_result_hash": data["execution_result_hash"],
+            "created_at": _daemon_datetime_value(data["created_at"]),
+        }
+    )
+
+
+def _daemon_lifecycle_event_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return validate_artifact_retention_scheduler_daemon_lifecycle_event(
+        {
+            "daemon_lifecycle_event_id": data["daemon_lifecycle_event_id"],
+            "daemon_lifecycle_event_schema_version": data[
+                "daemon_lifecycle_event_schema_version"
+            ],
+            "daemon_run_record_id": data["daemon_run_record_id"],
+            "daemon_cli_execution_result_id": data[
+                "daemon_cli_execution_result_id"
+            ],
+            "daemon_run_metadata_id": data["daemon_run_metadata_id"],
+            "service_id": data["service_id"],
+            "scheduler_id": data["scheduler_id"],
+            "daemon_instance_id": data["daemon_instance_id"],
+            "event_type": data["event_type"],
+            "run_status": data["run_status"],
+            "result_status": data["result_status"],
+            "stop_reason": data["stop_reason"],
+            "cycle_count": data["cycle_count"],
+            "occurred_at": _daemon_datetime_value(data["occurred_at"]),
+            "process_id": data["process_id"],
+            "host_id": data["host_id"],
+            "summary": _daemon_json_value(data["summary"], {}),
+            "metadata": _daemon_json_value(data["metadata"], {}),
+            "created_at": _daemon_datetime_value(data["created_at"]),
+        }
+    )
+
+
+def _daemon_run_record_metadata(result: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "safe_for_ag_projection": True,
+        "source_execution_result_hash": sha256_json(dict(result)),
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "process_lock_acquired": result["process_lock"]["guardrails"][
+            "process_lock_acquired"
+        ],
+        "run_record_persisted": True,
+        "lifecycle_event_persisted": True,
+        "runtime_state_persisted": False,
+        "physical_delete_automation_enabled": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+    }
+
+
+def _daemon_run_record_id(result: Mapping[str, Any]) -> str:
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            (
+                "ae-artifact-retention-scheduler-daemon-run-record:"
+                f"{result['daemon_cli_execution_result_id']}"
+            ),
+        )
+    )
+
+
+def _daemon_lifecycle_event_id(
+    *,
+    run_record: Mapping[str, Any],
+    event_type: str,
+    daemon_run_metadata_id: str,
+) -> str:
+    basis = {
+        "daemon_run_record_id": run_record["daemon_run_record_id"],
+        "event_type": event_type,
+        "daemon_run_metadata_id": daemon_run_metadata_id,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            (
+                "ae-artifact-retention-scheduler-daemon-lifecycle-event:"
+                f"{sha256_json(basis)}"
+            ),
+        )
+    )
+
+
+def _daemon_run_status(
+    value: Any,
+    *,
+    error_code: str,
+) -> str:
+    status = _required_text(value, "run_status", error_code=error_code)
+    if status not in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_STATUSES:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail="Artifact retention scheduler daemon run status is invalid.",
+        )
+    return status
+
+
+def _daemon_result_status(
+    value: Any,
+    *,
+    error_code: str,
+) -> str:
+    status = _required_text(value, "result_status", error_code=error_code)
+    if status not in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RESULT_STATUSES:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail="Artifact retention scheduler daemon result status is invalid.",
+        )
+    return status
+
+
+def _non_negative_int(
+    value: Any,
+    field_name: str,
+    *,
+    error_code: str,
+) -> int:
+    if isinstance(value, bool):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI "
+                f"{field_name} must be a non-negative integer."
+            ),
+        )
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI "
+                f"{field_name} must be a non-negative integer."
+            ),
+        ) from exc
+    if normalized < 0:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI "
+                f"{field_name} must be a non-negative integer."
+            ),
+        )
+    return normalized
+
+
+def _daemon_store_dialect_name(session: Any) -> str:
+    bind = getattr(session, "bind", None)
+    dialect = getattr(bind, "dialect", None)
+    name = getattr(dialect, "name", "")
+    return str(name)
+
+
+def _daemon_json_param_expr(field_name: str, dialect_name: str) -> str:
+    if dialect_name == "postgresql":
+        return f"CAST(:{field_name} AS jsonb)"
+    return f":{field_name}"
+
+
+def _daemon_json_value(value: Any, default: Any) -> Any:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
+
+
+def _daemon_datetime_value(value: Any) -> str:
+    if isinstance(value, datetime):
+        aware = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+        return aware.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    if hasattr(value, "isoformat"):
+        return value.isoformat().replace("+00:00", "Z")
+    return str(value)
+
+
+def _daemon_run_store_unavailable() -> ArtifactHandoffError:
+    return ArtifactHandoffError(
+        status_code=503,
+        error_code="ae.artifact_retention_scheduler_daemon_run_store_unavailable",
+        detail="AE artifact retention scheduler daemon run store is unavailable.",
+        retryable=True,
     )
 
 

@@ -531,6 +531,9 @@ Unified operations:
   PostgreSQL smoke emits only redacted CLI execution metadata for future AG
   projection; AG still cannot trigger the smoke, receive database URLs, acquire
   daemon process locks, or write AE lifecycle state.
+- Slice 0557 gives AG a future read-model target without adding write authority:
+  AE persists redacted daemon run/event summaries in its own database, while AG
+  may later project those rows only through AE-owned service APIs.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -43,6 +43,7 @@ from nex_ae_api.artifact_retention_scheduler import (  # noqa: E402
 )
 from nex_ae_api.artifact_retention_scheduler_daemon import (  # noqa: E402
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_EXECUTION_RESULT_SCHEMA_VERSION,
+    SqlAlchemyArtifactRetentionSchedulerDaemonRunStore,
     execution_result_summary_line,
     main as daemon_cli_main,
     summarize_artifact_retention_scheduler_daemon_cli_execution_result,
@@ -175,6 +176,10 @@ def _execute_ae_artifact_retention_scheduler_daemon_cli_execution_smoke(
         once_pg._ensure_sqlite_scheduler_lease_table(engine)
         job_queue = SqlAlchemyJobQueue(session_factory)
         lease_store = SqlAlchemyArtifactRetentionSchedulerLeaseStore(session_factory)
+        run_store = SqlAlchemyArtifactRetentionSchedulerDaemonRunStore(
+            session_factory
+        )
+        run_store.ensure_schema()
         heartbeat_store = SqlAlchemyWorkerHeartbeatStore(session_factory)
         history_store = SqlAlchemyArtifactRetentionExecutionHistoryStore(
             session_factory
@@ -300,6 +305,7 @@ def _execute_ae_artifact_retention_scheduler_daemon_cli_execution_smoke(
                         "job_queue": job_queue,
                         "lease_store": lease_store,
                         "history_store": history_store,
+                        "run_store": run_store,
                         "scheduler_config": scheduler_config,
                         "tenant_id": tenant_id,
                         "workspace_id": workspace_id,
@@ -350,6 +356,16 @@ def _execute_ae_artifact_retention_scheduler_daemon_cli_execution_smoke(
                     owner_user_id=owner_user_id,
                     limit=10,
                 )
+                run_record = run_store.get_run_record_by_execution_result_id(
+                    cli_result["daemon_cli_execution_result_id"]
+                )
+                lifecycle_events = (
+                    run_store.list_lifecycle_events(
+                        run_record["daemon_run_record_id"]
+                    )
+                    if run_record is not None
+                    else []
+                )
                 daemon_heartbeat = heartbeat_store.get_heartbeat(
                     SERVICE_ID,
                     daemon_worker_id,
@@ -394,6 +410,8 @@ def _execute_ae_artifact_retention_scheduler_daemon_cli_execution_smoke(
                     after=after,
                     materialized_before=materialized_before,
                     materialized_after=materialized_after,
+                    run_record=run_record,
+                    lifecycle_events=lifecycle_events,
                     process_id=process_id,
                     host_id=host_id,
                 )
@@ -421,6 +439,11 @@ def _execute_ae_artifact_retention_scheduler_daemon_cli_execution_smoke(
                     lease_owner_id=(
                         DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ONE_CYCLE_LEASE_OWNER_ID
                     ),
+                )
+                cleanup_run = (
+                    run_store.delete_run_record(run_record["daemon_run_record_id"])
+                    if run_record is not None
+                    else {"daemon_lifecycle_events": 0, "daemon_run_records": 0}
                 )
                 cleanup = collection_pg._cleanup_smoke_rows(
                     engine,
@@ -456,6 +479,10 @@ def _execute_ae_artifact_retention_scheduler_daemon_cli_execution_smoke(
                         "process_id": process_id,
                         "host_id": host_id,
                     },
+                    "run_record": _daemon_run_record_evidence(run_record),
+                    "lifecycle_events": _daemon_lifecycle_event_evidence(
+                        lifecycle_events
+                    ),
                     "lease": lease_observation,
                     "jobs": job_observations,
                     "daemon_heartbeat": bounded_pg._daemon_heartbeat_evidence(
@@ -484,6 +511,7 @@ def _execute_ae_artifact_retention_scheduler_daemon_cli_execution_smoke(
                         "history_rows": cleanup_history,
                         **cleanup_jobs,
                         "lease_rows": cleanup_lease,
+                        **cleanup_run,
                     },
                     "live_db": True,
                 }
@@ -540,7 +568,9 @@ def _cli_execution_checks(
     after: Mapping[str, int],
     materialized_before: int,
     materialized_after: int,
-    process_id: str,
+    run_record: Mapping[str, Any] | None,
+    lifecycle_events: list[dict[str, Any]],
+    process_id: int,
     host_id: str,
 ) -> dict[str, bool]:
     checks = bounded_pg._bounded_loop_checks(
@@ -584,6 +614,9 @@ def _cli_execution_checks(
             "lifecycle"
         )
     )
+    run_record_value = once_pg._mapping_value(run_record)
+    lifecycle_event_types = [item.get("event_type") for item in lifecycle_events]
+    lifecycle_run_statuses = [item.get("run_status") for item in lifecycle_events]
     checks.update(
         {
             "cli_main_exit_zero": cli_exit_code == 0,
@@ -615,14 +648,14 @@ def _cli_execution_checks(
             and execution_plan.get("cycles_executed") == 2
             and execution_plan.get("job_queue_enqueue_performed") is True
             and execution_plan.get("worker_execution_performed") is True
-            and execution_plan.get("writes_run_record") is False
-            and execution_plan.get("writes_lifecycle_event") is False,
+            and execution_plan.get("writes_run_record") is True
+            and execution_plan.get("writes_lifecycle_event") is True,
             "cli_execution_guardrails": guardrails.get("bounded_loop_is_finite")
             is True
             and guardrails.get("process_lock_required") is True
             and guardrails.get("process_lock_acquired") is False
-            and guardrails.get("run_record_persisted") is False
-            and guardrails.get("lifecycle_event_persisted") is False
+            and guardrails.get("run_record_persisted") is True
+            and guardrails.get("lifecycle_event_persisted") is True
             and guardrails.get("database_url_included") is False
             and guardrails.get("storage_path_included") is False
             and guardrails.get("physical_delete_automation_enabled") is False,
@@ -636,17 +669,38 @@ def _cli_execution_checks(
             and metadata.get("completed_run_status") == "SUCCEEDED"
             and metadata.get("process_id") == process_id
             and metadata.get("host_id") == host_id
-            and metadata.get("run_record_persisted") is False
-            and metadata.get("lifecycle_event_persisted") is False,
+            and metadata.get("run_record_persisted") is True
+            and metadata.get("lifecycle_event_persisted") is True,
             "cli_summary_matches_db_effects": cli_summary.get("cycle_count") == 2
             and cli_summary.get("job_enqueued") is True
             and cli_summary.get("worker_executed") is True
-            and cli_summary.get("run_record_persisted") is False
+            and cli_summary.get("run_record_persisted") is True
             and job_observations.get("row_count") == 2
             and len(history_rows) == 2,
+            "daemon_run_record_persisted": run_record is not None
+            and run_record_value.get("daemon_cli_execution_result_id")
+            == cli_result.get("daemon_cli_execution_result_id")
+            and run_record_value.get("scheduler_id")
+            == scheduler_config.get("scheduler_id")
+            and run_record_value.get("run_status") == "SUCCEEDED"
+            and run_record_value.get("result_status") == "SUCCEEDED"
+            and run_record_value.get("cycle_count") == 2
+            and run_record_value.get("job_enqueued") is True
+            and run_record_value.get("worker_executed") is True
+            and run_record_value.get("process_id") == process_id
+            and run_record_value.get("host_id") == host_id,
+            "daemon_lifecycle_events_persisted": len(lifecycle_events) == 2
+            and lifecycle_event_types == ["RUN_STARTED", "RUN_COMPLETED"]
+            and lifecycle_run_statuses == ["RUNNING", "SUCCEEDED"]
+            and lifecycle_events[0].get("cycle_count") == 0
+            and lifecycle_events[1].get("cycle_count") == 2
+            and lifecycle_events[1].get("result_status") == "SUCCEEDED"
+            and lifecycle_events[1].get("stop_reason") == "max_cycles_reached",
             "metadata_only_cli_execution_evidence": once_pg._metadata_only(
                 cli_result,
                 cli_summary,
+                run_record_value,
+                lifecycle_events,
                 forbidden_fragments=[
                     database_url,
                     database_env,
@@ -679,6 +733,36 @@ def _cli_execution_evidence(cli_result: Mapping[str, Any]) -> dict[str, Any]:
         "worker_executed": summary["worker_executed"],
         "run_record_persisted": summary["run_record_persisted"],
         "summary_line": execution_result_summary_line(cli_result),
+    }
+
+
+def _daemon_run_record_evidence(
+    run_record: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    if not isinstance(run_record, Mapping):
+        return {"row_found": False}
+    return {
+        "row_found": True,
+        "schema_version": run_record["daemon_run_record_schema_version"],
+        "run_status": run_record["run_status"],
+        "result_status": run_record["result_status"],
+        "stop_reason": run_record["stop_reason"],
+        "cycle_count": run_record["cycle_count"],
+        "job_enqueued": run_record["job_enqueued"],
+        "worker_executed": run_record["worker_executed"],
+        "process_id": run_record["process_id"],
+        "host_id": run_record["host_id"],
+    }
+
+
+def _daemon_lifecycle_event_evidence(
+    lifecycle_events: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "row_count": len(lifecycle_events),
+        "event_types": [item["event_type"] for item in lifecycle_events],
+        "run_statuses": [item["run_status"] for item in lifecycle_events],
+        "cycle_counts": [item["cycle_count"] for item in lifecycle_events],
     }
 
 
@@ -724,6 +808,8 @@ def summary_line(evidence: dict[str, Any]) -> str:
             f"cycles={evidence['cli_execution']['cycle_count']} "
             f"lease={evidence['lease']['lease_status']} "
             f"jobs={evidence['jobs']['row_count']} "
+            f"run_record={int(evidence['run_record']['row_found'])} "
+            f"events={evidence['lifecycle_events']['row_count']} "
             f"daemon_heartbeat={evidence['daemon_heartbeat']['stored']['status']} "
             f"history_rows={evidence['history']['row_count']} "
             f"live_db={str(evidence['live_db']).lower()} "
