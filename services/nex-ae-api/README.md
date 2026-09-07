@@ -770,3 +770,8 @@ Artifact library management:
   `max_cycles`, process lock/pid/run metadata, graceful shutdown handling,
   PostgreSQL smoke evidence, and physical delete automation disabled by
   default.
+- Slice 0552 adds the schema-bound CLI execute-mode command envelope while
+  preserving the default plan-only CLI behavior. Execute mode is test-profile
+  explicit-opt-in only, finite bounded-loop only, and still redacts database
+  URLs, storage paths, raw payloads, and secrets until execution wiring is
+  proven by later slices.

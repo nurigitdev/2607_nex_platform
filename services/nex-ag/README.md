@@ -511,6 +511,10 @@ Unified operations:
   the AG side. AG may observe protected bounded-loop execution evidence through
   AE APIs, but it still cannot start the process directly, write AE
   persistence, enqueue AE jobs, or receive unredacted daemon/runtime payloads.
+- Slice 0552 keeps that AG boundary unchanged while AE defines its execute-mode
+  CLI command envelope. AG may later project safe command metadata, but
+  execution authority, database URLs, process locking, JobQueue admission, and
+  physical purge policy remain AE-owned.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
