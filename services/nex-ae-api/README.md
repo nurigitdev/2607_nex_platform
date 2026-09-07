@@ -850,3 +850,6 @@ Artifact library management:
   supervisor result/event evidence through AE, reads it through AG admin
   routes, and still leaves process control, JobQueue admission, and physical
   deletion disabled.
+- Slice 0570 closes S57 with a quality-gate checkpoint over the AE supervisor
+  boundary, fake/dry-run adapter, AE-owned persistence/API, protected
+  PostgreSQL smoke evidence, and AG read-only projection.

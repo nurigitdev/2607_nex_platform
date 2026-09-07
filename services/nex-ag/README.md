@@ -583,6 +583,10 @@ Unified operations:
   protected smoke writes AE supervisor result/event evidence through AE APIs,
   reads it back through AG admin projection routes, and verifies cleanup while
   keeping `start_daemon` fake/dry-run and blocked.
+- Slice 0570 closes S57 with AG still read-only over AE supervisor evidence.
+  The closure verifies the protected PostgreSQL smoke hooks and confirms AG has
+  no direct AE daemon process control, JobQueue admission, or persistence write
+  authority.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
