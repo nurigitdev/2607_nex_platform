@@ -6,7 +6,7 @@ import os
 import sys
 from copy import deepcopy
 from datetime import UTC, datetime
-from typing import Any, Callable, Mapping, Sequence, TextIO
+from typing import Any, Callable, Mapping, Protocol, Sequence, TextIO
 from uuid import NAMESPACE_URL, uuid5
 
 from sqlalchemy import text
@@ -103,9 +103,23 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_RESULT_STATUSES = frozenset(
     {"READY", "BLOCKED", "NOOP", "FAILED"}
 )
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_MODE = "fake_dry_run"
+DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_ADAPTER_NAME = (
+    "fake_dry_run_supervisor"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_START_BLOCK_REASON = (
     "supervisor_adapter_not_configured"
 )
+
+
+class ArtifactRetentionSchedulerDaemonSupervisorAdapter(Protocol):
+    adapter_name: str
+
+    def execute_supervisor_command(
+        self,
+        supervisor_command: Mapping[str, Any],
+        *,
+        observed_at: str | None = None,
+    ) -> dict[str, Any]: ...
 
 
 def build_artifact_retention_scheduler_daemon_cli_plan(
@@ -992,9 +1006,21 @@ def build_artifact_retention_scheduler_daemon_supervisor_result(
     result_status: str | None = None,
     observed_at: str | None = None,
     message: str | None = None,
+    supervisor_adapter_available: bool = False,
+    supervisor_adapter_invoked: bool = False,
+    adapter_name: str | None = None,
+    process_started: bool = False,
+    process_stopped: bool = False,
 ) -> dict[str, Any]:
     command = validate_artifact_retention_scheduler_daemon_supervisor_command(
         supervisor_command
+    )
+    adapter_state = _daemon_supervisor_adapter_state(
+        supervisor_adapter_available=supervisor_adapter_available,
+        supervisor_adapter_invoked=supervisor_adapter_invoked,
+        adapter_name=adapter_name,
+        process_started=process_started,
+        process_stopped=process_stopped,
     )
     normalized_observed_at = _required_text(
         observed_at or _daemon_datetime_value(datetime.now(UTC)),
@@ -1008,6 +1034,7 @@ def build_artifact_retention_scheduler_daemon_supervisor_result(
     decision_reason = _daemon_supervisor_result_decision_reason(
         action=command["command"]["action"],
         result_status=normalized_status,
+        supervisor_adapter_invoked=adapter_state["supervisor_adapter_invoked"],
     )
     result = {
         "daemon_supervisor_result_schema_version": (
@@ -1030,10 +1057,12 @@ def build_artifact_retention_scheduler_daemon_supervisor_result(
         "execution_plan": _daemon_supervisor_result_execution_plan(
             action=command["command"]["action"],
             result_status=normalized_status,
+            adapter_state=adapter_state,
         ),
         "guardrails": _daemon_supervisor_result_guardrails(
             action=command["command"]["action"],
             result_status=normalized_status,
+            adapter_state=adapter_state,
         ),
         "metadata": _daemon_supervisor_result_metadata(
             command=command,
@@ -1041,6 +1070,7 @@ def build_artifact_retention_scheduler_daemon_supervisor_result(
             decision_reason=decision_reason,
             observed_at=normalized_observed_at,
             message=message,
+            adapter_state=adapter_state,
         ),
     }
     return validate_artifact_retention_scheduler_daemon_supervisor_result(result)
@@ -1150,9 +1180,11 @@ def validate_artifact_retention_scheduler_daemon_supervisor_result(
                 "state is invalid."
             ),
         )
+    adapter_state = _daemon_supervisor_adapter_state_from_result(normalized)
     expected_reason = _daemon_supervisor_result_decision_reason(
         action=action,
         result_status=result_status,
+        supervisor_adapter_invoked=adapter_state["supervisor_adapter_invoked"],
     )
     if decision_reason != expected_reason:
         raise ArtifactHandoffError(
@@ -1166,6 +1198,7 @@ def validate_artifact_retention_scheduler_daemon_supervisor_result(
     expected_plan = _daemon_supervisor_result_execution_plan(
         action=action,
         result_status=result_status,
+        adapter_state=adapter_state,
     )
     if normalized.get("execution_plan") != expected_plan:
         raise ArtifactHandoffError(
@@ -1179,6 +1212,7 @@ def validate_artifact_retention_scheduler_daemon_supervisor_result(
     expected_guardrails = _daemon_supervisor_result_guardrails(
         action=action,
         result_status=result_status,
+        adapter_state=adapter_state,
     )
     if normalized.get("guardrails") != expected_guardrails:
         raise ArtifactHandoffError(
@@ -1195,6 +1229,7 @@ def validate_artifact_retention_scheduler_daemon_supervisor_result(
         decision_reason=decision_reason,
         observed_at=observed_at,
         message=normalized.get("message"),
+        adapter_state=adapter_state,
     )
     if normalized.get("metadata") != expected_metadata:
         raise ArtifactHandoffError(
@@ -1266,6 +1301,49 @@ def supervisor_result_summary_line(supervisor_result: Mapping[str, Any]) -> str:
         f"process_started={int(summary['process_started'])} "
         f"process_stopped={int(summary['process_stopped'])}"
     )
+
+
+def run_artifact_retention_scheduler_daemon_supervisor_command(
+    *,
+    supervisor_command: Mapping[str, Any],
+    supervisor_adapter: ArtifactRetentionSchedulerDaemonSupervisorAdapter | None = None,
+    observed_at: str | None = None,
+) -> dict[str, Any]:
+    command = validate_artifact_retention_scheduler_daemon_supervisor_command(
+        supervisor_command
+    )
+    if supervisor_adapter is None:
+        return build_artifact_retention_scheduler_daemon_supervisor_result(
+            supervisor_command=command,
+            observed_at=observed_at,
+        )
+    return supervisor_adapter.execute_supervisor_command(
+        command,
+        observed_at=observed_at,
+    )
+
+
+class FakeArtifactRetentionSchedulerDaemonSupervisorAdapter:
+    adapter_name = DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_ADAPTER_NAME
+
+    def execute_supervisor_command(
+        self,
+        supervisor_command: Mapping[str, Any],
+        *,
+        observed_at: str | None = None,
+    ) -> dict[str, Any]:
+        command = validate_artifact_retention_scheduler_daemon_supervisor_command(
+            supervisor_command
+        )
+        return build_artifact_retention_scheduler_daemon_supervisor_result(
+            supervisor_command=command,
+            observed_at=observed_at,
+            supervisor_adapter_available=True,
+            supervisor_adapter_invoked=True,
+            adapter_name=self.adapter_name,
+            process_started=False,
+            process_stopped=False,
+        )
 
 
 def build_artifact_retention_scheduler_daemon_process_lock(
@@ -5488,13 +5566,144 @@ def _default_daemon_supervisor_result_status(action: str) -> str:
     return "READY"
 
 
+def _daemon_supervisor_adapter_state(
+    *,
+    supervisor_adapter_available: bool,
+    supervisor_adapter_invoked: bool,
+    adapter_name: str | None,
+    process_started: bool,
+    process_stopped: bool,
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_supervisor_result_invalid"
+    available = _required_bool(
+        supervisor_adapter_available,
+        "supervisor_adapter_available",
+        error_code=error_code,
+    )
+    invoked = _required_bool(
+        supervisor_adapter_invoked,
+        "supervisor_adapter_invoked",
+        error_code=error_code,
+    )
+    started = _required_bool(
+        process_started,
+        "process_started",
+        error_code=error_code,
+    )
+    stopped = _required_bool(
+        process_stopped,
+        "process_stopped",
+        error_code=error_code,
+    )
+    normalized_adapter_name = optional_text(adapter_name)
+    if invoked and not available:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor result adapter "
+                "availability is invalid."
+            ),
+        )
+    if available and normalized_adapter_name is None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor result adapter "
+                "name is required."
+            ),
+        )
+    if not available and normalized_adapter_name is not None:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor result adapter "
+                "name is invalid."
+            ),
+        )
+    if started or stopped:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon supervisor result process "
+                "side effect is invalid."
+            ),
+        )
+    return {
+        "supervisor_adapter_available": available,
+        "supervisor_adapter_invoked": invoked,
+        "adapter_name": normalized_adapter_name,
+        "process_started": started,
+        "process_stopped": stopped,
+    }
+
+
+def _daemon_supervisor_adapter_state_from_result(
+    result: Mapping[str, Any],
+) -> dict[str, Any]:
+    execution_plan = result.get("execution_plan")
+    guardrails = result.get("guardrails")
+    metadata = result.get("metadata")
+    if not isinstance(execution_plan, Mapping):
+        execution_plan = {}
+    if not isinstance(guardrails, Mapping):
+        guardrails = {}
+    if not isinstance(metadata, Mapping):
+        metadata = {}
+    available = execution_plan.get("supervisor_adapter_available") is True
+    invoked = execution_plan.get("supervisor_adapter_invoked") is True
+    adapter_name = metadata.get("adapter_name")
+    process_started = (
+        execution_plan.get("starts_process") is True
+        or guardrails.get("process_started") is True
+        or metadata.get("process_started") is True
+    )
+    process_stopped = (
+        execution_plan.get("stops_process") is True
+        or guardrails.get("process_stopped") is True
+        or metadata.get("process_stopped") is True
+    )
+    state = _daemon_supervisor_adapter_state(
+        supervisor_adapter_available=available,
+        supervisor_adapter_invoked=invoked,
+        adapter_name=adapter_name,
+        process_started=process_started,
+        process_stopped=process_stopped,
+    )
+    if (
+        guardrails.get("supervisor_adapter_invoked") is not invoked
+        or metadata.get("supervisor_adapter_invoked") is not invoked
+        or guardrails.get("supervisor_adapter_available") is not available
+        or metadata.get("supervisor_adapter_available") is not available
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_supervisor_result_invalid",
+            detail=(
+                "Artifact retention scheduler daemon supervisor result adapter "
+                "state is invalid."
+            ),
+        )
+    return state
+
+
 def _daemon_supervisor_result_decision_reason(
     *,
     action: str,
     result_status: str,
+    supervisor_adapter_invoked: bool = False,
 ) -> str:
     if result_status == "FAILED":
         return "supervisor_result_failed"
+    if supervisor_adapter_invoked and action == "status_probe":
+        return "fake_supervisor_status_probe"
+    if supervisor_adapter_invoked and action == "start_daemon":
+        return "fake_supervisor_dry_run_start_blocked"
+    if supervisor_adapter_invoked and action == "stop_daemon":
+        return "fake_supervisor_dry_run_stop_noop"
     if action == "start_daemon":
         return DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_START_BLOCK_REASON
     if action == "stop_daemon":
@@ -5506,22 +5715,44 @@ def _daemon_supervisor_result_execution_plan(
     *,
     action: str,
     result_status: str,
+    adapter_state: Mapping[str, Any] | None = None,
 ) -> dict[str, bool]:
+    state = adapter_state or _daemon_supervisor_adapter_state(
+        supervisor_adapter_available=False,
+        supervisor_adapter_invoked=False,
+        adapter_name=None,
+        process_started=False,
+        process_stopped=False,
+    )
     return {
         "loads_supervisor_command": True,
         "reads_runtime_state": True,
         "supervisor_adapter_required": action in {"start_daemon", "stop_daemon"},
-        "supervisor_adapter_available": False,
-        "supervisor_adapter_invoked": False,
+        "supervisor_adapter_available": state["supervisor_adapter_available"],
+        "supervisor_adapter_invoked": state["supervisor_adapter_invoked"],
         "start_blocked_by_missing_supervisor_adapter": (
-            action == "start_daemon" and result_status == "BLOCKED"
+            action == "start_daemon"
+            and result_status == "BLOCKED"
+            and state["supervisor_adapter_invoked"] is False
+        ),
+        "start_blocked_by_fake_supervisor": (
+            action == "start_daemon"
+            and result_status == "BLOCKED"
+            and state["supervisor_adapter_invoked"] is True
         ),
         "stop_noop_without_running_process": (
-            action == "stop_daemon" and result_status == "NOOP"
+            action == "stop_daemon"
+            and result_status == "NOOP"
+            and state["supervisor_adapter_invoked"] is False
+        ),
+        "stop_noop_by_fake_supervisor": (
+            action == "stop_daemon"
+            and result_status == "NOOP"
+            and state["supervisor_adapter_invoked"] is True
         ),
         "status_probe_metadata_only": action == "status_probe",
-        "starts_process": False,
-        "stops_process": False,
+        "starts_process": state["process_started"],
+        "stops_process": state["process_stopped"],
         "delegates_cli_execution": False,
         "writes_database": False,
         "enqueues_job_queue": False,
@@ -5534,17 +5765,28 @@ def _daemon_supervisor_result_guardrails(
     *,
     action: str,
     result_status: str,
+    adapter_state: Mapping[str, Any] | None = None,
 ) -> dict[str, bool]:
+    state = adapter_state or _daemon_supervisor_adapter_state(
+        supervisor_adapter_available=False,
+        supervisor_adapter_invoked=False,
+        adapter_name=None,
+        process_started=False,
+        process_stopped=False,
+    )
     return {
         "metadata_only": True,
         "daemon_process_owner_ae": True,
         "supervisor_owner_ae": True,
-        "result_status_terminal": result_status in {"READY", "BLOCKED", "NOOP", "FAILED"},
+        "result_status_terminal": result_status
+        in {"READY", "BLOCKED", "NOOP", "FAILED"},
         "start_daemon_requires_supervisor_adapter": action == "start_daemon",
         "stop_daemon_requires_supervisor_adapter": action == "stop_daemon",
-        "supervisor_adapter_invoked": False,
-        "process_started": False,
-        "process_stopped": False,
+        "supervisor_adapter_available": state["supervisor_adapter_available"],
+        "supervisor_adapter_invoked": state["supervisor_adapter_invoked"],
+        "fake_supervisor_adapter_only": state["supervisor_adapter_available"],
+        "process_started": state["process_started"],
+        "process_stopped": state["process_stopped"],
         "database_url_included": False,
         "database_write_performed": False,
         "job_queue_enqueue_performed": False,
@@ -5565,8 +5807,16 @@ def _daemon_supervisor_result_metadata(
     decision_reason: str,
     observed_at: str,
     message: Any,
+    adapter_state: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     command_metadata = command["metadata"]
+    state = adapter_state or _daemon_supervisor_adapter_state(
+        supervisor_adapter_available=False,
+        supervisor_adapter_invoked=False,
+        adapter_name=None,
+        process_started=False,
+        process_stopped=False,
+    )
     return {
         "safe_for_ag_projection": True,
         "metadata_only": True,
@@ -5577,9 +5827,11 @@ def _daemon_supervisor_result_metadata(
         "message": optional_text(message),
         "runtime_ready": command_metadata["runtime_ready"],
         "supervisor_mode": command_metadata["supervisor_mode"],
-        "supervisor_adapter_invoked": False,
-        "process_started": False,
-        "process_stopped": False,
+        "supervisor_adapter_available": state["supervisor_adapter_available"],
+        "supervisor_adapter_invoked": state["supervisor_adapter_invoked"],
+        "adapter_name": state["adapter_name"],
+        "process_started": state["process_started"],
+        "process_stopped": state["process_stopped"],
         "bounded_loop_started": False,
         "database_url_included": False,
         "storage_path_included": False,

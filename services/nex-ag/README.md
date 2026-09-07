@@ -555,6 +555,10 @@ Unified operations:
   command/result contracts. AG can later display `status_probe`, blocked
   `start_daemon`, and no-op `stop_daemon` outcomes, but the contract performs
   no process control or AE database writes.
+- Slice 0563 keeps AG read-only while AE adds the fake/dry-run supervisor
+  adapter foundation. AG may later distinguish no-adapter and fake-adapter
+  outcomes from AE evidence, but process execution remains AE-owned and still
+  side-effect free.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

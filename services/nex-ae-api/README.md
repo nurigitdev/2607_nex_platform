@@ -824,3 +824,8 @@ Artifact library management:
   schema-bound, AG-safe, and side-effect free: `start_daemon` requires test
   profile plus explicit opt-in but still returns a blocked metadata result
   until the supervisor adapter is introduced.
+- Slice 0563 adds the injectable supervisor adapter boundary and the initial
+  `FakeArtifactRetentionSchedulerDaemonSupervisorAdapter`. The fake adapter can
+  mark supervisor evidence as adapter-invoked, but it never starts/stops a
+  process, delegates CLI execution, enqueues JobQueue work, writes a database
+  row, or enables physical deletion.

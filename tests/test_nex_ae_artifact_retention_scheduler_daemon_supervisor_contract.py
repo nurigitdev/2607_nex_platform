@@ -9,9 +9,12 @@ from nex_ae_api.artifact_retention_scheduler_daemon import (
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_COMMAND_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_RESULT_SCHEMA_VERSION,
     DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT,
+    DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_ADAPTER_NAME,
     DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_MODE,
+    FakeArtifactRetentionSchedulerDaemonSupervisorAdapter,
     build_artifact_retention_scheduler_daemon_supervisor_command,
     build_artifact_retention_scheduler_daemon_supervisor_result,
+    run_artifact_retention_scheduler_daemon_supervisor_command,
     summarize_artifact_retention_scheduler_daemon_supervisor_command,
     summarize_artifact_retention_scheduler_daemon_supervisor_result,
     supervisor_command_summary_line,
@@ -411,7 +414,7 @@ def test_supervisor_result_validation_edges() -> None:
                 },
             },
             "ae.artifact_retention_scheduler_daemon_supervisor_result_invalid",
-            "execution plan",
+            "process side effect",
         ),
         (
             {
@@ -422,7 +425,7 @@ def test_supervisor_result_validation_edges() -> None:
                 },
             },
             "ae.artifact_retention_scheduler_daemon_supervisor_result_invalid",
-            "guardrails",
+            "process side effect",
         ),
         (
             {
@@ -474,6 +477,78 @@ def test_supervisor_result_supports_explicit_failed_status_without_side_effects(
     ] is False
 
 
+def test_fake_supervisor_adapter_invokes_without_process_side_effects() -> None:
+    adapter = FakeArtifactRetentionSchedulerDaemonSupervisorAdapter()
+    command = build_artifact_retention_scheduler_daemon_supervisor_command(
+        action="start_daemon",
+        enabled=True,
+        explicit_opt_in=True,
+        checked_at=CHECKED_AT,
+        max_cycles=2,
+    )
+
+    result = run_artifact_retention_scheduler_daemon_supervisor_command(
+        supervisor_command=command,
+        supervisor_adapter=adapter,
+        observed_at=OBSERVED_AT,
+    )
+    summary = summarize_artifact_retention_scheduler_daemon_supervisor_result(
+        result
+    )
+
+    assert adapter.adapter_name == (
+        DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_ADAPTER_NAME
+    )
+    assert result["result_status"] == "BLOCKED"
+    assert result["decision_reason"] == "fake_supervisor_dry_run_start_blocked"
+    assert result["execution_plan"]["supervisor_adapter_available"] is True
+    assert result["execution_plan"]["supervisor_adapter_invoked"] is True
+    assert result["execution_plan"]["start_blocked_by_fake_supervisor"] is True
+    assert result["execution_plan"]["starts_process"] is False
+    assert result["guardrails"]["fake_supervisor_adapter_only"] is True
+    assert result["metadata"]["adapter_name"] == (
+        DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_ADAPTER_NAME
+    )
+    assert summary["supervisor_adapter_invoked"] is True
+    assert summary["process_started"] is False
+    assert "adapter_invoked=1" in supervisor_result_summary_line(result)
+
+
+def test_fake_supervisor_adapter_status_and_stop_outcomes() -> None:
+    adapter = FakeArtifactRetentionSchedulerDaemonSupervisorAdapter()
+    status_command = build_artifact_retention_scheduler_daemon_supervisor_command(
+        checked_at=CHECKED_AT,
+    )
+    stop_command = build_artifact_retention_scheduler_daemon_supervisor_command(
+        action="stop_daemon",
+        checked_at=CHECKED_AT,
+    )
+
+    status_result = run_artifact_retention_scheduler_daemon_supervisor_command(
+        supervisor_command=status_command,
+        supervisor_adapter=adapter,
+        observed_at=OBSERVED_AT,
+    )
+    stop_result = run_artifact_retention_scheduler_daemon_supervisor_command(
+        supervisor_command=stop_command,
+        supervisor_adapter=adapter,
+        observed_at=OBSERVED_AT,
+    )
+    default_result = run_artifact_retention_scheduler_daemon_supervisor_command(
+        supervisor_command=status_command,
+        observed_at=OBSERVED_AT,
+    )
+
+    assert status_result["result_status"] == "READY"
+    assert status_result["decision_reason"] == "fake_supervisor_status_probe"
+    assert status_result["metadata"]["supervisor_adapter_invoked"] is True
+    assert stop_result["result_status"] == "NOOP"
+    assert stop_result["decision_reason"] == "fake_supervisor_dry_run_stop_noop"
+    assert stop_result["execution_plan"]["stop_noop_by_fake_supervisor"] is True
+    assert default_result["decision_reason"] == "status_probe_metadata_only"
+    assert default_result["metadata"]["supervisor_adapter_invoked"] is False
+
+
 def test_supervisor_command_rejects_unsafe_actor_and_builder_edges() -> None:
     with pytest.raises(ArtifactHandoffError) as actor_exc:
         build_artifact_retention_scheduler_daemon_supervisor_command(
@@ -503,6 +578,36 @@ def test_supervisor_command_rejects_unsafe_actor_and_builder_edges() -> None:
     assert result_status_exc.value.error_code == (
         "ae.artifact_retention_scheduler_daemon_supervisor_result_invalid"
     )
+
+    with pytest.raises(ArtifactHandoffError) as unavailable_invoked_exc:
+        build_artifact_retention_scheduler_daemon_supervisor_result(
+            supervisor_command=build_artifact_retention_scheduler_daemon_supervisor_command(
+                checked_at=CHECKED_AT,
+            ),
+            observed_at=OBSERVED_AT,
+            supervisor_adapter_invoked=True,
+        )
+    assert "availability" in unavailable_invoked_exc.value.detail
+
+    with pytest.raises(ArtifactHandoffError) as missing_name_exc:
+        build_artifact_retention_scheduler_daemon_supervisor_result(
+            supervisor_command=build_artifact_retention_scheduler_daemon_supervisor_command(
+                checked_at=CHECKED_AT,
+            ),
+            observed_at=OBSERVED_AT,
+            supervisor_adapter_available=True,
+        )
+    assert "adapter name is required" in missing_name_exc.value.detail
+
+    with pytest.raises(ArtifactHandoffError) as process_side_effect_exc:
+        build_artifact_retention_scheduler_daemon_supervisor_result(
+            supervisor_command=build_artifact_retention_scheduler_daemon_supervisor_command(
+                checked_at=CHECKED_AT,
+            ),
+            observed_at=OBSERVED_AT,
+            process_started=True,
+        )
+    assert "process side effect" in process_side_effect_exc.value.detail
 
 
 def test_supervisor_command_accepts_config_with_job_queue_without_using_it() -> None:
