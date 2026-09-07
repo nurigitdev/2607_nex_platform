@@ -681,6 +681,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0575`](slices/0575_ae_supervised_process_postgresql_smoke.md) | `S58-005` AE supervised process PostgreSQL smoke evidence. |
 | [`Slice 0576`](slices/0576_ag_supervised_process_projection_foundation.md) | `S58-006` AG supervised process read-only projection foundation. |
 | [`Slice 0577`](slices/0577_ag_supervised_process_route_wiring.md) | `S58-007` AG supervised process read-only route wiring. |
+| [`Slice 0578`](slices/0578_ag_supervised_process_postgresql_smoke.md) | `S58-008` AG supervised process PostgreSQL smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

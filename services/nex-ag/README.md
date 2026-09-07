@@ -615,6 +615,10 @@ Unified operations:
   `/admin/v1/operations/artifact-retention/scheduler-daemon-process-snapshots`.
   The routes validate action/status/limit filters and keep AE as the only
   persistence and subprocess-control owner.
+- Slice 0578 adds protected PostgreSQL smoke evidence for that AG read model.
+  The smoke writes `MISSING` and `RUNNING` supervised process snapshots through
+  AE APIs, reads the `RUNNING` evidence through AG admin routes, verifies direct
+  `nex_ae_test` row/index/JSONB observations, and cleans up inserted rows.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -886,3 +886,7 @@ Artifact library management:
 - Slice 0577 wires the matching AG admin read-only routes over the same AE API
   responses. AE remains the only owner of supervised process persistence and
   any future subprocess-control adapter.
+- Slice 0578 proves the AE-to-AG supervised process read model against the
+  actual AE test database: the protected smoke runs migrations, writes
+  `MISSING` and `RUNNING` process snapshots through AE APIs, reads them through
+  AG, verifies direct DB evidence, and removes the test rows.
