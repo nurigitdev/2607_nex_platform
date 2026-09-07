@@ -1741,12 +1741,38 @@ def register_artifact_operation_routes(
         except AeArtifactOperationsError as exc:
             return _artifact_operations_problem_response(request, exc)
 
+        daemon_process_errors: list[AeArtifactOperationsError] = []
+        scheduler_id = _text_or_none(daemon_config.get("scheduler_id"))
+        try:
+            daemon_process_snapshots = (
+                selected_client.list_artifact_retention_scheduler_daemon_process_snapshots(
+                    scheduler_id=scheduler_id,
+                    action=None,
+                    process_status=None,
+                    limit=filter_result["limit"],
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+            )
+        except AeArtifactOperationsError as exc:
+            daemon_process_errors.append(exc)
+            daemon_process_snapshots = (
+                _empty_artifact_retention_scheduler_daemon_process_snapshot_collection_payload(
+                    scheduler_id=scheduler_id,
+                    action=None,
+                    process_status=None,
+                    limit=filter_result["limit"],
+                )
+            )
+
         return build_artifact_operation_retention_automation_projection(
             plan=plan,
             scheduled_jobs=scheduled_jobs,
             history=history,
             daemon_config=daemon_config,
+            daemon_process_snapshots=daemon_process_snapshots,
             source_client=selected_client,
+            daemon_process_errors=daemon_process_errors,
             request_trace_id=trace_id,
         )
 
@@ -2549,8 +2575,10 @@ def build_artifact_operation_retention_automation_projection(
     scheduled_jobs: Mapping[str, Any],
     history: Mapping[str, Any],
     daemon_config: Mapping[str, Any] | None = None,
+    daemon_process_snapshots: Mapping[str, Any] | None = None,
     source_client: AeArtifactOperationsClient | None = None,
     source_errors: list[AeArtifactOperationsError] | None = None,
+    daemon_process_errors: list[AeArtifactOperationsError] | None = None,
     request_trace_id: str | None = None,
 ) -> dict[str, Any]:
     projected_plan = _project_retention_batch_plan(plan)
@@ -2571,12 +2599,19 @@ def build_artifact_operation_retention_automation_projection(
         for item in _list_value(history.get("items"))
         if isinstance(item, Mapping)
     ]
+    process_collection = daemon_process_snapshots or {}
+    process_items = [
+        _project_retention_scheduler_daemon_supervised_process_item(item)
+        for item in _list_value(process_collection.get("items"))
+        if isinstance(item, Mapping)
+    ]
     errors = source_errors or []
+    process_errors = daemon_process_errors or []
     projection = {
         "projection_schema_version": (
             AG_ARTIFACT_OPERATION_RETENTION_AUTOMATION_PROJECTION_SCHEMA_VERSION
         ),
-        "projection_status": "DEGRADED" if errors else "READY",
+        "projection_status": "DEGRADED" if errors or process_errors else "READY",
         "checked_at": _utc_now(),
         "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
         "operation_type": "ae_artifact_retention_automation",
@@ -2609,11 +2644,25 @@ def build_artifact_operation_retention_automation_projection(
             "summary": daemon_summary,
             "attention": daemon_attention,
         },
+        "scheduler_daemon_processes": {
+            "filter": _project_retention_scheduler_daemon_supervised_process_filter(
+                process_collection.get("filter")
+            ),
+            "count": _int_or_zero(process_collection.get("count")),
+            "limit": _int_or_zero(process_collection.get("limit")),
+            "items": process_items,
+            "summary": (
+                summarize_artifact_retention_daemon_supervised_process_operations(
+                    process_items
+                )
+            ),
+        },
         "summary": summarize_artifact_retention_automation_operations(
             batch_plan=projected_plan,
             scheduled_jobs=scheduled_items,
             history=history_items,
             daemon_config=projected_daemon_config,
+            daemon_process_snapshots=process_items,
         ),
         "source_status": _artifact_retention_automation_source_status(
             source_client=source_client,
@@ -2621,7 +2670,12 @@ def build_artifact_operation_retention_automation_projection(
             scheduled_job_count=len(scheduled_items),
             history_count=len(history_items),
             daemon_config_loaded=bool(projected_daemon_config.get("scheduler_id")),
+            daemon_process_snapshot_count=len(process_items),
+            daemon_process_snapshots_loaded=(
+                process_collection.get("items") is not None
+            ),
             errors=errors,
+            daemon_process_errors=process_errors,
         ),
         "operator_guidance": {
             "metadata_only": True,
@@ -2632,6 +2686,14 @@ def build_artifact_operation_retention_automation_projection(
             ),
             "ag_daemon_operations_route": (
                 "/admin/v1/operations/artifact-retention/scheduler-daemon"
+            ),
+            "ae_daemon_process_snapshots_route": (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-process-snapshots"
+            ),
+            "ag_daemon_process_snapshots_route": (
+                "/admin/v1/operations/artifact-retention/"
+                "scheduler-daemon-process-snapshots"
             ),
             "ae_batch_plan_route": "/api/v1/artifact-retention/batch-plan",
             "ae_scheduled_jobs_route": ("/api/v1/artifact-retention/scheduled-jobs"),
@@ -4347,12 +4409,16 @@ def summarize_artifact_retention_automation_operations(
     scheduled_jobs: list[dict[str, Any]],
     history: list[dict[str, Any]],
     daemon_config: Mapping[str, Any] | None = None,
+    daemon_process_snapshots: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     batch_summary = summarize_artifact_retention_batch_operations(batch_plan)
     job_summary = summarize_artifact_retention_scheduled_job_operations(scheduled_jobs)
     history_summary = summarize_artifact_retention_history_operations(history)
     daemon_summary = _optional_retention_daemon_summary(
         daemon_config=_project_retention_scheduler_daemon_config(daemon_config or {}),
+    )
+    process_summary = summarize_artifact_retention_daemon_supervised_process_operations(
+        list(daemon_process_snapshots or [])
     )
     approval_blocked_count = sum(
         1
@@ -4370,6 +4436,7 @@ def summarize_artifact_retention_automation_operations(
         or history_summary["blocked_count"]
         or batch_summary["dispatch_available"]
         or daemon_summary["operator_attention_required"]
+        or process_summary["operator_attention_required"]
     ):
         safety_status = "OPERATOR_ATTENTION"
     elif not scheduled_jobs and not history and not batch_summary["dispatch_available"]:
@@ -4412,6 +4479,21 @@ def summarize_artifact_retention_automation_operations(
         "daemon_attention_operator_actions": daemon_summary[
             "attention_operator_actions"
         ],
+        "daemon_process_record_count": process_summary[
+            "supervised_process_record_count"
+        ],
+        "daemon_process_running_count": process_summary["running_count"],
+        "daemon_process_failed_count": process_summary["failed_count"],
+        "daemon_process_stale_count": process_summary["stale_count"],
+        "daemon_process_blocked_count": process_summary["blocked_count"],
+        "daemon_process_adapter_required_count": process_summary[
+            "adapter_required_count"
+        ],
+        "daemon_process_operator_attention_required": process_summary[
+            "operator_attention_required"
+        ],
+        "daemon_process_status_counts": process_summary["process_status_counts"],
+        "daemon_process_latest_observed_at": process_summary["latest_observed_at"],
         "approval_blocked_count": approval_blocked_count,
         "delete_guard_blocked_count": delete_guard_blocked_count,
         "selected_artifact_count": batch_summary["selected_count"],
@@ -4426,6 +4508,7 @@ def summarize_artifact_retention_automation_operations(
             or job_summary["operator_attention_required"]
             or history_summary["operator_attention_count"] > 0
             or daemon_summary["operator_attention_required"]
+            or process_summary["operator_attention_required"]
         ),
         "automated_execute_enabled": False,
         "physical_delete_automation_enabled": False,
@@ -4434,6 +4517,7 @@ def summarize_artifact_retention_automation_operations(
             batch_summary["latest_checked_at"],
             job_summary["latest_updated_at"],
             history_summary["latest_checked_at"],
+            process_summary["latest_observed_at"],
         ),
     }
 
@@ -6608,9 +6692,13 @@ def _artifact_retention_automation_source_status(
     scheduled_job_count: int,
     history_count: int,
     daemon_config_loaded: bool,
+    daemon_process_snapshot_count: int = 0,
+    daemon_process_snapshots_loaded: bool = False,
     errors: list[AeArtifactOperationsError],
+    daemon_process_errors: list[AeArtifactOperationsError] | None = None,
 ) -> dict[str, Any]:
-    status = "DEGRADED" if errors else "READY"
+    process_errors = daemon_process_errors or []
+    status = "DEGRADED" if errors or process_errors else "READY"
     return {
         "status": status,
         "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
@@ -6620,15 +6708,19 @@ def _artifact_retention_automation_source_status(
         "scheduled_jobs_loaded": not errors,
         "history_loaded": not errors,
         "daemon_config_loaded": daemon_config_loaded and not errors,
+        "daemon_process_snapshots_loaded": (
+            daemon_process_snapshots_loaded and not errors and not process_errors
+        ),
         "scheduled_job_count": scheduled_job_count,
         "history_count": history_count,
+        "daemon_process_snapshot_count": daemon_process_snapshot_count,
         "errors": [
             {
                 "error_code": error.error_code,
                 "detail": error.detail,
                 "status_code": error.status_code,
             }
-            for error in errors
+            for error in [*errors, *process_errors]
         ],
     }
 

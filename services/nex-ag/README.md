@@ -619,6 +619,10 @@ Unified operations:
   The smoke writes `MISSING` and `RUNNING` supervised process snapshots through
   AE APIs, reads the `RUNNING` evidence through AG admin routes, verifies direct
   `nex_ae_test` row/index/JSONB observations, and cleans up inserted rows.
+- Slice 0579 folds the same supervised process read model into the AG artifact
+  retention automation dashboard. Operators can see running/stale/failed/blocked
+  process counts and process attention state without AG taking ownership of AE
+  persistence or subprocess control.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

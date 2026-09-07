@@ -19,8 +19,13 @@ def test_ag_artifact_retention_automation_operations_smoke_passes() -> None:
     assert evidence["summary"]["approval_blocked_count"] == 1
     assert evidence["summary"]["daemon_manual_tick_once_available"] is True
     assert evidence["summary"]["daemon_attention_status"] == "READY"
+    assert evidence["summary"]["daemon_process_record_count"] == 2
+    assert evidence["summary"]["daemon_process_running_count"] == 1
+    assert evidence["summary"]["daemon_process_operator_attention_required"] is True
     assert evidence["checks"]["daemon_rollup_visible"] is True
     assert evidence["checks"]["daemon_attention_classified"] is True
+    assert evidence["checks"]["daemon_process_rollup_visible"] is True
+    assert evidence["checks"]["daemon_process_attention_classified"] is True
     assert all(evidence["checks"].values())
 
 
@@ -59,6 +64,8 @@ def test_ag_artifact_retention_automation_operations_smoke_redaction_guard() -> 
         "daemon_attention_classified": False,
         "no_direct_ag_mutation": False,
         "metadata_only": False,
+        "daemon_process_rollup_visible": False,
+        "daemon_process_attention_classified": False,
         "redacted": False,
     }
     malformed = smoke._smoke_checks(
@@ -75,6 +82,8 @@ def test_ag_artifact_retention_automation_operations_smoke_redaction_guard() -> 
     assert malformed["dispatch_available"] is False
     assert malformed["daemon_rollup_visible"] is False
     assert malformed["daemon_attention_classified"] is False
+    assert malformed["daemon_process_rollup_visible"] is False
+    assert malformed["daemon_process_attention_classified"] is False
     assert malformed["no_direct_ag_mutation"] is False
     assert "safety=None" in smoke.summary_line(
         {"status": "FAIL", "response_status": 500, "summary": "bad", "checks": {}}
@@ -92,6 +101,8 @@ def test_ag_artifact_retention_automation_operations_smoke_cli_and_output(
     summary_output = capsys.readouterr().out
     assert "ag_artifact_retention_automation_operations_smoke=pass" in summary_output
     assert "daemon_attention=READY" in summary_output
+    assert "process_running=1" in summary_output
+    assert "process_attention=True" in summary_output
     assert "FAILED_ATTENTION" in output_path.read_text(encoding="utf-8")
     assert smoke.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out

@@ -890,3 +890,6 @@ Artifact library management:
   actual AE test database: the protected smoke runs migrations, writes
   `MISSING` and `RUNNING` process snapshots through AE APIs, reads them through
   AG, verifies direct DB evidence, and removes the test rows.
+- Slice 0579 keeps AE as the source of supervised process snapshots while AG
+  includes those snapshots in the artifact retention automation dashboard as a
+  read-only process health and attention rollup.

@@ -185,6 +185,70 @@ class AeTestClientArtifactOperationsClient:
         )
         return self._json_or_error(response)
 
+    def list_artifact_retention_scheduler_daemon_process_snapshots(
+        self,
+        *,
+        scheduler_id: str | None,
+        action: str | None,
+        process_status: str | None,
+        limit: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        return {
+            "daemon_supervised_process_collection_schema_version": (
+                "ae_artifact_retention_scheduler_daemon_process_snapshot_collection.v1"
+            ),
+            "service_id": SERVICE_ID,
+            "filter": {
+                "scheduler_id": scheduler_id,
+                "action": action,
+                "process_status": process_status,
+            },
+            "count": 0,
+            "limit": limit,
+            "items": [],
+            "guardrails": {
+                "read_only": True,
+                "ae_owned_persistence": True,
+                "ag_direct_database_write_allowed": False,
+                "ag_direct_job_enqueue_allowed": False,
+                "process_control_allowed": False,
+                "database_url_included": False,
+                "storage_path_included": False,
+                "raw_artifact_payload_included": False,
+                "raw_execution_payload_included": False,
+                "raw_daemon_runtime_payload_included": False,
+                "physical_delete_automation_enabled": False,
+            },
+            "metadata": {
+                "safe_for_ag_projection": True,
+                "read_model": (
+                    "ae_artifact_retention_scheduler_daemon_process_snapshots"
+                ),
+                "item_count": 0,
+                "limit": limit,
+                "has_more": False,
+                "newest_observed_at": None,
+            },
+        }
+
+    def get_artifact_retention_scheduler_daemon_process_snapshot_detail(
+        self,
+        daemon_supervised_process_record_id: str,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any] | None:
+        response = self.client.get(
+            "/api/v1/artifact-retention/scheduler-daemon-process-snapshots/"
+            f"{daemon_supervised_process_record_id}",
+            headers=self._headers(request_id=request_id, trace_id=trace_id),
+        )
+        if response.status_code == 404:
+            return None
+        return self._json_or_error(response)
+
     def dispatch_artifact_retention_scheduled_job(
         self,
         *,

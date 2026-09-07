@@ -21,6 +21,7 @@ from nex_ag.artifact_operations import (  # noqa: E402
     InMemoryAeArtifactOperationsClient,
     _artifact_retention_batch_plan_cache_key,
     _artifact_retention_history_cache_key,
+    _artifact_retention_scheduler_daemon_process_snapshot_cache_key,
     assert_artifact_operation_projection_redacted,
     register_artifact_operation_routes,
 )
@@ -116,6 +117,14 @@ def _smoke_source_client() -> InMemoryAeArtifactOperationsClient:
             ): _history()
         },
         artifact_retention_scheduler_daemon_config=_daemon_config(),
+        artifact_retention_scheduler_daemon_process_snapshot_collections={
+            _artifact_retention_scheduler_daemon_process_snapshot_cache_key(
+                scheduler_id="ae-artifact-retention-scheduler",
+                action=None,
+                process_status=None,
+                limit=20,
+            ): _daemon_process_snapshots()
+        },
     )
 
 
@@ -472,6 +481,117 @@ def _daemon_config() -> dict[str, Any]:
     }
 
 
+def _daemon_process_snapshots() -> dict[str, Any]:
+    running = _daemon_process_snapshot(
+        record_id="daemon-process-running-0579",
+        action="start_daemon",
+        process_status="RUNNING",
+        observed_at="2026-09-01T02:33:00Z",
+        process_id=57801,
+        process_running=True,
+    )
+    stale = _daemon_process_snapshot(
+        record_id="daemon-process-stale-0579",
+        action="status_probe",
+        process_status="STALE",
+        observed_at="2026-09-01T02:34:00Z",
+        process_id=57800,
+        process_running=False,
+    )
+    return {
+        "daemon_supervised_process_collection_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_process_snapshot_collection.v1"
+        ),
+        "service_id": "nex-ae-api",
+        "filter": {
+            "scheduler_id": "ae-artifact-retention-scheduler",
+            "action": None,
+            "process_status": None,
+        },
+        "count": 2,
+        "limit": 20,
+        "items": [running, stale],
+        "guardrails": {
+            "read_only": True,
+            "ae_owned_persistence": True,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "process_control_allowed": False,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+            "physical_delete_automation_enabled": False,
+        },
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "read_model": "ae_artifact_retention_scheduler_daemon_process_snapshots",
+            "item_count": 2,
+            "limit": 20,
+            "has_more": False,
+            "newest_observed_at": "2026-09-01T02:34:00Z",
+        },
+    }
+
+
+def _daemon_process_snapshot(
+    *,
+    record_id: str,
+    action: str,
+    process_status: str,
+    observed_at: str,
+    process_id: int,
+    process_running: bool,
+) -> dict[str, Any]:
+    return {
+        "daemon_supervised_process_record_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_supervised_process_record.v1"
+        ),
+        "daemon_supervised_process_record_id": record_id,
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "daemon_supervisor_command_id": f"{record_id}:command",
+        "daemon_supervised_process_id": f"{record_id}:process",
+        "action": action,
+        "process_status": process_status,
+        "process_id": process_id,
+        "host_id": "dgx-spark-smoke",
+        "process_running": process_running,
+        "process_started_observed": process_status == "RUNNING",
+        "process_stopped_observed": process_status in {"STOPPED", "EXITED", "STALE"},
+        "subprocess_adapter_required": True,
+        "observed_at": observed_at,
+        "summary": {
+            "scheduler_id": "ae-artifact-retention-scheduler",
+            "action": action,
+            "process_status": process_status,
+            "process_mode": "supervised",
+            "process_running": process_running,
+            "process_started_observed": process_status == "RUNNING",
+            "process_stopped_observed": process_status in {"STOPPED", "EXITED", "STALE"},
+            "subprocess_adapter_required": True,
+            "observed_at": observed_at,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "safe_for_ag_projection": True,
+            "supervised_process_record_persisted": True,
+            "supervised_process_event_persisted": True,
+            "persistence_endpoint_included": False,
+            "storage_locator_included": False,
+            "artifact_payload_included": False,
+            "execution_payload_included": False,
+            "daemon_runtime_payload_included": False,
+            "physical_delete_automation_enabled": False,
+        },
+        "supervised_process_snapshot": {
+            "database_url": "DATABASE_URL_SHOULD_NOT_LEAK",
+            "raw_daemon_runtime_payload": "PRIVATE_RUNTIME",
+        },
+        "supervised_process_snapshot_hash": "5" * 64,
+    }
+
+
 def _auth_headers() -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-oa", audience="nex-ag")
     return {
@@ -493,6 +613,8 @@ def _smoke_checks(status_code: int, payload: Any) -> dict[str, bool]:
             "daemon_attention_classified": False,
             "no_direct_ag_mutation": False,
             "metadata_only": False,
+            "daemon_process_rollup_visible": False,
+            "daemon_process_attention_classified": False,
             "redacted": False,
         }
     summary = payload.get("summary")
@@ -510,6 +632,12 @@ def _smoke_checks(status_code: int, payload: Any) -> dict[str, bool]:
     daemon_attention = scheduler_daemon.get("attention")
     if not isinstance(daemon_attention, Mapping):
         daemon_attention = {}
+    daemon_processes = payload.get("scheduler_daemon_processes")
+    if not isinstance(daemon_processes, Mapping):
+        daemon_processes = {}
+    daemon_process_summary = daemon_processes.get("summary")
+    if not isinstance(daemon_process_summary, Mapping):
+        daemon_process_summary = {}
     return {
         "route_status_ok": status_code == 200,
         "schema_version": payload.get("projection_schema_version")
@@ -539,6 +667,17 @@ def _smoke_checks(status_code: int, payload: Any) -> dict[str, bool]:
         is False
         and guidance.get("ag_direct_job_enqueue_allowed") is False,
         "metadata_only": guidance.get("metadata_only") is True,
+        "daemon_process_rollup_visible": summary.get("daemon_process_record_count") == 2
+        and summary.get("daemon_process_running_count") == 1
+        and summary.get("daemon_process_stale_count") == 1
+        and daemon_process_summary.get("supervised_process_record_count") == 2
+        and guidance.get("ae_daemon_process_snapshots_route")
+        == "/api/v1/artifact-retention/scheduler-daemon-process-snapshots",
+        "daemon_process_attention_classified": (
+            summary.get("daemon_process_operator_attention_required") is True
+            and daemon_process_summary.get("operator_attention_required") is True
+            and summary.get("daemon_process_status_counts") == {"RUNNING": 1, "STALE": 1}
+        ),
         "redacted": _is_redacted(payload),
     }
 
@@ -581,6 +720,8 @@ def summary_line(evidence: Mapping[str, Any]) -> str:
         f"history={summary.get('history_count')} "
         f"daemon_manual={summary.get('daemon_manual_tick_once_available')} "
         f"daemon_attention={summary.get('daemon_attention_status')} "
+        f"process_running={summary.get('daemon_process_running_count')} "
+        f"process_attention={summary.get('daemon_process_operator_attention_required')} "
         f"approval_blocked={summary.get('approval_blocked_count')}"
     )
     if failing_checks:
