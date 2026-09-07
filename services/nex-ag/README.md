@@ -527,6 +527,10 @@ Unified operations:
   redacted execution-result envelope, but it still cannot provide execution
   dependencies, acquire locks, run bounded loops, enqueue AE jobs, persist AE
   lifecycle records, or access raw runtime payloads.
+- Slice 0556 keeps the executable smoke proof AE-owned as well. The protected
+  PostgreSQL smoke emits only redacted CLI execution metadata for future AG
+  projection; AG still cannot trigger the smoke, receive database URLs, acquire
+  daemon process locks, or write AE lifecycle state.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

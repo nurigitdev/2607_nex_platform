@@ -790,3 +790,8 @@ Artifact library management:
   profile, explicit opt-in, bounded `max_cycles`, process/run metadata, and
   optional shutdown-signal evidence while keeping daemon run persistence
   deferred.
+- Slice 0556 adds protected PostgreSQL smoke evidence for that CLI execution
+  path. When explicitly enabled against `NEX_AE_TEST_DATABASE_URL`, the smoke
+  calls the CLI `--execute` path with injected AE runtime dependencies, runs two
+  bounded-loop cycles, reads back JobQueue, lease, heartbeat, and retention
+  history rows, and cleans up all seeded test DB rows afterward.
