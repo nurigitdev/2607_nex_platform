@@ -840,3 +840,8 @@ Artifact library management:
   result detail route. Dispatch persists supervisor result/event evidence via
   the AE store, but the default adapter remains fake/dry-run and process
   control remains disabled.
+- Slice 0566 adds protected PostgreSQL smoke evidence for the supervisor API
+  path. When explicitly enabled against `NEX_AE_TEST_DATABASE_URL`, the smoke
+  applies AE migrations, dispatches `status_probe` and guarded `start_daemon`,
+  verifies record/event rows through API and direct DB reads, confirms cleanup,
+  and keeps database URLs, storage paths, and secrets out of evidence.

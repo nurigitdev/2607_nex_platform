@@ -7806,25 +7806,25 @@ def _ensure_daemon_supervisor_store_schema(session: Any) -> None:
     for statement in (
         """
         CREATE INDEX IF NOT EXISTS
-            idx_ae_artifact_retention_scheduler_daemon_supervisor_results_observed
+            idx_ae_daemon_supervisor_results_observed
         ON ae_artifact_retention_scheduler_daemon_supervisor_results
             (scheduler_id, observed_at DESC)
         """,
         """
         CREATE INDEX IF NOT EXISTS
-            idx_ae_artifact_retention_scheduler_daemon_supervisor_results_action
+            idx_ae_daemon_supervisor_results_action
         ON ae_artifact_retention_scheduler_daemon_supervisor_results
             (action, result_status, observed_at DESC)
         """,
         """
         CREATE INDEX IF NOT EXISTS
-            idx_ae_artifact_retention_scheduler_daemon_supervisor_events_record
+            idx_ae_daemon_supervisor_events_record
         ON ae_artifact_retention_scheduler_daemon_supervisor_events
             (daemon_supervisor_record_id, occurred_at ASC)
         """,
         """
         CREATE INDEX IF NOT EXISTS
-            idx_ae_artifact_retention_scheduler_daemon_supervisor_events_scheduler
+            idx_ae_daemon_supervisor_events_scheduler
         ON ae_artifact_retention_scheduler_daemon_supervisor_events
             (scheduler_id, occurred_at DESC)
         """,

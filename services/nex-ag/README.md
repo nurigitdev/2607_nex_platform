@@ -567,6 +567,9 @@ Unified operations:
   control/result routes for safe evidence projection, but process control,
   persistence writes, JobQueue admission, and physical delete automation remain
   AE-owned.
+- Slice 0566 proves that target against AE PostgreSQL test storage. The smoke
+  is still AE-owned and protected, but it gives the later AG projection a
+  migration/readback/cleanup baseline for supervisor record and event evidence.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
