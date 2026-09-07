@@ -74,6 +74,12 @@ AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISOR_COLLECTION_PROJECTION_SCHEMA_V
 AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISOR_DETAIL_PROJECTION_SCHEMA_VERSION = (
     "ag_artifact_operation_retention_daemon_supervisor_detail_projection.v1"
 )
+AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISED_PROCESS_COLLECTION_PROJECTION_SCHEMA_VERSION = (
+    "ag_artifact_operation_retention_daemon_supervised_process_collection_projection.v1"
+)
+AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISED_PROCESS_DETAIL_PROJECTION_SCHEMA_VERSION = (
+    "ag_artifact_operation_retention_daemon_supervised_process_detail_projection.v1"
+)
 AE_ARTIFACT_SOURCE_SERVICE_ID = "nex-ae-api"
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE = (
     "ae.artifact_retention.scheduler_daemon"
@@ -139,6 +145,17 @@ SUPPORTED_ARTIFACT_RETENTION_DAEMON_SUPERVISOR_RESULT_STATUSES = (
     "BLOCKED",
     "NOOP",
     "FAILED",
+)
+SUPPORTED_ARTIFACT_RETENTION_DAEMON_SUPERVISED_PROCESS_STATUSES = (
+    "MISSING",
+    "START_REQUESTED",
+    "RUNNING",
+    "STOP_REQUESTED",
+    "STOPPED",
+    "EXITED",
+    "STALE",
+    "FAILED",
+    "BLOCKED",
 )
 AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE = "ae.artifact_retention.scheduled_execution"
 ARCHIVABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED"}
@@ -265,6 +282,25 @@ class AeArtifactOperationsClient(Protocol):
         trace_id: str,
     ) -> dict[str, Any] | None: ...
 
+    def list_artifact_retention_scheduler_daemon_process_snapshots(
+        self,
+        *,
+        scheduler_id: str | None,
+        action: str | None,
+        process_status: str | None,
+        limit: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]: ...
+
+    def get_artifact_retention_scheduler_daemon_process_snapshot_detail(
+        self,
+        daemon_supervised_process_record_id: str,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any] | None: ...
+
     def dispatch_artifact_retention_scheduler_daemon_control(
         self,
         *,
@@ -350,6 +386,12 @@ class InMemoryAeArtifactOperationsClient:
         str, dict[str, Any]
     ] = field(default_factory=dict)
     artifact_retention_scheduler_daemon_supervisor_details: dict[
+        str, dict[str, Any]
+    ] = field(default_factory=dict)
+    artifact_retention_scheduler_daemon_process_snapshot_collections: dict[
+        str, dict[str, Any]
+    ] = field(default_factory=dict)
+    artifact_retention_scheduler_daemon_process_snapshot_details: dict[
         str, dict[str, Any]
     ] = field(default_factory=dict)
     artifact_retention_scheduler_daemon_dispatch_results: dict[
@@ -680,6 +722,53 @@ class InMemoryAeArtifactOperationsClient:
             )
         )
 
+    def list_artifact_retention_scheduler_daemon_process_snapshots(
+        self,
+        *,
+        scheduler_id: str | None,
+        action: str | None,
+        process_status: str | None,
+        limit: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        collection_key = (
+            _artifact_retention_scheduler_daemon_process_snapshot_cache_key(
+                scheduler_id=scheduler_id,
+                action=action,
+                process_status=process_status,
+                limit=limit,
+            )
+        )
+        if (
+            collection_key
+            in self.artifact_retention_scheduler_daemon_process_snapshot_collections
+        ):
+            return deepcopy(
+                self.artifact_retention_scheduler_daemon_process_snapshot_collections[
+                    collection_key
+                ]
+            )
+        return _empty_artifact_retention_scheduler_daemon_process_snapshot_collection_payload(
+            scheduler_id=scheduler_id,
+            action=action,
+            process_status=process_status,
+            limit=limit,
+        )
+
+    def get_artifact_retention_scheduler_daemon_process_snapshot_detail(
+        self,
+        daemon_supervised_process_record_id: str,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any] | None:
+        return _deepcopy_or_none(
+            self.artifact_retention_scheduler_daemon_process_snapshot_details.get(
+                daemon_supervised_process_record_id
+            )
+        )
+
     def dispatch_artifact_retention_scheduler_daemon_control(
         self,
         *,
@@ -1007,6 +1096,49 @@ class HttpAeArtifactOperationsClient:
             (
                 "/api/v1/artifact-retention/scheduler-daemon-supervisor-results/"
                 f"{daemon_supervisor_record_id}"
+            ),
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+
+    def list_artifact_retention_scheduler_daemon_process_snapshots(
+        self,
+        *,
+        scheduler_id: str | None,
+        action: str | None,
+        process_status: str | None,
+        limit: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        payload = self._get_json(
+            "/api/v1/artifact-retention/scheduler-daemon-process-snapshots",
+            request_id=request_id,
+            trace_id=trace_id,
+            params={
+                "limit": str(limit),
+                **({"scheduler_id": scheduler_id} if scheduler_id else {}),
+                **({"action": action} if action else {}),
+                **(
+                    {"process_status": process_status}
+                    if process_status
+                    else {}
+                ),
+            },
+        )
+        return payload if isinstance(payload, dict) else {}
+
+    def get_artifact_retention_scheduler_daemon_process_snapshot_detail(
+        self,
+        daemon_supervised_process_record_id: str,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any] | None:
+        return self._get_json(
+            (
+                "/api/v1/artifact-retention/scheduler-daemon-process-snapshots/"
+                f"{daemon_supervised_process_record_id}"
             ),
             request_id=request_id,
             trace_id=trace_id,
@@ -2745,6 +2877,151 @@ def build_artifact_operation_retention_daemon_supervisor_detail_projection(
     return projection
 
 
+def build_artifact_operation_retention_daemon_supervised_process_collection_projection(
+    *,
+    collection: Mapping[str, Any],
+    source_client: AeArtifactOperationsClient | None = None,
+    source_errors: list[AeArtifactOperationsError] | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    items = [
+        _project_retention_scheduler_daemon_supervised_process_item(item)
+        for item in _list_value(collection.get("items"))
+        if isinstance(item, Mapping)
+    ]
+    errors = source_errors or []
+    projection = {
+        "projection_schema_version": (
+            AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISED_PROCESS_COLLECTION_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "DEGRADED" if errors else "READY",
+        "checked_at": _utc_now(),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "operation_type": (
+            "ae_artifact_retention_scheduler_daemon_process_snapshots"
+        ),
+        "filter": _project_retention_scheduler_daemon_supervised_process_filter(
+            collection.get("filter")
+        ),
+        "count": _int_or_zero(collection.get("count")),
+        "limit": _int_or_zero(collection.get("limit")),
+        "items": items,
+        "summary": (
+            summarize_artifact_retention_daemon_supervised_process_operations(
+                items
+            )
+        ),
+        "source_status": _artifact_retention_daemon_supervised_process_source_status(
+            source_client=source_client,
+            item_count=len(items),
+            detail_loaded=False,
+            errors=errors,
+        ),
+        "operator_guidance": {
+            "metadata_only": True,
+            "system_of_record": AE_ARTIFACT_SOURCE_SERVICE_ID,
+            "ae_daemon_process_snapshots_route": (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-process-snapshots"
+            ),
+            "ag_daemon_process_snapshots_route": (
+                "/admin/v1/operations/artifact-retention/"
+                "scheduler-daemon-process-snapshots"
+            ),
+            "read_model": (
+                "ae_artifact_retention_scheduler_daemon_process_snapshots"
+            ),
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "ag_direct_daemon_process_control_allowed": False,
+        },
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    assert_artifact_operation_projection_redacted(projection)
+    return projection
+
+
+def build_artifact_operation_retention_daemon_supervised_process_detail_projection(
+    *,
+    detail: Mapping[str, Any],
+    source_client: AeArtifactOperationsClient | None = None,
+    source_errors: list[AeArtifactOperationsError] | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    supervised_process_record = (
+        _project_retention_scheduler_daemon_supervised_process_record(
+            detail.get("supervised_process_record")
+        )
+    )
+    supervised_process_events = [
+        _project_retention_scheduler_daemon_supervised_process_event(event)
+        for event in _list_value(detail.get("supervised_process_events"))
+        if isinstance(event, Mapping)
+    ]
+    daemon_supervised_process_record_id = _text_or_none(
+        detail.get("daemon_supervised_process_record_id")
+    )
+    errors = source_errors or []
+    projection = {
+        "projection_schema_version": (
+            AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISED_PROCESS_DETAIL_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "DEGRADED" if errors else "READY",
+        "checked_at": _utc_now(),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "operation_type": (
+            "ae_artifact_retention_scheduler_daemon_process_snapshot"
+        ),
+        "daemon_supervised_process_record_id": (
+            daemon_supervised_process_record_id
+        ),
+        "supervised_process_record": supervised_process_record,
+        "supervised_process_event_count": _int_or_zero(
+            detail.get("supervised_process_event_count")
+        ),
+        "supervised_process_events": supervised_process_events,
+        "summary": summarize_artifact_retention_daemon_supervised_process_detail(
+            supervised_process_record=supervised_process_record,
+            supervised_process_events=supervised_process_events,
+        ),
+        "source_status": _artifact_retention_daemon_supervised_process_source_status(
+            source_client=source_client,
+            item_count=len(supervised_process_events),
+            detail_loaded=bool(
+                supervised_process_record.get(
+                    "daemon_supervised_process_record_id"
+                )
+            ),
+            errors=errors,
+        ),
+        "operator_guidance": {
+            "metadata_only": True,
+            "system_of_record": AE_ARTIFACT_SOURCE_SERVICE_ID,
+            "ae_daemon_process_detail_route": (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-process-snapshots/"
+                f"{daemon_supervised_process_record_id or ''}"
+            ),
+            "ag_daemon_process_detail_route": (
+                "/admin/v1/operations/artifact-retention/"
+                "scheduler-daemon-process-snapshots/"
+                f"{daemon_supervised_process_record_id or ''}"
+            ),
+            "read_model": (
+                "ae_artifact_retention_scheduler_daemon_process_detail"
+            ),
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "ag_direct_daemon_process_control_allowed": False,
+        },
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    assert_artifact_operation_projection_redacted(projection)
+    return projection
+
+
 def build_artifact_operation_retention_history_projection(
     *,
     collection: Mapping[str, Any],
@@ -3536,6 +3813,110 @@ def summarize_artifact_retention_daemon_supervisor_detail(
         "supervisor_event_types": event_types,
         "observed_at": _text_or_none(supervisor_record.get("observed_at")),
         "operator_attention_required": result_status == "FAILED",
+        "metadata_only": True,
+    }
+
+
+def summarize_artifact_retention_daemon_supervised_process_operations(
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    action_counts: dict[str, int] = {}
+    process_status_counts: dict[str, int] = {}
+    latest_observed_at: str | None = None
+    running_count = 0
+    failed_count = 0
+    stale_count = 0
+    blocked_count = 0
+    adapter_required_count = 0
+    for item in items:
+        action = _normalized_daemon_supervisor_action(item.get("action"))
+        process_status = _normalized_daemon_supervised_process_status(
+            item.get("process_status")
+        )
+        if action is not None:
+            action_counts[action] = action_counts.get(action, 0) + 1
+        if process_status is not None:
+            process_status_counts[process_status] = (
+                process_status_counts.get(process_status, 0) + 1
+            )
+        if process_status == "RUNNING":
+            running_count += 1
+        if process_status == "FAILED":
+            failed_count += 1
+        if process_status == "STALE":
+            stale_count += 1
+        if process_status == "BLOCKED":
+            blocked_count += 1
+        if item.get("subprocess_adapter_required") is True:
+            adapter_required_count += 1
+        observed_at = _text_or_none(item.get("observed_at"))
+        if observed_at is not None and (
+            latest_observed_at is None or observed_at > latest_observed_at
+        ):
+            latest_observed_at = observed_at
+    return {
+        "supervised_process_record_count": len(items),
+        "action_counts": action_counts,
+        "process_status_counts": process_status_counts,
+        "running_count": running_count,
+        "failed_count": failed_count,
+        "stale_count": stale_count,
+        "blocked_count": blocked_count,
+        "adapter_required_count": adapter_required_count,
+        "operator_attention_required": (
+            failed_count > 0 or stale_count > 0 or blocked_count > 0
+        ),
+        "latest_observed_at": latest_observed_at,
+        "metadata_only": True,
+    }
+
+
+def summarize_artifact_retention_daemon_supervised_process_detail(
+    *,
+    supervised_process_record: Mapping[str, Any],
+    supervised_process_events: list[dict[str, Any]],
+) -> dict[str, Any]:
+    event_types = [
+        str(event["event_type"])
+        for event in supervised_process_events
+        if _text_or_none(event.get("event_type"))
+    ]
+    process_status = _normalized_daemon_supervised_process_status(
+        supervised_process_record.get("process_status")
+    )
+    return {
+        "daemon_supervised_process_record_id": _text_or_none(
+            supervised_process_record.get("daemon_supervised_process_record_id")
+        ),
+        "scheduler_id": _text_or_none(
+            supervised_process_record.get("scheduler_id")
+        ),
+        "action": _normalized_daemon_supervisor_action(
+            supervised_process_record.get("action")
+        ),
+        "process_status": process_status,
+        "daemon_supervised_process_id": _text_or_none(
+            supervised_process_record.get("daemon_supervised_process_id")
+        ),
+        "process_id": _int_or_zero(supervised_process_record.get("process_id")),
+        "host_id": _text_or_none(supervised_process_record.get("host_id")),
+        "process_running": supervised_process_record.get("process_running") is True,
+        "process_started_observed": (
+            supervised_process_record.get("process_started_observed") is True
+        ),
+        "process_stopped_observed": (
+            supervised_process_record.get("process_stopped_observed") is True
+        ),
+        "subprocess_adapter_required": (
+            supervised_process_record.get("subprocess_adapter_required") is True
+        ),
+        "supervised_process_event_count": len(supervised_process_events),
+        "supervised_process_event_types": event_types,
+        "observed_at": _text_or_none(
+            supervised_process_record.get("observed_at")
+        ),
+        "operator_attention_required": process_status
+        in {"FAILED", "STALE", "BLOCKED"},
         "metadata_only": True,
     }
 
@@ -5396,6 +5777,144 @@ def _project_retention_scheduler_daemon_supervisor_event(
     }
 
 
+def _project_retention_scheduler_daemon_supervised_process_filter(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "action": _normalized_daemon_supervisor_action(raw_value.get("action")),
+        "process_status": _normalized_daemon_supervised_process_status(
+            raw_value.get("process_status")
+        ),
+    }
+
+
+def _project_retention_scheduler_daemon_supervised_process_item(
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    daemon_supervised_process_record_id = _text_or_none(
+        record.get("daemon_supervised_process_record_id")
+    )
+    return {
+        "daemon_supervised_process_record_id": (
+            daemon_supervised_process_record_id
+        ),
+        "source_daemon_supervised_process_record_schema_version": (
+            _text_or_none(
+                record.get("daemon_supervised_process_record_schema_version")
+            )
+        ),
+        "service_id": _text_or_none(record.get("service_id")),
+        "scheduler_id": _text_or_none(record.get("scheduler_id")),
+        "daemon_supervisor_command_id": _text_or_none(
+            record.get("daemon_supervisor_command_id")
+        ),
+        "daemon_supervised_process_id": _text_or_none(
+            record.get("daemon_supervised_process_id")
+        ),
+        "action": _normalized_daemon_supervisor_action(record.get("action")),
+        "process_status": _normalized_daemon_supervised_process_status(
+            record.get("process_status")
+        ),
+        "process_mode": _text_or_none(record.get("process_mode")),
+        "process_id": _int_or_zero(record.get("process_id")),
+        "host_id": _text_or_none(record.get("host_id")),
+        "observed_at": _text_or_none(record.get("observed_at")),
+        "started_at": _text_or_none(record.get("started_at")),
+        "completed_at": _text_or_none(record.get("completed_at")),
+        "exit_code": _int_or_zero(record.get("exit_code")),
+        "termination_signal": _text_or_none(record.get("termination_signal")),
+        "process_running": record.get("process_running") is True,
+        "process_started_observed": (
+            record.get("process_started_observed") is True
+        ),
+        "process_stopped_observed": (
+            record.get("process_stopped_observed") is True
+        ),
+        "subprocess_adapter_required": (
+            record.get("subprocess_adapter_required") is True
+        ),
+        "message": _text_or_none(record.get("message")),
+        "summary": _safe_daemon_supervised_process_summary(
+            record.get("summary")
+        ),
+        "metadata": _safe_daemon_supervised_process_metadata(
+            record.get("metadata")
+        ),
+        "supervised_process_snapshot_hash": _text_or_none(
+            record.get("supervised_process_snapshot_hash")
+        ),
+        "created_at": _text_or_none(record.get("created_at")),
+        "routes": {
+            "ae_detail": (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-process-snapshots/"
+                f"{daemon_supervised_process_record_id}"
+            )
+            if daemon_supervised_process_record_id
+            else None,
+            "ag_detail": (
+                "/admin/v1/operations/artifact-retention/"
+                "scheduler-daemon-process-snapshots/"
+                f"{daemon_supervised_process_record_id}"
+            )
+            if daemon_supervised_process_record_id
+            else None,
+        },
+    }
+
+
+def _project_retention_scheduler_daemon_supervised_process_record(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return _project_retention_scheduler_daemon_supervised_process_item(raw_value)
+
+
+def _project_retention_scheduler_daemon_supervised_process_event(
+    raw_value: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "source_daemon_supervised_process_event_schema_version": (
+            _text_or_none(
+                raw_value.get(
+                    "daemon_supervised_process_event_schema_version"
+                )
+            )
+        ),
+        "daemon_supervised_process_event_id": _text_or_none(
+            raw_value.get("daemon_supervised_process_event_id")
+        ),
+        "daemon_supervised_process_record_id": _text_or_none(
+            raw_value.get("daemon_supervised_process_record_id")
+        ),
+        "daemon_supervised_process_id": _text_or_none(
+            raw_value.get("daemon_supervised_process_id")
+        ),
+        "daemon_supervisor_command_id": _text_or_none(
+            raw_value.get("daemon_supervisor_command_id")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "action": _normalized_daemon_supervisor_action(raw_value.get("action")),
+        "process_status": _normalized_daemon_supervised_process_status(
+            raw_value.get("process_status")
+        ),
+        "event_type": _text_or_none(raw_value.get("event_type")),
+        "occurred_at": _text_or_none(raw_value.get("occurred_at")),
+        "summary": _safe_daemon_supervised_process_event_summary(
+            raw_value.get("summary")
+        ),
+        "metadata": _safe_daemon_supervised_process_metadata(
+            raw_value.get("metadata")
+        ),
+        "created_at": _text_or_none(raw_value.get("created_at")),
+    }
+
+
 def _project_retention_scheduler_daemon_control_plan(
     raw_value: Any,
 ) -> dict[str, Any]:
@@ -5935,6 +6454,33 @@ def _artifact_retention_daemon_supervisor_source_status(
         "base_url": getattr(source_client, "base_url", None),
         "supervisor_collection_loaded": not errors,
         "supervisor_detail_loaded": detail_loaded and not errors,
+        "item_count": item_count,
+        "errors": [
+            {
+                "error_code": error.error_code,
+                "detail": error.detail,
+                "status_code": error.status_code,
+            }
+            for error in errors
+        ],
+    }
+
+
+def _artifact_retention_daemon_supervised_process_source_status(
+    *,
+    source_client: AeArtifactOperationsClient | None,
+    item_count: int,
+    detail_loaded: bool,
+    errors: list[AeArtifactOperationsError],
+) -> dict[str, Any]:
+    status = "DEGRADED" if errors else "READY"
+    return {
+        "status": status,
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "source_kind": getattr(source_client, "source_kind", "provided"),
+        "base_url": getattr(source_client, "base_url", None),
+        "process_snapshot_collection_loaded": not errors,
+        "process_snapshot_detail_loaded": detail_loaded and not errors,
         "item_count": item_count,
         "errors": [
             {
@@ -7093,6 +7639,23 @@ def _artifact_retention_scheduler_daemon_supervisor_cache_key(
     )
 
 
+def _artifact_retention_scheduler_daemon_process_snapshot_cache_key(
+    *,
+    scheduler_id: str | None,
+    action: str | None,
+    process_status: str | None,
+    limit: int,
+) -> str:
+    return "|".join(
+        (
+            _text_or_none(scheduler_id) or "",
+            _normalized_daemon_supervisor_action(action) or "",
+            _normalized_daemon_supervised_process_status(process_status) or "",
+            str(limit),
+        )
+    )
+
+
 def _empty_artifact_retention_batch_plan_payload(
     *,
     tenant_id: str,
@@ -7280,6 +7843,59 @@ def _empty_artifact_retention_scheduler_daemon_supervisor_collection_payload(
             "safe_for_ag_projection": True,
             "read_model": (
                 "ae_artifact_retention_scheduler_daemon_supervisor_results"
+            ),
+            "item_count": 0,
+            "limit": limit,
+            "has_more": False,
+            "newest_observed_at": None,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+        },
+    }
+
+
+def _empty_artifact_retention_scheduler_daemon_process_snapshot_collection_payload(
+    *,
+    scheduler_id: str | None,
+    action: str | None,
+    process_status: str | None,
+    limit: int,
+) -> dict[str, Any]:
+    return {
+        "daemon_supervised_process_collection_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_process_snapshot_collection.v1"
+        ),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "filter": {
+            "scheduler_id": _text_or_none(scheduler_id),
+            "action": _normalized_daemon_supervisor_action(action),
+            "process_status": _normalized_daemon_supervised_process_status(
+                process_status
+            ),
+        },
+        "count": 0,
+        "limit": limit,
+        "items": [],
+        "guardrails": {
+            "read_only": True,
+            "ae_owned_persistence": True,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "process_control_allowed": False,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+            "physical_delete_automation_enabled": False,
+        },
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "read_model": (
+                "ae_artifact_retention_scheduler_daemon_process_snapshots"
             ),
             "item_count": 0,
             "limit": limit,
@@ -8102,6 +8718,20 @@ def _normalized_daemon_supervisor_result_status(raw_value: Any) -> str | None:
     )
 
 
+def _normalized_daemon_supervised_process_status(
+    raw_value: Any,
+) -> str | None:
+    value = _text_or_none(raw_value)
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().replace("-", "_").upper()
+    return (
+        normalized
+        if normalized in SUPPORTED_ARTIFACT_RETENTION_DAEMON_SUPERVISED_PROCESS_STATUSES
+        else None
+    )
+
+
 def _daemon_lifecycle_status_and_source(
     *,
     daemon_config: Mapping[str, Any],
@@ -8357,6 +8987,38 @@ def _safe_daemon_supervisor_event_summary(raw_value: Any) -> dict[str, Any]:
     )
 
 
+def _safe_daemon_supervised_process_summary(raw_value: Any) -> dict[str, Any]:
+    return _select_mapping(
+        raw_value,
+        (
+            "scheduler_id",
+            "action",
+            "process_status",
+            "process_mode",
+            "process_running",
+            "process_started_observed",
+            "process_stopped_observed",
+            "subprocess_adapter_required",
+            "observed_at",
+        ),
+    )
+
+
+def _safe_daemon_supervised_process_event_summary(
+    raw_value: Any,
+) -> dict[str, Any]:
+    return _select_mapping(
+        raw_value,
+        (
+            "event_type",
+            "scheduler_id",
+            "action",
+            "process_status",
+            "occurred_at",
+        ),
+    )
+
+
 def _safe_daemon_run_metadata(raw_value: Any) -> dict[str, Any]:
     if not isinstance(raw_value, Mapping):
         return {}
@@ -8438,6 +9100,56 @@ def _safe_daemon_supervisor_metadata(raw_value: Any) -> dict[str, Any]:
         "ag_direct_job_enqueue_allowed": (
             raw_value.get("ag_direct_job_enqueue_allowed") is True
         ),
+        "physical_delete_automation_enabled": (
+            raw_value.get("physical_delete_automation_enabled") is True
+        ),
+    }
+
+
+def _safe_daemon_supervised_process_metadata(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "metadata_only": raw_value.get("metadata_only") is True,
+        "safe_for_ag_projection": raw_value.get("safe_for_ag_projection") is True,
+        "supervised_process_record_persisted": (
+            raw_value.get("supervised_process_record_persisted") is True
+        ),
+        "supervised_process_event_persisted": (
+            raw_value.get("supervised_process_event_persisted") is True
+        ),
+        "persistence_endpoint_included": (
+            raw_value.get("persistence_endpoint_included") is True
+            or raw_value.get("database_url_included") is True
+        ),
+        "storage_locator_included": (
+            raw_value.get("storage_locator_included") is True
+            or raw_value.get("storage_path_included") is True
+        ),
+        "artifact_payload_included": (
+            raw_value.get("artifact_payload_included") is True
+            or raw_value.get("raw_artifact_payload_included") is True
+        ),
+        "execution_payload_included": (
+            raw_value.get("execution_payload_included") is True
+            or raw_value.get("raw_execution_payload_included") is True
+        ),
+        "daemon_runtime_payload_included": (
+            raw_value.get("daemon_runtime_payload_included") is True
+            or raw_value.get("raw_daemon_runtime_payload_included") is True
+        ),
+        "process_control_allowed": raw_value.get("process_control_allowed") is True,
+        "ag_direct_process_control_allowed": (
+            raw_value.get("ag_direct_process_control_allowed") is True
+        ),
+        "ag_direct_database_write_allowed": (
+            raw_value.get("ag_direct_database_write_allowed") is True
+        ),
+        "ag_direct_job_enqueue_allowed": (
+            raw_value.get("ag_direct_job_enqueue_allowed") is True
+        ),
+        "process_started": raw_value.get("process_started") is True,
+        "process_stopped": raw_value.get("process_stopped") is True,
         "physical_delete_automation_enabled": (
             raw_value.get("physical_delete_automation_enabled") is True
         ),

@@ -605,6 +605,11 @@ Unified operations:
 - Slice 0575 verifies that AE API target with protected PostgreSQL smoke
   evidence. AG still does not connect to AE's database directly; the next AG
   slice should project only the safe AE route response shape.
+- Slice 0576 adds that AG read-only projection foundation for supervised
+  process snapshot collection/detail evidence. AG summarizes safe process
+  status, event, and adapter metadata from AE APIs while redacting raw process
+  snapshots, database URLs, storage paths, artifact payloads, execution
+  payloads, and daemon runtime payloads.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

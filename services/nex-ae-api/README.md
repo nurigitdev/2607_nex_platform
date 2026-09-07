@@ -878,3 +878,8 @@ Artifact library management:
   is set with `NEX_AE_TEST_DATABASE_URL`, the smoke runs migrations, records
   `MISSING` and `RUNNING` snapshots through AE APIs, verifies direct DB
   readback, and cleans up the test rows.
+- Slice 0576 keeps AE as the system of record while AG adds a read-only
+  projection foundation over these supervised process snapshot/detail API
+  responses. AE still exposes only safe metadata; raw process snapshots,
+  database URLs, storage paths, artifact payloads, execution payloads, and
+  daemon runtime payloads remain out of AG projections.
