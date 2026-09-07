@@ -341,6 +341,7 @@ def build_client_with_artifact_store(
     retention_scheduler_lease_store: ArtifactRetentionSchedulerLeaseStore | None = None,
     retention_scheduler_daemon_run_store: Any | None = None,
     retention_scheduler_daemon_supervisor_store: Any | None = None,
+    retention_scheduler_daemon_supervised_process_store: Any | None = None,
     retention_scheduler_daemon_supervisor_adapter: Any | None = None,
     job_queue: Any | None = None,
     worker_heartbeat_store: InMemoryWorkerHeartbeatStore | None = None,
@@ -367,6 +368,9 @@ def build_client_with_artifact_store(
         retention_scheduler_daemon_run_store=retention_scheduler_daemon_run_store,
         retention_scheduler_daemon_supervisor_store=(
             retention_scheduler_daemon_supervisor_store
+        ),
+        retention_scheduler_daemon_supervised_process_store=(
+            retention_scheduler_daemon_supervised_process_store
         ),
         retention_scheduler_daemon_supervisor_adapter=(
             retention_scheduler_daemon_supervisor_adapter
@@ -6276,6 +6280,9 @@ def test_artifact_retention_scheduler_config_route_returns_runtime_surface() -> 
     )
     assert payload["api_routes"]["scheduler_daemon_supervisor_results"] == (
         "/api/v1/artifact-retention/scheduler-daemon-supervisor-results"
+    )
+    assert payload["api_routes"]["scheduler_daemon_process_snapshots"] == (
+        "/api/v1/artifact-retention/scheduler-daemon-process-snapshots"
     )
     assert payload["guardrails"]["queue_admission_requires_ae_api"] is True
     assert unauthorized.status_code == 401

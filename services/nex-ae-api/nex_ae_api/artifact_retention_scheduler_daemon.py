@@ -96,6 +96,15 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_RECORD_SCHEMA_VERSION 
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_EVENT_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_supervised_process_event.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_DISPATCH_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_supervised_process_dispatch.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_COLLECTION_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_supervised_process_collection.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_DETAIL_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_supervised_process_detail.v1"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
@@ -4089,6 +4098,184 @@ def normalize_artifact_retention_scheduler_daemon_supervised_process_limit(
             "ae.artifact_retention_scheduler_daemon_supervised_process_collection_invalid"
         ),
     )
+
+
+def build_artifact_retention_scheduler_daemon_supervised_process_dispatch(
+    *,
+    supervised_process_snapshot: Mapping[str, Any],
+    supervised_process_record: Mapping[str, Any],
+    supervised_process_event: Mapping[str, Any],
+) -> dict[str, Any]:
+    snapshot = validate_artifact_retention_scheduler_daemon_supervised_process_snapshot(
+        supervised_process_snapshot
+    )
+    record = validate_artifact_retention_scheduler_daemon_supervised_process_record(
+        supervised_process_record
+    )
+    event = validate_artifact_retention_scheduler_daemon_supervised_process_event(
+        supervised_process_event
+    )
+    if (
+        record["daemon_supervised_process_id"]
+        != snapshot["daemon_supervised_process_id"]
+        or event["daemon_supervised_process_record_id"]
+        != record["daemon_supervised_process_record_id"]
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_supervised_process_dispatch_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon supervised process dispatch "
+                "scope is invalid."
+            ),
+        )
+    dispatch = {
+        "daemon_supervised_process_dispatch_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_DISPATCH_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": snapshot["scheduler_id"],
+        "action": snapshot["action"],
+        "process_status": snapshot["lifecycle"]["process_status"],
+        "supervised_process_snapshot": snapshot,
+        "supervised_process_record": record,
+        "supervised_process_event": event,
+        "guardrails": _daemon_supervised_process_route_guardrails(
+            read_only=False,
+            process_control_allowed=False,
+        ),
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "persistence_performed": True,
+            "supervised_process_record_persisted": True,
+            "supervised_process_event_persisted": True,
+            "process_control_allowed": False,
+            "process_started": False,
+            "process_stopped": False,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+        },
+    }
+    assert_artifact_retention_payload_safe(dispatch)
+    return dispatch
+
+
+def build_artifact_retention_scheduler_daemon_supervised_process_collection(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    scheduler_id: str | None = None,
+    action: str | None = None,
+    process_status: str | None = None,
+    limit: int | str | None = None,
+) -> dict[str, Any]:
+    normalized_limit = (
+        normalize_artifact_retention_scheduler_daemon_supervised_process_limit(
+            limit
+        )
+    )
+    normalized_scheduler_id = optional_text(scheduler_id)
+    normalized_action = _optional_daemon_supervisor_action(
+        action,
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_supervised_process_collection_invalid"
+        ),
+    )
+    normalized_process_status = _optional_daemon_supervised_process_status(
+        process_status,
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_supervised_process_collection_invalid"
+        ),
+    )
+    normalized_records = [
+        validate_artifact_retention_scheduler_daemon_supervised_process_record(
+            record
+        )
+        for record in records
+    ]
+    collection = {
+        "daemon_supervised_process_collection_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_COLLECTION_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "filter": {
+            "scheduler_id": normalized_scheduler_id,
+            "action": normalized_action,
+            "process_status": normalized_process_status,
+        },
+        "count": len(normalized_records),
+        "limit": normalized_limit,
+        "items": [
+            _daemon_supervised_process_collection_item(record)
+            for record in normalized_records
+        ],
+        "guardrails": _daemon_supervised_process_route_guardrails(
+            read_only=True,
+            process_control_allowed=False,
+        ),
+        "metadata": _daemon_supervised_process_collection_metadata(
+            records=normalized_records,
+            limit=normalized_limit,
+        ),
+    }
+    assert_artifact_retention_payload_safe(collection)
+    return collection
+
+
+def build_artifact_retention_scheduler_daemon_supervised_process_detail(
+    *,
+    supervised_process_record: Mapping[str, Any],
+    supervised_process_events: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    record = validate_artifact_retention_scheduler_daemon_supervised_process_record(
+        supervised_process_record
+    )
+    events = [
+        validate_artifact_retention_scheduler_daemon_supervised_process_event(
+            event
+        )
+        for event in supervised_process_events
+    ]
+    for event in events:
+        if event["daemon_supervised_process_record_id"] != record[
+            "daemon_supervised_process_record_id"
+        ]:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=(
+                    "ae.artifact_retention_scheduler_daemon_supervised_process_detail_invalid"
+                ),
+                detail=(
+                    "Artifact retention scheduler daemon supervised process "
+                    "detail event scope is invalid."
+                ),
+            )
+    detail = {
+        "daemon_supervised_process_detail_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_DETAIL_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "daemon_supervised_process_record_id": record[
+            "daemon_supervised_process_record_id"
+        ],
+        "supervised_process_record": record,
+        "supervised_process_event_count": len(events),
+        "supervised_process_events": events,
+        "guardrails": _daemon_supervised_process_route_guardrails(
+            read_only=True,
+            process_control_allowed=False,
+        ),
+        "metadata": _daemon_supervised_process_detail_metadata(
+            supervised_process_record=record,
+            supervised_process_events=events,
+        ),
+    }
+    assert_artifact_retention_payload_safe(detail)
+    return detail
 
 
 def build_artifact_retention_scheduler_daemon_supervisor_record(
@@ -8619,6 +8806,124 @@ def _daemon_supervised_process_event_id(
             ),
         )
     )
+
+
+def _daemon_supervised_process_route_guardrails(
+    *,
+    read_only: bool,
+    process_control_allowed: bool,
+) -> dict[str, bool]:
+    return {
+        "read_only": read_only,
+        "ae_owned_process": True,
+        "ae_owned_persistence": True,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+        "process_control_allowed": process_control_allowed,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "physical_delete_automation_enabled": False,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "secrets_redacted": True,
+    }
+
+
+def _daemon_supervised_process_collection_item(
+    supervised_process_record: Mapping[str, Any],
+) -> dict[str, Any]:
+    record = validate_artifact_retention_scheduler_daemon_supervised_process_record(
+        supervised_process_record
+    )
+    return {
+        "daemon_supervised_process_record_id": record[
+            "daemon_supervised_process_record_id"
+        ],
+        "scheduler_id": record["scheduler_id"],
+        "daemon_supervisor_command_id": record[
+            "daemon_supervisor_command_id"
+        ],
+        "daemon_supervised_process_id": record["daemon_supervised_process_id"],
+        "action": record["action"],
+        "process_status": record["process_status"],
+        "process_mode": record["process_mode"],
+        "process_id": record["process_id"],
+        "host_id": record["host_id"],
+        "observed_at": record["observed_at"],
+        "started_at": record["started_at"],
+        "completed_at": record["completed_at"],
+        "exit_code": record["exit_code"],
+        "termination_signal": record["termination_signal"],
+        "process_running": record["process_running"],
+        "process_started_observed": record["process_started_observed"],
+        "process_stopped_observed": record["process_stopped_observed"],
+        "subprocess_adapter_required": record["subprocess_adapter_required"],
+        "message": record["message"],
+        "summary": dict(record["summary"]),
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "read_model": (
+                "ae_artifact_retention_scheduler_daemon_process_snapshots"
+            ),
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+            "process_started": False,
+            "process_stopped": False,
+        },
+    }
+
+
+def _daemon_supervised_process_collection_metadata(
+    *,
+    records: Sequence[Mapping[str, Any]],
+    limit: int,
+) -> dict[str, Any]:
+    newest_observed_at = records[0]["observed_at"] if records else None
+    return {
+        "safe_for_ag_projection": True,
+        "read_model": (
+            "ae_artifact_retention_scheduler_daemon_process_snapshots"
+        ),
+        "item_count": len(records),
+        "limit": limit,
+        "has_more": len(records) == limit,
+        "newest_observed_at": newest_observed_at,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+    }
+
+
+def _daemon_supervised_process_detail_metadata(
+    *,
+    supervised_process_record: Mapping[str, Any],
+    supervised_process_events: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "safe_for_ag_projection": True,
+        "read_model": (
+            "ae_artifact_retention_scheduler_daemon_process_detail"
+        ),
+        "daemon_supervised_process_record_id": supervised_process_record[
+            "daemon_supervised_process_record_id"
+        ],
+        "supervised_process_event_count": len(supervised_process_events),
+        "event_types": [event["event_type"] for event in supervised_process_events],
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+    }
 
 
 def _daemon_run_record_metadata(result: Mapping[str, Any]) -> dict[str, Any]:

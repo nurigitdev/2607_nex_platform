@@ -598,6 +598,10 @@ Unified operations:
 - Slice 0573 keeps supervised process persistence AE-owned. AG can later read
   safe process snapshot/event summaries through AE service APIs, but it still
   cannot write those tables or directly control the daemon subprocess.
+- Slice 0574 opens the AE supervised process evidence API target. AG remains
+  read-only and should consume only safe AE route projections in a later slice;
+  direct AE database writes, JobQueue admission, subprocess start/stop, and raw
+  daemon runtime payloads remain outside AG.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

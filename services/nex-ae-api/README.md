@@ -867,3 +867,8 @@ Artifact library management:
   The new SQLAlchemy store creates process snapshot/event tables with indexed
   scheduler/action/status/pid metadata, but the persistence path still performs
   no process control, JobQueue admission, worker execution, or physical delete.
+- Slice 0574 exposes protected supervised process evidence APIs:
+  `/api/v1/artifact-retention/scheduler-daemon-process-snapshots` and the
+  snapshot detail route. The POST route records observed process evidence in
+  AE-owned storage only; it still never invokes the daemon CLI, starts or stops
+  a subprocess, enqueues jobs, or enables physical deletion.
