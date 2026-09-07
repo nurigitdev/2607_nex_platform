@@ -780,3 +780,7 @@ Artifact library management:
   lock owner, stale window, and lifecycle timestamps, but still perform no lock
   acquisition, database write, JobQueue enqueue, worker execution, runtime state
   persistence, or physical purge automation.
+- Slice 0554 adds the metadata-only graceful shutdown signal adapter. It accepts
+  supported `SIGTERM`/`SIGINT` names, binds process/run metadata to the existing
+  shutdown transition contract, and still installs no handler, delivers no
+  signal, terminates no process, writes no database row, and enqueues no work.

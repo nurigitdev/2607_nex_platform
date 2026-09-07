@@ -12,10 +12,13 @@ from nex_ae_api.artifact_retention_scheduler import (
     build_artifact_retention_scheduler_daemon_config,
     build_artifact_retention_scheduler_daemon_runtime_config,
     build_artifact_retention_scheduler_daemon_runtime_state,
+    build_artifact_retention_scheduler_daemon_shutdown_transition,
     summarize_artifact_retention_scheduler_daemon_runtime_state,
+    summarize_artifact_retention_scheduler_daemon_shutdown_transition,
     validate_artifact_retention_scheduler_daemon_config,
     validate_artifact_retention_scheduler_daemon_runtime_config,
     validate_artifact_retention_scheduler_daemon_runtime_state,
+    validate_artifact_retention_scheduler_daemon_shutdown_transition,
 )
 from nex_ae_api.artifacts import (
     ArtifactHandoffError,
@@ -38,6 +41,9 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_PROCESS_LOCK_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_METADATA_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_run_metadata.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SIGNAL_SHUTDOWN_ADAPTER_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_signal_shutdown_adapter.v1"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
@@ -51,6 +57,9 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_PROCESS_LOCK_SCOPE = (
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_PROCESS_LOCK_STATUS = "READY_TO_ACQUIRE"
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_STATUSES = frozenset(
     {"PENDING", "RUNNING", "STOPPING", "SUCCEEDED", "FAILED"}
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SHUTDOWN_SIGNALS = frozenset(
+    {"SIGINT", "SIGTERM"}
 )
 
 
@@ -977,9 +986,7 @@ def validate_artifact_retention_scheduler_daemon_run_metadata(
         normalized.get("command_summary"),
         error_code=error_code,
     )
-    lifecycle = _validate_daemon_run_metadata_lifecycle(
-        normalized.get("lifecycle")
-    )
+    lifecycle = _validate_daemon_run_metadata_lifecycle(normalized.get("lifecycle"))
     if normalized.get("guardrails") != _daemon_run_metadata_guardrails():
         raise ArtifactHandoffError(
             status_code=422,
@@ -1052,6 +1059,293 @@ def run_metadata_summary_line(run_metadata: Mapping[str, Any]) -> str:
         f"run_status={summary['run_status']} "
         f"process_id={summary['process_id']} "
         f"persisted={int(summary['run_record_persisted'])}"
+    )
+
+
+def build_artifact_retention_scheduler_daemon_signal_shutdown_adapter(
+    *,
+    current_state: Mapping[str, Any],
+    process_lock: Mapping[str, Any],
+    run_metadata: Mapping[str, Any],
+    signal_name: str = "SIGTERM",
+    received_at: str | None = None,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    state = validate_artifact_retention_scheduler_daemon_runtime_state(current_state)
+    lock = validate_artifact_retention_scheduler_daemon_process_lock(process_lock)
+    run = validate_artifact_retention_scheduler_daemon_run_metadata(run_metadata)
+    normalized_signal = _normalize_daemon_shutdown_signal_name(signal_name)
+    normalized_received_at = _required_text(
+        received_at or state["observed_at"],
+        "received_at",
+        error_code="ae.artifact_retention_scheduler_daemon_signal_shutdown_adapter_invalid",
+    )
+    _ensure_daemon_signal_shutdown_adapter_scope(
+        current_state=state,
+        process_lock=lock,
+        run_metadata=run,
+    )
+    transition = build_artifact_retention_scheduler_daemon_shutdown_transition(
+        current_state=state,
+        requested_at=normalized_received_at,
+        requested_by={
+            "actor_type": "service",
+            "actor_id": "nex-ae-api-daemon-signal-adapter",
+            "request_id": run["daemon_run_id"],
+        },
+        reason=reason or f"received_{normalized_signal.lower()}",
+    )
+    signal = {
+        "signal_name": normalized_signal,
+        "received_at": normalized_received_at,
+        "handler": "deferred_cli_signal_adapter",
+    }
+    adapter = {
+        "daemon_signal_shutdown_adapter_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SIGNAL_SHUTDOWN_ADAPTER_SCHEMA_VERSION
+        ),
+        "daemon_signal_shutdown_adapter_id": _daemon_signal_shutdown_adapter_id(
+            scheduler_id=state["scheduler_id"],
+            daemon_run_id=run["daemon_run_id"],
+            signal=signal,
+            shutdown_transition=transition,
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": state["scheduler_id"],
+        "daemon_run_id": run["daemon_run_id"],
+        "daemon_process_lock_id": lock["daemon_process_lock_id"],
+        "daemon_cli_execute_command_id": run["daemon_cli_execute_command_id"],
+        "signal": signal,
+        "process": deepcopy(lock["process"]),
+        "run_lifecycle": deepcopy(run["lifecycle"]),
+        "shutdown_transition": transition,
+        "execution_plan": _daemon_signal_shutdown_adapter_execution_plan(
+            shutdown_transition=transition
+        ),
+        "guardrails": _daemon_signal_shutdown_adapter_guardrails(),
+        "metadata": _daemon_signal_shutdown_adapter_metadata(
+            signal=signal,
+            process=lock["process"],
+            run_lifecycle=run["lifecycle"],
+            shutdown_transition=transition,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_signal_shutdown_adapter(
+        adapter
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_signal_shutdown_adapter(
+    adapter: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_signal_shutdown_adapter_invalid"
+    if not isinstance(adapter, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter "
+                "must be an object."
+            ),
+        )
+    normalized = dict(adapter)
+    if set(normalized) != {
+        "daemon_signal_shutdown_adapter_schema_version",
+        "daemon_signal_shutdown_adapter_id",
+        "service_id",
+        "scheduler_id",
+        "daemon_run_id",
+        "daemon_process_lock_id",
+        "daemon_cli_execute_command_id",
+        "signal",
+        "process",
+        "run_lifecycle",
+        "shutdown_transition",
+        "execution_plan",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter "
+                "keys are invalid."
+            ),
+        )
+    if (
+        normalized.get("daemon_signal_shutdown_adapter_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SIGNAL_SHUTDOWN_ADAPTER_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_signal_shutdown_adapter_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter "
+                "schema is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter "
+                "service id is invalid."
+            ),
+        )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        error_code=error_code,
+    )
+    daemon_run_id = _required_text(
+        normalized.get("daemon_run_id"),
+        "daemon_run_id",
+        error_code=error_code,
+    )
+    process_lock_id = _required_text(
+        normalized.get("daemon_process_lock_id"),
+        "daemon_process_lock_id",
+        error_code=error_code,
+    )
+    command_id = _required_text(
+        normalized.get("daemon_cli_execute_command_id"),
+        "daemon_cli_execute_command_id",
+        error_code=error_code,
+    )
+    signal = _validate_daemon_signal_shutdown_adapter_signal(
+        normalized.get("signal")
+    )
+    process = _validate_daemon_process_lock_process(
+        normalized.get("process"),
+        error_code=error_code,
+    )
+    run_lifecycle = _validate_daemon_run_metadata_lifecycle(
+        normalized.get("run_lifecycle"),
+        error_code=error_code,
+    )
+    shutdown_transition = (
+        validate_artifact_retention_scheduler_daemon_shutdown_transition(
+            normalized.get("shutdown_transition")
+        )
+    )
+    if shutdown_transition["scheduler_id"] != scheduler_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter "
+                "transition scope is invalid."
+            ),
+        )
+    expected_execution_plan = _daemon_signal_shutdown_adapter_execution_plan(
+        shutdown_transition=shutdown_transition
+    )
+    if normalized.get("execution_plan") != expected_execution_plan:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter "
+                "execution plan is invalid."
+            ),
+        )
+    if normalized.get("guardrails") != _daemon_signal_shutdown_adapter_guardrails():
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter "
+                "guardrails are invalid."
+            ),
+        )
+    expected_metadata = _daemon_signal_shutdown_adapter_metadata(
+        signal=signal,
+        process=process,
+        run_lifecycle=run_lifecycle,
+        shutdown_transition=shutdown_transition,
+    )
+    if normalized.get("metadata") != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter "
+                "metadata is invalid."
+            ),
+        )
+    expected_id = _daemon_signal_shutdown_adapter_id(
+        scheduler_id=scheduler_id,
+        daemon_run_id=daemon_run_id,
+        signal=signal,
+        shutdown_transition=shutdown_transition,
+    )
+    if normalized.get("daemon_signal_shutdown_adapter_id") != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter id "
+                "is invalid."
+            ),
+        )
+    normalized["daemon_run_id"] = daemon_run_id
+    normalized["daemon_process_lock_id"] = process_lock_id
+    normalized["daemon_cli_execute_command_id"] = command_id
+    normalized["signal"] = signal
+    normalized["process"] = process
+    normalized["run_lifecycle"] = run_lifecycle
+    normalized["shutdown_transition"] = shutdown_transition
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_signal_shutdown_adapter(
+    adapter: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduler_daemon_signal_shutdown_adapter(
+        adapter
+    )
+    transition_summary = (
+        summarize_artifact_retention_scheduler_daemon_shutdown_transition(
+            validated["shutdown_transition"]
+        )
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "daemon_run_id": validated["daemon_run_id"],
+        "signal_name": validated["signal"]["signal_name"],
+        "received_at": validated["signal"]["received_at"],
+        "process_id": validated["process"]["process_id"],
+        "run_status": validated["run_lifecycle"]["run_status"],
+        "decision_status": transition_summary["decision_status"],
+        "decision_reason": transition_summary["decision_reason"],
+        "to_lifecycle_status": transition_summary["to_lifecycle_status"],
+        "shutdown_requested": transition_summary["shutdown_requested"],
+        "signal_handler_installed": validated["guardrails"][
+            "signal_handler_installed"
+        ],
+        "stop_signal_delivered": validated["guardrails"]["stop_signal_delivered"],
+        "database_write_performed": validated["guardrails"][
+            "database_write_performed"
+        ],
+    }
+
+
+def signal_shutdown_adapter_summary_line(adapter: Mapping[str, Any]) -> str:
+    summary = summarize_artifact_retention_scheduler_daemon_signal_shutdown_adapter(
+        adapter
+    )
+    return (
+        "ae_scheduler_daemon_signal_shutdown_adapter=pass "
+        f"scheduler_id={summary['scheduler_id']} "
+        f"signal={summary['signal_name']} "
+        f"decision={summary['decision_status']} "
+        f"to={summary['to_lifecycle_status']} "
+        f"delivered={int(summary['stop_signal_delivered'])}"
     )
 
 
@@ -1648,8 +1942,11 @@ def _validate_daemon_execute_command_summary(
     return summary
 
 
-def _validate_daemon_run_metadata_lifecycle(value: Any) -> dict[str, Any]:
-    error_code = "ae.artifact_retention_scheduler_daemon_run_metadata_invalid"
+def _validate_daemon_run_metadata_lifecycle(
+    value: Any,
+    *,
+    error_code: str = "ae.artifact_retention_scheduler_daemon_run_metadata_invalid",
+) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise ArtifactHandoffError(
             status_code=422,
@@ -1745,6 +2042,61 @@ def _ensure_daemon_run_metadata_scope(
         )
 
 
+def _ensure_daemon_signal_shutdown_adapter_scope(
+    *,
+    current_state: Mapping[str, Any],
+    process_lock: Mapping[str, Any],
+    run_metadata: Mapping[str, Any],
+) -> None:
+    if current_state["scheduler_id"] != process_lock["scheduler_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_signal_shutdown_adapter_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter lock "
+                "scope is invalid."
+            ),
+        )
+    if current_state["scheduler_id"] != run_metadata["scheduler_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_signal_shutdown_adapter_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter run "
+                "scope is invalid."
+            ),
+        )
+    if process_lock["daemon_process_lock_id"] != run_metadata["daemon_process_lock_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_signal_shutdown_adapter_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter "
+                "process lock scope is invalid."
+            ),
+        )
+    if (
+        process_lock["daemon_cli_execute_command_id"]
+        != run_metadata["daemon_cli_execute_command_id"]
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_signal_shutdown_adapter_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter "
+                "command scope is invalid."
+            ),
+        )
+
+
 def _daemon_execute_command_summary(
     execute_command: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -1753,6 +2105,142 @@ def _daemon_execute_command_summary(
         "max_cycles": execute_command["command"]["max_cycles"],
         "run_worker": execute_command["command"]["run_worker"],
         "plan_only": execute_command["command"]["plan_only"],
+    }
+
+
+def _normalize_daemon_shutdown_signal_name(value: Any) -> str:
+    signal_name = _required_text(
+        value,
+        "signal_name",
+        error_code="ae.artifact_retention_scheduler_daemon_signal_shutdown_adapter_invalid",
+    ).upper()
+    if signal_name not in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SHUTDOWN_SIGNALS:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_signal_shutdown_adapter_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter "
+                "signal is invalid."
+            ),
+        )
+    return signal_name
+
+
+def _validate_daemon_signal_shutdown_adapter_signal(value: Any) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_signal_shutdown_adapter_invalid"
+    if not isinstance(value, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter "
+                "signal is invalid."
+            ),
+        )
+    signal = dict(value)
+    if set(signal) != {"signal_name", "received_at", "handler"}:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter "
+                "signal keys are invalid."
+            ),
+        )
+    signal["signal_name"] = _normalize_daemon_shutdown_signal_name(
+        signal.get("signal_name")
+    )
+    signal["received_at"] = _required_text(
+        signal.get("received_at"),
+        "received_at",
+        error_code=error_code,
+    )
+    signal["handler"] = _required_text(
+        signal.get("handler"),
+        "handler",
+        error_code=error_code,
+    )
+    if signal["handler"] != "deferred_cli_signal_adapter":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon signal shutdown adapter "
+                "handler is invalid."
+            ),
+        )
+    return signal
+
+
+def _daemon_signal_shutdown_adapter_execution_plan(
+    *,
+    shutdown_transition: Mapping[str, Any],
+) -> dict[str, bool]:
+    transition_plan = shutdown_transition["execution_plan"]
+    return {
+        "signal_observed": True,
+        "signal_handler_installed": False,
+        "builds_shutdown_transition": True,
+        "stop_signal_requested": transition_plan["stop_signal_requested"],
+        "bounded_loop_should_stop_before_next_cycle": transition_plan[
+            "bounded_loop_should_stop_before_next_cycle"
+        ],
+        "stop_signal_delivered": False,
+        "writes_database": False,
+        "enqueues_job_queue": False,
+        "runs_worker": False,
+        "physical_delete_enabled": False,
+    }
+
+
+def _daemon_signal_shutdown_adapter_guardrails() -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "signal_handler_installed": False,
+        "stop_signal_delivered": False,
+        "process_terminated": False,
+        "database_url_included": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "runtime_state_persisted": False,
+        "physical_delete_automation_enabled": False,
+        "secrets_redacted": True,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+    }
+
+
+def _daemon_signal_shutdown_adapter_metadata(
+    *,
+    signal: Mapping[str, Any],
+    process: Mapping[str, Any],
+    run_lifecycle: Mapping[str, Any],
+    shutdown_transition: Mapping[str, Any],
+) -> dict[str, bool | int | str]:
+    return {
+        "safe_for_ag_projection": True,
+        "metadata_only": True,
+        "signal_name": signal["signal_name"],
+        "process_id": process["process_id"],
+        "host_id": process["host_id"],
+        "run_status": run_lifecycle["run_status"],
+        "transition_decision_status": shutdown_transition["decision_status"],
+        "transition_decision_reason": shutdown_transition["decision_reason"],
+        "shutdown_requested": shutdown_transition["metadata"]["shutdown_requested"],
+        "stop_signal_requested": shutdown_transition["execution_plan"][
+            "stop_signal_requested"
+        ],
+        "signal_handler_installed": False,
+        "stop_signal_delivered": False,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "runtime_state_persisted": False,
     }
 
 
@@ -1967,6 +2455,28 @@ def _daemon_run_metadata_id(
         uuid5(
             NAMESPACE_URL,
             f"ae-artifact-retention-scheduler-daemon-run-metadata:{sha256_json(basis)}",
+        )
+    )
+
+
+def _daemon_signal_shutdown_adapter_id(
+    *,
+    scheduler_id: str,
+    daemon_run_id: str,
+    signal: Mapping[str, Any],
+    shutdown_transition: Mapping[str, Any],
+) -> str:
+    basis = {
+        "scheduler_id": scheduler_id,
+        "daemon_run_id": daemon_run_id,
+        "signal_name": signal["signal_name"],
+        "received_at": signal["received_at"],
+        "transition_id": shutdown_transition["daemon_shutdown_transition_id"],
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            f"ae-artifact-retention-scheduler-daemon-signal-adapter:{sha256_json(basis)}",
         )
     )
 

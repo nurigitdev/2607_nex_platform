@@ -519,6 +519,10 @@ Unified operations:
   metadata-only. AG may consume safe lifecycle summaries later, but it still
   cannot acquire locks, persist run records, enqueue AE jobs, or receive raw
   daemon/runtime payloads.
+- Slice 0554 keeps graceful shutdown signal handling AE-owned. AG may later
+  observe safe signal/shutdown transition summaries, but it cannot install
+  handlers, deliver stop signals, terminate AE processes, persist lifecycle
+  state, or enqueue AE retention work.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
