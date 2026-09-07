@@ -543,6 +543,10 @@ Unified operations:
   and detail routes backed by AE API calls, summarizes safe run/lifecycle
   metadata, and proves the route path against rows written to the AE test DB by
   a protected PostgreSQL smoke.
+- Slice 0560 closes S56 by registering the executable runtime closure in the
+  quality gate. AG's final S56 responsibility is read-only daemon run
+  projection over AE APIs; process control, persistence writes, and JobQueue
+  admission remain AE-owned.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -663,6 +663,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0557`](slices/0557_ae_daemon_run_lifecycle_persistence.md) | `S56-007` AE daemon run and lifecycle persistence. |
 | [`Slice 0558`](slices/0558_ae_daemon_run_read_model_api.md) | `S56-008` AE daemon run read-model API. |
 | [`Slice 0559`](slices/0559_ag_daemon_run_read_model_projection.md) | `S56-009` AG daemon run read-model projection and PostgreSQL smoke evidence. |
+| [`Slice 0560`](slices/0560_s56_ae_scheduler_daemon_executable_runtime_closure.md) | `S56-010` S56 AE scheduler daemon executable runtime closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

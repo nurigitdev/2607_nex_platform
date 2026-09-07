@@ -811,3 +811,6 @@ Artifact library management:
   The protected PostgreSQL smoke writes daemon run and lifecycle rows to
   `NEX_AE_TEST_DATABASE_URL`, reads them through AE API routes, projects them
   through AG, and removes the test DB rows afterward.
+- Slice 0560 closes S56 in the default quality gate. The executable daemon
+  runtime remains explicit-opt-in, finite, test-profile only, AE-owned for run
+  persistence/read models, and safe for AG read-only operations projection.
