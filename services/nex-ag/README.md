@@ -602,6 +602,9 @@ Unified operations:
   read-only and should consume only safe AE route projections in a later slice;
   direct AE database writes, JobQueue admission, subprocess start/stop, and raw
   daemon runtime payloads remain outside AG.
+- Slice 0575 verifies that AE API target with protected PostgreSQL smoke
+  evidence. AG still does not connect to AE's database directly; the next AG
+  slice should project only the safe AE route response shape.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -872,3 +872,9 @@ Artifact library management:
   snapshot detail route. The POST route records observed process evidence in
   AE-owned storage only; it still never invokes the daemon CLI, starts or stops
   a subprocess, enqueues jobs, or enables physical deletion.
+- Slice 0575 adds the protected PostgreSQL smoke and migration for those
+  supervised process snapshot/event tables. When
+  `NEX_AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_POSTGRES_SMOKE=1`
+  is set with `NEX_AE_TEST_DATABASE_URL`, the smoke runs migrations, records
+  `MISSING` and `RUNNING` snapshots through AE APIs, verifies direct DB
+  readback, and cleans up the test rows.
