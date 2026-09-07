@@ -587,6 +587,10 @@ Unified operations:
   The closure verifies the protected PostgreSQL smoke hooks and confirms AG has
   no direct AE daemon process control, JobQueue admission, or persistence write
   authority.
+- Slice 0571 starts S58 with AG still read-only for supervised daemon process
+  evidence. AG may later observe AE-owned process status and guarded outcomes,
+  but it must not start or stop AE subprocesses, enqueue AE retention work, or
+  write AE persistence directly.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

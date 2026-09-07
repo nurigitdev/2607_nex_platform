@@ -853,3 +853,8 @@ Artifact library management:
 - Slice 0570 closes S57 with a quality-gate checkpoint over the AE supervisor
   boundary, fake/dry-run adapter, AE-owned persistence/API, protected
   PostgreSQL smoke evidence, and AG read-only projection.
+- Slice 0571 starts S58 by freezing the supervised daemon process activation
+  boundary before any real subprocess start path is enabled. AE remains the
+  process owner, production continuous start remains disabled, and the first
+  process mode is bounded-loop subprocess execution under the `test` profile
+  only.
