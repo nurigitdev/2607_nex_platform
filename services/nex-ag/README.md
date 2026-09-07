@@ -547,6 +547,10 @@ Unified operations:
   quality gate. AG's final S56 responsibility is read-only daemon run
   projection over AE APIs; process control, persistence writes, and JobQueue
   admission remain AE-owned.
+- Slice 0561 starts S57 by freezing AG's supervisor operations boundary. AG may
+  project AE supervisor status and guarded outcomes later, but it must still
+  call AE APIs only and cannot write AE daemon persistence, enqueue AE retention
+  jobs, or control local daemon processes directly.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

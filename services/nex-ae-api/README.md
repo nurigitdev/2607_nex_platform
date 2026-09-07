@@ -814,3 +814,8 @@ Artifact library management:
 - Slice 0560 closes S56 in the default quality gate. The executable daemon
   runtime remains explicit-opt-in, finite, test-profile only, AE-owned for run
   persistence/read models, and safe for AG read-only operations projection.
+- Slice 0561 starts S57 by freezing the daemon supervisor boundary before
+  opening `start_daemon` or continuous-loop process supervision. AE remains the
+  supervisor/process owner, production continuous start stays disabled, and the
+  first supervisor implementation should be an injectable metadata-only
+  fake/dry-run adapter with test-profile explicit opt-in guardrails.
