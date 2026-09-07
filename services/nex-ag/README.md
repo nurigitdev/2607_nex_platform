@@ -538,6 +538,11 @@ Unified operations:
   read-only daemon run collection/detail routes in a later projection slice,
   but it still cannot write AE daemon run rows, enqueue AE retention jobs, or
   receive raw daemon execution payloads.
+- Slice 0559 adds that AG projection. AG exposes read-only
+  `/admin/v1/operations/artifact-retention/scheduler-daemon-runs` collection
+  and detail routes backed by AE API calls, summarizes safe run/lifecycle
+  metadata, and proves the route path against rows written to the AE test DB by
+  a protected PostgreSQL smoke.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -807,3 +807,7 @@ Artifact library management:
   The routes return safe projections only, require auth, and keep process
   control, JobQueue admission, database writes, and raw execution payloads out
   of the read model.
+- Slice 0559 verifies those routes as the source of record for AG operations.
+  The protected PostgreSQL smoke writes daemon run and lifecycle rows to
+  `NEX_AE_TEST_DATABASE_URL`, reads them through AE API routes, projects them
+  through AG, and removes the test DB rows afterward.

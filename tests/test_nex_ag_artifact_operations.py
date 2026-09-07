@@ -16,6 +16,8 @@ from nex_ag.artifact_operations import (
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_ATTENTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_LIFECYCLE_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_PROJECTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUN_COLLECTION_PROJECTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUN_DETAIL_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_DISPATCH_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_SCHEDULED_JOB_PROJECTION_SCHEMA_VERSION,
@@ -34,6 +36,8 @@ from nex_ag.artifact_operations import (
     build_artifact_operation_retention_automation_projection,
     build_artifact_operation_retention_batch_projection,
     build_artifact_operation_retention_daemon_projection,
+    build_artifact_operation_retention_daemon_run_collection_projection,
+    build_artifact_operation_retention_daemon_run_detail_projection,
     build_artifact_operation_retention_history_projection,
     build_artifact_operation_retention_scheduled_dispatch_projection,
     build_artifact_operation_retention_scheduled_job_projection,
@@ -48,6 +52,8 @@ from nex_ag.artifact_operations import (
     summarize_artifact_retention_automation_operations,
     summarize_artifact_retention_daemon_operations,
     summarize_artifact_retention_daemon_lifecycle_projection,
+    summarize_artifact_retention_daemon_run_detail,
+    summarize_artifact_retention_daemon_run_operations,
     summarize_artifact_retention_history_operations,
     summarize_artifact_retention_scheduled_dispatch,
     summarize_artifact_retention_scheduled_job_operations,
@@ -1228,6 +1234,221 @@ def artifact_retention_scheduler_daemon_dispatch_payload(
     }
 
 
+def artifact_retention_scheduler_daemon_run_record_payload(
+    *,
+    daemon_run_record_id: str = "daemon-run-record-0559",
+    result_status: str = "SUCCEEDED",
+    completed_at: str = "2026-09-01T02:42:00Z",
+) -> dict[str, Any]:
+    return {
+        "daemon_run_record_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_run_record.v1"
+        ),
+        "daemon_run_record_id": daemon_run_record_id,
+        "service_id": "nex-ae-api",
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "daemon_instance_id": "ae-daemon-instance-0559",
+        "daemon_cli_execution_result_id": "daemon-cli-execution-result-0559",
+        "daemon_cli_execute_command_id": "daemon-cli-execute-command-0559",
+        "daemon_process_lock_id": "daemon-process-lock-0559",
+        "started_daemon_run_id": "started-daemon-run-0559",
+        "completed_daemon_run_id": "completed-daemon-run-0559",
+        "process_id": 5590,
+        "host_id": "ae-node-0559",
+        "run_status": "SUCCEEDED" if result_status == "SUCCEEDED" else "FAILED",
+        "result_status": result_status,
+        "stop_reason": (
+            "max_cycles_reached" if result_status == "SUCCEEDED" else "cycle_failed"
+        ),
+        "max_cycles": 2,
+        "cycle_count": 2 if result_status == "SUCCEEDED" else 1,
+        "worker_requested": True,
+        "job_enqueued": result_status == "SUCCEEDED",
+        "worker_executed": result_status == "SUCCEEDED",
+        "started_at": "2026-09-01T02:40:00Z",
+        "completed_at": completed_at,
+        "checked_at": "2026-09-01T02:40:00Z",
+        "summary": {
+            "scheduler_id": "ae-artifact-retention-scheduler",
+            "result_status": result_status,
+            "stop_reason": (
+                "max_cycles_reached"
+                if result_status == "SUCCEEDED"
+                else "cycle_failed"
+            ),
+            "max_cycles": 2,
+            "cycle_count": 2 if result_status == "SUCCEEDED" else 1,
+            "job_enqueued": result_status == "SUCCEEDED",
+            "worker_executed": result_status == "SUCCEEDED",
+            "run_record_persisted": True,
+            "bounded_loop_started": True,
+        },
+        "metadata": {
+            "metadata_only": True,
+            "safe_for_ag_projection": True,
+            "bounded_loop_started": True,
+            "job_enqueued": result_status == "SUCCEEDED",
+            "worker_executed": result_status == "SUCCEEDED",
+            "run_record_persisted": True,
+            "lifecycle_event_persisted": True,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+            "physical_delete_automation_enabled": False,
+        },
+        "execution_result_hash": "a" * 64,
+        "created_at": completed_at,
+    }
+
+
+def artifact_retention_scheduler_daemon_lifecycle_event_payload(
+    *,
+    event_type: str,
+    run_record: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    record = run_record or artifact_retention_scheduler_daemon_run_record_payload()
+    completed = event_type == "RUN_COMPLETED"
+    return {
+        "daemon_lifecycle_event_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_lifecycle_event.v1"
+        ),
+        "daemon_lifecycle_event_id": (
+            f"{record['daemon_run_record_id']}:{event_type.lower()}"
+        ),
+        "daemon_run_record_id": record["daemon_run_record_id"],
+        "daemon_cli_execution_result_id": record["daemon_cli_execution_result_id"],
+        "daemon_run_metadata_id": (
+            record["completed_daemon_run_id"]
+            if completed
+            else record["started_daemon_run_id"]
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": record["scheduler_id"],
+        "daemon_instance_id": record["daemon_instance_id"],
+        "event_type": event_type,
+        "run_status": record["run_status"] if completed else "RUNNING",
+        "result_status": record["result_status"] if completed else None,
+        "stop_reason": record["stop_reason"] if completed else None,
+        "cycle_count": record["cycle_count"] if completed else 0,
+        "occurred_at": record["completed_at"] if completed else record["started_at"],
+        "process_id": record["process_id"],
+        "host_id": record["host_id"],
+        "summary": {
+            "event_type": event_type,
+            "run_status": record["run_status"] if completed else "RUNNING",
+            "result_status": record["result_status"] if completed else None,
+            "stop_reason": record["stop_reason"] if completed else None,
+            "cycle_count": record["cycle_count"] if completed else 0,
+            "occurred_at": (
+                record["completed_at"] if completed else record["started_at"]
+            ),
+        },
+        "metadata": record["metadata"],
+        "created_at": record["completed_at"] if completed else record["started_at"],
+    }
+
+
+def artifact_retention_scheduler_daemon_run_collection_payload() -> dict[str, Any]:
+    records = [
+        artifact_retention_scheduler_daemon_run_record_payload(),
+        artifact_retention_scheduler_daemon_run_record_payload(
+            daemon_run_record_id="daemon-run-record-failed-0559",
+            result_status="FAILED",
+            completed_at="2026-09-01T02:41:00Z",
+        ),
+    ]
+    return {
+        "daemon_run_collection_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_run_collection.v1"
+        ),
+        "service_id": "nex-ae-api",
+        "filter": {
+            "scheduler_id": "ae-artifact-retention-scheduler",
+            "result_status": None,
+        },
+        "count": len(records),
+        "limit": 20,
+        "items": records,
+        "guardrails": {
+            "read_only": True,
+            "ae_owned_persistence": True,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "process_control_allowed": False,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+            "physical_delete_automation_enabled": False,
+        },
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "read_model": "ae_artifact_retention_scheduler_daemon_runs",
+            "item_count": len(records),
+            "limit": 20,
+            "has_more": False,
+            "newest_completed_at": records[0]["completed_at"],
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+        },
+    }
+
+
+def artifact_retention_scheduler_daemon_run_detail_payload() -> dict[str, Any]:
+    record = artifact_retention_scheduler_daemon_run_record_payload()
+    events = [
+        artifact_retention_scheduler_daemon_lifecycle_event_payload(
+            event_type="RUN_STARTED",
+            run_record=record,
+        ),
+        artifact_retention_scheduler_daemon_lifecycle_event_payload(
+            event_type="RUN_COMPLETED",
+            run_record=record,
+        ),
+    ]
+    return {
+        "daemon_run_detail_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_run_detail.v1"
+        ),
+        "service_id": "nex-ae-api",
+        "daemon_run_record_id": record["daemon_run_record_id"],
+        "run_record": record,
+        "lifecycle_event_count": len(events),
+        "lifecycle_events": events,
+        "guardrails": {
+            "read_only": True,
+            "ae_owned_persistence": True,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "process_control_allowed": False,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+            "physical_delete_automation_enabled": False,
+        },
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "read_model": "ae_artifact_retention_scheduler_daemon_run_detail",
+            "daemon_run_record_id": record["daemon_run_record_id"],
+            "lifecycle_event_count": len(events),
+            "event_types": ["RUN_STARTED", "RUN_COMPLETED"],
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+        },
+    }
+
+
 def artifact_client() -> InMemoryAeArtifactOperationsClient:
     return InMemoryAeArtifactOperationsClient(
         artifacts={ARTIFACT_ID: artifact_record()},
@@ -1305,6 +1526,34 @@ def artifact_client() -> InMemoryAeArtifactOperationsClient:
         artifact_retention_scheduler_daemon_runtime=(
             artifact_retention_scheduler_daemon_runtime_payload()
         ),
+        artifact_retention_scheduler_daemon_run_collections={
+            artifact_operations._artifact_retention_scheduler_daemon_run_cache_key(
+                scheduler_id="ae-artifact-retention-scheduler",
+                result_status=None,
+                limit=20,
+            ): artifact_retention_scheduler_daemon_run_collection_payload(),
+            artifact_operations._artifact_retention_scheduler_daemon_run_cache_key(
+                scheduler_id="ae-artifact-retention-scheduler",
+                result_status="SUCCEEDED",
+                limit=1,
+            ): {
+                **artifact_retention_scheduler_daemon_run_collection_payload(),
+                "filter": {
+                    "scheduler_id": "ae-artifact-retention-scheduler",
+                    "result_status": "SUCCEEDED",
+                },
+                "count": 1,
+                "limit": 1,
+                "items": [
+                    artifact_retention_scheduler_daemon_run_record_payload()
+                ],
+            },
+        },
+        artifact_retention_scheduler_daemon_run_details={
+            "daemon-run-record-0559": (
+                artifact_retention_scheduler_daemon_run_detail_payload()
+            ),
+        },
         handoffs={HANDOFF_ID: handoff_record()},
         chat_artifact_refs={INTERACTION_ID: {"artifact_refs": [chat_artifact_ref()]}},
     )
@@ -4548,6 +4797,176 @@ def test_artifact_retention_scheduler_daemon_operations_route_guardrails() -> No
     )
 
 
+def test_artifact_retention_scheduler_daemon_run_projections_summarize_and_redact() -> (
+    None
+):
+    collection = artifact_retention_scheduler_daemon_run_collection_payload()
+    detail = artifact_retention_scheduler_daemon_run_detail_payload()
+    collection_projection = (
+        build_artifact_operation_retention_daemon_run_collection_projection(
+            collection=collection,
+            source_client=artifact_client(),
+            request_trace_id=TRACE_ID,
+        )
+    )
+    detail_projection = build_artifact_operation_retention_daemon_run_detail_projection(
+        detail=detail,
+        source_client=artifact_client(),
+        request_trace_id=TRACE_ID,
+    )
+
+    assert collection_projection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUN_COLLECTION_PROJECTION_SCHEMA_VERSION
+    )
+    assert collection_projection["operation_type"] == (
+        "ae_artifact_retention_scheduler_daemon_runs"
+    )
+    assert collection_projection["summary"] == (
+        summarize_artifact_retention_daemon_run_operations(
+            collection_projection["items"]
+        )
+    )
+    assert collection_projection["summary"]["run_count"] == 2
+    assert collection_projection["summary"]["succeeded_count"] == 1
+    assert collection_projection["summary"]["failed_count"] == 1
+    assert collection_projection["summary"]["operator_attention_required"] is True
+    assert collection_projection["source_status"]["run_collection_loaded"] is True
+    assert collection_projection["operator_guidance"][
+        "ag_direct_daemon_process_control_allowed"
+    ] is False
+    assert detail_projection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUN_DETAIL_PROJECTION_SCHEMA_VERSION
+    )
+    assert detail_projection["summary"] == (
+        summarize_artifact_retention_daemon_run_detail(
+            run_record=detail_projection["run_record"],
+            lifecycle_events=detail_projection["lifecycle_events"],
+        )
+    )
+    assert detail_projection["summary"]["lifecycle_event_types"] == [
+        "RUN_STARTED",
+        "RUN_COMPLETED",
+    ]
+    assert detail_projection["source_status"]["run_detail_loaded"] is True
+    assert "daemon_cli_execution_result_id" in detail_projection["run_record"]
+    assert collection_projection["items"][0]["metadata"][
+        "execution_payload_included"
+    ] is False
+    assert_artifact_operation_projection_redacted(collection_projection)
+    assert_artifact_operation_projection_redacted(detail_projection)
+
+
+def test_artifact_retention_scheduler_daemon_run_routes_return_read_models() -> None:
+    client = build_app(artifact_client())
+
+    collection_response = client.get(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon-runs",
+        params={
+            "service_id": "nex-ae-api",
+            "scheduler_id": "ae-artifact-retention-scheduler",
+            "result_status": "SUCCEEDED",
+            "limit": "1",
+        },
+        headers=auth_headers(),
+    )
+    detail_response = client.get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-runs/daemon-run-record-0559"
+        ),
+        headers=auth_headers(),
+    )
+
+    assert collection_response.status_code == 200
+    collection = collection_response.json()
+    assert collection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUN_COLLECTION_PROJECTION_SCHEMA_VERSION
+    )
+    assert collection["filter"] == {
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "result_status": "SUCCEEDED",
+    }
+    assert collection["limit"] == 1
+    assert collection["summary"]["succeeded_count"] == 1
+    assert collection["items"][0]["routes"]["ag_detail"].endswith(
+        "/scheduler-daemon-runs/daemon-run-record-0559"
+    )
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUN_DETAIL_PROJECTION_SCHEMA_VERSION
+    )
+    assert detail["daemon_run_record_id"] == "daemon-run-record-0559"
+    assert detail["lifecycle_event_count"] == 2
+    assert detail["request_trace_id"] == TRACE_ID
+
+
+def test_artifact_retention_scheduler_daemon_run_route_guardrails() -> None:
+    client = build_app(artifact_client())
+
+    unauthorized = client.get(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon-runs",
+    )
+    invalid_service = client.get(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon-runs",
+        params={"service_id": "nex-cx"},
+        headers=auth_headers(),
+    )
+    invalid_status = client.get(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon-runs",
+        params={"result_status": "RUNNING"},
+        headers=auth_headers(),
+    )
+    invalid_limit = client.get(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon-runs",
+        params={"limit": "0"},
+        headers=auth_headers(),
+    )
+    missing_detail = client.get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-runs/missing"
+        ),
+        headers=auth_headers(),
+    )
+
+    class BrokenDaemonRunClient(InMemoryAeArtifactOperationsClient):
+        def list_artifact_retention_scheduler_daemon_runs(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            raise AeArtifactOperationsError(
+                error_code="ag.ae_artifact_retention_daemon_run_source_failed",
+                detail="AE scheduler daemon run source unavailable",
+                status_code=503,
+            )
+
+    source_failed = build_app(BrokenDaemonRunClient()).get(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon-runs",
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert invalid_service.status_code == 400
+    assert invalid_status.status_code == 400
+    assert invalid_status.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_run_status_invalid"
+    )
+    assert invalid_limit.status_code == 400
+    assert invalid_limit.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_run_limit_invalid"
+    )
+    assert missing_detail.status_code == 404
+    assert missing_detail.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_run_not_found"
+    )
+    assert source_failed.status_code == 503
+    assert source_failed.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_run_source_failed"
+    )
+
+
 def test_artifact_retention_scheduler_daemon_manual_tick_route_dispatches() -> None:
     class CapturingDaemonControlClient(InMemoryAeArtifactOperationsClient):
         def __init__(self) -> None:
@@ -5209,6 +5628,19 @@ def test_http_artifact_operations_client_requests_expected_routes(
                 200,
                 artifact_retention_scheduler_daemon_runtime_payload(),
             )
+        if url.endswith("/api/v1/artifact-retention/scheduler-daemon-runs"):
+            return FakeHttpResponse(
+                200,
+                artifact_retention_scheduler_daemon_run_collection_payload(),
+            )
+        if url.endswith(
+            "/api/v1/artifact-retention/"
+            "scheduler-daemon-runs/daemon-run-record-0559"
+        ):
+            return FakeHttpResponse(
+                200,
+                artifact_retention_scheduler_daemon_run_detail_payload(),
+            )
         if url.endswith(f"/api/v1/artifacts/{ARTIFACT_ID}"):
             return FakeHttpResponse(200, artifact_record(include_private=False))
         if url.endswith(f"/api/v1/artifact-handoffs/{HANDOFF_ID}"):
@@ -5336,6 +5768,18 @@ def test_http_artifact_operations_client_requests_expected_routes(
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     )
+    daemon_runs = client.list_artifact_retention_scheduler_daemon_runs(
+        scheduler_id="ae-artifact-retention-scheduler",
+        result_status="SUCCEEDED",
+        limit=20,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    daemon_run_detail = client.get_artifact_retention_scheduler_daemon_run_detail(
+        "daemon-run-record-0559",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
 
     assert artifact["artifact_id"] == ARTIFACT_ID
     assert handoff["artifact_handoff_id"] == HANDOFF_ID
@@ -5350,6 +5794,9 @@ def test_http_artifact_operations_client_requests_expected_routes(
     )
     assert daemon_runtime["heartbeat"]["status"] == "BUSY"
     assert daemon_dispatch["dispatch_status"] == "DISPATCHED"
+    assert daemon_runs["count"] == 2
+    assert daemon_run_detail is not None
+    assert daemon_run_detail["daemon_run_record_id"] == "daemon-run-record-0559"
     assert calls[0]["url"] == f"http://ae.example.local/api/v1/artifacts/{ARTIFACT_ID}"
     assert calls[0]["headers"]["Authorization"] == "Bearer token-0409"
     assert calls[0]["headers"]["X-Service-ID"] == "nex-ag"
@@ -5440,6 +5887,20 @@ def test_http_artifact_operations_client_requests_expected_routes(
         "worker_id": "ae-retention-worker-0522",
         "idempotency_key": "daemon-idem-0522",
     }
+    assert calls[11]["url"] == (
+        "http://ae.example.local/api/v1/artifact-retention/"
+        "scheduler-daemon-runs"
+    )
+    assert calls[11]["params"] == {
+        "limit": "20",
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "result_status": "SUCCEEDED",
+    }
+    assert calls[12]["url"] == (
+        "http://ae.example.local/api/v1/artifact-retention/"
+        "scheduler-daemon-runs/daemon-run-record-0559"
+    )
+    assert calls[12]["params"] == {}
 
 
 def test_http_artifact_operations_client_handles_404_and_errors(

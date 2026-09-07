@@ -62,6 +62,12 @@ AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUNTIME_ISSUE_CANDIDATE_SCHEMA_VERSION = 
 AG_ARTIFACT_OPERATION_RETENTION_DAEMON_LIFECYCLE_PROJECTION_SCHEMA_VERSION = (
     "ag_artifact_operation_retention_daemon_lifecycle_projection.v1"
 )
+AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUN_COLLECTION_PROJECTION_SCHEMA_VERSION = (
+    "ag_artifact_operation_retention_daemon_run_collection_projection.v1"
+)
+AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUN_DETAIL_PROJECTION_SCHEMA_VERSION = (
+    "ag_artifact_operation_retention_daemon_run_detail_projection.v1"
+)
 AE_ARTIFACT_SOURCE_SERVICE_ID = "nex-ae-api"
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE = (
     "ae.artifact_retention.scheduler_daemon"
@@ -110,6 +116,12 @@ SUPPORTED_ARTIFACT_RETENTION_DAEMON_LIFECYCLE_STATUSES = (
     "DISABLED",
     "ERROR",
     "UNKNOWN",
+)
+SUPPORTED_ARTIFACT_RETENTION_DAEMON_RESULT_STATUSES = (
+    "SUCCEEDED",
+    "FAILED",
+    "STOPPED",
+    "SKIPPED",
 )
 AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE = "ae.artifact_retention.scheduled_execution"
 ARCHIVABLE_ARTIFACT_STATUSES = {"DRAFT", "READY", "FAILED"}
@@ -199,6 +211,24 @@ class AeArtifactOperationsClient(Protocol):
         trace_id: str,
     ) -> dict[str, Any]: ...
 
+    def list_artifact_retention_scheduler_daemon_runs(
+        self,
+        *,
+        scheduler_id: str | None,
+        result_status: str | None,
+        limit: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]: ...
+
+    def get_artifact_retention_scheduler_daemon_run_detail(
+        self,
+        daemon_run_record_id: str,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any] | None: ...
+
     def dispatch_artifact_retention_scheduler_daemon_control(
         self,
         *,
@@ -274,6 +304,12 @@ class InMemoryAeArtifactOperationsClient:
     )
     artifact_retention_scheduler_daemon_config: dict[str, Any] | None = None
     artifact_retention_scheduler_daemon_runtime: dict[str, Any] | None = None
+    artifact_retention_scheduler_daemon_run_collections: dict[
+        str, dict[str, Any]
+    ] = field(default_factory=dict)
+    artifact_retention_scheduler_daemon_run_details: dict[str, dict[str, Any]] = (
+        field(default_factory=dict)
+    )
     artifact_retention_scheduler_daemon_dispatch_results: dict[
         str, dict[str, Any]
     ] = field(default_factory=dict)
@@ -515,6 +551,45 @@ class InMemoryAeArtifactOperationsClient:
             daemon_config=self.get_artifact_retention_scheduler_daemon_config(
                 request_id=request_id,
                 trace_id=trace_id,
+            )
+        )
+
+    def list_artifact_retention_scheduler_daemon_runs(
+        self,
+        *,
+        scheduler_id: str | None,
+        result_status: str | None,
+        limit: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        collection_key = _artifact_retention_scheduler_daemon_run_cache_key(
+            scheduler_id=scheduler_id,
+            result_status=result_status,
+            limit=limit,
+        )
+        if collection_key in self.artifact_retention_scheduler_daemon_run_collections:
+            return deepcopy(
+                self.artifact_retention_scheduler_daemon_run_collections[
+                    collection_key
+                ]
+            )
+        return _empty_artifact_retention_scheduler_daemon_run_collection_payload(
+            scheduler_id=scheduler_id,
+            result_status=result_status,
+            limit=limit,
+        )
+
+    def get_artifact_retention_scheduler_daemon_run_detail(
+        self,
+        daemon_run_record_id: str,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any] | None:
+        return _deepcopy_or_none(
+            self.artifact_retention_scheduler_daemon_run_details.get(
+                daemon_run_record_id
             )
         )
 
@@ -776,6 +851,40 @@ class HttpAeArtifactOperationsClient:
             trace_id=trace_id,
         )
         return payload if isinstance(payload, dict) else {}
+
+    def list_artifact_retention_scheduler_daemon_runs(
+        self,
+        *,
+        scheduler_id: str | None,
+        result_status: str | None,
+        limit: int,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        payload = self._get_json(
+            "/api/v1/artifact-retention/scheduler-daemon-runs",
+            request_id=request_id,
+            trace_id=trace_id,
+            params={
+                "limit": str(limit),
+                **({"scheduler_id": scheduler_id} if scheduler_id else {}),
+                **({"result_status": result_status} if result_status else {}),
+            },
+        )
+        return payload if isinstance(payload, dict) else {}
+
+    def get_artifact_retention_scheduler_daemon_run_detail(
+        self,
+        daemon_run_record_id: str,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any] | None:
+        return self._get_json(
+            f"/api/v1/artifact-retention/scheduler-daemon-runs/{daemon_run_record_id}",
+            request_id=request_id,
+            trace_id=trace_id,
+        )
 
     def dispatch_artifact_retention_scheduler_daemon_control(
         self,
@@ -1439,6 +1548,110 @@ def register_artifact_operation_routes(
             request_trace_id=trace_id,
         )
 
+    @app.get(
+        "/admin/v1/operations/artifact-retention/scheduler-daemon-runs",
+        response_model=None,
+    )
+    def list_artifact_retention_scheduler_daemon_run_operations(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        scheduler_id: str | None = None,
+        result_status: str | None = None,
+        limit: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        service_problem = _validate_artifact_service_filter(request, service_id)
+        if service_problem is not None:
+            return service_problem
+        filter_result = _validate_artifact_retention_daemon_run_query(
+            request,
+            scheduler_id=scheduler_id,
+            result_status=result_status,
+            limit=limit,
+        )
+        if isinstance(filter_result, JSONResponse):
+            return filter_result
+
+        selected_client = (
+            configured_client or build_default_ae_artifact_operations_client()
+        )
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            collection = (
+                selected_client.list_artifact_retention_scheduler_daemon_runs(
+                    scheduler_id=filter_result["scheduler_id"],
+                    result_status=filter_result["result_status"],
+                    limit=filter_result["limit"],
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+            )
+        except AeArtifactOperationsError as exc:
+            return _artifact_operations_problem_response(request, exc)
+
+        return build_artifact_operation_retention_daemon_run_collection_projection(
+            collection=collection,
+            source_client=selected_client,
+            request_trace_id=trace_id,
+        )
+
+    @app.get(
+        "/admin/v1/operations/artifact-retention/"
+        "scheduler-daemon-runs/{daemon_run_record_id}",
+        response_model=None,
+    )
+    def get_artifact_retention_scheduler_daemon_run_operation_detail(
+        daemon_run_record_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        service_problem = _validate_artifact_service_filter(request, service_id)
+        if service_problem is not None:
+            return service_problem
+
+        selected_client = (
+            configured_client or build_default_ae_artifact_operations_client()
+        )
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            detail = selected_client.get_artifact_retention_scheduler_daemon_run_detail(
+                daemon_run_record_id,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        except AeArtifactOperationsError as exc:
+            return _artifact_operations_problem_response(request, exc)
+        if detail is None:
+            return problem_response(
+                request,
+                status_code=404,
+                error_code="ag.ae_artifact_retention_daemon_run_not_found",
+                title="AE artifact retention daemon run not found",
+                detail=(
+                    "AE artifact retention scheduler daemon run "
+                    f"{daemon_run_record_id} was not found."
+                ),
+                type_uri=(
+                    "https://nex-platform.local/problems/"
+                    "ae-artifact-retention-daemon-run-not-found"
+                ),
+            )
+
+        return build_artifact_operation_retention_daemon_run_detail_projection(
+            detail=detail,
+            source_client=selected_client,
+            request_trace_id=trace_id,
+        )
+
     @app.post(
         "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
         response_model=None,
@@ -2031,6 +2244,9 @@ def build_artifact_operation_retention_daemon_projection(
             "ae_daemon_runtime_route": (
                 "/api/v1/artifact-retention/scheduler-daemon-runtime"
             ),
+            "ae_daemon_runs_route": (
+                "/api/v1/artifact-retention/scheduler-daemon-runs"
+            ),
             "ae_daemon_lifecycle_projection": "metadata_only",
             "manual_tick_once_only": True,
             "manual_tick_once_requires_ae_api": True,
@@ -2039,6 +2255,123 @@ def build_artifact_operation_retention_daemon_projection(
             "continuous_loop_allowed": False,
             "ag_direct_database_write_allowed": False,
             "ag_direct_job_enqueue_allowed": False,
+        },
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    assert_artifact_operation_projection_redacted(projection)
+    return projection
+
+
+def build_artifact_operation_retention_daemon_run_collection_projection(
+    *,
+    collection: Mapping[str, Any],
+    source_client: AeArtifactOperationsClient | None = None,
+    source_errors: list[AeArtifactOperationsError] | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    items = [
+        _project_retention_scheduler_daemon_run_item(item)
+        for item in _list_value(collection.get("items"))
+        if isinstance(item, Mapping)
+    ]
+    errors = source_errors or []
+    projection = {
+        "projection_schema_version": (
+            AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUN_COLLECTION_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "DEGRADED" if errors else "READY",
+        "checked_at": _utc_now(),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "operation_type": "ae_artifact_retention_scheduler_daemon_runs",
+        "filter": _project_retention_scheduler_daemon_run_filter(
+            collection.get("filter")
+        ),
+        "count": _int_or_zero(collection.get("count")),
+        "limit": _int_or_zero(collection.get("limit")),
+        "items": items,
+        "summary": summarize_artifact_retention_daemon_run_operations(items),
+        "source_status": _artifact_retention_daemon_run_source_status(
+            source_client=source_client,
+            item_count=len(items),
+            detail_loaded=False,
+            errors=errors,
+        ),
+        "operator_guidance": {
+            "metadata_only": True,
+            "system_of_record": AE_ARTIFACT_SOURCE_SERVICE_ID,
+            "ae_daemon_runs_route": (
+                "/api/v1/artifact-retention/scheduler-daemon-runs"
+            ),
+            "ag_daemon_runs_route": (
+                "/admin/v1/operations/artifact-retention/scheduler-daemon-runs"
+            ),
+            "read_model": "ae_artifact_retention_scheduler_daemon_runs",
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "ag_direct_daemon_process_control_allowed": False,
+        },
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    assert_artifact_operation_projection_redacted(projection)
+    return projection
+
+
+def build_artifact_operation_retention_daemon_run_detail_projection(
+    *,
+    detail: Mapping[str, Any],
+    source_client: AeArtifactOperationsClient | None = None,
+    source_errors: list[AeArtifactOperationsError] | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    run_record = _project_retention_scheduler_daemon_run_record(
+        detail.get("run_record")
+    )
+    lifecycle_events = [
+        _project_retention_scheduler_daemon_lifecycle_event(event)
+        for event in _list_value(detail.get("lifecycle_events"))
+        if isinstance(event, Mapping)
+    ]
+    daemon_run_record_id = _text_or_none(detail.get("daemon_run_record_id"))
+    errors = source_errors or []
+    projection = {
+        "projection_schema_version": (
+            AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUN_DETAIL_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "DEGRADED" if errors else "READY",
+        "checked_at": _utc_now(),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "operation_type": "ae_artifact_retention_scheduler_daemon_run",
+        "daemon_run_record_id": daemon_run_record_id,
+        "run_record": run_record,
+        "lifecycle_event_count": _int_or_zero(detail.get("lifecycle_event_count")),
+        "lifecycle_events": lifecycle_events,
+        "summary": summarize_artifact_retention_daemon_run_detail(
+            run_record=run_record,
+            lifecycle_events=lifecycle_events,
+        ),
+        "source_status": _artifact_retention_daemon_run_source_status(
+            source_client=source_client,
+            item_count=len(lifecycle_events),
+            detail_loaded=bool(run_record.get("daemon_run_record_id")),
+            errors=errors,
+        ),
+        "operator_guidance": {
+            "metadata_only": True,
+            "system_of_record": AE_ARTIFACT_SOURCE_SERVICE_ID,
+            "ae_daemon_run_detail_route": (
+                "/api/v1/artifact-retention/scheduler-daemon-runs/"
+                f"{daemon_run_record_id or ''}"
+            ),
+            "ag_daemon_run_detail_route": (
+                "/admin/v1/operations/artifact-retention/scheduler-daemon-runs/"
+                f"{daemon_run_record_id or ''}"
+            ),
+            "read_model": "ae_artifact_retention_scheduler_daemon_run_detail",
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "ag_direct_daemon_process_control_allowed": False,
         },
     }
     if request_trace_id is not None:
@@ -2679,6 +3012,81 @@ def summarize_artifact_retention_daemon_operations(
         "attention_operator_actions": attention["operator_actions"],
         "batch_window_enforced": attention["batch_window_enforced"],
         "operator_attention_required": attention["operator_attention_required"],
+        "metadata_only": True,
+    }
+
+
+def summarize_artifact_retention_daemon_run_operations(
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    result_counts: dict[str, int] = {}
+    latest_completed_at: str | None = None
+    job_enqueued_count = 0
+    worker_executed_count = 0
+    worker_requested_count = 0
+    for item in items:
+        result_status = _normalized_daemon_result_status(item.get("result_status"))
+        if result_status is not None:
+            result_counts[result_status] = result_counts.get(result_status, 0) + 1
+        if item.get("job_enqueued") is True:
+            job_enqueued_count += 1
+        if item.get("worker_executed") is True:
+            worker_executed_count += 1
+        if item.get("worker_requested") is True:
+            worker_requested_count += 1
+        completed_at = _text_or_none(item.get("completed_at"))
+        if completed_at is not None and (
+            latest_completed_at is None or completed_at > latest_completed_at
+        ):
+            latest_completed_at = completed_at
+    failed_count = result_counts.get("FAILED", 0)
+    return {
+        "run_count": len(items),
+        "result_counts": result_counts,
+        "succeeded_count": result_counts.get("SUCCEEDED", 0),
+        "failed_count": failed_count,
+        "stopped_count": result_counts.get("STOPPED", 0),
+        "skipped_count": result_counts.get("SKIPPED", 0),
+        "job_enqueued_count": job_enqueued_count,
+        "worker_requested_count": worker_requested_count,
+        "worker_executed_count": worker_executed_count,
+        "operator_attention_required": failed_count > 0,
+        "latest_completed_at": latest_completed_at,
+        "metadata_only": True,
+    }
+
+
+def summarize_artifact_retention_daemon_run_detail(
+    *,
+    run_record: Mapping[str, Any],
+    lifecycle_events: list[dict[str, Any]],
+) -> dict[str, Any]:
+    event_types = [
+        str(event["event_type"])
+        for event in lifecycle_events
+        if _text_or_none(event.get("event_type"))
+    ]
+    result_status = _normalized_daemon_result_status(
+        run_record.get("result_status")
+    )
+    return {
+        "daemon_run_record_id": _text_or_none(
+            run_record.get("daemon_run_record_id")
+        ),
+        "scheduler_id": _text_or_none(run_record.get("scheduler_id")),
+        "run_status": _normalized_daemon_run_status(run_record.get("run_status")),
+        "result_status": result_status,
+        "stop_reason": _text_or_none(run_record.get("stop_reason")),
+        "cycle_count": _int_or_zero(run_record.get("cycle_count")),
+        "max_cycles": _int_or_zero(run_record.get("max_cycles")),
+        "worker_requested": run_record.get("worker_requested") is True,
+        "job_enqueued": run_record.get("job_enqueued") is True,
+        "worker_executed": run_record.get("worker_executed") is True,
+        "lifecycle_event_count": len(lifecycle_events),
+        "lifecycle_event_types": event_types,
+        "started_at": _text_or_none(run_record.get("started_at")),
+        "completed_at": _text_or_none(run_record.get("completed_at")),
+        "operator_attention_required": result_status == "FAILED",
         "metadata_only": True,
     }
 
@@ -4298,6 +4706,127 @@ def _project_retention_scheduler_daemon_dispatch_response(
     }
 
 
+def _project_retention_scheduler_daemon_run_filter(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "result_status": _normalized_daemon_result_status(
+            raw_value.get("result_status")
+        ),
+    }
+
+
+def _project_retention_scheduler_daemon_run_item(
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    daemon_run_record_id = _text_or_none(record.get("daemon_run_record_id"))
+    return {
+        "daemon_run_record_id": daemon_run_record_id,
+        "source_run_record_schema_version": _text_or_none(
+            record.get("daemon_run_record_schema_version")
+        ),
+        "service_id": _text_or_none(record.get("service_id")),
+        "scheduler_id": _text_or_none(record.get("scheduler_id")),
+        "daemon_instance_id": _text_or_none(record.get("daemon_instance_id")),
+        "process_id": _int_or_zero(record.get("process_id")),
+        "host_id": _text_or_none(record.get("host_id")),
+        "run_status": _normalized_daemon_run_status(record.get("run_status")),
+        "result_status": _normalized_daemon_result_status(
+            record.get("result_status")
+        ),
+        "stop_reason": _text_or_none(record.get("stop_reason")),
+        "max_cycles": _int_or_zero(record.get("max_cycles")),
+        "cycle_count": _int_or_zero(record.get("cycle_count")),
+        "worker_requested": record.get("worker_requested") is True,
+        "job_enqueued": record.get("job_enqueued") is True,
+        "worker_executed": record.get("worker_executed") is True,
+        "started_at": _text_or_none(record.get("started_at")),
+        "completed_at": _text_or_none(record.get("completed_at")),
+        "checked_at": _text_or_none(record.get("checked_at")),
+        "created_at": _text_or_none(record.get("created_at")),
+        "summary": _safe_daemon_run_summary(record.get("summary")),
+        "metadata": _safe_daemon_run_metadata(record.get("metadata")),
+        "routes": {
+            "ae_detail": (
+                "/api/v1/artifact-retention/scheduler-daemon-runs/"
+                f"{daemon_run_record_id}"
+            )
+            if daemon_run_record_id
+            else None,
+            "ag_detail": (
+                "/admin/v1/operations/artifact-retention/"
+                f"scheduler-daemon-runs/{daemon_run_record_id}"
+            )
+            if daemon_run_record_id
+            else None,
+        },
+    }
+
+
+def _project_retention_scheduler_daemon_run_record(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    item = _project_retention_scheduler_daemon_run_item(raw_value)
+    return {
+        **item,
+        "daemon_cli_execution_result_id": _text_or_none(
+            raw_value.get("daemon_cli_execution_result_id")
+        ),
+        "daemon_cli_execute_command_id": _text_or_none(
+            raw_value.get("daemon_cli_execute_command_id")
+        ),
+        "daemon_process_lock_id": _text_or_none(
+            raw_value.get("daemon_process_lock_id")
+        ),
+        "started_daemon_run_id": _text_or_none(
+            raw_value.get("started_daemon_run_id")
+        ),
+        "completed_daemon_run_id": _text_or_none(
+            raw_value.get("completed_daemon_run_id")
+        ),
+        "execution_result_hash": _text_or_none(raw_value.get("execution_result_hash")),
+    }
+
+
+def _project_retention_scheduler_daemon_lifecycle_event(
+    raw_value: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "source_lifecycle_event_schema_version": _text_or_none(
+            raw_value.get("daemon_lifecycle_event_schema_version")
+        ),
+        "daemon_lifecycle_event_id": _text_or_none(
+            raw_value.get("daemon_lifecycle_event_id")
+        ),
+        "daemon_run_record_id": _text_or_none(
+            raw_value.get("daemon_run_record_id")
+        ),
+        "daemon_cli_execution_result_id": _text_or_none(
+            raw_value.get("daemon_cli_execution_result_id")
+        ),
+        "daemon_run_metadata_id": _text_or_none(
+            raw_value.get("daemon_run_metadata_id")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "daemon_instance_id": _text_or_none(raw_value.get("daemon_instance_id")),
+        "event_type": _text_or_none(raw_value.get("event_type")),
+        "run_status": _normalized_daemon_run_status(raw_value.get("run_status")),
+        "result_status": _normalized_daemon_result_status(
+            raw_value.get("result_status")
+        ),
+        "stop_reason": _text_or_none(raw_value.get("stop_reason")),
+        "cycle_count": _int_or_zero(raw_value.get("cycle_count")),
+        "occurred_at": _text_or_none(raw_value.get("occurred_at")),
+        "process_id": _int_or_zero(raw_value.get("process_id")),
+        "host_id": _text_or_none(raw_value.get("host_id")),
+        "summary": _safe_daemon_lifecycle_event_summary(raw_value.get("summary")),
+        "metadata": _safe_daemon_run_metadata(raw_value.get("metadata")),
+        "created_at": _text_or_none(raw_value.get("created_at")),
+    }
+
+
 def _project_retention_scheduler_daemon_control_plan(
     raw_value: Any,
 ) -> dict[str, Any]:
@@ -4795,6 +5324,33 @@ def _artifact_retention_daemon_source_status(
     }
 
 
+def _artifact_retention_daemon_run_source_status(
+    *,
+    source_client: AeArtifactOperationsClient | None,
+    item_count: int,
+    detail_loaded: bool,
+    errors: list[AeArtifactOperationsError],
+) -> dict[str, Any]:
+    status = "DEGRADED" if errors else "READY"
+    return {
+        "status": status,
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "source_kind": getattr(source_client, "source_kind", "provided"),
+        "base_url": getattr(source_client, "base_url", None),
+        "run_collection_loaded": not errors,
+        "run_detail_loaded": detail_loaded and not errors,
+        "item_count": item_count,
+        "errors": [
+            {
+                "error_code": error.error_code,
+                "detail": error.detail,
+                "status_code": error.status_code,
+            }
+            for error in errors
+        ],
+    }
+
+
 def _artifact_retention_automation_source_status(
     *,
     source_client: AeArtifactOperationsClient | None,
@@ -4891,6 +5447,57 @@ def _validate_artifact_collection_query(
         "workspace_id": str(workspace_id).strip(),
         "owner_user_id": str(owner_user_id).strip(),
         "status": normalized_status,
+        "limit": normalized_limit,
+    }
+
+
+def _validate_artifact_retention_daemon_run_query(
+    request: Request,
+    *,
+    scheduler_id: str | None,
+    result_status: str | None,
+    limit: str | None,
+) -> dict[str, Any] | JSONResponse:
+    normalized_status = _normalized_daemon_result_status(result_status)
+    if (
+        _present_text(result_status)
+        and normalized_status not in SUPPORTED_ARTIFACT_RETENTION_DAEMON_RESULT_STATUSES
+    ):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_daemon_run_status_invalid",
+            title="Invalid artifact retention daemon run status",
+            detail=(
+                "Artifact retention daemon run result_status must be one of "
+                "SUCCEEDED, FAILED, STOPPED, or SKIPPED."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-run-status-invalid"
+            ),
+        )
+
+    normalized_limit = _collection_limit(limit)
+    if normalized_limit is None:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_daemon_run_limit_invalid",
+            title="Invalid artifact retention daemon run limit",
+            detail=(
+                "Artifact retention daemon run limit must be between 1 and "
+                f"{MAX_ARTIFACT_COLLECTION_LIMIT}."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-run-limit-invalid"
+            ),
+        )
+
+    return {
+        "scheduler_id": _text_or_none(scheduler_id.strip() if scheduler_id else None),
+        "result_status": normalized_status,
         "limit": normalized_limit,
     }
 
@@ -5783,6 +6390,21 @@ def _artifact_retention_scheduler_daemon_dispatch_cache_key(
     )
 
 
+def _artifact_retention_scheduler_daemon_run_cache_key(
+    *,
+    scheduler_id: str | None,
+    result_status: str | None,
+    limit: int,
+) -> str:
+    return "|".join(
+        (
+            _text_or_none(scheduler_id) or "",
+            _normalized_daemon_result_status(result_status) or "",
+            str(limit),
+        )
+    )
+
+
 def _empty_artifact_retention_batch_plan_payload(
     *,
     tenant_id: str,
@@ -5880,6 +6502,53 @@ def _empty_artifact_retention_batch_plan_payload(
             "database_row_delete_executed": False,
             "history_write_executed": False,
             "source_collection_count": 0,
+        },
+    }
+
+
+def _empty_artifact_retention_scheduler_daemon_run_collection_payload(
+    *,
+    scheduler_id: str | None,
+    result_status: str | None,
+    limit: int,
+) -> dict[str, Any]:
+    return {
+        "daemon_run_collection_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_run_collection.v1"
+        ),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "filter": {
+            "scheduler_id": _text_or_none(scheduler_id),
+            "result_status": _normalized_daemon_result_status(result_status),
+        },
+        "count": 0,
+        "limit": limit,
+        "items": [],
+        "guardrails": {
+            "read_only": True,
+            "ae_owned_persistence": True,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "process_control_allowed": False,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+            "physical_delete_automation_enabled": False,
+        },
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "read_model": "ae_artifact_retention_scheduler_daemon_runs",
+            "item_count": 0,
+            "limit": limit,
+            "has_more": False,
+            "newest_completed_at": None,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
         },
     }
 
@@ -6655,6 +7324,30 @@ def _normalized_daemon_lifecycle_status(raw_value: Any) -> str | None:
     )
 
 
+def _normalized_daemon_run_status(raw_value: Any) -> str | None:
+    value = _text_or_none(raw_value)
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().replace("-", "_").upper()
+    return (
+        normalized
+        if normalized in {"PENDING", "RUNNING", "STOPPING", "SUCCEEDED", "FAILED"}
+        else None
+    )
+
+
+def _normalized_daemon_result_status(raw_value: Any) -> str | None:
+    value = _text_or_none(raw_value)
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().replace("-", "_").upper()
+    return (
+        normalized
+        if normalized in SUPPORTED_ARTIFACT_RETENTION_DAEMON_RESULT_STATUSES
+        else None
+    )
+
+
 def _daemon_lifecycle_status_and_source(
     *,
     daemon_config: Mapping[str, Any],
@@ -6846,6 +7539,76 @@ def _safe_retention_scheduled_job_links(raw_value: Any) -> dict[str, str]:
         if value == expected_route:
             routes[key] = value
     return routes
+
+
+def _safe_daemon_run_summary(raw_value: Any) -> dict[str, Any]:
+    return _select_mapping(
+        raw_value,
+        (
+            "scheduler_id",
+            "result_status",
+            "stop_reason",
+            "max_cycles",
+            "cycle_count",
+            "job_enqueued",
+            "worker_executed",
+            "run_record_persisted",
+            "bounded_loop_started",
+        ),
+    )
+
+
+def _safe_daemon_lifecycle_event_summary(raw_value: Any) -> dict[str, Any]:
+    return _select_mapping(
+        raw_value,
+        (
+            "event_type",
+            "run_status",
+            "result_status",
+            "stop_reason",
+            "cycle_count",
+            "occurred_at",
+        ),
+    )
+
+
+def _safe_daemon_run_metadata(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "metadata_only": raw_value.get("metadata_only") is True,
+        "safe_for_ag_projection": raw_value.get("safe_for_ag_projection") is True,
+        "bounded_loop_started": raw_value.get("bounded_loop_started") is True,
+        "job_enqueued": raw_value.get("job_enqueued") is True,
+        "worker_executed": raw_value.get("worker_executed") is True,
+        "run_record_persisted": raw_value.get("run_record_persisted") is True,
+        "lifecycle_event_persisted": (
+            raw_value.get("lifecycle_event_persisted") is True
+        ),
+        "persistence_endpoint_included": (
+            raw_value.get("persistence_endpoint_included") is True
+            or raw_value.get("database_url_included") is True
+        ),
+        "storage_locator_included": (
+            raw_value.get("storage_locator_included") is True
+            or raw_value.get("storage_path_included") is True
+        ),
+        "artifact_payload_included": (
+            raw_value.get("artifact_payload_included") is True
+            or raw_value.get("raw_artifact_payload_included") is True
+        ),
+        "execution_payload_included": (
+            raw_value.get("execution_payload_included") is True
+            or raw_value.get("raw_execution_payload_included") is True
+        ),
+        "daemon_runtime_payload_included": (
+            raw_value.get("daemon_runtime_payload_included") is True
+            or raw_value.get("raw_daemon_runtime_payload_included") is True
+        ),
+        "physical_delete_automation_enabled": (
+            raw_value.get("physical_delete_automation_enabled") is True
+        ),
+    }
 
 
 def _safe_route(raw_value: Any) -> str | None:
