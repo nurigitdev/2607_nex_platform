@@ -1803,6 +1803,18 @@ def build_default_artifact_retention_execution_history_store(app: Any) -> Any:
     return DEFAULT_ARTIFACT_RETENTION_HISTORY_STORE
 
 
+def build_default_artifact_retention_scheduler_daemon_run_store(app: Any) -> Any | None:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is None:
+        return None
+    from nex_ae_api.artifact_retention_scheduler_daemon import (
+        SqlAlchemyArtifactRetentionSchedulerDaemonRunStore,
+    )
+
+    return SqlAlchemyArtifactRetentionSchedulerDaemonRunStore(session_factory)
+
+
 def build_default_artifact_retention_scheduled_job_queue(app: Any) -> JobQueue:
     persistence = getattr(app.state, "nex_persistence", None)
     job_queue = getattr(persistence, "job_queue", None)
@@ -1825,6 +1837,7 @@ def register_artifact_handoff_routes(
     artifact_store: Any | None = None,
     retention_history_store: Any | None = None,
     retention_scheduler_lease_store: Any | None = None,
+    retention_scheduler_daemon_run_store: Any | None = None,
     job_queue: JobQueue | None = None,
     cx_client: CxArtifactSourceClient | None = None,
 ) -> None:
@@ -1833,6 +1846,10 @@ def register_artifact_handoff_routes(
     artifact_retention_history_store = (
         retention_history_store
         or build_default_artifact_retention_execution_history_store(app)
+    )
+    artifact_retention_daemon_run_store = (
+        retention_scheduler_daemon_run_store
+        or build_default_artifact_retention_scheduler_daemon_run_store(app)
     )
     artifact_retention_job_queue = (
         job_queue or build_default_artifact_retention_scheduled_job_queue(app)
@@ -2101,6 +2118,111 @@ def register_artifact_handoff_routes(
                 daemon_config=daemon_config,
                 worker_heartbeat_store=worker_heartbeat_store_from_app(app),
                 checked_at=checked_at,
+            )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.get("/api/v1/artifact-retention/scheduler-daemon-runs", response_model=None)
+    def list_artifact_retention_scheduler_daemon_runs(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        scheduler_id: str | None = None,
+        result_status: str | None = None,
+        limit: str | None = None,
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        if artifact_retention_daemon_run_store is None:
+            return _artifact_problem_response(
+                request,
+                ArtifactHandoffError(
+                    status_code=503,
+                    error_code=(
+                        "ae.artifact_retention_scheduler_daemon_run_store_unavailable"
+                    ),
+                    detail=(
+                        "AE artifact retention scheduler daemon run store is "
+                        "unavailable."
+                    ),
+                    retryable=True,
+                ),
+            )
+
+        try:
+            from nex_ae_api.artifact_retention_scheduler_daemon import (
+                build_artifact_retention_scheduler_daemon_run_collection,
+            )
+
+            records = artifact_retention_daemon_run_store.list_run_records(
+                scheduler_id=scheduler_id,
+                result_status=result_status,
+                limit=limit,
+            )
+            return build_artifact_retention_scheduler_daemon_run_collection(
+                records,
+                scheduler_id=scheduler_id,
+                result_status=result_status,
+                limit=limit,
+            )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.get(
+        "/api/v1/artifact-retention/scheduler-daemon-runs/{daemon_run_record_id}",
+        response_model=None,
+    )
+    def get_artifact_retention_scheduler_daemon_run_detail(
+        daemon_run_record_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        if artifact_retention_daemon_run_store is None:
+            return _artifact_problem_response(
+                request,
+                ArtifactHandoffError(
+                    status_code=503,
+                    error_code=(
+                        "ae.artifact_retention_scheduler_daemon_run_store_unavailable"
+                    ),
+                    detail=(
+                        "AE artifact retention scheduler daemon run store is "
+                        "unavailable."
+                    ),
+                    retryable=True,
+                ),
+            )
+
+        try:
+            from nex_ae_api.artifact_retention_scheduler_daemon import (
+                build_artifact_retention_scheduler_daemon_run_detail,
+            )
+
+            run_record = artifact_retention_daemon_run_store.get_run_record(
+                daemon_run_record_id
+            )
+            if run_record is None:
+                raise ArtifactHandoffError(
+                    status_code=404,
+                    error_code=(
+                        "ae.artifact_retention_scheduler_daemon_run_record_not_found"
+                    ),
+                    detail=(
+                        "AE artifact retention scheduler daemon run record was "
+                        f"not found: {daemon_run_record_id}"
+                    ),
+                )
+            lifecycle_events = artifact_retention_daemon_run_store.list_lifecycle_events(
+                run_record["daemon_run_record_id"]
+            )
+            return build_artifact_retention_scheduler_daemon_run_detail(
+                run_record=run_record,
+                lifecycle_events=lifecycle_events,
             )
         except ArtifactHandoffError as exc:
             return _artifact_problem_response(request, exc)
@@ -3481,6 +3603,9 @@ def build_artifact_retention_scheduler_config(
             "scheduler_daemon_runtime": (
                 "/api/v1/artifact-retention/scheduler-daemon-runtime"
             ),
+            "scheduler_daemon_runs": (
+                "/api/v1/artifact-retention/scheduler-daemon-runs"
+            ),
             "scheduler_daemon_controls": (
                 "/api/v1/artifact-retention/scheduler-daemon-controls"
             ),
@@ -4175,6 +4300,9 @@ def _expected_artifact_retention_scheduler_api_routes() -> dict[str, str]:
         ),
         "scheduler_daemon_runtime": (
             "/api/v1/artifact-retention/scheduler-daemon-runtime"
+        ),
+        "scheduler_daemon_runs": (
+            "/api/v1/artifact-retention/scheduler-daemon-runs"
         ),
         "scheduler_daemon_controls": (
             "/api/v1/artifact-retention/scheduler-daemon-controls"

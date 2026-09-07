@@ -15,9 +15,13 @@ from nex_ae_api.artifact_retention_scheduler import (
 from nex_ae_api.artifact_retention_scheduler_daemon import (
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_EXECUTION_RESULT_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LIFECYCLE_EVENT_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_COLLECTION_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_DETAIL_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_RECORD_SCHEMA_VERSION,
     SqlAlchemyArtifactRetentionSchedulerDaemonRunStore,
     build_artifact_retention_scheduler_daemon_lifecycle_events,
+    build_artifact_retention_scheduler_daemon_run_collection,
+    build_artifact_retention_scheduler_daemon_run_detail,
     build_artifact_retention_scheduler_daemon_process_lock,
     build_artifact_retention_scheduler_daemon_run_record,
     build_artifact_retention_scheduler_daemon_run_metadata,
@@ -26,6 +30,8 @@ from nex_ae_api.artifact_retention_scheduler_daemon import (
     main,
     run_artifact_retention_scheduler_daemon_cli_execution,
     summarize_artifact_retention_scheduler_daemon_cli_execution_result,
+    validate_artifact_retention_scheduler_daemon_run_collection,
+    validate_artifact_retention_scheduler_daemon_run_detail,
     validate_artifact_retention_scheduler_daemon_lifecycle_event,
     validate_artifact_retention_scheduler_daemon_cli_execution_result,
     validate_artifact_retention_scheduler_daemon_run_record,
@@ -374,6 +380,200 @@ def test_artifact_retention_scheduler_daemon_cli_execution_persists_run_store() 
     assert run_store.list_lifecycle_events(run_record["daemon_run_record_id"]) == []
 
 
+def test_artifact_retention_scheduler_daemon_run_store_lists_read_models() -> None:
+    session_factory = sqlite_artifact_session_factory()
+    run_store = SqlAlchemyArtifactRetentionSchedulerDaemonRunStore(session_factory)
+    run_store.ensure_schema()
+    result, _, _ = _run_execution(
+        run_store=run_store,
+        idempotency_key="daemon-cli-execution-read-model-0558",
+    )
+    run_store.ensure_available()
+    run_record = run_store.get_run_record_by_execution_result_id(
+        result["daemon_cli_execution_result_id"]
+    )
+    assert run_record is not None
+    lifecycle_events = run_store.list_lifecycle_events(
+        run_record["daemon_run_record_id"]
+    )
+
+    records = run_store.list_run_records(
+        scheduler_id=result["scheduler_id"],
+        result_status="SUCCEEDED",
+        limit="1",
+    )
+    collection = build_artifact_retention_scheduler_daemon_run_collection(
+        records,
+        scheduler_id=result["scheduler_id"],
+        result_status="SUCCEEDED",
+        limit="1",
+    )
+    detail = build_artifact_retention_scheduler_daemon_run_detail(
+        run_record=run_record,
+        lifecycle_events=lifecycle_events,
+    )
+
+    assert len(records) == 1
+    assert collection["daemon_run_collection_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_COLLECTION_SCHEMA_VERSION
+    )
+    assert collection["items"][0]["daemon_run_record_id"] == (
+        run_record["daemon_run_record_id"]
+    )
+    assert collection["items"][0]["metadata"] == {
+        "safe_for_ag_projection": True,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "physical_delete_automation_enabled": False,
+    }
+    assert collection["metadata"]["read_model"] == (
+        "ae_artifact_retention_scheduler_daemon_runs"
+    )
+    assert collection["guardrails"]["process_control_allowed"] is False
+    assert detail["daemon_run_detail_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_DETAIL_SCHEMA_VERSION
+    )
+    assert detail["lifecycle_event_count"] == 2
+    assert detail["metadata"]["event_types"] == ["RUN_STARTED", "RUN_COMPLETED"]
+    assert len(run_store.list_run_records()) == 1
+    assert len(run_store.list_run_records(scheduler_id=result["scheduler_id"])) == 1
+    assert run_store.list_run_records(result_status="FAILED") == []
+    assert run_store.get_run_record_by_execution_result_id("missing") is None
+
+
+def test_artifact_retention_scheduler_daemon_run_read_model_validation_edges() -> None:
+    session_factory = sqlite_artifact_session_factory()
+    run_store = SqlAlchemyArtifactRetentionSchedulerDaemonRunStore(session_factory)
+    run_store.ensure_schema()
+    result, _, _ = _run_execution(
+        run_store=run_store,
+        idempotency_key="daemon-cli-execution-read-model-validation-0558",
+    )
+    run_record = run_store.get_run_record_by_execution_result_id(
+        result["daemon_cli_execution_result_id"]
+    )
+    assert run_record is not None
+    lifecycle_events = run_store.list_lifecycle_events(
+        run_record["daemon_run_record_id"]
+    )
+    collection = build_artifact_retention_scheduler_daemon_run_collection(
+        [run_record],
+        result_status="SUCCEEDED",
+    )
+    detail = build_artifact_retention_scheduler_daemon_run_detail(
+        run_record=run_record,
+        lifecycle_events=lifecycle_events,
+    )
+    item = collection["items"][0]
+    bad_guardrails = {**collection["guardrails"], "read_only": False}
+    bad_item_metadata = {**item["metadata"], "raw_execution_payload_included": True}
+
+    for payload, error_code in (
+        (
+            42,
+            "ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        ),
+        (
+            {**collection, "daemon_run_collection_schema_version": "wrong"},
+            "ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        ),
+        (
+            {**collection, "service_id": "wrong"},
+            "ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        ),
+        (
+            {**collection, "count": 2},
+            "ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        ),
+        (
+            {**collection, "filter": {"result_status": "RUNNING"}},
+            "ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        ),
+        (
+            {**collection, "filter": []},
+            "ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        ),
+        (
+            {
+                **collection,
+                "filter": {"scheduler_id": None, "result_status": "RUNNING"},
+            },
+            "ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        ),
+        (
+            {**collection, "items": {}},
+            "ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        ),
+        (
+            {**collection, "items": [42]},
+            "ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        ),
+        (
+            {**collection, "items": [{key: value for key, value in item.items() if key != "host_id"}]},
+            "ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        ),
+        (
+            {**collection, "items": [{**item, "worker_executed": "yes"}]},
+            "ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        ),
+        (
+            {**collection, "items": [{**item, "summary": []}]},
+            "ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        ),
+        (
+            {**collection, "items": [{**item, "metadata": []}]},
+            "ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        ),
+        (
+            {**collection, "items": [{**item, "metadata": bad_item_metadata}]},
+            "ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        ),
+        (
+            {**collection, "guardrails": bad_guardrails},
+            "ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        ),
+        (
+            {**collection, "metadata": []},
+            "ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        ),
+    ):
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_scheduler_daemon_run_collection(payload)
+        assert exc_info.value.error_code == error_code
+
+    wrong_event = {**lifecycle_events[0], "daemon_run_record_id": "other-record"}
+    with pytest.raises(ArtifactHandoffError) as exc_info:
+        validate_artifact_retention_scheduler_daemon_run_detail(
+            {**detail, "lifecycle_events": [wrong_event, lifecycle_events[1]]}
+        )
+    assert exc_info.value.error_code == (
+        "ae.artifact_retention_scheduler_daemon_run_detail_invalid"
+    )
+    with pytest.raises(ArtifactHandoffError) as exc_info:
+        run_store.list_run_records(result_status="RUNNING")
+    assert exc_info.value.error_code == (
+        "ae.artifact_retention_scheduler_daemon_run_collection_invalid"
+    )
+    for payload in (
+        42,
+        {**detail, "daemon_run_detail_schema_version": "wrong"},
+        {**detail, "service_id": "wrong"},
+        {**detail, "daemon_run_record_id": "wrong"},
+        {**detail, "lifecycle_events": {}},
+        {**detail, "lifecycle_event_count": 1},
+        {**detail, "guardrails": {**detail["guardrails"], "read_only": False}},
+        {**detail, "metadata": []},
+    ):
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            validate_artifact_retention_scheduler_daemon_run_detail(payload)
+        assert exc_info.value.error_code == (
+            "ae.artifact_retention_scheduler_daemon_run_detail_invalid"
+        )
+
+
 def test_artifact_retention_scheduler_daemon_run_record_validation_edges() -> None:
     session_factory = sqlite_artifact_session_factory()
     run_store = SqlAlchemyArtifactRetentionSchedulerDaemonRunStore(session_factory)
@@ -450,6 +650,19 @@ def test_artifact_retention_scheduler_daemon_run_store_unavailable() -> None:
     assert exc_info.value.error_code == (
         "ae.artifact_retention_scheduler_daemon_run_store_unavailable"
     )
+    for operation in (
+        store.ensure_available,
+        lambda: store.get_run_record("daemon-run-record"),
+        lambda: store.get_run_record_by_execution_result_id("execution-result"),
+        lambda: store.list_run_records(limit=1),
+        lambda: store.list_lifecycle_events("daemon-run-record"),
+        lambda: store.delete_run_record("daemon-run-record"),
+    ):
+        with pytest.raises(ArtifactHandoffError) as exc_info:
+            operation()
+        assert exc_info.value.error_code == (
+            "ae.artifact_retention_scheduler_daemon_run_store_unavailable"
+        )
 
 
 def test_artifact_retention_scheduler_daemon_cli_execution_validation_edges() -> None:

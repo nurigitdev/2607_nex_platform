@@ -534,6 +534,10 @@ Unified operations:
 - Slice 0557 gives AG a future read-model target without adding write authority:
   AE persists redacted daemon run/event summaries in its own database, while AG
   may later project those rows only through AE-owned service APIs.
+- Slice 0558 opens that AE-owned service API target. AG can now call the
+  read-only daemon run collection/detail routes in a later projection slice,
+  but it still cannot write AE daemon run rows, enqueue AE retention jobs, or
+  receive raw daemon execution payloads.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

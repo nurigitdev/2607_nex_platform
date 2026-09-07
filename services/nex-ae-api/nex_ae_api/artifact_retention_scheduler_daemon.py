@@ -60,12 +60,19 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_RECORD_SCHEMA_VERSION = (
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_LIFECYCLE_EVENT_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_lifecycle_event.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_COLLECTION_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_run_collection.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_DETAIL_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_run_detail.v1"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
 MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_MAX_CYCLES = 100
 MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_PROCESS_ID = 2_147_483_647
 MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_PROCESS_LOCK_STALE_AFTER_SECONDS = 86_400
+MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_COLLECTION_LIMIT = 100
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_EXECUTE_MODE = "bounded_loop"
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_PROCESS_LOCK_SCOPE = (
     "ae_artifact_retention_scheduler_daemon"
@@ -1946,6 +1953,53 @@ class SqlAlchemyArtifactRetentionSchedulerDaemonRunStore:
         except SQLAlchemyError as exc:
             raise _daemon_run_store_unavailable() from exc
 
+    def list_run_records(
+        self,
+        *,
+        scheduler_id: str | None = None,
+        result_status: str | None = None,
+        limit: int | str | None = None,
+    ) -> list[dict[str, Any]]:
+        normalized_scheduler_id = optional_text(scheduler_id)
+        normalized_result_status = _optional_daemon_result_status(
+            result_status,
+            error_code="ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+        )
+        normalized_limit = normalize_artifact_retention_scheduler_daemon_run_limit(
+            limit
+        )
+        where_clauses = ["service_id = 'nex-ae-api'"]
+        params: dict[str, Any] = {"limit": normalized_limit}
+        if normalized_scheduler_id is not None:
+            where_clauses.append("scheduler_id = :scheduler_id")
+            params["scheduler_id"] = normalized_scheduler_id
+        if normalized_result_status is not None:
+            where_clauses.append("result_status = :result_status")
+            params["result_status"] = normalized_result_status
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            _daemon_run_record_select_sql(
+                                " AND ".join(where_clauses)
+                            )
+                            + """
+                            ORDER BY completed_at DESC,
+                                     created_at DESC,
+                                     daemon_run_record_id ASC
+                            LIMIT :limit
+                            """
+                        ),
+                        params,
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [_daemon_run_record_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _daemon_run_store_unavailable() from exc
+
     def list_lifecycle_events(
         self,
         daemon_run_record_id: str,
@@ -2063,6 +2117,334 @@ def build_artifact_retention_scheduler_daemon_run_record(
         "created_at": completed_lifecycle["completed_at"],
     }
     return validate_artifact_retention_scheduler_daemon_run_record(record)
+
+
+def build_artifact_retention_scheduler_daemon_run_collection(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    scheduler_id: str | None = None,
+    result_status: str | None = None,
+    limit: int | str | None = None,
+) -> dict[str, Any]:
+    normalized_limit = normalize_artifact_retention_scheduler_daemon_run_limit(limit)
+    normalized_scheduler_id = optional_text(scheduler_id)
+    normalized_result_status = _optional_daemon_result_status(
+        result_status,
+        error_code="ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+    )
+    normalized_records = [
+        validate_artifact_retention_scheduler_daemon_run_record(record)
+        for record in records
+    ]
+    collection = {
+        "daemon_run_collection_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_COLLECTION_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "filter": {
+            "scheduler_id": normalized_scheduler_id,
+            "result_status": normalized_result_status,
+        },
+        "count": len(normalized_records),
+        "limit": normalized_limit,
+        "items": [
+            _daemon_run_collection_item(record) for record in normalized_records
+        ],
+        "guardrails": _daemon_run_read_model_guardrails(),
+        "metadata": _daemon_run_collection_metadata(
+            records=normalized_records,
+            limit=normalized_limit,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_run_collection(collection)
+
+
+def validate_artifact_retention_scheduler_daemon_run_collection(
+    collection: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_run_collection_invalid"
+    if not isinstance(collection, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run collection must be an "
+                "object."
+            ),
+        )
+    normalized = dict(collection)
+    if set(normalized) != {
+        "daemon_run_collection_schema_version",
+        "service_id",
+        "filter",
+        "count",
+        "limit",
+        "items",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run collection keys are "
+                "invalid."
+            ),
+        )
+    if (
+        normalized.get("daemon_run_collection_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_COLLECTION_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run collection schema is "
+                "invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run collection service is "
+                "invalid."
+            ),
+        )
+    normalized_filter = normalized.get("filter")
+    if not isinstance(normalized_filter, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run collection filter is "
+                "invalid."
+            ),
+        )
+    if set(normalized_filter) != {"scheduler_id", "result_status"}:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run collection filter is "
+                "invalid."
+            ),
+        )
+    normalized["filter"] = {
+        "scheduler_id": optional_text(normalized_filter.get("scheduler_id")),
+        "result_status": _optional_daemon_result_status(
+            normalized_filter.get("result_status"),
+            error_code=error_code,
+        ),
+    }
+    normalized["limit"] = normalize_artifact_retention_scheduler_daemon_run_limit(
+        normalized.get("limit")
+    )
+    normalized["count"] = _non_negative_int(
+        normalized.get("count"),
+        "count",
+        error_code=error_code,
+    )
+    items = normalized.get("items")
+    if not isinstance(items, list):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run collection items are "
+                "invalid."
+            ),
+        )
+    normalized["items"] = [
+        _validate_daemon_run_collection_item(item) for item in items
+    ]
+    if normalized["count"] != len(normalized["items"]):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run collection count is "
+                "invalid."
+            ),
+        )
+    if normalized["guardrails"] != _daemon_run_read_model_guardrails():
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run collection guardrails are "
+                "invalid."
+            ),
+        )
+    if not isinstance(normalized.get("metadata"), Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run collection metadata is "
+                "invalid."
+            ),
+        )
+    normalized["metadata"] = dict(normalized["metadata"])
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def build_artifact_retention_scheduler_daemon_run_detail(
+    *,
+    run_record: Mapping[str, Any],
+    lifecycle_events: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    record = validate_artifact_retention_scheduler_daemon_run_record(run_record)
+    events = [
+        validate_artifact_retention_scheduler_daemon_lifecycle_event(event)
+        for event in lifecycle_events
+    ]
+    detail = {
+        "daemon_run_detail_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_DETAIL_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "daemon_run_record_id": record["daemon_run_record_id"],
+        "run_record": record,
+        "lifecycle_event_count": len(events),
+        "lifecycle_events": events,
+        "guardrails": _daemon_run_read_model_guardrails(),
+        "metadata": _daemon_run_detail_metadata(
+            run_record=record,
+            lifecycle_events=events,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_run_detail(detail)
+
+
+def validate_artifact_retention_scheduler_daemon_run_detail(
+    detail: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_run_detail_invalid"
+    if not isinstance(detail, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail="Artifact retention scheduler daemon run detail must be an object.",
+        )
+    normalized = dict(detail)
+    if set(normalized) != {
+        "daemon_run_detail_schema_version",
+        "service_id",
+        "daemon_run_record_id",
+        "run_record",
+        "lifecycle_event_count",
+        "lifecycle_events",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail="Artifact retention scheduler daemon run detail keys are invalid.",
+        )
+    if (
+        normalized.get("daemon_run_detail_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_DETAIL_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail="Artifact retention scheduler daemon run detail schema is invalid.",
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail="Artifact retention scheduler daemon run detail service is invalid.",
+        )
+    record = validate_artifact_retention_scheduler_daemon_run_record(
+        normalized.get("run_record")
+    )
+    normalized_id = _required_text(
+        normalized.get("daemon_run_record_id"),
+        "daemon_run_record_id",
+        error_code=error_code,
+    )
+    if normalized_id != record["daemon_run_record_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail="Artifact retention scheduler daemon run detail scope is invalid.",
+        )
+    lifecycle_events = normalized.get("lifecycle_events")
+    if not isinstance(lifecycle_events, list):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run detail lifecycle events "
+                "are invalid."
+            ),
+        )
+    normalized["lifecycle_events"] = [
+        validate_artifact_retention_scheduler_daemon_lifecycle_event(event)
+        for event in lifecycle_events
+    ]
+    for event in normalized["lifecycle_events"]:
+        if event["daemon_run_record_id"] != record["daemon_run_record_id"]:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon run detail event scope "
+                    "is invalid."
+                ),
+            )
+    normalized["lifecycle_event_count"] = _non_negative_int(
+        normalized.get("lifecycle_event_count"),
+        "lifecycle_event_count",
+        error_code=error_code,
+    )
+    if normalized["lifecycle_event_count"] != len(normalized["lifecycle_events"]):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run detail event count is "
+                "invalid."
+            ),
+        )
+    if normalized["guardrails"] != _daemon_run_read_model_guardrails():
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run detail guardrails are "
+                "invalid."
+            ),
+        )
+    if not isinstance(normalized.get("metadata"), Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail="Artifact retention scheduler daemon run detail metadata is invalid.",
+        )
+    normalized["daemon_run_record_id"] = normalized_id
+    normalized["run_record"] = record
+    normalized["metadata"] = dict(normalized["metadata"])
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def normalize_artifact_retention_scheduler_daemon_run_limit(
+    limit: int | str | None,
+) -> int:
+    if limit is None:
+        return 20
+    return _bounded_positive_int(
+        limit,
+        "limit",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_COLLECTION_LIMIT,
+        error_code="ae.artifact_retention_scheduler_daemon_run_collection_invalid",
+    )
 
 
 def validate_artifact_retention_scheduler_daemon_run_record(
@@ -2488,6 +2870,227 @@ def _daemon_lifecycle_event(
         "created_at": run_record["created_at"],
     }
     return event
+
+
+def _daemon_run_collection_item(record: Mapping[str, Any]) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduler_daemon_run_record(record)
+    return {
+        "daemon_run_record_id": validated["daemon_run_record_id"],
+        "scheduler_id": validated["scheduler_id"],
+        "daemon_instance_id": validated["daemon_instance_id"],
+        "daemon_cli_execution_result_id": validated[
+            "daemon_cli_execution_result_id"
+        ],
+        "process_id": validated["process_id"],
+        "host_id": validated["host_id"],
+        "run_status": validated["run_status"],
+        "result_status": validated["result_status"],
+        "stop_reason": validated["stop_reason"],
+        "max_cycles": validated["max_cycles"],
+        "cycle_count": validated["cycle_count"],
+        "worker_requested": validated["worker_requested"],
+        "job_enqueued": validated["job_enqueued"],
+        "worker_executed": validated["worker_executed"],
+        "started_at": validated["started_at"],
+        "completed_at": validated["completed_at"],
+        "checked_at": validated["checked_at"],
+        "summary": dict(validated["summary"]),
+        "metadata": {
+            "safe_for_ag_projection": (
+                validated["metadata"].get("safe_for_ag_projection") is True
+            ),
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+            "physical_delete_automation_enabled": False,
+        },
+    }
+
+
+def _validate_daemon_run_collection_item(item: Any) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_run_collection_invalid"
+    if not isinstance(item, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run collection item must be "
+                "an object."
+            ),
+        )
+    normalized = dict(item)
+    if set(normalized) != {
+        "daemon_run_record_id",
+        "scheduler_id",
+        "daemon_instance_id",
+        "daemon_cli_execution_result_id",
+        "process_id",
+        "host_id",
+        "run_status",
+        "result_status",
+        "stop_reason",
+        "max_cycles",
+        "cycle_count",
+        "worker_requested",
+        "job_enqueued",
+        "worker_executed",
+        "started_at",
+        "completed_at",
+        "checked_at",
+        "summary",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run collection item keys are "
+                "invalid."
+            ),
+        )
+    for field_name in (
+        "daemon_run_record_id",
+        "scheduler_id",
+        "daemon_instance_id",
+        "daemon_cli_execution_result_id",
+        "host_id",
+        "stop_reason",
+        "started_at",
+        "completed_at",
+        "checked_at",
+    ):
+        normalized[field_name] = _required_text(
+            normalized.get(field_name),
+            field_name,
+            error_code=error_code,
+        )
+    normalized["process_id"] = _positive_int(
+        normalized.get("process_id"),
+        "process_id",
+        error_code=error_code,
+    )
+    normalized["run_status"] = _daemon_run_status(
+        normalized.get("run_status"),
+        error_code=error_code,
+    )
+    normalized["result_status"] = _daemon_result_status(
+        normalized.get("result_status"),
+        error_code=error_code,
+    )
+    normalized["max_cycles"] = _bounded_positive_int(
+        normalized.get("max_cycles"),
+        "max_cycles",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_MAX_CYCLES,
+        error_code=error_code,
+    )
+    normalized["cycle_count"] = _non_negative_int(
+        normalized.get("cycle_count"),
+        "cycle_count",
+        error_code=error_code,
+    )
+    for field_name in ("worker_requested", "job_enqueued", "worker_executed"):
+        normalized[field_name] = _required_bool(
+            normalized.get(field_name),
+            field_name,
+            error_code=error_code,
+        )
+    if not isinstance(normalized.get("summary"), Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run collection item summary "
+                "is invalid."
+            ),
+        )
+    if not isinstance(normalized.get("metadata"), Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run collection item metadata "
+                "is invalid."
+            ),
+        )
+    normalized["summary"] = dict(normalized["summary"])
+    normalized["metadata"] = dict(normalized["metadata"])
+    if normalized["metadata"] != {
+        "safe_for_ag_projection": True,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "physical_delete_automation_enabled": False,
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon run collection item metadata "
+                "is invalid."
+            ),
+        )
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def _daemon_run_read_model_guardrails() -> dict[str, bool]:
+    return {
+        "read_only": True,
+        "ae_owned_persistence": True,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "process_control_allowed": False,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "physical_delete_automation_enabled": False,
+    }
+
+
+def _daemon_run_collection_metadata(
+    *,
+    records: Sequence[Mapping[str, Any]],
+    limit: int,
+) -> dict[str, Any]:
+    newest_completed_at = records[0]["completed_at"] if records else None
+    return {
+        "safe_for_ag_projection": True,
+        "read_model": "ae_artifact_retention_scheduler_daemon_runs",
+        "item_count": len(records),
+        "limit": limit,
+        "has_more": len(records) == limit,
+        "newest_completed_at": newest_completed_at,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+    }
+
+
+def _daemon_run_detail_metadata(
+    *,
+    run_record: Mapping[str, Any],
+    lifecycle_events: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "safe_for_ag_projection": True,
+        "read_model": "ae_artifact_retention_scheduler_daemon_run_detail",
+        "daemon_run_record_id": run_record["daemon_run_record_id"],
+        "lifecycle_event_count": len(lifecycle_events),
+        "event_types": [event["event_type"] for event in lifecycle_events],
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+    }
 
 
 def summarize_artifact_retention_scheduler_daemon_cli_plan(
@@ -4607,6 +5210,17 @@ def _daemon_result_status(
             detail="Artifact retention scheduler daemon result status is invalid.",
         )
     return status
+
+
+def _optional_daemon_result_status(
+    value: Any,
+    *,
+    error_code: str,
+) -> str | None:
+    status = optional_text(value)
+    if status is None:
+        return None
+    return _daemon_result_status(status, error_code=error_code)
 
 
 def _non_negative_int(

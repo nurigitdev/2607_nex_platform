@@ -661,6 +661,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0555`](slices/0555_ae_daemon_bounded_loop_cli_execution_wiring.md) | `S56-005` AE daemon bounded-loop CLI execution wiring. |
 | [`Slice 0556`](slices/0556_ae_daemon_cli_execution_postgresql_smoke.md) | `S56-006` AE daemon CLI execution PostgreSQL smoke evidence. |
 | [`Slice 0557`](slices/0557_ae_daemon_run_lifecycle_persistence.md) | `S56-007` AE daemon run and lifecycle persistence. |
+| [`Slice 0558`](slices/0558_ae_daemon_run_read_model_api.md) | `S56-008` AE daemon run read-model API. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

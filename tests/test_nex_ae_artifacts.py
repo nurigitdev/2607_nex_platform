@@ -22,6 +22,12 @@ from nex_ae_api.artifact_retention_scheduler import (
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE,
     ArtifactRetentionSchedulerLeaseStore,
 )
+from nex_ae_api.artifact_retention_scheduler_daemon import (
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_COLLECTION_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_DETAIL_SCHEMA_VERSION,
+    SqlAlchemyArtifactRetentionSchedulerDaemonRunStore,
+    run_artifact_retention_scheduler_daemon_cli_execution,
+)
 from nex_ae_api.artifacts import (
     ArtifactHandoffError,
     ArtifactHandoffStore,
@@ -333,6 +339,7 @@ def build_client_with_artifact_store(
     cx_client: FakeCxArtifactSourceClient | None = None,
     retention_history_store: ArtifactRetentionExecutionHistoryStore | None = None,
     retention_scheduler_lease_store: ArtifactRetentionSchedulerLeaseStore | None = None,
+    retention_scheduler_daemon_run_store: Any | None = None,
     job_queue: Any | None = None,
     worker_heartbeat_store: InMemoryWorkerHeartbeatStore | None = None,
 ) -> tuple[
@@ -355,6 +362,7 @@ def build_client_with_artifact_store(
         artifact_store=artifact_store,
         retention_history_store=retention_history_store,
         retention_scheduler_lease_store=retention_scheduler_lease_store,
+        retention_scheduler_daemon_run_store=retention_scheduler_daemon_run_store,
         job_queue=job_queue,
         cx_client=client,
     )
@@ -449,6 +457,50 @@ def save_rendered_retention_artifact(
     rendered["updated_at"] = updated_at
     store.save(rendered)
     return rendered
+
+
+def seed_artifact_retention_scheduler_daemon_run(
+    *,
+    run_store: SqlAlchemyArtifactRetentionSchedulerDaemonRunStore,
+    artifact_store: ArtifactRecordStore | SqlAlchemyArtifactRecordStore,
+    artifact_request_id: str,
+    checked_at: str,
+    idempotency_key: str,
+    process_id: int,
+) -> dict[str, Any]:
+    save_rendered_retention_artifact(
+        artifact_store,
+        artifact_request_id=artifact_request_id,
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    result = run_artifact_retention_scheduler_daemon_cli_execution(
+        artifact_store=artifact_store,
+        job_queue=InMemoryJobQueue(),
+        lease_store=ArtifactRetentionSchedulerLeaseStore(),
+        run_store=run_store,
+        tenant_id="tenant-001",
+        workspace_id="workspace-001",
+        owner_user_id="user-001",
+        checked_at=checked_at,
+        interval_seconds=120,
+        jitter_seconds=0,
+        max_cycles="2",
+        retention_days=30,
+        as_of="2026-09-01T00:00:00Z",
+        scan_limit=10,
+        max_delete_count=1,
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        idempotency_key=idempotency_key,
+        process_id=process_id,
+        host_id="ae-node-0558",
+        stale_after_seconds="900",
+    )
+    run_record = run_store.get_run_record_by_execution_result_id(
+        result["daemon_cli_execution_result_id"]
+    )
+    assert run_record is not None
+    return run_record
 
 
 def sample_retention_operator_approval(**overrides: Any) -> dict[str, Any]:
@@ -6391,6 +6443,132 @@ def test_artifact_retention_scheduler_daemon_runtime_route_handles_empty_store()
     assert payload["heartbeat_count"] == 0
     assert payload["metadata"]["heartbeat_observed"] is False
     assert payload["metadata"]["heartbeat_store_available"] is True
+
+
+def test_artifact_retention_scheduler_daemon_run_routes_surface_read_model() -> None:
+    session_factory = sqlite_artifact_session_factory()
+    run_store = SqlAlchemyArtifactRetentionSchedulerDaemonRunStore(session_factory)
+    run_store.ensure_schema()
+    artifact_store = ArtifactRecordStore()
+    first = seed_artifact_retention_scheduler_daemon_run(
+        run_store=run_store,
+        artifact_store=artifact_store,
+        artifact_request_id="route-daemon-run-0558-old-001",
+        checked_at="2026-09-01T02:30:00Z",
+        idempotency_key="route-daemon-run-0558-001",
+        process_id=5558,
+    )
+    seed_artifact_retention_scheduler_daemon_run(
+        run_store=run_store,
+        artifact_store=artifact_store,
+        artifact_request_id="route-daemon-run-0558-old-002",
+        checked_at="2026-09-01T02:40:00Z",
+        idempotency_key="route-daemon-run-0558-002",
+        process_id=5559,
+    )
+    client, _, _, _ = build_client_with_artifact_store(
+        retention_scheduler_daemon_run_store=run_store
+    )
+
+    list_response = client.get(
+        "/api/v1/artifact-retention/scheduler-daemon-runs",
+        params={
+            "scheduler_id": "ae-artifact-retention-scheduler-local-v1",
+            "result_status": "SUCCEEDED",
+            "limit": "1",
+        },
+        headers=auth_headers(),
+    )
+    detail_response = client.get(
+        (
+            "/api/v1/artifact-retention/scheduler-daemon-runs/"
+            f"{first['daemon_run_record_id']}"
+        ),
+        headers=auth_headers(),
+    )
+    unauthorized = client.get("/api/v1/artifact-retention/scheduler-daemon-runs")
+    invalid_status = client.get(
+        "/api/v1/artifact-retention/scheduler-daemon-runs",
+        params={"result_status": "RUNNING"},
+        headers=auth_headers(),
+    )
+    invalid_limit = client.get(
+        "/api/v1/artifact-retention/scheduler-daemon-runs",
+        params={"limit": "0"},
+        headers=auth_headers(),
+    )
+    missing_detail = client.get(
+        "/api/v1/artifact-retention/scheduler-daemon-runs/missing-run-record",
+        headers=auth_headers(),
+    )
+    list_payload = list_response.json()
+    detail_payload = detail_response.json()
+    serialized = json.dumps(
+        {"detail": detail_payload, "list": list_payload},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+    assert list_response.status_code == 200
+    assert list_payload["daemon_run_collection_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_COLLECTION_SCHEMA_VERSION
+    )
+    assert list_payload["service_id"] == "nex-ae-api"
+    assert list_payload["filter"] == {
+        "scheduler_id": "ae-artifact-retention-scheduler-local-v1",
+        "result_status": "SUCCEEDED",
+    }
+    assert list_payload["count"] == 1
+    assert list_payload["limit"] == 1
+    assert list_payload["items"][0]["result_status"] == "SUCCEEDED"
+    assert list_payload["items"][0]["metadata"][
+        "safe_for_ag_projection"
+    ] is True
+    assert list_payload["metadata"]["has_more"] is True
+    assert list_payload["guardrails"]["read_only"] is True
+    assert list_payload["guardrails"]["process_control_allowed"] is False
+    assert detail_response.status_code == 200
+    assert detail_payload["daemon_run_detail_schema_version"] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_DETAIL_SCHEMA_VERSION
+    )
+    assert detail_payload["daemon_run_record_id"] == first["daemon_run_record_id"]
+    assert detail_payload["run_record"]["process_id"] == 5558
+    assert detail_payload["lifecycle_event_count"] == 2
+    assert [event["event_type"] for event in detail_payload["lifecycle_events"]] == [
+        "RUN_STARTED",
+        "RUN_COMPLETED",
+    ]
+    assert detail_payload["metadata"]["event_types"] == [
+        "RUN_STARTED",
+        "RUN_COMPLETED",
+    ]
+    assert detail_payload["guardrails"]["ag_direct_database_write_allowed"] is False
+    assert unauthorized.status_code == 401
+    assert invalid_status.status_code == 422
+    assert invalid_limit.status_code == 422
+    assert missing_detail.status_code == 404
+    assert "postgresql://" not in serialized
+    assert "/data/nex-platform" not in serialized
+    assert "DATABASE_URL_SHOULD_NOT_LEAK" not in serialized
+
+
+def test_artifact_retention_scheduler_daemon_run_routes_require_store() -> None:
+    client, _, _, _ = build_client_with_artifact_store(job_queue=InMemoryJobQueue())
+
+    list_response = client.get(
+        "/api/v1/artifact-retention/scheduler-daemon-runs",
+        headers=auth_headers(),
+    )
+    detail_response = client.get(
+        "/api/v1/artifact-retention/scheduler-daemon-runs/missing",
+        headers=auth_headers(),
+    )
+
+    assert list_response.status_code == 503
+    assert detail_response.status_code == 503
+    assert list_response.json()["error_code"] == (
+        "ae.artifact_retention_scheduler_daemon_run_store_unavailable"
+    )
 
 
 def test_artifact_retention_scheduled_job_routes_enqueue_and_list() -> None:

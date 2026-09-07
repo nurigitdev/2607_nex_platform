@@ -800,3 +800,10 @@ Artifact library management:
   execution evidence to `run_record_persisted=true`, and the protected
   PostgreSQL smoke now verifies one run row and two lifecycle event rows before
   cleanup.
+- Slice 0558 exposes those persisted daemon run/event summaries through
+  read-only AE routes:
+  `/api/v1/artifact-retention/scheduler-daemon-runs` and
+  `/api/v1/artifact-retention/scheduler-daemon-runs/{daemon_run_record_id}`.
+  The routes return safe projections only, require auth, and keep process
+  control, JobQueue admission, database writes, and raw execution payloads out
+  of the read model.
