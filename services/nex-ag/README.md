@@ -684,6 +684,9 @@ Unified operations:
   transition evidence, but AG remains a caller/projection surface only. AE still
   builds the facade, execution request, state, and transition contracts and does
   not permit AG to invoke adapters or mutate AE persistence directly.
+- Slice 0595 keeps AG out of AE persistence while adding an AE-side PostgreSQL
+  smoke for the protected execution route. Later AG slices can use this evidence
+  as the dispatcher baseline before adding AG projections or dashboards.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

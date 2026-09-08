@@ -948,3 +948,10 @@ Artifact library management:
   still contract-only, fake dispatch admission is explicit, and the surface
   performs no supervisor adapter invocation, persistence write, JobQueue enqueue,
   worker run, subprocess control, or physical deletion.
+- Slice 0595 adds a protected PostgreSQL smoke runner for the execution route.
+  When
+  `NEX_AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_POSTGRES_SMOKE=1`
+  is set with `NEX_AE_TEST_DATABASE_URL`, it runs AE migrations, verifies live DB
+  health/table/index evidence, calls the execution and transition routes, and
+  checks that metadata-only execution leaves supervised-process and supervisor
+  row counts unchanged.
