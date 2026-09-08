@@ -7774,6 +7774,166 @@ def test_artifact_retention_scheduler_daemon_operator_control_validator_edges() 
     }
 
 
+def test_artifact_retention_scheduler_daemon_operator_control_execution_routes_return_read_models() -> (
+    None
+):
+    client = build_app(artifact_client())
+
+    collection_response = client.get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-executions"
+        ),
+        params={
+            "service_id": "nex-ae-api",
+            "scheduler_id": "ae-artifact-retention-scheduler",
+            "action": "restart-daemon",
+            "execution_status": "failed",
+            "idempotency_status": "conflict",
+            "limit": "1",
+        },
+        headers=auth_headers(),
+    )
+    detail_response = client.get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-executions/"
+            "operator-control-execution-state-0597"
+        ),
+        headers=auth_headers(),
+    )
+
+    assert collection_response.status_code == 200
+    collection = collection_response.json()
+    assert collection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_COLLECTION_PROJECTION_SCHEMA_VERSION
+    )
+    assert collection["filter"] == {
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "action": "restart_daemon",
+        "execution_status": "FAILED",
+        "idempotency_status": "CONFLICT",
+    }
+    assert collection["limit"] == 1
+    assert collection["summary"]["failed_count"] == 1
+    assert collection["summary"]["conflict_count"] == 1
+    assert collection["summary"]["operator_attention_required"] is True
+    assert collection["operator_guidance"][
+        "ag_direct_daemon_process_control_allowed"
+    ] is False
+    assert collection["items"][0]["routes"]["ag_detail"].endswith(
+        "/scheduler-daemon-operator-control-executions/"
+        "operator-control-execution-state-conflict-0597"
+    )
+
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_DETAIL_PROJECTION_SCHEMA_VERSION
+    )
+    assert detail["operator_control_execution_state_id"] == (
+        "operator-control-execution-state-0597"
+    )
+    assert detail["transition_count"] == 1
+    assert detail["summary"]["transition_statuses"] == [
+        "ADMITTED->EXECUTING"
+    ]
+    assert detail["request_trace_id"] == TRACE_ID
+    assert "DATABASE_URL_SHOULD_NOT_LEAK" not in str(collection)
+    assert "SECRET_SYSTEM_PROMPT" not in str(detail)
+    assert "/data/nex-platform" not in str(detail)
+
+
+def test_artifact_retention_scheduler_daemon_operator_control_execution_route_guardrails() -> (
+    None
+):
+    client = build_app(artifact_client())
+    route = (
+        "/admin/v1/operations/artifact-retention/"
+        "scheduler-daemon-operator-control-executions"
+    )
+
+    unauthorized = client.get(route)
+    invalid_service = client.get(
+        route,
+        params={"service_id": "nex-cx"},
+        headers=auth_headers(),
+    )
+    invalid_action = client.get(
+        route,
+        params={"action": "manual_tick_once"},
+        headers=auth_headers(),
+    )
+    invalid_execution_status = client.get(
+        route,
+        params={"execution_status": "READY"},
+        headers=auth_headers(),
+    )
+    invalid_idempotency_status = client.get(
+        route,
+        params={"idempotency_status": "DUPLICATE"},
+        headers=auth_headers(),
+    )
+    invalid_limit = client.get(
+        route,
+        params={"limit": "101"},
+        headers=auth_headers(),
+    )
+    missing_detail = client.get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-executions/missing"
+        ),
+        headers=auth_headers(),
+    )
+
+    class BrokenOperatorControlExecutionClient(InMemoryAeArtifactOperationsClient):
+        def list_artifact_retention_scheduler_daemon_operator_control_executions(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            raise AeArtifactOperationsError(
+                error_code=(
+                    "ag.ae_artifact_retention_daemon_operator_control_execution_source_failed"
+                ),
+                detail="AE operator-control execution source unavailable",
+                status_code=503,
+            )
+
+    source_failed = build_app(BrokenOperatorControlExecutionClient()).get(
+        route,
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert invalid_service.status_code == 400
+    assert invalid_action.status_code == 400
+    assert invalid_action.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_execution_action_invalid"
+    )
+    assert invalid_execution_status.status_code == 400
+    assert invalid_execution_status.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_execution_status_invalid"
+    )
+    assert invalid_idempotency_status.status_code == 400
+    assert invalid_idempotency_status.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_execution_idempotency_status_invalid"
+    )
+    assert invalid_limit.status_code == 400
+    assert invalid_limit.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_execution_limit_invalid"
+    )
+    assert missing_detail.status_code == 404
+    assert missing_detail.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_execution_not_found"
+    )
+    assert source_failed.status_code == 503
+    assert source_failed.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_execution_source_failed"
+    )
+
+
 def test_artifact_retention_scheduler_daemon_supervisor_routes_return_read_models() -> (
     None
 ):
