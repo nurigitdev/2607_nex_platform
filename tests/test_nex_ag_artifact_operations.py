@@ -18,6 +18,8 @@ from nex_ag.artifact_operations import (
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUN_COLLECTION_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUN_DETAIL_PROJECTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_COLLECTION_PROJECTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_DETAIL_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISOR_COLLECTION_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISOR_DETAIL_PROJECTION_SCHEMA_VERSION,
@@ -41,6 +43,8 @@ from nex_ag.artifact_operations import (
     build_artifact_operation_retention_automation_projection,
     build_artifact_operation_retention_batch_projection,
     build_artifact_operation_retention_daemon_projection,
+    build_artifact_operation_retention_daemon_operator_control_execution_collection_projection,
+    build_artifact_operation_retention_daemon_operator_control_execution_detail_projection,
     build_artifact_operation_retention_daemon_operator_control_projection,
     build_artifact_operation_retention_daemon_run_collection_projection,
     build_artifact_operation_retention_daemon_run_detail_projection,
@@ -62,6 +66,8 @@ from nex_ag.artifact_operations import (
     summarize_artifact_retention_automation_operations,
     summarize_artifact_retention_daemon_operations,
     summarize_artifact_retention_daemon_operator_control_projection,
+    summarize_artifact_retention_daemon_operator_control_execution_detail,
+    summarize_artifact_retention_daemon_operator_control_execution_operations,
     summarize_artifact_retention_daemon_lifecycle_projection,
     summarize_artifact_retention_daemon_run_detail,
     summarize_artifact_retention_daemon_run_operations,
@@ -1312,6 +1318,326 @@ def artifact_retention_scheduler_daemon_operator_control_facade_payload(
     return facade
 
 
+def artifact_retention_scheduler_daemon_operator_control_execution_state_payload(
+    *,
+    state_id: str = "operator-control-execution-state-0597",
+    action: str = "restart_daemon",
+    execution_status: str = "ADMITTED",
+    idempotency_status: str = "NEW",
+    observed_at: str = "2026-09-04T02:00:00Z",
+) -> dict[str, Any]:
+    allowed_next_statuses = {
+        "ADMITTED": ["EXECUTING", "BLOCKED"],
+        "EXECUTING": ["SUCCEEDED", "FAILED"],
+    }.get(execution_status, [])
+    return {
+        "operator_control_execution_state_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_execution_state.v1"
+        ),
+        "operator_control_execution_state_id": state_id,
+        "service_id": "nex-ae-api",
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "operator_control_execution_request_id": (
+            f"{state_id}:execution-request"
+        ),
+        "operator_control_facade_id": "operator-control-facade-0587",
+        "operator_control_request_id": "operator-control-request-0587",
+        "operator_control_admission_id": "operator-control-admission-0587",
+        "operator_control_command_preview_id": (
+            "operator-control-command-preview-0587"
+        ),
+        "action": action,
+        "execution_mode": "fake_dry_run_supervisor_persistent_dispatch",
+        "execution_status": execution_status,
+        "idempotency_key": f"{state_id}:idempotency-secret",
+        "idempotency_status": idempotency_status,
+        "decision_reason": "operator_control_execution_admitted",
+        "observed_at": observed_at,
+        "prior_execution_state_id": None,
+        "operator_control_execution_request_hash": "a" * 64,
+        "operator_control_execution_request": {
+            "private_path": "/data/nex-platform/ae/private",
+            "database_url": "DATABASE_URL_SHOULD_NOT_LEAK",
+            "reason": "SECRET_SYSTEM_PROMPT",
+        },
+        "allowed_next_statuses": allowed_next_statuses,
+        "summary": {
+            "scheduler_id": "ae-artifact-retention-scheduler",
+            "operator_control_execution_state_id": state_id,
+            "operator_control_execution_request_id": (
+                f"{state_id}:execution-request"
+            ),
+            "action": action,
+            "execution_status": execution_status,
+            "idempotency_status": idempotency_status,
+            "decision_reason": "operator_control_execution_admitted",
+            "allowed_next_statuses": allowed_next_statuses,
+            "safe_for_ag_projection": True,
+            "database_url": "DATABASE_URL_SHOULD_NOT_LEAK",
+        },
+        "guardrails": {
+            "metadata_only": True,
+            "state_machine_only": True,
+            "operator_control_execution_request_validated": True,
+            "idempotency_key_required": True,
+            "idempotency_key_scoped_to_request": True,
+            "idempotency_replay_blocks_duplicate_dispatch": (
+                idempotency_status == "REPLAYED"
+            ),
+            "idempotency_conflict_blocks_dispatch": (
+                idempotency_status == "CONFLICT"
+            ),
+            "admitted_allows_execution_transition": (
+                execution_status == "ADMITTED"
+            ),
+            "executing_allows_terminal_transition": (
+                execution_status == "EXECUTING"
+            ),
+            "terminal_state": execution_status
+            in {"SUCCEEDED", "FAILED", "BLOCKED", "NOOP"},
+            "supervisor_dispatch_performed": False,
+            "supervisor_adapter_invoked": False,
+            "subprocess_started": False,
+            "subprocess_stopped": False,
+            "database_write_performed": False,
+            "job_queue_enqueue_performed": False,
+            "worker_execution_performed": False,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "ag_direct_process_control_allowed": False,
+            "physical_delete_automation_enabled": False,
+            "database_url_included": False,
+            "raw_execution_payload_included": False,
+            "secrets_redacted": True,
+        },
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "metadata_only": True,
+            "execution_state_machine_only": True,
+            "operator_control_execution_request_hash": "a" * 64,
+            "observed_at": observed_at,
+            "source_facade_status": "READY",
+            "execution_mode": "fake_dry_run_supervisor_persistent_dispatch",
+            "execution_status": execution_status,
+            "idempotency_status": idempotency_status,
+            "idempotency_replayed": idempotency_status == "REPLAYED",
+            "idempotency_conflict": idempotency_status == "CONFLICT",
+            "allowed_next_statuses": allowed_next_statuses,
+            "supervisor_command_count": 2,
+            "supervisor_actions": ["stop_daemon", "start_daemon"],
+            "supervisor_dispatch_performed": False,
+            "supervisor_adapter_invoked": False,
+            "subprocess_started": False,
+            "subprocess_stopped": False,
+            "database_write_performed": False,
+            "job_queue_enqueue_performed": False,
+            "worker_execution_performed": False,
+            "private_path": "/data/nex-platform/ae/private",
+            "secrets_redacted": True,
+        },
+    }
+
+
+def artifact_retention_scheduler_daemon_operator_control_execution_transition_payload(
+    *,
+    state: dict[str, Any] | None = None,
+    to_status: str = "EXECUTING",
+    transitioned_at: str = "2026-09-04T02:01:00Z",
+) -> dict[str, Any]:
+    execution_state = (
+        state
+        or artifact_retention_scheduler_daemon_operator_control_execution_state_payload()
+    )
+    from_status = execution_state["execution_status"]
+    return {
+        "operator_control_execution_state_transition_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_execution_state_transition.v1"
+        ),
+        "operator_control_execution_state_transition_id": (
+            f"{execution_state['operator_control_execution_state_id']}:{to_status}"
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": execution_state["scheduler_id"],
+        "operator_control_execution_state_id": (
+            execution_state["operator_control_execution_state_id"]
+        ),
+        "operator_control_execution_request_id": (
+            execution_state["operator_control_execution_request_id"]
+        ),
+        "from_status": from_status,
+        "to_status": to_status,
+        "decision_reason": "operator_control_execution_transition_recorded",
+        "transitioned_at": transitioned_at,
+        "operator_control_execution_state": {
+            **execution_state,
+            "database_url": "DATABASE_URL_SHOULD_NOT_LEAK",
+        },
+        "summary": {
+            "scheduler_id": execution_state["scheduler_id"],
+            "operator_control_execution_state_transition_id": (
+                f"{execution_state['operator_control_execution_state_id']}:{to_status}"
+            ),
+            "operator_control_execution_state_id": (
+                execution_state["operator_control_execution_state_id"]
+            ),
+            "from_status": from_status,
+            "to_status": to_status,
+            "transitioned_at": transitioned_at,
+            "safe_for_ag_projection": True,
+            "database_url": "DATABASE_URL_SHOULD_NOT_LEAK",
+        },
+        "guardrails": {
+            "metadata_only": True,
+            "state_transition_only": True,
+            "source_state_validated": True,
+            "transition_allowed": True,
+            "admitted_to_executing": from_status == "ADMITTED"
+            and to_status == "EXECUTING",
+            "supervisor_dispatch_performed": False,
+            "supervisor_adapter_invoked": False,
+            "subprocess_started": False,
+            "subprocess_stopped": False,
+            "database_write_performed": False,
+            "job_queue_enqueue_performed": False,
+            "worker_execution_performed": False,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "ag_direct_process_control_allowed": False,
+            "physical_delete_automation_enabled": False,
+            "database_url_included": False,
+            "raw_execution_payload_included": False,
+            "secrets_redacted": True,
+        },
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "metadata_only": True,
+            "execution_state_transition_only": True,
+            "operator_control_execution_state_hash": "b" * 64,
+            "transitioned_at": transitioned_at,
+            "from_status": from_status,
+            "to_status": to_status,
+            "source_idempotency_status": execution_state["idempotency_status"],
+            "to_terminal": to_status in {"SUCCEEDED", "FAILED", "BLOCKED"},
+            "supervisor_dispatch_performed": False,
+            "supervisor_adapter_invoked": False,
+            "subprocess_started": False,
+            "subprocess_stopped": False,
+            "database_write_performed": False,
+            "job_queue_enqueue_performed": False,
+            "worker_execution_performed": False,
+            "private_path": "/data/nex-platform/ae/private",
+            "secrets_redacted": True,
+        },
+    }
+
+
+def artifact_retention_scheduler_daemon_operator_control_execution_collection_payload() -> (
+    dict[str, Any]
+):
+    records = [
+        artifact_retention_scheduler_daemon_operator_control_execution_state_payload(),
+        artifact_retention_scheduler_daemon_operator_control_execution_state_payload(
+            state_id="operator-control-execution-state-conflict-0597",
+            execution_status="FAILED",
+            idempotency_status="CONFLICT",
+            observed_at="2026-09-04T02:05:00Z",
+        ),
+    ]
+    return {
+        "operator_control_execution_collection_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_execution_collection.v1"
+        ),
+        "service_id": "nex-ae-api",
+        "filter": {
+            "scheduler_id": "ae-artifact-retention-scheduler",
+            "action": None,
+            "execution_status": None,
+            "idempotency_status": None,
+        },
+        "count": len(records),
+        "limit": 20,
+        "items": records,
+        "guardrails": {
+            "read_only": True,
+            "ae_owned_persistence": True,
+            "ae_owned_execution_state": True,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "ag_direct_process_control_allowed": False,
+            "supervisor_dispatch_performed": False,
+            "physical_delete_automation_enabled": False,
+            "database_url_included": False,
+            "raw_execution_payload_included": False,
+            "secrets_redacted": True,
+        },
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "metadata_only": True,
+            "read_model": "ae_daemon_operator_control_execution_states",
+            "item_count": len(records),
+            "limit": 20,
+            "has_more": False,
+            "newest_observed_at": records[1]["observed_at"],
+            "database_url_included": False,
+            "raw_execution_payload_included": False,
+            "private_path": "/data/nex-platform/ae/private",
+            "secrets_redacted": True,
+        },
+    }
+
+
+def artifact_retention_scheduler_daemon_operator_control_execution_detail_payload() -> (
+    dict[str, Any]
+):
+    state = artifact_retention_scheduler_daemon_operator_control_execution_state_payload()
+    transitions = [
+        artifact_retention_scheduler_daemon_operator_control_execution_transition_payload(
+            state=state
+        )
+    ]
+    return {
+        "operator_control_execution_detail_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_execution_detail.v1"
+        ),
+        "service_id": "nex-ae-api",
+        "operator_control_execution_state_id": (
+            state["operator_control_execution_state_id"]
+        ),
+        "execution_state": state,
+        "transition_count": len(transitions),
+        "transitions": transitions,
+        "guardrails": {
+            "read_only": True,
+            "ae_owned_persistence": True,
+            "ae_owned_execution_state": True,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "ag_direct_process_control_allowed": False,
+            "supervisor_dispatch_performed": False,
+            "physical_delete_automation_enabled": False,
+            "database_url_included": False,
+            "raw_execution_payload_included": False,
+            "secrets_redacted": True,
+        },
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "metadata_only": True,
+            "read_model": (
+                "ae_artifact_retention_scheduler_daemon_operator_control_execution_detail"
+            ),
+            "operator_control_execution_state_id": (
+                state["operator_control_execution_state_id"]
+            ),
+            "transition_count": len(transitions),
+            "transition_statuses": ["ADMITTED->EXECUTING"],
+            "database_url_included": False,
+            "raw_execution_payload_included": False,
+            "private_path": "/data/nex-platform/ae/private",
+            "secrets_redacted": True,
+        },
+    }
+
+
 def artifact_retention_scheduler_daemon_run_record_payload(
     *,
     daemon_run_record_id: str = "daemon-run-record-0559",
@@ -2152,6 +2478,45 @@ def artifact_client() -> InMemoryAeArtifactOperationsClient:
         artifact_retention_scheduler_daemon_process_snapshot_details={
             "daemon-supervised-process-record-0576": (
                 artifact_retention_scheduler_daemon_supervised_process_detail_payload()
+            ),
+        },
+        artifact_retention_scheduler_daemon_operator_control_execution_collections={
+            artifact_operations._artifact_retention_scheduler_daemon_operator_control_execution_cache_key(
+                scheduler_id="ae-artifact-retention-scheduler",
+                action=None,
+                execution_status=None,
+                idempotency_status=None,
+                limit=20,
+            ): artifact_retention_scheduler_daemon_operator_control_execution_collection_payload(),
+            artifact_operations._artifact_retention_scheduler_daemon_operator_control_execution_cache_key(
+                scheduler_id="ae-artifact-retention-scheduler",
+                action="restart_daemon",
+                execution_status="FAILED",
+                idempotency_status="CONFLICT",
+                limit=1,
+            ): {
+                **artifact_retention_scheduler_daemon_operator_control_execution_collection_payload(),
+                "filter": {
+                    "scheduler_id": "ae-artifact-retention-scheduler",
+                    "action": "restart_daemon",
+                    "execution_status": "FAILED",
+                    "idempotency_status": "CONFLICT",
+                },
+                "count": 1,
+                "limit": 1,
+                "items": [
+                    artifact_retention_scheduler_daemon_operator_control_execution_state_payload(
+                        state_id="operator-control-execution-state-conflict-0597",
+                        execution_status="FAILED",
+                        idempotency_status="CONFLICT",
+                        observed_at="2026-09-04T02:05:00Z",
+                    )
+                ],
+            },
+        },
+        artifact_retention_scheduler_daemon_operator_control_execution_details={
+            "operator-control-execution-state-0597": (
+                artifact_retention_scheduler_daemon_operator_control_execution_detail_payload()
             ),
         },
         handoffs={HANDOFF_ID: handoff_record()},
@@ -6188,6 +6553,267 @@ def test_artifact_retention_scheduler_daemon_operator_control_projection_handles
     ) == {}
     assert artifact_operations._safe_operator_control_guardrails(None) == {}
     assert artifact_operations._safe_operator_control_metadata(None) == {}
+
+
+def test_artifact_retention_scheduler_daemon_operator_control_execution_projections_summarize_and_redact() -> (
+    None
+):
+    collection = (
+        artifact_retention_scheduler_daemon_operator_control_execution_collection_payload()
+    )
+    detail = (
+        artifact_retention_scheduler_daemon_operator_control_execution_detail_payload()
+    )
+    collection_projection = build_artifact_operation_retention_daemon_operator_control_execution_collection_projection(
+        collection=collection,
+        source_client=artifact_client(),
+        request_trace_id=TRACE_ID,
+    )
+    detail_projection = build_artifact_operation_retention_daemon_operator_control_execution_detail_projection(
+        detail=detail,
+        source_client=artifact_client(),
+        request_trace_id=TRACE_ID,
+    )
+    degraded_projection = build_artifact_operation_retention_daemon_operator_control_execution_collection_projection(
+        collection={"items": [], "filter": {}, "count": 0, "limit": 20},
+        source_client=artifact_client(),
+        source_errors=[
+            AeArtifactOperationsError(
+                error_code=(
+                    "ag.ae_artifact_retention_daemon_operator_control_execution_source_failed"
+                ),
+                detail="AE operator-control execution source unavailable",
+                status_code=503,
+            )
+        ],
+    )
+
+    assert collection_projection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_COLLECTION_PROJECTION_SCHEMA_VERSION
+    )
+    assert collection_projection["operation_type"] == (
+        "ae_artifact_retention_scheduler_daemon_operator_control_executions"
+    )
+    assert collection_projection["filter"] == {
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "action": None,
+        "execution_status": None,
+        "idempotency_status": None,
+    }
+    assert collection_projection["summary"] == (
+        summarize_artifact_retention_daemon_operator_control_execution_operations(
+            collection_projection["items"]
+        )
+    )
+    assert collection_projection["summary"][
+        "operator_control_execution_state_count"
+    ] == 2
+    assert collection_projection["summary"]["admitted_count"] == 1
+    assert collection_projection["summary"]["failed_count"] == 1
+    assert collection_projection["summary"]["conflict_count"] == 1
+    assert collection_projection["summary"][
+        "operator_attention_required"
+    ] is True
+    assert collection_projection["summary"]["latest_observed_at"] == (
+        "2026-09-04T02:05:00Z"
+    )
+    assert collection_projection["source_status"][
+        "execution_collection_loaded"
+    ] is True
+    assert collection_projection["items"][0][
+        "operator_control_execution_request_hash"
+    ] == ("a" * 64)
+    assert collection_projection["items"][0]["routes"]["ag_detail"].endswith(
+        "/scheduler-daemon-operator-control-executions/"
+        "operator-control-execution-state-0597"
+    )
+    assert "operator_control_execution_request" not in (
+        collection_projection["items"][0]
+    )
+    assert "idempotency_key" not in collection_projection["items"][0]
+
+    assert detail_projection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_DETAIL_PROJECTION_SCHEMA_VERSION
+    )
+    assert detail_projection["summary"] == (
+        summarize_artifact_retention_daemon_operator_control_execution_detail(
+            execution_state=detail_projection["execution_state"],
+            transitions=detail_projection["transitions"],
+        )
+    )
+    assert detail_projection["summary"]["transition_statuses"] == [
+        "ADMITTED->EXECUTING"
+    ]
+    assert detail_projection["summary"]["latest_transitioned_at"] == (
+        "2026-09-04T02:01:00Z"
+    )
+    assert detail_projection["source_status"]["execution_detail_loaded"] is True
+    assert "operator_control_execution_state" not in detail_projection["transitions"][0]
+    assert "operator_control_execution_request" not in detail_projection[
+        "execution_state"
+    ]
+    assert "idempotency_key" not in detail_projection["execution_state"]
+    assert degraded_projection["projection_status"] == "DEGRADED"
+    assert degraded_projection["source_status"][
+        "execution_collection_loaded"
+    ] is False
+    assert "SECRET_SYSTEM_PROMPT" not in str(collection_projection)
+    assert "DATABASE_URL_SHOULD_NOT_LEAK" not in str(detail_projection)
+    assert "/data/nex-platform" not in str(detail_projection)
+    assert_artifact_operation_projection_redacted(collection_projection)
+    assert_artifact_operation_projection_redacted(detail_projection)
+
+
+def test_in_memory_artifact_operations_client_returns_operator_control_execution_read_models() -> (
+    None
+):
+    source_client = artifact_client()
+
+    collection = source_client.list_artifact_retention_scheduler_daemon_operator_control_executions(
+        scheduler_id="ae-artifact-retention-scheduler",
+        action="restart_daemon",
+        execution_status="FAILED",
+        idempotency_status="CONFLICT",
+        limit=1,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    collection["items"][0]["execution_status"] = "SUCCEEDED"
+    collection_again = source_client.list_artifact_retention_scheduler_daemon_operator_control_executions(
+        scheduler_id="ae-artifact-retention-scheduler",
+        action="restart_daemon",
+        execution_status="FAILED",
+        idempotency_status="CONFLICT",
+        limit=1,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    fallback = source_client.list_artifact_retention_scheduler_daemon_operator_control_executions(
+        scheduler_id="ae-artifact-retention-scheduler",
+        action="stop_daemon",
+        execution_status="NOOP",
+        idempotency_status="REPLAYED",
+        limit=5,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    detail = source_client.get_artifact_retention_scheduler_daemon_operator_control_execution_detail(
+        "operator-control-execution-state-0597",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    missing = source_client.get_artifact_retention_scheduler_daemon_operator_control_execution_detail(
+        "missing",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert collection_again["count"] == 1
+    assert collection_again["items"][0]["execution_status"] == "FAILED"
+    assert fallback["count"] == 0
+    assert fallback["filter"] == {
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "action": "stop_daemon",
+        "execution_status": "NOOP",
+        "idempotency_status": "REPLAYED",
+    }
+    assert detail is not None
+    assert detail["operator_control_execution_state_id"] == (
+        "operator-control-execution-state-0597"
+    )
+    assert missing is None
+
+
+def test_http_artifact_operations_client_requests_operator_control_execution_read_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def fake_get(
+        url: str,
+        *,
+        headers: dict[str, str],
+        params: dict[str, str],
+        timeout: float,
+    ) -> FakeHttpResponse:
+        calls.append(
+            {"url": url, "headers": headers, "params": params, "timeout": timeout}
+        )
+        if url.endswith(
+            "/api/v1/artifact-retention/"
+            "scheduler-daemon-operator-control-executions"
+        ):
+            return FakeHttpResponse(
+                200,
+                artifact_retention_scheduler_daemon_operator_control_execution_collection_payload(),
+            )
+        if url.endswith(
+            "/api/v1/artifact-retention/"
+            "scheduler-daemon-operator-control-executions/"
+            "operator-control-execution-state-0597"
+        ):
+            return FakeHttpResponse(
+                200,
+                artifact_retention_scheduler_daemon_operator_control_execution_detail_payload(),
+            )
+        return FakeHttpResponse(404, {})
+
+    monkeypatch.setattr(artifact_operations.httpx, "get", fake_get)
+    client = HttpAeArtifactOperationsClient(
+        base_url="http://ae.example.local/",
+        service_token="token-0597",
+        timeout_seconds=13.0,
+    )
+
+    collection = client.list_artifact_retention_scheduler_daemon_operator_control_executions(
+        scheduler_id="ae-artifact-retention-scheduler",
+        action="restart_daemon",
+        execution_status="FAILED",
+        idempotency_status="CONFLICT",
+        limit=10,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    detail = client.get_artifact_retention_scheduler_daemon_operator_control_execution_detail(
+        "operator-control-execution-state-0597",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    missing = client.get_artifact_retention_scheduler_daemon_operator_control_execution_detail(
+        "missing",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert collection["count"] == 2
+    assert detail is not None
+    assert detail["operator_control_execution_state_id"] == (
+        "operator-control-execution-state-0597"
+    )
+    assert missing is None
+    assert calls[0]["url"] == (
+        "http://ae.example.local/api/v1/artifact-retention/"
+        "scheduler-daemon-operator-control-executions"
+    )
+    assert calls[0]["headers"]["Authorization"] == "Bearer token-0597"
+    assert calls[0]["params"] == {
+        "limit": "10",
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "action": "restart_daemon",
+        "execution_status": "FAILED",
+        "idempotency_status": "CONFLICT",
+    }
+    assert calls[0]["timeout"] == 13.0
+    assert calls[1]["url"] == (
+        "http://ae.example.local/api/v1/artifact-retention/"
+        "scheduler-daemon-operator-control-executions/"
+        "operator-control-execution-state-0597"
+    )
+    assert calls[1]["params"] == {}
+    assert calls[2]["url"].endswith(
+        "/api/v1/artifact-retention/"
+        "scheduler-daemon-operator-control-executions/missing"
+    )
 
 
 def test_artifact_retention_automation_operator_control_current_process_selection() -> (
