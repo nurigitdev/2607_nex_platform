@@ -700,6 +700,9 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0594`](slices/0594_ae_operator_control_execution_api_routes.md) | `S60-004` AE operator-control execution API routes. |
 | [`Slice 0595`](slices/0595_ae_operator_control_execution_postgresql_smoke.md) | `S60-005` AE operator-control execution PostgreSQL smoke evidence. |
 | [`Slice 0596`](slices/0596_ae_operator_control_execution_persistence_read_model_api.md) | `S60-006` AE operator-control execution persistence/read-model API. |
+| [`Slice 0597`](slices/0597_ag_operator_control_execution_projection_foundation.md) | `S60-007` AG operator-control execution projection foundation. |
+| [`Slice 0598`](slices/0598_ag_operator_control_execution_route_wiring.md) | `S60-008` AG operator-control execution route wiring. |
+| [`Slice 0599`](slices/0599_ag_operator_control_execution_postgresql_smoke.md) | `S60-009` AG operator-control execution PostgreSQL smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
