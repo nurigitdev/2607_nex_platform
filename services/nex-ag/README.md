@@ -706,6 +706,10 @@ Unified operations:
   `cleanup_transitions=1`, and `live_db=true` evidence.
 - Slice 0600 closes S60 with AG still acting only as a read-only operator
   projection/admin route surface over AE-owned execution persistence.
+- Slice 0601 starts S61 with AG still outside worker execution ownership. AG may
+  project AE worker state and expose operator diagnostics later, but it must
+  keep using AE APIs and must not write AE execution tables, enqueue AE worker
+  work, or start/stop AE subprocesses directly.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

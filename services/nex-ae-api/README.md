@@ -969,3 +969,9 @@ Artifact library management:
   operator-control execution surface, including explicit persistence flags,
   protected PostgreSQL smoke hooks, read-only AG projection, redaction posture,
   and the continued absence of real subprocess control or physical deletion.
+- Slice 0601 starts S61 by freezing the AE-owned operator-control execution
+  worker boundary. The worker track must consume S60 execution
+  request/state/transition contracts, start only from `ADMITTED`, reuse the
+  existing fake supervisor adapter first, persist progress through explicit
+  state/transition writes, and still keep real subprocess control, JobQueue
+  enqueue for operator control, and physical deletion disabled.
