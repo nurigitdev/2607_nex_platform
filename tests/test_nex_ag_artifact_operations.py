@@ -3543,6 +3543,14 @@ def test_artifact_operation_retention_automation_projection_summarizes_and_redac
         daemon_process_snapshots=(
             artifact_retention_scheduler_daemon_supervised_process_collection_payload()
         ),
+        operator_control_policy=(
+            artifact_retention_scheduler_daemon_operator_control_policy_payload()
+        ),
+        operator_control_facade=(
+            artifact_retention_scheduler_daemon_operator_control_facade_payload(
+                action="status_probe"
+            )
+        ),
         source_client=InMemoryAeArtifactOperationsClient(),
         request_trace_id=TRACE_ID,
     )
@@ -3563,6 +3571,9 @@ def test_artifact_operation_retention_automation_projection_summarizes_and_redac
     ] == 2
     assert projection["scheduler_daemon_processes"]["summary"]["running_count"] == 1
     assert projection["scheduler_daemon_processes"]["summary"]["stale_count"] == 1
+    assert projection["operator_control"]["summary"]["action"] == "status_probe"
+    assert projection["operator_control"]["summary"]["facade_status"] == "READY"
+    assert projection["operator_control"]["summary"]["restart_supported"] is True
     assert projection["summary"] == {
         "safety_status": "FAILED_ATTENTION",
         "dispatch_available": True,
@@ -3604,6 +3615,15 @@ def test_artifact_operation_retention_automation_projection_summarizes_and_redac
         "daemon_process_operator_attention_required": True,
         "daemon_process_status_counts": {"RUNNING": 1, "STALE": 1},
         "daemon_process_latest_observed_at": "2026-09-02T01:12:09Z",
+        "operator_control_policy_loaded": True,
+        "operator_control_facade_loaded": True,
+        "operator_control_action": "status_probe",
+        "operator_control_facade_status": "READY",
+        "operator_control_ready_for_dispatch": True,
+        "operator_control_command_preview_count": 1,
+        "operator_control_restart_supported": True,
+        "operator_control_operator_attention_required": False,
+        "operator_control_preview_only": True,
         "approval_blocked_count": 0,
         "delete_guard_blocked_count": 1,
         "selected_artifact_count": 1,
@@ -3623,6 +3643,8 @@ def test_artifact_operation_retention_automation_projection_summarizes_and_redac
     assert projection["source_status"]["daemon_config_loaded"] is True
     assert projection["source_status"]["daemon_process_snapshots_loaded"] is True
     assert projection["source_status"]["daemon_process_snapshot_count"] == 2
+    assert projection["source_status"]["operator_control_policy_loaded"] is True
+    assert projection["source_status"]["operator_control_facade_loaded"] is True
     assert projection["operator_guidance"]["ae_daemon_config_route"] == (
         "/api/v1/artifact-retention/scheduler-daemon-config"
     )
@@ -3633,8 +3655,17 @@ def test_artifact_operation_retention_automation_projection_summarizes_and_redac
         "/admin/v1/operations/artifact-retention/"
         "scheduler-daemon-process-snapshots"
     )
+    assert projection["operator_guidance"]["ag_operator_control_preview_route"] == (
+        "/admin/v1/operations/artifact-retention/"
+        "scheduler-daemon-operator-control-preview"
+    )
     assert projection["operator_guidance"]["ag_direct_database_write_allowed"] is False
     assert projection["operator_guidance"]["ag_direct_job_enqueue_allowed"] is False
+    assert (
+        projection["operator_guidance"]["ag_direct_daemon_process_control_allowed"]
+        is False
+    )
+    assert projection["operator_guidance"]["operator_control_preview_only"] is True
     assert (
         projection["operator_guidance"]["physical_delete_operator_approval_required"]
         is True
@@ -3714,12 +3745,18 @@ def test_artifact_operation_retention_automation_projection_handles_sparse_edges
     ]
     assert projection["summary"]["daemon_process_record_count"] == 0
     assert projection["summary"]["daemon_process_operator_attention_required"] is False
+    assert projection["summary"]["operator_control_policy_loaded"] is False
+    assert projection["summary"]["operator_control_facade_loaded"] is False
+    assert projection["summary"]["operator_control_action"] is None
+    assert projection["summary"]["operator_control_preview_only"] is True
     assert projection["summary"]["latest_activity_at"] == "2026-09-01T02:05:00Z"
     assert projection["source_status"]["batch_plan_loaded"] is False
     assert projection["source_status"]["scheduled_jobs_loaded"] is False
     assert projection["source_status"]["history_loaded"] is False
     assert projection["source_status"]["daemon_config_loaded"] is False
     assert projection["source_status"]["daemon_process_snapshots_loaded"] is False
+    assert projection["source_status"]["operator_control_policy_loaded"] is False
+    assert projection["source_status"]["operator_control_facade_loaded"] is False
     assert projection["source_status"]["errors"][0]["error_code"] == (
         "ag.optional_retention_automation_warning"
     )
@@ -5108,7 +5145,20 @@ def test_artifact_retention_scheduled_job_operations_route_auth_filter_and_error
 
 
 def test_artifact_retention_automation_operations_route_returns_projection() -> None:
-    client = build_app(artifact_client())
+    source_client = artifact_client()
+    captured_operator_control_preview: dict[str, Any] = {}
+    original_operator_control_preview = (
+        source_client.preview_artifact_retention_scheduler_daemon_operator_control
+    )
+
+    def capture_operator_control_preview(**kwargs: Any) -> dict[str, Any]:
+        captured_operator_control_preview.update(kwargs)
+        return original_operator_control_preview(**kwargs)
+
+    source_client.preview_artifact_retention_scheduler_daemon_operator_control = (
+        capture_operator_control_preview
+    )
+    client = build_app(source_client)
 
     response = client.get(
         "/admin/v1/operations/artifact-retention/automation",
@@ -5167,6 +5217,14 @@ def test_artifact_retention_automation_operations_route_returns_projection() -> 
     assert payload["summary"]["daemon_attention_status"] == "READY"
     assert payload["summary"]["daemon_process_record_count"] == 2
     assert payload["summary"]["daemon_process_operator_attention_required"] is True
+    assert payload["summary"]["operator_control_policy_loaded"] is True
+    assert payload["summary"]["operator_control_facade_loaded"] is True
+    assert payload["summary"]["operator_control_action"] == "status_probe"
+    assert payload["summary"]["operator_control_facade_status"] == "READY"
+    assert payload["summary"]["operator_control_command_preview_count"] == 1
+    assert payload["operator_control"]["summary"]["policy_loaded"] is True
+    assert payload["operator_control"]["summary"]["facade_loaded"] is True
+    assert payload["operator_control"]["preview_only"] is True
     assert payload["summary"]["daemon_attention_reason_codes"] == [
         "manual_tick_once_ready",
         "start_daemon_disabled_by_policy",
@@ -5175,14 +5233,42 @@ def test_artifact_retention_automation_operations_route_returns_projection() -> 
     assert payload["summary"]["physical_delete_operator_approval_required"] is True
     assert payload["source_status"]["daemon_config_loaded"] is True
     assert payload["source_status"]["daemon_process_snapshots_loaded"] is True
+    assert payload["source_status"]["operator_control_policy_loaded"] is True
+    assert payload["source_status"]["operator_control_facade_loaded"] is True
     assert payload["operator_guidance"]["ae_daemon_config_route"] == (
         "/api/v1/artifact-retention/scheduler-daemon-config"
     )
     assert payload["operator_guidance"]["ae_daemon_process_snapshots_route"] == (
         "/api/v1/artifact-retention/scheduler-daemon-process-snapshots"
     )
+    assert payload["operator_guidance"]["ae_operator_control_preview_route"] == (
+        "/api/v1/artifact-retention/scheduler-daemon-operator-control-preview"
+    )
+    assert payload["operator_guidance"]["ag_operator_control_preview_route"] == (
+        "/admin/v1/operations/artifact-retention/"
+        "scheduler-daemon-operator-control-preview"
+    )
     assert payload["operator_guidance"]["ag_direct_database_write_allowed"] is False
+    assert (
+        payload["operator_guidance"]["ag_direct_daemon_process_control_allowed"]
+        is False
+    )
     assert payload["request_trace_id"] == TRACE_ID
+    assert captured_operator_control_preview["action"] == "status_probe"
+    assert captured_operator_control_preview["idempotency_key"].startswith(
+        "ag-artifact-retention-automation-operator-control:"
+    )
+    assert captured_operator_control_preview["operator_subject"] == {
+        "actor_type": "service",
+        "actor_id": "nex-ag",
+        "service_id": "nex-ag",
+    }
+    assert captured_operator_control_preview["current_process"][
+        "process_status"
+    ] == "RUNNING"
+    assert captured_operator_control_preview["current_process"][
+        "process_source"
+    ] == "scheduler_daemon_process_snapshots"
     assert running.status_code == 200
     assert running.json()["scheduled_jobs"]["filter"]["status"] == "RUNNING"
     assert running.json()["scheduled_jobs"]["summary"]["running_count"] == 1
@@ -5350,6 +5436,54 @@ def test_artifact_retention_automation_operations_route_guardrails() -> None:
         },
         headers=auth_headers(),
     )
+    operator_control_policy_source = artifact_client()
+
+    def broken_operator_control_policy(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise AeArtifactOperationsError(
+            error_code="ag.ae_artifact_retention_automation_operator_control_failed",
+            detail="AE operator-control policy unavailable",
+            status_code=503,
+        )
+
+    operator_control_policy_source.get_artifact_retention_scheduler_daemon_operator_control_policy = (
+        broken_operator_control_policy
+    )
+    operator_control_policy_degraded = build_app(operator_control_policy_source).get(
+        "/admin/v1/operations/artifact-retention/automation",
+        params={
+            **params,
+            "retention_days": "30",
+            "as_of": "2026-09-01T00:00:00Z",
+            "scan_limit": "20",
+            "max_delete_count": "1",
+            "checked_at": "2026-09-01T02:30:00Z",
+        },
+        headers=auth_headers(),
+    )
+    operator_control_preview_source = artifact_client()
+
+    def broken_operator_control_preview(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise AeArtifactOperationsError(
+            error_code="ag.ae_artifact_retention_automation_operator_preview_failed",
+            detail="AE operator-control preview unavailable",
+            status_code=503,
+        )
+
+    operator_control_preview_source.preview_artifact_retention_scheduler_daemon_operator_control = (
+        broken_operator_control_preview
+    )
+    operator_control_preview_degraded = build_app(operator_control_preview_source).get(
+        "/admin/v1/operations/artifact-retention/automation",
+        params={
+            **params,
+            "retention_days": "30",
+            "as_of": "2026-09-01T00:00:00Z",
+            "scan_limit": "20",
+            "max_delete_count": "1",
+            "checked_at": "2026-09-01T02:30:00Z",
+        },
+        headers=auth_headers(),
+    )
 
     assert unauthorized.status_code == 401
     assert invalid_service.status_code == 400
@@ -5404,6 +5538,34 @@ def test_artifact_retention_automation_operations_route_guardrails() -> None:
     assert process_source_degraded.json()["source_status"]["errors"][0][
         "error_code"
     ] == "ag.ae_artifact_retention_automation_process_failed"
+    assert operator_control_policy_degraded.status_code == 200
+    assert operator_control_policy_degraded.json()["projection_status"] == "DEGRADED"
+    assert (
+        operator_control_policy_degraded.json()["source_status"][
+            "operator_control_policy_loaded"
+        ]
+        is False
+    )
+    assert operator_control_policy_degraded.json()["source_status"]["errors"][0][
+        "error_code"
+    ] == "ag.ae_artifact_retention_automation_operator_control_failed"
+    assert operator_control_preview_degraded.status_code == 200
+    assert operator_control_preview_degraded.json()["projection_status"] == "DEGRADED"
+    assert (
+        operator_control_preview_degraded.json()["source_status"][
+            "operator_control_policy_loaded"
+        ]
+        is True
+    )
+    assert (
+        operator_control_preview_degraded.json()["source_status"][
+            "operator_control_facade_loaded"
+        ]
+        is False
+    )
+    assert operator_control_preview_degraded.json()["source_status"]["errors"][0][
+        "error_code"
+    ] == "ag.ae_artifact_retention_automation_operator_preview_failed"
 
 
 def test_artifact_retention_scheduler_daemon_operations_route_returns_projection() -> (
@@ -6026,6 +6188,80 @@ def test_artifact_retention_scheduler_daemon_operator_control_projection_handles
     ) == {}
     assert artifact_operations._safe_operator_control_guardrails(None) == {}
     assert artifact_operations._safe_operator_control_metadata(None) == {}
+
+
+def test_artifact_retention_automation_operator_control_current_process_selection() -> (
+    None
+):
+    collection = {
+        "items": [
+            {
+                "daemon_supervised_process_record_id": "stale-record",
+                "daemon_supervised_process_id": "stale-process",
+                "daemon_supervisor_command_id": "stale-command",
+                "process_status": "STALE",
+                "process_running": True,
+                "process_id": 5881,
+                "host_id": "worker-stale",
+                "observed_at": "2026-09-03T02:00:00Z",
+            },
+            {
+                "daemon_supervised_process_record_id": "running-record",
+                "daemon_supervised_process_id": "running-process",
+                "daemon_supervisor_command_id": "running-command",
+                "process_status": "RUNNING",
+                "process_running": True,
+                "process_id": 5882,
+                "host_id": "worker-running",
+                "observed_at": "2026-09-03T02:01:00Z",
+            },
+        ]
+    }
+    fallback_collection = {
+        "items": [
+            {
+                "daemon_supervised_process_record_id": "unknown-record",
+                "process_status": "UNKNOWN",
+                "process_running": False,
+            }
+        ]
+    }
+
+    selected = (
+        artifact_operations._artifact_retention_automation_operator_control_current_process(
+            collection
+        )
+    )
+    fallback_selected = (
+        artifact_operations._artifact_retention_automation_operator_control_current_process(
+            fallback_collection
+        )
+    )
+
+    assert selected == {
+        "process_source": "scheduler_daemon_process_snapshots",
+        "process_status": "RUNNING",
+        "process_running": True,
+        "daemon_supervised_process_id": "running-process",
+        "daemon_supervisor_command_id": "running-command",
+        "process_id": 5882,
+        "host_id": "worker-running",
+        "observed_at": "2026-09-03T02:01:00Z",
+    }
+    assert fallback_selected["daemon_supervised_process_id"] == "unknown-record"
+    assert fallback_selected["process_status"] is None
+    assert (
+        artifact_operations._artifact_retention_automation_operator_control_current_process(
+            []
+        )
+        is None
+    )
+    assert (
+        artifact_operations._artifact_retention_automation_operator_control_current_process(
+            {"items": []}
+        )
+        is None
+    )
 
 
 def test_in_memory_artifact_operations_client_returns_supervised_process_read_models() -> (

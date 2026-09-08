@@ -1938,14 +1938,66 @@ def register_artifact_operation_routes(
                 )
             )
 
+        operator_control_errors: list[AeArtifactOperationsError] = []
+        try:
+            operator_control_policy = (
+                selected_client.get_artifact_retention_scheduler_daemon_operator_control_policy(
+                    checked_at=checked_at,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+            )
+        except AeArtifactOperationsError as exc:
+            operator_control_errors.append(exc)
+            operator_control_policy = {}
+
+        operator_control_facade: dict[str, Any] = {}
+        if operator_control_policy:
+            try:
+                operator_control_facade = (
+                    selected_client.preview_artifact_retention_scheduler_daemon_operator_control(
+                        action="status_probe",
+                        operator_subject={
+                            "actor_type": "service",
+                            "actor_id": "nex-ag",
+                            "service_id": "nex-ag",
+                        },
+                        idempotency_key=(
+                            "ag-artifact-retention-automation-operator-control:"
+                            f"{request_id}"
+                        ),
+                        reason="ag_artifact_retention_automation_status_probe",
+                        requested_at=checked_at,
+                        checked_at=checked_at,
+                        profile="test",
+                        enabled=False,
+                        explicit_opt_in=False,
+                        max_cycles=1,
+                        run_worker=False,
+                        approval=None,
+                        current_process=(
+                            _artifact_retention_automation_operator_control_current_process(
+                                daemon_process_snapshots
+                            )
+                        ),
+                        request_id=request_id,
+                        trace_id=trace_id,
+                    )
+                )
+            except AeArtifactOperationsError as exc:
+                operator_control_errors.append(exc)
+
         return build_artifact_operation_retention_automation_projection(
             plan=plan,
             scheduled_jobs=scheduled_jobs,
             history=history,
             daemon_config=daemon_config,
             daemon_process_snapshots=daemon_process_snapshots,
+            operator_control_policy=operator_control_policy,
+            operator_control_facade=operator_control_facade,
             source_client=selected_client,
             daemon_process_errors=daemon_process_errors,
+            operator_control_errors=operator_control_errors,
             request_trace_id=trace_id,
         )
 
@@ -2851,9 +2903,12 @@ def build_artifact_operation_retention_automation_projection(
     history: Mapping[str, Any],
     daemon_config: Mapping[str, Any] | None = None,
     daemon_process_snapshots: Mapping[str, Any] | None = None,
+    operator_control_policy: Mapping[str, Any] | None = None,
+    operator_control_facade: Mapping[str, Any] | None = None,
     source_client: AeArtifactOperationsClient | None = None,
     source_errors: list[AeArtifactOperationsError] | None = None,
     daemon_process_errors: list[AeArtifactOperationsError] | None = None,
+    operator_control_errors: list[AeArtifactOperationsError] | None = None,
     request_trace_id: str | None = None,
 ) -> dict[str, Any]:
     projected_plan = _project_retention_batch_plan(plan)
@@ -2874,6 +2929,22 @@ def build_artifact_operation_retention_automation_projection(
         for item in _list_value(history.get("items"))
         if isinstance(item, Mapping)
     ]
+    projected_operator_control_policy = (
+        _project_retention_scheduler_daemon_operator_control_policy(
+            operator_control_policy or {}
+        )
+    )
+    projected_operator_control_facade = (
+        _project_retention_scheduler_daemon_operator_control_facade(
+            operator_control_facade or {}
+        )
+    )
+    operator_control_summary = (
+        summarize_artifact_retention_daemon_operator_control_projection(
+            policy=projected_operator_control_policy,
+            facade=projected_operator_control_facade,
+        )
+    )
     process_collection = daemon_process_snapshots or {}
     process_items = [
         _project_retention_scheduler_daemon_supervised_process_item(item)
@@ -2882,11 +2953,14 @@ def build_artifact_operation_retention_automation_projection(
     ]
     errors = source_errors or []
     process_errors = daemon_process_errors or []
+    control_errors = operator_control_errors or []
     projection = {
         "projection_schema_version": (
             AG_ARTIFACT_OPERATION_RETENTION_AUTOMATION_PROJECTION_SCHEMA_VERSION
         ),
-        "projection_status": "DEGRADED" if errors or process_errors else "READY",
+        "projection_status": (
+            "DEGRADED" if errors or process_errors or control_errors else "READY"
+        ),
         "checked_at": _utc_now(),
         "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
         "operation_type": "ae_artifact_retention_automation",
@@ -2932,12 +3006,22 @@ def build_artifact_operation_retention_automation_projection(
                 )
             ),
         },
+        "operator_control": {
+            "projection_schema_version": (
+                AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_PROJECTION_SCHEMA_VERSION
+            ),
+            "policy": projected_operator_control_policy,
+            "facade": projected_operator_control_facade or None,
+            "summary": operator_control_summary,
+            "preview_only": True,
+        },
         "summary": summarize_artifact_retention_automation_operations(
             batch_plan=projected_plan,
             scheduled_jobs=scheduled_items,
             history=history_items,
             daemon_config=projected_daemon_config,
             daemon_process_snapshots=process_items,
+            operator_control_summary=operator_control_summary,
         ),
         "source_status": _artifact_retention_automation_source_status(
             source_client=source_client,
@@ -2949,8 +3033,15 @@ def build_artifact_operation_retention_automation_projection(
             daemon_process_snapshots_loaded=(
                 process_collection.get("items") is not None
             ),
+            operator_control_policy_loaded=bool(
+                projected_operator_control_policy.get("operator_control_policy_id")
+            ),
+            operator_control_facade_loaded=bool(
+                projected_operator_control_facade.get("operator_control_facade_id")
+            ),
             errors=errors,
             daemon_process_errors=process_errors,
+            operator_control_errors=control_errors,
         ),
         "operator_guidance": {
             "metadata_only": True,
@@ -2977,8 +3068,26 @@ def build_artifact_operation_retention_automation_projection(
             ),
             "ae_retention_history_route": "/api/v1/artifact-retention/executions",
             "ae_purge_route": "/api/v1/artifact-retention/purge",
+            "ae_operator_control_policy_route": (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-operator-control-policy"
+            ),
+            "ae_operator_control_preview_route": (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-operator-control-preview"
+            ),
+            "ag_operator_control_policy_route": (
+                "/admin/v1/operations/artifact-retention/"
+                "scheduler-daemon-operator-control-policy"
+            ),
+            "ag_operator_control_preview_route": (
+                "/admin/v1/operations/artifact-retention/"
+                "scheduler-daemon-operator-control-preview"
+            ),
             "ag_direct_database_write_allowed": False,
             "ag_direct_job_enqueue_allowed": False,
+            "ag_direct_daemon_process_control_allowed": False,
+            "operator_control_preview_only": True,
             "physical_delete_operator_approval_required": True,
             "physical_delete_automation_enabled": False,
         },
@@ -4802,6 +4911,7 @@ def summarize_artifact_retention_automation_operations(
     history: list[dict[str, Any]],
     daemon_config: Mapping[str, Any] | None = None,
     daemon_process_snapshots: list[dict[str, Any]] | None = None,
+    operator_control_summary: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     batch_summary = summarize_artifact_retention_batch_operations(batch_plan)
     job_summary = summarize_artifact_retention_scheduled_job_operations(scheduled_jobs)
@@ -4811,6 +4921,10 @@ def summarize_artifact_retention_automation_operations(
     )
     process_summary = summarize_artifact_retention_daemon_supervised_process_operations(
         list(daemon_process_snapshots or [])
+    )
+    control_summary = _mapping_or_empty(operator_control_summary)
+    control_attention_required = (
+        control_summary.get("operator_attention_required") is True
     )
     approval_blocked_count = sum(
         1
@@ -4829,6 +4943,7 @@ def summarize_artifact_retention_automation_operations(
         or batch_summary["dispatch_available"]
         or daemon_summary["operator_attention_required"]
         or process_summary["operator_attention_required"]
+        or control_attention_required
     ):
         safety_status = "OPERATOR_ATTENTION"
     elif not scheduled_jobs and not history and not batch_summary["dispatch_available"]:
@@ -4886,6 +5001,33 @@ def summarize_artifact_retention_automation_operations(
         ],
         "daemon_process_status_counts": process_summary["process_status_counts"],
         "daemon_process_latest_observed_at": process_summary["latest_observed_at"],
+        "operator_control_policy_loaded": (
+            control_summary.get("policy_loaded") is True
+        ),
+        "operator_control_facade_loaded": (
+            control_summary.get("facade_loaded") is True
+        ),
+        "operator_control_action": _normalized_daemon_operator_control_action(
+            control_summary.get("action")
+        ),
+        "operator_control_facade_status": (
+            _normalized_operator_control_admission_status(
+                control_summary.get("facade_status")
+            )
+        ),
+        "operator_control_ready_for_dispatch": (
+            control_summary.get("ready_for_dispatch") is True
+        ),
+        "operator_control_command_preview_count": _int_or_zero(
+            control_summary.get("command_preview_count")
+        ),
+        "operator_control_restart_supported": (
+            control_summary.get("restart_supported") is True
+        ),
+        "operator_control_operator_attention_required": (
+            control_attention_required
+        ),
+        "operator_control_preview_only": True,
         "approval_blocked_count": approval_blocked_count,
         "delete_guard_blocked_count": delete_guard_blocked_count,
         "selected_artifact_count": batch_summary["selected_count"],
@@ -4901,6 +5043,7 @@ def summarize_artifact_retention_automation_operations(
             or history_summary["operator_attention_count"] > 0
             or daemon_summary["operator_attention_required"]
             or process_summary["operator_attention_required"]
+            or control_attention_required
         ),
         "automated_execute_enabled": False,
         "physical_delete_automation_enabled": False,
@@ -6450,6 +6593,59 @@ def _project_retention_scheduler_daemon_supervised_process_item(
     }
 
 
+def _artifact_retention_automation_operator_control_current_process(
+    collection: Any,
+) -> dict[str, Any] | None:
+    if not isinstance(collection, Mapping):
+        return None
+    projected_items = [
+        _project_retention_scheduler_daemon_supervised_process_item(item)
+        for item in _list_value(collection.get("items"))
+        if isinstance(item, Mapping)
+    ]
+    if not projected_items:
+        return None
+    selected = _select_operator_control_process_projection(projected_items)
+    return {
+        "process_source": "scheduler_daemon_process_snapshots",
+        "process_status": _normalized_daemon_supervised_process_status(
+            selected.get("process_status")
+        ),
+        "process_running": selected.get("process_running") is True,
+        "daemon_supervised_process_id": _text_or_none(
+            selected.get("daemon_supervised_process_id")
+            or selected.get("daemon_supervised_process_record_id")
+        ),
+        "daemon_supervisor_command_id": _text_or_none(
+            selected.get("daemon_supervisor_command_id")
+        ),
+        "process_id": _int_or_zero(selected.get("process_id")),
+        "host_id": _text_or_none(selected.get("host_id")),
+        "observed_at": _text_or_none(selected.get("observed_at")),
+    }
+
+
+def _select_operator_control_process_projection(
+    projected_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    status_priority = (
+        "RUNNING",
+        "START_REQUESTED",
+        "STOP_REQUESTED",
+        "STALE",
+        "FAILED",
+        "BLOCKED",
+        "STOPPED",
+        "EXITED",
+        "MISSING",
+    )
+    for status in status_priority:
+        for item in projected_items:
+            if item.get("process_status") == status:
+                return item
+    return projected_items[0]
+
+
 def _project_retention_scheduler_daemon_supervised_process_record(
     raw_value: Any,
 ) -> dict[str, Any]:
@@ -7577,11 +7773,15 @@ def _artifact_retention_automation_source_status(
     daemon_config_loaded: bool,
     daemon_process_snapshot_count: int = 0,
     daemon_process_snapshots_loaded: bool = False,
+    operator_control_policy_loaded: bool = False,
+    operator_control_facade_loaded: bool = False,
     errors: list[AeArtifactOperationsError],
     daemon_process_errors: list[AeArtifactOperationsError] | None = None,
+    operator_control_errors: list[AeArtifactOperationsError] | None = None,
 ) -> dict[str, Any]:
     process_errors = daemon_process_errors or []
-    status = "DEGRADED" if errors or process_errors else "READY"
+    control_errors = operator_control_errors or []
+    status = "DEGRADED" if errors or process_errors or control_errors else "READY"
     return {
         "status": status,
         "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
@@ -7594,6 +7794,11 @@ def _artifact_retention_automation_source_status(
         "daemon_process_snapshots_loaded": (
             daemon_process_snapshots_loaded and not errors and not process_errors
         ),
+        "operator_control_policy_loaded": operator_control_policy_loaded
+        and not errors,
+        "operator_control_facade_loaded": (
+            operator_control_facade_loaded and not errors and not control_errors
+        ),
         "scheduled_job_count": scheduled_job_count,
         "history_count": history_count,
         "daemon_process_snapshot_count": daemon_process_snapshot_count,
@@ -7603,7 +7808,7 @@ def _artifact_retention_automation_source_status(
                 "detail": error.detail,
                 "status_code": error.status_code,
             }
-            for error in [*errors, *process_errors]
+            for error in [*errors, *process_errors, *control_errors]
         ],
     }
 

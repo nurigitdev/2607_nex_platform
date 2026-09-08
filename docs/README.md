@@ -691,6 +691,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0585`](slices/0585_ae_operator_control_service_api_facade.md) | `S59-005` AE operator-control service/API facade. |
 | [`Slice 0586`](slices/0586_ae_operator_control_postgresql_smoke_evidence.md) | `S59-006` AE operator-control PostgreSQL smoke evidence. |
 | [`Slice 0587`](slices/0587_ag_operator_control_facade_projection.md) | `S59-007` AG operator-control facade projection. |
+| [`Slice 0588`](slices/0588_ag_operator_control_operations_dashboard_integration.md) | `S59-008` AG operator-control operations dashboard integration. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

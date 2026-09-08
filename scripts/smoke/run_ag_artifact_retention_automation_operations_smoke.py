@@ -615,6 +615,8 @@ def _smoke_checks(status_code: int, payload: Any) -> dict[str, bool]:
             "metadata_only": False,
             "daemon_process_rollup_visible": False,
             "daemon_process_attention_classified": False,
+            "operator_control_rollup_visible": False,
+            "operator_control_preview_guarded": False,
             "redacted": False,
         }
     summary = payload.get("summary")
@@ -638,6 +640,12 @@ def _smoke_checks(status_code: int, payload: Any) -> dict[str, bool]:
     daemon_process_summary = daemon_processes.get("summary")
     if not isinstance(daemon_process_summary, Mapping):
         daemon_process_summary = {}
+    operator_control = payload.get("operator_control")
+    if not isinstance(operator_control, Mapping):
+        operator_control = {}
+    operator_control_summary = operator_control.get("summary")
+    if not isinstance(operator_control_summary, Mapping):
+        operator_control_summary = {}
     return {
         "route_status_ok": status_code == 200,
         "schema_version": payload.get("projection_schema_version")
@@ -677,6 +685,24 @@ def _smoke_checks(status_code: int, payload: Any) -> dict[str, bool]:
             summary.get("daemon_process_operator_attention_required") is True
             and daemon_process_summary.get("operator_attention_required") is True
             and summary.get("daemon_process_status_counts") == {"RUNNING": 1, "STALE": 1}
+        ),
+        "operator_control_rollup_visible": (
+            summary.get("operator_control_policy_loaded") is True
+            and summary.get("operator_control_facade_loaded") is True
+            and summary.get("operator_control_action") == "status_probe"
+            and summary.get("operator_control_facade_status") == "READY"
+            and summary.get("operator_control_command_preview_count") == 1
+            and operator_control_summary.get("restart_supported") is True
+        ),
+        "operator_control_preview_guarded": (
+            operator_control.get("preview_only") is True
+            and guidance.get("operator_control_preview_only") is True
+            and guidance.get("ag_direct_daemon_process_control_allowed") is False
+            and guidance.get("ag_operator_control_preview_route")
+            == (
+                "/admin/v1/operations/artifact-retention/"
+                "scheduler-daemon-operator-control-preview"
+            )
         ),
         "redacted": _is_redacted(payload),
     }
@@ -722,6 +748,7 @@ def summary_line(evidence: Mapping[str, Any]) -> str:
         f"daemon_attention={summary.get('daemon_attention_status')} "
         f"process_running={summary.get('daemon_process_running_count')} "
         f"process_attention={summary.get('daemon_process_operator_attention_required')} "
+        f"operator_control={summary.get('operator_control_facade_status')} "
         f"approval_blocked={summary.get('approval_blocked_count')}"
     )
     if failing_checks:

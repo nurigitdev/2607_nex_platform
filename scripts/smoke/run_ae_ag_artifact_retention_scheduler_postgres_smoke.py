@@ -185,6 +185,62 @@ class AeTestClientArtifactOperationsClient:
         )
         return self._json_or_error(response)
 
+    def get_artifact_retention_scheduler_daemon_operator_control_policy(
+        self,
+        *,
+        checked_at: str | None,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        response = self.client.get(
+            "/api/v1/artifact-retention/scheduler-daemon-operator-control-policy",
+            params=({"checked_at": checked_at} if checked_at else {}),
+            headers=self._headers(request_id=request_id, trace_id=trace_id),
+        )
+        return self._json_or_error(response)
+
+    def preview_artifact_retention_scheduler_daemon_operator_control(
+        self,
+        *,
+        action: str,
+        operator_subject: Mapping[str, Any],
+        idempotency_key: str,
+        reason: str,
+        requested_at: str | None,
+        checked_at: str | None,
+        profile: str,
+        enabled: bool,
+        explicit_opt_in: bool,
+        max_cycles: int,
+        run_worker: bool,
+        approval: Mapping[str, Any] | None,
+        current_process: Mapping[str, Any] | None,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        headers = self._headers(request_id=request_id, trace_id=trace_id)
+        headers["Idempotency-Key"] = idempotency_key
+        response = self.client.post(
+            "/api/v1/artifact-retention/scheduler-daemon-operator-control-preview",
+            json={
+                "action": action,
+                "operator_subject": dict(operator_subject),
+                "idempotency_key": idempotency_key,
+                "reason": reason,
+                "profile": profile,
+                "enabled": enabled,
+                "explicit_opt_in": explicit_opt_in,
+                "max_cycles": max_cycles,
+                "run_worker": run_worker,
+                **({"requested_at": requested_at} if requested_at else {}),
+                **({"checked_at": checked_at} if checked_at else {}),
+                **({"approval": dict(approval)} if approval else {}),
+                **({"current_process": dict(current_process)} if current_process else {}),
+            },
+            headers=headers,
+        )
+        return self._json_or_error(response)
+
     def list_artifact_retention_scheduler_daemon_process_snapshots(
         self,
         *,

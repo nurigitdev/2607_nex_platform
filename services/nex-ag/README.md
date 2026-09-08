@@ -653,6 +653,12 @@ Unified operations:
   preview APIs, and summarize READY/BLOCKED/NOOP status, but it still cannot
   dispatch supervisor commands, write AE persistence, enqueue AE jobs, or signal
   AE subprocesses directly.
+- Slice 0588 folds the same operator-control status-probe into the AG artifact
+  retention automation dashboard. Operators can now see policy/facade loaded
+  state, action/status, preview count, restart support, and preview-only
+  guardrails beside batch, scheduled job, history, daemon, and supervised
+  process rollups; source failures degrade the dashboard without giving AG
+  process ownership.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
