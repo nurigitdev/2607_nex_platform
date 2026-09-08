@@ -132,6 +132,12 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_STATE_SCHEMA_V
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_STATE_TRANSITION_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_operator_control_execution_state_transition.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_COLLECTION_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_operator_control_execution_collection.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_DETAIL_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_operator_control_execution_detail.v1"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
@@ -141,6 +147,7 @@ MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_PROCESS_LOCK_STALE_AFTER_SECONDS = 86_40
 MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_COLLECTION_LIMIT = 100
 MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_RECORD_LIMIT = 100
 MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_RECORD_LIMIT = 100
+MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_STATE_LIMIT = 100
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_EXECUTE_MODE = "bounded_loop"
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_PROCESS_LOCK_SCOPE = (
     "ae_artifact_retention_scheduler_daemon"
@@ -3730,6 +3737,148 @@ def operator_control_execution_state_transition_summary_line(
     )
 
 
+def normalize_artifact_retention_scheduler_daemon_operator_control_execution_limit(
+    limit: int | str | None,
+) -> int:
+    if limit is None:
+        return 20
+    return _bounded_positive_int(
+        limit,
+        "limit",
+        max_value=(
+            MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_STATE_LIMIT
+        ),
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_operator_control_execution_collection_invalid"
+        ),
+    )
+
+
+def build_artifact_retention_scheduler_daemon_operator_control_execution_collection(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    scheduler_id: str | None = None,
+    action: str | None = None,
+    execution_status: str | None = None,
+    idempotency_status: str | None = None,
+    limit: int | str | None = None,
+) -> dict[str, Any]:
+    normalized_limit = (
+        normalize_artifact_retention_scheduler_daemon_operator_control_execution_limit(
+            limit
+        )
+    )
+    normalized_scheduler_id = optional_text(scheduler_id)
+    normalized_action = _optional_operator_control_execution_action(
+        action,
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_operator_control_execution_collection_invalid"
+        ),
+    )
+    normalized_execution_status = (
+        _optional_operator_control_execution_state_status(
+            execution_status,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_collection_invalid"
+            ),
+        )
+    )
+    normalized_idempotency_status = (
+        _optional_operator_control_execution_idempotency_status(
+            idempotency_status,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_collection_invalid"
+            ),
+        )
+    )
+    normalized_records = [
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_state(
+            record
+        )
+        for record in records
+    ]
+    collection = {
+        "operator_control_execution_collection_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_COLLECTION_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "filter": {
+            "scheduler_id": normalized_scheduler_id,
+            "action": normalized_action,
+            "execution_status": normalized_execution_status,
+            "idempotency_status": normalized_idempotency_status,
+        },
+        "count": len(normalized_records),
+        "limit": normalized_limit,
+        "items": [
+            _operator_control_execution_collection_item(record)
+            for record in normalized_records
+        ],
+        "guardrails": _operator_control_execution_read_model_guardrails(
+            read_only=True
+        ),
+        "metadata": _operator_control_execution_collection_metadata(
+            records=normalized_records,
+            limit=normalized_limit,
+        ),
+    }
+    assert_artifact_retention_payload_safe(collection)
+    return collection
+
+
+def build_artifact_retention_scheduler_daemon_operator_control_execution_detail(
+    *,
+    execution_state: Mapping[str, Any],
+    transitions: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    state = (
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_state(
+            execution_state
+        )
+    )
+    normalized_transitions = [
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_state_transition(
+            transition
+        )
+        for transition in transitions
+    ]
+    for transition in normalized_transitions:
+        if transition["operator_control_execution_state_id"] != state[
+            "operator_control_execution_state_id"
+        ]:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=(
+                    "ae.artifact_retention_scheduler_daemon_operator_control_execution_detail_invalid"
+                ),
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    "execution detail transition scope is invalid."
+                ),
+            )
+    detail = {
+        "operator_control_execution_detail_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_DETAIL_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "operator_control_execution_state_id": state[
+            "operator_control_execution_state_id"
+        ],
+        "execution_state": state,
+        "transition_count": len(normalized_transitions),
+        "transitions": normalized_transitions,
+        "guardrails": _operator_control_execution_read_model_guardrails(
+            read_only=True
+        ),
+        "metadata": _operator_control_execution_detail_metadata(
+            execution_state=state,
+            transitions=normalized_transitions,
+        ),
+    }
+    assert_artifact_retention_payload_safe(detail)
+    return detail
+
+
 def build_artifact_retention_scheduler_daemon_supervisor_command(
     *,
     action: str = "status_probe",
@@ -6636,6 +6785,312 @@ class SqlAlchemyArtifactRetentionSchedulerDaemonSupervisedProcessStore:
             return deleted
         except SQLAlchemyError as exc:
             raise _daemon_supervised_process_store_unavailable() from exc
+
+
+class SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionStore:
+    def __init__(self, session_factory: Any) -> None:
+        self._session_factory = session_factory
+
+    def ensure_schema(self) -> None:
+        try:
+            with self._session_factory() as session:
+                _ensure_operator_control_execution_store_schema(session)
+                session.commit()
+        except SQLAlchemyError as exc:
+            raise _operator_control_execution_store_unavailable() from exc
+
+    def ensure_available(self) -> None:
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    text(
+                        "SELECT 1 FROM "
+                        "ae_daemon_operator_control_execution_states "
+                        "LIMIT 1"
+                    )
+                )
+        except SQLAlchemyError as exc:
+            raise _operator_control_execution_store_unavailable() from exc
+
+    def record_execution_state(
+        self,
+        execution_state: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        state = (
+            validate_artifact_retention_scheduler_daemon_operator_control_execution_state(
+                execution_state
+            )
+        )
+        try:
+            with self._session_factory() as session:
+                _ensure_operator_control_execution_store_schema(session)
+                dialect_name = _daemon_store_dialect_name(session)
+                session.execute(
+                    text(_operator_control_execution_state_upsert_sql(dialect_name)),
+                    _operator_control_execution_state_params(state),
+                )
+                session.commit()
+            return state
+        except SQLAlchemyError as exc:
+            raise _operator_control_execution_store_unavailable() from exc
+
+    def record_execution_state_transition(
+        self,
+        transition: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        normalized = validate_artifact_retention_scheduler_daemon_operator_control_execution_state_transition(
+            transition
+        )
+        try:
+            with self._session_factory() as session:
+                _ensure_operator_control_execution_store_schema(session)
+                dialect_name = _daemon_store_dialect_name(session)
+                session.execute(
+                    text(
+                        _operator_control_execution_state_transition_upsert_sql(
+                            dialect_name
+                        )
+                    ),
+                    _operator_control_execution_state_transition_params(
+                        normalized
+                    ),
+                )
+                session.commit()
+            return normalized
+        except SQLAlchemyError as exc:
+            raise _operator_control_execution_store_unavailable() from exc
+
+    def get_execution_state(
+        self,
+        operator_control_execution_state_id: str,
+    ) -> dict[str, Any] | None:
+        normalized_id = _required_text(
+            operator_control_execution_state_id,
+            "operator_control_execution_state_id",
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_invalid"
+            ),
+        )
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _operator_control_execution_state_select_sql(
+                                "operator_control_execution_state_id = "
+                                ":operator_control_execution_state_id"
+                            )
+                        ),
+                        {
+                            "operator_control_execution_state_id": normalized_id,
+                        },
+                    )
+                    .mappings()
+                    .first()
+                )
+            return (
+                _operator_control_execution_state_from_row(row)
+                if row is not None
+                else None
+            )
+        except SQLAlchemyError as exc:
+            raise _operator_control_execution_store_unavailable() from exc
+
+    def get_execution_state_by_idempotency_key(
+        self,
+        idempotency_key: str,
+    ) -> dict[str, Any] | None:
+        normalized_key = _required_text(
+            idempotency_key,
+            "idempotency_key",
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_invalid"
+            ),
+        )
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _operator_control_execution_state_select_sql(
+                                "idempotency_key = :idempotency_key"
+                            )
+                            + """
+                            ORDER BY observed_at DESC,
+                                     created_at DESC,
+                                     operator_control_execution_state_id ASC
+                            LIMIT 1
+                            """
+                        ),
+                        {"idempotency_key": normalized_key},
+                    )
+                    .mappings()
+                    .first()
+                )
+            return (
+                _operator_control_execution_state_from_row(row)
+                if row is not None
+                else None
+            )
+        except SQLAlchemyError as exc:
+            raise _operator_control_execution_store_unavailable() from exc
+
+    def list_execution_states(
+        self,
+        *,
+        scheduler_id: str | None = None,
+        action: str | None = None,
+        execution_status: str | None = None,
+        idempotency_status: str | None = None,
+        limit: int | str | None = None,
+    ) -> list[dict[str, Any]]:
+        normalized_scheduler_id = optional_text(scheduler_id)
+        normalized_action = _optional_operator_control_execution_action(
+            action,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_collection_invalid"
+            ),
+        )
+        normalized_execution_status = (
+            _optional_operator_control_execution_state_status(
+                execution_status,
+                error_code=(
+                    "ae.artifact_retention_scheduler_daemon_operator_control_execution_collection_invalid"
+                ),
+            )
+        )
+        normalized_idempotency_status = (
+            _optional_operator_control_execution_idempotency_status(
+                idempotency_status,
+                error_code=(
+                    "ae.artifact_retention_scheduler_daemon_operator_control_execution_collection_invalid"
+                ),
+            )
+        )
+        normalized_limit = (
+            normalize_artifact_retention_scheduler_daemon_operator_control_execution_limit(
+                limit
+            )
+        )
+        where_clauses = ["service_id = 'nex-ae-api'"]
+        params: dict[str, Any] = {"limit": normalized_limit}
+        if normalized_scheduler_id is not None:
+            where_clauses.append("scheduler_id = :scheduler_id")
+            params["scheduler_id"] = normalized_scheduler_id
+        if normalized_action is not None:
+            where_clauses.append("action = :action")
+            params["action"] = normalized_action
+        if normalized_execution_status is not None:
+            where_clauses.append("execution_status = :execution_status")
+            params["execution_status"] = normalized_execution_status
+        if normalized_idempotency_status is not None:
+            where_clauses.append("idempotency_status = :idempotency_status")
+            params["idempotency_status"] = normalized_idempotency_status
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            _operator_control_execution_state_select_sql(
+                                " AND ".join(where_clauses)
+                            )
+                            + """
+                            ORDER BY observed_at DESC,
+                                     created_at DESC,
+                                     operator_control_execution_state_id ASC
+                            LIMIT :limit
+                            """
+                        ),
+                        params,
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [_operator_control_execution_state_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _operator_control_execution_store_unavailable() from exc
+
+    def list_execution_state_transitions(
+        self,
+        operator_control_execution_state_id: str,
+    ) -> list[dict[str, Any]]:
+        normalized_id = _required_text(
+            operator_control_execution_state_id,
+            "operator_control_execution_state_id",
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_transition_invalid"
+            ),
+        )
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            _operator_control_execution_state_transition_select_sql(
+                                "operator_control_execution_state_id = "
+                                ":operator_control_execution_state_id"
+                            )
+                            + """
+                            ORDER BY transitioned_at ASC,
+                                     operator_control_execution_state_transition_id ASC
+                            """
+                        ),
+                        {"operator_control_execution_state_id": normalized_id},
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [
+                _operator_control_execution_state_transition_from_row(row)
+                for row in rows
+            ]
+        except SQLAlchemyError as exc:
+            raise _operator_control_execution_store_unavailable() from exc
+
+    def delete_execution_state(
+        self,
+        operator_control_execution_state_id: str,
+    ) -> dict[str, int]:
+        normalized_id = _required_text(
+            operator_control_execution_state_id,
+            "operator_control_execution_state_id",
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_invalid"
+            ),
+        )
+        deleted = {"execution_state_transitions": 0, "execution_states": 0}
+        try:
+            with self._session_factory() as session:
+                transition_result = session.execute(
+                    text(
+                        """
+                        DELETE FROM
+                            ae_daemon_operator_control_execution_transitions
+                        WHERE operator_control_execution_state_id =
+                              :operator_control_execution_state_id
+                        """
+                    ),
+                    {"operator_control_execution_state_id": normalized_id},
+                )
+                state_result = session.execute(
+                    text(
+                        """
+                        DELETE FROM
+                            ae_daemon_operator_control_execution_states
+                        WHERE operator_control_execution_state_id =
+                              :operator_control_execution_state_id
+                        """
+                    ),
+                    {"operator_control_execution_state_id": normalized_id},
+                )
+                session.commit()
+            deleted["execution_state_transitions"] = int(
+                transition_result.rowcount or 0
+            )
+            deleted["execution_states"] = int(state_result.rowcount or 0)
+            return deleted
+        except SQLAlchemyError as exc:
+            raise _operator_control_execution_store_unavailable() from exc
 
 
 def build_artifact_retention_scheduler_daemon_supervised_process_record(
@@ -15041,6 +15496,621 @@ def _daemon_supervisor_event_from_row(row: Any) -> dict[str, Any]:
     )
 
 
+def _operator_control_execution_read_model_guardrails(
+    *,
+    read_only: bool,
+) -> dict[str, bool]:
+    return {
+        "read_only": read_only,
+        "ae_owned_persistence": True,
+        "ae_owned_execution_state": True,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+        "supervisor_adapter_invoked": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "physical_delete_automation_enabled": False,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+        "secrets_redacted": True,
+    }
+
+
+def _operator_control_execution_collection_item(
+    execution_state: Mapping[str, Any],
+) -> dict[str, Any]:
+    state = validate_artifact_retention_scheduler_daemon_operator_control_execution_state(
+        execution_state
+    )
+    return {
+        "operator_control_execution_state_id": state[
+            "operator_control_execution_state_id"
+        ],
+        "operator_control_execution_request_id": state[
+            "operator_control_execution_request_id"
+        ],
+        "operator_control_facade_id": state["operator_control_facade_id"],
+        "scheduler_id": state["scheduler_id"],
+        "action": state["action"],
+        "execution_mode": state["execution_mode"],
+        "execution_status": state["execution_status"],
+        "idempotency_status": state["idempotency_status"],
+        "decision_reason": state["decision_reason"],
+        "observed_at": state["observed_at"],
+        "prior_execution_state_id": state["prior_execution_state_id"],
+        "allowed_next_statuses": list(state["allowed_next_statuses"]),
+        "summary": (
+            summarize_artifact_retention_scheduler_daemon_operator_control_execution_state(
+                state
+            )
+        ),
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "read_model": (
+                "ae_daemon_operator_control_execution_states"
+            ),
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+            "raw_supervised_process_snapshot_included": False,
+        },
+    }
+
+
+def _operator_control_execution_collection_metadata(
+    *,
+    records: Sequence[Mapping[str, Any]],
+    limit: int,
+) -> dict[str, Any]:
+    newest_observed_at = records[0]["observed_at"] if records else None
+    return {
+        "safe_for_ag_projection": True,
+        "read_model": (
+            "ae_daemon_operator_control_execution_states"
+        ),
+        "item_count": len(records),
+        "limit": limit,
+        "has_more": len(records) == limit,
+        "newest_observed_at": newest_observed_at,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+    }
+
+
+def _operator_control_execution_detail_metadata(
+    *,
+    execution_state: Mapping[str, Any],
+    transitions: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "safe_for_ag_projection": True,
+        "read_model": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_execution_detail"
+        ),
+        "operator_control_execution_state_id": execution_state[
+            "operator_control_execution_state_id"
+        ],
+        "transition_count": len(transitions),
+        "transition_statuses": [
+            f"{transition['from_status']}->{transition['to_status']}"
+            for transition in transitions
+        ],
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+    }
+
+
+def _ensure_operator_control_execution_store_schema(session: Any) -> None:
+    dialect_name = _daemon_store_dialect_name(session)
+    json_type = "JSONB" if dialect_name == "postgresql" else "TEXT"
+    session.execute(
+        text(
+            f"""
+            CREATE TABLE IF NOT EXISTS
+                ae_daemon_operator_control_execution_states (
+                    operator_control_execution_state_id TEXT PRIMARY KEY,
+                    operator_control_execution_state_schema_version TEXT NOT NULL,
+                    service_id TEXT NOT NULL,
+                    scheduler_id TEXT NOT NULL,
+                    operator_control_execution_request_id TEXT NOT NULL,
+                    operator_control_facade_id TEXT NOT NULL,
+                    operator_control_request_id TEXT NOT NULL,
+                    operator_control_admission_id TEXT NOT NULL,
+                    operator_control_command_preview_id TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    execution_mode TEXT NOT NULL,
+                    execution_status TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    idempotency_status TEXT NOT NULL,
+                    decision_reason TEXT NOT NULL,
+                    observed_at TIMESTAMPTZ NOT NULL,
+                    prior_execution_state_id TEXT,
+                    operator_control_execution_request_hash TEXT NOT NULL,
+                    allowed_next_statuses {json_type} NOT NULL,
+                    guardrails {json_type} NOT NULL,
+                    metadata {json_type} NOT NULL,
+                    operator_control_execution_request {json_type} NOT NULL,
+                    execution_state_hash TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL
+                )
+            """
+        )
+    )
+    session.execute(
+        text(
+            f"""
+            CREATE TABLE IF NOT EXISTS
+                ae_daemon_operator_control_execution_transitions (
+                    operator_control_execution_state_transition_id TEXT PRIMARY KEY,
+                    operator_control_execution_state_transition_schema_version TEXT NOT NULL,
+                    service_id TEXT NOT NULL,
+                    scheduler_id TEXT NOT NULL,
+                    operator_control_execution_state_id TEXT NOT NULL,
+                    operator_control_execution_request_id TEXT NOT NULL,
+                    from_status TEXT NOT NULL,
+                    to_status TEXT NOT NULL,
+                    decision_reason TEXT NOT NULL,
+                    transitioned_at TIMESTAMPTZ NOT NULL,
+                    operator_control_execution_state {json_type} NOT NULL,
+                    guardrails {json_type} NOT NULL,
+                    metadata {json_type} NOT NULL,
+                    transition_hash TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL
+                )
+            """
+        )
+    )
+    for statement in (
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_ae_operator_control_execution_states_observed
+        ON ae_daemon_operator_control_execution_states
+            (scheduler_id, observed_at DESC)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_ae_operator_control_execution_states_status
+        ON ae_daemon_operator_control_execution_states
+            (execution_status, idempotency_status, observed_at DESC)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_ae_operator_control_execution_states_idempotency
+        ON ae_daemon_operator_control_execution_states
+            (idempotency_key, observed_at DESC)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_ae_operator_control_execution_states_request
+        ON ae_daemon_operator_control_execution_states
+            (operator_control_execution_request_id, observed_at DESC)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_ae_operator_control_execution_transitions_state
+        ON ae_daemon_operator_control_execution_transitions
+            (operator_control_execution_state_id, transitioned_at ASC)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_ae_operator_control_execution_transitions_scheduler
+        ON ae_daemon_operator_control_execution_transitions
+            (scheduler_id, transitioned_at DESC)
+        """,
+    ):
+        session.execute(text(statement))
+
+
+def _operator_control_execution_state_upsert_sql(dialect_name: str) -> str:
+    json_exprs = {
+        field_name: _daemon_json_param_expr(field_name, dialect_name)
+        for field_name in (
+            "allowed_next_statuses",
+            "guardrails",
+            "metadata",
+            "operator_control_execution_request",
+        )
+    }
+    return f"""
+        INSERT INTO
+            ae_daemon_operator_control_execution_states (
+                operator_control_execution_state_id,
+                operator_control_execution_state_schema_version,
+                service_id,
+                scheduler_id,
+                operator_control_execution_request_id,
+                operator_control_facade_id,
+                operator_control_request_id,
+                operator_control_admission_id,
+                operator_control_command_preview_id,
+                action,
+                execution_mode,
+                execution_status,
+                idempotency_key,
+                idempotency_status,
+                decision_reason,
+                observed_at,
+                prior_execution_state_id,
+                operator_control_execution_request_hash,
+                allowed_next_statuses,
+                guardrails,
+                metadata,
+                operator_control_execution_request,
+                execution_state_hash,
+                created_at
+            )
+        VALUES (
+            :operator_control_execution_state_id,
+            :operator_control_execution_state_schema_version,
+            :service_id,
+            :scheduler_id,
+            :operator_control_execution_request_id,
+            :operator_control_facade_id,
+            :operator_control_request_id,
+            :operator_control_admission_id,
+            :operator_control_command_preview_id,
+            :action,
+            :execution_mode,
+            :execution_status,
+            :idempotency_key,
+            :idempotency_status,
+            :decision_reason,
+            :observed_at,
+            :prior_execution_state_id,
+            :operator_control_execution_request_hash,
+            {json_exprs['allowed_next_statuses']},
+            {json_exprs['guardrails']},
+            {json_exprs['metadata']},
+            {json_exprs['operator_control_execution_request']},
+            :execution_state_hash,
+            :created_at
+        )
+        ON CONFLICT (operator_control_execution_state_id) DO UPDATE SET
+            execution_status = excluded.execution_status,
+            idempotency_status = excluded.idempotency_status,
+            decision_reason = excluded.decision_reason,
+            observed_at = excluded.observed_at,
+            prior_execution_state_id = excluded.prior_execution_state_id,
+            operator_control_execution_request_hash =
+                excluded.operator_control_execution_request_hash,
+            allowed_next_statuses = excluded.allowed_next_statuses,
+            guardrails = excluded.guardrails,
+            metadata = excluded.metadata,
+            operator_control_execution_request =
+                excluded.operator_control_execution_request,
+            execution_state_hash = excluded.execution_state_hash,
+            created_at = excluded.created_at
+    """
+
+
+def _operator_control_execution_state_transition_upsert_sql(
+    dialect_name: str,
+) -> str:
+    json_exprs = {
+        field_name: _daemon_json_param_expr(field_name, dialect_name)
+        for field_name in (
+            "operator_control_execution_state",
+            "guardrails",
+            "metadata",
+        )
+    }
+    return f"""
+        INSERT INTO
+            ae_daemon_operator_control_execution_transitions (
+                operator_control_execution_state_transition_id,
+                operator_control_execution_state_transition_schema_version,
+                service_id,
+                scheduler_id,
+                operator_control_execution_state_id,
+                operator_control_execution_request_id,
+                from_status,
+                to_status,
+                decision_reason,
+                transitioned_at,
+                operator_control_execution_state,
+                guardrails,
+                metadata,
+                transition_hash,
+                created_at
+            )
+        VALUES (
+            :operator_control_execution_state_transition_id,
+            :operator_control_execution_state_transition_schema_version,
+            :service_id,
+            :scheduler_id,
+            :operator_control_execution_state_id,
+            :operator_control_execution_request_id,
+            :from_status,
+            :to_status,
+            :decision_reason,
+            :transitioned_at,
+            {json_exprs['operator_control_execution_state']},
+            {json_exprs['guardrails']},
+            {json_exprs['metadata']},
+            :transition_hash,
+            :created_at
+        )
+        ON CONFLICT (operator_control_execution_state_transition_id) DO UPDATE SET
+            to_status = excluded.to_status,
+            decision_reason = excluded.decision_reason,
+            transitioned_at = excluded.transitioned_at,
+            operator_control_execution_state =
+                excluded.operator_control_execution_state,
+            guardrails = excluded.guardrails,
+            metadata = excluded.metadata,
+            transition_hash = excluded.transition_hash,
+            created_at = excluded.created_at
+    """
+
+
+def _operator_control_execution_state_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            operator_control_execution_state_id,
+            operator_control_execution_state_schema_version,
+            service_id,
+            scheduler_id,
+            operator_control_execution_request_id,
+            operator_control_facade_id,
+            operator_control_request_id,
+            operator_control_admission_id,
+            operator_control_command_preview_id,
+            action,
+            execution_mode,
+            execution_status,
+            idempotency_key,
+            idempotency_status,
+            decision_reason,
+            observed_at,
+            prior_execution_state_id,
+            operator_control_execution_request_hash,
+            allowed_next_statuses,
+            guardrails,
+            metadata,
+            operator_control_execution_request,
+            execution_state_hash,
+            created_at
+        FROM
+            ae_daemon_operator_control_execution_states
+        WHERE {where_clause}
+    """
+
+
+def _operator_control_execution_state_transition_select_sql(
+    where_clause: str,
+) -> str:
+    return f"""
+        SELECT
+            operator_control_execution_state_transition_id,
+            operator_control_execution_state_transition_schema_version,
+            service_id,
+            scheduler_id,
+            operator_control_execution_state_id,
+            operator_control_execution_request_id,
+            from_status,
+            to_status,
+            decision_reason,
+            transitioned_at,
+            operator_control_execution_state,
+            guardrails,
+            metadata,
+            transition_hash,
+            created_at
+        FROM
+            ae_daemon_operator_control_execution_transitions
+        WHERE {where_clause}
+    """
+
+
+def _operator_control_execution_state_params(
+    execution_state: Mapping[str, Any],
+) -> dict[str, Any]:
+    params = validate_artifact_retention_scheduler_daemon_operator_control_execution_state(
+        execution_state
+    )
+    for field_name in (
+        "allowed_next_statuses",
+        "guardrails",
+        "metadata",
+        "operator_control_execution_request",
+    ):
+        params[field_name] = json.dumps(params[field_name])
+    params["execution_state_hash"] = sha256_json(dict(execution_state))
+    params["created_at"] = params["observed_at"]
+    return params
+
+
+def _operator_control_execution_state_transition_params(
+    transition: Mapping[str, Any],
+) -> dict[str, Any]:
+    params = validate_artifact_retention_scheduler_daemon_operator_control_execution_state_transition(
+        transition
+    )
+    for field_name in (
+        "operator_control_execution_state",
+        "guardrails",
+        "metadata",
+    ):
+        params[field_name] = json.dumps(params[field_name])
+    params["transition_hash"] = sha256_json(dict(transition))
+    params["created_at"] = params["transitioned_at"]
+    return params
+
+
+def _operator_control_execution_state_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    state = {
+        "operator_control_execution_state_schema_version": data[
+            "operator_control_execution_state_schema_version"
+        ],
+        "operator_control_execution_state_id": data[
+            "operator_control_execution_state_id"
+        ],
+        "service_id": data["service_id"],
+        "scheduler_id": data["scheduler_id"],
+        "operator_control_execution_request_id": data[
+            "operator_control_execution_request_id"
+        ],
+        "operator_control_facade_id": data["operator_control_facade_id"],
+        "operator_control_request_id": data["operator_control_request_id"],
+        "operator_control_admission_id": data["operator_control_admission_id"],
+        "operator_control_command_preview_id": data[
+            "operator_control_command_preview_id"
+        ],
+        "action": data["action"],
+        "execution_mode": data["execution_mode"],
+        "execution_status": data["execution_status"],
+        "idempotency_key": data["idempotency_key"],
+        "idempotency_status": data["idempotency_status"],
+        "decision_reason": data["decision_reason"],
+        "observed_at": _daemon_datetime_value(data["observed_at"]),
+        "prior_execution_state_id": data["prior_execution_state_id"],
+        "operator_control_execution_request_hash": data[
+            "operator_control_execution_request_hash"
+        ],
+        "operator_control_execution_request": _daemon_json_value(
+            data["operator_control_execution_request"],
+            {},
+        ),
+        "allowed_next_statuses": _daemon_json_value(
+            data["allowed_next_statuses"],
+            [],
+        ),
+        "guardrails": _daemon_json_value(data["guardrails"], {}),
+        "metadata": _daemon_json_value(data["metadata"], {}),
+    }
+    normalized = (
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_state(
+            state
+        )
+    )
+    if data["execution_state_hash"] != sha256_json(dict(normalized)):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "execution state hash is invalid."
+            ),
+        )
+    return normalized
+
+
+def _operator_control_execution_state_transition_from_row(
+    row: Any,
+) -> dict[str, Any]:
+    data = dict(row)
+    transition = {
+        "operator_control_execution_state_transition_schema_version": data[
+            "operator_control_execution_state_transition_schema_version"
+        ],
+        "operator_control_execution_state_transition_id": data[
+            "operator_control_execution_state_transition_id"
+        ],
+        "service_id": data["service_id"],
+        "scheduler_id": data["scheduler_id"],
+        "operator_control_execution_state_id": data[
+            "operator_control_execution_state_id"
+        ],
+        "operator_control_execution_request_id": data[
+            "operator_control_execution_request_id"
+        ],
+        "from_status": data["from_status"],
+        "to_status": data["to_status"],
+        "decision_reason": data["decision_reason"],
+        "transitioned_at": _daemon_datetime_value(data["transitioned_at"]),
+        "operator_control_execution_state": _daemon_json_value(
+            data["operator_control_execution_state"],
+            {},
+        ),
+        "guardrails": _daemon_json_value(data["guardrails"], {}),
+        "metadata": _daemon_json_value(data["metadata"], {}),
+    }
+    normalized = validate_artifact_retention_scheduler_daemon_operator_control_execution_state_transition(
+        transition
+    )
+    if data["transition_hash"] != sha256_json(dict(normalized)):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_transition_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "execution state transition hash is invalid."
+            ),
+        )
+    return normalized
+
+
+def _optional_operator_control_execution_action(
+    value: Any,
+    *,
+    error_code: str,
+) -> str | None:
+    action = optional_text(value)
+    if action is None:
+        return None
+    try:
+        return _normalize_daemon_operator_control_action(action)
+    except ArtifactHandoffError as exc:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "execution collection action is invalid."
+            ),
+        ) from exc
+
+
+def _optional_operator_control_execution_state_status(
+    value: Any,
+    *,
+    error_code: str,
+) -> str | None:
+    status = optional_text(value)
+    if status is None:
+        return None
+    return _normalize_operator_control_execution_state_status(
+        status,
+        error_code=error_code,
+    )
+
+
+def _optional_operator_control_execution_idempotency_status(
+    value: Any,
+    *,
+    error_code: str,
+) -> str | None:
+    status = optional_text(value)
+    if status is None:
+        return None
+    return _normalize_operator_control_idempotency_status(
+        status,
+        error_code=error_code,
+    )
+
+
 def _daemon_supervisor_action_for_context(
     value: Any,
     *,
@@ -15610,6 +16680,20 @@ def _daemon_supervised_process_store_unavailable() -> ArtifactHandoffError:
         detail=(
             "AE artifact retention scheduler daemon supervised process store "
             "is unavailable."
+        ),
+        retryable=True,
+    )
+
+
+def _operator_control_execution_store_unavailable() -> ArtifactHandoffError:
+    return ArtifactHandoffError(
+        status_code=503,
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_operator_control_execution_store_unavailable"
+        ),
+        detail=(
+            "AE artifact retention scheduler daemon operator control execution "
+            "store is unavailable."
         ),
         retryable=True,
     )

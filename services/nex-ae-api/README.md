@@ -955,3 +955,8 @@ Artifact library management:
   health/table/index evidence, calls the execution and transition routes, and
   checks that metadata-only execution leaves supervised-process and supervisor
   row counts unchanged.
+- Slice 0596 adds AE-owned operator-control execution persistence and read-model
+  routes. Execution state and transition writes are explicit
+  (`persist_execution_state=true`, `persist_transition=true`) so the default
+  metadata-only route behavior remains stable, while operators can query stored
+  execution states and transition detail through protected AE APIs.

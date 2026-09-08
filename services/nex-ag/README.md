@@ -687,6 +687,11 @@ Unified operations:
 - Slice 0595 keeps AG out of AE persistence while adding an AE-side PostgreSQL
   smoke for the protected execution route. Later AG slices can use this evidence
   as the dispatcher baseline before adding AG projections or dashboards.
+- Slice 0596 gives AG a future AE API read target for operator-control
+  execution evidence. AE owns the persisted execution states and transitions;
+  AG should consume the protected collection/detail routes as read-only
+  projection data and still must not write AE tables or control AE processes
+  directly.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -342,6 +342,7 @@ def build_client_with_artifact_store(
     retention_scheduler_daemon_run_store: Any | None = None,
     retention_scheduler_daemon_supervisor_store: Any | None = None,
     retention_scheduler_daemon_supervised_process_store: Any | None = None,
+    retention_scheduler_daemon_operator_control_execution_store: Any | None = None,
     retention_scheduler_daemon_supervisor_adapter: Any | None = None,
     job_queue: Any | None = None,
     worker_heartbeat_store: InMemoryWorkerHeartbeatStore | None = None,
@@ -371,6 +372,9 @@ def build_client_with_artifact_store(
         ),
         retention_scheduler_daemon_supervised_process_store=(
             retention_scheduler_daemon_supervised_process_store
+        ),
+        retention_scheduler_daemon_operator_control_execution_store=(
+            retention_scheduler_daemon_operator_control_execution_store
         ),
         retention_scheduler_daemon_supervisor_adapter=(
             retention_scheduler_daemon_supervisor_adapter
@@ -6292,6 +6296,13 @@ def test_artifact_retention_scheduler_config_route_returns_runtime_surface() -> 
     )
     assert payload["api_routes"]["scheduler_daemon_operator_control_executions"] == (
         "/api/v1/artifact-retention/scheduler-daemon-operator-control-executions"
+    )
+    assert payload["api_routes"][
+        "scheduler_daemon_operator_control_execution_detail"
+    ] == (
+        "/api/v1/artifact-retention/"
+        "scheduler-daemon-operator-control-executions/"
+        "{operator_control_execution_state_id}"
     )
     assert payload["api_routes"][
         "scheduler_daemon_operator_control_execution_transitions"
