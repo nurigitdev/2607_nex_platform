@@ -664,6 +664,10 @@ Unified operations:
   preview routes against an AE service app backed by `NEX_AE_TEST_DATABASE_URL`,
   verifies AE bridge status, and proves preview calls do not mutate AE
   supervised-process persistence.
+- Slice 0590 closes S59 by checking the full guarded operator-control path:
+  boundary audit, AE contracts/facade, AE and AG-to-AE protected smoke, AG
+  read-only projections, automation dashboard rollup, redaction posture, and
+  preview-only restart stop-then-start evidence.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

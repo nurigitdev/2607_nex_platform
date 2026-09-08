@@ -926,3 +926,7 @@ Artifact library management:
   operator-control surface. The runner wires AE to `NEX_AE_TEST_DATABASE_URL`,
   routes AG policy/status-probe/restart previews through AE APIs, and confirms
   the preview-only calls leave AE supervised-process row counts unchanged.
+- Slice 0590 closes S59 with a quality-gate checkpoint over the AE-owned,
+  AG-dispatched operator-control surface, including docs continuity, protected
+  smoke hooks, redaction posture, preview-only guardrails, and restart
+  stop-then-start evidence.
