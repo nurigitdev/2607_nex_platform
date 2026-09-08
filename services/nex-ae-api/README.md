@@ -909,3 +909,7 @@ Artifact library management:
   returns READY/BLOCKED/NOOP with deterministic reasons, and previews only the
   next supervisor actions while keeping subprocess execution, database writes,
   JobQueue enqueue, and AG direct process control disabled.
+- Slice 0584 turns READY admissions into validated supervisor command previews.
+  BLOCKED/NOOP admissions intentionally return no commands, and restart previews
+  decompose to stop then start with follow-up admission required before the
+  start step; the Slice still performs no adapter invocation or process control.

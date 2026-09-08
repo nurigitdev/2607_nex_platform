@@ -519,6 +519,7 @@ def test_operator_control_admission_validation_edges(
     ("current_process", "detail"),
     (
         ("bad", "current process is invalid"),
+        ({}, "current process keys"),
         (
             {"process_source": "socket", "process_status": "MISSING"},
             "current process keys",

@@ -114,6 +114,9 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_REQUEST_SCHEMA_VERSION =
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_ADMISSION_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_operator_control_admission.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_COMMAND_PREVIEW_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_operator_control_command_preview.v1"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
@@ -1634,6 +1637,315 @@ def operator_control_admission_summary_line(admission: Mapping[str, Any]) -> str
         f"status={summary['admission_status']} "
         f"reason={summary['decision_reason']} "
         f"process={summary['process_status']} "
+        f"next={actions}"
+    )
+
+
+def build_artifact_retention_scheduler_daemon_operator_control_command_preview(
+    *,
+    operator_control_admission: Mapping[str, Any],
+    checked_at: str | None = None,
+) -> dict[str, Any]:
+    admission = (
+        validate_artifact_retention_scheduler_daemon_operator_control_admission(
+            operator_control_admission
+        )
+    )
+    request = admission["operator_control_request"]
+    normalized_checked_at = _required_text(
+        checked_at or admission["checked_at"],
+        "checked_at",
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_operator_control_command_preview_invalid"
+        ),
+    )
+    command_previews = _operator_control_supervisor_command_previews(
+        admission=admission,
+        checked_at=normalized_checked_at,
+    )
+    preview = {
+        "operator_control_command_preview_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_COMMAND_PREVIEW_SCHEMA_VERSION
+        ),
+        "operator_control_command_preview_id": _operator_control_command_preview_id(
+            scheduler_id=admission["scheduler_id"],
+            operator_control_admission_id=admission[
+                "operator_control_admission_id"
+            ],
+            command_previews=command_previews,
+            checked_at=normalized_checked_at,
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": admission["scheduler_id"],
+        "operator_control_admission_id": admission[
+            "operator_control_admission_id"
+        ],
+        "operator_control_request_id": request["operator_control_request_id"],
+        "action": admission["action"],
+        "preview_status": admission["admission_status"],
+        "checked_at": normalized_checked_at,
+        "operator_control_admission": deepcopy(admission),
+        "supervisor_command_previews": command_previews,
+        "guardrails": _operator_control_command_preview_guardrails(
+            admission=admission,
+            command_previews=command_previews,
+        ),
+        "metadata": _operator_control_command_preview_metadata(
+            admission=admission,
+            command_previews=command_previews,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_operator_control_command_preview(
+        preview
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_operator_control_command_preview(
+    preview: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = (
+        "ae.artifact_retention_scheduler_daemon_operator_control_command_preview_invalid"
+    )
+    if not isinstance(preview, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control command "
+                "preview must be an object."
+            ),
+        )
+    normalized = dict(preview)
+    if set(normalized) != {
+        "operator_control_command_preview_schema_version",
+        "operator_control_command_preview_id",
+        "service_id",
+        "scheduler_id",
+        "operator_control_admission_id",
+        "operator_control_request_id",
+        "action",
+        "preview_status",
+        "checked_at",
+        "operator_control_admission",
+        "supervisor_command_previews",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control command "
+                "preview keys are invalid."
+            ),
+        )
+    if (
+        normalized.get("operator_control_command_preview_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_COMMAND_PREVIEW_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_command_preview_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon operator control command "
+                "preview schema is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control command "
+                "preview service id is invalid."
+            ),
+        )
+    admission = (
+        validate_artifact_retention_scheduler_daemon_operator_control_admission(
+            normalized.get("operator_control_admission")
+        )
+    )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        error_code=error_code,
+    )
+    if scheduler_id != admission["scheduler_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control command "
+                "preview scheduler scope is invalid."
+            ),
+        )
+    admission_id = _required_text(
+        normalized.get("operator_control_admission_id"),
+        "operator_control_admission_id",
+        error_code=error_code,
+    )
+    if admission_id != admission["operator_control_admission_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control command "
+                "preview admission scope is invalid."
+            ),
+        )
+    request_id = _required_text(
+        normalized.get("operator_control_request_id"),
+        "operator_control_request_id",
+        error_code=error_code,
+    )
+    if request_id != admission["operator_control_request_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control command "
+                "preview request scope is invalid."
+            ),
+        )
+    action = _normalize_daemon_operator_control_action(normalized.get("action"))
+    if action != admission["action"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control command "
+                "preview action scope is invalid."
+            ),
+        )
+    preview_status = _normalize_operator_control_admission_status(
+        normalized.get("preview_status"),
+        error_code=error_code,
+    )
+    if preview_status != admission["admission_status"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control command "
+                "preview status is invalid."
+            ),
+        )
+    checked_at = _required_text(
+        normalized.get("checked_at"),
+        "checked_at",
+        error_code=error_code,
+    )
+    command_previews = _validate_operator_control_supervisor_command_previews(
+        normalized.get("supervisor_command_previews"),
+        admission=admission,
+        error_code=error_code,
+    )
+    expected_previews = _operator_control_supervisor_command_previews(
+        admission=admission,
+        checked_at=checked_at,
+    )
+    if command_previews != expected_previews:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control command "
+                "preview supervisor commands are invalid."
+            ),
+        )
+    expected_guardrails = _operator_control_command_preview_guardrails(
+        admission=admission,
+        command_previews=command_previews,
+    )
+    if normalized.get("guardrails") != expected_guardrails:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control command "
+                "preview guardrails are invalid."
+            ),
+        )
+    expected_metadata = _operator_control_command_preview_metadata(
+        admission=admission,
+        command_previews=command_previews,
+    )
+    if normalized.get("metadata") != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control command "
+                "preview metadata is invalid."
+            ),
+        )
+    expected_id = _operator_control_command_preview_id(
+        scheduler_id=scheduler_id,
+        operator_control_admission_id=admission_id,
+        command_previews=command_previews,
+        checked_at=checked_at,
+    )
+    if normalized.get("operator_control_command_preview_id") != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control command "
+                "preview id is invalid."
+            ),
+        )
+    normalized["action"] = action
+    normalized["preview_status"] = preview_status
+    normalized["operator_control_admission"] = admission
+    normalized["supervisor_command_previews"] = command_previews
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_operator_control_command_preview(
+    preview: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = (
+        validate_artifact_retention_scheduler_daemon_operator_control_command_preview(
+            preview
+        )
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "operator_control_command_preview_id": validated[
+            "operator_control_command_preview_id"
+        ],
+        "operator_control_admission_id": validated[
+            "operator_control_admission_id"
+        ],
+        "operator_control_request_id": validated["operator_control_request_id"],
+        "action": validated["action"],
+        "preview_status": validated["preview_status"],
+        "checked_at": validated["checked_at"],
+        "command_count": validated["metadata"]["command_preview_count"],
+        "supervisor_actions": validated["metadata"]["supervisor_actions"],
+        "ready_for_dispatch": validated["metadata"]["ready_for_dispatch"],
+        "safe_for_ag_projection": validated["metadata"]["safe_for_ag_projection"],
+    }
+
+
+def operator_control_command_preview_summary_line(
+    preview: Mapping[str, Any],
+) -> str:
+    summary = (
+        summarize_artifact_retention_scheduler_daemon_operator_control_command_preview(
+            preview
+        )
+    )
+    actions = ",".join(summary["supervisor_actions"]) or "none"
+    return (
+        "ae_scheduler_daemon_operator_control_command_preview=pass "
+        f"scheduler_id={summary['scheduler_id']} "
+        f"action={summary['action']} "
+        f"status={summary['preview_status']} "
+        f"commands={summary['command_count']} "
         f"next={actions}"
     )
 
@@ -8982,6 +9294,265 @@ def _operator_control_admission_id(
             NAMESPACE_URL,
             (
                 "nex-ae-api:artifact-retention:operator-control-admission:"
+                f"{sha256_json(basis)}"
+            ),
+        )
+    )
+
+
+def _operator_control_supervisor_command_previews(
+    *,
+    admission: Mapping[str, Any],
+    checked_at: str,
+) -> list[dict[str, Any]]:
+    if admission["admission_status"] != "READY":
+        return []
+    request = admission["operator_control_request"]
+    previews: list[dict[str, Any]] = []
+    for next_action in admission["next_supervisor_actions"]:
+        action = next_action["action"]
+        command = build_artifact_retention_scheduler_daemon_supervisor_command(
+            action=action,
+            checked_at=checked_at,
+            enabled=action == "start_daemon",
+            explicit_opt_in=action == "start_daemon"
+            and request["explicit_opt_in"] is True,
+            max_cycles=request["max_cycles"],
+            run_worker=request["run_worker"],
+            requested_by=request["operator_subject"],
+            reason=request["reason"],
+        )
+        previews.append(
+            _operator_control_supervisor_command_preview_item(
+                next_action=next_action,
+                supervisor_command=command,
+            )
+        )
+    return previews
+
+
+def _operator_control_supervisor_command_preview_item(
+    *,
+    next_action: Mapping[str, Any],
+    supervisor_command: Mapping[str, Any],
+) -> dict[str, Any]:
+    command = validate_artifact_retention_scheduler_daemon_supervisor_command(
+        supervisor_command
+    )
+    return {
+        "sequence": next_action["sequence"],
+        "action": next_action["action"],
+        "requires_distinct_evidence": next_action["requires_distinct_evidence"],
+        "requires_follow_up_admission": next_action[
+            "requires_follow_up_admission"
+        ],
+        "supervisor_command": command,
+    }
+
+
+def _validate_operator_control_supervisor_command_previews(
+    value: Any,
+    *,
+    admission: Mapping[str, Any],
+    error_code: str,
+) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control command "
+                "preview supervisor commands must be a list."
+            ),
+        )
+    previews: list[dict[str, Any]] = []
+    expected_next_actions = admission["next_supervisor_actions"]
+    if len(value) != len(expected_next_actions):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control command "
+                "preview supervisor command count is invalid."
+            ),
+        )
+    for index, item in enumerate(value):
+        if not isinstance(item, Mapping) or set(item) != {
+            "sequence",
+            "action",
+            "requires_distinct_evidence",
+            "requires_follow_up_admission",
+            "supervisor_command",
+        }:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    "command preview supervisor command keys are invalid."
+                ),
+            )
+        next_action = expected_next_actions[index]
+        if item.get("sequence") != next_action["sequence"]:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    "command preview supervisor command sequence is invalid."
+                ),
+            )
+        action = _daemon_supervisor_action_for_context(
+            item.get("action"),
+            error_code=error_code,
+        )
+        if action != next_action["action"]:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    "command preview supervisor command action is invalid."
+                ),
+            )
+        if item.get("requires_distinct_evidence") != next_action[
+            "requires_distinct_evidence"
+        ]:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    "command preview evidence flag is invalid."
+                ),
+            )
+        if item.get("requires_follow_up_admission") != next_action[
+            "requires_follow_up_admission"
+        ]:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    "command preview follow-up flag is invalid."
+                ),
+            )
+        command = validate_artifact_retention_scheduler_daemon_supervisor_command(
+            item.get("supervisor_command")
+        )
+        if command["scheduler_id"] != admission["scheduler_id"]:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    "command preview scheduler scope is invalid."
+                ),
+            )
+        if command["command"]["action"] != action:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    "command preview command action is invalid."
+                ),
+            )
+        previews.append(
+            _operator_control_supervisor_command_preview_item(
+                next_action=next_action,
+                supervisor_command=command,
+            )
+        )
+    return previews
+
+
+def _operator_control_command_preview_guardrails(
+    *,
+    admission: Mapping[str, Any],
+    command_previews: Sequence[Mapping[str, Any]],
+) -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "preview_only": True,
+        "operator_admission_validated": True,
+        "supervisor_commands_validated": True,
+        "ready_admission_required_for_commands": bool(command_previews)
+        == (admission["admission_status"] == "READY"),
+        "contract_starts_process": False,
+        "contract_stops_process": False,
+        "supervisor_adapter_invoked": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "physical_delete_automation_enabled": False,
+        "test_profile_required": True,
+        "restart_decomposes_to_stop_then_start": admission["action"]
+        == "restart_daemon",
+        "restart_requires_follow_up_admission": admission["action"]
+        == "restart_daemon",
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+    }
+
+
+def _operator_control_command_preview_metadata(
+    *,
+    admission: Mapping[str, Any],
+    command_previews: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    actions = [item["action"] for item in command_previews]
+    return {
+        "safe_for_ag_projection": True,
+        "metadata_only": True,
+        "command_preview_contract_only": True,
+        "operator_control_admission_hash": sha256_json(dict(admission)),
+        "command_preview_count": len(command_previews),
+        "supervisor_actions": actions,
+        "ready_for_dispatch": admission["admission_status"] == "READY",
+        "blocked": admission["admission_status"] == "BLOCKED",
+        "noop": admission["admission_status"] == "NOOP",
+        "start_preview_count": actions.count("start_daemon"),
+        "stop_preview_count": actions.count("stop_daemon"),
+        "status_probe_preview_count": actions.count("status_probe"),
+        "restart_preview": admission["action"] == "restart_daemon",
+        "supervisor_adapter_invoked": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "secrets_redacted": True,
+    }
+
+
+def _operator_control_command_preview_id(
+    *,
+    scheduler_id: str,
+    operator_control_admission_id: str,
+    command_previews: Sequence[Mapping[str, Any]],
+    checked_at: str,
+) -> str:
+    basis = {
+        "scheduler_id": scheduler_id,
+        "operator_control_admission_id": operator_control_admission_id,
+        "command_previews_hash": sha256_json(list(command_previews)),
+        "checked_at": checked_at,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            (
+                "nex-ae-api:artifact-retention:operator-control-command-preview:"
                 f"{sha256_json(basis)}"
             ),
         )
