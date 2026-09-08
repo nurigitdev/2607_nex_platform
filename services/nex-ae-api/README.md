@@ -913,3 +913,7 @@ Artifact library management:
   BLOCKED/NOOP admissions intentionally return no commands, and restart previews
   decompose to stop then start with follow-up admission required before the
   start step; the Slice still performs no adapter invocation or process control.
+- Slice 0585 exposes the guarded operator-control policy and preview facade
+  through AE service APIs. The preview route validates request/admission/command
+  preview in one response but still performs no supervisor dispatch, subprocess
+  control, database write, JobQueue enqueue, or worker execution.

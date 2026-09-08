@@ -117,6 +117,9 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_ADMISSION_SCHEMA_VERSION
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_COMMAND_PREVIEW_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_operator_control_command_preview.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_FACADE_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_operator_control_facade.v1"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
@@ -1945,6 +1948,369 @@ def operator_control_command_preview_summary_line(
         f"scheduler_id={summary['scheduler_id']} "
         f"action={summary['action']} "
         f"status={summary['preview_status']} "
+        f"commands={summary['command_count']} "
+        f"next={actions}"
+    )
+
+
+def build_artifact_retention_scheduler_daemon_operator_control_facade(
+    *,
+    operator_control_policy: Mapping[str, Any],
+    operator_control_command_preview: Mapping[str, Any],
+    checked_at: str | None = None,
+) -> dict[str, Any]:
+    policy = validate_artifact_retention_scheduler_daemon_operator_control_policy(
+        operator_control_policy
+    )
+    preview = (
+        validate_artifact_retention_scheduler_daemon_operator_control_command_preview(
+            operator_control_command_preview
+        )
+    )
+    admission = preview["operator_control_admission"]
+    request = admission["operator_control_request"]
+    normalized_checked_at = _required_text(
+        checked_at or preview["checked_at"],
+        "checked_at",
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_operator_control_facade_invalid"
+        ),
+    )
+    if policy["scheduler_id"] != preview["scheduler_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_facade_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon operator control facade "
+                "scheduler scope is invalid."
+            ),
+        )
+    facade = {
+        "operator_control_facade_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_FACADE_SCHEMA_VERSION
+        ),
+        "operator_control_facade_id": _operator_control_facade_id(
+            scheduler_id=preview["scheduler_id"],
+            operator_control_policy_id=policy["operator_control_policy_id"],
+            operator_control_request_id=request["operator_control_request_id"],
+            operator_control_admission_id=admission[
+                "operator_control_admission_id"
+            ],
+            operator_control_command_preview_id=preview[
+                "operator_control_command_preview_id"
+            ],
+            checked_at=normalized_checked_at,
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": preview["scheduler_id"],
+        "operator_control_policy_id": policy["operator_control_policy_id"],
+        "operator_control_request_id": request["operator_control_request_id"],
+        "operator_control_admission_id": admission[
+            "operator_control_admission_id"
+        ],
+        "operator_control_command_preview_id": preview[
+            "operator_control_command_preview_id"
+        ],
+        "action": preview["action"],
+        "facade_status": preview["preview_status"],
+        "checked_at": normalized_checked_at,
+        "operator_control_policy": deepcopy(policy),
+        "operator_control_request": deepcopy(request),
+        "operator_control_admission": deepcopy(admission),
+        "operator_control_command_preview": deepcopy(preview),
+        "guardrails": _operator_control_facade_guardrails(preview=preview),
+        "metadata": _operator_control_facade_metadata(
+            policy=policy,
+            request=request,
+            admission=admission,
+            preview=preview,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_operator_control_facade(
+        facade
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_operator_control_facade(
+    facade: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = (
+        "ae.artifact_retention_scheduler_daemon_operator_control_facade_invalid"
+    )
+    if not isinstance(facade, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control facade "
+                "must be an object."
+            ),
+        )
+    normalized = dict(facade)
+    if set(normalized) != {
+        "operator_control_facade_schema_version",
+        "operator_control_facade_id",
+        "service_id",
+        "scheduler_id",
+        "operator_control_policy_id",
+        "operator_control_request_id",
+        "operator_control_admission_id",
+        "operator_control_command_preview_id",
+        "action",
+        "facade_status",
+        "checked_at",
+        "operator_control_policy",
+        "operator_control_request",
+        "operator_control_admission",
+        "operator_control_command_preview",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control facade "
+                "keys are invalid."
+            ),
+        )
+    if (
+        normalized.get("operator_control_facade_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_FACADE_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_facade_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon operator control facade "
+                "schema is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control facade "
+                "service id is invalid."
+            ),
+        )
+    policy = validate_artifact_retention_scheduler_daemon_operator_control_policy(
+        normalized.get("operator_control_policy")
+    )
+    request = validate_artifact_retention_scheduler_daemon_operator_control_request(
+        normalized.get("operator_control_request")
+    )
+    admission = (
+        validate_artifact_retention_scheduler_daemon_operator_control_admission(
+            normalized.get("operator_control_admission")
+        )
+    )
+    preview = (
+        validate_artifact_retention_scheduler_daemon_operator_control_command_preview(
+            normalized.get("operator_control_command_preview")
+        )
+    )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        error_code=error_code,
+    )
+    if scheduler_id != policy["scheduler_id"] or scheduler_id != preview[
+        "scheduler_id"
+    ]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control facade "
+                "scheduler scope is invalid."
+            ),
+        )
+    if (
+        normalized.get("operator_control_policy_id")
+        != policy["operator_control_policy_id"]
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control facade "
+                "policy scope is invalid."
+            ),
+        )
+    if (
+        normalized.get("operator_control_request_id")
+        != request["operator_control_request_id"]
+        or admission["operator_control_request_id"]
+        != request["operator_control_request_id"]
+        or preview["operator_control_request_id"] != request["operator_control_request_id"]
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control facade "
+                "request scope is invalid."
+            ),
+        )
+    if (
+        normalized.get("operator_control_admission_id")
+        != admission["operator_control_admission_id"]
+        or preview["operator_control_admission_id"]
+        != admission["operator_control_admission_id"]
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control facade "
+                "admission scope is invalid."
+            ),
+        )
+    if (
+        normalized.get("operator_control_command_preview_id")
+        != preview["operator_control_command_preview_id"]
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control facade "
+                "preview scope is invalid."
+            ),
+        )
+    action = _normalize_daemon_operator_control_action(normalized.get("action"))
+    if action != request["action"] or action != admission["action"] or action != preview[
+        "action"
+    ]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control facade "
+                "action scope is invalid."
+            ),
+        )
+    facade_status = _normalize_operator_control_admission_status(
+        normalized.get("facade_status"),
+        error_code=error_code,
+    )
+    if facade_status != admission["admission_status"] or facade_status != preview[
+        "preview_status"
+    ]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control facade "
+                "status is invalid."
+            ),
+        )
+    checked_at = _required_text(
+        normalized.get("checked_at"),
+        "checked_at",
+        error_code=error_code,
+    )
+    if normalized.get("guardrails") != _operator_control_facade_guardrails(
+        preview=preview
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control facade "
+                "guardrails are invalid."
+            ),
+        )
+    expected_metadata = _operator_control_facade_metadata(
+        policy=policy,
+        request=request,
+        admission=admission,
+        preview=preview,
+    )
+    if normalized.get("metadata") != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control facade "
+                "metadata is invalid."
+            ),
+        )
+    expected_id = _operator_control_facade_id(
+        scheduler_id=scheduler_id,
+        operator_control_policy_id=policy["operator_control_policy_id"],
+        operator_control_request_id=request["operator_control_request_id"],
+        operator_control_admission_id=admission["operator_control_admission_id"],
+        operator_control_command_preview_id=preview[
+            "operator_control_command_preview_id"
+        ],
+        checked_at=checked_at,
+    )
+    if normalized.get("operator_control_facade_id") != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control facade "
+                "id is invalid."
+            ),
+        )
+    normalized["action"] = action
+    normalized["facade_status"] = facade_status
+    normalized["operator_control_policy"] = policy
+    normalized["operator_control_request"] = request
+    normalized["operator_control_admission"] = admission
+    normalized["operator_control_command_preview"] = preview
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_operator_control_facade(
+    facade: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduler_daemon_operator_control_facade(
+        facade
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "operator_control_facade_id": validated["operator_control_facade_id"],
+        "operator_control_request_id": validated["operator_control_request_id"],
+        "operator_control_admission_id": validated[
+            "operator_control_admission_id"
+        ],
+        "operator_control_command_preview_id": validated[
+            "operator_control_command_preview_id"
+        ],
+        "action": validated["action"],
+        "facade_status": validated["facade_status"],
+        "checked_at": validated["checked_at"],
+        "decision_reason": validated["operator_control_admission"][
+            "decision_reason"
+        ],
+        "command_count": validated["metadata"]["command_preview_count"],
+        "supervisor_actions": validated["metadata"]["supervisor_actions"],
+        "ready_for_dispatch": validated["metadata"]["ready_for_dispatch"],
+        "safe_for_ag_projection": validated["metadata"]["safe_for_ag_projection"],
+    }
+
+
+def operator_control_facade_summary_line(facade: Mapping[str, Any]) -> str:
+    summary = summarize_artifact_retention_scheduler_daemon_operator_control_facade(
+        facade
+    )
+    actions = ",".join(summary["supervisor_actions"]) or "none"
+    return (
+        "ae_scheduler_daemon_operator_control_facade=pass "
+        f"scheduler_id={summary['scheduler_id']} "
+        f"action={summary['action']} "
+        f"status={summary['facade_status']} "
+        f"reason={summary['decision_reason']} "
         f"commands={summary['command_count']} "
         f"next={actions}"
     )
@@ -9553,6 +9919,102 @@ def _operator_control_command_preview_id(
             NAMESPACE_URL,
             (
                 "nex-ae-api:artifact-retention:operator-control-command-preview:"
+                f"{sha256_json(basis)}"
+            ),
+        )
+    )
+
+
+def _operator_control_facade_guardrails(
+    *,
+    preview: Mapping[str, Any],
+) -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "policy_evaluated": True,
+        "request_validated": True,
+        "admission_evaluated": True,
+        "command_preview_evaluated": True,
+        "preview_only": True,
+        "process_control_allowed": False,
+        "supervisor_dispatch_performed": False,
+        "supervisor_adapter_invoked": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "test_profile_required": True,
+        "restart_decomposes_to_stop_then_start": preview["action"]
+        == "restart_daemon",
+        "raw_supervised_process_snapshot_included": False,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "ag_direct_process_control_allowed": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "physical_delete_automation_enabled": False,
+    }
+
+
+def _operator_control_facade_metadata(
+    *,
+    policy: Mapping[str, Any],
+    request: Mapping[str, Any],
+    admission: Mapping[str, Any],
+    preview: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "safe_for_ag_projection": True,
+        "metadata_only": True,
+        "route_facade": True,
+        "policy_contract_only": True,
+        "preview_only": True,
+        "scheduler_id": preview["scheduler_id"],
+        "action": preview["action"],
+        "admission_status": admission["admission_status"],
+        "decision_reason": admission["decision_reason"],
+        "ready_for_dispatch": preview["metadata"]["ready_for_dispatch"],
+        "command_preview_count": preview["metadata"]["command_preview_count"],
+        "supervisor_actions": list(preview["metadata"]["supervisor_actions"]),
+        "policy_hash": sha256_json(dict(policy)),
+        "request_hash": sha256_json(dict(request)),
+        "admission_hash": sha256_json(dict(admission)),
+        "command_preview_hash": sha256_json(dict(preview)),
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "secrets_redacted": True,
+    }
+
+
+def _operator_control_facade_id(
+    *,
+    scheduler_id: str,
+    operator_control_policy_id: str,
+    operator_control_request_id: str,
+    operator_control_admission_id: str,
+    operator_control_command_preview_id: str,
+    checked_at: str,
+) -> str:
+    basis = {
+        "scheduler_id": scheduler_id,
+        "operator_control_policy_id": operator_control_policy_id,
+        "operator_control_request_id": operator_control_request_id,
+        "operator_control_admission_id": operator_control_admission_id,
+        "operator_control_command_preview_id": operator_control_command_preview_id,
+        "checked_at": checked_at,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            (
+                "nex-ae-api:artifact-retention:operator-control-facade:"
                 f"{sha256_json(basis)}"
             ),
         )
