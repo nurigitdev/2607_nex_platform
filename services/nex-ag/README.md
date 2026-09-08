@@ -680,6 +680,10 @@ Unified operations:
   the execution state machine and idempotency contract. AG may later display
   safe ADMITTED/BLOCKED/NOOP/REPLAYED/CONFLICT evidence, but transitions remain
   AE-owned and metadata-only until a protected AE execution route is added.
+- Slice 0594 gives AG a protected AE API target for execution state and
+  transition evidence, but AG remains a caller/projection surface only. AE still
+  builds the facade, execution request, state, and transition contracts and does
+  not permit AG to invoke adapters or mutate AE persistence directly.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

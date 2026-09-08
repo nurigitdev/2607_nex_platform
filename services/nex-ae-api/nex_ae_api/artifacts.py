@@ -2756,78 +2756,92 @@ def register_artifact_handoff_routes(
             return auth_problem
 
         try:
+            return _build_artifact_retention_scheduler_daemon_operator_control_facade_from_route_payload(
+                payload,
+                artifact_retention_job_queue=artifact_retention_job_queue,
+                idempotency_key=idempotency_key,
+            )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.post(
+        "/api/v1/artifact-retention/scheduler-daemon-operator-control-executions",
+        response_model=None,
+    )
+    def create_artifact_retention_scheduler_daemon_operator_control_execution(
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
             from nex_ae_api.artifact_retention_scheduler_daemon import (
-                build_artifact_retention_scheduler_daemon_operator_control_admission,
-                build_artifact_retention_scheduler_daemon_operator_control_command_preview,
-                build_artifact_retention_scheduler_daemon_operator_control_facade,
-                build_artifact_retention_scheduler_daemon_operator_control_policy,
-                build_artifact_retention_scheduler_daemon_operator_control_request,
+                build_artifact_retention_scheduler_daemon_operator_control_execution_request,
+                build_artifact_retention_scheduler_daemon_operator_control_execution_state,
             )
 
-            scheduler_config = build_artifact_retention_scheduler_config(
-                job_queue=artifact_retention_job_queue
+            facade = _build_artifact_retention_scheduler_daemon_operator_control_facade_from_route_payload(
+                payload,
+                artifact_retention_job_queue=artifact_retention_job_queue,
+                idempotency_key=idempotency_key,
             )
-            requested_at = optional_text(payload.get("requested_at")) or optional_text(
-                payload.get("checked_at")
-            )
-            checked_at = optional_text(payload.get("checked_at")) or optional_text(
-                payload.get("observed_at")
-            )
-            policy = (
-                build_artifact_retention_scheduler_daemon_operator_control_policy(
-                    scheduler_config=scheduler_config,
-                    checked_at=checked_at,
+            execution_request = (
+                build_artifact_retention_scheduler_daemon_operator_control_execution_request(
+                    operator_control_facade=facade,
+                    execution_mode=(
+                        optional_text(payload.get("execution_mode")) or "contract_only"
+                    ),
+                    requested_at=(
+                        optional_text(payload.get("execution_requested_at"))
+                        or optional_text(payload.get("requested_at"))
+                        or optional_text(payload.get("checked_at"))
+                    ),
                 )
             )
-            operator_request = (
-                build_artifact_retention_scheduler_daemon_operator_control_request(
-                    action=optional_text(payload.get("action")) or "status_probe",
-                    operator_subject=_operator_control_subject_from_payload(
-                        payload
-                    ),
-                    idempotency_key=(
-                        optional_text(payload.get("idempotency_key"))
-                        or optional_text(idempotency_key)
-                        or ""
-                    ),
-                    reason=optional_text(payload.get("reason")) or "",
-                    scheduler_config=scheduler_config,
-                    requested_at=requested_at,
-                    profile=optional_text(payload.get("profile")) or "test",
-                    enabled=(
-                        payload["enabled"] if "enabled" in payload else False
-                    ),
-                    explicit_opt_in=(
-                        payload["explicit_opt_in"]
-                        if "explicit_opt_in" in payload
-                        else False
-                    ),
-                    max_cycles=(
-                        payload["max_cycles"] if "max_cycles" in payload else 1
-                    ),
-                    run_worker=(
-                        payload["run_worker"] if "run_worker" in payload else False
-                    ),
-                    approval=payload.get("approval"),
-                )
+            return build_artifact_retention_scheduler_daemon_operator_control_execution_state(
+                operator_control_execution_request=execution_request,
+                existing_execution_state=payload.get("existing_execution_state"),
+                observed_at=(
+                    optional_text(payload.get("observed_at"))
+                    or optional_text(payload.get("checked_at"))
+                ),
             )
-            admission = (
-                build_artifact_retention_scheduler_daemon_operator_control_admission(
-                    operator_control_request=operator_request,
-                    current_process=payload.get("current_process"),
-                    checked_at=checked_at,
-                )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.post(
+        "/api/v1/artifact-retention/"
+        "scheduler-daemon-operator-control-execution-transitions",
+        response_model=None,
+    )
+    def transition_artifact_retention_scheduler_daemon_operator_control_execution(
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            from nex_ae_api.artifact_retention_scheduler_daemon import (
+                build_artifact_retention_scheduler_daemon_operator_control_execution_state_transition,
             )
-            command_preview = (
-                build_artifact_retention_scheduler_daemon_operator_control_command_preview(
-                    operator_control_admission=admission,
-                    checked_at=checked_at,
-                )
-            )
-            return build_artifact_retention_scheduler_daemon_operator_control_facade(
-                operator_control_policy=policy,
-                operator_control_command_preview=command_preview,
-                checked_at=checked_at,
+
+            return build_artifact_retention_scheduler_daemon_operator_control_execution_state_transition(
+                operator_control_execution_state=payload.get(
+                    "operator_control_execution_state"
+                ),
+                target_status=optional_text(payload.get("target_status")) or "",
+                decision_reason=optional_text(payload.get("decision_reason")) or "",
+                transitioned_at=(
+                    optional_text(payload.get("transitioned_at"))
+                    or optional_text(payload.get("observed_at"))
+                ),
             )
         except ArtifactHandoffError as exc:
             return _artifact_problem_response(request, exc)
@@ -4231,6 +4245,14 @@ def build_artifact_retention_scheduler_config(
                 "/api/v1/artifact-retention/"
                 "scheduler-daemon-operator-control-preview"
             ),
+            "scheduler_daemon_operator_control_executions": (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-operator-control-executions"
+            ),
+            "scheduler_daemon_operator_control_execution_transitions": (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-operator-control-execution-transitions"
+            ),
             "scheduled_jobs": "/api/v1/artifact-retention/scheduled-jobs",
             "scheduled_job_admission": (
                 "/api/v1/artifact-retention/scheduled-jobs/admission"
@@ -4943,6 +4965,13 @@ def _expected_artifact_retention_scheduler_api_routes() -> dict[str, str]:
         ),
         "scheduler_daemon_operator_control_preview": (
             "/api/v1/artifact-retention/scheduler-daemon-operator-control-preview"
+        ),
+        "scheduler_daemon_operator_control_executions": (
+            "/api/v1/artifact-retention/scheduler-daemon-operator-control-executions"
+        ),
+        "scheduler_daemon_operator_control_execution_transitions": (
+            "/api/v1/artifact-retention/"
+            "scheduler-daemon-operator-control-execution-transitions"
         ),
         "scheduled_jobs": "/api/v1/artifact-retention/scheduled-jobs",
         "scheduled_job_admission": (
@@ -10277,6 +10306,71 @@ def _operator_control_subject_from_payload(payload: Mapping[str, Any]) -> Any:
         for key in allowed_keys
         if (value := optional_text(requested_by.get(key))) is not None
     }
+
+
+def _build_artifact_retention_scheduler_daemon_operator_control_facade_from_route_payload(
+    payload: Mapping[str, Any],
+    *,
+    artifact_retention_job_queue: JobQueue | None,
+    idempotency_key: str | None,
+) -> dict[str, Any]:
+    from nex_ae_api.artifact_retention_scheduler_daemon import (
+        build_artifact_retention_scheduler_daemon_operator_control_admission,
+        build_artifact_retention_scheduler_daemon_operator_control_command_preview,
+        build_artifact_retention_scheduler_daemon_operator_control_facade,
+        build_artifact_retention_scheduler_daemon_operator_control_policy,
+        build_artifact_retention_scheduler_daemon_operator_control_request,
+    )
+
+    scheduler_config = build_artifact_retention_scheduler_config(
+        job_queue=artifact_retention_job_queue
+    )
+    requested_at = optional_text(payload.get("requested_at")) or optional_text(
+        payload.get("checked_at")
+    )
+    checked_at = optional_text(payload.get("checked_at")) or optional_text(
+        payload.get("observed_at")
+    )
+    policy = build_artifact_retention_scheduler_daemon_operator_control_policy(
+        scheduler_config=scheduler_config,
+        checked_at=checked_at,
+    )
+    operator_request = build_artifact_retention_scheduler_daemon_operator_control_request(
+        action=optional_text(payload.get("action")) or "status_probe",
+        operator_subject=_operator_control_subject_from_payload(payload),
+        idempotency_key=(
+            optional_text(payload.get("idempotency_key"))
+            or optional_text(idempotency_key)
+            or ""
+        ),
+        reason=optional_text(payload.get("reason")) or "",
+        scheduler_config=scheduler_config,
+        requested_at=requested_at,
+        profile=optional_text(payload.get("profile")) or "test",
+        enabled=payload["enabled"] if "enabled" in payload else False,
+        explicit_opt_in=(
+            payload["explicit_opt_in"] if "explicit_opt_in" in payload else False
+        ),
+        max_cycles=payload["max_cycles"] if "max_cycles" in payload else 1,
+        run_worker=payload["run_worker"] if "run_worker" in payload else False,
+        approval=payload.get("approval"),
+    )
+    admission = build_artifact_retention_scheduler_daemon_operator_control_admission(
+        operator_control_request=operator_request,
+        current_process=payload.get("current_process"),
+        checked_at=checked_at,
+    )
+    command_preview = (
+        build_artifact_retention_scheduler_daemon_operator_control_command_preview(
+            operator_control_admission=admission,
+            checked_at=checked_at,
+        )
+    )
+    return build_artifact_retention_scheduler_daemon_operator_control_facade(
+        operator_control_policy=policy,
+        operator_control_command_preview=command_preview,
+        checked_at=checked_at,
+    )
 
 
 def _boolean_from_payload(

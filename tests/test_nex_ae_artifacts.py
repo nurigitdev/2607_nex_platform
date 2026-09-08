@@ -6290,6 +6290,15 @@ def test_artifact_retention_scheduler_config_route_returns_runtime_surface() -> 
     assert payload["api_routes"]["scheduler_daemon_operator_control_preview"] == (
         "/api/v1/artifact-retention/scheduler-daemon-operator-control-preview"
     )
+    assert payload["api_routes"]["scheduler_daemon_operator_control_executions"] == (
+        "/api/v1/artifact-retention/scheduler-daemon-operator-control-executions"
+    )
+    assert payload["api_routes"][
+        "scheduler_daemon_operator_control_execution_transitions"
+    ] == (
+        "/api/v1/artifact-retention/"
+        "scheduler-daemon-operator-control-execution-transitions"
+    )
     assert payload["guardrails"]["queue_admission_requires_ae_api"] is True
     assert unauthorized.status_code == 401
     assert "postgresql://" not in serialized

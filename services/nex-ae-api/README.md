@@ -943,3 +943,8 @@ Artifact library management:
   contract. READY fake-dispatch requests become ADMITTED with only
   EXECUTING/BLOCKED next states, while contract-only, blocked, noop, replayed,
   and conflicting requests become terminal metadata-only evidence.
+- Slice 0594 exposes that state machine through protected AE routes:
+  operator-control executions and execution transitions. The route default is
+  still contract-only, fake dispatch admission is explicit, and the surface
+  performs no supervisor adapter invocation, persistence write, JobQueue enqueue,
+  worker run, subprocess control, or physical deletion.
