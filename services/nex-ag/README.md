@@ -648,6 +648,11 @@ Unified operations:
   proves AG-style requests can reach AE's protected policy/preview routes
   against `NEX_AE_TEST_DATABASE_URL` while remaining preview-only and leaving
   AE supervised-process persistence unchanged.
+- Slice 0587 projects that AE-owned operator-control policy/preview facade into
+  AG as read-only metadata. AG can validate operator intent, call AE policy and
+  preview APIs, and summarize READY/BLOCKED/NOOP status, but it still cannot
+  dispatch supervisor commands, write AE persistence, enqueue AE jobs, or signal
+  AE subprocesses directly.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
