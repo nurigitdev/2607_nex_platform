@@ -686,6 +686,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0580`](slices/0580_s58_ae_scheduler_daemon_supervised_process_activation_closure.md) | `S58-010` S58 AE scheduler daemon supervised process activation closure checkpoint. |
 | [`Slice 0581`](slices/0581_ae_supervised_process_operator_control_boundary_audit.md) | `S59-001` AE supervised process operator-control boundary audit. |
 | [`Slice 0582`](slices/0582_ae_supervised_process_control_policy_contract_schema.md) | `S59-002` AE supervised process control policy contract/schema. |
+| [`Slice 0583`](slices/0583_ae_supervised_process_operator_control_admission_state_machine.md) | `S59-003` AE supervised process operator-control admission state machine. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

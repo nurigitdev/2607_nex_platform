@@ -904,3 +904,8 @@ Artifact library management:
   request contracts. The request envelope carries a safe operator subject,
   idempotency key, reason, profile, bounded max cycles, optional stop approval,
   and mandatory start/restart approval before admission or execution.
+- Slice 0583 adds the pure operator-control admission state machine. It
+  consumes a validated request plus safe current supervised process metadata,
+  returns READY/BLOCKED/NOOP with deterministic reasons, and previews only the
+  next supervisor actions while keeping subprocess execution, database writes,
+  JobQueue enqueue, and AG direct process control disabled.

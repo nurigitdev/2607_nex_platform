@@ -111,6 +111,9 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_POLICY_SCHEMA_VERSION = 
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_REQUEST_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_operator_control_request.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_ADMISSION_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_operator_control_admission.v1"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
@@ -161,6 +164,9 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_ACTIONS = frozenset(
 )
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_MUTATING_ACTIONS = frozenset(
     {"start_daemon", "stop_daemon", "restart_daemon"}
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_ADMISSION_STATUSES = frozenset(
+    {"READY", "BLOCKED", "NOOP"}
 )
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_MODE = "fake_dry_run"
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_ADAPTER_NAME = (
@@ -1304,6 +1310,331 @@ def operator_control_request_summary_line(request: Mapping[str, Any]) -> str:
         f"mutates={int(summary['mutates_process'])} "
         f"approved={int(summary['approval_granted'])} "
         f"max_cycles={summary['max_cycles']}"
+    )
+
+
+def build_artifact_retention_scheduler_daemon_operator_control_admission(
+    *,
+    operator_control_request: Mapping[str, Any],
+    current_process: Mapping[str, Any] | None = None,
+    checked_at: str | None = None,
+) -> dict[str, Any]:
+    request = validate_artifact_retention_scheduler_daemon_operator_control_request(
+        operator_control_request
+    )
+    process = _operator_control_current_process(
+        current_process,
+        requested_at=request["requested_at"],
+        error_code="ae.artifact_retention_scheduler_daemon_operator_control_admission_invalid",
+    )
+    normalized_checked_at = _required_text(
+        checked_at or process["observed_at"] or request["requested_at"],
+        "checked_at",
+        error_code="ae.artifact_retention_scheduler_daemon_operator_control_admission_invalid",
+    )
+    decision = _operator_control_admission_decision(
+        action=request["action"],
+        process_status=process["process_status"],
+    )
+    next_actions = _operator_control_admission_next_supervisor_actions(
+        action=request["action"],
+        admission_status=decision["admission_status"],
+    )
+    admission = {
+        "operator_control_admission_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_ADMISSION_SCHEMA_VERSION
+        ),
+        "operator_control_admission_id": _operator_control_admission_id(
+            scheduler_id=request["scheduler_id"],
+            operator_control_request_id=request["operator_control_request_id"],
+            current_process=process,
+            checked_at=normalized_checked_at,
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": request["scheduler_id"],
+        "operator_control_request_id": request["operator_control_request_id"],
+        "action": request["action"],
+        "admission_status": decision["admission_status"],
+        "decision_reason": decision["decision_reason"],
+        "checked_at": normalized_checked_at,
+        "operator_control_request": deepcopy(request),
+        "current_process": process,
+        "next_supervisor_actions": next_actions,
+        "execution_intent": dict(request["execution_intent"]),
+        "guardrails": _operator_control_admission_guardrails(
+            action=request["action"],
+            admission_status=decision["admission_status"],
+        ),
+        "metadata": _operator_control_admission_metadata(
+            request=request,
+            current_process=process,
+            admission_status=decision["admission_status"],
+            next_supervisor_actions=next_actions,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_operator_control_admission(
+        admission
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_operator_control_admission(
+    admission: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_operator_control_admission_invalid"
+    if not isinstance(admission, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission must be an object."
+            ),
+        )
+    normalized = dict(admission)
+    if set(normalized) != {
+        "operator_control_admission_schema_version",
+        "operator_control_admission_id",
+        "service_id",
+        "scheduler_id",
+        "operator_control_request_id",
+        "action",
+        "admission_status",
+        "decision_reason",
+        "checked_at",
+        "operator_control_request",
+        "current_process",
+        "next_supervisor_actions",
+        "execution_intent",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission keys are invalid."
+            ),
+        )
+    if (
+        normalized.get("operator_control_admission_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_ADMISSION_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_admission_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission schema is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission service id is invalid."
+            ),
+        )
+    request = validate_artifact_retention_scheduler_daemon_operator_control_request(
+        normalized.get("operator_control_request")
+    )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        error_code=error_code,
+    )
+    if scheduler_id != request["scheduler_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission scheduler scope is invalid."
+            ),
+        )
+    request_id = _required_text(
+        normalized.get("operator_control_request_id"),
+        "operator_control_request_id",
+        error_code=error_code,
+    )
+    if request_id != request["operator_control_request_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission request scope is invalid."
+            ),
+        )
+    action = _normalize_daemon_operator_control_action(normalized.get("action"))
+    if action != request["action"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission action scope is invalid."
+            ),
+        )
+    checked_at = _required_text(
+        normalized.get("checked_at"),
+        "checked_at",
+        error_code=error_code,
+    )
+    process = _operator_control_current_process(
+        normalized.get("current_process"),
+        requested_at=request["requested_at"],
+        error_code=error_code,
+    )
+    admission_status = _normalize_operator_control_admission_status(
+        normalized.get("admission_status"),
+        error_code=error_code,
+    )
+    expected_decision = _operator_control_admission_decision(
+        action=action,
+        process_status=process["process_status"],
+    )
+    if admission_status != expected_decision["admission_status"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission status is invalid."
+            ),
+        )
+    if normalized.get("decision_reason") != expected_decision["decision_reason"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission decision reason is invalid."
+            ),
+        )
+    expected_actions = _operator_control_admission_next_supervisor_actions(
+        action=action,
+        admission_status=admission_status,
+    )
+    next_actions = _validate_operator_control_admission_next_supervisor_actions(
+        normalized.get("next_supervisor_actions"),
+        error_code=error_code,
+    )
+    if next_actions != expected_actions:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission supervisor actions are invalid."
+            ),
+        )
+    if normalized.get("execution_intent") != request["execution_intent"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission execution intent is invalid."
+            ),
+        )
+    expected_guardrails = _operator_control_admission_guardrails(
+        action=action,
+        admission_status=admission_status,
+    )
+    if normalized.get("guardrails") != expected_guardrails:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission guardrails are invalid."
+            ),
+        )
+    expected_metadata = _operator_control_admission_metadata(
+        request=request,
+        current_process=process,
+        admission_status=admission_status,
+        next_supervisor_actions=next_actions,
+    )
+    if normalized.get("metadata") != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission metadata is invalid."
+            ),
+        )
+    expected_id = _operator_control_admission_id(
+        scheduler_id=scheduler_id,
+        operator_control_request_id=request_id,
+        current_process=process,
+        checked_at=checked_at,
+    )
+    if normalized.get("operator_control_admission_id") != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission id is invalid."
+            ),
+        )
+    normalized["action"] = action
+    normalized["admission_status"] = admission_status
+    normalized["operator_control_request"] = request
+    normalized["current_process"] = process
+    normalized["next_supervisor_actions"] = next_actions
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_operator_control_admission(
+    admission: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = (
+        validate_artifact_retention_scheduler_daemon_operator_control_admission(
+            admission
+        )
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "operator_control_admission_id": validated[
+            "operator_control_admission_id"
+        ],
+        "operator_control_request_id": validated["operator_control_request_id"],
+        "action": validated["action"],
+        "admission_status": validated["admission_status"],
+        "decision_reason": validated["decision_reason"],
+        "checked_at": validated["checked_at"],
+        "process_status": validated["current_process"]["process_status"],
+        "process_running": validated["current_process"]["process_running"],
+        "next_supervisor_actions": [
+            item["action"] for item in validated["next_supervisor_actions"]
+        ],
+        "ready_for_dispatch": validated["metadata"]["ready_for_dispatch"],
+        "safe_for_ag_projection": validated["metadata"]["safe_for_ag_projection"],
+    }
+
+
+def operator_control_admission_summary_line(admission: Mapping[str, Any]) -> str:
+    summary = summarize_artifact_retention_scheduler_daemon_operator_control_admission(
+        admission
+    )
+    actions = ",".join(summary["next_supervisor_actions"]) or "none"
+    return (
+        "ae_scheduler_daemon_operator_control_admission=pass "
+        f"scheduler_id={summary['scheduler_id']} "
+        f"action={summary['action']} "
+        f"status={summary['admission_status']} "
+        f"reason={summary['decision_reason']} "
+        f"process={summary['process_status']} "
+        f"next={actions}"
     )
 
 
@@ -8066,6 +8397,595 @@ def _operator_control_request_metadata(
         "worker_execution_performed": False,
         "secrets_redacted": True,
     }
+
+
+def _normalize_operator_control_admission_status(
+    value: Any,
+    *,
+    error_code: str,
+) -> str:
+    status = _required_text(
+        value,
+        "admission_status",
+        error_code=error_code,
+    ).upper()
+    if (
+        status
+        not in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_ADMISSION_STATUSES
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission status is invalid."
+            ),
+        )
+    return status
+
+
+def _operator_control_current_process(
+    value: Any,
+    *,
+    requested_at: str,
+    error_code: str,
+) -> dict[str, Any]:
+    if value is None:
+        return _operator_control_current_process_from_parts(
+            process_source="none",
+            process_status="MISSING",
+            daemon_supervised_process_id=None,
+            daemon_supervisor_command_id=None,
+            process_id=None,
+            host_id=None,
+            observed_at=requested_at,
+            error_code=error_code,
+        )
+    if not isinstance(value, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission current process is invalid."
+            ),
+        )
+    process = dict(value)
+    if "daemon_supervised_process_schema_version" in process:
+        return _operator_control_current_process_from_snapshot(
+            process,
+            process_source="snapshot",
+            error_code=error_code,
+        )
+    nested_snapshot = process.get("supervised_process_snapshot")
+    if isinstance(nested_snapshot, Mapping):
+        return _operator_control_current_process_from_snapshot(
+            nested_snapshot,
+            process_source="record",
+            error_code=error_code,
+        )
+    expected_keys = {
+        "process_source",
+        "process_status",
+        "process_running",
+        "daemon_supervised_process_id",
+        "daemon_supervisor_command_id",
+        "process_id",
+        "host_id",
+        "observed_at",
+    }
+    if set(process) == expected_keys:
+        return _operator_control_current_process_from_parts(
+            process_source=process.get("process_source"),
+            process_status=process.get("process_status"),
+            daemon_supervised_process_id=process.get("daemon_supervised_process_id"),
+            daemon_supervisor_command_id=process.get("daemon_supervisor_command_id"),
+            process_id=process.get("process_id"),
+            host_id=process.get("host_id"),
+            observed_at=process.get("observed_at"),
+            expected_process_running=process.get("process_running"),
+            error_code=error_code,
+        )
+    if "process_source" in process:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission current process keys are invalid."
+            ),
+        )
+    if "process_status" in process:
+        return _operator_control_current_process_from_parts(
+            process_source="read_model",
+            process_status=process.get("process_status"),
+            daemon_supervised_process_id=process.get("daemon_supervised_process_id"),
+            daemon_supervisor_command_id=process.get("daemon_supervisor_command_id"),
+            process_id=process.get("process_id"),
+            host_id=process.get("host_id"),
+            observed_at=process.get("observed_at") or requested_at,
+            error_code=error_code,
+        )
+    raise ArtifactHandoffError(
+        status_code=422,
+        error_code=error_code,
+        detail=(
+            "Artifact retention scheduler daemon operator control admission "
+            "current process keys are invalid."
+        ),
+    )
+
+
+def _operator_control_current_process_from_snapshot(
+    snapshot: Mapping[str, Any],
+    *,
+    process_source: str,
+    error_code: str,
+) -> dict[str, Any]:
+    try:
+        validated = (
+            validate_artifact_retention_scheduler_daemon_supervised_process_snapshot(
+                snapshot
+            )
+        )
+    except ArtifactHandoffError as exc:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission current process snapshot is invalid."
+            ),
+        ) from exc
+    return _operator_control_current_process_from_parts(
+        process_source=process_source,
+        process_status=validated["lifecycle"]["process_status"],
+        daemon_supervised_process_id=validated["daemon_supervised_process_id"],
+        daemon_supervisor_command_id=validated["daemon_supervisor_command_id"],
+        process_id=validated["process"]["process_id"],
+        host_id=validated["process"]["host_id"],
+        observed_at=validated["lifecycle"]["observed_at"],
+        error_code=error_code,
+    )
+
+
+def _operator_control_current_process_from_parts(
+    *,
+    process_source: Any,
+    process_status: Any,
+    daemon_supervised_process_id: Any,
+    daemon_supervisor_command_id: Any,
+    process_id: Any,
+    host_id: Any,
+    observed_at: Any,
+    error_code: str,
+    expected_process_running: Any = None,
+) -> dict[str, Any]:
+    source = _required_text(
+        process_source,
+        "process_source",
+        error_code=error_code,
+    )
+    if source not in {"none", "snapshot", "record", "read_model"}:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission current process source is invalid."
+            ),
+        )
+    status = _normalize_daemon_supervised_process_status(
+        process_status,
+        error_code=error_code,
+    )
+    normalized_process_id = _optional_daemon_supervised_process_id(
+        process_id,
+        error_code=error_code,
+    )
+    process_running = status in {"RUNNING", "STOP_REQUESTED", "STALE"}
+    if expected_process_running is not None and (
+        _required_bool(
+            expected_process_running,
+            "process_running",
+            error_code=error_code,
+        )
+        is not process_running
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission current process running flag is invalid."
+            ),
+        )
+    if source == "none" and (
+        status != "MISSING"
+        or daemon_supervised_process_id is not None
+        or daemon_supervisor_command_id is not None
+        or normalized_process_id is not None
+        or host_id is not None
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission empty current process is invalid."
+            ),
+        )
+    if status in {"RUNNING", "STOP_REQUESTED", "STOPPED", "EXITED", "STALE", "FAILED"}:
+        if normalized_process_id is None:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    "admission current process id is required."
+                ),
+            )
+    return {
+        "process_source": source,
+        "process_status": status,
+        "process_running": process_running,
+        "daemon_supervised_process_id": optional_text(daemon_supervised_process_id),
+        "daemon_supervisor_command_id": optional_text(daemon_supervisor_command_id),
+        "process_id": normalized_process_id,
+        "host_id": optional_text(host_id),
+        "observed_at": _required_text(
+            observed_at,
+            "observed_at",
+            error_code=error_code,
+        ),
+    }
+
+
+def _operator_control_admission_decision(
+    *,
+    action: str,
+    process_status: str,
+) -> dict[str, str]:
+    if action == "status_probe":
+        return {
+            "admission_status": "READY",
+            "decision_reason": "status_probe_allowed",
+        }
+    if action == "start_daemon":
+        return _operator_control_start_admission_decision(process_status)
+    if action == "stop_daemon":
+        return _operator_control_stop_admission_decision(process_status)
+    if action == "restart_daemon":
+        return _operator_control_restart_admission_decision(process_status)
+    raise ArtifactHandoffError(
+        status_code=422,
+        error_code="ae.artifact_retention_scheduler_daemon_operator_control_admission_invalid",
+        detail=(
+            "Artifact retention scheduler daemon operator control admission "
+            "action is invalid."
+        ),
+    )
+
+
+def _operator_control_start_admission_decision(process_status: str) -> dict[str, str]:
+    if process_status in {"MISSING", "STOPPED", "EXITED"}:
+        return {
+            "admission_status": "READY",
+            "decision_reason": "start_allowed_no_running_process",
+        }
+    if process_status == "RUNNING":
+        return {
+            "admission_status": "NOOP",
+            "decision_reason": "daemon_already_running",
+        }
+    if process_status == "STALE":
+        return {
+            "admission_status": "BLOCKED",
+            "decision_reason": "stale_process_requires_stop_or_review",
+        }
+    if process_status == "START_REQUESTED":
+        return {
+            "admission_status": "BLOCKED",
+            "decision_reason": "start_already_requested",
+        }
+    if process_status == "STOP_REQUESTED":
+        return {
+            "admission_status": "BLOCKED",
+            "decision_reason": "stop_in_progress",
+        }
+    return {
+        "admission_status": "BLOCKED",
+        "decision_reason": "process_state_requires_review",
+    }
+
+
+def _operator_control_stop_admission_decision(process_status: str) -> dict[str, str]:
+    if process_status in {"RUNNING", "STALE", "START_REQUESTED"}:
+        return {
+            "admission_status": "READY",
+            "decision_reason": "stop_allowed_for_observed_process",
+        }
+    if process_status == "STOP_REQUESTED":
+        return {
+            "admission_status": "BLOCKED",
+            "decision_reason": "stop_already_requested",
+        }
+    if process_status in {"MISSING", "STOPPED", "EXITED"}:
+        return {
+            "admission_status": "NOOP",
+            "decision_reason": "daemon_not_running",
+        }
+    return {
+        "admission_status": "BLOCKED",
+        "decision_reason": "process_state_requires_review",
+    }
+
+
+def _operator_control_restart_admission_decision(
+    process_status: str,
+) -> dict[str, str]:
+    if process_status in {"RUNNING", "STALE"}:
+        return {
+            "admission_status": "READY",
+            "decision_reason": "restart_allowed_stop_then_start",
+        }
+    if process_status == "START_REQUESTED":
+        return {
+            "admission_status": "BLOCKED",
+            "decision_reason": "start_in_progress",
+        }
+    if process_status == "STOP_REQUESTED":
+        return {
+            "admission_status": "BLOCKED",
+            "decision_reason": "stop_in_progress",
+        }
+    if process_status in {"MISSING", "STOPPED", "EXITED"}:
+        return {
+            "admission_status": "BLOCKED",
+            "decision_reason": "restart_requires_running_process",
+        }
+    return {
+        "admission_status": "BLOCKED",
+        "decision_reason": "process_state_requires_review",
+    }
+
+
+def _operator_control_admission_next_supervisor_actions(
+    *,
+    action: str,
+    admission_status: str,
+) -> list[dict[str, Any]]:
+    if admission_status != "READY":
+        return []
+    if action == "status_probe":
+        return [
+            _operator_control_next_supervisor_action(
+                sequence=1,
+                action="status_probe",
+                requires_distinct_evidence=False,
+                requires_follow_up_admission=False,
+            )
+        ]
+    if action == "start_daemon":
+        return [
+            _operator_control_next_supervisor_action(
+                sequence=1,
+                action="start_daemon",
+                requires_distinct_evidence=True,
+                requires_follow_up_admission=False,
+            )
+        ]
+    if action == "stop_daemon":
+        return [
+            _operator_control_next_supervisor_action(
+                sequence=1,
+                action="stop_daemon",
+                requires_distinct_evidence=True,
+                requires_follow_up_admission=False,
+            )
+        ]
+    if action == "restart_daemon":
+        return [
+            _operator_control_next_supervisor_action(
+                sequence=1,
+                action="stop_daemon",
+                requires_distinct_evidence=True,
+                requires_follow_up_admission=False,
+            ),
+            _operator_control_next_supervisor_action(
+                sequence=2,
+                action="start_daemon",
+                requires_distinct_evidence=True,
+                requires_follow_up_admission=True,
+            ),
+        ]
+    return []
+
+
+def _operator_control_next_supervisor_action(
+    *,
+    sequence: int,
+    action: str,
+    requires_distinct_evidence: bool,
+    requires_follow_up_admission: bool,
+) -> dict[str, Any]:
+    return {
+        "sequence": sequence,
+        "action": action,
+        "mutates_process": action in {"start_daemon", "stop_daemon"},
+        "requires_distinct_evidence": requires_distinct_evidence,
+        "requires_follow_up_admission": requires_follow_up_admission,
+    }
+
+
+def _validate_operator_control_admission_next_supervisor_actions(
+    value: Any,
+    *,
+    error_code: str,
+) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control "
+                "admission supervisor actions must be a list."
+            ),
+        )
+    actions: list[dict[str, Any]] = []
+    for index, item in enumerate(value, start=1):
+        if not isinstance(item, Mapping) or set(item) != {
+            "sequence",
+            "action",
+            "mutates_process",
+            "requires_distinct_evidence",
+            "requires_follow_up_admission",
+        }:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    "admission supervisor action keys are invalid."
+                ),
+            )
+        action = _daemon_supervisor_action_for_context(
+            item.get("action"),
+            error_code=error_code,
+        )
+        normalized = _operator_control_next_supervisor_action(
+            sequence=_bounded_positive_int(
+                item.get("sequence"),
+                "sequence",
+                max_value=2,
+                error_code=error_code,
+            ),
+            action=action,
+            requires_distinct_evidence=_required_bool(
+                item.get("requires_distinct_evidence"),
+                "requires_distinct_evidence",
+                error_code=error_code,
+            ),
+            requires_follow_up_admission=_required_bool(
+                item.get("requires_follow_up_admission"),
+                "requires_follow_up_admission",
+                error_code=error_code,
+            ),
+        )
+        if normalized["sequence"] != index:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    "admission supervisor action sequence is invalid."
+                ),
+            )
+        if normalized["mutates_process"] != item.get("mutates_process"):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    "admission supervisor action mutation flag is invalid."
+                ),
+            )
+        actions.append(normalized)
+    return actions
+
+
+def _operator_control_admission_guardrails(
+    *,
+    action: str,
+    admission_status: str,
+) -> dict[str, bool]:
+    mutating = (
+        action
+        in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_MUTATING_ACTIONS
+    )
+    ready = admission_status == "READY"
+    return {
+        "metadata_only": True,
+        "admission_only": True,
+        "operator_request_validated": True,
+        "current_process_metadata_only": True,
+        "ready_allows_supervisor_dispatch": ready,
+        "supervisor_adapter_required": ready and mutating,
+        "restart_decomposes_to_stop_then_start": action == "restart_daemon",
+        "restart_requires_follow_up_admission": action == "restart_daemon",
+        "contract_starts_process": False,
+        "contract_stops_process": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "physical_delete_automation_enabled": False,
+        "test_profile_required": True,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+    }
+
+
+def _operator_control_admission_metadata(
+    *,
+    request: Mapping[str, Any],
+    current_process: Mapping[str, Any],
+    admission_status: str,
+    next_supervisor_actions: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "safe_for_ag_projection": True,
+        "metadata_only": True,
+        "admission_contract_only": True,
+        "operator_control_request_hash": sha256_json(dict(request)),
+        "current_process_hash": sha256_json(dict(current_process)),
+        "mutating_action": request["action"]
+        in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_MUTATING_ACTIONS,
+        "approval_required": request["metadata"]["approval_required"],
+        "approval_granted": request["metadata"]["approval_granted"],
+        "ready_for_dispatch": admission_status == "READY",
+        "blocked": admission_status == "BLOCKED",
+        "noop": admission_status == "NOOP",
+        "next_supervisor_action_count": len(next_supervisor_actions),
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "secrets_redacted": True,
+    }
+
+
+def _operator_control_admission_id(
+    *,
+    scheduler_id: str,
+    operator_control_request_id: str,
+    current_process: Mapping[str, Any],
+    checked_at: str,
+) -> str:
+    basis = {
+        "scheduler_id": scheduler_id,
+        "operator_control_request_id": operator_control_request_id,
+        "current_process_hash": sha256_json(dict(current_process)),
+        "checked_at": checked_at,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            (
+                "nex-ae-api:artifact-retention:operator-control-admission:"
+                f"{sha256_json(basis)}"
+            ),
+        )
+    )
 
 
 def _safe_operator_subject(value: Any, *, error_code: str) -> dict[str, str]:

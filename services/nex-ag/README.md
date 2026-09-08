@@ -632,6 +632,10 @@ Unified operations:
 - Slice 0582 keeps that AG role unchanged while AE defines the canonical
   operator-control policy/request contract that AG must later submit through AE
   APIs with operator subject, idempotency, reason, and start/restart approval.
+- Slice 0583 keeps admission AE-owned. AG may later display the safe admission
+  status and request AE to evaluate operator intent, but READY/BLOCKED/NOOP
+  decisions and supervisor action previews remain AE API outputs, not AG
+  process-control authority.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
