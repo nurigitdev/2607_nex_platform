@@ -120,6 +120,12 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_COMMAND_PREVIEW_SCHEMA_V
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_FACADE_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_operator_control_facade.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_REQUEST_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_operator_control_execution_request.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_RESULT_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_operator_control_execution_result.v1"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
@@ -172,6 +178,12 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_MUTATING_ACTIONS = froze
     {"start_daemon", "stop_daemon", "restart_daemon"}
 )
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_ADMISSION_STATUSES = frozenset(
+    {"READY", "BLOCKED", "NOOP"}
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_MODES = frozenset(
+    {"contract_only", "fake_dry_run_supervisor_persistent_dispatch"}
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_STATUSES = frozenset(
     {"READY", "BLOCKED", "NOOP"}
 )
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_MODE = "fake_dry_run"
@@ -2312,6 +2324,694 @@ def operator_control_facade_summary_line(facade: Mapping[str, Any]) -> str:
         f"status={summary['facade_status']} "
         f"reason={summary['decision_reason']} "
         f"commands={summary['command_count']} "
+        f"next={actions}"
+    )
+
+
+def build_artifact_retention_scheduler_daemon_operator_control_execution_request(
+    *,
+    operator_control_facade: Mapping[str, Any],
+    execution_mode: str = "contract_only",
+    requested_at: str | None = None,
+) -> dict[str, Any]:
+    facade = validate_artifact_retention_scheduler_daemon_operator_control_facade(
+        operator_control_facade
+    )
+    mode = _normalize_operator_control_execution_mode(
+        execution_mode,
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_operator_control_execution_request_invalid"
+        ),
+    )
+    normalized_requested_at = _required_text(
+        requested_at or facade["checked_at"],
+        "requested_at",
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_operator_control_execution_request_invalid"
+        ),
+    )
+    request = facade["operator_control_request"]
+    admission = facade["operator_control_admission"]
+    preview = facade["operator_control_command_preview"]
+    command_previews = preview["supervisor_command_previews"]
+    execution_request = {
+        "operator_control_execution_request_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_REQUEST_SCHEMA_VERSION
+        ),
+        "operator_control_execution_request_id": (
+            _operator_control_execution_request_id(
+                scheduler_id=facade["scheduler_id"],
+                operator_control_facade_id=facade["operator_control_facade_id"],
+                execution_mode=mode,
+                requested_at=normalized_requested_at,
+            )
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": facade["scheduler_id"],
+        "operator_control_facade_id": facade["operator_control_facade_id"],
+        "operator_control_request_id": facade["operator_control_request_id"],
+        "operator_control_admission_id": facade["operator_control_admission_id"],
+        "operator_control_command_preview_id": facade[
+            "operator_control_command_preview_id"
+        ],
+        "action": facade["action"],
+        "facade_status": facade["facade_status"],
+        "execution_mode": mode,
+        "requested_at": normalized_requested_at,
+        "operator_subject": deepcopy(request["operator_subject"]),
+        "idempotency_key": request["idempotency_key"],
+        "reason_hash": sha256_json(request["reason"]),
+        "operator_control_facade": deepcopy(facade),
+        "supervisor_command_count": len(command_previews),
+        "supervisor_actions": [item["action"] for item in command_previews],
+        "guardrails": _operator_control_execution_request_guardrails(
+            facade=facade,
+            execution_mode=mode,
+        ),
+        "metadata": _operator_control_execution_request_metadata(
+            facade=facade,
+            execution_mode=mode,
+            requested_at=normalized_requested_at,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_operator_control_execution_request(
+        execution_request
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_operator_control_execution_request(
+    execution_request: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = (
+        "ae.artifact_retention_scheduler_daemon_operator_control_execution_request_invalid"
+    )
+    if not isinstance(execution_request, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "request must be an object."
+            ),
+        )
+    normalized = dict(execution_request)
+    if set(normalized) != {
+        "operator_control_execution_request_schema_version",
+        "operator_control_execution_request_id",
+        "service_id",
+        "scheduler_id",
+        "operator_control_facade_id",
+        "operator_control_request_id",
+        "operator_control_admission_id",
+        "operator_control_command_preview_id",
+        "action",
+        "facade_status",
+        "execution_mode",
+        "requested_at",
+        "operator_subject",
+        "idempotency_key",
+        "reason_hash",
+        "operator_control_facade",
+        "supervisor_command_count",
+        "supervisor_actions",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "request keys are invalid."
+            ),
+        )
+    if (
+        normalized.get("operator_control_execution_request_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_REQUEST_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_request_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "request schema is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "request service id is invalid."
+            ),
+        )
+    facade = validate_artifact_retention_scheduler_daemon_operator_control_facade(
+        normalized.get("operator_control_facade")
+    )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        error_code=error_code,
+    )
+    if scheduler_id != facade["scheduler_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "request scheduler scope is invalid."
+            ),
+        )
+    _ensure_operator_control_execution_source_scope(
+        payload=normalized,
+        facade=facade,
+        error_code=error_code,
+        label="request",
+    )
+    action = _normalize_daemon_operator_control_action(normalized.get("action"))
+    if action != facade["action"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "request action scope is invalid."
+            ),
+        )
+    facade_status = _normalize_operator_control_admission_status(
+        normalized.get("facade_status"),
+        error_code=error_code,
+    )
+    if facade_status != facade["facade_status"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "request facade status is invalid."
+            ),
+        )
+    execution_mode = _normalize_operator_control_execution_mode(
+        normalized.get("execution_mode"),
+        error_code=error_code,
+    )
+    requested_at = _required_text(
+        normalized.get("requested_at"),
+        "requested_at",
+        error_code=error_code,
+    )
+    operator_subject = _safe_operator_subject(
+        normalized.get("operator_subject"),
+        error_code=error_code,
+    )
+    request = facade["operator_control_request"]
+    if operator_subject != request["operator_subject"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "request operator subject is invalid."
+            ),
+        )
+    idempotency_key = _required_text(
+        normalized.get("idempotency_key"),
+        "idempotency_key",
+        error_code=error_code,
+    )
+    if idempotency_key != request["idempotency_key"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "request idempotency scope is invalid."
+            ),
+        )
+    if normalized.get("reason_hash") != sha256_json(request["reason"]):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "request reason hash is invalid."
+            ),
+        )
+    command_previews = facade["operator_control_command_preview"][
+        "supervisor_command_previews"
+    ]
+    supervisor_actions = [item["action"] for item in command_previews]
+    command_count = _bounded_non_negative_operator_control_count(
+        normalized.get("supervisor_command_count"),
+        "supervisor_command_count",
+        error_code=error_code,
+    )
+    if command_count != len(command_previews):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "request command count is invalid."
+            ),
+        )
+    if normalized.get("supervisor_actions") != supervisor_actions:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "request supervisor actions are invalid."
+            ),
+        )
+    if normalized.get("guardrails") != _operator_control_execution_request_guardrails(
+        facade=facade,
+        execution_mode=execution_mode,
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "request guardrails are invalid."
+            ),
+        )
+    expected_metadata = _operator_control_execution_request_metadata(
+        facade=facade,
+        execution_mode=execution_mode,
+        requested_at=requested_at,
+    )
+    if normalized.get("metadata") != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "request metadata is invalid."
+            ),
+        )
+    expected_id = _operator_control_execution_request_id(
+        scheduler_id=scheduler_id,
+        operator_control_facade_id=facade["operator_control_facade_id"],
+        execution_mode=execution_mode,
+        requested_at=requested_at,
+    )
+    if normalized.get("operator_control_execution_request_id") != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "request id is invalid."
+            ),
+        )
+    normalized["action"] = action
+    normalized["facade_status"] = facade_status
+    normalized["execution_mode"] = execution_mode
+    normalized["operator_subject"] = operator_subject
+    normalized["idempotency_key"] = idempotency_key
+    normalized["operator_control_facade"] = facade
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_operator_control_execution_request(
+    execution_request: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = (
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_request(
+            execution_request
+        )
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "operator_control_execution_request_id": validated[
+            "operator_control_execution_request_id"
+        ],
+        "operator_control_facade_id": validated["operator_control_facade_id"],
+        "action": validated["action"],
+        "facade_status": validated["facade_status"],
+        "execution_mode": validated["execution_mode"],
+        "requested_at": validated["requested_at"],
+        "operator_actor_id": validated["operator_subject"]["actor_id"],
+        "idempotency_key": validated["idempotency_key"],
+        "supervisor_command_count": validated["supervisor_command_count"],
+        "supervisor_actions": list(validated["supervisor_actions"]),
+        "ready_for_execution": validated["metadata"]["ready_for_execution"],
+        "safe_for_ag_projection": validated["metadata"]["safe_for_ag_projection"],
+    }
+
+
+def operator_control_execution_request_summary_line(
+    execution_request: Mapping[str, Any],
+) -> str:
+    summary = (
+        summarize_artifact_retention_scheduler_daemon_operator_control_execution_request(
+            execution_request
+        )
+    )
+    actions = ",".join(summary["supervisor_actions"]) or "none"
+    return (
+        "ae_scheduler_daemon_operator_control_execution_request=pass "
+        f"scheduler_id={summary['scheduler_id']} "
+        f"action={summary['action']} "
+        f"facade_status={summary['facade_status']} "
+        f"mode={summary['execution_mode']} "
+        f"ready={int(summary['ready_for_execution'])} "
+        f"commands={summary['supervisor_command_count']} "
+        f"next={actions}"
+    )
+
+
+def build_artifact_retention_scheduler_daemon_operator_control_execution_result(
+    *,
+    operator_control_execution_request: Mapping[str, Any],
+    observed_at: str | None = None,
+) -> dict[str, Any]:
+    execution_request = (
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_request(
+            operator_control_execution_request
+        )
+    )
+    normalized_observed_at = _required_text(
+        observed_at or execution_request["requested_at"],
+        "observed_at",
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_operator_control_execution_result_invalid"
+        ),
+    )
+    decision = _operator_control_execution_result_decision(
+        execution_request=execution_request
+    )
+    result = {
+        "operator_control_execution_result_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_RESULT_SCHEMA_VERSION
+        ),
+        "operator_control_execution_result_id": (
+            _operator_control_execution_result_id(
+                scheduler_id=execution_request["scheduler_id"],
+                operator_control_execution_request_id=execution_request[
+                    "operator_control_execution_request_id"
+                ],
+                execution_status=decision["execution_status"],
+                observed_at=normalized_observed_at,
+            )
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": execution_request["scheduler_id"],
+        "operator_control_execution_request_id": execution_request[
+            "operator_control_execution_request_id"
+        ],
+        "operator_control_facade_id": execution_request["operator_control_facade_id"],
+        "operator_control_request_id": execution_request["operator_control_request_id"],
+        "operator_control_admission_id": execution_request[
+            "operator_control_admission_id"
+        ],
+        "operator_control_command_preview_id": execution_request[
+            "operator_control_command_preview_id"
+        ],
+        "action": execution_request["action"],
+        "execution_mode": execution_request["execution_mode"],
+        "execution_status": decision["execution_status"],
+        "decision_reason": decision["decision_reason"],
+        "observed_at": normalized_observed_at,
+        "operator_control_execution_request": deepcopy(execution_request),
+        "supervisor_dispatch_results": [],
+        "guardrails": _operator_control_execution_result_guardrails(
+            execution_request=execution_request,
+            execution_status=decision["execution_status"],
+        ),
+        "metadata": _operator_control_execution_result_metadata(
+            execution_request=execution_request,
+            execution_status=decision["execution_status"],
+            observed_at=normalized_observed_at,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_operator_control_execution_result(
+        result
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_operator_control_execution_result(
+    execution_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = (
+        "ae.artifact_retention_scheduler_daemon_operator_control_execution_result_invalid"
+    )
+    if not isinstance(execution_result, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "result must be an object."
+            ),
+        )
+    normalized = dict(execution_result)
+    if set(normalized) != {
+        "operator_control_execution_result_schema_version",
+        "operator_control_execution_result_id",
+        "service_id",
+        "scheduler_id",
+        "operator_control_execution_request_id",
+        "operator_control_facade_id",
+        "operator_control_request_id",
+        "operator_control_admission_id",
+        "operator_control_command_preview_id",
+        "action",
+        "execution_mode",
+        "execution_status",
+        "decision_reason",
+        "observed_at",
+        "operator_control_execution_request",
+        "supervisor_dispatch_results",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "result keys are invalid."
+            ),
+        )
+    if (
+        normalized.get("operator_control_execution_result_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_RESULT_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_result_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "result schema is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "result service id is invalid."
+            ),
+        )
+    execution_request = (
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_request(
+            normalized.get("operator_control_execution_request")
+        )
+    )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        error_code=error_code,
+    )
+    if scheduler_id != execution_request["scheduler_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "result scheduler scope is invalid."
+            ),
+        )
+    _ensure_operator_control_execution_source_scope(
+        payload=normalized,
+        facade=execution_request["operator_control_facade"],
+        error_code=error_code,
+        label="result",
+    )
+    if (
+        normalized.get("operator_control_execution_request_id")
+        != execution_request["operator_control_execution_request_id"]
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "result request scope is invalid."
+            ),
+        )
+    action = _normalize_daemon_operator_control_action(normalized.get("action"))
+    if action != execution_request["action"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "result action scope is invalid."
+            ),
+        )
+    execution_mode = _normalize_operator_control_execution_mode(
+        normalized.get("execution_mode"),
+        error_code=error_code,
+    )
+    if execution_mode != execution_request["execution_mode"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "result mode scope is invalid."
+            ),
+        )
+    execution_status = _normalize_operator_control_execution_status(
+        normalized.get("execution_status"),
+        error_code=error_code,
+    )
+    expected_decision = _operator_control_execution_result_decision(
+        execution_request=execution_request
+    )
+    if execution_status != expected_decision["execution_status"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "result status is invalid."
+            ),
+        )
+    if normalized.get("decision_reason") != expected_decision["decision_reason"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "result decision reason is invalid."
+            ),
+        )
+    observed_at = _required_text(
+        normalized.get("observed_at"),
+        "observed_at",
+        error_code=error_code,
+    )
+    dispatch_results = _operator_control_execution_result_dispatch_results(
+        normalized.get("supervisor_dispatch_results"),
+        error_code=error_code,
+    )
+    if normalized.get("guardrails") != _operator_control_execution_result_guardrails(
+        execution_request=execution_request,
+        execution_status=execution_status,
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "result guardrails are invalid."
+            ),
+        )
+    expected_metadata = _operator_control_execution_result_metadata(
+        execution_request=execution_request,
+        execution_status=execution_status,
+        observed_at=observed_at,
+    )
+    if normalized.get("metadata") != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "result metadata is invalid."
+            ),
+        )
+    expected_id = _operator_control_execution_result_id(
+        scheduler_id=scheduler_id,
+        operator_control_execution_request_id=execution_request[
+            "operator_control_execution_request_id"
+        ],
+        execution_status=execution_status,
+        observed_at=observed_at,
+    )
+    if normalized.get("operator_control_execution_result_id") != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "result id is invalid."
+            ),
+        )
+    normalized["action"] = action
+    normalized["execution_mode"] = execution_mode
+    normalized["execution_status"] = execution_status
+    normalized["operator_control_execution_request"] = execution_request
+    normalized["supervisor_dispatch_results"] = dispatch_results
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_operator_control_execution_result(
+    execution_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = (
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_result(
+            execution_result
+        )
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "operator_control_execution_result_id": validated[
+            "operator_control_execution_result_id"
+        ],
+        "operator_control_execution_request_id": validated[
+            "operator_control_execution_request_id"
+        ],
+        "action": validated["action"],
+        "execution_mode": validated["execution_mode"],
+        "execution_status": validated["execution_status"],
+        "decision_reason": validated["decision_reason"],
+        "observed_at": validated["observed_at"],
+        "dispatch_count": validated["metadata"]["dispatch_count"],
+        "supervisor_actions": list(validated["metadata"]["supervisor_actions"]),
+        "ready_for_execution": validated["metadata"]["ready_for_execution"],
+        "safe_for_ag_projection": validated["metadata"]["safe_for_ag_projection"],
+    }
+
+
+def operator_control_execution_result_summary_line(
+    execution_result: Mapping[str, Any],
+) -> str:
+    summary = (
+        summarize_artifact_retention_scheduler_daemon_operator_control_execution_result(
+            execution_result
+        )
+    )
+    actions = ",".join(summary["supervisor_actions"]) or "none"
+    return (
+        "ae_scheduler_daemon_operator_control_execution_result=pass "
+        f"scheduler_id={summary['scheduler_id']} "
+        f"action={summary['action']} "
+        f"status={summary['execution_status']} "
+        f"reason={summary['decision_reason']} "
+        f"dispatches={summary['dispatch_count']} "
         f"next={actions}"
     )
 
@@ -10019,6 +10719,353 @@ def _operator_control_facade_id(
             ),
         )
     )
+
+
+def _normalize_operator_control_execution_mode(value: Any, *, error_code: str) -> str:
+    mode = _required_text(
+        value,
+        "execution_mode",
+        error_code=error_code,
+    ).lower()
+    if (
+        mode
+        not in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_MODES
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "mode is invalid."
+            ),
+        )
+    return mode
+
+
+def _normalize_operator_control_execution_status(
+    value: Any,
+    *,
+    error_code: str,
+) -> str:
+    status = _required_text(
+        value,
+        "execution_status",
+        error_code=error_code,
+    ).upper()
+    if (
+        status
+        not in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_STATUSES
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "status is invalid."
+            ),
+        )
+    return status
+
+
+def _operator_control_execution_request_id(
+    *,
+    scheduler_id: str,
+    operator_control_facade_id: str,
+    execution_mode: str,
+    requested_at: str,
+) -> str:
+    basis = {
+        "scheduler_id": scheduler_id,
+        "operator_control_facade_id": operator_control_facade_id,
+        "execution_mode": execution_mode,
+        "requested_at": requested_at,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            (
+                "nex-ae-api:artifact-retention:operator-control-execution-request:"
+                f"{sha256_json(basis)}"
+            ),
+        )
+    )
+
+
+def _operator_control_execution_result_id(
+    *,
+    scheduler_id: str,
+    operator_control_execution_request_id: str,
+    execution_status: str,
+    observed_at: str,
+) -> str:
+    basis = {
+        "scheduler_id": scheduler_id,
+        "operator_control_execution_request_id": operator_control_execution_request_id,
+        "execution_status": execution_status,
+        "observed_at": observed_at,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            (
+                "nex-ae-api:artifact-retention:operator-control-execution-result:"
+                f"{sha256_json(basis)}"
+            ),
+        )
+    )
+
+
+def _ensure_operator_control_execution_source_scope(
+    *,
+    payload: Mapping[str, Any],
+    facade: Mapping[str, Any],
+    error_code: str,
+    label: str,
+) -> None:
+    for field_name in (
+        "operator_control_facade_id",
+        "operator_control_request_id",
+        "operator_control_admission_id",
+        "operator_control_command_preview_id",
+    ):
+        if payload.get(field_name) != facade[field_name]:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    f"execution {label} source scope is invalid."
+                ),
+            )
+
+
+def _bounded_non_negative_operator_control_count(
+    value: Any,
+    field_name: str,
+    *,
+    error_code: str,
+) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > 2:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                f"{field_name} is invalid."
+            ),
+        )
+    return value
+
+
+def _operator_control_execution_request_guardrails(
+    *,
+    facade: Mapping[str, Any],
+    execution_mode: str,
+) -> dict[str, bool]:
+    ready = facade["facade_status"] == "READY"
+    return {
+        "metadata_only": True,
+        "execution_request_only": True,
+        "operator_control_facade_validated": True,
+        "requires_ready_facade": True,
+        "ready_facade": ready,
+        "requires_supervisor_command_preview": True,
+        "has_supervisor_command_preview": (
+            facade["metadata"]["command_preview_count"] > 0
+        ),
+        "contract_only_mode": execution_mode == "contract_only",
+        "fake_dry_run_supervisor_dispatch_mode": (
+            execution_mode == "fake_dry_run_supervisor_persistent_dispatch"
+        ),
+        "supervisor_dispatch_performed": False,
+        "supervisor_adapter_invoked": False,
+        "supervisor_result_persisted": False,
+        "supervisor_event_persisted": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "test_profile_required": True,
+        "bounded_max_cycles_required": True,
+        "restart_decomposes_to_stop_then_start": facade["action"]
+        == "restart_daemon",
+        "restart_requires_follow_up_admission": facade["action"]
+        == "restart_daemon",
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+        "physical_delete_automation_enabled": False,
+        "secrets_redacted": True,
+    }
+
+
+def _operator_control_execution_request_metadata(
+    *,
+    facade: Mapping[str, Any],
+    execution_mode: str,
+    requested_at: str,
+) -> dict[str, Any]:
+    command_count = facade["metadata"]["command_preview_count"]
+    return {
+        "safe_for_ag_projection": True,
+        "metadata_only": True,
+        "execution_contract_only": True,
+        "operator_control_facade_hash": sha256_json(dict(facade)),
+        "requested_at": requested_at,
+        "source_facade_status": facade["facade_status"],
+        "ready_facade": facade["facade_status"] == "READY",
+        "blocked_facade": facade["facade_status"] == "BLOCKED",
+        "noop_facade": facade["facade_status"] == "NOOP",
+        "ready_for_execution": (
+            facade["facade_status"] == "READY"
+            and command_count > 0
+            and execution_mode != "contract_only"
+        ),
+        "supervisor_command_count": command_count,
+        "supervisor_actions": list(facade["metadata"]["supervisor_actions"]),
+        "supervisor_dispatch_performed": False,
+        "supervisor_adapter_invoked": False,
+        "supervisor_result_persisted": False,
+        "supervisor_event_persisted": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "secrets_redacted": True,
+    }
+
+
+def _operator_control_execution_result_decision(
+    *,
+    execution_request: Mapping[str, Any],
+) -> dict[str, str]:
+    if execution_request["facade_status"] == "BLOCKED":
+        return {
+            "execution_status": "BLOCKED",
+            "decision_reason": execution_request["operator_control_facade"][
+                "operator_control_admission"
+            ]["decision_reason"],
+        }
+    if execution_request["facade_status"] == "NOOP":
+        return {
+            "execution_status": "NOOP",
+            "decision_reason": execution_request["operator_control_facade"][
+                "operator_control_admission"
+            ]["decision_reason"],
+        }
+    if execution_request["execution_mode"] == "contract_only":
+        return {
+            "execution_status": "BLOCKED",
+            "decision_reason": "execution_contract_only",
+        }
+    return {
+        "execution_status": "READY",
+        "decision_reason": "ready_for_fake_dry_run_supervisor_dispatch",
+    }
+
+
+def _operator_control_execution_result_dispatch_results(
+    value: Any,
+    *,
+    error_code: str,
+) -> list[dict[str, Any]]:
+    if value != []:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "result dispatch results must be empty before execution wiring."
+            ),
+        )
+    return []
+
+
+def _operator_control_execution_result_guardrails(
+    *,
+    execution_request: Mapping[str, Any],
+    execution_status: str,
+) -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "execution_result_only": True,
+        "operator_control_execution_request_validated": True,
+        "ready_status_reserved_for_fake_dry_run_dispatch": (
+            execution_status == "READY"
+        ),
+        "blocked_until_dispatch_wiring": execution_status == "BLOCKED",
+        "noop_without_dispatch": execution_status == "NOOP",
+        "supervisor_dispatch_performed": False,
+        "supervisor_adapter_invoked": False,
+        "supervisor_result_persisted": False,
+        "supervisor_event_persisted": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "test_profile_required": True,
+        "bounded_max_cycles_required": True,
+        "restart_decomposes_to_stop_then_start": execution_request["action"]
+        == "restart_daemon",
+        "restart_requires_follow_up_admission": execution_request["action"]
+        == "restart_daemon",
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+        "physical_delete_automation_enabled": False,
+        "secrets_redacted": True,
+    }
+
+
+def _operator_control_execution_result_metadata(
+    *,
+    execution_request: Mapping[str, Any],
+    execution_status: str,
+    observed_at: str,
+) -> dict[str, Any]:
+    return {
+        "safe_for_ag_projection": True,
+        "metadata_only": True,
+        "execution_contract_only": True,
+        "operator_control_execution_request_hash": sha256_json(
+            dict(execution_request)
+        ),
+        "observed_at": observed_at,
+        "source_facade_status": execution_request["facade_status"],
+        "execution_mode": execution_request["execution_mode"],
+        "execution_status": execution_status,
+        "ready_for_execution": execution_status == "READY",
+        "blocked": execution_status == "BLOCKED",
+        "noop": execution_status == "NOOP",
+        "dispatch_count": 0,
+        "supervisor_command_count": execution_request["supervisor_command_count"],
+        "supervisor_actions": list(execution_request["supervisor_actions"]),
+        "supervisor_dispatch_performed": False,
+        "supervisor_adapter_invoked": False,
+        "supervisor_result_persisted": False,
+        "supervisor_event_persisted": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "secrets_redacted": True,
+    }
 
 
 def _safe_operator_subject(value: Any, *, error_code: str) -> dict[str, str]:

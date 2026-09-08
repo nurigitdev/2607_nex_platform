@@ -671,6 +671,11 @@ Unified operations:
 - Slice 0591 starts S60 while keeping AG as dispatcher/projection only. AG may
   later submit execution intent through AE, but AE remains the only service that
   invokes supervisor adapters or writes supervisor execution evidence.
+- Slice 0592 keeps that boundary while AE defines the canonical execution
+  request/result contract. AG should treat execution evidence as AE-owned
+  metadata, submit intent through AE APIs in later slices, and never directly
+  invoke adapters, write AE persistence, enqueue AE jobs, or signal AE
+  subprocesses.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

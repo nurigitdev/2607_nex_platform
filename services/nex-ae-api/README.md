@@ -934,3 +934,8 @@ Artifact library management:
   boundary. AE remains the only supervisor execution and persistence owner; the
   first executable mode is fake dry-run supervisor dispatch with persistent
   metadata-only evidence.
+- Slice 0592 adds the AE-owned operator-control execution request/result
+  contracts. They consume the S59 facade, preserve ready/blocked/noop and
+  restart stop-then-start intent, reserve the fake dry-run supervisor dispatch
+  mode, and still perform no route dispatch, adapter invocation, database write,
+  JobQueue enqueue, worker run, subprocess control, or physical deletion.
