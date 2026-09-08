@@ -960,3 +960,12 @@ Artifact library management:
   (`persist_execution_state=true`, `persist_transition=true`) so the default
   metadata-only route behavior remains stable, while operators can query stored
   execution states and transition detail through protected AE APIs.
+- Slice 0599 proves those persisted execution read models against the real AE
+  test DB through AG routes. The smoke inserts one fake dry-run dispatch state
+  and one transition, reads them through AG collection/detail projections, then
+  removes the targeted rows with `states=1`, `transitions=1`,
+  `cleanup_states=1`, `cleanup_transitions=1`, and `live_db=true` evidence.
+- Slice 0600 closes S60 with a quality-gate checkpoint over the AE-owned
+  operator-control execution surface, including explicit persistence flags,
+  protected PostgreSQL smoke hooks, read-only AG projection, redaction posture,
+  and the continued absence of real subprocess control or physical deletion.

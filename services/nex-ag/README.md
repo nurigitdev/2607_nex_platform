@@ -692,6 +692,20 @@ Unified operations:
   AG should consume the protected collection/detail routes as read-only
   projection data and still must not write AE tables or control AE processes
   directly.
+- Slice 0597 adds AG projection builders and AE client methods for
+  operator-control execution collection/detail read models while excluding raw
+  execution requests, nested transition state payloads, and idempotency keys.
+- Slice 0598 exposes those projections through protected AG admin routes for
+  operator-control execution collection/detail evidence. The routes validate
+  service, action, execution status, idempotency status, and limit filters, then
+  call AE APIs as read-only sources.
+- Slice 0599 proves the AG routes against an AE service app backed by
+  `NEX_AE_TEST_DATABASE_URL`. The protected smoke writes one explicit fake
+  dry-run execution state and transition, reads them through AG, and cleans up
+  the targeted test rows with `states=1`, `transitions=1`, `cleanup_states=1`,
+  `cleanup_transitions=1`, and `live_db=true` evidence.
+- Slice 0600 closes S60 with AG still acting only as a read-only operator
+  projection/admin route surface over AE-owned execution persistence.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
