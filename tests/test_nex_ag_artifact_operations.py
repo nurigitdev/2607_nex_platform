@@ -18,6 +18,7 @@ from nex_ag.artifact_operations import (
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUN_COLLECTION_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUN_DETAIL_PROJECTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISOR_COLLECTION_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISOR_DETAIL_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISED_PROCESS_COLLECTION_PROJECTION_SCHEMA_VERSION,
@@ -40,6 +41,7 @@ from nex_ag.artifact_operations import (
     build_artifact_operation_retention_automation_projection,
     build_artifact_operation_retention_batch_projection,
     build_artifact_operation_retention_daemon_projection,
+    build_artifact_operation_retention_daemon_operator_control_projection,
     build_artifact_operation_retention_daemon_run_collection_projection,
     build_artifact_operation_retention_daemon_run_detail_projection,
     build_artifact_operation_retention_daemon_supervised_process_collection_projection,
@@ -59,6 +61,7 @@ from nex_ag.artifact_operations import (
     summarize_artifact_retention_batch_operations,
     summarize_artifact_retention_automation_operations,
     summarize_artifact_retention_daemon_operations,
+    summarize_artifact_retention_daemon_operator_control_projection,
     summarize_artifact_retention_daemon_lifecycle_projection,
     summarize_artifact_retention_daemon_run_detail,
     summarize_artifact_retention_daemon_run_operations,
@@ -1244,6 +1247,69 @@ def artifact_retention_scheduler_daemon_dispatch_payload(
             "physical_delete_automation_enabled": False,
         },
     }
+
+
+def artifact_retention_scheduler_daemon_operator_control_policy_payload() -> (
+    dict[str, Any]
+):
+    return (
+        artifact_operations._empty_artifact_retention_scheduler_daemon_operator_control_policy_payload(
+            checked_at="2026-09-03T02:00:00Z"
+        )
+    )
+
+
+def artifact_retention_scheduler_daemon_operator_control_facade_payload(
+    *,
+    action: str = "restart_daemon",
+    current_process: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    process = current_process or {
+        "process_source": "read_model",
+        "process_status": "RUNNING",
+        "process_running": True,
+        "daemon_supervised_process_id": "daemon-supervised-process-0587",
+        "daemon_supervisor_command_id": "daemon-supervisor-command-0587",
+        "process_id": 5870,
+        "host_id": "ae-worker-0587",
+        "observed_at": "2026-09-03T02:00:00Z",
+    }
+    facade = (
+        artifact_operations._memory_artifact_retention_scheduler_daemon_operator_control_preview_payload(
+            action=action,
+            operator_subject={
+                "actor_type": "operator",
+                "actor_id": "ag-retention-operator",
+                "tenant_id": "tenant-0409",
+                "workspace_id": "workspace-0409",
+                "database_url": "DATABASE_URL_SHOULD_NOT_LEAK",
+            },
+            idempotency_key="operator-control-idem-0587",
+            reason="preview restart",
+            requested_at="2026-09-03T02:00:00Z",
+            checked_at="2026-09-03T02:00:00Z",
+            profile="test",
+            enabled=True,
+            explicit_opt_in=True,
+            max_cycles=2,
+            run_worker=False,
+            approval={
+                "approved": True,
+                "approved_by": "ag-retention-lead",
+                "approved_at": "2026-09-03T01:59:00Z",
+                "approval_reason": "maintenance",
+            },
+            current_process=process,
+        )
+    )
+    facade["operator_control_command_preview"]["supervisor_command_previews"][0][
+        "supervisor_command"
+    ]["private_path"] = "/data/nex-platform/ae/private"
+    facade["operator_control_admission"]["current_process"][
+        "database_url"
+    ] = "DATABASE_URL_SHOULD_NOT_LEAK"
+    facade["operator_control_request"]["reason"] = "SECRET_SYSTEM_PROMPT"
+    return facade
 
 
 def artifact_retention_scheduler_daemon_run_record_payload(
@@ -5790,6 +5856,178 @@ def test_artifact_retention_scheduler_daemon_supervised_process_projections_summ
     assert degraded_projection["source_status"]["errors"][0]["status_code"] == 503
 
 
+def test_artifact_retention_scheduler_daemon_operator_control_projection_redacts_and_summarizes() -> (
+    None
+):
+    policy = artifact_retention_scheduler_daemon_operator_control_policy_payload()
+    facade = artifact_retention_scheduler_daemon_operator_control_facade_payload()
+
+    projection = build_artifact_operation_retention_daemon_operator_control_projection(
+        policy=policy,
+        facade=facade,
+        source_client=artifact_client(),
+        request_trace_id=TRACE_ID,
+    )
+    summary = summarize_artifact_retention_daemon_operator_control_projection(
+        policy=projection["policy"],
+        facade=projection["facade"] or {},
+    )
+    sparse_projection = (
+        build_artifact_operation_retention_daemon_operator_control_projection(
+            policy={},
+            facade={},
+            source_client=artifact_client(),
+            source_errors=[
+                AeArtifactOperationsError(
+                    error_code=(
+                        "ag.ae_artifact_retention_daemon_operator_control_failed"
+                    ),
+                    detail="AE operator-control source unavailable",
+                    status_code=503,
+                )
+            ],
+        )
+    )
+
+    assert projection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["operation_type"] == (
+        "ae_artifact_retention_scheduler_daemon_operator_control"
+    )
+    assert projection["summary"] == summary
+    assert projection["summary"]["supported_action_count"] == 4
+    assert projection["summary"]["mutating_action_count"] == 3
+    assert projection["summary"]["restart_supported"] is True
+    assert projection["summary"]["action"] == "restart_daemon"
+    assert projection["summary"]["facade_status"] == "READY"
+    assert projection["summary"]["command_preview_count"] == 2
+    assert projection["summary"]["supervisor_actions"] == [
+        "stop_daemon",
+        "start_daemon",
+    ]
+    assert projection["facade"]["operator_control_request"][
+        "idempotency_key_present"
+    ] is True
+    assert projection["facade"]["operator_control_request"][
+        "reason_present"
+    ] is True
+    assert projection["facade"]["operator_control_request"]["operator_subject"] == {
+        "actor_type": "operator",
+        "actor_id": "ag-retention-operator",
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+    }
+    assert projection["facade"]["operator_control_admission"][
+        "current_process"
+    ]["process_status"] == "RUNNING"
+    assert projection["facade"]["operator_control_command_preview"][
+        "supervisor_command_previews"
+    ][0]["command_action"] == "stop_daemon"
+    assert projection["operator_guidance"]["preview_only"] is True
+    assert projection["operator_guidance"][
+        "ag_direct_process_control_allowed"
+    ] is False
+    assert projection["operator_guidance"][
+        "ag_direct_database_write_allowed"
+    ] is False
+    assert projection["source_status"]["operator_control_policy_loaded"] is True
+    assert projection["source_status"]["operator_control_facade_loaded"] is True
+    assert sparse_projection["projection_status"] == "DEGRADED"
+    assert sparse_projection["summary"]["policy_loaded"] is False
+    assert sparse_projection["source_status"][
+        "operator_control_policy_loaded"
+    ] is False
+    assert "operator-control-idem-0587" not in str(projection)
+    assert "SECRET_SYSTEM_PROMPT" not in str(projection)
+    assert "DATABASE_URL_SHOULD_NOT_LEAK" not in str(projection)
+    assert "/data/nex-platform" not in str(projection)
+    assert_artifact_operation_projection_redacted(projection)
+
+
+def test_artifact_retention_scheduler_daemon_operator_control_projection_handles_sparse_edges() -> (
+    None
+):
+    policy = {
+        "operator_control_policy_id": "operator-control-policy-sparse",
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "supported_actions": [
+            {"action": "status_probe"},
+            {"action": "unknown"},
+            "ignored-action",
+        ],
+    }
+    facade = {
+        "operator_control_facade_id": "operator-control-facade-sparse",
+        "operator_control_policy_id": "operator-control-policy-sparse",
+        "operator_control_request": "not-a-request",
+        "operator_control_admission": {
+            "admission_status": "blocked",
+            "current_process": "not-a-process",
+            "next_supervisor_actions": ["ignored-action"],
+        },
+        "operator_control_command_preview": {
+            "preview_status": "blocked",
+            "supervisor_command_previews": ["ignored-preview"],
+            "metadata": {"ready_for_dispatch": False},
+        },
+        "facade_status": "blocked",
+    }
+
+    projection = build_artifact_operation_retention_daemon_operator_control_projection(
+        policy=policy,
+        facade=facade,
+        source_client=None,
+        request_trace_id=None,
+    )
+
+    assert projection["projection_status"] == "READY"
+    assert projection["source_status"]["source_kind"] == "provided"
+    assert projection["source_status"]["base_url"] is None
+    assert projection["summary"]["operator_attention_required"] is True
+    assert projection["summary"]["restart_supported"] is False
+    assert projection["summary"]["command_preview_count"] == 0
+    assert projection["facade"]["operator_control_request"] == {}
+    assert projection["facade"]["operator_control_admission"][
+        "current_process"
+    ] == {}
+    assert projection["facade"]["operator_control_admission"][
+        "next_supervisor_actions"
+    ] == []
+    assert projection["facade"]["operator_control_command_preview"][
+        "supervisor_command_previews"
+    ] == []
+    assert artifact_operations._project_retention_scheduler_daemon_operator_control_policy(
+        None
+    ) == {}
+    assert artifact_operations._project_retention_scheduler_daemon_operator_control_supported_action(
+        None
+    ) == {}
+    assert artifact_operations._project_retention_scheduler_daemon_operator_control_facade(
+        None
+    ) == {}
+    assert artifact_operations._project_retention_scheduler_daemon_operator_control_request(
+        None
+    ) == {}
+    assert artifact_operations._project_retention_scheduler_daemon_operator_control_admission(
+        None
+    ) == {}
+    assert artifact_operations._project_retention_scheduler_daemon_operator_control_command_preview(
+        None
+    ) == {}
+    assert artifact_operations._project_retention_scheduler_daemon_operator_current_process(
+        None
+    ) == {}
+    assert artifact_operations._project_retention_scheduler_daemon_operator_next_supervisor_action(
+        None
+    ) == {}
+    assert artifact_operations._project_retention_scheduler_daemon_operator_supervisor_command_preview(
+        None
+    ) == {}
+    assert artifact_operations._safe_operator_control_guardrails(None) == {}
+    assert artifact_operations._safe_operator_control_metadata(None) == {}
+
+
 def test_in_memory_artifact_operations_client_returns_supervised_process_read_models() -> (
     None
 ):
@@ -5854,6 +6092,210 @@ def test_in_memory_artifact_operations_client_returns_supervised_process_read_mo
         "daemon-supervised-process-record-0576"
     )
     assert missing is None
+
+
+def test_in_memory_artifact_operations_client_returns_operator_control_facade() -> (
+    None
+):
+    policy = artifact_retention_scheduler_daemon_operator_control_policy_payload()
+    facade = artifact_retention_scheduler_daemon_operator_control_facade_payload()
+    preview_key = (
+        artifact_operations._artifact_retention_scheduler_daemon_operator_control_preview_cache_key(
+            action="restart-daemon",
+            idempotency_key="operator-control-idem-0587",
+            checked_at="2026-09-03T02:00:00Z",
+        )
+    )
+    source_client = InMemoryAeArtifactOperationsClient(
+        artifact_retention_scheduler_daemon_operator_control_policy=policy,
+        artifact_retention_scheduler_daemon_operator_control_previews={
+            preview_key: facade
+        },
+    )
+
+    cached_policy = (
+        source_client.get_artifact_retention_scheduler_daemon_operator_control_policy(
+            checked_at="2026-09-03T02:00:00Z",
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+    )
+    cached_facade = (
+        source_client.preview_artifact_retention_scheduler_daemon_operator_control(
+            action="restart-daemon",
+            operator_subject={"actor_type": "operator", "actor_id": "ag"},
+            idempotency_key="operator-control-idem-0587",
+            reason="preview restart",
+            requested_at="2026-09-03T02:00:00Z",
+            checked_at="2026-09-03T02:00:00Z",
+            profile="test",
+            enabled=True,
+            explicit_opt_in=True,
+            max_cycles=2,
+            run_worker=False,
+            approval={"approved": True},
+            current_process={"process_status": "RUNNING", "process_id": 5870},
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+    )
+    fallback_facade = (
+        InMemoryAeArtifactOperationsClient().preview_artifact_retention_scheduler_daemon_operator_control(
+            action="restart_daemon",
+            operator_subject={"actor_type": "operator", "actor_id": "ag"},
+            idempotency_key="fallback-operator-control-idem",
+            reason="fallback restart preview",
+            requested_at=None,
+            checked_at=None,
+            profile="test",
+            enabled=True,
+            explicit_opt_in=True,
+            max_cycles=2,
+            run_worker=True,
+            approval={"approved": True},
+            current_process=None,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+    )
+    cached_policy["operator_control_policy_id"] = "mutated"
+    cached_facade["operator_control_facade_id"] = "mutated"
+
+    assert (
+        source_client.artifact_retention_scheduler_daemon_operator_control_policy[
+            "operator_control_policy_id"
+        ]
+        == policy["operator_control_policy_id"]
+    )
+    assert (
+        source_client.artifact_retention_scheduler_daemon_operator_control_previews[
+            preview_key
+        ]["operator_control_facade_id"]
+        == facade["operator_control_facade_id"]
+    )
+    assert fallback_facade["action"] == "restart_daemon"
+    assert fallback_facade["facade_status"] == "READY"
+    assert fallback_facade["operator_control_command_preview"]["metadata"][
+        "supervisor_actions"
+    ] == ["stop_daemon", "start_daemon"]
+    assert (
+        artifact_operations._normalized_daemon_operator_control_action(
+            "restart-daemon"
+        )
+        == "restart_daemon"
+    )
+    assert (
+        artifact_operations._normalized_daemon_operator_control_action("bad")
+        is None
+    )
+    assert artifact_operations._normalized_daemon_operator_control_action(None) is None
+    assert (
+        artifact_operations._normalized_operator_control_admission_status("ready")
+        == "READY"
+    )
+    assert (
+        artifact_operations._normalized_operator_control_admission_status("bad")
+        is None
+    )
+
+
+def test_in_memory_operator_control_facade_covers_admission_matrix() -> None:
+    source_client = InMemoryAeArtifactOperationsClient()
+
+    def preview(
+        action: str,
+        *,
+        current_process: dict[str, Any] | None,
+        explicit_opt_in: bool = False,
+    ) -> dict[str, Any]:
+        return source_client.preview_artifact_retention_scheduler_daemon_operator_control(
+            action=action,
+            operator_subject={"actor_type": "operator", "actor_id": "ag"},
+            idempotency_key=f"operator-control-{action}",
+            reason=f"{action} preview",
+            requested_at=None,
+            checked_at="2026-09-03T02:00:00Z",
+            profile="test",
+            enabled=True,
+            explicit_opt_in=explicit_opt_in,
+            max_cycles=3,
+            run_worker=True,
+            approval=None,
+            current_process=current_process,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    status_probe = preview("status_probe", current_process=None)
+    start_ready = preview(
+        "start_daemon",
+        current_process=None,
+        explicit_opt_in=True,
+    )
+    start_noop = preview(
+        "start_daemon",
+        current_process={"process_status": "RUNNING", "process_id": 5871},
+    )
+    start_blocked = preview(
+        "start_daemon",
+        current_process={"process_status": "STALE", "process_id": 5872},
+    )
+    stop_ready = preview("stop_daemon", current_process=None)
+    stop_noop = preview(
+        "stop_daemon",
+        current_process={"process_status": "MISSING"},
+    )
+    stop_blocked = preview(
+        "stop_daemon",
+        current_process={"process_status": "FAILED", "process_id": 5873},
+    )
+    restart_ready = preview(
+        "restart_daemon",
+        current_process={"process_status": "STALE", "process_id": 5874},
+        explicit_opt_in=True,
+    )
+    restart_blocked = preview(
+        "restart_daemon",
+        current_process={"process_status": "STOPPED"},
+    )
+
+    assert status_probe["facade_status"] == "READY"
+    assert status_probe["operator_control_admission"]["decision_reason"] == (
+        "status_probe_allowed"
+    )
+    assert status_probe["operator_control_command_preview"]["metadata"][
+        "status_probe_preview_count"
+    ] == 1
+    assert start_ready["facade_status"] == "READY"
+    assert start_ready["operator_control_admission"]["decision_reason"] == (
+        "start_allowed_no_running_process"
+    )
+    assert start_ready["operator_control_command_preview"][
+        "supervisor_command_previews"
+    ][0]["supervisor_command"]["command"]["explicit_opt_in"] is True
+    assert start_noop["facade_status"] == "NOOP"
+    assert start_noop["operator_control_command_preview"]["metadata"][
+        "command_preview_count"
+    ] == 0
+    assert start_blocked["facade_status"] == "BLOCKED"
+    assert stop_ready["facade_status"] == "READY"
+    assert stop_ready["operator_control_admission"]["current_process"][
+        "process_status"
+    ] == "RUNNING"
+    assert stop_noop["facade_status"] == "NOOP"
+    assert stop_noop["operator_control_admission"]["decision_reason"] == (
+        "daemon_not_running"
+    )
+    assert stop_blocked["facade_status"] == "BLOCKED"
+    assert restart_ready["facade_status"] == "READY"
+    assert restart_ready["operator_control_command_preview"]["metadata"][
+        "supervisor_actions"
+    ] == ["stop_daemon", "start_daemon"]
+    assert restart_blocked["facade_status"] == "BLOCKED"
+    assert artifact_operations._memory_operator_control_admission_decision(
+        action="unknown",
+        process_status="RUNNING",
+    ) == ("BLOCKED", "operator_control_action_invalid")
 
 
 def test_artifact_retention_scheduler_daemon_supervised_process_routes_return_read_models() -> (
@@ -6012,6 +6454,462 @@ def test_artifact_retention_scheduler_daemon_supervised_process_route_guardrails
     assert source_failed.json()["error_code"] == (
         "ag.ae_artifact_retention_daemon_process_source_failed"
     )
+
+
+def test_artifact_retention_scheduler_daemon_operator_control_routes_return_projection() -> (
+    None
+):
+    class CapturingOperatorControlClient(InMemoryAeArtifactOperationsClient):
+        def __init__(self) -> None:
+            super().__init__(
+                artifact_retention_scheduler_daemon_operator_control_policy=(
+                    artifact_retention_scheduler_daemon_operator_control_policy_payload()
+                ),
+                artifact_retention_scheduler_daemon_operator_control_previews={
+                    artifact_operations._artifact_retention_scheduler_daemon_operator_control_preview_cache_key(
+                        action="restart_daemon",
+                        idempotency_key="header-operator-control-idem-0587",
+                        checked_at="2026-09-03T02:00:00Z",
+                    ): artifact_retention_scheduler_daemon_operator_control_facade_payload()
+                },
+            )
+            self.captured_preview: dict[str, Any] | None = None
+
+        def preview_artifact_retention_scheduler_daemon_operator_control(
+            self,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            self.captured_preview = dict(kwargs)
+            return super().preview_artifact_retention_scheduler_daemon_operator_control(
+                **kwargs
+            )
+
+    source_client = CapturingOperatorControlClient()
+    client = build_app(source_client)
+
+    policy_response = client.get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-policy"
+        ),
+        params={
+            "service_id": "nex-ae-api",
+            "checked_at": "2026-09-03T02:00:00Z",
+        },
+        headers=auth_headers(),
+    )
+    preview_response = client.post(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-preview"
+        ),
+        json={
+            "action": "restart-daemon",
+            "requested_by": {
+                "actor_type": "operator",
+                "actor_id": "ag-retention-operator",
+                "tenant_id": "tenant-0409",
+                "workspace_id": "workspace-0409",
+                "database_url": "DATABASE_URL_SHOULD_NOT_LEAK",
+            },
+            "reason": "restart preview",
+            "requested_at": "2026-09-03T02:00:00Z",
+            "checked_at": "2026-09-03T02:00:00Z",
+            "profile": "test",
+            "enabled": True,
+            "explicit_opt_in": True,
+            "max_cycles": "2",
+            "run_worker": False,
+            "approval": {
+                "approved": True,
+                "approved_by": "ag-retention-lead",
+                "approved_at": "2026-09-03T01:59:00Z",
+                "approval_reason": "maintenance",
+            },
+            "current_process": {
+                "process_source": "read_model",
+                "process_status": "RUNNING",
+                "process_running": True,
+                "daemon_supervised_process_id": "daemon-supervised-process-0587",
+                "daemon_supervisor_command_id": "daemon-supervisor-command-0587",
+                "process_id": 5870,
+                "host_id": "ae-worker-0587",
+                "observed_at": "2026-09-03T02:00:00Z",
+            },
+            "idempotency_key": "body-operator-control-idem-0587",
+        },
+        headers={
+            **auth_headers(),
+            "Idempotency-Key": "header-operator-control-idem-0587",
+        },
+    )
+
+    assert policy_response.status_code == 200
+    policy_payload = policy_response.json()
+    assert policy_payload["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_PROJECTION_SCHEMA_VERSION
+    )
+    assert policy_payload["summary"]["policy_loaded"] is True
+    assert policy_payload["summary"]["facade_loaded"] is False
+    assert policy_payload["source_status"]["operator_control_policy_loaded"] is True
+    assert policy_payload["operator_guidance"][
+        "ag_direct_process_control_allowed"
+    ] is False
+
+    assert preview_response.status_code == 200
+    preview_payload = preview_response.json()
+    assert preview_payload["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_PROJECTION_SCHEMA_VERSION
+    )
+    assert preview_payload["summary"]["action"] == "restart_daemon"
+    assert preview_payload["summary"]["facade_status"] == "READY"
+    assert preview_payload["summary"]["command_preview_count"] == 2
+    assert preview_payload["summary"]["supervisor_actions"] == [
+        "stop_daemon",
+        "start_daemon",
+    ]
+    assert preview_payload["source_status"]["operator_control_facade_loaded"] is True
+    assert preview_payload["request_trace_id"] == TRACE_ID
+    assert source_client.captured_preview is not None
+    assert source_client.captured_preview["idempotency_key"] == (
+        "header-operator-control-idem-0587"
+    )
+    assert source_client.captured_preview["action"] == "restart_daemon"
+    assert source_client.captured_preview["max_cycles"] == 2
+    assert source_client.captured_preview["operator_subject"] == {
+        "actor_type": "operator",
+        "actor_id": "ag-retention-operator",
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+    }
+    assert "DATABASE_URL_SHOULD_NOT_LEAK" not in str(preview_payload)
+    assert "body-operator-control-idem-0587" not in str(preview_payload)
+    assert "header-operator-control-idem-0587" not in str(preview_payload)
+
+
+def test_artifact_retention_scheduler_daemon_operator_control_route_defaults_payload_idempotency() -> (
+    None
+):
+    class CapturingOperatorControlClient(InMemoryAeArtifactOperationsClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.captured_preview: dict[str, Any] | None = None
+
+        def preview_artifact_retention_scheduler_daemon_operator_control(
+            self,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            self.captured_preview = dict(kwargs)
+            return super().preview_artifact_retention_scheduler_daemon_operator_control(
+                **kwargs
+            )
+
+    source_client = CapturingOperatorControlClient()
+    client = build_app(source_client)
+
+    unauthorized_post = client.post(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-preview"
+        ),
+        json={"reason": "probe", "idempotency_key": "payload-idem-0587"},
+    )
+    invalid_service_post = client.post(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-preview"
+        ),
+        params={"service_id": "nex-cx"},
+        json={"reason": "probe", "idempotency_key": "payload-idem-0587"},
+        headers=auth_headers(),
+    )
+    preview_response = client.post(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-preview"
+        ),
+        json={
+            "reason": "probe",
+            "idempotency_key": "payload-idem-0587",
+            "enabled": None,
+            "explicit_opt_in": None,
+        },
+        headers=auth_headers(),
+    )
+
+    assert unauthorized_post.status_code == 401
+    assert invalid_service_post.status_code == 400
+    assert preview_response.status_code == 200
+    assert source_client.captured_preview is not None
+    assert source_client.captured_preview["action"] == "status_probe"
+    assert source_client.captured_preview["idempotency_key"] == "payload-idem-0587"
+    assert source_client.captured_preview["enabled"] is False
+    assert source_client.captured_preview["explicit_opt_in"] is False
+    assert source_client.captured_preview["run_worker"] is False
+    assert source_client.captured_preview["max_cycles"] == 1
+    assert source_client.captured_preview["profile"] == "test"
+    assert source_client.captured_preview["approval"] is None
+    assert source_client.captured_preview["current_process"] is None
+    assert source_client.captured_preview["operator_subject"]["actor_id"] == (
+        "nex-ag-artifact-retention-operator"
+    )
+    assert "payload-idem-0587" not in str(preview_response.json())
+
+
+def test_artifact_retention_scheduler_daemon_operator_control_route_guardrails() -> (
+    None
+):
+    client = build_app(artifact_client())
+
+    unauthorized = client.get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-policy"
+        ),
+    )
+    invalid_service = client.get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-policy"
+        ),
+        params={"service_id": "nex-cx"},
+        headers=auth_headers(),
+    )
+    missing_reason = client.post(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-preview"
+        ),
+        json={"action": "status_probe", "idempotency_key": "idem"},
+        headers=auth_headers(),
+    )
+    missing_idempotency_key = client.post(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-preview"
+        ),
+        json={"action": "status_probe", "reason": "probe"},
+        headers=auth_headers(),
+    )
+    invalid_action = client.post(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-preview"
+        ),
+        json={
+            "action": "manual_tick_once",
+            "reason": "probe",
+            "idempotency_key": "idem",
+        },
+        headers=auth_headers(),
+    )
+    invalid_bool = client.post(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-preview"
+        ),
+        json={
+            "action": "status_probe",
+            "reason": "probe",
+            "idempotency_key": "idem",
+            "run_worker": "yes",
+        },
+        headers=auth_headers(),
+    )
+    invalid_enabled = client.post(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-preview"
+        ),
+        json={
+            "action": "status_probe",
+            "reason": "probe",
+            "idempotency_key": "idem",
+            "enabled": "yes",
+        },
+        headers=auth_headers(),
+    )
+    invalid_explicit_opt_in = client.post(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-preview"
+        ),
+        json={
+            "action": "status_probe",
+            "reason": "probe",
+            "idempotency_key": "idem",
+            "explicit_opt_in": "yes",
+        },
+        headers=auth_headers(),
+    )
+    invalid_cycles = client.post(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-preview"
+        ),
+        json={
+            "action": "status_probe",
+            "reason": "probe",
+            "idempotency_key": "idem",
+            "max_cycles": "101",
+        },
+        headers=auth_headers(),
+    )
+    invalid_current_process = client.post(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-preview"
+        ),
+        json={
+            "action": "status_probe",
+            "reason": "probe",
+            "idempotency_key": "idem",
+            "current_process": "bad",
+        },
+        headers=auth_headers(),
+    )
+
+    class BrokenOperatorControlClient(InMemoryAeArtifactOperationsClient):
+        def get_artifact_retention_scheduler_daemon_operator_control_policy(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            raise AeArtifactOperationsError(
+                error_code=(
+                    "ag.ae_artifact_retention_daemon_operator_control_source_failed"
+                ),
+                detail="AE operator-control source unavailable",
+                status_code=503,
+            )
+
+        def preview_artifact_retention_scheduler_daemon_operator_control(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            raise AeArtifactOperationsError(
+                error_code=(
+                    "ag.ae_artifact_retention_daemon_operator_control_preview_failed"
+                ),
+                detail="AE operator-control preview unavailable",
+                status_code=503,
+            )
+
+    source_policy_failed = build_app(BrokenOperatorControlClient()).get(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-policy"
+        ),
+        headers=auth_headers(),
+    )
+    source_preview_failed = build_app(BrokenOperatorControlClient()).post(
+        (
+            "/admin/v1/operations/artifact-retention/"
+            "scheduler-daemon-operator-control-preview"
+        ),
+        json={"action": "status_probe", "reason": "probe", "idempotency_key": "idem"},
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert invalid_service.status_code == 400
+    assert missing_reason.status_code == 400
+    assert missing_reason.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_reason_missing"
+    )
+    assert missing_idempotency_key.status_code == 400
+    assert missing_idempotency_key.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_idempotency_key_missing"
+    )
+    assert invalid_action.status_code == 400
+    assert invalid_action.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_action_invalid"
+    )
+    assert invalid_bool.status_code == 400
+    assert invalid_bool.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_boolean_invalid"
+    )
+    assert invalid_enabled.status_code == 400
+    assert invalid_enabled.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_boolean_invalid"
+    )
+    assert invalid_explicit_opt_in.status_code == 400
+    assert invalid_explicit_opt_in.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_boolean_invalid"
+    )
+    assert invalid_cycles.status_code == 400
+    assert invalid_cycles.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_max_cycles_invalid"
+    )
+    assert invalid_current_process.status_code == 400
+    assert invalid_current_process.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_current_process_invalid"
+    )
+    assert source_policy_failed.status_code == 503
+    assert source_policy_failed.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_source_failed"
+    )
+    assert source_preview_failed.status_code == 503
+    assert source_preview_failed.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_preview_failed"
+    )
+
+
+def test_artifact_retention_scheduler_daemon_operator_control_validator_edges() -> (
+    None
+):
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": (
+                "/admin/v1/operations/artifact-retention/"
+                "scheduler-daemon-operator-control-preview"
+            ),
+            "headers": [],
+            "query_string": b"",
+        }
+    )
+
+    invalid_payload = (
+        artifact_operations._validate_artifact_retention_daemon_operator_control_preview_request(
+            request,
+            payload=["not", "a", "mapping"],
+            idempotency_key_header=None,
+        )
+    )
+    invalid_none_cycles = (
+        artifact_operations._validate_artifact_retention_daemon_operator_control_preview_request(
+            request,
+            payload={
+                "action": "status_probe",
+                "reason": "probe",
+                "idempotency_key": "idem",
+                "max_cycles": None,
+            },
+            idempotency_key_header=None,
+        )
+    )
+    direct_subject = artifact_operations._artifact_retention_daemon_operator_subject(
+        request=request,
+        payload={
+            "operator_subject": {
+                "actor_type": "operator",
+                "actor_id": "direct-operator",
+                "tenant_id": "tenant-0587",
+                "database_url": "DATABASE_URL_SHOULD_NOT_LEAK",
+            }
+        },
+    )
+
+    assert invalid_payload.status_code == 400
+    assert invalid_none_cycles.status_code == 400
+    assert direct_subject == {
+        "actor_type": "operator",
+        "actor_id": "direct-operator",
+        "tenant_id": "tenant-0587",
+    }
 
 
 def test_artifact_retention_scheduler_daemon_supervisor_routes_return_read_models() -> (
@@ -6982,6 +7880,14 @@ def test_http_artifact_operations_client_requests_expected_routes(
                 200,
                 artifact_retention_scheduler_daemon_supervised_process_detail_payload(),
             )
+        if url.endswith(
+            "/api/v1/artifact-retention/"
+            "scheduler-daemon-operator-control-policy"
+        ):
+            return FakeHttpResponse(
+                200,
+                artifact_retention_scheduler_daemon_operator_control_policy_payload(),
+            )
         if url.endswith(f"/api/v1/artifacts/{ARTIFACT_ID}"):
             return FakeHttpResponse(200, artifact_record(include_private=False))
         if url.endswith(f"/api/v1/artifact-handoffs/{HANDOFF_ID}"):
@@ -7007,6 +7913,14 @@ def test_http_artifact_operations_client_requests_expected_routes(
             return FakeHttpResponse(
                 200,
                 artifact_retention_scheduler_daemon_dispatch_payload(),
+            )
+        if url.endswith(
+            "/api/v1/artifact-retention/"
+            "scheduler-daemon-operator-control-preview"
+        ):
+            return FakeHttpResponse(
+                200,
+                artifact_retention_scheduler_daemon_operator_control_facade_payload(),
             )
         return FakeHttpResponse(404, {})
 
@@ -7155,6 +8069,35 @@ def test_http_artifact_operations_client_requests_expected_routes(
             trace_id=TRACE_ID,
         )
     )
+    operator_control_policy = (
+        client.get_artifact_retention_scheduler_daemon_operator_control_policy(
+            checked_at="2026-09-03T02:00:00Z",
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+    )
+    operator_control_preview = (
+        client.preview_artifact_retention_scheduler_daemon_operator_control(
+            action="restart_daemon",
+            operator_subject={
+                "actor_type": "operator",
+                "actor_id": "ag-retention-operator",
+            },
+            idempotency_key="operator-control-idem-0587",
+            reason="restart preview",
+            requested_at="2026-09-03T02:00:00Z",
+            checked_at="2026-09-03T02:00:00Z",
+            profile="test",
+            enabled=True,
+            explicit_opt_in=True,
+            max_cycles=2,
+            run_worker=False,
+            approval={"approved": True},
+            current_process={"process_status": "RUNNING", "process_id": 5870},
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+    )
 
     assert artifact["artifact_id"] == ARTIFACT_ID
     assert handoff["artifact_handoff_id"] == HANDOFF_ID
@@ -7182,6 +8125,8 @@ def test_http_artifact_operations_client_requests_expected_routes(
     assert daemon_process_detail["daemon_supervised_process_record_id"] == (
         "daemon-supervised-process-record-0576"
     )
+    assert operator_control_policy["operator_control_policy_id"]
+    assert operator_control_preview["facade_status"] == "READY"
     assert calls[0]["url"] == f"http://ae.example.local/api/v1/artifacts/{ARTIFACT_ID}"
     assert calls[0]["headers"]["Authorization"] == "Bearer token-0409"
     assert calls[0]["headers"]["X-Service-ID"] == "nex-ag"
@@ -7317,6 +8262,99 @@ def test_http_artifact_operations_client_requests_expected_routes(
         "daemon-supervised-process-record-0576"
     )
     assert calls[16]["params"] == {}
+    assert calls[17]["url"] == (
+        "http://ae.example.local/api/v1/artifact-retention/"
+        "scheduler-daemon-operator-control-policy"
+    )
+    assert calls[17]["params"] == {"checked_at": "2026-09-03T02:00:00Z"}
+    assert calls[18]["url"] == (
+        "http://ae.example.local/api/v1/artifact-retention/"
+        "scheduler-daemon-operator-control-preview"
+    )
+    assert calls[18]["headers"]["Idempotency-Key"] == "operator-control-idem-0587"
+    assert calls[18]["json"]["action"] == "restart_daemon"
+    assert calls[18]["json"]["operator_subject"] == {
+        "actor_type": "operator",
+        "actor_id": "ag-retention-operator",
+    }
+    assert calls[18]["json"]["max_cycles"] == 2
+
+
+def test_http_operator_control_client_handles_sparse_response_and_optional_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def fake_get(
+        url: str,
+        *,
+        headers: dict[str, str],
+        params: dict[str, str],
+        timeout: float,
+    ) -> FakeHttpResponse:
+        calls.append(
+            {"url": url, "headers": headers, "params": params, "timeout": timeout}
+        )
+        return FakeHttpResponse(200, ["not-a-policy-object"])
+
+    def fake_post(
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, Any],
+        timeout: float,
+    ) -> FakeHttpResponse:
+        calls.append({"url": url, "headers": headers, "json": json, "timeout": timeout})
+        return FakeHttpResponse(200, ["not-a-facade-object"])
+
+    monkeypatch.setattr(artifact_operations.httpx, "get", fake_get)
+    monkeypatch.setattr(artifact_operations.httpx, "post", fake_post)
+    client = HttpAeArtifactOperationsClient(
+        base_url="http://ae.example.local/",
+        service_token=None,
+        timeout_seconds=7.0,
+    )
+
+    policy = client.get_artifact_retention_scheduler_daemon_operator_control_policy(
+        checked_at=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    preview = client.preview_artifact_retention_scheduler_daemon_operator_control(
+        action="status_probe",
+        operator_subject={"actor_type": "operator", "actor_id": "ag"},
+        idempotency_key="operator-control-sparse-idem",
+        reason="probe",
+        requested_at=None,
+        checked_at=None,
+        profile="test",
+        enabled=False,
+        explicit_opt_in=False,
+        max_cycles=1,
+        run_worker=False,
+        approval=None,
+        current_process=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert policy == {}
+    assert preview == {}
+    assert calls[0]["params"] == {}
+    assert calls[0]["headers"]["Authorization"].startswith("Bearer ")
+    assert calls[0]["headers"]["X-Service-ID"] == "nex-ag"
+    assert calls[1]["headers"]["Idempotency-Key"] == "operator-control-sparse-idem"
+    assert calls[1]["json"] == {
+        "action": "status_probe",
+        "operator_subject": {"actor_type": "operator", "actor_id": "ag"},
+        "idempotency_key": "operator-control-sparse-idem",
+        "reason": "probe",
+        "profile": "test",
+        "enabled": False,
+        "explicit_opt_in": False,
+        "max_cycles": 1,
+        "run_worker": False,
+    }
 
 
 def test_http_artifact_operations_client_handles_404_and_errors(

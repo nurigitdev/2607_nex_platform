@@ -80,6 +80,9 @@ AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISED_PROCESS_COLLECTION_PROJECTION_
 AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISED_PROCESS_DETAIL_PROJECTION_SCHEMA_VERSION = (
     "ag_artifact_operation_retention_daemon_supervised_process_detail_projection.v1"
 )
+AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_PROJECTION_SCHEMA_VERSION = (
+    "ag_artifact_operation_retention_daemon_operator_control_projection.v1"
+)
 AE_ARTIFACT_SOURCE_SERVICE_ID = "nex-ae-api"
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE = (
     "ae.artifact_retention.scheduler_daemon"
@@ -139,6 +142,17 @@ SUPPORTED_ARTIFACT_RETENTION_DAEMON_SUPERVISOR_ACTIONS = (
     "status_probe",
     "start_daemon",
     "stop_daemon",
+)
+SUPPORTED_ARTIFACT_RETENTION_DAEMON_OPERATOR_CONTROL_ACTIONS = (
+    "status_probe",
+    "start_daemon",
+    "stop_daemon",
+    "restart_daemon",
+)
+SUPPORTED_ARTIFACT_RETENTION_DAEMON_OPERATOR_CONTROL_STATUSES = (
+    "READY",
+    "BLOCKED",
+    "NOOP",
 )
 SUPPORTED_ARTIFACT_RETENTION_DAEMON_SUPERVISOR_RESULT_STATUSES = (
     "READY",
@@ -301,6 +315,34 @@ class AeArtifactOperationsClient(Protocol):
         trace_id: str,
     ) -> dict[str, Any] | None: ...
 
+    def get_artifact_retention_scheduler_daemon_operator_control_policy(
+        self,
+        *,
+        checked_at: str | None,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]: ...
+
+    def preview_artifact_retention_scheduler_daemon_operator_control(
+        self,
+        *,
+        action: str,
+        operator_subject: Mapping[str, Any],
+        idempotency_key: str,
+        reason: str,
+        requested_at: str | None,
+        checked_at: str | None,
+        profile: str,
+        enabled: bool,
+        explicit_opt_in: bool,
+        max_cycles: int,
+        run_worker: bool,
+        approval: Mapping[str, Any] | None,
+        current_process: Mapping[str, Any] | None,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]: ...
+
     def dispatch_artifact_retention_scheduler_daemon_control(
         self,
         *,
@@ -392,6 +434,12 @@ class InMemoryAeArtifactOperationsClient:
         str, dict[str, Any]
     ] = field(default_factory=dict)
     artifact_retention_scheduler_daemon_process_snapshot_details: dict[
+        str, dict[str, Any]
+    ] = field(default_factory=dict)
+    artifact_retention_scheduler_daemon_operator_control_policy: dict[
+        str, Any
+    ] | None = None
+    artifact_retention_scheduler_daemon_operator_control_previews: dict[
         str, dict[str, Any]
     ] = field(default_factory=dict)
     artifact_retention_scheduler_daemon_dispatch_results: dict[
@@ -769,6 +817,67 @@ class InMemoryAeArtifactOperationsClient:
             )
         )
 
+    def get_artifact_retention_scheduler_daemon_operator_control_policy(
+        self,
+        *,
+        checked_at: str | None,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        if self.artifact_retention_scheduler_daemon_operator_control_policy is not None:
+            return deepcopy(
+                self.artifact_retention_scheduler_daemon_operator_control_policy
+            )
+        return _empty_artifact_retention_scheduler_daemon_operator_control_policy_payload(
+            checked_at=checked_at,
+        )
+
+    def preview_artifact_retention_scheduler_daemon_operator_control(
+        self,
+        *,
+        action: str,
+        operator_subject: Mapping[str, Any],
+        idempotency_key: str,
+        reason: str,
+        requested_at: str | None,
+        checked_at: str | None,
+        profile: str,
+        enabled: bool,
+        explicit_opt_in: bool,
+        max_cycles: int,
+        run_worker: bool,
+        approval: Mapping[str, Any] | None,
+        current_process: Mapping[str, Any] | None,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        preview_key = _artifact_retention_scheduler_daemon_operator_control_preview_cache_key(
+            action=action,
+            idempotency_key=idempotency_key,
+            checked_at=checked_at,
+        )
+        if preview_key in self.artifact_retention_scheduler_daemon_operator_control_previews:
+            return deepcopy(
+                self.artifact_retention_scheduler_daemon_operator_control_previews[
+                    preview_key
+                ]
+            )
+        return _memory_artifact_retention_scheduler_daemon_operator_control_preview_payload(
+            action=action,
+            operator_subject=operator_subject,
+            idempotency_key=idempotency_key,
+            reason=reason,
+            requested_at=requested_at,
+            checked_at=checked_at,
+            profile=profile,
+            enabled=enabled,
+            explicit_opt_in=explicit_opt_in,
+            max_cycles=max_cycles,
+            run_worker=run_worker,
+            approval=approval,
+            current_process=current_process,
+        )
+
     def dispatch_artifact_retention_scheduler_daemon_control(
         self,
         *,
@@ -1143,6 +1252,70 @@ class HttpAeArtifactOperationsClient:
             request_id=request_id,
             trace_id=trace_id,
         )
+
+    def get_artifact_retention_scheduler_daemon_operator_control_policy(
+        self,
+        *,
+        checked_at: str | None,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        payload = self._get_json(
+            (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-operator-control-policy"
+            ),
+            request_id=request_id,
+            trace_id=trace_id,
+            params=({"checked_at": checked_at} if checked_at else {}),
+        )
+        return payload if isinstance(payload, dict) else {}
+
+    def preview_artifact_retention_scheduler_daemon_operator_control(
+        self,
+        *,
+        action: str,
+        operator_subject: Mapping[str, Any],
+        idempotency_key: str,
+        reason: str,
+        requested_at: str | None,
+        checked_at: str | None,
+        profile: str,
+        enabled: bool,
+        explicit_opt_in: bool,
+        max_cycles: int,
+        run_worker: bool,
+        approval: Mapping[str, Any] | None,
+        current_process: Mapping[str, Any] | None,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        json_body: dict[str, Any] = {
+            "action": action,
+            "operator_subject": dict(operator_subject),
+            "idempotency_key": idempotency_key,
+            "reason": reason,
+            "profile": profile,
+            "enabled": enabled,
+            "explicit_opt_in": explicit_opt_in,
+            "max_cycles": max_cycles,
+            "run_worker": run_worker,
+            **({"requested_at": requested_at} if requested_at else {}),
+            **({"checked_at": checked_at} if checked_at else {}),
+            **({"approval": dict(approval)} if approval else {}),
+            **({"current_process": dict(current_process)} if current_process else {}),
+        }
+        payload = self._post_json(
+            (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-operator-control-preview"
+            ),
+            request_id=request_id,
+            trace_id=trace_id,
+            idempotency_key=idempotency_key,
+            json_body=json_body,
+        )
+        return payload if isinstance(payload, dict) else {}
 
     def dispatch_artifact_retention_scheduler_daemon_control(
         self,
@@ -2150,6 +2323,108 @@ def register_artifact_operation_routes(
 
         return build_artifact_operation_retention_daemon_supervised_process_detail_projection(
             detail=detail,
+            source_client=selected_client,
+            request_trace_id=trace_id,
+        )
+
+    @app.get(
+        "/admin/v1/operations/artifact-retention/"
+        "scheduler-daemon-operator-control-policy",
+        response_model=None,
+    )
+    def get_artifact_retention_scheduler_daemon_operator_control_policy_operation(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        checked_at: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        service_problem = _validate_artifact_service_filter(request, service_id)
+        if service_problem is not None:
+            return service_problem
+
+        selected_client = (
+            configured_client or build_default_ae_artifact_operations_client()
+        )
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            policy = selected_client.get_artifact_retention_scheduler_daemon_operator_control_policy(
+                checked_at=checked_at,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        except AeArtifactOperationsError as exc:
+            return _artifact_operations_problem_response(request, exc)
+
+        return build_artifact_operation_retention_daemon_operator_control_projection(
+            policy=policy,
+            source_client=selected_client,
+            request_trace_id=trace_id,
+        )
+
+    @app.post(
+        "/admin/v1/operations/artifact-retention/"
+        "scheduler-daemon-operator-control-preview",
+        response_model=None,
+    )
+    def preview_artifact_retention_scheduler_daemon_operator_control_operation(
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key_header: str | None = Header(
+            default=None,
+            alias="Idempotency-Key",
+        ),
+        service_id: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        service_problem = _validate_artifact_service_filter(request, service_id)
+        if service_problem is not None:
+            return service_problem
+        preview_request = _validate_artifact_retention_daemon_operator_control_preview_request(
+            request,
+            payload=payload,
+            idempotency_key_header=idempotency_key_header,
+        )
+        if isinstance(preview_request, JSONResponse):
+            return preview_request
+
+        selected_client = (
+            configured_client or build_default_ae_artifact_operations_client()
+        )
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            facade = selected_client.preview_artifact_retention_scheduler_daemon_operator_control(
+                action=preview_request["action"],
+                operator_subject=preview_request["operator_subject"],
+                idempotency_key=preview_request["idempotency_key"],
+                reason=preview_request["reason"],
+                requested_at=preview_request["requested_at"],
+                checked_at=preview_request["checked_at"],
+                profile=preview_request["profile"],
+                enabled=preview_request["enabled"],
+                explicit_opt_in=preview_request["explicit_opt_in"],
+                max_cycles=preview_request["max_cycles"],
+                run_worker=preview_request["run_worker"],
+                approval=preview_request["approval"],
+                current_process=preview_request["current_process"],
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        except AeArtifactOperationsError as exc:
+            return _artifact_operations_problem_response(request, exc)
+
+        return build_artifact_operation_retention_daemon_operator_control_projection(
+            policy=facade.get("operator_control_policy")
+            if isinstance(facade, Mapping)
+            else {},
+            facade=facade,
             source_client=selected_client,
             request_trace_id=trace_id,
         )
@@ -3192,6 +3467,74 @@ def build_artifact_operation_retention_daemon_supervised_process_detail_projecti
     return projection
 
 
+def build_artifact_operation_retention_daemon_operator_control_projection(
+    *,
+    policy: Mapping[str, Any],
+    facade: Mapping[str, Any] | None = None,
+    source_client: AeArtifactOperationsClient | None = None,
+    source_errors: list[AeArtifactOperationsError] | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    projected_policy = _project_retention_scheduler_daemon_operator_control_policy(
+        policy
+    )
+    projected_facade = _project_retention_scheduler_daemon_operator_control_facade(
+        facade
+    )
+    errors = source_errors or []
+    projection = {
+        "projection_schema_version": (
+            AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "DEGRADED" if errors else "READY",
+        "checked_at": _utc_now(),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "operation_type": "ae_artifact_retention_scheduler_daemon_operator_control",
+        "policy": projected_policy,
+        "facade": projected_facade or None,
+        "summary": summarize_artifact_retention_daemon_operator_control_projection(
+            policy=projected_policy,
+            facade=projected_facade,
+        ),
+        "source_status": _artifact_retention_daemon_operator_control_source_status(
+            source_client=source_client,
+            policy_loaded=bool(projected_policy.get("operator_control_policy_id")),
+            facade_loaded=bool(projected_facade.get("operator_control_facade_id")),
+            errors=errors,
+        ),
+        "operator_guidance": {
+            "metadata_only": True,
+            "system_of_record": AE_ARTIFACT_SOURCE_SERVICE_ID,
+            "ae_operator_control_policy_route": (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-operator-control-policy"
+            ),
+            "ae_operator_control_preview_route": (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-operator-control-preview"
+            ),
+            "ag_operator_control_policy_route": (
+                "/admin/v1/operations/artifact-retention/"
+                "scheduler-daemon-operator-control-policy"
+            ),
+            "ag_operator_control_preview_route": (
+                "/admin/v1/operations/artifact-retention/"
+                "scheduler-daemon-operator-control-preview"
+            ),
+            "preview_only": True,
+            "ag_direct_process_control_allowed": False,
+            "ag_direct_daemon_process_control_allowed": False,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "supervisor_dispatch_performed": False,
+        },
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    assert_artifact_operation_projection_redacted(projection)
+    return projection
+
+
 def build_artifact_operation_retention_history_projection(
     *,
     collection: Mapping[str, Any],
@@ -4087,6 +4430,55 @@ def summarize_artifact_retention_daemon_supervised_process_detail(
         ),
         "operator_attention_required": process_status
         in {"FAILED", "STALE", "BLOCKED"},
+        "metadata_only": True,
+    }
+
+
+def summarize_artifact_retention_daemon_operator_control_projection(
+    *,
+    policy: Mapping[str, Any],
+    facade: Mapping[str, Any],
+) -> dict[str, Any]:
+    supported_actions = [
+        item
+        for item in _list_value(policy.get("supported_actions"))
+        if isinstance(item, Mapping)
+    ]
+    mutating_actions = [
+        item for item in supported_actions if item.get("mutates_process") is True
+    ]
+    command_preview = _mapping_or_empty(
+        facade.get("operator_control_command_preview")
+    )
+    command_metadata = _mapping_or_empty(command_preview.get("metadata"))
+    facade_status = _normalized_operator_control_admission_status(
+        facade.get("facade_status")
+    )
+    supervisor_actions = _text_list(command_metadata.get("supervisor_actions"))
+    return {
+        "policy_loaded": bool(policy.get("operator_control_policy_id")),
+        "facade_loaded": bool(facade.get("operator_control_facade_id")),
+        "scheduler_id": _text_or_none(
+            facade.get("scheduler_id") or policy.get("scheduler_id")
+        ),
+        "action": _normalized_daemon_operator_control_action(
+            facade.get("action")
+        ),
+        "facade_status": facade_status,
+        "ready_for_dispatch": command_metadata.get("ready_for_dispatch") is True,
+        "command_preview_count": _int_or_zero(
+            command_metadata.get("command_preview_count")
+        ),
+        "supervisor_actions": supervisor_actions,
+        "supported_action_count": len(supported_actions),
+        "mutating_action_count": len(mutating_actions),
+        "restart_supported": any(
+            _normalized_daemon_operator_control_action(item.get("action"))
+            == "restart_daemon"
+            for item in supported_actions
+        ),
+        "preview_only": True,
+        "operator_attention_required": facade_status == "BLOCKED",
         "metadata_only": True,
     }
 
@@ -6219,6 +6611,470 @@ def _project_retention_scheduler_tick_once_summary(raw_value: Any) -> dict[str, 
     }
 
 
+def _project_retention_scheduler_daemon_operator_control_policy(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "source_operator_control_policy_schema_version": _text_or_none(
+            raw_value.get("operator_control_policy_schema_version")
+        ),
+        "operator_control_policy_id": _text_or_none(
+            raw_value.get("operator_control_policy_id")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "checked_at": _text_or_none(raw_value.get("checked_at")),
+        "supported_actions": [
+            _project_retention_scheduler_daemon_operator_control_supported_action(
+                item
+            )
+            for item in _list_value(raw_value.get("supported_actions"))
+            if isinstance(item, Mapping)
+        ],
+        "required_fields": _select_mapping(
+            raw_value.get("required_fields"),
+            (
+                "operator_subject",
+                "idempotency_key",
+                "reason",
+                "approval_required_for_start",
+                "approval_required_for_restart",
+                "profile",
+                "max_cycles",
+            ),
+        ),
+        "profile_policy": _select_mapping(
+            raw_value.get("profile_policy"),
+            (
+                "default_profile",
+                "allowed_profiles",
+                "production_profiles_allowed",
+                "production_continuous_start_enabled",
+            ),
+        ),
+        "restart_policy": _select_mapping(
+            raw_value.get("restart_policy"),
+            (
+                "restart_daemon_supported",
+                "restart_semantics",
+                "requires_distinct_stop_evidence",
+                "requires_distinct_start_evidence",
+            ),
+        ),
+        "guardrails": _safe_operator_control_guardrails(
+            raw_value.get("guardrails")
+        ),
+        "metadata": _safe_operator_control_metadata(raw_value.get("metadata")),
+    }
+
+
+def _project_retention_scheduler_daemon_operator_control_supported_action(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "action": _normalized_daemon_operator_control_action(raw_value.get("action")),
+        "mutates_process": raw_value.get("mutates_process") is True,
+        "requires_approval": raw_value.get("requires_approval") is True,
+        "requires_running_process": raw_value.get("requires_running_process") is True,
+        "starts_process": raw_value.get("starts_process") is True,
+        "stops_process": raw_value.get("stops_process") is True,
+    }
+
+
+def _project_retention_scheduler_daemon_operator_control_facade(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "source_operator_control_facade_schema_version": _text_or_none(
+            raw_value.get("operator_control_facade_schema_version")
+        ),
+        "operator_control_facade_id": _text_or_none(
+            raw_value.get("operator_control_facade_id")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "operator_control_policy_id": _text_or_none(
+            raw_value.get("operator_control_policy_id")
+        ),
+        "operator_control_request_id": _text_or_none(
+            raw_value.get("operator_control_request_id")
+        ),
+        "operator_control_admission_id": _text_or_none(
+            raw_value.get("operator_control_admission_id")
+        ),
+        "operator_control_command_preview_id": _text_or_none(
+            raw_value.get("operator_control_command_preview_id")
+        ),
+        "action": _normalized_daemon_operator_control_action(
+            raw_value.get("action")
+        ),
+        "facade_status": _normalized_operator_control_admission_status(
+            raw_value.get("facade_status")
+        ),
+        "checked_at": _text_or_none(raw_value.get("checked_at")),
+        "operator_control_request": (
+            _project_retention_scheduler_daemon_operator_control_request(
+                raw_value.get("operator_control_request")
+            )
+        ),
+        "operator_control_admission": (
+            _project_retention_scheduler_daemon_operator_control_admission(
+                raw_value.get("operator_control_admission")
+            )
+        ),
+        "operator_control_command_preview": (
+            _project_retention_scheduler_daemon_operator_control_command_preview(
+                raw_value.get("operator_control_command_preview")
+            )
+        ),
+        "guardrails": _safe_operator_control_guardrails(
+            raw_value.get("guardrails")
+        ),
+        "metadata": _safe_operator_control_metadata(raw_value.get("metadata")),
+    }
+
+
+def _project_retention_scheduler_daemon_operator_control_request(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "source_operator_control_request_schema_version": _text_or_none(
+            raw_value.get("operator_control_request_schema_version")
+        ),
+        "operator_control_request_id": _text_or_none(
+            raw_value.get("operator_control_request_id")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "action": _normalized_daemon_operator_control_action(
+            raw_value.get("action")
+        ),
+        "operator_subject": _operator_control_safe_subject(
+            raw_value.get("operator_subject")
+        ),
+        "idempotency_key_present": _present_text(raw_value.get("idempotency_key")),
+        "reason_present": _present_text(raw_value.get("reason")),
+        "requested_at": _text_or_none(raw_value.get("requested_at")),
+        "profile": _text_or_none(raw_value.get("profile")),
+        "enabled": raw_value.get("enabled") is True,
+        "explicit_opt_in": raw_value.get("explicit_opt_in") is True,
+        "max_cycles": _int_or_zero(raw_value.get("max_cycles")),
+        "run_worker": raw_value.get("run_worker") is True,
+        "approval": _select_mapping(
+            raw_value.get("approval"),
+            ("approved", "approved_by", "approved_at", "approval_reason"),
+        ),
+        "execution_intent": _select_mapping(
+            raw_value.get("execution_intent"),
+            (
+                "action",
+                "mutates_process",
+                "reads_status",
+                "requests_start",
+                "requests_stop",
+                "restart_decomposes_to_stop_then_start",
+                "requires_running_process",
+                "requires_bounded_subprocess_adapter",
+                "starts_continuous_loop",
+                "enqueues_job_queue",
+                "runs_worker",
+                "physical_delete_enabled",
+            ),
+        ),
+        "guardrails": _safe_operator_control_guardrails(
+            raw_value.get("guardrails")
+        ),
+        "metadata": _safe_operator_control_metadata(raw_value.get("metadata")),
+    }
+
+
+def _project_retention_scheduler_daemon_operator_control_admission(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "source_operator_control_admission_schema_version": _text_or_none(
+            raw_value.get("operator_control_admission_schema_version")
+        ),
+        "operator_control_admission_id": _text_or_none(
+            raw_value.get("operator_control_admission_id")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "operator_control_request_id": _text_or_none(
+            raw_value.get("operator_control_request_id")
+        ),
+        "action": _normalized_daemon_operator_control_action(
+            raw_value.get("action")
+        ),
+        "admission_status": _normalized_operator_control_admission_status(
+            raw_value.get("admission_status")
+        ),
+        "decision_reason": _text_or_none(raw_value.get("decision_reason")),
+        "checked_at": _text_or_none(raw_value.get("checked_at")),
+        "current_process": _project_retention_scheduler_daemon_operator_current_process(
+            raw_value.get("current_process")
+        ),
+        "next_supervisor_actions": [
+            _project_retention_scheduler_daemon_operator_next_supervisor_action(
+                item
+            )
+            for item in _list_value(raw_value.get("next_supervisor_actions"))
+            if isinstance(item, Mapping)
+        ],
+        "execution_intent": _select_mapping(
+            raw_value.get("execution_intent"),
+            (
+                "action",
+                "mutates_process",
+                "reads_status",
+                "requests_start",
+                "requests_stop",
+                "restart_decomposes_to_stop_then_start",
+                "requires_running_process",
+                "requires_bounded_subprocess_adapter",
+                "starts_continuous_loop",
+                "enqueues_job_queue",
+                "runs_worker",
+                "physical_delete_enabled",
+            ),
+        ),
+        "guardrails": _safe_operator_control_guardrails(
+            raw_value.get("guardrails")
+        ),
+        "metadata": _safe_operator_control_metadata(raw_value.get("metadata")),
+    }
+
+
+def _project_retention_scheduler_daemon_operator_control_command_preview(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "source_operator_control_command_preview_schema_version": _text_or_none(
+            raw_value.get("operator_control_command_preview_schema_version")
+        ),
+        "operator_control_command_preview_id": _text_or_none(
+            raw_value.get("operator_control_command_preview_id")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "operator_control_admission_id": _text_or_none(
+            raw_value.get("operator_control_admission_id")
+        ),
+        "operator_control_request_id": _text_or_none(
+            raw_value.get("operator_control_request_id")
+        ),
+        "action": _normalized_daemon_operator_control_action(
+            raw_value.get("action")
+        ),
+        "preview_status": _normalized_operator_control_admission_status(
+            raw_value.get("preview_status")
+        ),
+        "checked_at": _text_or_none(raw_value.get("checked_at")),
+        "supervisor_command_previews": [
+            _project_retention_scheduler_daemon_operator_supervisor_command_preview(
+                item
+            )
+            for item in _list_value(raw_value.get("supervisor_command_previews"))
+            if isinstance(item, Mapping)
+        ],
+        "guardrails": _safe_operator_control_guardrails(
+            raw_value.get("guardrails")
+        ),
+        "metadata": _safe_operator_control_metadata(raw_value.get("metadata")),
+    }
+
+
+def _project_retention_scheduler_daemon_operator_current_process(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "process_source": _text_or_none(raw_value.get("process_source")),
+        "process_status": _normalized_daemon_supervised_process_status(
+            raw_value.get("process_status")
+        ),
+        "process_running": raw_value.get("process_running") is True,
+        "daemon_supervised_process_id": _text_or_none(
+            raw_value.get("daemon_supervised_process_id")
+        ),
+        "daemon_supervisor_command_id": _text_or_none(
+            raw_value.get("daemon_supervisor_command_id")
+        ),
+        "process_id": _int_or_zero(raw_value.get("process_id")),
+        "host_id": _text_or_none(raw_value.get("host_id")),
+        "observed_at": _text_or_none(raw_value.get("observed_at")),
+    }
+
+
+def _project_retention_scheduler_daemon_operator_next_supervisor_action(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return {
+        "sequence": _int_or_zero(raw_value.get("sequence")),
+        "action": _normalized_daemon_supervisor_action(raw_value.get("action")),
+        "mutates_process": raw_value.get("mutates_process") is True,
+        "requires_distinct_evidence": (
+            raw_value.get("requires_distinct_evidence") is True
+        ),
+        "requires_follow_up_admission": (
+            raw_value.get("requires_follow_up_admission") is True
+        ),
+    }
+
+
+def _project_retention_scheduler_daemon_operator_supervisor_command_preview(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    supervisor_command = _mapping_or_empty(raw_value.get("supervisor_command"))
+    command_body = _mapping_or_empty(supervisor_command.get("command"))
+    return {
+        "sequence": _int_or_zero(raw_value.get("sequence")),
+        "action": _normalized_daemon_supervisor_action(raw_value.get("action")),
+        "requires_distinct_evidence": (
+            raw_value.get("requires_distinct_evidence") is True
+        ),
+        "requires_follow_up_admission": (
+            raw_value.get("requires_follow_up_admission") is True
+        ),
+        "supervisor_command_id": _text_or_none(
+            supervisor_command.get("daemon_supervisor_command_id")
+            or supervisor_command.get("supervisor_command_id")
+        ),
+        "supervisor_command_schema_version": _text_or_none(
+            supervisor_command.get("daemon_supervisor_command_schema_version")
+            or supervisor_command.get("supervisor_command_schema_version")
+        ),
+        "command_action": _normalized_daemon_supervisor_action(
+            command_body.get("action") or supervisor_command.get("action")
+        ),
+        "command_enabled": command_body.get("enabled") is True,
+        "command_explicit_opt_in": command_body.get("explicit_opt_in") is True,
+        "command_max_cycles": _int_or_zero(command_body.get("max_cycles")),
+        "command_run_worker": command_body.get("run_worker") is True,
+    }
+
+
+def _operator_control_safe_subject(raw_value: Any) -> dict[str, Any]:
+    return _select_mapping(
+        raw_value,
+        (
+            "actor_type",
+            "actor_id",
+            "tenant_id",
+            "workspace_id",
+            "service_id",
+            "request_id",
+        ),
+    )
+
+
+def _safe_operator_control_guardrails(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return _select_mapping(
+        raw_value,
+        (
+            "metadata_only",
+            "operator_subject_required",
+            "idempotency_key_required",
+            "operator_reason_required",
+            "approval_required_for_start_restart",
+            "approval_required",
+            "test_profile_required",
+            "explicit_opt_in_required_for_start_restart",
+            "explicit_opt_in_required",
+            "bounded_max_cycles_required",
+            "status_probe_before_mutation_required",
+            "restart_is_stop_then_start",
+            "restart_decomposes_to_stop_then_start",
+            "restart_requires_follow_up_admission",
+            "production_continuous_start_enabled",
+            "admission_only",
+            "operator_request_validated",
+            "current_process_metadata_only",
+            "ready_allows_supervisor_dispatch",
+            "supervisor_adapter_required",
+            "preview_only",
+            "policy_evaluated",
+            "request_validated",
+            "admission_evaluated",
+            "command_preview_evaluated",
+            "process_control_allowed",
+            "contract_starts_process",
+            "contract_stops_process",
+            "supervisor_dispatch_performed",
+            "supervisor_adapter_invoked",
+            "subprocess_started",
+            "subprocess_stopped",
+            "database_write_performed",
+            "job_queue_enqueue_performed",
+            "worker_execution_performed",
+            "ag_direct_process_control_allowed",
+            "ag_direct_database_write_allowed",
+            "ag_direct_job_enqueue_allowed",
+            "physical_delete_automation_enabled",
+        ),
+    )
+
+
+def _safe_operator_control_metadata(raw_value: Any) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    return _select_mapping(
+        raw_value,
+        (
+            "safe_for_ag_projection",
+            "metadata_only",
+            "policy_contract_only",
+            "admission_contract_only",
+            "command_preview_contract_only",
+            "route_facade",
+            "preview_only",
+            "scheduler_id",
+            "action",
+            "admission_status",
+            "decision_reason",
+            "approval_required",
+            "approval_granted",
+            "mutating_action",
+            "ready_for_dispatch",
+            "blocked",
+            "noop",
+            "command_preview_count",
+            "supervisor_actions",
+            "next_supervisor_action_count",
+            "start_preview_count",
+            "stop_preview_count",
+            "status_probe_preview_count",
+            "restart_preview",
+            "supervisor_adapter_invoked",
+            "subprocess_started",
+            "subprocess_stopped",
+            "database_write_performed",
+            "job_queue_enqueue_performed",
+            "worker_execution_performed",
+            "secrets_redacted",
+        ),
+    )
+
+
 def _project_retention_history_item(record: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "artifact_retention_execution_history_item_schema_version": _text_or_none(
@@ -6674,6 +7530,33 @@ def _artifact_retention_daemon_supervised_process_source_status(
         "process_snapshot_collection_loaded": not errors,
         "process_snapshot_detail_loaded": detail_loaded and not errors,
         "item_count": item_count,
+        "errors": [
+            {
+                "error_code": error.error_code,
+                "detail": error.detail,
+                "status_code": error.status_code,
+            }
+            for error in errors
+        ],
+    }
+
+
+def _artifact_retention_daemon_operator_control_source_status(
+    *,
+    source_client: AeArtifactOperationsClient | None,
+    policy_loaded: bool,
+    facade_loaded: bool,
+    errors: list[AeArtifactOperationsError],
+) -> dict[str, Any]:
+    status = "DEGRADED" if errors else "READY"
+    return {
+        "status": status,
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "source_kind": getattr(source_client, "source_kind", "provided"),
+        "base_url": getattr(source_client, "base_url", None),
+        "operator_control_policy_loaded": policy_loaded and not errors,
+        "operator_control_facade_loaded": facade_loaded and not errors,
+        "preview_only": True,
         "errors": [
             {
                 "error_code": error.error_code,
@@ -7615,6 +8498,230 @@ def _artifact_retention_daemon_requested_by(
     }
 
 
+def _artifact_retention_daemon_operator_subject(
+    *,
+    request: Request,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    operator_subject = _operator_control_safe_subject(
+        payload.get("operator_subject")
+    )
+    if operator_subject:
+        return operator_subject
+    requested_by = _operator_control_safe_subject(payload.get("requested_by"))
+    if requested_by:
+        return requested_by
+    return {
+        "actor_type": "operator",
+        "actor_id": "nex-ag-artifact-retention-operator",
+        "request_id": request_id_from_headers(request),
+        "service_id": "nex-ag",
+    }
+
+
+def _validate_artifact_retention_daemon_operator_control_preview_request(
+    request: Request,
+    *,
+    payload: Any,
+    idempotency_key_header: str | None,
+) -> dict[str, Any] | JSONResponse:
+    if not isinstance(payload, Mapping):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_daemon_operator_control_invalid",
+            title="Artifact retention daemon operator control request is invalid",
+            detail="Artifact retention daemon operator control request must be an object.",
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-operator-control-invalid"
+            ),
+        )
+
+    action = _normalized_daemon_operator_control_action(
+        payload.get("action") or "status_probe"
+    )
+    if action is None:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_daemon_operator_control_action_invalid",
+            title="Artifact retention daemon operator control action is invalid",
+            detail=(
+                "Artifact retention daemon operator control action must be "
+                "status_probe, start_daemon, stop_daemon, or restart_daemon."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-operator-control-action-invalid"
+            ),
+        )
+
+    reason = _text_or_none(payload.get("reason"))
+    if not _present_text(reason):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code="ag.ae_artifact_retention_daemon_operator_control_reason_missing",
+            title="Artifact retention daemon operator control reason is required",
+            detail="Artifact retention daemon operator control preview requires reason.",
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-operator-control-reason-missing"
+            ),
+        )
+
+    header_key = _text_or_none(idempotency_key_header)
+    payload_key = _text_or_none(payload.get("idempotency_key"))
+    idempotency_key = header_key if _present_text(header_key) else payload_key
+    if not _present_text(idempotency_key):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code=(
+                "ag.ae_artifact_retention_daemon_operator_control_idempotency_key_missing"
+            ),
+            title="Artifact retention daemon operator control idempotency key is required",
+            detail=(
+                "Artifact retention daemon operator control preview requires "
+                "an Idempotency-Key header or payload idempotency_key."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-operator-control-idempotency-key-missing"
+            ),
+        )
+
+    enabled = _operator_control_bool_field(
+        request,
+        payload=payload,
+        field_name="enabled",
+        default=False,
+    )
+    if isinstance(enabled, JSONResponse):
+        return enabled
+    explicit_opt_in = _operator_control_bool_field(
+        request,
+        payload=payload,
+        field_name="explicit_opt_in",
+        default=False,
+    )
+    if isinstance(explicit_opt_in, JSONResponse):
+        return explicit_opt_in
+    run_worker = _operator_control_bool_field(
+        request,
+        payload=payload,
+        field_name="run_worker",
+        default=False,
+    )
+    if isinstance(run_worker, JSONResponse):
+        return run_worker
+
+    max_cycles = _operator_control_max_cycles(
+        request,
+        payload.get("max_cycles", 1),
+    )
+    if isinstance(max_cycles, JSONResponse):
+        return max_cycles
+
+    current_process = payload.get("current_process")
+    if current_process is not None and not isinstance(current_process, Mapping):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code=(
+                "ag.ae_artifact_retention_daemon_operator_control_current_process_invalid"
+            ),
+            title="Artifact retention daemon operator control current process is invalid",
+            detail=(
+                "Artifact retention daemon operator control current_process "
+                "must be an object when supplied."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-operator-control-current-process-invalid"
+            ),
+        )
+
+    return {
+        "action": action,
+        "operator_subject": _artifact_retention_daemon_operator_subject(
+            request=request,
+            payload=payload,
+        ),
+        "idempotency_key": str(idempotency_key).strip(),
+        "reason": str(reason).strip(),
+        "requested_at": _text_or_none(payload.get("requested_at")),
+        "checked_at": _text_or_none(payload.get("checked_at")),
+        "profile": _text_or_none(payload.get("profile")) or "test",
+        "enabled": enabled,
+        "explicit_opt_in": explicit_opt_in,
+        "max_cycles": max_cycles,
+        "run_worker": run_worker,
+        "approval": payload.get("approval")
+        if isinstance(payload.get("approval"), Mapping)
+        else None,
+        "current_process": dict(current_process)
+        if isinstance(current_process, Mapping)
+        else None,
+    }
+
+
+def _operator_control_bool_field(
+    request: Request,
+    *,
+    payload: Mapping[str, Any],
+    field_name: str,
+    default: bool,
+) -> bool | JSONResponse:
+    if field_name not in payload or payload[field_name] is None:
+        return default
+    value = payload[field_name]
+    if isinstance(value, bool):
+        return value
+    return problem_response(
+        request,
+        status_code=400,
+        error_code=(
+            "ag.ae_artifact_retention_daemon_operator_control_boolean_invalid"
+        ),
+        title="Artifact retention daemon operator control boolean is invalid",
+        detail=(
+            "Artifact retention daemon operator control "
+            f"{field_name} must be boolean."
+        ),
+        type_uri=(
+            "https://nex-platform.local/problems/"
+            "ae-artifact-retention-daemon-operator-control-boolean-invalid"
+        ),
+    )
+
+
+def _operator_control_max_cycles(
+    request: Request,
+    raw_value: Any,
+) -> int | JSONResponse:
+    try:
+        max_cycles = int(raw_value)
+    except (TypeError, ValueError):
+        max_cycles = 0
+    if 1 <= max_cycles <= 100:
+        return max_cycles
+    return problem_response(
+        request,
+        status_code=400,
+        error_code=(
+            "ag.ae_artifact_retention_daemon_operator_control_max_cycles_invalid"
+        ),
+        title="Artifact retention daemon operator control max cycles are invalid",
+        detail="Artifact retention daemon operator control max_cycles must be 1-100.",
+        type_uri=(
+            "https://nex-platform.local/problems/"
+            "ae-artifact-retention-daemon-operator-control-max-cycles-invalid"
+        ),
+    )
+
+
 def _validate_artifact_retention_automation_query(
     request: Request,
     *,
@@ -7934,6 +9041,21 @@ def _artifact_retention_scheduler_daemon_process_snapshot_cache_key(
     )
 
 
+def _artifact_retention_scheduler_daemon_operator_control_preview_cache_key(
+    *,
+    action: str,
+    idempotency_key: str | None,
+    checked_at: str | None,
+) -> str:
+    return "|".join(
+        (
+            _normalized_daemon_operator_control_action(action) or "",
+            idempotency_key or "",
+            checked_at or "",
+        )
+    )
+
+
 def _empty_artifact_retention_batch_plan_payload(
     *,
     tenant_id: str,
@@ -8185,6 +9307,539 @@ def _empty_artifact_retention_scheduler_daemon_process_snapshot_collection_paylo
             "raw_execution_payload_included": False,
             "raw_daemon_runtime_payload_included": False,
         },
+    }
+
+
+def _empty_artifact_retention_scheduler_daemon_operator_control_policy_payload(
+    *,
+    checked_at: str | None,
+) -> dict[str, Any]:
+    effective_checked_at = checked_at or "2026-09-01T00:00:00Z"
+    return {
+        "operator_control_policy_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_policy.v1"
+        ),
+        "operator_control_policy_id": (
+            "operator-control-policy-empty:"
+            f"ae-artifact-retention-scheduler:{effective_checked_at}"
+        ),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "checked_at": effective_checked_at,
+        "supported_actions": [
+            {
+                "action": "status_probe",
+                "mutates_process": False,
+                "requires_approval": False,
+                "requires_running_process": False,
+                "starts_process": False,
+                "stops_process": False,
+            },
+            {
+                "action": "start_daemon",
+                "mutates_process": True,
+                "requires_approval": True,
+                "requires_running_process": False,
+                "starts_process": True,
+                "stops_process": False,
+            },
+            {
+                "action": "stop_daemon",
+                "mutates_process": True,
+                "requires_approval": False,
+                "requires_running_process": True,
+                "starts_process": False,
+                "stops_process": True,
+            },
+            {
+                "action": "restart_daemon",
+                "mutates_process": True,
+                "requires_approval": True,
+                "requires_running_process": True,
+                "starts_process": True,
+                "stops_process": True,
+            },
+        ],
+        "required_fields": {
+            "operator_subject": True,
+            "idempotency_key": True,
+            "reason": True,
+            "approval_required_for_start": True,
+            "approval_required_for_restart": True,
+            "profile": True,
+            "max_cycles": True,
+        },
+        "profile_policy": {
+            "default_profile": "test",
+            "allowed_profiles": ["test"],
+            "production_profiles_allowed": False,
+            "production_continuous_start_enabled": False,
+        },
+        "restart_policy": {
+            "restart_daemon_supported": True,
+            "restart_semantics": "stop_then_start",
+            "requires_distinct_stop_evidence": True,
+            "requires_distinct_start_evidence": True,
+        },
+        "guardrails": _empty_operator_control_guardrails(policy_only=True),
+        "metadata": _empty_operator_control_metadata(policy_only=True),
+    }
+
+
+def _memory_artifact_retention_scheduler_daemon_operator_control_preview_payload(
+    *,
+    action: str,
+    operator_subject: Mapping[str, Any],
+    idempotency_key: str,
+    reason: str,
+    requested_at: str | None,
+    checked_at: str | None,
+    profile: str,
+    enabled: bool,
+    explicit_opt_in: bool,
+    max_cycles: int,
+    run_worker: bool,
+    approval: Mapping[str, Any] | None,
+    current_process: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    normalized_action = _normalized_daemon_operator_control_action(action) or "status_probe"
+    effective_checked_at = checked_at or requested_at or "2026-09-01T00:00:00Z"
+    scheduler_id = "ae-artifact-retention-scheduler"
+    policy = _empty_artifact_retention_scheduler_daemon_operator_control_policy_payload(
+        checked_at=effective_checked_at,
+    )
+    request_payload = {
+        "operator_control_request_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_request.v1"
+        ),
+        "operator_control_request_id": (
+            "operator-control-request-empty:"
+            f"{scheduler_id}:{normalized_action}:idempotency-key-present"
+        ),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "scheduler_id": scheduler_id,
+        "action": normalized_action,
+        "operator_subject": _operator_control_safe_subject(operator_subject),
+        "idempotency_key": idempotency_key,
+        "reason": reason,
+        "requested_at": effective_checked_at,
+        "profile": profile,
+        "enabled": enabled,
+        "explicit_opt_in": explicit_opt_in,
+        "max_cycles": max_cycles,
+        "run_worker": run_worker,
+        "approval": _select_mapping(
+            approval,
+            ("approved", "approved_by", "approved_at", "approval_reason"),
+        ),
+        "execution_intent": _memory_operator_control_execution_intent(
+            normalized_action
+        ),
+        "guardrails": _empty_operator_control_guardrails(policy_only=False),
+        "metadata": {
+            **_empty_operator_control_metadata(policy_only=False),
+            "approval_required": normalized_action
+            in {"start_daemon", "restart_daemon"},
+            "approval_granted": (
+                isinstance(approval, Mapping) and approval.get("approved") is True
+            ),
+            "mutating_action": normalized_action != "status_probe",
+        },
+    }
+    process = _memory_operator_control_current_process(
+        action=normalized_action,
+        current_process=current_process,
+        observed_at=effective_checked_at,
+    )
+    admission_status, decision_reason = (
+        _memory_operator_control_admission_decision(
+            action=normalized_action,
+            process_status=_text_or_none(process.get("process_status")),
+        )
+    )
+    next_actions = _memory_operator_control_next_supervisor_actions(
+        action=normalized_action,
+        admission_status=admission_status,
+    )
+    admission = {
+        "operator_control_admission_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_admission.v1"
+        ),
+        "operator_control_admission_id": (
+            "operator-control-admission-empty:"
+            f"{request_payload['operator_control_request_id']}:{admission_status}"
+        ),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "scheduler_id": scheduler_id,
+        "operator_control_request_id": request_payload[
+            "operator_control_request_id"
+        ],
+        "action": normalized_action,
+        "admission_status": admission_status,
+        "decision_reason": decision_reason,
+        "checked_at": effective_checked_at,
+        "operator_control_request": request_payload,
+        "current_process": process,
+        "next_supervisor_actions": next_actions,
+        "execution_intent": _memory_operator_control_execution_intent(
+            normalized_action
+        ),
+        "guardrails": {
+            **_empty_operator_control_guardrails(policy_only=False),
+            "admission_only": True,
+            "ready_allows_supervisor_dispatch": admission_status == "READY",
+        },
+        "metadata": {
+            **_empty_operator_control_metadata(policy_only=False),
+            "admission_contract_only": True,
+            "ready_for_dispatch": admission_status == "READY",
+            "blocked": admission_status == "BLOCKED",
+            "noop": admission_status == "NOOP",
+            "next_supervisor_action_count": len(next_actions),
+        },
+    }
+    command_previews = [
+        _memory_operator_control_supervisor_command_preview_item(
+            next_action=item,
+            checked_at=effective_checked_at,
+            max_cycles=max_cycles,
+            run_worker=run_worker,
+            enabled=item["action"] == "start_daemon",
+            explicit_opt_in=item["action"] == "start_daemon"
+            and explicit_opt_in,
+        )
+        for item in next_actions
+    ]
+    supervisor_actions = [item["action"] for item in command_previews]
+    command_preview = {
+        "operator_control_command_preview_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_command_preview.v1"
+        ),
+        "operator_control_command_preview_id": (
+            "operator-control-command-preview-empty:"
+            f"{admission['operator_control_admission_id']}:{len(command_previews)}"
+        ),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "scheduler_id": scheduler_id,
+        "operator_control_admission_id": admission[
+            "operator_control_admission_id"
+        ],
+        "operator_control_request_id": request_payload[
+            "operator_control_request_id"
+        ],
+        "action": normalized_action,
+        "preview_status": admission_status,
+        "checked_at": effective_checked_at,
+        "operator_control_admission": admission,
+        "supervisor_command_previews": command_previews,
+        "guardrails": {
+            **_empty_operator_control_guardrails(policy_only=False),
+            "preview_only": True,
+            "supervisor_adapter_invoked": False,
+        },
+        "metadata": {
+            **_empty_operator_control_metadata(policy_only=False),
+            "command_preview_contract_only": True,
+            "ready_for_dispatch": admission_status == "READY",
+            "blocked": admission_status == "BLOCKED",
+            "noop": admission_status == "NOOP",
+            "command_preview_count": len(command_previews),
+            "supervisor_actions": supervisor_actions,
+            "start_preview_count": supervisor_actions.count("start_daemon"),
+            "stop_preview_count": supervisor_actions.count("stop_daemon"),
+            "status_probe_preview_count": supervisor_actions.count("status_probe"),
+            "restart_preview": normalized_action == "restart_daemon",
+        },
+    }
+    return {
+        "operator_control_facade_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_facade.v1"
+        ),
+        "operator_control_facade_id": (
+            "operator-control-facade-empty:"
+            f"{policy['operator_control_policy_id']}:"
+            f"{command_preview['operator_control_command_preview_id']}"
+        ),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "scheduler_id": scheduler_id,
+        "operator_control_policy_id": policy["operator_control_policy_id"],
+        "operator_control_request_id": request_payload[
+            "operator_control_request_id"
+        ],
+        "operator_control_admission_id": admission[
+            "operator_control_admission_id"
+        ],
+        "operator_control_command_preview_id": command_preview[
+            "operator_control_command_preview_id"
+        ],
+        "action": normalized_action,
+        "facade_status": admission_status,
+        "checked_at": effective_checked_at,
+        "operator_control_policy": policy,
+        "operator_control_request": request_payload,
+        "operator_control_admission": admission,
+        "operator_control_command_preview": command_preview,
+        "guardrails": {
+            **_empty_operator_control_guardrails(policy_only=False),
+            "policy_evaluated": True,
+            "request_validated": True,
+            "admission_evaluated": True,
+            "command_preview_evaluated": True,
+            "preview_only": True,
+            "process_control_allowed": False,
+            "supervisor_dispatch_performed": False,
+        },
+        "metadata": {
+            **_empty_operator_control_metadata(policy_only=False),
+            "route_facade": True,
+            "preview_only": True,
+            "scheduler_id": scheduler_id,
+            "action": normalized_action,
+            "admission_status": admission_status,
+            "decision_reason": decision_reason,
+            "ready_for_dispatch": admission_status == "READY",
+            "command_preview_count": len(command_previews),
+            "supervisor_actions": supervisor_actions,
+        },
+    }
+
+
+def _memory_operator_control_execution_intent(action: str) -> dict[str, Any]:
+    mutates_process = action != "status_probe"
+    return {
+        "action": action,
+        "mutates_process": mutates_process,
+        "reads_status": action == "status_probe",
+        "requests_start": action in {"start_daemon", "restart_daemon"},
+        "requests_stop": action in {"stop_daemon", "restart_daemon"},
+        "restart_decomposes_to_stop_then_start": action == "restart_daemon",
+        "requires_running_process": action in {"stop_daemon", "restart_daemon"},
+        "requires_bounded_subprocess_adapter": action
+        in {"start_daemon", "restart_daemon"},
+        "starts_continuous_loop": False,
+        "enqueues_job_queue": False,
+        "runs_worker": False,
+        "physical_delete_enabled": False,
+    }
+
+
+def _memory_operator_control_current_process(
+    *,
+    action: str,
+    current_process: Mapping[str, Any] | None,
+    observed_at: str,
+) -> dict[str, Any]:
+    if isinstance(current_process, Mapping):
+        process_status = (
+            _normalized_daemon_supervised_process_status(
+                current_process.get("process_status")
+            )
+            or "MISSING"
+        )
+        return {
+            "process_source": _text_or_none(
+                current_process.get("process_source")
+            )
+            or "read_model",
+            "process_status": process_status,
+            "process_running": process_status in {"RUNNING", "STOP_REQUESTED", "STALE"},
+            "daemon_supervised_process_id": _text_or_none(
+                current_process.get("daemon_supervised_process_id")
+            ),
+            "daemon_supervisor_command_id": _text_or_none(
+                current_process.get("daemon_supervisor_command_id")
+            ),
+            "process_id": _int_or_zero(current_process.get("process_id")),
+            "host_id": _text_or_none(current_process.get("host_id")),
+            "observed_at": _text_or_none(current_process.get("observed_at"))
+            or observed_at,
+        }
+    process_status = "RUNNING" if action in {"stop_daemon", "restart_daemon"} else "MISSING"
+    return {
+        "process_source": "read_model" if process_status == "RUNNING" else "none",
+        "process_status": process_status,
+        "process_running": process_status == "RUNNING",
+        "daemon_supervised_process_id": (
+            "daemon-supervised-process-memory" if process_status == "RUNNING" else None
+        ),
+        "daemon_supervisor_command_id": (
+            "daemon-supervisor-command-memory"
+            if process_status == "RUNNING"
+            else None
+        ),
+        "process_id": 1 if process_status == "RUNNING" else None,
+        "host_id": "memory" if process_status == "RUNNING" else None,
+        "observed_at": observed_at,
+    }
+
+
+def _memory_operator_control_admission_decision(
+    *,
+    action: str,
+    process_status: str | None,
+) -> tuple[str, str]:
+    status = process_status or "MISSING"
+    if action == "status_probe":
+        return "READY", "status_probe_allowed"
+    if action == "start_daemon":
+        if status in {"MISSING", "STOPPED", "EXITED"}:
+            return "READY", "start_allowed_no_running_process"
+        if status == "RUNNING":
+            return "NOOP", "daemon_already_running"
+        return "BLOCKED", "process_state_requires_review"
+    if action == "stop_daemon":
+        if status in {"RUNNING", "STALE", "START_REQUESTED"}:
+            return "READY", "stop_allowed_for_observed_process"
+        if status in {"MISSING", "STOPPED", "EXITED"}:
+            return "NOOP", "daemon_not_running"
+        return "BLOCKED", "process_state_requires_review"
+    if action == "restart_daemon" and status in {"RUNNING", "STALE"}:
+        return "READY", "restart_allowed_stop_then_start"
+    if action == "restart_daemon":
+        return "BLOCKED", "restart_requires_running_process"
+    return "BLOCKED", "operator_control_action_invalid"
+
+
+def _memory_operator_control_next_supervisor_actions(
+    *,
+    action: str,
+    admission_status: str,
+) -> list[dict[str, Any]]:
+    if admission_status != "READY":
+        return []
+    if action == "restart_daemon":
+        return [
+            _memory_operator_control_next_supervisor_action(
+                sequence=1,
+                action="stop_daemon",
+                requires_distinct_evidence=True,
+                requires_follow_up_admission=False,
+            ),
+            _memory_operator_control_next_supervisor_action(
+                sequence=2,
+                action="start_daemon",
+                requires_distinct_evidence=True,
+                requires_follow_up_admission=True,
+            ),
+        ]
+    return [
+        _memory_operator_control_next_supervisor_action(
+            sequence=1,
+            action=(
+                "status_probe"
+                if action == "status_probe"
+                else ("start_daemon" if action == "start_daemon" else "stop_daemon")
+            ),
+            requires_distinct_evidence=action != "status_probe",
+            requires_follow_up_admission=False,
+        )
+    ]
+
+
+def _memory_operator_control_next_supervisor_action(
+    *,
+    sequence: int,
+    action: str,
+    requires_distinct_evidence: bool,
+    requires_follow_up_admission: bool,
+) -> dict[str, Any]:
+    return {
+        "sequence": sequence,
+        "action": action,
+        "mutates_process": action in {"start_daemon", "stop_daemon"},
+        "requires_distinct_evidence": requires_distinct_evidence,
+        "requires_follow_up_admission": requires_follow_up_admission,
+    }
+
+
+def _memory_operator_control_supervisor_command_preview_item(
+    *,
+    next_action: Mapping[str, Any],
+    checked_at: str,
+    max_cycles: int,
+    run_worker: bool,
+    enabled: bool,
+    explicit_opt_in: bool,
+) -> dict[str, Any]:
+    action = _normalized_daemon_supervisor_action(next_action.get("action")) or "status_probe"
+    return {
+        "sequence": _int_or_zero(next_action.get("sequence")),
+        "action": action,
+        "requires_distinct_evidence": (
+            next_action.get("requires_distinct_evidence") is True
+        ),
+        "requires_follow_up_admission": (
+            next_action.get("requires_follow_up_admission") is True
+        ),
+        "supervisor_command": {
+            "daemon_supervisor_command_schema_version": (
+                "ae_artifact_retention_scheduler_daemon_supervisor_command.v1"
+            ),
+            "daemon_supervisor_command_id": (
+                "daemon-supervisor-command-preview-empty:"
+                f"{action}:{checked_at}"
+            ),
+            "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+            "scheduler_id": "ae-artifact-retention-scheduler",
+            "command": {
+                "action": action,
+                "enabled": enabled,
+                "explicit_opt_in": explicit_opt_in,
+                "max_cycles": max_cycles,
+                "run_worker": run_worker,
+            },
+        },
+    }
+
+
+def _empty_operator_control_guardrails(*, policy_only: bool) -> dict[str, Any]:
+    return {
+        "metadata_only": True,
+        "operator_subject_required": True,
+        "idempotency_key_required": True,
+        "operator_reason_required": True,
+        "approval_required_for_start_restart": True,
+        "test_profile_required": True,
+        "explicit_opt_in_required_for_start_restart": True,
+        "bounded_max_cycles_required": True,
+        "status_probe_before_mutation_required": True,
+        "restart_is_stop_then_start": True,
+        "production_continuous_start_enabled": False,
+        "policy_evaluated": not policy_only,
+        "preview_only": not policy_only,
+        "process_control_allowed": False,
+        "supervisor_dispatch_performed": False,
+        "supervisor_adapter_invoked": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+        "physical_delete_automation_enabled": False,
+    }
+
+
+def _empty_operator_control_metadata(*, policy_only: bool) -> dict[str, Any]:
+    return {
+        "safe_for_ag_projection": True,
+        "metadata_only": True,
+        "policy_contract_only": policy_only,
+        "preview_only": not policy_only,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "secrets_redacted": True,
     }
 
 
@@ -9546,6 +11201,30 @@ def _normalized_daemon_supervisor_action(raw_value: Any) -> str | None:
     return (
         normalized
         if normalized in SUPPORTED_ARTIFACT_RETENTION_DAEMON_SUPERVISOR_ACTIONS
+        else None
+    )
+
+
+def _normalized_daemon_operator_control_action(raw_value: Any) -> str | None:
+    value = _text_or_none(raw_value)
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().lower().replace("-", "_")
+    return (
+        normalized
+        if normalized in SUPPORTED_ARTIFACT_RETENTION_DAEMON_OPERATOR_CONTROL_ACTIONS
+        else None
+    )
+
+
+def _normalized_operator_control_admission_status(raw_value: Any) -> str | None:
+    value = _text_or_none(raw_value)
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().upper().replace("-", "_")
+    return (
+        normalized
+        if normalized in SUPPORTED_ARTIFACT_RETENTION_DAEMON_OPERATOR_CONTROL_STATUSES
         else None
     )
 
