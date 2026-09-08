@@ -623,6 +623,9 @@ Unified operations:
   retention automation dashboard. Operators can see running/stale/failed/blocked
   process counts and process attention state without AG taking ownership of AE
   persistence or subprocess control.
+- Slice 0580 closes S58 with a quality-gate checkpoint over supervised process
+  activation boundaries, AE persistence/API evidence, AG read-only projections,
+  protected PostgreSQL smokes, and the automation dashboard rollup.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

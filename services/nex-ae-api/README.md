@@ -893,3 +893,6 @@ Artifact library management:
 - Slice 0579 keeps AE as the source of supervised process snapshots while AG
   includes those snapshots in the artifact retention automation dashboard as a
   read-only process health and attention rollup.
+- Slice 0580 closes S58 by checking the supervised process activation boundary,
+  AE-owned persistence and API wiring, protected test-database smoke evidence,
+  AG read-only projections, dashboard rollups, and secret redaction posture.
