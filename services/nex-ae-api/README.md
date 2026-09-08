@@ -896,3 +896,7 @@ Artifact library management:
 - Slice 0580 closes S58 by checking the supervised process activation boundary,
   AE-owned persistence and API wiring, protected test-database smoke evidence,
   AG read-only projections, dashboard rollups, and secret redaction posture.
+- Slice 0581 starts S59 by freezing guarded operator control for supervised
+  scheduler daemon processes: AE owns process execution and persistence, start
+  or restart requires operator subject, reason, idempotency, explicit approval,
+  test profile, and bounded execution evidence.

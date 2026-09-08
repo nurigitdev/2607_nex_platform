@@ -684,6 +684,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0578`](slices/0578_ag_supervised_process_postgresql_smoke.md) | `S58-008` AG supervised process PostgreSQL smoke evidence. |
 | [`Slice 0579`](slices/0579_ag_supervised_process_operations_dashboard_integration.md) | `S58-009` AG supervised process operations dashboard integration. |
 | [`Slice 0580`](slices/0580_s58_ae_scheduler_daemon_supervised_process_activation_closure.md) | `S58-010` S58 AE scheduler daemon supervised process activation closure checkpoint. |
+| [`Slice 0581`](slices/0581_ae_supervised_process_operator_control_boundary_audit.md) | `S59-001` AE supervised process operator-control boundary audit. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

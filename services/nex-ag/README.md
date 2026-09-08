@@ -626,6 +626,9 @@ Unified operations:
 - Slice 0580 closes S58 with a quality-gate checkpoint over supervised process
   activation boundaries, AE persistence/API evidence, AG read-only projections,
   protected PostgreSQL smokes, and the automation dashboard rollup.
+- Slice 0581 starts S59 with AG as the operator-facing dispatcher only. AG can
+  later request guarded AE operator control, but it remains read-only over AE
+  persistence and never directly starts, stops, or restarts AE subprocesses.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
