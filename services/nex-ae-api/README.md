@@ -939,3 +939,7 @@ Artifact library management:
   restart stop-then-start intent, reserve the fake dry-run supervisor dispatch
   mode, and still perform no route dispatch, adapter invocation, database write,
   JobQueue enqueue, worker run, subprocess control, or physical deletion.
+- Slice 0593 adds the AE-owned execution state machine and idempotency
+  contract. READY fake-dispatch requests become ADMITTED with only
+  EXECUTING/BLOCKED next states, while contract-only, blocked, noop, replayed,
+  and conflicting requests become terminal metadata-only evidence.

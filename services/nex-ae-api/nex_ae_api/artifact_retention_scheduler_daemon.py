@@ -126,6 +126,12 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_REQUEST_SCHEMA
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_RESULT_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_operator_control_execution_result.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_STATE_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_operator_control_execution_state.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_STATE_TRANSITION_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_operator_control_execution_state_transition.v1"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
@@ -185,6 +191,12 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_MODES = frozen
 )
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_STATUSES = frozenset(
     {"READY", "BLOCKED", "NOOP"}
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_STATE_STATUSES = (
+    frozenset({"ADMITTED", "EXECUTING", "SUCCEEDED", "FAILED", "BLOCKED", "NOOP"})
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_IDEMPOTENCY_STATUSES = (
+    frozenset({"NEW", "REPLAYED", "CONFLICT"})
 )
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_MODE = "fake_dry_run"
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_ADAPTER_NAME = (
@@ -3013,6 +3025,708 @@ def operator_control_execution_result_summary_line(
         f"reason={summary['decision_reason']} "
         f"dispatches={summary['dispatch_count']} "
         f"next={actions}"
+    )
+
+
+def build_artifact_retention_scheduler_daemon_operator_control_execution_state(
+    *,
+    operator_control_execution_request: Mapping[str, Any],
+    existing_execution_state: Mapping[str, Any] | None = None,
+    observed_at: str | None = None,
+) -> dict[str, Any]:
+    execution_request = (
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_request(
+            operator_control_execution_request
+        )
+    )
+    existing_state = (
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_state(
+            existing_execution_state
+        )
+        if existing_execution_state is not None
+        else None
+    )
+    normalized_observed_at = _required_text(
+        observed_at or execution_request["requested_at"],
+        "observed_at",
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_invalid"
+        ),
+    )
+    decision = _operator_control_execution_state_decision(
+        execution_request=execution_request,
+        existing_state=existing_state,
+    )
+    request_hash = sha256_json(dict(execution_request))
+    prior_state_id = (
+        existing_state["operator_control_execution_state_id"]
+        if existing_state is not None
+        else None
+    )
+    execution_state = {
+        "operator_control_execution_state_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_STATE_SCHEMA_VERSION
+        ),
+        "operator_control_execution_state_id": _operator_control_execution_state_id(
+            scheduler_id=execution_request["scheduler_id"],
+            operator_control_execution_request_id=execution_request[
+                "operator_control_execution_request_id"
+            ],
+            execution_status=decision["execution_status"],
+            idempotency_status=decision["idempotency_status"],
+            observed_at=normalized_observed_at,
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": execution_request["scheduler_id"],
+        "operator_control_execution_request_id": execution_request[
+            "operator_control_execution_request_id"
+        ],
+        "operator_control_facade_id": execution_request["operator_control_facade_id"],
+        "operator_control_request_id": execution_request["operator_control_request_id"],
+        "operator_control_admission_id": execution_request[
+            "operator_control_admission_id"
+        ],
+        "operator_control_command_preview_id": execution_request[
+            "operator_control_command_preview_id"
+        ],
+        "action": execution_request["action"],
+        "execution_mode": execution_request["execution_mode"],
+        "execution_status": decision["execution_status"],
+        "idempotency_key": execution_request["idempotency_key"],
+        "idempotency_status": decision["idempotency_status"],
+        "decision_reason": decision["decision_reason"],
+        "observed_at": normalized_observed_at,
+        "prior_execution_state_id": prior_state_id,
+        "operator_control_execution_request_hash": request_hash,
+        "operator_control_execution_request": deepcopy(execution_request),
+        "allowed_next_statuses": _operator_control_execution_allowed_next_statuses(
+            decision["execution_status"]
+        ),
+        "guardrails": _operator_control_execution_state_guardrails(
+            execution_request=execution_request,
+            execution_status=decision["execution_status"],
+            idempotency_status=decision["idempotency_status"],
+        ),
+        "metadata": _operator_control_execution_state_metadata(
+            execution_request=execution_request,
+            execution_status=decision["execution_status"],
+            idempotency_status=decision["idempotency_status"],
+            observed_at=normalized_observed_at,
+            existing_state=existing_state,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_operator_control_execution_state(
+        execution_state
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_operator_control_execution_state(
+    execution_state: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = (
+        "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_invalid"
+    )
+    if not isinstance(execution_state, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state must be an object."
+            ),
+        )
+    normalized = dict(execution_state)
+    if set(normalized) != {
+        "operator_control_execution_state_schema_version",
+        "operator_control_execution_state_id",
+        "service_id",
+        "scheduler_id",
+        "operator_control_execution_request_id",
+        "operator_control_facade_id",
+        "operator_control_request_id",
+        "operator_control_admission_id",
+        "operator_control_command_preview_id",
+        "action",
+        "execution_mode",
+        "execution_status",
+        "idempotency_key",
+        "idempotency_status",
+        "decision_reason",
+        "observed_at",
+        "prior_execution_state_id",
+        "operator_control_execution_request_hash",
+        "operator_control_execution_request",
+        "allowed_next_statuses",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state keys are invalid."
+            ),
+        )
+    if (
+        normalized.get("operator_control_execution_state_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_STATE_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state schema is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state service id is invalid."
+            ),
+        )
+    execution_request = (
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_request(
+            normalized.get("operator_control_execution_request")
+        )
+    )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        error_code=error_code,
+    )
+    if scheduler_id != execution_request["scheduler_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state scheduler scope is invalid."
+            ),
+        )
+    _ensure_operator_control_execution_source_scope(
+        payload=normalized,
+        facade=execution_request["operator_control_facade"],
+        error_code=error_code,
+        label="state",
+    )
+    if (
+        normalized.get("operator_control_execution_request_id")
+        != execution_request["operator_control_execution_request_id"]
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state request scope is invalid."
+            ),
+        )
+    action = _normalize_daemon_operator_control_action(normalized.get("action"))
+    if action != execution_request["action"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state action scope is invalid."
+            ),
+        )
+    execution_mode = _normalize_operator_control_execution_mode(
+        normalized.get("execution_mode"),
+        error_code=error_code,
+    )
+    if execution_mode != execution_request["execution_mode"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state mode scope is invalid."
+            ),
+        )
+    execution_status = _normalize_operator_control_execution_state_status(
+        normalized.get("execution_status"),
+        error_code=error_code,
+    )
+    idempotency_key = _required_text(
+        normalized.get("idempotency_key"),
+        "idempotency_key",
+        error_code=error_code,
+    )
+    if idempotency_key != execution_request["idempotency_key"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state idempotency scope is invalid."
+            ),
+        )
+    idempotency_status = _normalize_operator_control_idempotency_status(
+        normalized.get("idempotency_status"),
+        error_code=error_code,
+    )
+    decision = _operator_control_execution_state_decision(
+        execution_request=execution_request,
+        existing_state=None,
+        idempotency_status=idempotency_status,
+    )
+    if execution_status != decision["execution_status"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state status is invalid."
+            ),
+        )
+    if normalized.get("decision_reason") != decision["decision_reason"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state decision reason is invalid."
+            ),
+        )
+    observed_at = _required_text(
+        normalized.get("observed_at"),
+        "observed_at",
+        error_code=error_code,
+    )
+    prior_state_id = optional_text(normalized.get("prior_execution_state_id"))
+    request_hash = sha256_json(dict(execution_request))
+    if normalized.get("operator_control_execution_request_hash") != request_hash:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state request hash is invalid."
+            ),
+        )
+    expected_allowed = _operator_control_execution_allowed_next_statuses(
+        execution_status
+    )
+    if normalized.get("allowed_next_statuses") != expected_allowed:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state next statuses are invalid."
+            ),
+        )
+    if normalized.get("guardrails") != _operator_control_execution_state_guardrails(
+        execution_request=execution_request,
+        execution_status=execution_status,
+        idempotency_status=idempotency_status,
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state guardrails are invalid."
+            ),
+        )
+    expected_metadata = _operator_control_execution_state_metadata(
+        execution_request=execution_request,
+        execution_status=execution_status,
+        idempotency_status=idempotency_status,
+        observed_at=observed_at,
+        existing_state=None,
+        prior_state_id=prior_state_id,
+    )
+    if normalized.get("metadata") != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state metadata is invalid."
+            ),
+        )
+    expected_id = _operator_control_execution_state_id(
+        scheduler_id=scheduler_id,
+        operator_control_execution_request_id=execution_request[
+            "operator_control_execution_request_id"
+        ],
+        execution_status=execution_status,
+        idempotency_status=idempotency_status,
+        observed_at=observed_at,
+    )
+    if normalized.get("operator_control_execution_state_id") != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state id is invalid."
+            ),
+        )
+    normalized["action"] = action
+    normalized["execution_mode"] = execution_mode
+    normalized["execution_status"] = execution_status
+    normalized["idempotency_key"] = idempotency_key
+    normalized["idempotency_status"] = idempotency_status
+    normalized["prior_execution_state_id"] = prior_state_id
+    normalized["operator_control_execution_request"] = execution_request
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def build_artifact_retention_scheduler_daemon_operator_control_execution_state_transition(
+    *,
+    operator_control_execution_state: Mapping[str, Any],
+    target_status: str,
+    decision_reason: str,
+    transitioned_at: str | None = None,
+) -> dict[str, Any]:
+    state = validate_artifact_retention_scheduler_daemon_operator_control_execution_state(
+        operator_control_execution_state
+    )
+    to_status = _normalize_operator_control_execution_state_status(
+        target_status,
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_transition_invalid"
+        ),
+    )
+    normalized_transitioned_at = _required_text(
+        transitioned_at or state["observed_at"],
+        "transitioned_at",
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_transition_invalid"
+        ),
+    )
+    normalized_reason = _required_text(
+        decision_reason,
+        "decision_reason",
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_transition_invalid"
+        ),
+    )
+    _ensure_operator_control_execution_transition_allowed(
+        from_status=state["execution_status"],
+        to_status=to_status,
+    )
+    transition = {
+        "operator_control_execution_state_transition_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_STATE_TRANSITION_SCHEMA_VERSION
+        ),
+        "operator_control_execution_state_transition_id": (
+            _operator_control_execution_state_transition_id(
+                scheduler_id=state["scheduler_id"],
+                operator_control_execution_state_id=state[
+                    "operator_control_execution_state_id"
+                ],
+                from_status=state["execution_status"],
+                to_status=to_status,
+                transitioned_at=normalized_transitioned_at,
+            )
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": state["scheduler_id"],
+        "operator_control_execution_state_id": state[
+            "operator_control_execution_state_id"
+        ],
+        "operator_control_execution_request_id": state[
+            "operator_control_execution_request_id"
+        ],
+        "from_status": state["execution_status"],
+        "to_status": to_status,
+        "decision_reason": normalized_reason,
+        "transitioned_at": normalized_transitioned_at,
+        "operator_control_execution_state": deepcopy(state),
+        "guardrails": _operator_control_execution_transition_guardrails(
+            state=state,
+            to_status=to_status,
+        ),
+        "metadata": _operator_control_execution_transition_metadata(
+            state=state,
+            to_status=to_status,
+            transitioned_at=normalized_transitioned_at,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_operator_control_execution_state_transition(
+        transition
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_operator_control_execution_state_transition(
+    transition: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = (
+        "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_transition_invalid"
+    )
+    if not isinstance(transition, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state transition must be an object."
+            ),
+        )
+    normalized = dict(transition)
+    if set(normalized) != {
+        "operator_control_execution_state_transition_schema_version",
+        "operator_control_execution_state_transition_id",
+        "service_id",
+        "scheduler_id",
+        "operator_control_execution_state_id",
+        "operator_control_execution_request_id",
+        "from_status",
+        "to_status",
+        "decision_reason",
+        "transitioned_at",
+        "operator_control_execution_state",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state transition keys are invalid."
+            ),
+        )
+    if (
+        normalized.get("operator_control_execution_state_transition_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_STATE_TRANSITION_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_transition_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state transition schema is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state transition service id is invalid."
+            ),
+        )
+    state = validate_artifact_retention_scheduler_daemon_operator_control_execution_state(
+        normalized.get("operator_control_execution_state")
+    )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        error_code=error_code,
+    )
+    if scheduler_id != state["scheduler_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state transition scheduler scope is invalid."
+            ),
+        )
+    if normalized.get("operator_control_execution_state_id") != state[
+        "operator_control_execution_state_id"
+    ]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state transition state scope is invalid."
+            ),
+        )
+    if normalized.get("operator_control_execution_request_id") != state[
+        "operator_control_execution_request_id"
+    ]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state transition request scope is invalid."
+            ),
+        )
+    from_status = _normalize_operator_control_execution_state_status(
+        normalized.get("from_status"),
+        error_code=error_code,
+    )
+    if from_status != state["execution_status"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state transition from status is invalid."
+            ),
+        )
+    to_status = _normalize_operator_control_execution_state_status(
+        normalized.get("to_status"),
+        error_code=error_code,
+    )
+    _ensure_operator_control_execution_transition_allowed(
+        from_status=from_status,
+        to_status=to_status,
+    )
+    transitioned_at = _required_text(
+        normalized.get("transitioned_at"),
+        "transitioned_at",
+        error_code=error_code,
+    )
+    decision_reason = _required_text(
+        normalized.get("decision_reason"),
+        "decision_reason",
+        error_code=error_code,
+    )
+    if normalized.get("guardrails") != _operator_control_execution_transition_guardrails(
+        state=state,
+        to_status=to_status,
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state transition guardrails are invalid."
+            ),
+        )
+    expected_metadata = _operator_control_execution_transition_metadata(
+        state=state,
+        to_status=to_status,
+        transitioned_at=transitioned_at,
+    )
+    if normalized.get("metadata") != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state transition metadata is invalid."
+            ),
+        )
+    expected_id = _operator_control_execution_state_transition_id(
+        scheduler_id=scheduler_id,
+        operator_control_execution_state_id=state[
+            "operator_control_execution_state_id"
+        ],
+        from_status=from_status,
+        to_status=to_status,
+        transitioned_at=transitioned_at,
+    )
+    if normalized.get("operator_control_execution_state_transition_id") != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state transition id is invalid."
+            ),
+        )
+    normalized["from_status"] = from_status
+    normalized["to_status"] = to_status
+    normalized["decision_reason"] = decision_reason
+    normalized["operator_control_execution_state"] = state
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_operator_control_execution_state(
+    execution_state: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = (
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_state(
+            execution_state
+        )
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "operator_control_execution_state_id": validated[
+            "operator_control_execution_state_id"
+        ],
+        "operator_control_execution_request_id": validated[
+            "operator_control_execution_request_id"
+        ],
+        "action": validated["action"],
+        "execution_status": validated["execution_status"],
+        "idempotency_status": validated["idempotency_status"],
+        "decision_reason": validated["decision_reason"],
+        "allowed_next_statuses": list(validated["allowed_next_statuses"]),
+        "safe_for_ag_projection": validated["metadata"]["safe_for_ag_projection"],
+    }
+
+
+def operator_control_execution_state_summary_line(
+    execution_state: Mapping[str, Any],
+) -> str:
+    summary = (
+        summarize_artifact_retention_scheduler_daemon_operator_control_execution_state(
+            execution_state
+        )
+    )
+    next_statuses = ",".join(summary["allowed_next_statuses"]) or "terminal"
+    return (
+        "ae_scheduler_daemon_operator_control_execution_state=pass "
+        f"scheduler_id={summary['scheduler_id']} "
+        f"action={summary['action']} "
+        f"status={summary['execution_status']} "
+        f"idempotency={summary['idempotency_status']} "
+        f"reason={summary['decision_reason']} "
+        f"next={next_statuses}"
+    )
+
+
+def summarize_artifact_retention_scheduler_daemon_operator_control_execution_state_transition(
+    transition: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = (
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_state_transition(
+            transition
+        )
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "operator_control_execution_state_transition_id": validated[
+            "operator_control_execution_state_transition_id"
+        ],
+        "operator_control_execution_state_id": validated[
+            "operator_control_execution_state_id"
+        ],
+        "from_status": validated["from_status"],
+        "to_status": validated["to_status"],
+        "decision_reason": validated["decision_reason"],
+        "transitioned_at": validated["transitioned_at"],
+        "safe_for_ag_projection": validated["metadata"]["safe_for_ag_projection"],
+    }
+
+
+def operator_control_execution_state_transition_summary_line(
+    transition: Mapping[str, Any],
+) -> str:
+    summary = (
+        summarize_artifact_retention_scheduler_daemon_operator_control_execution_state_transition(
+            transition
+        )
+    )
+    return (
+        "ae_scheduler_daemon_operator_control_execution_state_transition=pass "
+        f"scheduler_id={summary['scheduler_id']} "
+        f"from={summary['from_status']} "
+        f"to={summary['to_status']} "
+        f"reason={summary['decision_reason']}"
     )
 
 
@@ -10767,6 +11481,56 @@ def _normalize_operator_control_execution_status(
     return status
 
 
+def _normalize_operator_control_execution_state_status(
+    value: Any,
+    *,
+    error_code: str,
+) -> str:
+    status = _required_text(
+        value,
+        "execution_status",
+        error_code=error_code,
+    ).upper()
+    if (
+        status
+        not in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_STATE_STATUSES
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state status is invalid."
+            ),
+        )
+    return status
+
+
+def _normalize_operator_control_idempotency_status(
+    value: Any,
+    *,
+    error_code: str,
+) -> str:
+    status = _required_text(
+        value,
+        "idempotency_status",
+        error_code=error_code,
+    ).upper()
+    if (
+        status
+        not in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_IDEMPOTENCY_STATUSES
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "idempotency status is invalid."
+            ),
+        )
+    return status
+
+
 def _operator_control_execution_request_id(
     *,
     scheduler_id: str,
@@ -10810,6 +11574,58 @@ def _operator_control_execution_result_id(
             (
                 "nex-ae-api:artifact-retention:operator-control-execution-result:"
                 f"{sha256_json(basis)}"
+            ),
+        )
+    )
+
+
+def _operator_control_execution_state_id(
+    *,
+    scheduler_id: str,
+    operator_control_execution_request_id: str,
+    execution_status: str,
+    idempotency_status: str,
+    observed_at: str,
+) -> str:
+    basis = {
+        "scheduler_id": scheduler_id,
+        "operator_control_execution_request_id": operator_control_execution_request_id,
+        "execution_status": execution_status,
+        "idempotency_status": idempotency_status,
+        "observed_at": observed_at,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            (
+                "nex-ae-api:artifact-retention:operator-control-execution-state:"
+                f"{sha256_json(basis)}"
+            ),
+        )
+    )
+
+
+def _operator_control_execution_state_transition_id(
+    *,
+    scheduler_id: str,
+    operator_control_execution_state_id: str,
+    from_status: str,
+    to_status: str,
+    transitioned_at: str,
+) -> str:
+    basis = {
+        "scheduler_id": scheduler_id,
+        "operator_control_execution_state_id": operator_control_execution_state_id,
+        "from_status": from_status,
+        "to_status": to_status,
+        "transitioned_at": transitioned_at,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            (
+                "nex-ae-api:artifact-retention:operator-control-execution-"
+                f"state-transition:{sha256_json(basis)}"
             ),
         )
     )
@@ -10987,6 +11803,271 @@ def _operator_control_execution_result_dispatch_results(
             ),
         )
     return []
+
+
+def _operator_control_execution_state_decision(
+    *,
+    execution_request: Mapping[str, Any],
+    existing_state: Mapping[str, Any] | None = None,
+    idempotency_status: str | None = None,
+) -> dict[str, str]:
+    if idempotency_status == "REPLAYED":
+        return {
+            "execution_status": "BLOCKED",
+            "idempotency_status": "REPLAYED",
+            "decision_reason": "idempotency_replay_returns_existing_state",
+        }
+    if idempotency_status == "CONFLICT":
+        return {
+            "execution_status": "BLOCKED",
+            "idempotency_status": "CONFLICT",
+            "decision_reason": "idempotency_key_conflict",
+        }
+    if existing_state is not None:
+        if existing_state["idempotency_key"] != execution_request["idempotency_key"]:
+            return {
+                "execution_status": "BLOCKED",
+                "idempotency_status": "CONFLICT",
+                "decision_reason": "idempotency_key_conflict",
+            }
+        if existing_state["operator_control_execution_request_hash"] == sha256_json(
+            dict(execution_request)
+        ):
+            return {
+                "execution_status": "BLOCKED",
+                "idempotency_status": "REPLAYED",
+                "decision_reason": "idempotency_replay_returns_existing_state",
+            }
+        return {
+            "execution_status": "BLOCKED",
+            "idempotency_status": "CONFLICT",
+            "decision_reason": "idempotency_key_conflict",
+        }
+    if execution_request["facade_status"] == "BLOCKED":
+        return {
+            "execution_status": "BLOCKED",
+            "idempotency_status": "NEW",
+            "decision_reason": execution_request["operator_control_facade"][
+                "operator_control_admission"
+            ]["decision_reason"],
+        }
+    if execution_request["facade_status"] == "NOOP":
+        return {
+            "execution_status": "NOOP",
+            "idempotency_status": "NEW",
+            "decision_reason": execution_request["operator_control_facade"][
+                "operator_control_admission"
+            ]["decision_reason"],
+        }
+    if execution_request["execution_mode"] == "contract_only":
+        return {
+            "execution_status": "BLOCKED",
+            "idempotency_status": "NEW",
+            "decision_reason": "execution_contract_only",
+        }
+    return {
+        "execution_status": "ADMITTED",
+        "idempotency_status": "NEW",
+        "decision_reason": "admitted_for_fake_dry_run_supervisor_dispatch",
+    }
+
+
+def _operator_control_execution_allowed_next_statuses(status: str) -> list[str]:
+    return {
+        "ADMITTED": ["EXECUTING", "BLOCKED"],
+        "EXECUTING": ["SUCCEEDED", "FAILED"],
+        "SUCCEEDED": [],
+        "FAILED": [],
+        "BLOCKED": [],
+        "NOOP": [],
+    }[status]
+
+
+def _ensure_operator_control_execution_transition_allowed(
+    *,
+    from_status: str,
+    to_status: str,
+) -> None:
+    if to_status not in _operator_control_execution_allowed_next_statuses(
+        from_status
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_transition_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "state transition is not allowed."
+            ),
+        )
+
+
+def _operator_control_execution_state_guardrails(
+    *,
+    execution_request: Mapping[str, Any],
+    execution_status: str,
+    idempotency_status: str,
+) -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "state_machine_only": True,
+        "operator_control_execution_request_validated": True,
+        "idempotency_key_required": True,
+        "idempotency_key_scoped_to_request": True,
+        "idempotency_replay_blocks_duplicate_dispatch": idempotency_status
+        == "REPLAYED",
+        "idempotency_conflict_blocks_dispatch": idempotency_status == "CONFLICT",
+        "admitted_allows_execution_transition": execution_status == "ADMITTED",
+        "executing_allows_terminal_transition": execution_status == "EXECUTING",
+        "terminal_state": execution_status in {"SUCCEEDED", "FAILED", "BLOCKED", "NOOP"},
+        "supervisor_dispatch_performed": False,
+        "supervisor_adapter_invoked": False,
+        "supervisor_result_persisted": False,
+        "supervisor_event_persisted": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "test_profile_required": True,
+        "bounded_max_cycles_required": True,
+        "restart_decomposes_to_stop_then_start": execution_request["action"]
+        == "restart_daemon",
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+        "physical_delete_automation_enabled": False,
+        "secrets_redacted": True,
+    }
+
+
+def _operator_control_execution_state_metadata(
+    *,
+    execution_request: Mapping[str, Any],
+    execution_status: str,
+    idempotency_status: str,
+    observed_at: str,
+    existing_state: Mapping[str, Any] | None = None,
+    prior_state_id: str | None = None,
+) -> dict[str, Any]:
+    replayed = idempotency_status == "REPLAYED"
+    conflict = idempotency_status == "CONFLICT"
+    return {
+        "safe_for_ag_projection": True,
+        "metadata_only": True,
+        "execution_state_machine_only": True,
+        "operator_control_execution_request_hash": sha256_json(
+            dict(execution_request)
+        ),
+        "observed_at": observed_at,
+        "source_facade_status": execution_request["facade_status"],
+        "execution_mode": execution_request["execution_mode"],
+        "execution_status": execution_status,
+        "idempotency_status": idempotency_status,
+        "idempotency_replayed": replayed,
+        "idempotency_conflict": conflict,
+        "prior_execution_state_id": (
+            prior_state_id
+            if prior_state_id is not None
+            else (
+                existing_state["operator_control_execution_state_id"]
+                if existing_state is not None
+                else None
+            )
+        ),
+        "allowed_next_statuses": _operator_control_execution_allowed_next_statuses(
+            execution_status
+        ),
+        "supervisor_command_count": execution_request["supervisor_command_count"],
+        "supervisor_actions": list(execution_request["supervisor_actions"]),
+        "supervisor_dispatch_performed": False,
+        "supervisor_adapter_invoked": False,
+        "supervisor_result_persisted": False,
+        "supervisor_event_persisted": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "secrets_redacted": True,
+    }
+
+
+def _operator_control_execution_transition_guardrails(
+    *,
+    state: Mapping[str, Any],
+    to_status: str,
+) -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "state_transition_only": True,
+        "source_state_validated": True,
+        "transition_allowed": to_status in state["allowed_next_statuses"],
+        "admitted_to_executing": state["execution_status"] == "ADMITTED"
+        and to_status == "EXECUTING",
+        "admitted_to_blocked": state["execution_status"] == "ADMITTED"
+        and to_status == "BLOCKED",
+        "executing_to_succeeded": state["execution_status"] == "EXECUTING"
+        and to_status == "SUCCEEDED",
+        "executing_to_failed": state["execution_status"] == "EXECUTING"
+        and to_status == "FAILED",
+        "supervisor_dispatch_performed": False,
+        "supervisor_adapter_invoked": False,
+        "supervisor_result_persisted": False,
+        "supervisor_event_persisted": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+        "physical_delete_automation_enabled": False,
+        "secrets_redacted": True,
+    }
+
+
+def _operator_control_execution_transition_metadata(
+    *,
+    state: Mapping[str, Any],
+    to_status: str,
+    transitioned_at: str,
+) -> dict[str, Any]:
+    return {
+        "safe_for_ag_projection": True,
+        "metadata_only": True,
+        "execution_state_transition_only": True,
+        "operator_control_execution_state_hash": sha256_json(dict(state)),
+        "transitioned_at": transitioned_at,
+        "from_status": state["execution_status"],
+        "to_status": to_status,
+        "source_idempotency_status": state["idempotency_status"],
+        "to_terminal": to_status in {"SUCCEEDED", "FAILED", "BLOCKED"},
+        "supervisor_dispatch_performed": False,
+        "supervisor_adapter_invoked": False,
+        "supervisor_result_persisted": False,
+        "supervisor_event_persisted": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "secrets_redacted": True,
+    }
 
 
 def _operator_control_execution_result_guardrails(

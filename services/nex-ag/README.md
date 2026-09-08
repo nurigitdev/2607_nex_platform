@@ -676,6 +676,10 @@ Unified operations:
   metadata, submit intent through AE APIs in later slices, and never directly
   invoke adapters, write AE persistence, enqueue AE jobs, or signal AE
   subprocesses.
+- Slice 0593 keeps AG in that same dispatcher/projection role while AE adds
+  the execution state machine and idempotency contract. AG may later display
+  safe ADMITTED/BLOCKED/NOOP/REPLAYED/CONFLICT evidence, but transitions remain
+  AE-owned and metadata-only until a protected AE execution route is added.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
