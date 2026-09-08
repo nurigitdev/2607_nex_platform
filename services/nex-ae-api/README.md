@@ -922,3 +922,7 @@ Artifact library management:
   is set with `NEX_AE_TEST_DATABASE_URL`, the runner migrates the real AE test
   DB, calls the policy and preview routes, verifies supervised-process
   table/index readiness, and confirms route calls leave DB row counts unchanged.
+- Slice 0589 adds protected AG-to-AE PostgreSQL smoke evidence for the same
+  operator-control surface. The runner wires AE to `NEX_AE_TEST_DATABASE_URL`,
+  routes AG policy/status-probe/restart previews through AE APIs, and confirms
+  the preview-only calls leave AE supervised-process row counts unchanged.

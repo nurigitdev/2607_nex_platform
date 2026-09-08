@@ -659,6 +659,11 @@ Unified operations:
   guardrails beside batch, scheduled job, history, daemon, and supervised
   process rollups; source failures degrade the dashboard without giving AG
   process ownership.
+- Slice 0589 adds protected AG-to-AE PostgreSQL smoke evidence for the
+  operator-control surface. The smoke runs AG's admin policy/status-probe/restart
+  preview routes against an AE service app backed by `NEX_AE_TEST_DATABASE_URL`,
+  verifies AE bridge status, and proves preview calls do not mutate AE
+  supervised-process persistence.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
