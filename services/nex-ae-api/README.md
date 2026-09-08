@@ -930,3 +930,7 @@ Artifact library management:
   AG-dispatched operator-control surface, including docs continuity, protected
   smoke hooks, redaction posture, preview-only guardrails, and restart
   stop-then-start evidence.
+- Slice 0591 starts S60 by freezing the protected operator-control execution
+  boundary. AE remains the only supervisor execution and persistence owner; the
+  first executable mode is fake dry-run supervisor dispatch with persistent
+  metadata-only evidence.
