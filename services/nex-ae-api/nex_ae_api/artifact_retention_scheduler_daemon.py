@@ -105,6 +105,12 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_COLLECTION_SCHEMA_VERS
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_DETAIL_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_supervised_process_detail.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_POLICY_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_operator_control_policy.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_REQUEST_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_operator_control_request.v1"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
@@ -149,6 +155,12 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_STATUSES = frozenset(
         "FAILED",
         "BLOCKED",
     }
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_ACTIONS = frozenset(
+    {"status_probe", "start_daemon", "stop_daemon", "restart_daemon"}
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_MUTATING_ACTIONS = frozenset(
+    {"start_daemon", "stop_daemon", "restart_daemon"}
 )
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_MODE = "fake_dry_run"
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_ADAPTER_NAME = (
@@ -727,6 +739,571 @@ def execute_command_summary_line(execute_command: Mapping[str, Any]) -> str:
         f"max_cycles={summary['max_cycles']} "
         f"plan_only={int(summary['plan_only'])} "
         f"bounded_loop_requested={int(summary['bounded_loop_requested'])}"
+    )
+
+
+def build_artifact_retention_scheduler_daemon_operator_control_policy(
+    *,
+    scheduler_config: Mapping[str, Any] | None = None,
+    checked_at: str | None = None,
+) -> dict[str, Any]:
+    config = (
+        dict(scheduler_config)
+        if scheduler_config is not None
+        else build_artifact_retention_scheduler_config()
+    )
+    daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=config,
+        checked_at=checked_at,
+    )
+    normalized_checked_at = _required_text(
+        daemon_config.get("checked_at"),
+        "checked_at",
+        error_code="ae.artifact_retention_scheduler_daemon_operator_control_policy_invalid",
+    )
+    scheduler_id = _required_text(
+        daemon_config.get("scheduler_id"),
+        "scheduler_id",
+        error_code="ae.artifact_retention_scheduler_daemon_operator_control_policy_invalid",
+    )
+    policy = {
+        "operator_control_policy_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_POLICY_SCHEMA_VERSION
+        ),
+        "operator_control_policy_id": _operator_control_policy_id(
+            scheduler_id=scheduler_id,
+            checked_at=normalized_checked_at,
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": scheduler_id,
+        "checked_at": normalized_checked_at,
+        "supported_actions": _operator_control_supported_actions(),
+        "required_fields": {
+            "operator_subject": True,
+            "idempotency_key": True,
+            "reason": True,
+            "approval_required_for_start": True,
+            "approval_required_for_restart": True,
+            "profile": True,
+            "max_cycles": True,
+        },
+        "profile_policy": {
+            "default_profile": "test",
+            "allowed_profiles": ["test"],
+            "production_profiles_allowed": False,
+            "production_continuous_start_enabled": False,
+        },
+        "restart_policy": {
+            "restart_daemon_supported": True,
+            "restart_semantics": "stop_then_start",
+            "requires_distinct_stop_evidence": True,
+            "requires_distinct_start_evidence": True,
+        },
+        "guardrails": _operator_control_policy_guardrails(),
+        "metadata": _operator_control_policy_metadata(),
+    }
+    return validate_artifact_retention_scheduler_daemon_operator_control_policy(
+        policy
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_operator_control_policy(
+    policy: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_operator_control_policy_invalid"
+    if not isinstance(policy, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control policy "
+                "must be an object."
+            ),
+        )
+    normalized = dict(policy)
+    if set(normalized) != {
+        "operator_control_policy_schema_version",
+        "operator_control_policy_id",
+        "service_id",
+        "scheduler_id",
+        "checked_at",
+        "supported_actions",
+        "required_fields",
+        "profile_policy",
+        "restart_policy",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control policy "
+                "keys are invalid."
+            ),
+        )
+    if (
+        normalized.get("operator_control_policy_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_POLICY_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_policy_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon operator control policy "
+                "schema is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control policy "
+                "service id is invalid."
+            ),
+        )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        error_code=error_code,
+    )
+    checked_at = _required_text(
+        normalized.get("checked_at"),
+        "checked_at",
+        error_code=error_code,
+    )
+    if normalized.get("supported_actions") != _operator_control_supported_actions():
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control policy "
+                "actions are invalid."
+            ),
+        )
+    if normalized.get("required_fields") != {
+        "operator_subject": True,
+        "idempotency_key": True,
+        "reason": True,
+        "approval_required_for_start": True,
+        "approval_required_for_restart": True,
+        "profile": True,
+        "max_cycles": True,
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control policy "
+                "required fields are invalid."
+            ),
+        )
+    if normalized.get("profile_policy") != {
+        "default_profile": "test",
+        "allowed_profiles": ["test"],
+        "production_profiles_allowed": False,
+        "production_continuous_start_enabled": False,
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control policy "
+                "profile policy is invalid."
+            ),
+        )
+    if normalized.get("restart_policy") != {
+        "restart_daemon_supported": True,
+        "restart_semantics": "stop_then_start",
+        "requires_distinct_stop_evidence": True,
+        "requires_distinct_start_evidence": True,
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control policy "
+                "restart policy is invalid."
+            ),
+        )
+    if normalized.get("guardrails") != _operator_control_policy_guardrails():
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control policy "
+                "guardrails are invalid."
+            ),
+        )
+    if normalized.get("metadata") != _operator_control_policy_metadata():
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control policy "
+                "metadata is invalid."
+            ),
+        )
+    expected_id = _operator_control_policy_id(
+        scheduler_id=scheduler_id,
+        checked_at=checked_at,
+    )
+    if normalized.get("operator_control_policy_id") != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control policy "
+                "id is invalid."
+            ),
+        )
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def build_artifact_retention_scheduler_daemon_operator_control_request(
+    *,
+    action: str = "status_probe",
+    operator_subject: Mapping[str, Any],
+    idempotency_key: str,
+    reason: str,
+    scheduler_config: Mapping[str, Any] | None = None,
+    requested_at: str | None = None,
+    profile: str = "test",
+    enabled: bool = False,
+    explicit_opt_in: bool = False,
+    max_cycles: int | str = 1,
+    run_worker: bool = False,
+    approval: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_operator_control_request_invalid"
+    normalized_action = _normalize_daemon_operator_control_action(action)
+    config = (
+        dict(scheduler_config)
+        if scheduler_config is not None
+        else build_artifact_retention_scheduler_config()
+    )
+    daemon_config = build_artifact_retention_scheduler_daemon_config(
+        scheduler_config=config,
+        checked_at=requested_at,
+    )
+    scheduler_id = _required_text(
+        daemon_config.get("scheduler_id"),
+        "scheduler_id",
+        error_code=error_code,
+    )
+    normalized_requested_at = _required_text(
+        requested_at or daemon_config.get("checked_at"),
+        "requested_at",
+        error_code=error_code,
+    )
+    normalized_subject = _safe_operator_subject(operator_subject, error_code=error_code)
+    normalized_idempotency_key = _required_text(
+        idempotency_key,
+        "idempotency_key",
+        error_code=error_code,
+    )
+    normalized_reason = _required_text(reason, "reason", error_code=error_code)
+    normalized_profile = _normalize_daemon_operator_control_profile(
+        profile,
+        error_code=error_code,
+    )
+    normalized_enabled = _required_bool(enabled, "enabled", error_code=error_code)
+    normalized_explicit_opt_in = _required_bool(
+        explicit_opt_in,
+        "explicit_opt_in",
+        error_code=error_code,
+    )
+    normalized_max_cycles = _bounded_positive_int(
+        max_cycles,
+        "max_cycles",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_MAX_CYCLES,
+        error_code=error_code,
+    )
+    normalized_run_worker = _required_bool(
+        run_worker,
+        "run_worker",
+        error_code=error_code,
+    )
+    normalized_approval = _normalize_operator_control_approval(
+        approval,
+        action=normalized_action,
+        operator_subject=normalized_subject,
+        requested_at=normalized_requested_at,
+        reason=normalized_reason,
+        error_code=error_code,
+    )
+    request = {
+        "operator_control_request_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_REQUEST_SCHEMA_VERSION
+        ),
+        "operator_control_request_id": _operator_control_request_id(
+            scheduler_id=scheduler_id,
+            action=normalized_action,
+            idempotency_key=normalized_idempotency_key,
+            requested_at=normalized_requested_at,
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": scheduler_id,
+        "action": normalized_action,
+        "operator_subject": normalized_subject,
+        "idempotency_key": normalized_idempotency_key,
+        "reason": normalized_reason,
+        "requested_at": normalized_requested_at,
+        "profile": normalized_profile,
+        "enabled": normalized_enabled,
+        "explicit_opt_in": normalized_explicit_opt_in,
+        "max_cycles": normalized_max_cycles,
+        "run_worker": normalized_run_worker,
+        "approval": normalized_approval,
+        "execution_intent": _operator_control_execution_intent(
+            action=normalized_action
+        ),
+        "guardrails": _operator_control_request_guardrails(
+            action=normalized_action
+        ),
+        "metadata": _operator_control_request_metadata(
+            action=normalized_action,
+            approval=normalized_approval,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_operator_control_request(
+        request
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_operator_control_request(
+    request: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = "ae.artifact_retention_scheduler_daemon_operator_control_request_invalid"
+    if not isinstance(request, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "must be an object."
+            ),
+        )
+    normalized = dict(request)
+    if set(normalized) != {
+        "operator_control_request_schema_version",
+        "operator_control_request_id",
+        "service_id",
+        "scheduler_id",
+        "action",
+        "operator_subject",
+        "idempotency_key",
+        "reason",
+        "requested_at",
+        "profile",
+        "enabled",
+        "explicit_opt_in",
+        "max_cycles",
+        "run_worker",
+        "approval",
+        "execution_intent",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "keys are invalid."
+            ),
+        )
+    if (
+        normalized.get("operator_control_request_schema_version")
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_REQUEST_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_request_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "schema is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "service id is invalid."
+            ),
+        )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        error_code=error_code,
+    )
+    action = _normalize_daemon_operator_control_action(normalized.get("action"))
+    operator_subject = _safe_operator_subject(
+        normalized.get("operator_subject"),
+        error_code=error_code,
+    )
+    idempotency_key = _required_text(
+        normalized.get("idempotency_key"),
+        "idempotency_key",
+        error_code=error_code,
+    )
+    reason = _required_text(normalized.get("reason"), "reason", error_code=error_code)
+    requested_at = _required_text(
+        normalized.get("requested_at"),
+        "requested_at",
+        error_code=error_code,
+    )
+    profile = _normalize_daemon_operator_control_profile(
+        normalized.get("profile"),
+        error_code=error_code,
+    )
+    enabled = _required_bool(
+        normalized.get("enabled"),
+        "enabled",
+        error_code=error_code,
+    )
+    explicit_opt_in = _required_bool(
+        normalized.get("explicit_opt_in"),
+        "explicit_opt_in",
+        error_code=error_code,
+    )
+    max_cycles = _bounded_positive_int(
+        normalized.get("max_cycles"),
+        "max_cycles",
+        max_value=MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_MAX_CYCLES,
+        error_code=error_code,
+    )
+    run_worker = _required_bool(
+        normalized.get("run_worker"),
+        "run_worker",
+        error_code=error_code,
+    )
+    approval = _normalize_operator_control_approval(
+        normalized.get("approval"),
+        action=action,
+        operator_subject=operator_subject,
+        requested_at=requested_at,
+        reason=reason,
+        error_code=error_code,
+    )
+    if action in {"start_daemon", "restart_daemon"} and (
+        enabled is not True or explicit_opt_in is not True
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "start or restart requires enabled runtime and explicit opt-in."
+            ),
+        )
+    if normalized.get("execution_intent") != _operator_control_execution_intent(
+        action=action
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "execution intent is invalid."
+            ),
+        )
+    if normalized.get("guardrails") != _operator_control_request_guardrails(
+        action=action
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "guardrails are invalid."
+            ),
+        )
+    if normalized.get("metadata") != _operator_control_request_metadata(
+        action=action,
+        approval=approval,
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "metadata is invalid."
+            ),
+        )
+    expected_id = _operator_control_request_id(
+        scheduler_id=scheduler_id,
+        action=action,
+        idempotency_key=idempotency_key,
+        requested_at=requested_at,
+    )
+    if normalized.get("operator_control_request_id") != expected_id:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "id is invalid."
+            ),
+        )
+    normalized["action"] = action
+    normalized["operator_subject"] = operator_subject
+    normalized["idempotency_key"] = idempotency_key
+    normalized["reason"] = reason
+    normalized["requested_at"] = requested_at
+    normalized["profile"] = profile
+    normalized["enabled"] = enabled
+    normalized["explicit_opt_in"] = explicit_opt_in
+    normalized["max_cycles"] = max_cycles
+    normalized["run_worker"] = run_worker
+    normalized["approval"] = approval
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_operator_control_request(
+    request: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = validate_artifact_retention_scheduler_daemon_operator_control_request(
+        request
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "action": validated["action"],
+        "operator_actor_id": validated["operator_subject"]["actor_id"],
+        "idempotency_key": validated["idempotency_key"],
+        "profile": validated["profile"],
+        "enabled": validated["enabled"],
+        "explicit_opt_in": validated["explicit_opt_in"],
+        "max_cycles": validated["max_cycles"],
+        "run_worker": validated["run_worker"],
+        "mutates_process": validated["execution_intent"]["mutates_process"],
+        "approval_required": validated["metadata"]["approval_required"],
+        "approval_granted": validated["metadata"]["approval_granted"],
+        "safe_for_ag_projection": validated["metadata"]["safe_for_ag_projection"],
+    }
+
+
+def operator_control_request_summary_line(request: Mapping[str, Any]) -> str:
+    summary = summarize_artifact_retention_scheduler_daemon_operator_control_request(
+        request
+    )
+    return (
+        "ae_scheduler_daemon_operator_control_request=pass "
+        f"scheduler_id={summary['scheduler_id']} "
+        f"action={summary['action']} "
+        f"profile={summary['profile']} "
+        f"mutates={int(summary['mutates_process'])} "
+        f"approved={int(summary['approval_granted'])} "
+        f"max_cycles={summary['max_cycles']}"
     )
 
 
@@ -7304,6 +7881,356 @@ def _normalize_daemon_supervisor_action(value: Any) -> str:
             ),
         )
     return action
+
+
+def _normalize_daemon_operator_control_action(value: Any) -> str:
+    action = _required_text(
+        value,
+        "action",
+        error_code="ae.artifact_retention_scheduler_daemon_operator_control_request_invalid",
+    ).lower()
+    if action not in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_ACTIONS:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_retention_scheduler_daemon_operator_control_request_invalid",
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "action is invalid."
+            ),
+        )
+    return action
+
+
+def _normalize_daemon_operator_control_profile(
+    value: Any,
+    *,
+    error_code: str,
+) -> str:
+    profile = _required_text(value, "profile", error_code=error_code).lower()
+    if profile != "test":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "profile must be test."
+            ),
+        )
+    return profile
+
+
+def _operator_control_supported_actions() -> list[dict[str, Any]]:
+    return [
+        {
+            "action": "status_probe",
+            "mutates_process": False,
+            "requires_approval": False,
+            "requires_running_process": False,
+            "starts_process": False,
+            "stops_process": False,
+        },
+        {
+            "action": "start_daemon",
+            "mutates_process": True,
+            "requires_approval": True,
+            "requires_running_process": False,
+            "starts_process": True,
+            "stops_process": False,
+        },
+        {
+            "action": "stop_daemon",
+            "mutates_process": True,
+            "requires_approval": False,
+            "requires_running_process": True,
+            "starts_process": False,
+            "stops_process": True,
+        },
+        {
+            "action": "restart_daemon",
+            "mutates_process": True,
+            "requires_approval": True,
+            "requires_running_process": True,
+            "starts_process": True,
+            "stops_process": True,
+        },
+    ]
+
+
+def _operator_control_policy_guardrails() -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "operator_subject_required": True,
+        "idempotency_key_required": True,
+        "operator_reason_required": True,
+        "approval_required_for_start_restart": True,
+        "test_profile_required": True,
+        "explicit_opt_in_required_for_start_restart": True,
+        "bounded_max_cycles_required": True,
+        "status_probe_before_mutation_required": True,
+        "restart_is_stop_then_start": True,
+        "production_continuous_start_enabled": False,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+        "physical_delete_automation_enabled": False,
+    }
+
+
+def _operator_control_policy_metadata() -> dict[str, bool]:
+    return {
+        "safe_for_ag_projection": True,
+        "metadata_only": True,
+        "policy_contract_only": True,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "secrets_redacted": True,
+    }
+
+
+def _operator_control_execution_intent(*, action: str) -> dict[str, bool | str]:
+    mutates = action in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_MUTATING_ACTIONS
+    return {
+        "action": action,
+        "mutates_process": mutates,
+        "reads_status": action == "status_probe",
+        "requests_start": action in {"start_daemon", "restart_daemon"},
+        "requests_stop": action in {"stop_daemon", "restart_daemon"},
+        "restart_decomposes_to_stop_then_start": action == "restart_daemon",
+        "requires_running_process": action in {"stop_daemon", "restart_daemon"},
+        "requires_bounded_subprocess_adapter": action
+        in {"start_daemon", "restart_daemon"},
+        "starts_continuous_loop": False,
+        "enqueues_job_queue": False,
+        "runs_worker": False,
+        "physical_delete_enabled": False,
+    }
+
+
+def _operator_control_request_guardrails(*, action: str) -> dict[str, bool]:
+    return {
+        "metadata_only": True,
+        "operator_subject_required": True,
+        "idempotency_key_required": True,
+        "operator_reason_required": True,
+        "approval_required": action in {"start_daemon", "restart_daemon"},
+        "test_profile_required": True,
+        "explicit_opt_in_required": action in {"start_daemon", "restart_daemon"},
+        "bounded_max_cycles_required": True,
+        "status_probe_before_mutation_required": action
+        in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_MUTATING_ACTIONS,
+        "restart_is_stop_then_start": action == "restart_daemon",
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "production_continuous_start_enabled": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+        "physical_delete_automation_enabled": False,
+    }
+
+
+def _operator_control_request_metadata(
+    *,
+    action: str,
+    approval: Mapping[str, Any] | None,
+) -> dict[str, bool]:
+    approval_required = action in {"start_daemon", "restart_daemon"}
+    return {
+        "safe_for_ag_projection": True,
+        "metadata_only": True,
+        "policy_contract_only": True,
+        "approval_required": approval_required,
+        "approval_granted": bool(approval and approval.get("approved") is True),
+        "mutating_action": action
+        in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_MUTATING_ACTIONS,
+        "restart_requested": action == "restart_daemon",
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "secrets_redacted": True,
+    }
+
+
+def _safe_operator_subject(value: Any, *, error_code: str) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "operator subject is invalid."
+            ),
+        )
+    subject = {
+        "actor_type": _required_text(
+            value.get("actor_type"),
+            "actor_type",
+            error_code=error_code,
+        ),
+        "actor_id": _required_text(
+            value.get("actor_id"),
+            "actor_id",
+            error_code=error_code,
+        ),
+    }
+    for field_name in ("tenant_id", "workspace_id", "service_id"):
+        field_value = optional_text(value.get(field_name))
+        if field_value is not None:
+            subject[field_name] = field_value
+    allowed_keys = {"actor_type", "actor_id", "tenant_id", "workspace_id", "service_id"}
+    if any(key not in allowed_keys for key in value):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "operator subject keys are invalid."
+            ),
+        )
+    return subject
+
+
+def _normalize_operator_control_approval(
+    value: Any,
+    *,
+    action: str,
+    operator_subject: Mapping[str, str],
+    requested_at: str,
+    reason: str,
+    error_code: str,
+) -> dict[str, Any] | None:
+    approval_required = action in {"start_daemon", "restart_daemon"}
+    if value is None:
+        if not approval_required:
+            return None
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "approval is required for start or restart."
+            ),
+        )
+    if not isinstance(value, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "approval is invalid."
+            ),
+        )
+    if set(value) != {"approved", "approved_by", "approved_at", "reason"}:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "approval keys are invalid."
+            ),
+        )
+    approved = _required_bool(value.get("approved"), "approved", error_code=error_code)
+    approved_by = _safe_operator_subject(
+        value.get("approved_by"),
+        error_code=error_code,
+    )
+    approved_at = _required_text(
+        value.get("approved_at"),
+        "approved_at",
+        error_code=error_code,
+    )
+    approval_reason = _required_text(
+        value.get("reason"),
+        "reason",
+        error_code=error_code,
+    )
+    if approval_required and approved is not True:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "approval must be granted for start or restart."
+            ),
+        )
+    if approval_required and approved_by.get("actor_id") != operator_subject.get(
+        "actor_id"
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "approval subject is invalid."
+            ),
+        )
+    if approval_required and approved_at != requested_at:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "approval time is invalid."
+            ),
+        )
+    if approval_required and approval_reason != reason:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control request "
+                "approval reason is invalid."
+            ),
+        )
+    return {
+        "approved": approved,
+        "approved_by": approved_by,
+        "approved_at": approved_at,
+        "reason": approval_reason,
+    }
+
+
+def _operator_control_policy_id(*, scheduler_id: str, checked_at: str) -> str:
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            "nex-ae-api:artifact-retention:operator-control-policy:"
+            f"{scheduler_id}:{checked_at}",
+        )
+    )
+
+
+def _operator_control_request_id(
+    *,
+    scheduler_id: str,
+    action: str,
+    idempotency_key: str,
+    requested_at: str,
+) -> str:
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            "nex-ae-api:artifact-retention:operator-control-request:"
+            f"{scheduler_id}:{action}:{idempotency_key}:{requested_at}",
+        )
+    )
 
 
 def _normalize_daemon_supervisor_mode(value: Any) -> str:

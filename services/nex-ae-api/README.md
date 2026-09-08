@@ -900,3 +900,7 @@ Artifact library management:
   scheduler daemon processes: AE owns process execution and persistence, start
   or restart requires operator subject, reason, idempotency, explicit approval,
   test profile, and bounded execution evidence.
+- Slice 0582 adds the AE-owned supervised process operator-control policy and
+  request contracts. The request envelope carries a safe operator subject,
+  idempotency key, reason, profile, bounded max cycles, optional stop approval,
+  and mandatory start/restart approval before admission or execution.

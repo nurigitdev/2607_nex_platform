@@ -629,6 +629,9 @@ Unified operations:
 - Slice 0581 starts S59 with AG as the operator-facing dispatcher only. AG can
   later request guarded AE operator control, but it remains read-only over AE
   persistence and never directly starts, stops, or restarts AE subprocesses.
+- Slice 0582 keeps that AG role unchanged while AE defines the canonical
+  operator-control policy/request contract that AG must later submit through AE
+  APIs with operator subject, idempotency, reason, and start/restart approval.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
