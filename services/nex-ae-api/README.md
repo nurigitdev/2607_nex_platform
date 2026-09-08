@@ -917,3 +917,8 @@ Artifact library management:
   through AE service APIs. The preview route validates request/admission/command
   preview in one response but still performs no supervisor dispatch, subprocess
   control, database write, JobQueue enqueue, or worker execution.
+- Slice 0586 adds protected PostgreSQL smoke evidence for that facade. When
+  `NEX_AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_POSTGRES_SMOKE=1`
+  is set with `NEX_AE_TEST_DATABASE_URL`, the runner migrates the real AE test
+  DB, calls the policy and preview routes, verifies supervised-process
+  table/index readiness, and confirms route calls leave DB row counts unchanged.

@@ -644,6 +644,10 @@ Unified operations:
   preview-facade reads. AG may submit operator intent through AE and display the
   safe facade result, but it still cannot dispatch supervisor commands, write AE
   persistence, enqueue AE jobs, or start/stop AE subprocesses directly.
+- Slice 0586 adds AE-side PostgreSQL smoke evidence for that facade. The smoke
+  proves AG-style requests can reach AE's protected policy/preview routes
+  against `NEX_AE_TEST_DATABASE_URL` while remaining preview-only and leaving
+  AE supervised-process persistence unchanged.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
