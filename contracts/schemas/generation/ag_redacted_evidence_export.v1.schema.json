@@ -1,0 +1,269 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/ag_redacted_evidence_export.v1.schema.json",
+  "title": "NeX AG Redacted Evidence Export",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "export_schema_version",
+    "export_id",
+    "target_service",
+    "target_kind",
+    "target_id",
+    "trace_id",
+    "request_id",
+    "operator_ref",
+    "export_status",
+    "export_format",
+    "redaction_profile",
+    "evidence_manifest",
+    "evidence_hash",
+    "evidence_item_count",
+    "metadata",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "export_schema_version": {
+      "const": "ag_redacted_evidence_export.v1"
+    },
+    "export_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_service": {
+      "$ref": "#/$defs/serviceId"
+    },
+    "target_kind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operator_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operator_type",
+        "operator_id",
+        "tenant_id"
+      ],
+      "properties": {
+        "operator_type": {
+          "type": "string",
+          "enum": [
+            "service",
+            "user"
+          ]
+        },
+        "operator_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenant_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        }
+      }
+    },
+    "export_status": {
+      "$ref": "#/$defs/exportStatus"
+    },
+    "export_format": {
+      "$ref": "#/$defs/exportFormat"
+    },
+    "redaction_profile": {
+      "const": "ag_redacted_manifest_v1"
+    },
+    "evidence_manifest": {
+      "$ref": "#/$defs/redactedEvidenceManifest"
+    },
+    "evidence_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "evidence_item_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "raw_evidence_body_stored",
+        "raw_prompt_stored",
+        "raw_generation_output_stored",
+        "raw_source_text_stored",
+        "storage_paths_included",
+        "export_storage"
+      ],
+      "properties": {
+        "raw_evidence_body_stored": {
+          "const": false
+        },
+        "raw_prompt_stored": {
+          "const": false
+        },
+        "raw_generation_output_stored": {
+          "const": false
+        },
+        "raw_source_text_stored": {
+          "const": false
+        },
+        "storage_paths_included": {
+          "const": false
+        },
+        "export_storage": {
+          "const": "redacted_manifest_plus_hashes"
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "serviceId": {
+      "type": "string",
+      "enum": [
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-oa",
+        "nex-ag"
+      ]
+    },
+    "exportStatus": {
+      "type": "string",
+      "enum": [
+        "REQUESTED",
+        "READY",
+        "FAILED",
+        "CANCELLED"
+      ]
+    },
+    "exportFormat": {
+      "type": "string",
+      "enum": [
+        "json",
+        "jsonl",
+        "zip_manifest"
+      ]
+    },
+    "redactedEvidenceManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_schema_version",
+        "redaction_profile",
+        "raw_payloads_included",
+        "storage_paths_included",
+        "items",
+        "item_count"
+      ],
+      "properties": {
+        "manifest_schema_version": {
+          "const": "ag_redacted_evidence_manifest.v1"
+        },
+        "redaction_profile": {
+          "const": "ag_redacted_manifest_v1"
+        },
+        "raw_payloads_included": {
+          "const": false
+        },
+        "storage_paths_included": {
+          "const": false
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidenceItem"
+          }
+        },
+        "item_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "evidenceItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_service",
+        "evidence_type",
+        "evidence_id",
+        "relation",
+        "content_hash",
+        "redaction_status"
+      ],
+      "properties": {
+        "source_service": {
+          "$ref": "#/$defs/serviceId"
+        },
+        "evidence_type": {
+          "type": "string",
+          "enum": [
+            "operator_note",
+            "worker_result",
+            "generation_quality",
+            "retrieval_package",
+            "artifact",
+            "remediation_task",
+            "processing_run",
+            "service_log",
+            "operational_event"
+          ]
+        },
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relation": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "content_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "redaction_status": {
+          "type": "string",
+          "enum": [
+            "METADATA_ONLY",
+            "HASH_ONLY",
+            "REDACTED",
+            "OMITTED"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -815,6 +815,11 @@ Unified operations:
   `nex_ag_test` evidence path that runs AG migrations, drives the protected
   note create/replay/list/detail routes, verifies `ag_op_notes` directly in
   PostgreSQL, and cleans up the smoke row.
+- Slice 0626 adds the redacted evidence export persistence foundation.
+  Export records use the short AG-owned `ag_ev_exports` table, keep target and
+  operator refs indexable, and store only manifest metadata plus SHA-256 hashes.
+  Raw evidence bodies, prompts, source text, storage paths, and idempotency keys
+  remain outside the persisted contract.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

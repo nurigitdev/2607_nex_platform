@@ -1,0 +1,54 @@
+{
+  "export_schema_version": "ag_redacted_evidence_export.v1",
+  "export_id": "ag-ev-export-example-001",
+  "target_service": "nex-ae-api",
+  "target_kind": "operator_control.worker_result",
+  "target_id": "worker-result-001",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "operator_ref": {
+    "operator_type": "user",
+    "operator_id": "employee-0001",
+    "tenant_id": "local-tenant"
+  },
+  "export_status": "READY",
+  "export_format": "json",
+  "redaction_profile": "ag_redacted_manifest_v1",
+  "evidence_manifest": {
+    "manifest_schema_version": "ag_redacted_evidence_manifest.v1",
+    "redaction_profile": "ag_redacted_manifest_v1",
+    "raw_payloads_included": false,
+    "storage_paths_included": false,
+    "items": [
+      {
+        "source_service": "nex-ae-api",
+        "evidence_type": "worker_result",
+        "evidence_id": "worker-result-001",
+        "relation": "primary",
+        "content_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "redaction_status": "HASH_ONLY"
+      },
+      {
+        "source_service": "nex-ag",
+        "evidence_type": "operator_note",
+        "evidence_id": "ag-op-note-example-001",
+        "relation": "operator_context",
+        "content_hash": null,
+        "redaction_status": "METADATA_ONLY"
+      }
+    ],
+    "item_count": 2
+  },
+  "evidence_hash": "a48776889070a584d3b94ce53e594b19d55098874f1fc71b12872a1fe51a6fcc",
+  "evidence_item_count": 2,
+  "metadata": {
+    "raw_evidence_body_stored": false,
+    "raw_prompt_stored": false,
+    "raw_generation_output_stored": false,
+    "raw_source_text_stored": false,
+    "storage_paths_included": false,
+    "export_storage": "redacted_manifest_plus_hashes"
+  },
+  "created_at": "2026-09-10T00:00:00Z",
+  "updated_at": "2026-09-10T00:00:00Z"
+}

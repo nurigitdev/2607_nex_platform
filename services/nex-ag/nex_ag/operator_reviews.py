@@ -32,7 +32,12 @@ OPERATOR_REVIEW_NOTE_SCHEMA_VERSION = "ag_operator_review_note.v1"
 OPERATOR_REVIEW_NOTE_LIST_SCHEMA_VERSION = "ag_operator_review_note_list.v1"
 OPERATOR_REVIEW_NOTE_MUTATION_SCHEMA_VERSION = "ag_operator_review_note_mutation.v1"
 OPERATOR_REVIEW_NOTE_RECORDED_EVENT_TYPE = "ag.operator_review_note.recorded"
+OPERATOR_EVIDENCE_EXPORT_SCHEMA_VERSION = "ag_redacted_evidence_export.v1"
+OPERATOR_EVIDENCE_EXPORT_LIST_SCHEMA_VERSION = (
+    "ag_redacted_evidence_export_list.v1"
+)
 AG_OPERATOR_NOTE_TABLE = "ag_op_notes"
+AG_EVIDENCE_EXPORT_TABLE = "ag_ev_exports"
 MAX_OPERATOR_NOTE_PREVIEW_LENGTH = 240
 DEFAULT_NOTE_LIMIT = 50
 MAX_NOTE_LIMIT = 500
@@ -55,6 +60,25 @@ ALLOWED_NOTE_TYPES = (
 )
 ALLOWED_NOTE_SEVERITIES = ("INFO", "LOW", "MEDIUM", "HIGH", "URGENT")
 ALLOWED_IDEMPOTENCY_STATUSES = ("NEW", "REPLAYED", "CONFLICT")
+ALLOWED_EXPORT_STATUSES = ("REQUESTED", "READY", "FAILED", "CANCELLED")
+ALLOWED_EXPORT_FORMATS = ("json", "jsonl", "zip_manifest")
+ALLOWED_EVIDENCE_TYPES = (
+    "operator_note",
+    "worker_result",
+    "generation_quality",
+    "retrieval_package",
+    "artifact",
+    "remediation_task",
+    "processing_run",
+    "service_log",
+    "operational_event",
+)
+ALLOWED_EVIDENCE_REDACTION_STATUSES = (
+    "METADATA_ONLY",
+    "HASH_ONLY",
+    "REDACTED",
+    "OMITTED",
+)
 SENSITIVE_KEY_PARTS = (
     "api_key",
     "authorization",
@@ -70,7 +94,10 @@ SENSITIVE_KEY_PARTS = (
     "raw_text",
     "raw_user_message",
     "secret",
+    "source_file_path",
     "source_text",
+    "storage_path",
+    "storage_uri",
     "token",
 )
 
@@ -215,6 +242,143 @@ class SqlAlchemyOperatorReviewNoteStore:
             raise _store_unavailable_error() from exc
 
 
+@dataclass
+class OperatorEvidenceExportStore:
+    records: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        self.records[record["export_id"]] = record
+        return record
+
+    def get(self, export_id: str) -> dict[str, Any] | None:
+        return self.records.get(export_id)
+
+    def list_exports(
+        self,
+        *,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        trace_id: str | None = None,
+        export_status: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        selected = [
+            record
+            for record in self.records.values()
+            if _record_matches_filter(
+                record,
+                target_service=target_service,
+                target_kind=target_kind,
+                target_id=target_id,
+                trace_id=trace_id,
+                note_status=None,
+                operator_type=operator_type,
+                operator_id=operator_id,
+            )
+            and (export_status is None or record.get("export_status") == export_status)
+        ]
+        selected.sort(
+            key=lambda record: (
+                str(record.get("updated_at") or ""),
+                str(record.get("export_id") or ""),
+            ),
+            reverse=True,
+        )
+        return selected[:normalize_limit(limit)]
+
+    def delete(self, export_id: str) -> int:
+        return 1 if self.records.pop(export_id, None) is not None else 0
+
+
+class SqlAlchemyOperatorEvidenceExportStore:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    text(_evidence_export_upsert_sql(_dialect_name(session))),
+                    _evidence_export_record_params(record),
+                )
+                session.commit()
+            return record
+        except SQLAlchemyError as exc:
+            raise _export_store_unavailable_error() from exc
+
+    def get(self, export_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(_evidence_export_select_sql("export_id = :export_id")),
+                        {"export_id": export_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+            return _evidence_export_record_from_row(row) if row is not None else None
+        except SQLAlchemyError as exc:
+            raise _export_store_unavailable_error() from exc
+
+    def list_exports(
+        self,
+        *,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        trace_id: str | None = None,
+        export_status: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        where_clause, params = _evidence_export_filter_clause(
+            target_service=target_service,
+            target_kind=target_kind,
+            target_id=target_id,
+            trace_id=trace_id,
+            export_status=export_status,
+            operator_type=operator_type,
+            operator_id=operator_id,
+        )
+        params["limit"] = normalize_limit(limit)
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            _evidence_export_select_sql(
+                                where_clause
+                                + " ORDER BY updated_at DESC, export_id ASC"
+                                + " LIMIT :limit"
+                            )
+                        ),
+                        params,
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [_evidence_export_record_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _export_store_unavailable_error() from exc
+
+    def delete(self, export_id: str) -> int:
+        try:
+            with self._session_factory() as session:
+                result = session.execute(
+                    text("DELETE FROM ag_ev_exports WHERE export_id = :export_id"),
+                    {"export_id": export_id},
+                )
+                session.commit()
+                return int(result.rowcount or 0)
+        except SQLAlchemyError as exc:
+            raise _export_store_unavailable_error() from exc
+
+
 @dataclass(frozen=True)
 class OperatorReviewNoteError(Exception):
     status_code: int
@@ -226,6 +390,7 @@ class OperatorReviewNoteError(Exception):
 
 
 DEFAULT_OPERATOR_REVIEW_NOTE_STORE = OperatorReviewNoteStore()
+DEFAULT_OPERATOR_EVIDENCE_EXPORT_STORE = OperatorEvidenceExportStore()
 DEFAULT_OPERATOR_REVIEW_NOTE_AUDIT_EVENT_STORE = InMemoryOperationalEventStore()
 
 
@@ -349,6 +514,14 @@ def default_operator_review_note_store(app: FastAPI) -> Any:
     if session_factory is not None:
         return SqlAlchemyOperatorReviewNoteStore(session_factory)
     return DEFAULT_OPERATOR_REVIEW_NOTE_STORE
+
+
+def default_operator_evidence_export_store(app: FastAPI) -> Any:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is not None:
+        return SqlAlchemyOperatorEvidenceExportStore(session_factory)
+    return DEFAULT_OPERATOR_EVIDENCE_EXPORT_STORE
 
 
 def register_operator_review_note_routes(
@@ -614,6 +787,109 @@ def build_operator_review_note_mutation_response(
     }
 
 
+def build_operator_evidence_export_record(
+    payload: dict[str, Any],
+    *,
+    request_id: str,
+    trace_id: str | None,
+    idempotency_key: str | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    assert_operator_review_note_payload_redaction_safe(payload)
+    target = target_ref(payload.get("target_ref"))
+    operator = operator_ref(payload.get("operator_ref"))
+    export_status = optional_choice(
+        payload.get("export_status"),
+        key="export_status",
+        choices=ALLOWED_EXPORT_STATUSES,
+        default="READY",
+    )
+    export_format = optional_choice(
+        payload.get("export_format"),
+        key="export_format",
+        choices=ALLOWED_EXPORT_FORMATS,
+        default="json",
+    )
+    manifest = evidence_manifest(payload.get("evidence_refs"))
+    evidence_hash = sha256_json(manifest)
+    now = created_at or _utc_now()
+    normalized_idempotency_key = optional_text(idempotency_key)
+    export_id = optional_text(payload.get("export_id")) or str(
+        uuid5(
+            NAMESPACE_URL,
+            _evidence_export_identity_seed(
+                target=target,
+                operator=operator,
+                export_format=export_format,
+                evidence_hash=evidence_hash,
+                request_id=request_id,
+                idempotency_key=normalized_idempotency_key,
+            ),
+        )
+    )
+    return {
+        "export_schema_version": OPERATOR_EVIDENCE_EXPORT_SCHEMA_VERSION,
+        "export_id": export_id,
+        "target_service": target["target_service"],
+        "target_kind": target["target_kind"],
+        "target_id": target["target_id"],
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "operator_ref": operator,
+        "export_status": export_status,
+        "export_format": export_format,
+        "redaction_profile": "ag_redacted_manifest_v1",
+        "evidence_manifest": manifest,
+        "evidence_hash": evidence_hash,
+        "evidence_item_count": len(manifest["items"]),
+        "metadata": evidence_export_metadata(
+            payload.get("metadata"),
+            idempotency_key_hash=(
+                sha256_text(normalized_idempotency_key)
+                if normalized_idempotency_key is not None
+                else None
+            ),
+        ),
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def build_operator_evidence_export_list_response(
+    records: list[dict[str, Any]],
+    *,
+    request_id: str,
+    trace_id: str | None,
+) -> dict[str, Any]:
+    items = sorted(
+        records,
+        key=lambda record: (
+            str(record.get("updated_at") or ""),
+            str(record.get("export_id") or ""),
+        ),
+        reverse=True,
+    )
+    by_status: dict[str, int] = {}
+    by_format: dict[str, int] = {}
+    for record in items:
+        status = str(record.get("export_status") or "UNKNOWN")
+        export_format = str(record.get("export_format") or "UNKNOWN")
+        by_status[status] = by_status.get(status, 0) + 1
+        by_format[export_format] = by_format.get(export_format, 0) + 1
+    return {
+        "export_list_schema_version": OPERATOR_EVIDENCE_EXPORT_LIST_SCHEMA_VERSION,
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "items": items,
+        "summary": {
+            "count": len(items),
+            "by_status": by_status,
+            "by_format": by_format,
+            "latest_updated_at": items[0]["updated_at"] if items else None,
+        },
+    }
+
+
 def operator_note_idempotency_signature(record: dict[str, Any]) -> dict[str, Any]:
     operator = record.get("operator_ref")
     operator_ref_value = operator if isinstance(operator, dict) else {}
@@ -628,6 +904,22 @@ def operator_note_idempotency_signature(record: dict[str, Any]) -> dict[str, Any
         "severity": record.get("severity"),
         "operator_note_hash": record.get("operator_note_hash"),
         "reason_codes": list(record.get("reason_codes") or []),
+        "metadata": dict(record.get("metadata") or {}),
+    }
+
+
+def evidence_export_idempotency_signature(record: dict[str, Any]) -> dict[str, Any]:
+    operator = record.get("operator_ref")
+    operator_ref_value = operator if isinstance(operator, dict) else {}
+    return {
+        "target_service": record.get("target_service"),
+        "target_kind": record.get("target_kind"),
+        "target_id": record.get("target_id"),
+        "operator_type": operator_ref_value.get("operator_type"),
+        "operator_id": operator_ref_value.get("operator_id"),
+        "export_format": record.get("export_format"),
+        "redaction_profile": record.get("redaction_profile"),
+        "evidence_hash": record.get("evidence_hash"),
         "metadata": dict(record.get("metadata") or {}),
     }
 
@@ -693,6 +985,109 @@ def operator_note_metadata(
         metadata["idempotency_key_hash"] = idempotency_key_hash
         metadata["idempotency_key_stored"] = False
     return json.loads(json.dumps(metadata))
+
+
+def evidence_export_metadata(
+    value: Any,
+    *,
+    idempotency_key_hash: str | None = None,
+) -> dict[str, Any]:
+    if value is None:
+        metadata: dict[str, Any] = {}
+    elif isinstance(value, dict):
+        metadata = dict(value)
+    else:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.evidence_export_metadata_invalid",
+            detail="metadata must be an object when supplied.",
+        )
+    metadata.update(
+        {
+            "raw_evidence_body_stored": False,
+            "raw_prompt_stored": False,
+            "raw_generation_output_stored": False,
+            "raw_source_text_stored": False,
+            "storage_paths_included": False,
+            "export_storage": "redacted_manifest_plus_hashes",
+        }
+    )
+    if idempotency_key_hash is not None:
+        metadata["idempotency_key_hash"] = idempotency_key_hash
+        metadata["idempotency_key_stored"] = False
+    return json.loads(json.dumps(metadata))
+
+
+def evidence_manifest(value: Any) -> dict[str, Any]:
+    items = evidence_ref_list(value)
+    return {
+        "manifest_schema_version": "ag_redacted_evidence_manifest.v1",
+        "redaction_profile": "ag_redacted_manifest_v1",
+        "raw_payloads_included": False,
+        "storage_paths_included": False,
+        "items": items,
+        "item_count": len(items),
+    }
+
+
+def evidence_ref_list(value: Any) -> list[dict[str, str | None]]:
+    if value is None:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.evidence_export_refs_required",
+            detail="evidence_refs is required.",
+        )
+    if not isinstance(value, list):
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.evidence_export_refs_invalid",
+            detail="evidence_refs must be a list.",
+        )
+    if not value:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.evidence_export_refs_empty",
+            detail="evidence_refs must contain at least one item.",
+        )
+    refs: list[dict[str, str | None]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            raise OperatorReviewNoteError(
+                status_code=422,
+                error_code="ag.evidence_export_ref_invalid",
+                detail="evidence reference must be an object.",
+            )
+        ref = {
+            "source_service": required_choice(
+                item,
+                "source_service",
+                choices=ALLOWED_TARGET_SERVICES,
+            ),
+            "evidence_type": required_choice(
+                item,
+                "evidence_type",
+                choices=ALLOWED_EVIDENCE_TYPES,
+            ),
+            "evidence_id": required_text(item, "evidence_id"),
+            "relation": optional_text(item.get("relation")),
+            "content_hash": optional_hex_hash(item.get("content_hash")),
+            "redaction_status": optional_choice(
+                item.get("redaction_status"),
+                key="redaction_status",
+                choices=ALLOWED_EVIDENCE_REDACTION_STATUSES,
+                default="METADATA_ONLY",
+            ),
+        }
+        dedupe_key = (
+            ref["source_service"],
+            ref["evidence_type"],
+            ref["evidence_id"],
+        )
+        if dedupe_key not in seen:
+            refs.append(ref)
+            seen.add(dedupe_key)
+    return refs
 
 
 def reason_code_list(value: Any) -> list[str]:
@@ -817,6 +1212,25 @@ def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def sha256_json(value: Any) -> str:
+    return sha256_text(json.dumps(value, ensure_ascii=False, sort_keys=True))
+
+
+def optional_hex_hash(value: Any) -> str | None:
+    normalized = optional_text(value)
+    if normalized is None:
+        return None
+    if len(normalized) != 64 or any(
+        char not in "0123456789abcdef" for char in normalized
+    ):
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.evidence_export_content_hash_invalid",
+            detail="content_hash must be a lowercase SHA-256 hex string.",
+        )
+    return normalized
+
+
 def _record_matches_filter(
     record: dict[str, Any],
     *,
@@ -893,6 +1307,30 @@ def _operator_note_identity_seed(
         f"{target['target_service']}:{target['target_kind']}:{target['target_id']}:"
         f"{operator['operator_type']}:{operator['operator_id']}:"
         f"{note_type}:{severity}:{note_hash}:{request_id}"
+    )
+
+
+def _evidence_export_identity_seed(
+    *,
+    target: dict[str, str],
+    operator: dict[str, str | None],
+    export_format: str,
+    evidence_hash: str,
+    request_id: str,
+    idempotency_key: str | None,
+) -> str:
+    if idempotency_key is not None:
+        return (
+            "ag-redacted-evidence-export:idempotent:"
+            f"{target['target_service']}:{target['target_kind']}:{target['target_id']}:"
+            f"{operator['operator_type']}:{operator['operator_id']}:"
+            f"{sha256_text(idempotency_key)}"
+        )
+    return (
+        "ag-redacted-evidence-export:content:"
+        f"{target['target_service']}:{target['target_kind']}:{target['target_id']}:"
+        f"{operator['operator_type']}:{operator['operator_id']}:"
+        f"{export_format}:{evidence_hash}:{request_id}"
     )
 
 
@@ -1028,6 +1466,165 @@ def _operator_note_record_from_row(row: Any) -> dict[str, Any]:
     }
 
 
+def _evidence_export_filter_clause(
+    *,
+    target_service: str | None,
+    target_kind: str | None,
+    target_id: str | None,
+    trace_id: str | None,
+    export_status: str | None,
+    operator_type: str | None,
+    operator_id: str | None,
+) -> tuple[str, dict[str, Any]]:
+    clauses = ["1 = 1"]
+    params: dict[str, Any] = {}
+    for name, value in (
+        ("target_service", target_service),
+        ("target_kind", target_kind),
+        ("target_id", target_id),
+        ("trace_id", trace_id),
+        ("export_status", export_status),
+        ("operator_type", operator_type),
+        ("operator_id", operator_id),
+    ):
+        if value is not None:
+            clauses.append(f"{name} = :{name}")
+            params[name] = value
+    return " AND ".join(clauses), params
+
+
+def _evidence_export_upsert_sql(dialect_name: str) -> str:
+    operator_ref_expr = _json_param_expr("operator_ref", dialect_name)
+    evidence_manifest_expr = _json_param_expr("evidence_manifest", dialect_name)
+    metadata_expr = _json_param_expr("metadata", dialect_name)
+    return f"""
+        INSERT INTO ag_ev_exports (
+            export_id,
+            export_schema_version,
+            target_service,
+            target_kind,
+            target_id,
+            trace_id,
+            request_id,
+            operator_type,
+            operator_id,
+            tenant_id,
+            operator_ref,
+            export_status,
+            export_format,
+            redaction_profile,
+            evidence_manifest,
+            evidence_hash,
+            evidence_item_count,
+            metadata,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :export_id,
+            :export_schema_version,
+            :target_service,
+            :target_kind,
+            :target_id,
+            :trace_id,
+            :request_id,
+            :operator_type,
+            :operator_id,
+            :tenant_id,
+            {operator_ref_expr},
+            :export_status,
+            :export_format,
+            :redaction_profile,
+            {evidence_manifest_expr},
+            :evidence_hash,
+            :evidence_item_count,
+            {metadata_expr},
+            :created_at,
+            :updated_at
+        )
+        ON CONFLICT (export_id) DO UPDATE SET
+            export_schema_version = excluded.export_schema_version,
+            target_service = excluded.target_service,
+            target_kind = excluded.target_kind,
+            target_id = excluded.target_id,
+            trace_id = excluded.trace_id,
+            request_id = excluded.request_id,
+            operator_type = excluded.operator_type,
+            operator_id = excluded.operator_id,
+            tenant_id = excluded.tenant_id,
+            operator_ref = excluded.operator_ref,
+            export_status = excluded.export_status,
+            export_format = excluded.export_format,
+            redaction_profile = excluded.redaction_profile,
+            evidence_manifest = excluded.evidence_manifest,
+            evidence_hash = excluded.evidence_hash,
+            evidence_item_count = excluded.evidence_item_count,
+            metadata = excluded.metadata,
+            updated_at = excluded.updated_at
+    """
+
+
+def _evidence_export_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            export_schema_version,
+            export_id,
+            target_service,
+            target_kind,
+            target_id,
+            trace_id,
+            request_id,
+            operator_ref,
+            export_status,
+            export_format,
+            redaction_profile,
+            evidence_manifest,
+            evidence_hash,
+            evidence_item_count,
+            metadata,
+            created_at,
+            updated_at
+        FROM ag_ev_exports
+        WHERE {where_clause}
+    """
+
+
+def _evidence_export_record_params(record: dict[str, Any]) -> dict[str, Any]:
+    operator = record["operator_ref"]
+    return {
+        **record,
+        "operator_type": operator["operator_type"],
+        "operator_id": operator["operator_id"],
+        "tenant_id": operator.get("tenant_id"),
+        "operator_ref": json.dumps(record["operator_ref"]),
+        "evidence_manifest": json.dumps(record["evidence_manifest"]),
+        "metadata": json.dumps(record["metadata"]),
+    }
+
+
+def _evidence_export_record_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return {
+        "export_schema_version": data["export_schema_version"],
+        "export_id": data["export_id"],
+        "target_service": data["target_service"],
+        "target_kind": data["target_kind"],
+        "target_id": data["target_id"],
+        "trace_id": data["trace_id"],
+        "request_id": data["request_id"],
+        "operator_ref": _json_value(data["operator_ref"], {}),
+        "export_status": data["export_status"],
+        "export_format": data["export_format"],
+        "redaction_profile": data["redaction_profile"],
+        "evidence_manifest": _json_value(data["evidence_manifest"], {}),
+        "evidence_hash": data["evidence_hash"],
+        "evidence_item_count": int(data["evidence_item_count"]),
+        "metadata": _json_value(data["metadata"], {}),
+        "created_at": _datetime_value(data["created_at"]),
+        "updated_at": _datetime_value(data["updated_at"]),
+    }
+
+
 def _json_param_expr(name: str, dialect_name: str) -> str:
     if dialect_name == "postgresql":
         return f"CAST(:{name} AS jsonb)"
@@ -1059,6 +1656,14 @@ def _store_unavailable_error() -> OperatorReviewNoteError:
         status_code=503,
         error_code="ag.operator_review_note_store_unavailable",
         detail="Operator review note store is unavailable.",
+    )
+
+
+def _export_store_unavailable_error() -> OperatorReviewNoteError:
+    return OperatorReviewNoteError(
+        status_code=503,
+        error_code="ag.evidence_export_store_unavailable",
+        detail="Operator evidence export store is unavailable.",
     )
 
 
