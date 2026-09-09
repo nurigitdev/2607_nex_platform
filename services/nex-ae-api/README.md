@@ -1022,3 +1022,8 @@ Artifact library management:
   default worker route behavior non-persistent, and store only safe summary
   fields plus source hashes instead of full worker command, transition-plan, or
   supervisor result payloads.
+- Slice 0612 adds the AE-owned `ae_op_exec_worker_results` schema and
+  SQLAlchemy store foundation. The store persists only a safe summary record
+  plus source hashes, keeps full worker command, transition-plan, and
+  supervisor result payloads out of the table, and leaves route writes deferred
+  until `persist_worker_result=true` wiring is added.

@@ -150,6 +150,10 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_TRANSIT
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_result.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_RECORD_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record.v1"
+)
+AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE = "ae_op_exec_worker_results"
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
@@ -160,6 +164,7 @@ MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_RUN_COLLECTION_LIMIT = 100
 MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_RECORD_LIMIT = 100
 MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISED_PROCESS_RECORD_LIMIT = 100
 MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_STATE_LIMIT = 100
+MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_LIMIT = 100
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_CLI_EXECUTE_MODE = "bounded_loop"
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_PROCESS_LOCK_SCOPE = (
     "ae_artifact_retention_scheduler_daemon"
@@ -5324,6 +5329,439 @@ def operator_control_execution_worker_result_summary_line(
     )
 
 
+def build_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record(
+    worker_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = (
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_worker_result(
+            worker_result
+        )
+    )
+    metadata = validated["metadata"]
+    supervisor_results = validated["supervisor_results"]
+    record = {
+        "operator_control_execution_worker_result_record_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_RECORD_SCHEMA_VERSION
+        ),
+        "operator_control_execution_worker_result_id": validated[
+            "operator_control_execution_worker_result_id"
+        ],
+        "service_id": "nex-ae-api",
+        "scheduler_id": validated["scheduler_id"],
+        "operator_control_execution_worker_command_id": validated[
+            "operator_control_execution_worker_command_id"
+        ],
+        "operator_control_execution_worker_plan_id": validated[
+            "operator_control_execution_worker_plan_id"
+        ],
+        "operator_control_execution_worker_transition_plan_id": validated[
+            "operator_control_execution_worker_transition_plan_id"
+        ],
+        "operator_control_execution_state_id": validated[
+            "operator_control_execution_state_id"
+        ],
+        "operator_control_execution_request_id": validated[
+            "operator_control_execution_request_id"
+        ],
+        "action": validated["action"],
+        "execution_mode": validated["execution_mode"],
+        "worker_mode": validated["worker_mode"],
+        "worker_status": validated["worker_status"],
+        "decision_reason": validated["decision_reason"],
+        "observed_at": validated["observed_at"],
+        "transition_plan_status": metadata["transition_plan_status"],
+        "transition_terminal_status": metadata["transition_terminal_status"],
+        "status_path": list(metadata["status_path"]),
+        "supervisor_result_count": validated["supervisor_result_count"],
+        "supervisor_result_statuses": list(
+            metadata["supervisor_result_statuses"]
+        ),
+        "supervisor_actions": list(metadata["supervisor_actions"]),
+        "supervisor_result_ids": list(metadata["supervisor_result_ids"]),
+        "supervisor_dispatch_performed": metadata[
+            "supervisor_dispatch_performed"
+        ],
+        "supervisor_adapter_invoked": metadata["supervisor_adapter_invoked"],
+        "subprocess_started": metadata["subprocess_started"],
+        "subprocess_stopped": metadata["subprocess_stopped"],
+        "worker_execution_performed": metadata["worker_execution_performed"],
+        "transition_persistence_performed": metadata[
+            "transition_persistence_performed"
+        ],
+        "physical_delete_automation_enabled": metadata[
+            "physical_delete_automation_enabled"
+        ],
+        "operator_control_execution_worker_command_hash": metadata[
+            "operator_control_execution_worker_command_hash"
+        ],
+        "operator_control_execution_worker_transition_plan_hash": metadata[
+            "operator_control_execution_worker_transition_plan_hash"
+        ],
+        "supervisor_results_hash": sha256_json(list(supervisor_results)),
+        "worker_result_hash": sha256_json(dict(validated)),
+        "guardrails": (
+            _operator_control_execution_worker_result_record_guardrails(
+                worker_result=validated
+            )
+        ),
+        "metadata": (
+            _operator_control_execution_worker_result_record_metadata(
+                worker_result=validated,
+                supervisor_results_hash=sha256_json(list(supervisor_results)),
+            )
+        ),
+        "created_at": validated["observed_at"],
+    }
+    return validate_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record(
+        record
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record(
+    worker_result_record: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = (
+        "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record_invalid"
+    )
+    if not isinstance(worker_result_record, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker result record must be an object."
+            ),
+        )
+    normalized = dict(worker_result_record)
+    if set(normalized) != {
+        "operator_control_execution_worker_result_record_schema_version",
+        "operator_control_execution_worker_result_id",
+        "service_id",
+        "scheduler_id",
+        "operator_control_execution_worker_command_id",
+        "operator_control_execution_worker_plan_id",
+        "operator_control_execution_worker_transition_plan_id",
+        "operator_control_execution_state_id",
+        "operator_control_execution_request_id",
+        "action",
+        "execution_mode",
+        "worker_mode",
+        "worker_status",
+        "decision_reason",
+        "observed_at",
+        "transition_plan_status",
+        "transition_terminal_status",
+        "status_path",
+        "supervisor_result_count",
+        "supervisor_result_statuses",
+        "supervisor_actions",
+        "supervisor_result_ids",
+        "supervisor_dispatch_performed",
+        "supervisor_adapter_invoked",
+        "subprocess_started",
+        "subprocess_stopped",
+        "worker_execution_performed",
+        "transition_persistence_performed",
+        "physical_delete_automation_enabled",
+        "operator_control_execution_worker_command_hash",
+        "operator_control_execution_worker_transition_plan_hash",
+        "supervisor_results_hash",
+        "worker_result_hash",
+        "guardrails",
+        "metadata",
+        "created_at",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker result record keys are invalid."
+            ),
+        )
+    if (
+        normalized.get(
+            "operator_control_execution_worker_result_record_schema_version"
+        )
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_RECORD_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker result record schema is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker result record service id is invalid."
+            ),
+        )
+    for field_name in (
+        "operator_control_execution_worker_result_id",
+        "scheduler_id",
+        "operator_control_execution_worker_command_id",
+        "operator_control_execution_worker_plan_id",
+        "operator_control_execution_worker_transition_plan_id",
+        "operator_control_execution_state_id",
+        "operator_control_execution_request_id",
+        "worker_mode",
+        "decision_reason",
+        "observed_at",
+        "created_at",
+    ):
+        normalized[field_name] = _required_text(
+            normalized.get(field_name),
+            field_name,
+            error_code=error_code,
+        )
+    try:
+        normalized["action"] = _normalize_daemon_operator_control_action(
+            normalized.get("action")
+        )
+    except ArtifactHandoffError as exc:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker result record action is invalid."
+            ),
+        ) from exc
+    normalized["execution_mode"] = _normalize_operator_control_execution_mode(
+        normalized.get("execution_mode"),
+        error_code=error_code,
+    )
+    normalized["worker_status"] = (
+        _normalize_operator_control_execution_worker_result_status(
+            normalized.get("worker_status"),
+            error_code=error_code,
+        )
+    )
+    normalized["transition_plan_status"] = (
+        _normalize_operator_control_execution_worker_transition_plan_status(
+            normalized.get("transition_plan_status"),
+            error_code=error_code,
+        )
+    )
+    normalized["transition_terminal_status"] = (
+        _normalize_operator_control_execution_worker_terminal_status(
+            normalized.get("transition_terminal_status"),
+            error_code=error_code,
+        )
+    )
+    if normalized["transition_terminal_status"] != normalized["worker_status"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker result record terminal status is invalid."
+            ),
+        )
+    normalized["status_path"] = _required_text_sequence(
+        normalized.get("status_path"),
+        "status_path",
+        error_code=error_code,
+    )
+    normalized["supervisor_result_statuses"] = _required_text_sequence(
+        normalized.get("supervisor_result_statuses"),
+        "supervisor_result_statuses",
+        error_code=error_code,
+    )
+    normalized["supervisor_actions"] = _required_text_sequence(
+        normalized.get("supervisor_actions"),
+        "supervisor_actions",
+        error_code=error_code,
+    )
+    normalized["supervisor_result_ids"] = _required_text_sequence(
+        normalized.get("supervisor_result_ids"),
+        "supervisor_result_ids",
+        error_code=error_code,
+    )
+    normalized["status_path"] = [
+        _normalize_operator_control_execution_state_status(
+            status,
+            error_code=error_code,
+        )
+        for status in normalized["status_path"]
+    ]
+    normalized["supervisor_result_statuses"] = [
+        _daemon_supervisor_result_status_for_context(
+            status,
+            error_code=error_code,
+        )
+        for status in normalized["supervisor_result_statuses"]
+    ]
+    normalized["supervisor_actions"] = [
+        _daemon_supervisor_action_for_context(
+            action,
+            error_code=error_code,
+        )
+        for action in normalized["supervisor_actions"]
+    ]
+    if not normalized["status_path"] or (
+        normalized["status_path"][-1] != normalized["worker_status"]
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker result record status path is invalid."
+            ),
+        )
+    normalized["supervisor_result_count"] = (
+        _bounded_non_negative_operator_control_count(
+            normalized.get("supervisor_result_count"),
+            "supervisor_result_count",
+            error_code=error_code,
+        )
+    )
+    if (
+        normalized["supervisor_result_count"]
+        != len(normalized["supervisor_result_statuses"])
+        or normalized["supervisor_result_count"]
+        != len(normalized["supervisor_actions"])
+        or normalized["supervisor_result_count"]
+        != len(normalized["supervisor_result_ids"])
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker result record supervisor scope is invalid."
+            ),
+        )
+    for field_name in (
+        "supervisor_dispatch_performed",
+        "supervisor_adapter_invoked",
+        "subprocess_started",
+        "subprocess_stopped",
+        "worker_execution_performed",
+        "transition_persistence_performed",
+        "physical_delete_automation_enabled",
+    ):
+        normalized[field_name] = _required_bool(
+            normalized.get(field_name),
+            field_name,
+            error_code=error_code,
+        )
+    if not isinstance(normalized.get("guardrails"), Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker result record guardrails are invalid."
+            ),
+        )
+    if not isinstance(normalized.get("metadata"), Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker result record metadata is invalid."
+            ),
+        )
+    normalized["guardrails"] = dict(normalized["guardrails"])
+    normalized["metadata"] = dict(normalized["metadata"])
+    if normalized["guardrails"] != _operator_control_execution_worker_result_record_guardrails(
+        worker_result=normalized
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker result record guardrails are invalid."
+            ),
+        )
+    for field_name in (
+        "operator_control_execution_worker_command_hash",
+        "operator_control_execution_worker_transition_plan_hash",
+        "supervisor_results_hash",
+        "worker_result_hash",
+    ):
+        _ensure_sha256_hex(
+            normalized.get(field_name),
+            field_name,
+            error_code=error_code,
+        )
+    expected_metadata = _operator_control_execution_worker_result_record_metadata(
+        worker_result=normalized,
+        supervisor_results_hash=normalized["supervisor_results_hash"],
+    )
+    if normalized["metadata"] != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker result record metadata is invalid."
+            ),
+        )
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record(
+    worker_result_record: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = (
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record(
+            worker_result_record
+        )
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "operator_control_execution_worker_result_id": validated[
+            "operator_control_execution_worker_result_id"
+        ],
+        "operator_control_execution_state_id": validated[
+            "operator_control_execution_state_id"
+        ],
+        "action": validated["action"],
+        "worker_status": validated["worker_status"],
+        "decision_reason": validated["decision_reason"],
+        "observed_at": validated["observed_at"],
+        "supervisor_result_count": validated["supervisor_result_count"],
+        "supervisor_result_statuses": list(
+            validated["supervisor_result_statuses"]
+        ),
+        "database_write_performed": validated["metadata"][
+            "database_write_performed"
+        ],
+        "safe_for_ag_projection": validated["metadata"]["safe_for_ag_projection"],
+    }
+
+
+def operator_control_execution_worker_result_record_summary_line(
+    worker_result_record: Mapping[str, Any],
+) -> str:
+    summary = (
+        summarize_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record(
+            worker_result_record
+        )
+    )
+    statuses = ",".join(summary["supervisor_result_statuses"]) or "none"
+    return (
+        "ae_scheduler_daemon_operator_control_execution_worker_result_record=pass "
+        f"scheduler_id={summary['scheduler_id']} "
+        f"action={summary['action']} "
+        f"status={summary['worker_status']} "
+        f"supervisor_results={summary['supervisor_result_count']} "
+        f"supervisor_statuses={statuses}"
+    )
+
+
 def run_artifact_retention_scheduler_daemon_operator_control_execution_worker(
     *,
     operator_control_execution_worker_command: Mapping[str, Any],
@@ -5389,6 +5827,23 @@ def normalize_artifact_retention_scheduler_daemon_operator_control_execution_lim
         ),
         error_code=(
             "ae.artifact_retention_scheduler_daemon_operator_control_execution_collection_invalid"
+        ),
+    )
+
+
+def normalize_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_limit(
+    limit: int | str | None,
+) -> int:
+    if limit is None:
+        return 20
+    return _bounded_positive_int(
+        limit,
+        "limit",
+        max_value=(
+            MAX_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_LIMIT
+        ),
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection_invalid"
         ),
     )
 
@@ -8730,6 +9185,215 @@ class SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionStore:
             return deleted
         except SQLAlchemyError as exc:
             raise _operator_control_execution_store_unavailable() from exc
+
+
+class SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionWorkerResultStore:
+    def __init__(self, session_factory: Any) -> None:
+        self._session_factory = session_factory
+
+    def ensure_schema(self) -> None:
+        try:
+            with self._session_factory() as session:
+                _ensure_operator_control_execution_worker_result_store_schema(
+                    session
+                )
+                session.commit()
+        except SQLAlchemyError as exc:
+            raise _operator_control_execution_worker_result_store_unavailable() from exc
+
+    def ensure_available(self) -> None:
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    text(
+                        "SELECT 1 FROM "
+                        f"{AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE} "
+                        "LIMIT 1"
+                    )
+                )
+        except SQLAlchemyError as exc:
+            raise _operator_control_execution_worker_result_store_unavailable() from exc
+
+    def record_worker_result(
+        self,
+        worker_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        record = (
+            build_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record(
+                worker_result
+            )
+        )
+        try:
+            with self._session_factory() as session:
+                _ensure_operator_control_execution_worker_result_store_schema(
+                    session
+                )
+                dialect_name = _daemon_store_dialect_name(session)
+                session.execute(
+                    text(_operator_control_execution_worker_result_upsert_sql(dialect_name)),
+                    _operator_control_execution_worker_result_params(record),
+                )
+                session.commit()
+            return record
+        except SQLAlchemyError as exc:
+            raise _operator_control_execution_worker_result_store_unavailable() from exc
+
+    def get_worker_result(
+        self,
+        operator_control_execution_worker_result_id: str,
+    ) -> dict[str, Any] | None:
+        normalized_id = _required_text(
+            operator_control_execution_worker_result_id,
+            "operator_control_execution_worker_result_id",
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record_invalid"
+            ),
+        )
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _operator_control_execution_worker_result_select_sql(
+                                "operator_control_execution_worker_result_id = "
+                                ":operator_control_execution_worker_result_id"
+                            )
+                        ),
+                        {
+                            "operator_control_execution_worker_result_id": (
+                                normalized_id
+                            )
+                        },
+                    )
+                    .mappings()
+                    .first()
+                )
+            return (
+                _operator_control_execution_worker_result_from_row(row)
+                if row is not None
+                else None
+            )
+        except SQLAlchemyError as exc:
+            raise _operator_control_execution_worker_result_store_unavailable() from exc
+
+    def list_worker_results(
+        self,
+        *,
+        scheduler_id: str | None = None,
+        action: str | None = None,
+        worker_status: str | None = None,
+        operator_control_execution_state_id: str | None = None,
+        operator_control_execution_request_id: str | None = None,
+        limit: int | str | None = None,
+    ) -> list[dict[str, Any]]:
+        normalized_scheduler_id = optional_text(scheduler_id)
+        normalized_action = _optional_operator_control_execution_action(
+            action,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection_invalid"
+            ),
+        )
+        normalized_worker_status = (
+            _optional_operator_control_execution_worker_result_status(
+                worker_status,
+                error_code=(
+                    "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection_invalid"
+                ),
+            )
+        )
+        normalized_state_id = optional_text(operator_control_execution_state_id)
+        normalized_request_id = optional_text(operator_control_execution_request_id)
+        normalized_limit = (
+            normalize_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_limit(
+                limit
+            )
+        )
+        where_clauses = ["service_id = 'nex-ae-api'"]
+        params: dict[str, Any] = {"limit": normalized_limit}
+        if normalized_scheduler_id is not None:
+            where_clauses.append("scheduler_id = :scheduler_id")
+            params["scheduler_id"] = normalized_scheduler_id
+        if normalized_action is not None:
+            where_clauses.append("action = :action")
+            params["action"] = normalized_action
+        if normalized_worker_status is not None:
+            where_clauses.append("worker_status = :worker_status")
+            params["worker_status"] = normalized_worker_status
+        if normalized_state_id is not None:
+            where_clauses.append(
+                "operator_control_execution_state_id = "
+                ":operator_control_execution_state_id"
+            )
+            params["operator_control_execution_state_id"] = normalized_state_id
+        if normalized_request_id is not None:
+            where_clauses.append(
+                "operator_control_execution_request_id = "
+                ":operator_control_execution_request_id"
+            )
+            params["operator_control_execution_request_id"] = normalized_request_id
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            _operator_control_execution_worker_result_select_sql(
+                                " AND ".join(where_clauses)
+                            )
+                            + """
+                            ORDER BY observed_at DESC,
+                                     created_at DESC,
+                                     operator_control_execution_worker_result_id ASC
+                            LIMIT :limit
+                            """
+                        ),
+                        params,
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [
+                _operator_control_execution_worker_result_from_row(row)
+                for row in rows
+            ]
+        except SQLAlchemyError as exc:
+            raise _operator_control_execution_worker_result_store_unavailable() from exc
+
+    def delete_worker_result(
+        self,
+        operator_control_execution_worker_result_id: str,
+    ) -> dict[str, int]:
+        normalized_id = _required_text(
+            operator_control_execution_worker_result_id,
+            "operator_control_execution_worker_result_id",
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record_invalid"
+            ),
+        )
+        deleted = {"operator_control_execution_worker_results": 0}
+        try:
+            with self._session_factory() as session:
+                result = session.execute(
+                    text(
+                        f"""
+                        DELETE FROM
+                            {AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE}
+                        WHERE operator_control_execution_worker_result_id =
+                              :operator_control_execution_worker_result_id
+                        """
+                    ),
+                    {
+                        "operator_control_execution_worker_result_id": (
+                            normalized_id
+                        )
+                    },
+                )
+                session.commit()
+            deleted["operator_control_execution_worker_results"] = int(
+                result.rowcount or 0
+            )
+            return deleted
+        except SQLAlchemyError as exc:
+            raise _operator_control_execution_worker_result_store_unavailable() from exc
 
 
 def build_artifact_retention_scheduler_daemon_supervised_process_record(
@@ -15132,6 +15796,214 @@ def _operator_control_execution_worker_result_metadata(
     }
 
 
+def _operator_control_execution_worker_result_record_guardrails(
+    *,
+    worker_result: Mapping[str, Any],
+) -> dict[str, bool]:
+    return {
+        "worker_result_record_only": True,
+        "ae_owned_persistence": True,
+        "safe_summary_only": True,
+        "source_worker_result_validated": True,
+        "stores_full_worker_result_payload": False,
+        "stores_full_worker_command_payload": False,
+        "stores_full_transition_plan_payload": False,
+        "stores_full_supervisor_result_payload": False,
+        "stores_source_hashes": True,
+        "supervisor_result_persisted": False,
+        "supervisor_event_persisted": False,
+        "database_write_performed": True,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": bool(
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "worker_execution_performed",
+                False,
+            )
+        ),
+        "transition_persistence_performed": bool(
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "transition_persistence_performed",
+                False,
+            )
+        ),
+        "subprocess_started": bool(
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "subprocess_started",
+                False,
+            )
+        ),
+        "subprocess_stopped": bool(
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "subprocess_stopped",
+                False,
+            )
+        ),
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+        "physical_delete_automation_enabled": bool(
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "physical_delete_automation_enabled",
+                False,
+            )
+        ),
+        "secrets_redacted": True,
+    }
+
+
+def _operator_control_execution_worker_result_record_metadata(
+    *,
+    worker_result: Mapping[str, Any],
+    supervisor_results_hash: str,
+) -> dict[str, Any]:
+    return {
+        "safe_for_ag_projection": True,
+        "worker_result_record_only": True,
+        "stored_table": AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE,
+        "source_worker_result_schema_version": worker_result.get(
+            "operator_control_execution_worker_result_schema_version",
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_SCHEMA_VERSION,
+        ),
+        "source_worker_result_hash": _operator_control_execution_worker_result_record_value(
+            worker_result,
+            "worker_result_hash",
+            sha256_json(dict(worker_result)),
+        ),
+        "operator_control_execution_worker_command_hash": (
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "operator_control_execution_worker_command_hash",
+            )
+        ),
+        "operator_control_execution_worker_transition_plan_hash": (
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "operator_control_execution_worker_transition_plan_hash",
+            )
+        ),
+        "supervisor_results_hash": supervisor_results_hash,
+        "observed_at": worker_result["observed_at"],
+        "worker_status": worker_result["worker_status"],
+        "decision_reason": worker_result["decision_reason"],
+        "transition_plan_status": (
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "transition_plan_status",
+            )
+        ),
+        "transition_terminal_status": (
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "transition_terminal_status",
+            )
+        ),
+        "status_path": list(
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "status_path",
+                [],
+            )
+        ),
+        "supervisor_result_count": worker_result["supervisor_result_count"],
+        "supervisor_result_statuses": list(
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "supervisor_result_statuses",
+                [],
+            )
+        ),
+        "supervisor_actions": list(
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "supervisor_actions",
+                [],
+            )
+        ),
+        "supervisor_result_ids": list(
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "supervisor_result_ids",
+                [],
+            )
+        ),
+        "supervisor_dispatch_performed": bool(
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "supervisor_dispatch_performed",
+                False,
+            )
+        ),
+        "supervisor_adapter_invoked": bool(
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "supervisor_adapter_invoked",
+                False,
+            )
+        ),
+        "database_write_performed": True,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": bool(
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "worker_execution_performed",
+                False,
+            )
+        ),
+        "transition_persistence_performed": bool(
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "transition_persistence_performed",
+                False,
+            )
+        ),
+        "physical_delete_automation_enabled": bool(
+            _operator_control_execution_worker_result_record_value(
+                worker_result,
+                "physical_delete_automation_enabled",
+                False,
+            )
+        ),
+        "stores_full_worker_result_payload": False,
+        "stores_full_worker_command_payload": False,
+        "stores_full_transition_plan_payload": False,
+        "stores_full_supervisor_result_payload": False,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+        "secrets_redacted": True,
+    }
+
+
+def _operator_control_execution_worker_result_record_value(
+    worker_result: Mapping[str, Any],
+    field_name: str,
+    default: Any = None,
+) -> Any:
+    if field_name in worker_result:
+        return worker_result[field_name]
+    metadata = worker_result.get("metadata")
+    if isinstance(metadata, Mapping) and field_name in metadata:
+        return metadata[field_name]
+    return default
+
+
 def _safe_operator_subject(value: Any, *, error_code: str) -> dict[str, str]:
     if not isinstance(value, Mapping):
         raise ArtifactHandoffError(
@@ -18590,6 +19462,353 @@ def _operator_control_execution_state_transition_from_row(
     return normalized
 
 
+def _ensure_operator_control_execution_worker_result_store_schema(
+    session: Any,
+) -> None:
+    _ensure_operator_control_execution_store_schema(session)
+    dialect_name = _daemon_store_dialect_name(session)
+    json_type = "JSONB" if dialect_name == "postgresql" else "TEXT"
+    session.execute(
+        text(
+            f"""
+            CREATE TABLE IF NOT EXISTS
+                {AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE} (
+                    operator_control_execution_worker_result_id TEXT PRIMARY KEY,
+                    operator_control_execution_worker_result_record_schema_version TEXT NOT NULL,
+                    service_id TEXT NOT NULL,
+                    scheduler_id TEXT NOT NULL,
+                    operator_control_execution_worker_command_id TEXT NOT NULL,
+                    operator_control_execution_worker_plan_id TEXT NOT NULL,
+                    operator_control_execution_worker_transition_plan_id TEXT NOT NULL,
+                    operator_control_execution_state_id TEXT NOT NULL,
+                    operator_control_execution_request_id TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    execution_mode TEXT NOT NULL,
+                    worker_mode TEXT NOT NULL,
+                    worker_status TEXT NOT NULL,
+                    decision_reason TEXT NOT NULL,
+                    observed_at TIMESTAMPTZ NOT NULL,
+                    transition_plan_status TEXT NOT NULL,
+                    transition_terminal_status TEXT NOT NULL,
+                    status_path {json_type} NOT NULL,
+                    supervisor_result_count INTEGER NOT NULL,
+                    supervisor_result_statuses {json_type} NOT NULL,
+                    supervisor_actions {json_type} NOT NULL,
+                    supervisor_result_ids {json_type} NOT NULL,
+                    supervisor_dispatch_performed BOOLEAN NOT NULL,
+                    supervisor_adapter_invoked BOOLEAN NOT NULL,
+                    subprocess_started BOOLEAN NOT NULL,
+                    subprocess_stopped BOOLEAN NOT NULL,
+                    worker_execution_performed BOOLEAN NOT NULL,
+                    transition_persistence_performed BOOLEAN NOT NULL,
+                    physical_delete_automation_enabled BOOLEAN NOT NULL,
+                    operator_control_execution_worker_command_hash TEXT NOT NULL,
+                    operator_control_execution_worker_transition_plan_hash TEXT NOT NULL,
+                    supervisor_results_hash TEXT NOT NULL,
+                    worker_result_hash TEXT NOT NULL,
+                    guardrails {json_type} NOT NULL,
+                    metadata {json_type} NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL
+                )
+            """
+        )
+    )
+    for statement in (
+        f"""
+        CREATE INDEX IF NOT EXISTS idx_ae_op_worker_results_observed
+        ON {AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE}
+            (scheduler_id, observed_at DESC)
+        """,
+        f"""
+        CREATE INDEX IF NOT EXISTS idx_ae_op_worker_results_state
+        ON {AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE}
+            (operator_control_execution_state_id, observed_at DESC)
+        """,
+        f"""
+        CREATE INDEX IF NOT EXISTS idx_ae_op_worker_results_status
+        ON {AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE}
+            (worker_status, observed_at DESC)
+        """,
+        f"""
+        CREATE INDEX IF NOT EXISTS idx_ae_op_worker_results_request
+        ON {AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE}
+            (operator_control_execution_request_id, observed_at DESC)
+        """,
+    ):
+        session.execute(text(statement))
+
+
+def _operator_control_execution_worker_result_upsert_sql(
+    dialect_name: str,
+) -> str:
+    json_exprs = {
+        field_name: _daemon_json_param_expr(field_name, dialect_name)
+        for field_name in (
+            "status_path",
+            "supervisor_result_statuses",
+            "supervisor_actions",
+            "supervisor_result_ids",
+            "guardrails",
+            "metadata",
+        )
+    }
+    return f"""
+        INSERT INTO {AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE} (
+            operator_control_execution_worker_result_id,
+            operator_control_execution_worker_result_record_schema_version,
+            service_id,
+            scheduler_id,
+            operator_control_execution_worker_command_id,
+            operator_control_execution_worker_plan_id,
+            operator_control_execution_worker_transition_plan_id,
+            operator_control_execution_state_id,
+            operator_control_execution_request_id,
+            action,
+            execution_mode,
+            worker_mode,
+            worker_status,
+            decision_reason,
+            observed_at,
+            transition_plan_status,
+            transition_terminal_status,
+            status_path,
+            supervisor_result_count,
+            supervisor_result_statuses,
+            supervisor_actions,
+            supervisor_result_ids,
+            supervisor_dispatch_performed,
+            supervisor_adapter_invoked,
+            subprocess_started,
+            subprocess_stopped,
+            worker_execution_performed,
+            transition_persistence_performed,
+            physical_delete_automation_enabled,
+            operator_control_execution_worker_command_hash,
+            operator_control_execution_worker_transition_plan_hash,
+            supervisor_results_hash,
+            worker_result_hash,
+            guardrails,
+            metadata,
+            created_at
+        )
+        VALUES (
+            :operator_control_execution_worker_result_id,
+            :operator_control_execution_worker_result_record_schema_version,
+            :service_id,
+            :scheduler_id,
+            :operator_control_execution_worker_command_id,
+            :operator_control_execution_worker_plan_id,
+            :operator_control_execution_worker_transition_plan_id,
+            :operator_control_execution_state_id,
+            :operator_control_execution_request_id,
+            :action,
+            :execution_mode,
+            :worker_mode,
+            :worker_status,
+            :decision_reason,
+            :observed_at,
+            :transition_plan_status,
+            :transition_terminal_status,
+            {json_exprs['status_path']},
+            :supervisor_result_count,
+            {json_exprs['supervisor_result_statuses']},
+            {json_exprs['supervisor_actions']},
+            {json_exprs['supervisor_result_ids']},
+            :supervisor_dispatch_performed,
+            :supervisor_adapter_invoked,
+            :subprocess_started,
+            :subprocess_stopped,
+            :worker_execution_performed,
+            :transition_persistence_performed,
+            :physical_delete_automation_enabled,
+            :operator_control_execution_worker_command_hash,
+            :operator_control_execution_worker_transition_plan_hash,
+            :supervisor_results_hash,
+            :worker_result_hash,
+            {json_exprs['guardrails']},
+            {json_exprs['metadata']},
+            :created_at
+        )
+        ON CONFLICT (operator_control_execution_worker_result_id) DO UPDATE SET
+            worker_status = excluded.worker_status,
+            decision_reason = excluded.decision_reason,
+            observed_at = excluded.observed_at,
+            transition_plan_status = excluded.transition_plan_status,
+            transition_terminal_status = excluded.transition_terminal_status,
+            status_path = excluded.status_path,
+            supervisor_result_count = excluded.supervisor_result_count,
+            supervisor_result_statuses = excluded.supervisor_result_statuses,
+            supervisor_actions = excluded.supervisor_actions,
+            supervisor_result_ids = excluded.supervisor_result_ids,
+            supervisor_dispatch_performed =
+                excluded.supervisor_dispatch_performed,
+            supervisor_adapter_invoked = excluded.supervisor_adapter_invoked,
+            subprocess_started = excluded.subprocess_started,
+            subprocess_stopped = excluded.subprocess_stopped,
+            worker_execution_performed = excluded.worker_execution_performed,
+            transition_persistence_performed =
+                excluded.transition_persistence_performed,
+            physical_delete_automation_enabled =
+                excluded.physical_delete_automation_enabled,
+            operator_control_execution_worker_command_hash =
+                excluded.operator_control_execution_worker_command_hash,
+            operator_control_execution_worker_transition_plan_hash =
+                excluded.operator_control_execution_worker_transition_plan_hash,
+            supervisor_results_hash = excluded.supervisor_results_hash,
+            worker_result_hash = excluded.worker_result_hash,
+            guardrails = excluded.guardrails,
+            metadata = excluded.metadata,
+            created_at = excluded.created_at
+    """
+
+
+def _operator_control_execution_worker_result_select_sql(
+    where_clause: str,
+) -> str:
+    return f"""
+        SELECT
+            operator_control_execution_worker_result_id,
+            operator_control_execution_worker_result_record_schema_version,
+            service_id,
+            scheduler_id,
+            operator_control_execution_worker_command_id,
+            operator_control_execution_worker_plan_id,
+            operator_control_execution_worker_transition_plan_id,
+            operator_control_execution_state_id,
+            operator_control_execution_request_id,
+            action,
+            execution_mode,
+            worker_mode,
+            worker_status,
+            decision_reason,
+            observed_at,
+            transition_plan_status,
+            transition_terminal_status,
+            status_path,
+            supervisor_result_count,
+            supervisor_result_statuses,
+            supervisor_actions,
+            supervisor_result_ids,
+            supervisor_dispatch_performed,
+            supervisor_adapter_invoked,
+            subprocess_started,
+            subprocess_stopped,
+            worker_execution_performed,
+            transition_persistence_performed,
+            physical_delete_automation_enabled,
+            operator_control_execution_worker_command_hash,
+            operator_control_execution_worker_transition_plan_hash,
+            supervisor_results_hash,
+            worker_result_hash,
+            guardrails,
+            metadata,
+            created_at
+        FROM {AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE}
+        WHERE {where_clause}
+    """
+
+
+def _operator_control_execution_worker_result_params(
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    params = (
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record(
+            record
+        )
+    )
+    for field_name in (
+        "status_path",
+        "supervisor_result_statuses",
+        "supervisor_actions",
+        "supervisor_result_ids",
+        "guardrails",
+        "metadata",
+    ):
+        params[field_name] = json.dumps(params[field_name])
+    return params
+
+
+def _operator_control_execution_worker_result_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return validate_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record(
+        {
+            "operator_control_execution_worker_result_record_schema_version": data[
+                "operator_control_execution_worker_result_record_schema_version"
+            ],
+            "operator_control_execution_worker_result_id": data[
+                "operator_control_execution_worker_result_id"
+            ],
+            "service_id": data["service_id"],
+            "scheduler_id": data["scheduler_id"],
+            "operator_control_execution_worker_command_id": data[
+                "operator_control_execution_worker_command_id"
+            ],
+            "operator_control_execution_worker_plan_id": data[
+                "operator_control_execution_worker_plan_id"
+            ],
+            "operator_control_execution_worker_transition_plan_id": data[
+                "operator_control_execution_worker_transition_plan_id"
+            ],
+            "operator_control_execution_state_id": data[
+                "operator_control_execution_state_id"
+            ],
+            "operator_control_execution_request_id": data[
+                "operator_control_execution_request_id"
+            ],
+            "action": data["action"],
+            "execution_mode": data["execution_mode"],
+            "worker_mode": data["worker_mode"],
+            "worker_status": data["worker_status"],
+            "decision_reason": data["decision_reason"],
+            "observed_at": _daemon_datetime_value(data["observed_at"]),
+            "transition_plan_status": data["transition_plan_status"],
+            "transition_terminal_status": data["transition_terminal_status"],
+            "status_path": _daemon_json_value(data["status_path"], []),
+            "supervisor_result_count": int(data["supervisor_result_count"]),
+            "supervisor_result_statuses": _daemon_json_value(
+                data["supervisor_result_statuses"],
+                [],
+            ),
+            "supervisor_actions": _daemon_json_value(
+                data["supervisor_actions"],
+                [],
+            ),
+            "supervisor_result_ids": _daemon_json_value(
+                data["supervisor_result_ids"],
+                [],
+            ),
+            "supervisor_dispatch_performed": bool(
+                data["supervisor_dispatch_performed"]
+            ),
+            "supervisor_adapter_invoked": bool(
+                data["supervisor_adapter_invoked"]
+            ),
+            "subprocess_started": bool(data["subprocess_started"]),
+            "subprocess_stopped": bool(data["subprocess_stopped"]),
+            "worker_execution_performed": bool(
+                data["worker_execution_performed"]
+            ),
+            "transition_persistence_performed": bool(
+                data["transition_persistence_performed"]
+            ),
+            "physical_delete_automation_enabled": bool(
+                data["physical_delete_automation_enabled"]
+            ),
+            "operator_control_execution_worker_command_hash": data[
+                "operator_control_execution_worker_command_hash"
+            ],
+            "operator_control_execution_worker_transition_plan_hash": data[
+                "operator_control_execution_worker_transition_plan_hash"
+            ],
+            "supervisor_results_hash": data["supervisor_results_hash"],
+            "worker_result_hash": data["worker_result_hash"],
+            "guardrails": _daemon_json_value(data["guardrails"], {}),
+            "metadata": _daemon_json_value(data["metadata"], {}),
+            "created_at": _daemon_datetime_value(data["created_at"]),
+        }
+    )
+
+
 def _optional_operator_control_execution_action(
     value: Any,
     *,
@@ -18634,6 +19853,20 @@ def _optional_operator_control_execution_idempotency_status(
     if status is None:
         return None
     return _normalize_operator_control_idempotency_status(
+        status,
+        error_code=error_code,
+    )
+
+
+def _optional_operator_control_execution_worker_result_status(
+    value: Any,
+    *,
+    error_code: str,
+) -> str | None:
+    status = optional_text(value)
+    if status is None:
+        return None
+    return _normalize_operator_control_execution_worker_result_status(
         status,
         error_code=error_code,
     )
@@ -19345,6 +20578,20 @@ def _daemon_run_store_unavailable() -> ArtifactHandoffError:
     )
 
 
+def _operator_control_execution_worker_result_store_unavailable() -> ArtifactHandoffError:
+    return ArtifactHandoffError(
+        status_code=503,
+        error_code=(
+            "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_store_unavailable"
+        ),
+        detail=(
+            "AE artifact retention scheduler daemon operator control execution "
+            "worker result store is unavailable."
+        ),
+        retryable=True,
+    )
+
+
 def _daemon_process_lock_owner(
     *,
     scheduler_id: str,
@@ -19462,6 +20709,43 @@ def _required_text(
             ),
         )
     return text
+
+
+def _required_text_sequence(
+    value: Any,
+    field_name: str,
+    *,
+    error_code: str,
+) -> list[str]:
+    if not isinstance(value, list):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI "
+                f"{field_name} must be a list."
+            ),
+        )
+    return [
+        _required_text(item, field_name, error_code=error_code)
+        for item in value
+    ]
+
+
+def _ensure_sha256_hex(value: Any, field_name: str, *, error_code: str) -> str:
+    normalized = _required_text(value, field_name, error_code=error_code)
+    if len(normalized) != 64 or any(
+        char not in "0123456789abcdef" for char in normalized
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon CLI "
+                f"{field_name} hash is invalid."
+            ),
+        )
+    return normalized
 
 
 if __name__ == "__main__":  # pragma: no cover
