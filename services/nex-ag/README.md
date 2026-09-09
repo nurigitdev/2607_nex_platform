@@ -832,6 +832,11 @@ Unified operations:
   `nex_ag_test` evidence path that runs AG migrations, drives the protected
   export create/replay/list/detail routes, verifies `ag_ev_exports` directly in
   PostgreSQL, and cleans up the smoke row.
+- Slice 0630 closes S63 with
+  `scripts/smoke/run_s63_operator_review_evidence_closure.py`. The closure
+  checks required note/export files, short table names, protected PostgreSQL
+  smoke hooks, redaction posture, Slice 0621-0630 docs, and the quality-gate
+  hook for the S63 checkpoint.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

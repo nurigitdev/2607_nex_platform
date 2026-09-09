@@ -725,10 +725,15 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0619`](slices/0619_ag_worker_result_diagnostics_rollup.md) | `S62-009` AG worker result diagnostics rollup. |
 | [`Slice 0620`](slices/0620_s62_ae_worker_result_persistence_closure.md) | `S62-010` S62 AE worker result persistence/read-model closure checkpoint. |
 | [`Slice 0621`](slices/0621_ag_operator_review_note_export_boundary_audit.md) | `S63-001` AG operator review note/export boundary audit. |
+| [`Slice 0622`](slices/0622_ag_operator_review_note_persistence.md) | `S63-002` AG operator review note persistence foundation. |
+| [`Slice 0623`](slices/0623_ag_operator_review_note_service.md) | `S63-003` AG operator review note service/idempotency API. |
+| [`Slice 0624`](slices/0624_ag_operator_review_note_routes.md) | `S63-004` AG operator review note protected route wiring. |
+| [`Slice 0625`](slices/0625_ag_operator_review_note_postgresql_smoke.md) | `S63-005` AG operator review note PostgreSQL smoke evidence. |
 | [`Slice 0626`](slices/0626_ag_redacted_evidence_export_persistence.md) | `S63-006` AG redacted evidence export persistence foundation. |
 | [`Slice 0627`](slices/0627_ag_redacted_evidence_export_service.md) | `S63-007` AG redacted evidence export service/idempotency API. |
 | [`Slice 0628`](slices/0628_ag_redacted_evidence_export_routes.md) | `S63-008` AG redacted evidence export protected route wiring. |
 | [`Slice 0629`](slices/0629_ag_redacted_evidence_export_postgresql_smoke.md) | `S63-009` AG redacted evidence export PostgreSQL smoke evidence. |
+| [`Slice 0630`](slices/0630_s63_operator_review_evidence_closure.md) | `S63-010` S63 operator review note/export closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
