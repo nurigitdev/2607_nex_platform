@@ -729,6 +729,10 @@ Unified operations:
   can rely on the evidence that AE persists and cleans up execution
   state/transition rows itself while worker execution remains fake dry-run and
   non-persistent.
+- Slice 0607 adds an AG worker execution projection foundation. AG can now call
+  the AE worker result route through its source client and publish a redacted
+  worker summary, but worker execution, transition persistence, subprocess
+  control, and JobQueue ownership remain inside AE.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

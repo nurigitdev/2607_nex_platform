@@ -89,6 +89,9 @@ AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_COLLECTION_PRO
 AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_DETAIL_PROJECTION_SCHEMA_VERSION = (
     "ag_artifact_operation_retention_daemon_operator_control_execution_detail_projection.v1"
 )
+AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_PROJECTION_SCHEMA_VERSION = (
+    "ag_artifact_operation_retention_daemon_operator_control_execution_worker_projection.v1"
+)
 AE_ARTIFACT_SOURCE_SERVICE_ID = "nex-ae-api"
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_WORKER_TYPE = (
     "ae.artifact_retention.scheduler_daemon"
@@ -167,6 +170,11 @@ SUPPORTED_ARTIFACT_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_STATUSES = (
     "FAILED",
     "BLOCKED",
     "NOOP",
+)
+SUPPORTED_ARTIFACT_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_STATUSES = (
+    "SUCCEEDED",
+    "FAILED",
+    "BLOCKED",
 )
 SUPPORTED_ARTIFACT_RETENTION_DAEMON_OPERATOR_CONTROL_IDEMPOTENCY_STATUSES = (
     "NEW",
@@ -404,6 +412,17 @@ class AeArtifactOperationsClient(Protocol):
         trace_id: str,
     ) -> dict[str, Any] | None: ...
 
+    def run_artifact_retention_scheduler_daemon_operator_control_execution_worker(
+        self,
+        *,
+        operator_control_execution_state_id: str | None,
+        operator_control_execution_state: Mapping[str, Any] | None,
+        checked_at: str | None,
+        worker_observed_at: str | None,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]: ...
+
     def get_artifact(
         self,
         artifact_id: str,
@@ -488,6 +507,9 @@ class InMemoryAeArtifactOperationsClient:
         str, dict[str, Any]
     ] = field(default_factory=dict)
     artifact_retention_scheduler_daemon_operator_control_execution_details: dict[
+        str, dict[str, Any]
+    ] = field(default_factory=dict)
+    artifact_retention_scheduler_daemon_operator_control_execution_worker_results: dict[
         str, dict[str, Any]
     ] = field(default_factory=dict)
     handoffs: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -1019,6 +1041,44 @@ class InMemoryAeArtifactOperationsClient:
             )
         )
 
+    def run_artifact_retention_scheduler_daemon_operator_control_execution_worker(
+        self,
+        *,
+        operator_control_execution_state_id: str | None,
+        operator_control_execution_state: Mapping[str, Any] | None,
+        checked_at: str | None,
+        worker_observed_at: str | None,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        state = _mapping_or_empty(operator_control_execution_state)
+        state_id = _text_or_none(
+            operator_control_execution_state_id
+            or state.get("operator_control_execution_state_id")
+        )
+        result_key = (
+            _artifact_retention_scheduler_daemon_operator_control_execution_worker_cache_key(
+                operator_control_execution_state_id=state_id,
+                checked_at=checked_at,
+                worker_observed_at=worker_observed_at,
+            )
+        )
+        if (
+            result_key
+            in self.artifact_retention_scheduler_daemon_operator_control_execution_worker_results
+        ):
+            return deepcopy(
+                self.artifact_retention_scheduler_daemon_operator_control_execution_worker_results[
+                    result_key
+                ]
+            )
+        return _empty_artifact_retention_scheduler_daemon_operator_control_execution_worker_payload(
+            operator_control_execution_state_id=state_id,
+            operator_control_execution_state=state,
+            checked_at=checked_at,
+            worker_observed_at=worker_observed_at,
+        )
+
     def get_artifact(
         self,
         artifact_id: str,
@@ -1520,6 +1580,42 @@ class HttpAeArtifactOperationsClient:
             request_id=request_id,
             trace_id=trace_id,
         )
+
+    def run_artifact_retention_scheduler_daemon_operator_control_execution_worker(
+        self,
+        *,
+        operator_control_execution_state_id: str | None,
+        operator_control_execution_state: Mapping[str, Any] | None,
+        checked_at: str | None,
+        worker_observed_at: str | None,
+        request_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        state = _mapping_or_empty(operator_control_execution_state)
+        json_body: dict[str, Any] = {
+            **(
+                {"operator_control_execution_state_id": operator_control_execution_state_id}
+                if operator_control_execution_state_id
+                else {}
+            ),
+            **(
+                {"operator_control_execution_state": state}
+                if state
+                else {}
+            ),
+            **({"checked_at": checked_at} if checked_at else {}),
+            **({"worker_observed_at": worker_observed_at} if worker_observed_at else {}),
+        }
+        payload = self._post_json(
+            (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-operator-control-execution-workers"
+            ),
+            request_id=request_id,
+            trace_id=trace_id,
+            json_body=json_body,
+        )
+        return payload if isinstance(payload, dict) else {}
 
     def get_artifact_handoff(
         self,
@@ -4051,6 +4147,80 @@ def build_artifact_operation_retention_daemon_operator_control_execution_detail_
     return projection
 
 
+def build_artifact_operation_retention_daemon_operator_control_execution_worker_projection(
+    *,
+    worker_result: Mapping[str, Any],
+    source_client: AeArtifactOperationsClient | None = None,
+    source_errors: list[AeArtifactOperationsError] | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    projected_worker_result = (
+        _project_retention_scheduler_daemon_operator_control_execution_worker_result(
+            worker_result
+        )
+    )
+    operator_control_execution_state_id = _text_or_none(
+        projected_worker_result.get("operator_control_execution_state_id")
+    )
+    errors = source_errors or []
+    projection = {
+        "projection_schema_version": (
+            AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "DEGRADED" if errors else "READY",
+        "checked_at": _utc_now(),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "operation_type": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker"
+        ),
+        "operator_control_execution_state_id": operator_control_execution_state_id,
+        "operator_control_execution_worker_result_id": _text_or_none(
+            projected_worker_result.get(
+                "operator_control_execution_worker_result_id"
+            )
+        ),
+        "worker_result": projected_worker_result,
+        "summary": (
+            summarize_artifact_retention_daemon_operator_control_execution_worker_result(
+                projected_worker_result
+            )
+        ),
+        "source_status": (
+            _artifact_retention_daemon_operator_control_execution_worker_source_status(
+                source_client=source_client,
+                worker_result_loaded=bool(
+                    projected_worker_result.get(
+                        "operator_control_execution_worker_result_id"
+                    )
+                ),
+                errors=errors,
+            )
+        ),
+        "operator_guidance": {
+            "metadata_only": True,
+            "system_of_record": AE_ARTIFACT_SOURCE_SERVICE_ID,
+            "ae_operator_control_execution_worker_route": (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-operator-control-execution-workers"
+            ),
+            "ag_operator_control_execution_worker_route": (
+                "/admin/v1/operations/artifact-retention/"
+                "scheduler-daemon-operator-control-execution-workers"
+            ),
+            "read_model": "ae_operator_control_execution_worker_result",
+            "ag_direct_process_control_allowed": False,
+            "ag_direct_daemon_process_control_allowed": False,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "physical_delete_automation_enabled": False,
+        },
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    assert_artifact_operation_projection_redacted(projection)
+    return projection
+
+
 def build_artifact_operation_retention_history_projection(
     *,
     collection: Mapping[str, Any],
@@ -5122,6 +5292,79 @@ def summarize_artifact_retention_daemon_operator_control_execution_detail(
         "operator_attention_required": (
             execution_status in {"FAILED", "BLOCKED"}
             or idempotency_status == "CONFLICT"
+        ),
+        "metadata_only": True,
+    }
+
+
+def summarize_artifact_retention_daemon_operator_control_execution_worker_result(
+    worker_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    metadata = _mapping_or_empty(worker_result.get("metadata"))
+    guardrails = _mapping_or_empty(worker_result.get("guardrails"))
+    worker_status = _normalized_operator_control_execution_worker_status(
+        worker_result.get("worker_status")
+    )
+    supervisor_result_statuses = _normalized_daemon_supervisor_result_statuses(
+        worker_result.get("supervisor_result_statuses")
+    )
+    transition_terminal_status = _normalized_operator_control_execution_status(
+        worker_result.get("transition_terminal_status")
+    )
+    failed_supervisor_count = sum(
+        1 for status in supervisor_result_statuses if status == "FAILED"
+    )
+    return {
+        "operator_control_execution_worker_result_id": _text_or_none(
+            worker_result.get("operator_control_execution_worker_result_id")
+        ),
+        "operator_control_execution_state_id": _text_or_none(
+            worker_result.get("operator_control_execution_state_id")
+        ),
+        "scheduler_id": _text_or_none(worker_result.get("scheduler_id")),
+        "action": _normalized_daemon_operator_control_action(
+            worker_result.get("action")
+        ),
+        "execution_mode": _text_or_none(worker_result.get("execution_mode")),
+        "worker_mode": _text_or_none(worker_result.get("worker_mode")),
+        "worker_status": worker_status,
+        "decision_reason": _text_or_none(worker_result.get("decision_reason")),
+        "transition_terminal_status": transition_terminal_status,
+        "transition_count": _int_or_zero(worker_result.get("transition_count")),
+        "status_path": _normalized_operator_control_execution_statuses(
+            worker_result.get("status_path")
+        ),
+        "supervisor_result_count": _int_or_zero(
+            worker_result.get("supervisor_result_count")
+        ),
+        "supervisor_result_statuses": supervisor_result_statuses,
+        "failed_supervisor_count": failed_supervisor_count,
+        "worker_execution_performed": (
+            metadata.get("worker_execution_performed") is True
+            or guardrails.get("worker_execution_performed") is True
+        ),
+        "supervisor_adapter_invoked": (
+            metadata.get("supervisor_adapter_invoked") is True
+            or guardrails.get("supervisor_adapter_invoked") is True
+        ),
+        "subprocess_started": (
+            metadata.get("subprocess_started") is True
+            or guardrails.get("subprocess_started") is True
+        ),
+        "subprocess_stopped": (
+            metadata.get("subprocess_stopped") is True
+            or guardrails.get("subprocess_stopped") is True
+        ),
+        "database_write_performed": (
+            metadata.get("database_write_performed") is True
+            or guardrails.get("database_write_performed") is True
+        ),
+        "transition_persistence_performed": (
+            metadata.get("transition_persistence_performed") is True
+            or guardrails.get("transition_persistence_performed") is True
+        ),
+        "operator_attention_required": (
+            worker_status in {"FAILED", "BLOCKED"} or failed_supervisor_count > 0
         ),
         "metadata_only": True,
     }
@@ -7860,6 +8103,123 @@ def _project_retention_scheduler_daemon_operator_control_execution_transition(
     }
 
 
+def _project_retention_scheduler_daemon_operator_control_execution_worker_result(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    command = _mapping_or_empty(
+        raw_value.get("operator_control_execution_worker_command")
+    )
+    worker_plan = _mapping_or_empty(
+        command.get("operator_control_execution_worker_plan")
+    )
+    transition_plan = _mapping_or_empty(
+        raw_value.get("operator_control_execution_worker_transition_plan")
+    )
+    raw_metadata = _mapping_or_empty(raw_value.get("metadata"))
+    raw_guardrails = _mapping_or_empty(raw_value.get("guardrails"))
+    supervisor_results = [
+        result
+        for result in _list_value(raw_value.get("supervisor_results"))
+        if isinstance(result, Mapping)
+    ]
+    supervisor_result_statuses = _normalized_daemon_supervisor_result_statuses(
+        raw_metadata.get("supervisor_result_statuses")
+        or [result.get("result_status") for result in supervisor_results]
+    )
+    supervisor_actions = _normalized_daemon_supervisor_actions(
+        raw_metadata.get("supervisor_actions")
+        or [result.get("action") for result in supervisor_results]
+    )
+    supervisor_result_ids = _text_list(
+        raw_metadata.get("supervisor_result_ids")
+        or [result.get("daemon_supervisor_result_id") for result in supervisor_results]
+    )
+    status_path = _normalized_operator_control_execution_statuses(
+        raw_metadata.get("status_path")
+        or _mapping_or_empty(transition_plan.get("metadata")).get("status_path")
+    )
+    transition_count = _int_or_zero(
+        raw_metadata.get("transition_count")
+        or transition_plan.get("transition_count")
+        or max(len(status_path) - 1, 0)
+    )
+    supervisor_result_count = _int_or_zero(
+        raw_value.get("supervisor_result_count") or len(supervisor_results)
+    )
+    return {
+        "source_operator_control_execution_worker_result_schema_version": (
+            _text_or_none(
+                raw_value.get("operator_control_execution_worker_result_schema_version")
+                or raw_value.get(
+                    "source_operator_control_execution_worker_result_schema_version"
+                )
+            )
+        ),
+        "operator_control_execution_worker_result_id": _text_or_none(
+            raw_value.get("operator_control_execution_worker_result_id")
+        ),
+        "service_id": _text_or_none(raw_value.get("service_id")),
+        "scheduler_id": _text_or_none(raw_value.get("scheduler_id")),
+        "operator_control_execution_worker_command_id": _text_or_none(
+            raw_value.get("operator_control_execution_worker_command_id")
+        ),
+        "operator_control_execution_worker_plan_id": _text_or_none(
+            raw_value.get("operator_control_execution_worker_plan_id")
+        ),
+        "operator_control_execution_worker_transition_plan_id": _text_or_none(
+            raw_value.get("operator_control_execution_worker_transition_plan_id")
+        ),
+        "operator_control_execution_state_id": _text_or_none(
+            raw_value.get("operator_control_execution_state_id")
+        ),
+        "operator_control_execution_request_id": _text_or_none(
+            raw_value.get("operator_control_execution_request_id")
+        ),
+        "action": _normalized_daemon_operator_control_action(
+            raw_value.get("action")
+        ),
+        "execution_mode": _text_or_none(raw_value.get("execution_mode")),
+        "worker_mode": _text_or_none(raw_value.get("worker_mode")),
+        "worker_status": _normalized_operator_control_execution_worker_status(
+            raw_value.get("worker_status")
+        ),
+        "decision_reason": _text_or_none(raw_value.get("decision_reason")),
+        "observed_at": _text_or_none(raw_value.get("observed_at")),
+        "worker_plan_status": _text_or_none(worker_plan.get("plan_status")),
+        "worker_command_status": _text_or_none(command.get("command_status")),
+        "transition_plan_status": _text_or_none(
+            transition_plan.get("transition_plan_status")
+            or raw_metadata.get("transition_plan_status")
+        ),
+        "transition_terminal_status": _normalized_operator_control_execution_status(
+            transition_plan.get("terminal_status")
+            or raw_metadata.get("transition_terminal_status")
+        ),
+        "transition_count": transition_count,
+        "status_path": status_path,
+        "supervisor_result_count": supervisor_result_count,
+        "supervisor_result_statuses": supervisor_result_statuses,
+        "supervisor_actions": supervisor_actions,
+        "supervisor_result_ids": supervisor_result_ids,
+        "metadata": _safe_operator_control_execution_worker_metadata(raw_metadata),
+        "guardrails": _safe_operator_control_execution_worker_guardrails(
+            raw_guardrails
+        ),
+        "routes": {
+            "ae_worker": (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-operator-control-execution-workers"
+            ),
+            "ag_worker": (
+                "/admin/v1/operations/artifact-retention/"
+                "scheduler-daemon-operator-control-execution-workers"
+            ),
+        },
+    }
+
+
 def _operator_control_safe_subject(raw_value: Any) -> dict[str, Any]:
     return _select_mapping(
         raw_value,
@@ -8088,6 +8448,138 @@ def _safe_operator_control_execution_guardrails(raw_value: Any) -> dict[str, Any
             "secrets_redacted",
         ),
     )
+
+
+def _safe_operator_control_execution_worker_metadata(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    safe = _select_mapping(
+        raw_value,
+        (
+            "safe_for_ag_projection",
+            "metadata_only",
+            "worker_result_only",
+            "operator_control_execution_worker_command_hash",
+            "operator_control_execution_worker_transition_plan_hash",
+            "observed_at",
+            "worker_status",
+            "decision_reason",
+            "transition_plan_status",
+            "transition_terminal_status",
+            "status_path",
+            "supervisor_result_count",
+            "supervisor_result_statuses",
+            "supervisor_actions",
+            "supervisor_result_ids",
+            "supervisor_dispatch_performed",
+            "supervisor_adapter_invoked",
+            "supervisor_result_persisted",
+            "supervisor_event_persisted",
+            "subprocess_started",
+            "subprocess_stopped",
+            "database_write_performed",
+            "job_queue_enqueue_performed",
+            "worker_execution_performed",
+            "transition_persistence_performed",
+            "physical_delete_automation_enabled",
+            "secrets_redacted",
+        ),
+    )
+    safe["persistence_endpoint_included"] = (
+        raw_value.get("persistence_endpoint_included") is True
+        or raw_value.get("database_url_included") is True
+    )
+    safe["storage_locator_included"] = (
+        raw_value.get("storage_locator_included") is True
+        or raw_value.get("storage_path_included") is True
+    )
+    safe["artifact_payload_included"] = (
+        raw_value.get("artifact_payload_included") is True
+        or raw_value.get("raw_artifact_payload_included") is True
+    )
+    safe["execution_payload_included"] = (
+        raw_value.get("execution_payload_included") is True
+        or raw_value.get("raw_execution_payload_included") is True
+    )
+    safe["daemon_runtime_payload_included"] = (
+        raw_value.get("daemon_runtime_payload_included") is True
+        or raw_value.get("raw_daemon_runtime_payload_included") is True
+    )
+    safe["supervised_process_snapshot_payload_included"] = (
+        raw_value.get("supervised_process_snapshot_payload_included") is True
+        or raw_value.get("raw_supervised_process_snapshot_included") is True
+    )
+    return safe
+
+
+def _safe_operator_control_execution_worker_guardrails(
+    raw_value: Any,
+) -> dict[str, Any]:
+    if not isinstance(raw_value, Mapping):
+        return {}
+    safe = _select_mapping(
+        raw_value,
+        (
+            "worker_result_only",
+            "source_worker_command_validated",
+            "source_transition_plan_validated",
+            "requires_ready_worker_command",
+            "source_worker_command_ready",
+            "ready_transition_plan_required",
+            "source_transition_plan_ready",
+            "transition_terminal_matches_worker_status",
+            "fake_dry_run_worker_only",
+            "uses_existing_supervisor_runner",
+            "uses_fake_supervisor_adapter_first",
+            "supervisor_dispatch_performed",
+            "supervisor_adapter_invoked",
+            "supervisor_result_persisted",
+            "supervisor_event_persisted",
+            "subprocess_started",
+            "subprocess_stopped",
+            "database_write_performed",
+            "job_queue_enqueue_performed",
+            "worker_execution_performed",
+            "transition_persistence_performed",
+            "worker_succeeded",
+            "worker_failed",
+            "worker_blocked",
+            "test_profile_required",
+            "bounded_max_cycles_required",
+            "ag_direct_database_write_allowed",
+            "ag_direct_job_enqueue_allowed",
+            "ag_direct_process_control_allowed",
+            "physical_delete_automation_enabled",
+            "secrets_redacted",
+        ),
+    )
+    safe["persistence_endpoint_included"] = (
+        raw_value.get("persistence_endpoint_included") is True
+        or raw_value.get("database_url_included") is True
+    )
+    safe["storage_locator_included"] = (
+        raw_value.get("storage_locator_included") is True
+        or raw_value.get("storage_path_included") is True
+    )
+    safe["artifact_payload_included"] = (
+        raw_value.get("artifact_payload_included") is True
+        or raw_value.get("raw_artifact_payload_included") is True
+    )
+    safe["execution_payload_included"] = (
+        raw_value.get("execution_payload_included") is True
+        or raw_value.get("raw_execution_payload_included") is True
+    )
+    safe["daemon_runtime_payload_included"] = (
+        raw_value.get("daemon_runtime_payload_included") is True
+        or raw_value.get("raw_daemon_runtime_payload_included") is True
+    )
+    safe["supervised_process_snapshot_payload_included"] = (
+        raw_value.get("supervised_process_snapshot_payload_included") is True
+        or raw_value.get("raw_supervised_process_snapshot_included") is True
+    )
+    return safe
 
 
 def _project_retention_history_item(record: Mapping[str, Any]) -> dict[str, Any]:
@@ -8599,6 +9091,30 @@ def _artifact_retention_daemon_operator_control_execution_source_status(
         "execution_collection_loaded": not errors,
         "execution_detail_loaded": detail_loaded and not errors,
         "item_count": item_count,
+        "errors": [
+            {
+                "error_code": error.error_code,
+                "detail": error.detail,
+                "status_code": error.status_code,
+            }
+            for error in errors
+        ],
+    }
+
+
+def _artifact_retention_daemon_operator_control_execution_worker_source_status(
+    *,
+    source_client: AeArtifactOperationsClient | None,
+    worker_result_loaded: bool,
+    errors: list[AeArtifactOperationsError],
+) -> dict[str, Any]:
+    status = "DEGRADED" if errors else "READY"
+    return {
+        "status": status,
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "source_kind": getattr(source_client, "source_kind", "provided"),
+        "base_url": getattr(source_client, "base_url", None),
+        "execution_worker_result_loaded": worker_result_loaded and not errors,
         "errors": [
             {
                 "error_code": error.error_code,
@@ -10242,6 +10758,21 @@ def _artifact_retention_scheduler_daemon_operator_control_execution_cache_key(
     )
 
 
+def _artifact_retention_scheduler_daemon_operator_control_execution_worker_cache_key(
+    *,
+    operator_control_execution_state_id: str | None,
+    checked_at: str | None,
+    worker_observed_at: str | None,
+) -> str:
+    return "|".join(
+        (
+            _text_or_none(operator_control_execution_state_id) or "",
+            _text_or_none(checked_at) or "",
+            _text_or_none(worker_observed_at) or "",
+        )
+    )
+
+
 def _empty_artifact_retention_batch_plan_payload(
     *,
     tenant_id: str,
@@ -10546,6 +11077,113 @@ def _empty_artifact_retention_scheduler_daemon_operator_control_execution_collec
             "has_more": False,
             "newest_observed_at": None,
             "supervisor_dispatch_performed": False,
+            "secrets_redacted": True,
+        },
+    }
+
+
+def _empty_artifact_retention_scheduler_daemon_operator_control_execution_worker_payload(
+    *,
+    operator_control_execution_state_id: str | None,
+    operator_control_execution_state: Mapping[str, Any],
+    checked_at: str | None,
+    worker_observed_at: str | None,
+) -> dict[str, Any]:
+    state = _mapping_or_empty(operator_control_execution_state)
+    state_id = _text_or_none(
+        operator_control_execution_state_id
+        or state.get("operator_control_execution_state_id")
+    )
+    observed_at = worker_observed_at or checked_at or state.get("observed_at")
+    scheduler_id = (
+        _text_or_none(state.get("scheduler_id"))
+        or "ae-artifact-retention-scheduler"
+    )
+    action = _normalized_daemon_operator_control_action(
+        state.get("action")
+    ) or "status_probe"
+    return {
+        "operator_control_execution_worker_result_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_result.v1"
+        ),
+        "operator_control_execution_worker_result_id": (
+            f"operator-control-execution-worker-result-empty:{state_id or 'missing'}"
+        ),
+        "service_id": AE_ARTIFACT_SOURCE_SERVICE_ID,
+        "scheduler_id": scheduler_id,
+        "operator_control_execution_worker_command_id": None,
+        "operator_control_execution_worker_plan_id": None,
+        "operator_control_execution_worker_transition_plan_id": None,
+        "operator_control_execution_state_id": state_id,
+        "operator_control_execution_request_id": _text_or_none(
+            state.get("operator_control_execution_request_id")
+        ),
+        "action": action,
+        "execution_mode": _text_or_none(state.get("execution_mode")),
+        "worker_mode": "fake_dry_run_supervisor_dispatch",
+        "worker_status": "BLOCKED",
+        "decision_reason": "operator_control_execution_worker_result_missing",
+        "observed_at": _text_or_none(observed_at),
+        "supervisor_result_count": 0,
+        "supervisor_results": [],
+        "guardrails": {
+            "worker_result_only": True,
+            "source_worker_command_validated": False,
+            "source_transition_plan_validated": False,
+            "requires_ready_worker_command": True,
+            "source_worker_command_ready": False,
+            "ready_transition_plan_required": True,
+            "source_transition_plan_ready": False,
+            "transition_terminal_matches_worker_status": False,
+            "fake_dry_run_worker_only": True,
+            "uses_existing_supervisor_runner": False,
+            "uses_fake_supervisor_adapter_first": True,
+            "supervisor_dispatch_performed": False,
+            "supervisor_adapter_invoked": False,
+            "supervisor_result_persisted": False,
+            "supervisor_event_persisted": False,
+            "subprocess_started": False,
+            "subprocess_stopped": False,
+            "database_write_performed": False,
+            "job_queue_enqueue_performed": False,
+            "worker_execution_performed": False,
+            "transition_persistence_performed": False,
+            "worker_succeeded": False,
+            "worker_failed": False,
+            "worker_blocked": True,
+            "test_profile_required": True,
+            "bounded_max_cycles_required": True,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "ag_direct_process_control_allowed": False,
+            "physical_delete_automation_enabled": False,
+            "secrets_redacted": True,
+        },
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "metadata_only": True,
+            "worker_result_only": True,
+            "observed_at": _text_or_none(observed_at),
+            "worker_status": "BLOCKED",
+            "decision_reason": "operator_control_execution_worker_result_missing",
+            "transition_plan_status": None,
+            "transition_terminal_status": "BLOCKED",
+            "status_path": [],
+            "supervisor_result_count": 0,
+            "supervisor_result_statuses": [],
+            "supervisor_actions": [],
+            "supervisor_result_ids": [],
+            "supervisor_dispatch_performed": False,
+            "supervisor_adapter_invoked": False,
+            "supervisor_result_persisted": False,
+            "supervisor_event_persisted": False,
+            "subprocess_started": False,
+            "subprocess_stopped": False,
+            "database_write_performed": False,
+            "job_queue_enqueue_performed": False,
+            "worker_execution_performed": False,
+            "transition_persistence_performed": False,
+            "physical_delete_automation_enabled": False,
             "secrets_redacted": True,
         },
     }
@@ -12446,6 +13084,15 @@ def _normalized_daemon_supervisor_action(raw_value: Any) -> str | None:
     )
 
 
+def _normalized_daemon_supervisor_actions(raw_value: Any) -> list[str]:
+    actions = []
+    for value in _list_value(raw_value):
+        normalized = _normalized_daemon_supervisor_action(value)
+        if normalized is not None:
+            actions.append(normalized)
+    return actions
+
+
 def _normalized_daemon_operator_control_action(raw_value: Any) -> str | None:
     value = _text_or_none(raw_value)
     if value is None or not value.strip():
@@ -12487,6 +13134,30 @@ def _normalized_operator_control_execution_statuses(raw_value: Any) -> list[str]
     statuses = []
     for value in _list_value(raw_value):
         normalized = _normalized_operator_control_execution_status(value)
+        if normalized is not None:
+            statuses.append(normalized)
+    return statuses
+
+
+def _normalized_operator_control_execution_worker_status(
+    raw_value: Any,
+) -> str | None:
+    value = _text_or_none(raw_value)
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().upper().replace("-", "_")
+    return (
+        normalized
+        if normalized
+        in SUPPORTED_ARTIFACT_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_STATUSES
+        else None
+    )
+
+
+def _normalized_daemon_supervisor_result_statuses(raw_value: Any) -> list[str]:
+    statuses = []
+    for value in _list_value(raw_value):
+        normalized = _normalized_daemon_supervisor_result_status(value)
         if normalized is not None:
             statuses.append(normalized)
     return statuses
