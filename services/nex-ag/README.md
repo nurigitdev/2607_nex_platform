@@ -768,6 +768,11 @@ Unified operations:
   shapes, summarizes safe status/hash evidence, and still avoids direct AE
   database access, JobQueue enqueue, supervisor dispatch, and daemon process
   control.
+- Slice 0617 exposes that worker-result projection through protected AG admin
+  collection/detail routes and extends the artifact-retention operations smoke
+  so dashboard evidence includes worker-result visibility. AG still delegates
+  all source reads to AE APIs and does not touch `ae_op_exec_worker_results`
+  directly.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -18,9 +18,12 @@ for service_path in (
 
 from nex_ag.artifact_operations import (  # noqa: E402
     AG_ARTIFACT_OPERATION_RETENTION_AUTOMATION_PROJECTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_COLLECTION_PROJECTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_DETAIL_PROJECTION_SCHEMA_VERSION,
     InMemoryAeArtifactOperationsClient,
     _artifact_retention_batch_plan_cache_key,
     _artifact_retention_history_cache_key,
+    _artifact_retention_scheduler_daemon_operator_control_execution_worker_result_cache_key,
     _artifact_retention_scheduler_daemon_process_snapshot_cache_key,
     assert_artifact_operation_projection_redacted,
     register_artifact_operation_routes,
@@ -40,6 +43,12 @@ OWNER_USER_ID = "user-0509"
 AS_OF = "2026-09-01T00:00:00Z"
 CHECKED_AT = "2026-09-01T02:30:00Z"
 ROUTE = "/admin/v1/operations/artifact-retention/automation"
+WORKER_RESULT_COLLECTION_ROUTE = (
+    "/admin/v1/operations/artifact-retention/"
+    "scheduler-daemon-operator-control-execution-worker-results"
+)
+WORKER_RESULT_ID = "operator-control-execution-worker-result-0617"
+WORKER_RESULT_DETAIL_ROUTE = f"{WORKER_RESULT_COLLECTION_ROUTE}/{WORKER_RESULT_ID}"
 
 
 def run_ag_artifact_retention_automation_operations_smoke() -> dict[str, Any]:
@@ -62,7 +71,37 @@ def run_ag_artifact_retention_automation_operations_smoke() -> dict[str, Any]:
         headers=_auth_headers(),
     )
     payload = response.json() if response.content else {}
-    checks = _smoke_checks(response.status_code, payload)
+    worker_result_collection_response = client.get(
+        WORKER_RESULT_COLLECTION_ROUTE,
+        params={
+            "service_id": "nex-ae-api",
+            "scheduler_id": "ae-artifact-retention-scheduler",
+            "limit": "20",
+        },
+        headers=_auth_headers(),
+    )
+    worker_result_collection_payload = (
+        worker_result_collection_response.json()
+        if worker_result_collection_response.content
+        else {}
+    )
+    worker_result_detail_response = client.get(
+        WORKER_RESULT_DETAIL_ROUTE,
+        headers=_auth_headers(),
+    )
+    worker_result_detail_payload = (
+        worker_result_detail_response.json()
+        if worker_result_detail_response.content
+        else {}
+    )
+    checks = _smoke_checks(
+        response.status_code,
+        payload,
+        worker_result_collection_status=worker_result_collection_response.status_code,
+        worker_result_collection_payload=worker_result_collection_payload,
+        worker_result_detail_status=worker_result_detail_response.status_code,
+        worker_result_detail_payload=worker_result_detail_payload,
+    )
     evidence = {
         "smoke_schema_version": SCHEMA_VERSION,
         "status": "PASS" if all(checks.values()) else "FAIL",
@@ -71,6 +110,34 @@ def run_ag_artifact_retention_automation_operations_smoke() -> dict[str, Any]:
         "trace_id": TRACE_ID,
         "projection_schema_version": payload.get("projection_schema_version"),
         "summary": payload.get("summary") if isinstance(payload, Mapping) else {},
+        "worker_result_collection": {
+            "route": WORKER_RESULT_COLLECTION_ROUTE,
+            "response_status": worker_result_collection_response.status_code,
+            "projection_schema_version": (
+                worker_result_collection_payload.get("projection_schema_version")
+                if isinstance(worker_result_collection_payload, Mapping)
+                else None
+            ),
+            "summary": (
+                worker_result_collection_payload.get("summary")
+                if isinstance(worker_result_collection_payload, Mapping)
+                else {}
+            ),
+        },
+        "worker_result_detail": {
+            "route": WORKER_RESULT_DETAIL_ROUTE,
+            "response_status": worker_result_detail_response.status_code,
+            "projection_schema_version": (
+                worker_result_detail_payload.get("projection_schema_version")
+                if isinstance(worker_result_detail_payload, Mapping)
+                else None
+            ),
+            "summary": (
+                worker_result_detail_payload.get("summary")
+                if isinstance(worker_result_detail_payload, Mapping)
+                else {}
+            ),
+        },
         "checks": checks,
     }
     assert_smoke_evidence_redacted(evidence)
@@ -124,6 +191,19 @@ def _smoke_source_client() -> InMemoryAeArtifactOperationsClient:
                 process_status=None,
                 limit=20,
             ): _daemon_process_snapshots()
+        },
+        artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collections={
+            _artifact_retention_scheduler_daemon_operator_control_execution_worker_result_cache_key(
+                scheduler_id="ae-artifact-retention-scheduler",
+                action=None,
+                worker_status=None,
+                operator_control_execution_state_id=None,
+                operator_control_execution_request_id=None,
+                limit=20,
+            ): _worker_result_collection()
+        },
+        artifact_retention_scheduler_daemon_operator_control_execution_worker_result_details={
+            WORKER_RESULT_ID: _worker_result_detail(),
         },
     )
 
@@ -592,6 +672,186 @@ def _daemon_process_snapshot(
     }
 
 
+def _worker_result_collection() -> dict[str, Any]:
+    succeeded = _worker_result_record(
+        result_id=WORKER_RESULT_ID,
+        worker_status="SUCCEEDED",
+        observed_at="2026-09-01T02:36:00Z",
+    )
+    failed = _worker_result_record(
+        result_id="operator-control-execution-worker-result-failed-0617",
+        worker_status="FAILED",
+        observed_at="2026-09-01T02:37:00Z",
+    )
+    return {
+        "operator_control_execution_worker_result_collection_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection.v1"
+        ),
+        "service_id": "nex-ae-api",
+        "filter": {
+            "scheduler_id": "ae-artifact-retention-scheduler",
+            "action": None,
+            "worker_status": None,
+            "operator_control_execution_state_id": None,
+            "operator_control_execution_request_id": None,
+        },
+        "count": 2,
+        "limit": 20,
+        "items": [succeeded, failed],
+        "guardrails": {
+            "read_only": True,
+            "ae_owned_persistence": True,
+            "ae_owned_worker_result": True,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_execution_payload_included": False,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "ag_direct_process_control_allowed": False,
+            "secrets_redacted": True,
+        },
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "metadata_only": True,
+            "read_model": "ae_op_exec_worker_results",
+            "item_count": 2,
+            "newest_observed_at": "2026-09-01T02:37:00Z",
+            "private_path": "/data/nex-platform/ae/private",
+            "secrets_redacted": True,
+        },
+    }
+
+
+def _worker_result_detail() -> dict[str, Any]:
+    record = _worker_result_record(
+        result_id=WORKER_RESULT_ID,
+        worker_status="SUCCEEDED",
+        observed_at="2026-09-01T02:36:00Z",
+    )
+    return {
+        "operator_control_execution_worker_result_detail_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail.v1"
+        ),
+        "service_id": "nex-ae-api",
+        "operator_control_execution_worker_result_id": WORKER_RESULT_ID,
+        "worker_result_record": record,
+        "summary": {
+            "worker_status": "SUCCEEDED",
+            "supervisor_result_count": 2,
+            "failed_supervisor_count": 0,
+            "metadata_only": True,
+        },
+        "guardrails": {
+            "read_only": True,
+            "ae_owned_persistence": True,
+            "ae_owned_worker_result": True,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_execution_payload_included": False,
+            "secrets_redacted": True,
+        },
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "metadata_only": True,
+            "read_model": "ae_op_exec_worker_results",
+            "private_path": "/data/nex-platform/ae/private",
+            "secrets_redacted": True,
+        },
+    }
+
+
+def _worker_result_record(
+    *,
+    result_id: str,
+    worker_status: str,
+    observed_at: str,
+) -> dict[str, Any]:
+    supervisor_statuses = (
+        ["FAILED", "SUCCEEDED"]
+        if worker_status == "FAILED"
+        else ["SUCCEEDED", "SUCCEEDED"]
+    )
+    return {
+        "operator_control_execution_worker_result_record_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record.v1"
+        ),
+        "operator_control_execution_worker_result_id": result_id,
+        "service_id": "nex-ae-api",
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "operator_control_execution_worker_command_id": f"{result_id}:command",
+        "operator_control_execution_worker_plan_id": f"{result_id}:plan",
+        "operator_control_execution_worker_transition_plan_id": (
+            f"{result_id}:transition-plan"
+        ),
+        "operator_control_execution_state_id": (
+            "operator-control-execution-state-0617"
+        ),
+        "operator_control_execution_request_id": (
+            "operator-control-execution-state-0617:execution-request"
+        ),
+        "action": "restart_daemon",
+        "execution_mode": "fake_dry_run_supervisor_persistent_dispatch",
+        "worker_mode": "fake_dry_run_supervisor_dispatch",
+        "worker_status": worker_status,
+        "decision_reason": "fake_dry_run_worker_completed",
+        "observed_at": observed_at,
+        "transition_plan_status": "READY",
+        "transition_terminal_status": worker_status,
+        "transition_count": 2,
+        "status_path": ["ADMITTED", "EXECUTING", worker_status],
+        "supervisor_result_count": len(supervisor_statuses),
+        "supervisor_result_statuses": supervisor_statuses,
+        "supervisor_actions": ["stop_daemon", "start_daemon"],
+        "supervisor_result_ids": [
+            f"{result_id}:supervisor:1",
+            f"{result_id}:supervisor:2",
+        ],
+        "operator_control_execution_worker_command_hash": "c" * 64,
+        "operator_control_execution_worker_transition_plan_hash": "d" * 64,
+        "supervisor_results_hash": "e" * 64,
+        "worker_result_hash": "f" * 64,
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "metadata_only": True,
+            "worker_result_only": True,
+            "read_model": "ae_op_exec_worker_results",
+            "observed_at": observed_at,
+            "worker_status": worker_status,
+            "transition_terminal_status": worker_status,
+            "status_path": ["ADMITTED", "EXECUTING", worker_status],
+            "supervisor_result_statuses": supervisor_statuses,
+            "supervisor_actions": ["stop_daemon", "start_daemon"],
+            "supervisor_result_ids": [
+                f"{result_id}:supervisor:1",
+                f"{result_id}:supervisor:2",
+            ],
+            "worker_execution_performed": True,
+            "supervisor_adapter_invoked": True,
+            "database_write_performed": False,
+            "private_path": "/data/nex-platform/ae/private",
+            "database_url": "postgresql://nuri1004@private",
+            "secrets_redacted": True,
+        },
+        "guardrails": {
+            "worker_result_only": True,
+            "read_only": True,
+            "ae_owned_worker_result": True,
+            "source_worker_command_validated": True,
+            "source_transition_plan_validated": True,
+            "supervisor_adapter_invoked": True,
+            "worker_execution_performed": True,
+            "database_write_performed": False,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "ag_direct_process_control_allowed": False,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_execution_payload_included": False,
+            "secrets_redacted": True,
+        },
+    }
+
+
 def _auth_headers() -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-oa", audience="nex-ag")
     return {
@@ -601,7 +861,15 @@ def _auth_headers() -> dict[str, str]:
     }
 
 
-def _smoke_checks(status_code: int, payload: Any) -> dict[str, bool]:
+def _smoke_checks(
+    status_code: int,
+    payload: Any,
+    *,
+    worker_result_collection_status: int | None = None,
+    worker_result_collection_payload: Any = None,
+    worker_result_detail_status: int | None = None,
+    worker_result_detail_payload: Any = None,
+) -> dict[str, bool]:
     if not isinstance(payload, Mapping):
         return {
             "route_status_ok": False,
@@ -617,6 +885,8 @@ def _smoke_checks(status_code: int, payload: Any) -> dict[str, bool]:
             "daemon_process_attention_classified": False,
             "operator_control_rollup_visible": False,
             "operator_control_preview_guarded": False,
+            "worker_result_collection_visible": False,
+            "worker_result_detail_visible": False,
             "redacted": False,
         }
     summary = payload.get("summary")
@@ -646,6 +916,20 @@ def _smoke_checks(status_code: int, payload: Any) -> dict[str, bool]:
     operator_control_summary = operator_control.get("summary")
     if not isinstance(operator_control_summary, Mapping):
         operator_control_summary = {}
+    worker_result_collection_summary = (
+        worker_result_collection_payload.get("summary")
+        if isinstance(worker_result_collection_payload, Mapping)
+        else {}
+    )
+    if not isinstance(worker_result_collection_summary, Mapping):
+        worker_result_collection_summary = {}
+    worker_result_detail_summary = (
+        worker_result_detail_payload.get("summary")
+        if isinstance(worker_result_detail_payload, Mapping)
+        else {}
+    )
+    if not isinstance(worker_result_detail_summary, Mapping):
+        worker_result_detail_summary = {}
     return {
         "route_status_ok": status_code == 200,
         "schema_version": payload.get("projection_schema_version")
@@ -704,7 +988,33 @@ def _smoke_checks(status_code: int, payload: Any) -> dict[str, bool]:
                 "scheduler-daemon-operator-control-preview"
             )
         ),
-        "redacted": _is_redacted(payload),
+        "worker_result_collection_visible": (
+            worker_result_collection_status == 200
+            and isinstance(worker_result_collection_payload, Mapping)
+            and worker_result_collection_payload.get("projection_schema_version")
+            == AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_COLLECTION_PROJECTION_SCHEMA_VERSION
+            and worker_result_collection_summary.get(
+                "operator_control_execution_worker_result_count"
+            )
+            == 2
+            and worker_result_collection_summary.get("failed_count") == 1
+            and worker_result_collection_summary.get("operator_attention_required")
+            is True
+        ),
+        "worker_result_detail_visible": (
+            worker_result_detail_status == 200
+            and isinstance(worker_result_detail_payload, Mapping)
+            and worker_result_detail_payload.get("projection_schema_version")
+            == AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_DETAIL_PROJECTION_SCHEMA_VERSION
+            and worker_result_detail_summary.get("worker_status") == "SUCCEEDED"
+            and worker_result_detail_summary.get("operator_attention_required")
+            is False
+        ),
+        "redacted": (
+            _is_redacted(payload)
+            and _is_redacted(worker_result_collection_payload)
+            and _is_redacted(worker_result_detail_payload)
+        ),
     }
 
 
@@ -736,6 +1046,18 @@ def summary_line(evidence: Mapping[str, Any]) -> str:
     summary = evidence.get("summary")
     if not isinstance(summary, Mapping):
         summary = {}
+    worker_result_collection = evidence.get("worker_result_collection")
+    if not isinstance(worker_result_collection, Mapping):
+        worker_result_collection = {}
+    worker_result_collection_summary = worker_result_collection.get("summary")
+    if not isinstance(worker_result_collection_summary, Mapping):
+        worker_result_collection_summary = {}
+    worker_result_detail = evidence.get("worker_result_detail")
+    if not isinstance(worker_result_detail, Mapping):
+        worker_result_detail = {}
+    worker_result_detail_summary = worker_result_detail.get("summary")
+    if not isinstance(worker_result_detail_summary, Mapping):
+        worker_result_detail_summary = {}
     failing_checks = [
         key for key, passed in evidence.get("checks", {}).items() if passed is not True
     ]
@@ -749,6 +1071,8 @@ def summary_line(evidence: Mapping[str, Any]) -> str:
         f"process_running={summary.get('daemon_process_running_count')} "
         f"process_attention={summary.get('daemon_process_operator_attention_required')} "
         f"operator_control={summary.get('operator_control_facade_status')} "
+        f"worker_results={worker_result_collection_summary.get('operator_control_execution_worker_result_count')} "
+        f"worker_result_detail={worker_result_detail_summary.get('worker_status')} "
         f"approval_blocked={summary.get('approval_blocked_count')}"
     )
     if failing_checks:

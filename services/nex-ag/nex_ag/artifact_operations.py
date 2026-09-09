@@ -3044,6 +3044,133 @@ def register_artifact_operation_routes(
             request_trace_id=trace_id,
         )
 
+    @app.get(
+        "/admin/v1/operations/artifact-retention/"
+        "scheduler-daemon-operator-control-execution-worker-results",
+        response_model=None,
+    )
+    def list_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_operations(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        scheduler_id: str | None = None,
+        action: str | None = None,
+        worker_status: str | None = None,
+        operator_control_execution_state_id: str | None = None,
+        operator_control_execution_request_id: str | None = None,
+        limit: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        service_problem = _validate_artifact_service_filter(request, service_id)
+        if service_problem is not None:
+            return service_problem
+        filter_result = _validate_artifact_retention_daemon_operator_control_execution_worker_result_query(
+            request,
+            scheduler_id=scheduler_id,
+            action=action,
+            worker_status=worker_status,
+            operator_control_execution_state_id=(
+                operator_control_execution_state_id
+            ),
+            operator_control_execution_request_id=(
+                operator_control_execution_request_id
+            ),
+            limit=limit,
+        )
+        if isinstance(filter_result, JSONResponse):
+            return filter_result
+
+        selected_client = (
+            configured_client or build_default_ae_artifact_operations_client()
+        )
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            collection = selected_client.list_artifact_retention_scheduler_daemon_operator_control_execution_worker_results(
+                scheduler_id=filter_result["scheduler_id"],
+                action=filter_result["action"],
+                worker_status=filter_result["worker_status"],
+                operator_control_execution_state_id=filter_result[
+                    "operator_control_execution_state_id"
+                ],
+                operator_control_execution_request_id=filter_result[
+                    "operator_control_execution_request_id"
+                ],
+                limit=filter_result["limit"],
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        except AeArtifactOperationsError as exc:
+            return _artifact_operations_problem_response(request, exc)
+
+        return build_artifact_operation_retention_daemon_operator_control_execution_worker_result_collection_projection(
+            collection=collection,
+            source_client=selected_client,
+            request_trace_id=trace_id,
+        )
+
+    @app.get(
+        "/admin/v1/operations/artifact-retention/"
+        "scheduler-daemon-operator-control-execution-worker-results/"
+        "{operator_control_execution_worker_result_id}",
+        response_model=None,
+    )
+    def get_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_operation_detail(
+        operator_control_execution_worker_result_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        service_problem = _validate_artifact_service_filter(request, service_id)
+        if service_problem is not None:
+            return service_problem
+
+        selected_client = (
+            configured_client or build_default_ae_artifact_operations_client()
+        )
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            detail = selected_client.get_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail(
+                operator_control_execution_worker_result_id,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        except AeArtifactOperationsError as exc:
+            return _artifact_operations_problem_response(request, exc)
+        if detail is None:
+            return problem_response(
+                request,
+                status_code=404,
+                error_code=(
+                    "ag.ae_artifact_retention_daemon_operator_control_execution_worker_result_not_found"
+                ),
+                title=(
+                    "AE artifact retention daemon operator-control execution "
+                    "worker result not found"
+                ),
+                detail=(
+                    "AE artifact retention scheduler daemon operator-control "
+                    "execution worker result "
+                    f"{operator_control_execution_worker_result_id} was not found."
+                ),
+                type_uri=(
+                    "https://nex-platform.local/problems/"
+                    "ae-artifact-retention-daemon-operator-control-execution-worker-result-not-found"
+                ),
+            )
+
+        return build_artifact_operation_retention_daemon_operator_control_execution_worker_result_detail_projection(
+            detail=detail,
+            source_client=selected_client,
+            request_trace_id=trace_id,
+        )
+
     @app.post(
         "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
         response_model=None,
@@ -10052,6 +10179,113 @@ def _validate_artifact_retention_daemon_operator_control_execution_query(
         "action": normalized_action,
         "execution_status": normalized_execution_status,
         "idempotency_status": normalized_idempotency_status,
+        "limit": normalized_limit,
+    }
+
+
+def _validate_artifact_retention_daemon_operator_control_execution_worker_result_query(
+    request: Request,
+    *,
+    scheduler_id: str | None,
+    action: str | None,
+    worker_status: str | None,
+    operator_control_execution_state_id: str | None,
+    operator_control_execution_request_id: str | None,
+    limit: str | None,
+) -> dict[str, Any] | JSONResponse:
+    normalized_action = _normalized_daemon_operator_control_action(action)
+    if (
+        _present_text(action)
+        and normalized_action
+        not in SUPPORTED_ARTIFACT_RETENTION_DAEMON_OPERATOR_CONTROL_ACTIONS
+    ):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code=(
+                "ag.ae_artifact_retention_daemon_operator_control_execution_worker_result_action_invalid"
+            ),
+            title=(
+                "Invalid artifact retention daemon operator-control execution "
+                "worker result action"
+            ),
+            detail=(
+                "Artifact retention daemon operator-control execution worker "
+                "result action must be one of status_probe, start_daemon, "
+                "stop_daemon, or restart_daemon."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-operator-control-execution-worker-result-action-invalid"
+            ),
+        )
+
+    normalized_worker_status = _normalized_operator_control_execution_worker_status(
+        worker_status
+    )
+    if (
+        _present_text(worker_status)
+        and normalized_worker_status
+        not in SUPPORTED_ARTIFACT_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_STATUSES
+    ):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code=(
+                "ag.ae_artifact_retention_daemon_operator_control_execution_worker_result_status_invalid"
+            ),
+            title=(
+                "Invalid artifact retention daemon operator-control execution "
+                "worker result status"
+            ),
+            detail=(
+                "Artifact retention daemon operator-control execution worker "
+                "result worker_status must be one of SUCCEEDED, FAILED, or "
+                "BLOCKED."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-operator-control-execution-worker-result-status-invalid"
+            ),
+        )
+
+    normalized_limit = _collection_limit(limit)
+    if normalized_limit is None:
+        return problem_response(
+            request,
+            status_code=400,
+            error_code=(
+                "ag.ae_artifact_retention_daemon_operator_control_execution_worker_result_limit_invalid"
+            ),
+            title=(
+                "Invalid artifact retention daemon operator-control execution "
+                "worker result limit"
+            ),
+            detail=(
+                "Artifact retention daemon operator-control execution worker "
+                "result limit must be between 1 "
+                f"and {MAX_ARTIFACT_COLLECTION_LIMIT}."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-operator-control-execution-worker-result-limit-invalid"
+            ),
+        )
+
+    return {
+        "scheduler_id": _text_or_none(scheduler_id.strip() if scheduler_id else None),
+        "action": normalized_action,
+        "worker_status": normalized_worker_status,
+        "operator_control_execution_state_id": _text_or_none(
+            operator_control_execution_state_id.strip()
+            if operator_control_execution_state_id
+            else None
+        ),
+        "operator_control_execution_request_id": _text_or_none(
+            operator_control_execution_request_id.strip()
+            if operator_control_execution_request_id
+            else None
+        ),
         "limit": normalized_limit,
     }
 

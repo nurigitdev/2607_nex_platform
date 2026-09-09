@@ -24,12 +24,19 @@ def test_ag_artifact_retention_automation_operations_smoke_passes() -> None:
     assert evidence["summary"]["daemon_process_operator_attention_required"] is True
     assert evidence["summary"]["operator_control_policy_loaded"] is True
     assert evidence["summary"]["operator_control_facade_status"] == "READY"
+    assert evidence["worker_result_collection"]["summary"][
+        "operator_control_execution_worker_result_count"
+    ] == 2
+    assert evidence["worker_result_collection"]["summary"]["failed_count"] == 1
+    assert evidence["worker_result_detail"]["summary"]["worker_status"] == "SUCCEEDED"
     assert evidence["checks"]["daemon_rollup_visible"] is True
     assert evidence["checks"]["daemon_attention_classified"] is True
     assert evidence["checks"]["daemon_process_rollup_visible"] is True
     assert evidence["checks"]["daemon_process_attention_classified"] is True
     assert evidence["checks"]["operator_control_rollup_visible"] is True
     assert evidence["checks"]["operator_control_preview_guarded"] is True
+    assert evidence["checks"]["worker_result_collection_visible"] is True
+    assert evidence["checks"]["worker_result_detail_visible"] is True
     assert all(evidence["checks"].values())
 
 
@@ -72,6 +79,8 @@ def test_ag_artifact_retention_automation_operations_smoke_redaction_guard() -> 
         "daemon_process_attention_classified": False,
         "operator_control_rollup_visible": False,
         "operator_control_preview_guarded": False,
+        "worker_result_collection_visible": False,
+        "worker_result_detail_visible": False,
         "redacted": False,
     }
     malformed = smoke._smoke_checks(
@@ -92,6 +101,8 @@ def test_ag_artifact_retention_automation_operations_smoke_redaction_guard() -> 
     assert malformed["daemon_process_attention_classified"] is False
     assert malformed["operator_control_rollup_visible"] is False
     assert malformed["operator_control_preview_guarded"] is False
+    assert malformed["worker_result_collection_visible"] is False
+    assert malformed["worker_result_detail_visible"] is False
     assert malformed["no_direct_ag_mutation"] is False
     assert "safety=None" in smoke.summary_line(
         {"status": "FAIL", "response_status": 500, "summary": "bad", "checks": {}}
@@ -112,6 +123,8 @@ def test_ag_artifact_retention_automation_operations_smoke_cli_and_output(
     assert "process_running=1" in summary_output
     assert "process_attention=True" in summary_output
     assert "operator_control=READY" in summary_output
+    assert "worker_results=2" in summary_output
+    assert "worker_result_detail=SUCCEEDED" in summary_output
     assert "FAILED_ATTENTION" in output_path.read_text(encoding="utf-8")
     assert smoke.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
