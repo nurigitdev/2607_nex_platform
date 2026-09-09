@@ -3022,6 +3022,131 @@ def register_artifact_handoff_routes(
         except ArtifactHandoffError as exc:
             return _artifact_problem_response(request, exc)
 
+    @app.get(
+        "/api/v1/artifact-retention/"
+        "scheduler-daemon-operator-control-execution-worker-results",
+        response_model=None,
+    )
+    def list_artifact_retention_scheduler_daemon_operator_control_execution_worker_results(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        scheduler_id: str | None = None,
+        action: str | None = None,
+        worker_status: str | None = None,
+        operator_control_execution_state_id: str | None = None,
+        operator_control_execution_request_id: str | None = None,
+        limit: str | None = None,
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        if artifact_retention_daemon_operator_control_execution_worker_result_store is None:
+            return _artifact_problem_response(
+                request,
+                ArtifactHandoffError(
+                    status_code=503,
+                    error_code=(
+                        "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_store_unavailable"
+                    ),
+                    detail=(
+                        "AE artifact retention scheduler daemon operator "
+                        "control execution worker result store is unavailable."
+                    ),
+                    retryable=True,
+                ),
+            )
+
+        try:
+            from nex_ae_api.artifact_retention_scheduler_daemon import (
+                build_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection,
+            )
+
+            records = (
+                artifact_retention_daemon_operator_control_execution_worker_result_store.list_worker_results(
+                    scheduler_id=scheduler_id,
+                    action=action,
+                    worker_status=worker_status,
+                    operator_control_execution_state_id=(
+                        operator_control_execution_state_id
+                    ),
+                    operator_control_execution_request_id=(
+                        operator_control_execution_request_id
+                    ),
+                    limit=limit,
+                )
+            )
+            return build_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection(
+                records,
+                scheduler_id=scheduler_id,
+                action=action,
+                worker_status=worker_status,
+                operator_control_execution_state_id=operator_control_execution_state_id,
+                operator_control_execution_request_id=(
+                    operator_control_execution_request_id
+                ),
+                limit=limit,
+            )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.get(
+        "/api/v1/artifact-retention/"
+        "scheduler-daemon-operator-control-execution-worker-results/"
+        "{operator_control_execution_worker_result_id}",
+        response_model=None,
+    )
+    def get_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail(
+        operator_control_execution_worker_result_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ae_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        if artifact_retention_daemon_operator_control_execution_worker_result_store is None:
+            return _artifact_problem_response(
+                request,
+                ArtifactHandoffError(
+                    status_code=503,
+                    error_code=(
+                        "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_store_unavailable"
+                    ),
+                    detail=(
+                        "AE artifact retention scheduler daemon operator "
+                        "control execution worker result store is unavailable."
+                    ),
+                    retryable=True,
+                ),
+            )
+
+        try:
+            from nex_ae_api.artifact_retention_scheduler_daemon import (
+                build_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail,
+            )
+
+            worker_result_record = (
+                artifact_retention_daemon_operator_control_execution_worker_result_store.get_worker_result(
+                    operator_control_execution_worker_result_id
+                )
+            )
+            if worker_result_record is None:
+                raise ArtifactHandoffError(
+                    status_code=404,
+                    error_code=(
+                        "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_not_found"
+                    ),
+                    detail=(
+                        "AE artifact retention scheduler daemon operator "
+                        "control execution worker result was not found: "
+                        f"{operator_control_execution_worker_result_id}"
+                    ),
+                )
+            return build_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail(
+                worker_result_record
+            )
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
     @app.post(
         "/api/v1/artifact-retention/"
         "scheduler-daemon-operator-control-execution-transitions",
@@ -4655,6 +4780,15 @@ def build_artifact_retention_scheduler_config(
                 "/api/v1/artifact-retention/"
                 "scheduler-daemon-operator-control-execution-workers"
             ),
+            "scheduler_daemon_operator_control_execution_worker_results": (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-operator-control-execution-worker-results"
+            ),
+            "scheduler_daemon_operator_control_execution_worker_result_detail": (
+                "/api/v1/artifact-retention/"
+                "scheduler-daemon-operator-control-execution-worker-results/"
+                "{operator_control_execution_worker_result_id}"
+            ),
             "scheduled_jobs": "/api/v1/artifact-retention/scheduled-jobs",
             "scheduled_job_admission": (
                 "/api/v1/artifact-retention/scheduled-jobs/admission"
@@ -5383,6 +5517,15 @@ def _expected_artifact_retention_scheduler_api_routes() -> dict[str, str]:
         "scheduler_daemon_operator_control_execution_workers": (
             "/api/v1/artifact-retention/"
             "scheduler-daemon-operator-control-execution-workers"
+        ),
+        "scheduler_daemon_operator_control_execution_worker_results": (
+            "/api/v1/artifact-retention/"
+            "scheduler-daemon-operator-control-execution-worker-results"
+        ),
+        "scheduler_daemon_operator_control_execution_worker_result_detail": (
+            "/api/v1/artifact-retention/"
+            "scheduler-daemon-operator-control-execution-worker-results/"
+            "{operator_control_execution_worker_result_id}"
         ),
         "scheduled_jobs": "/api/v1/artifact-retention/scheduled-jobs",
         "scheduled_job_admission": (

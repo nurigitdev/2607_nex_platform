@@ -760,6 +760,9 @@ Unified operations:
   worker results. AG can rely on that evidence later, but it still remains a
   read-only projection client and must not access or mutate the AE worker result
   table directly.
+- Slice 0615 gives AG a future protected AE read-model target for persisted
+  worker results. AG should consume the AE list/detail APIs as a projection
+  source only and continue to avoid direct access to `ae_op_exec_worker_results`.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

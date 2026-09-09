@@ -1036,3 +1036,9 @@ Artifact library management:
   table/index/JSONB evidence for `ae_op_exec_worker_results`, writes one
   execution state and one worker result through AE routes, reads the result back
   through the SQLAlchemy store, and cleans up the targeted rows.
+- Slice 0615 exposes persisted worker results through protected read-only AE
+  collection/detail APIs:
+  `/api/v1/artifact-retention/scheduler-daemon-operator-control-execution-worker-results`
+  and the matching `{operator_control_execution_worker_result_id}` detail
+  route. The read model uses `ae_op_exec_worker_results`, supports indexed
+  filters, and returns only the safe summary record plus hashes.

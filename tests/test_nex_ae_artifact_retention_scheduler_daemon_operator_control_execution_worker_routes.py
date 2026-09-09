@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 
 from nex_ae_api.artifact_retention_scheduler_daemon import (
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_COLLECTION_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_DETAIL_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_SCHEMA_VERSION,
     SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionStore,
     SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionWorkerResultStore,
@@ -26,6 +28,10 @@ EXECUTION_ROUTE = (
 WORKER_ROUTE = (
     "/api/v1/artifact-retention/"
     "scheduler-daemon-operator-control-execution-workers"
+)
+WORKER_RESULT_ROUTE = (
+    "/api/v1/artifact-retention/"
+    "scheduler-daemon-operator-control-execution-worker-results"
 )
 
 
@@ -271,6 +277,134 @@ def test_operator_control_execution_worker_route_persists_result_when_requested(
     ) == [record]
     assert_safe_worker_payload(payload)
     assert_safe_worker_payload(record)
+
+
+def test_operator_control_execution_worker_result_read_model_routes() -> None:
+    session_factory = sqlite_artifact_session_factory()
+    execution_store = SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionStore(
+        session_factory
+    )
+    result_store = (
+        SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionWorkerResultStore(
+            session_factory
+        )
+    )
+    client, _, _, _ = build_client_with_artifact_store(
+        retention_scheduler_daemon_operator_control_execution_store=execution_store,
+        retention_scheduler_daemon_operator_control_execution_worker_result_store=(
+            result_store
+        ),
+    )
+    state = client.post(
+        EXECUTION_ROUTE,
+        json=ready_execution_payload(
+            idempotency_key="idem-route-0615-worker-result-read-model",
+            persist_execution_state=True,
+        ),
+        headers=auth_headers(),
+    ).json()
+    worker = client.post(
+        WORKER_ROUTE,
+        json={
+            "operator_control_execution_state_id": state[
+                "operator_control_execution_state_id"
+            ],
+            "checked_at": "2026-09-08T07:15:00Z",
+            "persist_worker_result": True,
+        },
+        headers=auth_headers(),
+    ).json()
+    result_id = worker["operator_control_execution_worker_result_id"]
+
+    unauthorized = client.get(WORKER_RESULT_ROUTE)
+    collection_response = client.get(
+        WORKER_RESULT_ROUTE,
+        params={
+            "scheduler_id": state["scheduler_id"],
+            "action": state["action"],
+            "worker_status": "SUCCEEDED",
+            "operator_control_execution_state_id": state[
+                "operator_control_execution_state_id"
+            ],
+            "operator_control_execution_request_id": state[
+                "operator_control_execution_request_id"
+            ],
+            "limit": "3",
+        },
+        headers=auth_headers(),
+    )
+    detail_response = client.get(
+        f"{WORKER_RESULT_ROUTE}/{result_id}",
+        headers=auth_headers(),
+    )
+    missing_response = client.get(
+        f"{WORKER_RESULT_ROUTE}/missing-worker-result-0615",
+        headers=auth_headers(),
+    )
+    empty_filter_response = client.get(
+        WORKER_RESULT_ROUTE,
+        params={"worker_status": "FAILED"},
+        headers=auth_headers(),
+    )
+
+    collection = collection_response.json()
+    detail = detail_response.json()
+
+    assert unauthorized.status_code == 401
+    assert collection_response.status_code == 200
+    assert collection[
+        "operator_control_execution_worker_result_collection_schema_version"
+    ] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_COLLECTION_SCHEMA_VERSION
+    )
+    assert collection["count"] == 1
+    assert collection["filter"]["worker_status"] == "SUCCEEDED"
+    assert collection["guardrails"]["read_only"] is True
+    assert collection["guardrails"]["database_write_performed"] is False
+    assert collection["items"][0]["operator_control_execution_worker_result_id"] == (
+        result_id
+    )
+    assert collection["items"][0]["metadata"][
+        "stores_full_worker_result_payload"
+    ] is False
+    assert empty_filter_response.status_code == 200
+    assert empty_filter_response.json()["count"] == 0
+    assert detail_response.status_code == 200
+    assert detail[
+        "operator_control_execution_worker_result_detail_schema_version"
+    ] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_DETAIL_SCHEMA_VERSION
+    )
+    assert detail["operator_control_execution_worker_result_id"] == result_id
+    assert detail["worker_result_record"]["operator_control_execution_state_id"] == (
+        state["operator_control_execution_state_id"]
+    )
+    assert detail["guardrails"]["read_only"] is True
+    assert missing_response.status_code == 404
+    assert missing_response.json()["error_code"] == (
+        "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_not_found"
+    )
+    assert_safe_worker_payload(collection)
+    assert_safe_worker_payload(detail)
+
+
+def test_operator_control_execution_worker_result_read_model_route_guards() -> None:
+    client, _, _, _ = build_client_with_artifact_store()
+
+    list_store_unavailable = client.get(WORKER_RESULT_ROUTE, headers=auth_headers())
+    detail_store_unavailable = client.get(
+        f"{WORKER_RESULT_ROUTE}/worker-result-0615",
+        headers=auth_headers(),
+    )
+
+    assert list_store_unavailable.status_code == 503
+    assert list_store_unavailable.json()["error_code"] == (
+        "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_store_unavailable"
+    )
+    assert detail_store_unavailable.status_code == 503
+    assert detail_store_unavailable.json()["error_code"] == (
+        "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_store_unavailable"
+    )
 
 
 def test_operator_control_execution_worker_route_rejects_persistence_edges() -> None:

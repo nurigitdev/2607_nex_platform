@@ -153,6 +153,12 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_RECORD_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_COLLECTION_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection.v1"
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_DETAIL_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail.v1"
+)
 AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE = "ae_op_exec_worker_results"
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
@@ -5846,6 +5852,108 @@ def normalize_artifact_retention_scheduler_daemon_operator_control_execution_wor
             "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection_invalid"
         ),
     )
+
+
+def build_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    scheduler_id: str | None = None,
+    action: str | None = None,
+    worker_status: str | None = None,
+    operator_control_execution_state_id: str | None = None,
+    operator_control_execution_request_id: str | None = None,
+    limit: int | str | None = None,
+) -> dict[str, Any]:
+    normalized_limit = (
+        normalize_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_limit(
+            limit
+        )
+    )
+    error_code = (
+        "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection_invalid"
+    )
+    normalized_scheduler_id = optional_text(scheduler_id)
+    normalized_action = _optional_operator_control_execution_action(
+        action,
+        error_code=error_code,
+    )
+    normalized_worker_status = _optional_operator_control_execution_worker_result_status(
+        worker_status,
+        error_code=error_code,
+    )
+    normalized_state_id = optional_text(operator_control_execution_state_id)
+    normalized_request_id = optional_text(operator_control_execution_request_id)
+    normalized_records = [
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record(
+            record
+        )
+        for record in records
+    ]
+    collection = {
+        "operator_control_execution_worker_result_collection_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_COLLECTION_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "filter": {
+            "scheduler_id": normalized_scheduler_id,
+            "action": normalized_action,
+            "worker_status": normalized_worker_status,
+            "operator_control_execution_state_id": normalized_state_id,
+            "operator_control_execution_request_id": normalized_request_id,
+        },
+        "count": len(normalized_records),
+        "limit": normalized_limit,
+        "items": [
+            _operator_control_execution_worker_result_collection_item(record)
+            for record in normalized_records
+        ],
+        "guardrails": _operator_control_execution_worker_result_read_model_guardrails(
+            read_only=True
+        ),
+        "metadata": _operator_control_execution_worker_result_collection_metadata(
+            records=normalized_records,
+            limit=normalized_limit,
+        ),
+    }
+    assert_artifact_retention_payload_safe(collection)
+    return collection
+
+
+def build_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail(
+    worker_result_record: Mapping[str, Any],
+) -> dict[str, Any]:
+    record = validate_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record(
+        worker_result_record
+    )
+    detail = {
+        "operator_control_execution_worker_result_detail_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_DETAIL_SCHEMA_VERSION
+        ),
+        "service_id": "nex-ae-api",
+        "operator_control_execution_worker_result_id": record[
+            "operator_control_execution_worker_result_id"
+        ],
+        "operator_control_execution_state_id": record[
+            "operator_control_execution_state_id"
+        ],
+        "operator_control_execution_request_id": record[
+            "operator_control_execution_request_id"
+        ],
+        "summary": (
+            summarize_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record(
+                record
+            )
+        ),
+        "worker_result_record": record,
+        "guardrails": _operator_control_execution_worker_result_read_model_guardrails(
+            read_only=True
+        ),
+        "metadata": _operator_control_execution_worker_result_detail_metadata(
+            worker_result_record=record
+        ),
+    }
+    assert_artifact_retention_payload_safe(detail)
+    return detail
 
 
 def build_artifact_retention_scheduler_daemon_operator_control_execution_collection(
@@ -19014,6 +19122,169 @@ def _operator_control_execution_detail_metadata(
         "raw_execution_payload_included": False,
         "raw_daemon_runtime_payload_included": False,
         "raw_supervised_process_snapshot_included": False,
+    }
+
+
+def _operator_control_execution_worker_result_read_model_guardrails(
+    *,
+    read_only: bool,
+) -> dict[str, bool]:
+    return {
+        "read_only": read_only,
+        "ae_owned_persistence": True,
+        "worker_result_record_only": True,
+        "safe_summary_only": True,
+        "stores_full_worker_result_payload": False,
+        "stores_full_worker_command_payload": False,
+        "stores_full_transition_plan_payload": False,
+        "stores_full_supervisor_result_payload": False,
+        "stores_source_hashes": True,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "supervisor_adapter_invoked": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "physical_delete_automation_enabled": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+        "secrets_redacted": True,
+    }
+
+
+def _operator_control_execution_worker_result_collection_item(
+    worker_result_record: Mapping[str, Any],
+) -> dict[str, Any]:
+    record = validate_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record(
+        worker_result_record
+    )
+    return {
+        "operator_control_execution_worker_result_id": record[
+            "operator_control_execution_worker_result_id"
+        ],
+        "operator_control_execution_state_id": record[
+            "operator_control_execution_state_id"
+        ],
+        "operator_control_execution_request_id": record[
+            "operator_control_execution_request_id"
+        ],
+        "operator_control_execution_worker_command_id": record[
+            "operator_control_execution_worker_command_id"
+        ],
+        "operator_control_execution_worker_plan_id": record[
+            "operator_control_execution_worker_plan_id"
+        ],
+        "operator_control_execution_worker_transition_plan_id": record[
+            "operator_control_execution_worker_transition_plan_id"
+        ],
+        "scheduler_id": record["scheduler_id"],
+        "action": record["action"],
+        "execution_mode": record["execution_mode"],
+        "worker_mode": record["worker_mode"],
+        "worker_status": record["worker_status"],
+        "decision_reason": record["decision_reason"],
+        "observed_at": record["observed_at"],
+        "transition_plan_status": record["transition_plan_status"],
+        "transition_terminal_status": record["transition_terminal_status"],
+        "status_path": list(record["status_path"]),
+        "supervisor_result_count": record["supervisor_result_count"],
+        "supervisor_result_statuses": list(record["supervisor_result_statuses"]),
+        "summary": (
+            summarize_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record(
+                record
+            )
+        ),
+        "hashes": {
+            "operator_control_execution_worker_command_hash": record[
+                "operator_control_execution_worker_command_hash"
+            ],
+            "operator_control_execution_worker_transition_plan_hash": record[
+                "operator_control_execution_worker_transition_plan_hash"
+            ],
+            "supervisor_results_hash": record["supervisor_results_hash"],
+            "worker_result_hash": record["worker_result_hash"],
+        },
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "read_model": AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE,
+            "worker_result_record_only": True,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_artifact_payload_included": False,
+            "raw_execution_payload_included": False,
+            "raw_daemon_runtime_payload_included": False,
+            "raw_supervised_process_snapshot_included": False,
+            "stores_full_worker_result_payload": False,
+            "stores_full_worker_command_payload": False,
+            "stores_full_transition_plan_payload": False,
+            "stores_full_supervisor_result_payload": False,
+        },
+    }
+
+
+def _operator_control_execution_worker_result_collection_metadata(
+    *,
+    records: Sequence[Mapping[str, Any]],
+    limit: int,
+) -> dict[str, Any]:
+    newest_observed_at = records[0]["observed_at"] if records else None
+    return {
+        "safe_for_ag_projection": True,
+        "read_model": AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE,
+        "worker_result_record_only": True,
+        "item_count": len(records),
+        "limit": limit,
+        "has_more": len(records) == limit,
+        "newest_observed_at": newest_observed_at,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+        "stores_full_worker_result_payload": False,
+        "stores_full_worker_command_payload": False,
+        "stores_full_transition_plan_payload": False,
+        "stores_full_supervisor_result_payload": False,
+    }
+
+
+def _operator_control_execution_worker_result_detail_metadata(
+    *,
+    worker_result_record: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "safe_for_ag_projection": True,
+        "read_model": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail"
+        ),
+        "stored_table": AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE,
+        "worker_result_record_only": True,
+        "operator_control_execution_worker_result_id": worker_result_record[
+            "operator_control_execution_worker_result_id"
+        ],
+        "operator_control_execution_state_id": worker_result_record[
+            "operator_control_execution_state_id"
+        ],
+        "worker_status": worker_result_record["worker_status"],
+        "decision_reason": worker_result_record["decision_reason"],
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+        "stores_full_worker_result_payload": False,
+        "stores_full_worker_command_payload": False,
+        "stores_full_transition_plan_payload": False,
+        "stores_full_supervisor_result_payload": False,
     }
 
 

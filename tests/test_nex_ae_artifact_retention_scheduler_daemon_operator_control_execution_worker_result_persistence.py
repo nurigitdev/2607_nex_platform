@@ -7,10 +7,14 @@ import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
 from nex_ae_api.artifact_retention_scheduler_daemon import (
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_COLLECTION_SCHEMA_VERSION,
+    AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_DETAIL_SCHEMA_VERSION,
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_RECORD_SCHEMA_VERSION,
     AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE,
     SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionStore,
     SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionWorkerResultStore,
+    build_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection,
+    build_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail,
     build_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record,
     operator_control_execution_worker_result_record_summary_line,
     summarize_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record,
@@ -105,6 +109,95 @@ def test_worker_result_record_projects_safe_summary_and_hashes() -> None:
         == record
     )
     assert_safe_worker_result_record(record)
+
+
+def test_worker_result_read_model_projects_collection_and_detail() -> None:
+    record = worker_result_record()
+    collection = build_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection(
+        [record],
+        scheduler_id=record["scheduler_id"],
+        action=record["action"],
+        worker_status=record["worker_status"],
+        operator_control_execution_state_id=record[
+            "operator_control_execution_state_id"
+        ],
+        operator_control_execution_request_id=record[
+            "operator_control_execution_request_id"
+        ],
+        limit="5",
+    )
+    detail = build_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail(
+        record
+    )
+
+    assert collection[
+        "operator_control_execution_worker_result_collection_schema_version"
+    ] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_COLLECTION_SCHEMA_VERSION
+    )
+    assert collection["service_id"] == "nex-ae-api"
+    assert collection["filter"] == {
+        "scheduler_id": record["scheduler_id"],
+        "action": record["action"],
+        "worker_status": record["worker_status"],
+        "operator_control_execution_state_id": record[
+            "operator_control_execution_state_id"
+        ],
+        "operator_control_execution_request_id": record[
+            "operator_control_execution_request_id"
+        ],
+    }
+    assert collection["count"] == 1
+    assert collection["limit"] == 5
+    assert collection["guardrails"]["read_only"] is True
+    assert collection["guardrails"]["database_write_performed"] is False
+    assert collection["metadata"]["read_model"] == AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE
+    assert collection["metadata"]["has_more"] is False
+    item = collection["items"][0]
+    assert item["operator_control_execution_worker_result_id"] == record[
+        "operator_control_execution_worker_result_id"
+    ]
+    assert item["summary"] == (
+        summarize_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record(
+            record
+        )
+    )
+    assert item["hashes"]["worker_result_hash"] == record["worker_result_hash"]
+    assert item["metadata"]["stores_full_worker_result_payload"] is False
+
+    assert detail[
+        "operator_control_execution_worker_result_detail_schema_version"
+    ] == (
+        AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_DETAIL_SCHEMA_VERSION
+    )
+    assert detail["summary"] == item["summary"]
+    assert detail["worker_result_record"] == record
+    assert detail["metadata"]["stored_table"] == AE_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_TABLE
+    assert detail["guardrails"]["read_only"] is True
+    assert_safe_worker_result_record(collection)
+    assert_safe_worker_result_record(detail)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"worker_status": "UNKNOWN"},
+        {"action": "unknown_action"},
+        {"limit": 0},
+    ],
+)
+def test_worker_result_read_model_rejects_invalid_collection_filters(
+    kwargs: dict[str, object],
+) -> None:
+    with pytest.raises(ArtifactHandoffError) as exc_info:
+        build_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection(
+            [],
+            **kwargs,
+        )
+
+    assert exc_info.value.error_code == (
+        "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection_invalid"
+    )
 
 
 def test_worker_result_store_round_trips_records_and_filters() -> None:
