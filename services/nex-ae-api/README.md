@@ -995,3 +995,8 @@ Artifact library management:
   JobQueue enqueue, subprocess start/stop, transition persistence, supervisor
   result persistence, or physical deletion. Blocked worker commands do not
   invoke the adapter.
+- Slice 0605 exposes that fake dry-run worker through a protected AE route:
+  `POST /api/v1/artifact-retention/scheduler-daemon-operator-control-execution-workers`.
+  The route can use an inline execution state or read an existing state id from
+  `ae_daemon_operator_control_execution_states`, then returns the worker result
+  contract without adding worker-result persistence or new tables.

@@ -721,6 +721,10 @@ Unified operations:
   result contract. AG may later read projected worker summaries only; it still
   must not invoke worker adapters, supervisor adapters, subprocess control, or
   AE persistence directly.
+- Slice 0605 gives AG a future AE API target for worker-result diagnostics, but
+  execution remains AE-owned. AG should call AE's protected worker route as a
+  client/projection surface only and must not write AE execution state,
+  transition, or worker evidence tables directly.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
