@@ -975,3 +975,10 @@ Artifact library management:
   existing fake supervisor adapter first, persist progress through explicit
   state/transition writes, and still keep real subprocess control, JobQueue
   enqueue for operator control, and physical deletion disabled.
+- Slice 0602 adds the AE-owned worker plan/command contracts without adding a
+  new database table. A plan becomes `READY` only from an `ADMITTED`
+  `fake_dry_run_supervisor_persistent_dispatch` state with supervisor command
+  preview evidence, and a command becomes `READY` only from that ready plan.
+  The first worker mode is
+  `fake_dry_run_supervisor_persistent_dispatch_worker`, with worker execution,
+  subprocess control, JobQueue enqueue, and physical deletion still disabled.

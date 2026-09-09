@@ -710,6 +710,10 @@ Unified operations:
   project AE worker state and expose operator diagnostics later, but it must
   keep using AE APIs and must not write AE execution tables, enqueue AE worker
   work, or start/stop AE subprocesses directly.
+- Slice 0602 keeps that boundary while AE defines worker plan/command
+  contracts. AG should treat these as future AE-owned read-model inputs only;
+  it still must not construct worker commands, dispatch supervisor adapters, or
+  write AE execution state directly.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
