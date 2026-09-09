@@ -725,6 +725,10 @@ Unified operations:
   execution remains AE-owned. AG should call AE's protected worker route as a
   client/projection surface only and must not write AE execution state,
   transition, or worker evidence tables directly.
+- Slice 0606 proves the AE-owned worker route against the real AE test DB. AG
+  can rely on the evidence that AE persists and cleans up execution
+  state/transition rows itself while worker execution remains fake dry-run and
+  non-persistent.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

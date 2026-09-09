@@ -1000,3 +1000,9 @@ Artifact library management:
   The route can use an inline execution state or read an existing state id from
   `ae_daemon_operator_control_execution_states`, then returns the worker result
   contract without adding worker-result persistence or new tables.
+- Slice 0606 adds protected PostgreSQL smoke evidence for that worker route.
+  When explicitly enabled against `NEX_AE_TEST_DATABASE_URL`, it runs AE
+  migrations, persists one execution state, reads it through the worker route by
+  state id, persists one transition, verifies AE detail readback, and cleans up
+  the targeted rows with `states=1`, `transitions=1`, `cleanup_states=1`,
+  `cleanup_transitions=1`, and `live_db=true`.
