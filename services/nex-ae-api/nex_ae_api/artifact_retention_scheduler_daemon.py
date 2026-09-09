@@ -144,6 +144,9 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_PLAN_SC
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_COMMAND_SCHEMA_VERSION = (
     "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_command.v1"
 )
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_TRANSITION_PLAN_SCHEMA_VERSION = (
+    "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_transition_plan.v1"
+)
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_ENTRYPOINT = (
     "python -m nex_ae_api.artifact_retention_scheduler_daemon"
 )
@@ -216,6 +219,12 @@ AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_PLAN_ST
 )
 AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_COMMAND_STATUSES = (
     frozenset({"READY", "BLOCKED"})
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_TRANSITION_PLAN_STATUSES = (
+    frozenset({"READY", "BLOCKED"})
+)
+AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_TERMINAL_STATUSES = (
+    frozenset({"SUCCEEDED", "FAILED", "BLOCKED"})
 )
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_MODE = "fake_dry_run"
 DEFAULT_ARTIFACT_RETENTION_SCHEDULER_DAEMON_SUPERVISOR_ADAPTER_NAME = (
@@ -4508,6 +4517,393 @@ def operator_control_execution_worker_command_summary_line(
         f"reason={summary['decision_reason']} "
         f"commands={summary['supervisor_command_count']} "
         f"next={actions}"
+    )
+
+
+def build_artifact_retention_scheduler_daemon_operator_control_execution_worker_transition_plan(
+    *,
+    operator_control_execution_worker_command: Mapping[str, Any],
+    terminal_status: str = "SUCCEEDED",
+    transition_planned_at: str | None = None,
+) -> dict[str, Any]:
+    command = validate_artifact_retention_scheduler_daemon_operator_control_execution_worker_command(
+        operator_control_execution_worker_command
+    )
+    error_code = (
+        "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_transition_plan_invalid"
+    )
+    normalized_transition_planned_at = _required_text(
+        transition_planned_at or command["commanded_at"],
+        "transition_planned_at",
+        error_code=error_code,
+    )
+    normalized_terminal_status = (
+        _normalize_operator_control_execution_worker_terminal_status(
+            terminal_status,
+            error_code=error_code,
+        )
+    )
+    decision = _operator_control_execution_worker_transition_plan_decision(
+        command=command,
+        terminal_status=normalized_terminal_status,
+        error_code=error_code,
+    )
+    planned_transitions = (
+        _operator_control_execution_worker_transition_plan_transitions(
+            transition_plan_status=decision["transition_plan_status"],
+            terminal_status=decision["terminal_status"],
+        )
+    )
+    plan = {
+        "operator_control_execution_worker_transition_plan_schema_version": (
+            AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_TRANSITION_PLAN_SCHEMA_VERSION
+        ),
+        "operator_control_execution_worker_transition_plan_id": (
+            _operator_control_execution_worker_transition_plan_id(
+                scheduler_id=command["scheduler_id"],
+                operator_control_execution_worker_command_id=command[
+                    "operator_control_execution_worker_command_id"
+                ],
+                transition_plan_status=decision["transition_plan_status"],
+                terminal_status=decision["terminal_status"],
+                transition_planned_at=normalized_transition_planned_at,
+            )
+        ),
+        "service_id": "nex-ae-api",
+        "scheduler_id": command["scheduler_id"],
+        "operator_control_execution_worker_command_id": command[
+            "operator_control_execution_worker_command_id"
+        ],
+        "operator_control_execution_worker_plan_id": command[
+            "operator_control_execution_worker_plan_id"
+        ],
+        "operator_control_execution_state_id": command[
+            "operator_control_execution_state_id"
+        ],
+        "operator_control_execution_request_id": command[
+            "operator_control_execution_request_id"
+        ],
+        "action": command["action"],
+        "execution_mode": command["execution_mode"],
+        "worker_mode": command["worker_mode"],
+        "transition_plan_status": decision["transition_plan_status"],
+        "terminal_status": decision["terminal_status"],
+        "decision_reason": decision["decision_reason"],
+        "transition_planned_at": normalized_transition_planned_at,
+        "operator_control_execution_worker_command": deepcopy(command),
+        "transition_count": len(planned_transitions),
+        "planned_transitions": planned_transitions,
+        "guardrails": _operator_control_execution_worker_transition_plan_guardrails(
+            command=command,
+            transition_plan_status=decision["transition_plan_status"],
+            terminal_status=decision["terminal_status"],
+            planned_transitions=planned_transitions,
+        ),
+        "metadata": _operator_control_execution_worker_transition_plan_metadata(
+            command=command,
+            transition_plan_status=decision["transition_plan_status"],
+            terminal_status=decision["terminal_status"],
+            transition_planned_at=normalized_transition_planned_at,
+            planned_transitions=planned_transitions,
+        ),
+    }
+    return validate_artifact_retention_scheduler_daemon_operator_control_execution_worker_transition_plan(
+        plan
+    )
+
+
+def validate_artifact_retention_scheduler_daemon_operator_control_execution_worker_transition_plan(
+    transition_plan: Mapping[str, Any],
+) -> dict[str, Any]:
+    error_code = (
+        "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_transition_plan_invalid"
+    )
+    if not isinstance(transition_plan, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker transition plan must be an object."
+            ),
+        )
+    normalized = dict(transition_plan)
+    if set(normalized) != {
+        "operator_control_execution_worker_transition_plan_schema_version",
+        "operator_control_execution_worker_transition_plan_id",
+        "service_id",
+        "scheduler_id",
+        "operator_control_execution_worker_command_id",
+        "operator_control_execution_worker_plan_id",
+        "operator_control_execution_state_id",
+        "operator_control_execution_request_id",
+        "action",
+        "execution_mode",
+        "worker_mode",
+        "transition_plan_status",
+        "terminal_status",
+        "decision_reason",
+        "transition_planned_at",
+        "operator_control_execution_worker_command",
+        "transition_count",
+        "planned_transitions",
+        "guardrails",
+        "metadata",
+    }:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker transition plan keys are invalid."
+            ),
+        )
+    if (
+        normalized.get(
+            "operator_control_execution_worker_transition_plan_schema_version"
+        )
+        != AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_TRANSITION_PLAN_SCHEMA_VERSION
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=(
+                "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_transition_plan_schema_invalid"
+            ),
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker transition plan schema is invalid."
+            ),
+        )
+    if normalized.get("service_id") != "nex-ae-api":
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker transition plan service id is invalid."
+            ),
+        )
+    command = validate_artifact_retention_scheduler_daemon_operator_control_execution_worker_command(
+        normalized.get("operator_control_execution_worker_command")
+    )
+    scheduler_id = _required_text(
+        normalized.get("scheduler_id"),
+        "scheduler_id",
+        error_code=error_code,
+    )
+    if scheduler_id != command["scheduler_id"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker transition plan scheduler scope is invalid."
+            ),
+        )
+    for field_name in (
+        "operator_control_execution_worker_command_id",
+        "operator_control_execution_worker_plan_id",
+        "operator_control_execution_state_id",
+        "operator_control_execution_request_id",
+        "action",
+        "execution_mode",
+        "worker_mode",
+    ):
+        if normalized.get(field_name) != command[field_name]:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    "execution worker transition plan source scope is invalid."
+                ),
+            )
+    transition_plan_status = (
+        _normalize_operator_control_execution_worker_transition_plan_status(
+            normalized.get("transition_plan_status"),
+            error_code=error_code,
+        )
+    )
+    terminal_status = _normalize_operator_control_execution_worker_terminal_status(
+        normalized.get("terminal_status"),
+        error_code=error_code,
+    )
+    decision = _operator_control_execution_worker_transition_plan_decision(
+        command=command,
+        terminal_status=terminal_status,
+        error_code=error_code,
+    )
+    if transition_plan_status != decision["transition_plan_status"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker transition plan status is invalid."
+            ),
+        )
+    if terminal_status != decision["terminal_status"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker transition plan terminal status is invalid."
+            ),
+        )
+    if normalized.get("decision_reason") != decision["decision_reason"]:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker transition plan decision reason is invalid."
+            ),
+        )
+    transition_planned_at = _required_text(
+        normalized.get("transition_planned_at"),
+        "transition_planned_at",
+        error_code=error_code,
+    )
+    planned_transitions = (
+        _validate_operator_control_execution_worker_transition_plan_transitions(
+            normalized.get("planned_transitions"),
+            error_code=error_code,
+        )
+    )
+    expected_transitions = (
+        _operator_control_execution_worker_transition_plan_transitions(
+            transition_plan_status=transition_plan_status,
+            terminal_status=terminal_status,
+        )
+    )
+    transition_count = _bounded_non_negative_operator_control_count(
+        normalized.get("transition_count"),
+        "transition_count",
+        error_code=error_code,
+    )
+    if transition_count != len(expected_transitions) or (
+        planned_transitions != expected_transitions
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker transition plan transitions are invalid."
+            ),
+        )
+    expected_guardrails = _operator_control_execution_worker_transition_plan_guardrails(
+        command=command,
+        transition_plan_status=transition_plan_status,
+        terminal_status=terminal_status,
+        planned_transitions=planned_transitions,
+    )
+    if normalized.get("guardrails") != expected_guardrails:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker transition plan guardrails are invalid."
+            ),
+        )
+    expected_metadata = _operator_control_execution_worker_transition_plan_metadata(
+        command=command,
+        transition_plan_status=transition_plan_status,
+        terminal_status=terminal_status,
+        transition_planned_at=transition_planned_at,
+        planned_transitions=planned_transitions,
+    )
+    if normalized.get("metadata") != expected_metadata:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker transition plan metadata is invalid."
+            ),
+        )
+    expected_id = _operator_control_execution_worker_transition_plan_id(
+        scheduler_id=scheduler_id,
+        operator_control_execution_worker_command_id=command[
+            "operator_control_execution_worker_command_id"
+        ],
+        transition_plan_status=transition_plan_status,
+        terminal_status=terminal_status,
+        transition_planned_at=transition_planned_at,
+    )
+    if (
+        normalized.get("operator_control_execution_worker_transition_plan_id")
+        != expected_id
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker transition plan id is invalid."
+            ),
+        )
+    normalized["transition_plan_status"] = transition_plan_status
+    normalized["terminal_status"] = terminal_status
+    normalized["operator_control_execution_worker_command"] = command
+    normalized["planned_transitions"] = planned_transitions
+    assert_artifact_retention_payload_safe(normalized)
+    return normalized
+
+
+def summarize_artifact_retention_scheduler_daemon_operator_control_execution_worker_transition_plan(
+    transition_plan: Mapping[str, Any],
+) -> dict[str, Any]:
+    validated = (
+        validate_artifact_retention_scheduler_daemon_operator_control_execution_worker_transition_plan(
+            transition_plan
+        )
+    )
+    return {
+        "scheduler_id": validated["scheduler_id"],
+        "operator_control_execution_worker_transition_plan_id": validated[
+            "operator_control_execution_worker_transition_plan_id"
+        ],
+        "operator_control_execution_worker_command_id": validated[
+            "operator_control_execution_worker_command_id"
+        ],
+        "operator_control_execution_state_id": validated[
+            "operator_control_execution_state_id"
+        ],
+        "action": validated["action"],
+        "execution_mode": validated["execution_mode"],
+        "worker_mode": validated["worker_mode"],
+        "transition_plan_status": validated["transition_plan_status"],
+        "terminal_status": validated["terminal_status"],
+        "decision_reason": validated["decision_reason"],
+        "transition_count": validated["transition_count"],
+        "status_path": list(validated["metadata"]["status_path"]),
+        "ready_for_transition_persistence": validated["metadata"][
+            "ready_for_transition_persistence"
+        ],
+        "safe_for_ag_projection": validated["metadata"]["safe_for_ag_projection"],
+    }
+
+
+def operator_control_execution_worker_transition_plan_summary_line(
+    transition_plan: Mapping[str, Any],
+) -> str:
+    summary = (
+        summarize_artifact_retention_scheduler_daemon_operator_control_execution_worker_transition_plan(
+            transition_plan
+        )
+    )
+    status_path = ">".join(summary["status_path"]) or "blocked"
+    return (
+        "ae_scheduler_daemon_operator_control_execution_worker_transition_plan=pass "
+        f"scheduler_id={summary['scheduler_id']} "
+        f"action={summary['action']} "
+        f"status={summary['transition_plan_status']} "
+        f"terminal={summary['terminal_status']} "
+        f"transitions={summary['transition_count']} "
+        f"path={status_path}"
     )
 
 
@@ -12810,6 +13206,56 @@ def _normalize_operator_control_execution_worker_command_status(
     return status
 
 
+def _normalize_operator_control_execution_worker_transition_plan_status(
+    value: Any,
+    *,
+    error_code: str,
+) -> str:
+    status = _required_text(
+        value,
+        "transition_plan_status",
+        error_code=error_code,
+    ).upper()
+    if (
+        status
+        not in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_TRANSITION_PLAN_STATUSES
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker transition plan status is invalid."
+            ),
+        )
+    return status
+
+
+def _normalize_operator_control_execution_worker_terminal_status(
+    value: Any,
+    *,
+    error_code: str,
+) -> str:
+    status = _required_text(
+        value,
+        "terminal_status",
+        error_code=error_code,
+    ).upper()
+    if (
+        status
+        not in AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_TERMINAL_STATUSES
+    ):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker terminal status is invalid."
+            ),
+        )
+    return status
+
+
 def _operator_control_execution_request_id(
     *,
     scheduler_id: str,
@@ -12955,6 +13401,34 @@ def _operator_control_execution_worker_command_id(
             (
                 "nex-ae-api:artifact-retention:operator-control-"
                 f"execution-worker-command:{sha256_json(basis)}"
+            ),
+        )
+    )
+
+
+def _operator_control_execution_worker_transition_plan_id(
+    *,
+    scheduler_id: str,
+    operator_control_execution_worker_command_id: str,
+    transition_plan_status: str,
+    terminal_status: str,
+    transition_planned_at: str,
+) -> str:
+    basis = {
+        "scheduler_id": scheduler_id,
+        "operator_control_execution_worker_command_id": (
+            operator_control_execution_worker_command_id
+        ),
+        "transition_plan_status": transition_plan_status,
+        "terminal_status": terminal_status,
+        "transition_planned_at": transition_planned_at,
+    }
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            (
+                "nex-ae-api:artifact-retention:operator-control-"
+                f"execution-worker-transition-plan:{sha256_json(basis)}"
             ),
         )
     )
@@ -13682,6 +14156,254 @@ def _operator_control_execution_worker_command_metadata(
         "supervisor_actions": (
             list(plan["supervisor_actions"]) if command_status == "READY" else []
         ),
+        "supervisor_dispatch_performed": False,
+        "supervisor_adapter_invoked": False,
+        "supervisor_result_persisted": False,
+        "supervisor_event_persisted": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "secrets_redacted": True,
+    }
+
+
+def _operator_control_execution_worker_transition_plan_decision(
+    *,
+    command: Mapping[str, Any],
+    terminal_status: str,
+    error_code: str,
+) -> dict[str, str]:
+    if command["command_status"] != "READY":
+        return {
+            "transition_plan_status": "BLOCKED",
+            "terminal_status": "BLOCKED",
+            "decision_reason": command["decision_reason"],
+        }
+    if terminal_status not in {"SUCCEEDED", "FAILED"}:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker transition plan terminal status is invalid."
+            ),
+        )
+    return {
+        "transition_plan_status": "READY",
+        "terminal_status": terminal_status,
+        "decision_reason": "ready_for_worker_execution_state_transitions",
+    }
+
+
+def _operator_control_execution_worker_transition_plan_transitions(
+    *,
+    transition_plan_status: str,
+    terminal_status: str,
+) -> list[dict[str, Any]]:
+    if transition_plan_status != "READY":
+        return []
+    terminal_reason = {
+        "SUCCEEDED": "worker_execution_succeeded",
+        "FAILED": "worker_execution_failed",
+    }[terminal_status]
+    return [
+        {
+            "ordinal": 1,
+            "from_status": "ADMITTED",
+            "to_status": "EXECUTING",
+            "decision_reason": "worker_execution_started",
+            "terminal": False,
+        },
+        {
+            "ordinal": 2,
+            "from_status": "EXECUTING",
+            "to_status": terminal_status,
+            "decision_reason": terminal_reason,
+            "terminal": True,
+        },
+    ]
+
+
+def _validate_operator_control_execution_worker_transition_plan_transitions(
+    value: Any,
+    *,
+    error_code: str,
+) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code=error_code,
+            detail=(
+                "Artifact retention scheduler daemon operator control execution "
+                "worker transition plan transitions are invalid."
+            ),
+        )
+    normalized: list[dict[str, Any]] = []
+    for expected_ordinal, item in enumerate(value, start=1):
+        if not isinstance(item, Mapping) or set(item) != {
+            "ordinal",
+            "from_status",
+            "to_status",
+            "decision_reason",
+            "terminal",
+        }:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    "execution worker transition plan transition keys are "
+                    "invalid."
+                ),
+            )
+        ordinal = _bounded_positive_int(
+            item.get("ordinal"),
+            "ordinal",
+            max_value=2,
+            error_code=error_code,
+        )
+        if ordinal != expected_ordinal:
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    "execution worker transition plan ordinal is invalid."
+                ),
+            )
+        from_status = _normalize_operator_control_execution_state_status(
+            item.get("from_status"),
+            error_code=error_code,
+        )
+        to_status = _normalize_operator_control_execution_state_status(
+            item.get("to_status"),
+            error_code=error_code,
+        )
+        if to_status not in _operator_control_execution_allowed_next_statuses(
+            from_status
+        ):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code=error_code,
+                detail=(
+                    "Artifact retention scheduler daemon operator control "
+                    "execution worker transition plan transition is not "
+                    "allowed."
+                ),
+            )
+        decision_reason = _required_text(
+            item.get("decision_reason"),
+            "decision_reason",
+            error_code=error_code,
+        )
+        terminal = _required_bool(
+            item.get("terminal"),
+            "terminal",
+            error_code=error_code,
+        )
+        normalized.append(
+            {
+                "ordinal": ordinal,
+                "from_status": from_status,
+                "to_status": to_status,
+                "decision_reason": decision_reason,
+                "terminal": terminal,
+            }
+        )
+    return normalized
+
+
+def _operator_control_execution_worker_transition_plan_guardrails(
+    *,
+    command: Mapping[str, Any],
+    transition_plan_status: str,
+    terminal_status: str,
+    planned_transitions: Sequence[Mapping[str, Any]],
+) -> dict[str, bool]:
+    ready = transition_plan_status == "READY"
+    return {
+        "worker_transition_plan_only": True,
+        "source_worker_command_validated": True,
+        "requires_ready_worker_command": True,
+        "source_worker_command_ready": command["command_status"] == "READY",
+        "ready_for_transition_persistence": ready,
+        "uses_existing_execution_state_transition_contract": True,
+        "uses_existing_execution_state_transition_table": True,
+        "new_database_table_required": False,
+        "admitted_to_executing_planned": any(
+            item["from_status"] == "ADMITTED" and item["to_status"] == "EXECUTING"
+            for item in planned_transitions
+        ),
+        "executing_to_succeeded_planned": any(
+            item["from_status"] == "EXECUTING" and item["to_status"] == "SUCCEEDED"
+            for item in planned_transitions
+        ),
+        "executing_to_failed_planned": any(
+            item["from_status"] == "EXECUTING" and item["to_status"] == "FAILED"
+            for item in planned_transitions
+        ),
+        "blocked_command_has_no_transitions": (
+            command["command_status"] == "BLOCKED" and len(planned_transitions) == 0
+        ),
+        "terminal_status_success_supported": terminal_status == "SUCCEEDED",
+        "terminal_status_failure_supported": terminal_status == "FAILED",
+        "terminal_status_blocked_supported": terminal_status == "BLOCKED",
+        "supervisor_dispatch_performed": False,
+        "supervisor_adapter_invoked": False,
+        "supervisor_result_persisted": False,
+        "supervisor_event_persisted": False,
+        "subprocess_started": False,
+        "subprocess_stopped": False,
+        "database_write_performed": False,
+        "job_queue_enqueue_performed": False,
+        "worker_execution_performed": False,
+        "test_profile_required": True,
+        "bounded_max_cycles_required": True,
+        "database_url_included": False,
+        "storage_path_included": False,
+        "raw_artifact_payload_included": False,
+        "raw_execution_payload_included": False,
+        "raw_daemon_runtime_payload_included": False,
+        "raw_supervised_process_snapshot_included": False,
+        "ag_direct_database_write_allowed": False,
+        "ag_direct_job_enqueue_allowed": False,
+        "ag_direct_process_control_allowed": False,
+        "physical_delete_automation_enabled": False,
+        "secrets_redacted": True,
+    }
+
+
+def _operator_control_execution_worker_transition_plan_metadata(
+    *,
+    command: Mapping[str, Any],
+    transition_plan_status: str,
+    terminal_status: str,
+    transition_planned_at: str,
+    planned_transitions: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    status_path = (
+        ["ADMITTED"]
+        + [item["to_status"] for item in planned_transitions]
+        if transition_plan_status == "READY"
+        else []
+    )
+    return {
+        "safe_for_ag_projection": True,
+        "worker_transition_plan_only": True,
+        "operator_control_execution_worker_command_hash": sha256_json(dict(command)),
+        "transition_planned_at": transition_planned_at,
+        "source_command_status": command["command_status"],
+        "transition_plan_status": transition_plan_status,
+        "terminal_status": terminal_status,
+        "transition_count": len(planned_transitions),
+        "status_path": status_path,
+        "ready_for_transition_persistence": transition_plan_status == "READY",
+        "supervisor_command_count": command["supervisor_command_count"],
+        "supervisor_actions": [
+            item["command"]["action"] for item in command["supervisor_commands"]
+        ],
         "supervisor_dispatch_performed": False,
         "supervisor_adapter_invoked": False,
         "supervisor_result_persisted": False,

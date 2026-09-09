@@ -982,3 +982,10 @@ Artifact library management:
   The first worker mode is
   `fake_dry_run_supervisor_persistent_dispatch_worker`, with worker execution,
   subprocess control, JobQueue enqueue, and physical deletion still disabled.
+- Slice 0603 hardens the worker state-transition contract. Ready worker
+  commands now plan only `ADMITTED -> EXECUTING -> SUCCEEDED` or
+  `ADMITTED -> EXECUTING -> FAILED`; blocked commands produce no transition
+  rows. This remains metadata-only and should reuse the existing
+  `ae_daemon_operator_control_execution_states` and
+  `ae_daemon_operator_control_execution_transitions` tables when persistence is
+  wired later.

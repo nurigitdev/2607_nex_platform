@@ -714,6 +714,9 @@ Unified operations:
   contracts. AG should treat these as future AE-owned read-model inputs only;
   it still must not construct worker commands, dispatch supervisor adapters, or
   write AE execution state directly.
+- Slice 0603 adds an AE-owned worker transition-plan contract. AG may later
+  project its safe summaries, but it must continue to read through AE APIs and
+  must not persist transition rows or infer alternate worker state paths.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
