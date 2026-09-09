@@ -784,6 +784,11 @@ Unified operations:
   states from AE collection read-model data and reports only safe counts,
   hash-presence flags, metadata guardrail checks, status-path checks, and
   recommended operator actions.
+- Slice 0620 closes S62 with AG still read-only over AE worker-result evidence.
+  The checkpoint verifies the AG collection/detail projections, diagnostics
+  rollup, PostgreSQL smoke hooks, and redaction posture while keeping AG outside
+  AE database writes, JobQueue enqueue, raw worker payload storage, subprocess
+  control, and physical deletion automation.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

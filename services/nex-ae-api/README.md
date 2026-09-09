@@ -1047,3 +1047,7 @@ Artifact library management:
   database directly. The smoke writes through AE protected routes, reads AE
   collection/detail APIs, checks AG protected projections, verifies PostgreSQL
   table/index/JSONB evidence, and removes the scoped rows.
+- Slice 0620 closes S62 by checking the AE-owned worker-result persistence,
+  read-model APIs, real test DB smoke evidence, AG read-only projections,
+  diagnostics rollup linkage, and redaction posture. No new table is added; the
+  short `ae_op_exec_worker_results` table remains the system-of-record table.
