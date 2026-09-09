@@ -1011,3 +1011,8 @@ Artifact library management:
   one AE execution state, has AG delegate to AE's worker route by state id,
   verifies the redacted AG worker projection, and cleans up the targeted state
   with no persisted transition row from the worker call itself.
+- Slice 0610 closes S61 with a quality-gate checkpoint over the AE-owned
+  operator-control execution worker surface, including the fake dry-run worker
+  mode, protected PostgreSQL smoke hooks, AG read-only projection, redaction
+  posture, and the continued absence of worker-result persistence, JobQueue
+  enqueue, real subprocess control, or physical deletion.

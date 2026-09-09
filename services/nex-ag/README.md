@@ -741,6 +741,10 @@ Unified operations:
   when explicitly enabled. The smoke persists one AE execution state, has AG
   call AE's protected worker route, verifies the redacted worker projection, and
   cleans up the targeted row while leaving AG read/projection-only.
+- Slice 0610 closes S61 with AG still acting only as a protected read-only
+  operator projection over AE-owned worker execution. The checkpoint keeps AG
+  outside AE database writes, JobQueue enqueue, worker-result persistence, real
+  process control, and physical deletion automation.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
