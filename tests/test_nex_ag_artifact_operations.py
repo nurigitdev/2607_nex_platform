@@ -20,6 +20,8 @@ from nex_ag.artifact_operations import (
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_RUN_DETAIL_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_COLLECTION_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_DETAIL_PROJECTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_COLLECTION_PROJECTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_DETAIL_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISOR_COLLECTION_PROJECTION_SCHEMA_VERSION,
@@ -46,6 +48,8 @@ from nex_ag.artifact_operations import (
     build_artifact_operation_retention_daemon_projection,
     build_artifact_operation_retention_daemon_operator_control_execution_collection_projection,
     build_artifact_operation_retention_daemon_operator_control_execution_detail_projection,
+    build_artifact_operation_retention_daemon_operator_control_execution_worker_result_collection_projection,
+    build_artifact_operation_retention_daemon_operator_control_execution_worker_result_detail_projection,
     build_artifact_operation_retention_daemon_operator_control_execution_worker_projection,
     build_artifact_operation_retention_daemon_operator_control_projection,
     build_artifact_operation_retention_daemon_run_collection_projection,
@@ -71,6 +75,7 @@ from nex_ag.artifact_operations import (
     summarize_artifact_retention_daemon_operator_control_execution_detail,
     summarize_artifact_retention_daemon_operator_control_execution_operations,
     summarize_artifact_retention_daemon_operator_control_execution_worker_result,
+    summarize_artifact_retention_daemon_operator_control_execution_worker_result_operations,
     summarize_artifact_retention_daemon_lifecycle_projection,
     summarize_artifact_retention_daemon_run_detail,
     summarize_artifact_retention_daemon_run_operations,
@@ -1804,6 +1809,175 @@ def artifact_retention_scheduler_daemon_operator_control_execution_worker_result
     }
 
 
+def artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record_payload(
+    *,
+    worker_status: str = "SUCCEEDED",
+    observed_at: str = "2026-09-04T02:02:00Z",
+) -> dict[str, Any]:
+    source = (
+        artifact_retention_scheduler_daemon_operator_control_execution_worker_result_payload(
+            worker_status=worker_status,
+            supervisor_result_statuses=(
+                ["FAILED", "SUCCEEDED"]
+                if worker_status == "FAILED"
+                else ["SUCCEEDED", "SUCCEEDED"]
+            ),
+        )
+    )
+    return {
+        "operator_control_execution_worker_result_record_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record.v1"
+        ),
+        "operator_control_execution_worker_result_id": (
+            source["operator_control_execution_worker_result_id"]
+        ),
+        "service_id": source["service_id"],
+        "scheduler_id": source["scheduler_id"],
+        "operator_control_execution_worker_command_id": source[
+            "operator_control_execution_worker_command_id"
+        ],
+        "operator_control_execution_worker_plan_id": source[
+            "operator_control_execution_worker_plan_id"
+        ],
+        "operator_control_execution_worker_transition_plan_id": source[
+            "operator_control_execution_worker_transition_plan_id"
+        ],
+        "operator_control_execution_state_id": source[
+            "operator_control_execution_state_id"
+        ],
+        "operator_control_execution_request_id": source[
+            "operator_control_execution_request_id"
+        ],
+        "action": source["action"],
+        "execution_mode": source["execution_mode"],
+        "worker_mode": source["worker_mode"],
+        "worker_status": worker_status,
+        "decision_reason": source["decision_reason"],
+        "observed_at": observed_at,
+        "transition_plan_status": "READY",
+        "transition_terminal_status": worker_status,
+        "transition_count": 2,
+        "status_path": ["ADMITTED", "EXECUTING", worker_status],
+        "supervisor_result_count": source["supervisor_result_count"],
+        "supervisor_result_statuses": source["metadata"][
+            "supervisor_result_statuses"
+        ],
+        "supervisor_actions": source["metadata"]["supervisor_actions"],
+        "supervisor_result_ids": source["metadata"]["supervisor_result_ids"],
+        "operator_control_execution_worker_command_hash": "c" * 64,
+        "operator_control_execution_worker_transition_plan_hash": "d" * 64,
+        "supervisor_results_hash": "e" * 64,
+        "worker_result_hash": "f" * 64,
+        "metadata": {
+            **source["metadata"],
+            "read_model": "ae_op_exec_worker_results",
+            "private_path": "/data/nex-platform/ae/private",
+            "database_url": "DATABASE_URL_SHOULD_NOT_LEAK",
+        },
+        "guardrails": {
+            **source["guardrails"],
+            "read_only": True,
+            "ae_owned_worker_result": True,
+            "database_url_included": False,
+            "storage_path_included": False,
+            "raw_execution_payload_included": False,
+            "secrets_redacted": True,
+        },
+    }
+
+
+def artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection_payload() -> (
+    dict[str, Any]
+):
+    items = [
+        artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record_payload(),
+        {
+            **artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record_payload(
+                worker_status="FAILED",
+                observed_at="2026-09-04T02:05:00Z",
+            ),
+            "operator_control_execution_worker_result_id": (
+                "operator-control-execution-worker-result-failed-0616"
+            ),
+        },
+    ]
+    return {
+        "operator_control_execution_worker_result_collection_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection.v1"
+        ),
+        "service_id": "nex-ae-api",
+        "filter": {
+            "scheduler_id": "ae-artifact-retention-scheduler",
+            "action": None,
+            "worker_status": None,
+            "operator_control_execution_state_id": None,
+            "operator_control_execution_request_id": None,
+        },
+        "count": len(items),
+        "limit": 20,
+        "items": items,
+        "guardrails": {
+            "read_only": True,
+            "ae_owned_persistence": True,
+            "ae_owned_worker_result": True,
+            "ag_direct_database_write_allowed": False,
+            "ag_direct_job_enqueue_allowed": False,
+            "ag_direct_process_control_allowed": False,
+            "database_url_included": False,
+            "raw_execution_payload_included": False,
+            "secrets_redacted": True,
+        },
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "metadata_only": True,
+            "read_model": "ae_op_exec_worker_results",
+            "item_count": len(items),
+            "newest_observed_at": "2026-09-04T02:05:00Z",
+            "private_path": "/data/nex-platform/ae/private",
+            "secrets_redacted": True,
+        },
+    }
+
+
+def artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail_payload() -> (
+    dict[str, Any]
+):
+    record = (
+        artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record_payload()
+    )
+    return {
+        "operator_control_execution_worker_result_detail_schema_version": (
+            "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail.v1"
+        ),
+        "service_id": "nex-ae-api",
+        "operator_control_execution_worker_result_id": (
+            record["operator_control_execution_worker_result_id"]
+        ),
+        "worker_result_record": record,
+        "summary": {
+            "worker_status": "SUCCEEDED",
+            "supervisor_result_count": 2,
+            "failed_supervisor_count": 0,
+            "metadata_only": True,
+        },
+        "guardrails": {
+            "read_only": True,
+            "ae_owned_persistence": True,
+            "ae_owned_worker_result": True,
+            "database_url_included": False,
+            "raw_execution_payload_included": False,
+            "secrets_redacted": True,
+        },
+        "metadata": {
+            "safe_for_ag_projection": True,
+            "metadata_only": True,
+            "read_model": "ae_op_exec_worker_results",
+            "private_path": "/data/nex-platform/ae/private",
+            "secrets_redacted": True,
+        },
+    }
+
+
 def artifact_retention_scheduler_daemon_run_record_payload(
     *,
     daemon_run_record_id: str = "daemon-run-record-0559",
@@ -2694,6 +2868,56 @@ def artifact_client() -> InMemoryAeArtifactOperationsClient:
                 worker_observed_at=None,
             ): (
                 artifact_retention_scheduler_daemon_operator_control_execution_worker_result_payload()
+            ),
+        },
+        artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collections={
+            artifact_operations._artifact_retention_scheduler_daemon_operator_control_execution_worker_result_cache_key(
+                scheduler_id="ae-artifact-retention-scheduler",
+                action=None,
+                worker_status=None,
+                operator_control_execution_state_id=None,
+                operator_control_execution_request_id=None,
+                limit=20,
+            ): (
+                artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection_payload()
+            ),
+            artifact_operations._artifact_retention_scheduler_daemon_operator_control_execution_worker_result_cache_key(
+                scheduler_id="ae-artifact-retention-scheduler",
+                action="restart_daemon",
+                worker_status="FAILED",
+                operator_control_execution_state_id=(
+                    "operator-control-execution-state-0597"
+                ),
+                operator_control_execution_request_id=(
+                    "operator-control-execution-state-0597:execution-request"
+                ),
+                limit=1,
+            ): {
+                **artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection_payload(),
+                "filter": {
+                    "scheduler_id": "ae-artifact-retention-scheduler",
+                    "action": "restart_daemon",
+                    "worker_status": "FAILED",
+                    "operator_control_execution_state_id": (
+                        "operator-control-execution-state-0597"
+                    ),
+                    "operator_control_execution_request_id": (
+                        "operator-control-execution-state-0597:execution-request"
+                    ),
+                },
+                "count": 1,
+                "limit": 1,
+                "items": [
+                    artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record_payload(
+                        worker_status="FAILED",
+                        observed_at="2026-09-04T02:05:00Z",
+                    )
+                ],
+            },
+        },
+        artifact_retention_scheduler_daemon_operator_control_execution_worker_result_details={
+            "operator-control-execution-worker-result-0607": (
+                artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail_payload()
             ),
         },
         handoffs={HANDOFF_ID: handoff_record()},
@@ -6949,6 +7173,114 @@ def test_artifact_retention_scheduler_daemon_operator_control_execution_worker_p
     assert_artifact_operation_projection_redacted(failed_projection)
 
 
+def test_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_read_model_projections_summarize_and_redact() -> (
+    None
+):
+    collection = (
+        artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection_payload()
+    )
+    detail = (
+        artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail_payload()
+    )
+    collection_projection = build_artifact_operation_retention_daemon_operator_control_execution_worker_result_collection_projection(
+        collection=collection,
+        source_client=artifact_client(),
+        request_trace_id=TRACE_ID,
+    )
+    detail_projection = build_artifact_operation_retention_daemon_operator_control_execution_worker_result_detail_projection(
+        detail=detail,
+        source_client=artifact_client(),
+        request_trace_id=TRACE_ID,
+    )
+    degraded_projection = build_artifact_operation_retention_daemon_operator_control_execution_worker_result_collection_projection(
+        collection={"items": [], "filter": {}, "count": 0, "limit": 20},
+        source_client=artifact_client(),
+        source_errors=[
+            AeArtifactOperationsError(
+                error_code=(
+                    "ag.ae_artifact_retention_daemon_operator_control_execution_worker_result_source_failed"
+                ),
+                detail="AE worker result read-model source unavailable",
+                status_code=503,
+            )
+        ],
+    )
+
+    assert collection_projection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_COLLECTION_PROJECTION_SCHEMA_VERSION
+    )
+    assert collection_projection["operation_type"] == (
+        "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_results"
+    )
+    assert collection_projection["filter"] == {
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "action": None,
+        "worker_status": None,
+        "operator_control_execution_state_id": None,
+        "operator_control_execution_request_id": None,
+    }
+    assert collection_projection["summary"] == (
+        summarize_artifact_retention_daemon_operator_control_execution_worker_result_operations(
+            collection_projection["items"]
+        )
+    )
+    assert collection_projection["summary"][
+        "operator_control_execution_worker_result_count"
+    ] == 2
+    assert collection_projection["summary"]["succeeded_count"] == 1
+    assert collection_projection["summary"]["failed_count"] == 1
+    assert collection_projection["summary"]["failed_supervisor_count"] == 1
+    assert collection_projection["summary"][
+        "operator_attention_required"
+    ] is True
+    assert collection_projection["summary"]["latest_observed_at"] == (
+        "2026-09-04T02:05:00Z"
+    )
+    assert collection_projection["source_status"][
+        "worker_result_collection_loaded"
+    ] is True
+    assert collection_projection["operator_guidance"]["read_model"] == (
+        "ae_op_exec_worker_results"
+    )
+    assert collection_projection["items"][0]["hashes"] == {
+        "operator_control_execution_worker_command_hash": "c" * 64,
+        "operator_control_execution_worker_transition_plan_hash": "d" * 64,
+        "supervisor_results_hash": "e" * 64,
+        "worker_result_hash": "f" * 64,
+    }
+    assert collection_projection["items"][0]["routes"]["ag_detail"].endswith(
+        "/scheduler-daemon-operator-control-execution-worker-results/"
+        "operator-control-execution-worker-result-0607"
+    )
+
+    assert detail_projection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_DETAIL_PROJECTION_SCHEMA_VERSION
+    )
+    assert detail_projection["operator_control_execution_worker_result_id"] == (
+        "operator-control-execution-worker-result-0607"
+    )
+    assert detail_projection["summary"]["worker_status"] == "SUCCEEDED"
+    assert detail_projection["source_status"][
+        "worker_result_detail_loaded"
+    ] is True
+    assert degraded_projection["projection_status"] == "DEGRADED"
+    assert degraded_projection["source_status"][
+        "worker_result_collection_loaded"
+    ] is False
+    assert "operator_control_execution_worker_command" not in (
+        collection_projection["items"][0]
+    )
+    assert "operator_control_execution_worker_transition_plan" not in (
+        detail_projection["worker_result"]
+    )
+    assert "supervisor_results" not in detail_projection["worker_result"]
+    assert "DATABASE_URL_SHOULD_NOT_LEAK" not in str(collection_projection)
+    assert "database_url" not in str(detail_projection)
+    assert "/data/nex-platform" not in str(detail_projection)
+    assert_artifact_operation_projection_redacted(collection_projection)
+    assert_artifact_operation_projection_redacted(detail_projection)
+
+
 def test_in_memory_artifact_operations_client_returns_operator_control_execution_read_models() -> (
     None
 ):
@@ -7051,6 +7383,75 @@ def test_in_memory_artifact_operations_client_returns_operator_control_execution
     assert fallback["metadata"]["decision_reason"] == (
         "operator_control_execution_worker_result_missing"
     )
+
+
+def test_in_memory_artifact_operations_client_returns_operator_control_execution_worker_result_read_models() -> (
+    None
+):
+    source_client = artifact_client()
+
+    collection = source_client.list_artifact_retention_scheduler_daemon_operator_control_execution_worker_results(
+        scheduler_id="ae-artifact-retention-scheduler",
+        action="restart_daemon",
+        worker_status="FAILED",
+        operator_control_execution_state_id="operator-control-execution-state-0597",
+        operator_control_execution_request_id=(
+            "operator-control-execution-state-0597:execution-request"
+        ),
+        limit=1,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    collection["items"][0]["worker_status"] = "SUCCEEDED"
+    collection_again = source_client.list_artifact_retention_scheduler_daemon_operator_control_execution_worker_results(
+        scheduler_id="ae-artifact-retention-scheduler",
+        action="restart_daemon",
+        worker_status="FAILED",
+        operator_control_execution_state_id="operator-control-execution-state-0597",
+        operator_control_execution_request_id=(
+            "operator-control-execution-state-0597:execution-request"
+        ),
+        limit=1,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    fallback = source_client.list_artifact_retention_scheduler_daemon_operator_control_execution_worker_results(
+        scheduler_id="ae-artifact-retention-scheduler",
+        action="stop_daemon",
+        worker_status="BLOCKED",
+        operator_control_execution_state_id="missing-state",
+        operator_control_execution_request_id="missing-request",
+        limit=5,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    detail = source_client.get_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail(
+        "operator-control-execution-worker-result-0607",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    missing = source_client.get_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail(
+        "missing",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert collection_again["count"] == 1
+    assert collection_again["items"][0]["worker_status"] == "FAILED"
+    assert fallback["count"] == 0
+    assert fallback["filter"] == {
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "action": "stop_daemon",
+        "worker_status": "BLOCKED",
+        "operator_control_execution_state_id": "missing-state",
+        "operator_control_execution_request_id": "missing-request",
+    }
+    assert fallback["metadata"]["read_model"] == "ae_op_exec_worker_results"
+    assert detail is not None
+    assert detail["operator_control_execution_worker_result_id"] == (
+        "operator-control-execution-worker-result-0607"
+    )
+    assert missing is None
 
 
 def test_http_artifact_operations_client_requests_operator_control_execution_read_models(
@@ -7211,6 +7612,106 @@ def test_http_artifact_operations_client_requests_operator_control_execution_wor
             "timeout": 17.0,
         }
     ]
+
+
+def test_http_artifact_operations_client_requests_operator_control_execution_worker_result_read_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def fake_get(
+        url: str,
+        *,
+        headers: dict[str, str],
+        params: dict[str, str],
+        timeout: float,
+    ) -> FakeHttpResponse:
+        calls.append(
+            {"url": url, "headers": headers, "params": params, "timeout": timeout}
+        )
+        if url.endswith(
+            "/api/v1/artifact-retention/"
+            "scheduler-daemon-operator-control-execution-worker-results"
+        ):
+            return FakeHttpResponse(
+                200,
+                artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection_payload(),
+            )
+        if url.endswith(
+            "/api/v1/artifact-retention/"
+            "scheduler-daemon-operator-control-execution-worker-results/"
+            "operator-control-execution-worker-result-0607"
+        ):
+            return FakeHttpResponse(
+                200,
+                artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail_payload(),
+            )
+        return FakeHttpResponse(404, {})
+
+    monkeypatch.setattr(artifact_operations.httpx, "get", fake_get)
+    client = HttpAeArtifactOperationsClient(
+        base_url="http://ae.example.local/",
+        service_token="token-0616",
+        timeout_seconds=19.0,
+    )
+
+    collection = client.list_artifact_retention_scheduler_daemon_operator_control_execution_worker_results(
+        scheduler_id="ae-artifact-retention-scheduler",
+        action="restart_daemon",
+        worker_status="FAILED",
+        operator_control_execution_state_id="operator-control-execution-state-0597",
+        operator_control_execution_request_id=(
+            "operator-control-execution-state-0597:execution-request"
+        ),
+        limit=10,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    detail = client.get_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail(
+        "operator-control-execution-worker-result-0607",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    missing = client.get_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_detail(
+        "missing",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert collection["count"] == 2
+    assert detail is not None
+    assert detail["operator_control_execution_worker_result_id"] == (
+        "operator-control-execution-worker-result-0607"
+    )
+    assert missing is None
+    assert calls[0]["url"] == (
+        "http://ae.example.local/api/v1/artifact-retention/"
+        "scheduler-daemon-operator-control-execution-worker-results"
+    )
+    assert calls[0]["headers"]["Authorization"] == "Bearer token-0616"
+    assert calls[0]["params"] == {
+        "limit": "10",
+        "scheduler_id": "ae-artifact-retention-scheduler",
+        "action": "restart_daemon",
+        "worker_status": "FAILED",
+        "operator_control_execution_state_id": (
+            "operator-control-execution-state-0597"
+        ),
+        "operator_control_execution_request_id": (
+            "operator-control-execution-state-0597:execution-request"
+        ),
+    }
+    assert calls[0]["timeout"] == 19.0
+    assert calls[1]["url"] == (
+        "http://ae.example.local/api/v1/artifact-retention/"
+        "scheduler-daemon-operator-control-execution-worker-results/"
+        "operator-control-execution-worker-result-0607"
+    )
+    assert calls[1]["params"] == {}
+    assert calls[2]["url"].endswith(
+        "/api/v1/artifact-retention/"
+        "scheduler-daemon-operator-control-execution-worker-results/missing"
+    )
 
 
 def test_artifact_retention_automation_operator_control_current_process_selection() -> (
