@@ -724,6 +724,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0618`](slices/0618_ag_worker_result_postgresql_smoke.md) | `S62-008` AG worker result PostgreSQL smoke evidence. |
 | [`Slice 0619`](slices/0619_ag_worker_result_diagnostics_rollup.md) | `S62-009` AG worker result diagnostics rollup. |
 | [`Slice 0620`](slices/0620_s62_ae_worker_result_persistence_closure.md) | `S62-010` S62 AE worker result persistence/read-model closure checkpoint. |
+| [`Slice 0621`](slices/0621_ag_operator_review_note_export_boundary_audit.md) | `S63-001` AG operator review note/export boundary audit. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

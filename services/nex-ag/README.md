@@ -789,6 +789,11 @@ Unified operations:
   rollup, PostgreSQL smoke hooks, and redaction posture while keeping AG outside
   AE database writes, JobQueue enqueue, raw worker payload storage, subprocess
   control, and physical deletion automation.
+- Slice 0621 starts S63 by freezing AG's owned write boundary for operator
+  review notes and redacted evidence exports. Generic note/export persistence
+  should use short AG-owned tables such as `ag_op_notes` and `ag_ev_exports`,
+  split target refs into indexable columns, store free text as hashes plus short
+  previews, and keep AE/CX/MO/OA source records read-only through service APIs.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
