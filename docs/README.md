@@ -728,6 +728,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0626`](slices/0626_ag_redacted_evidence_export_persistence.md) | `S63-006` AG redacted evidence export persistence foundation. |
 | [`Slice 0627`](slices/0627_ag_redacted_evidence_export_service.md) | `S63-007` AG redacted evidence export service/idempotency API. |
 | [`Slice 0628`](slices/0628_ag_redacted_evidence_export_routes.md) | `S63-008` AG redacted evidence export protected route wiring. |
+| [`Slice 0629`](slices/0629_ag_redacted_evidence_export_postgresql_smoke.md) | `S63-009` AG redacted evidence export PostgreSQL smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

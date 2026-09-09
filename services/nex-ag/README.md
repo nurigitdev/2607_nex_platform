@@ -827,6 +827,11 @@ Unified operations:
   `/admin/v1/operator-review/evidence-exports`. The routes share the S63
   service-token/admin-user authorization boundary, emit one redacted operational
   event only for `NEW` exports, and keep replay responses side-effect free.
+- Slice 0629 adds
+  `scripts/smoke/run_ag_redacted_evidence_export_postgres_smoke.py`, a guarded
+  `nex_ag_test` evidence path that runs AG migrations, drives the protected
+  export create/replay/list/detail routes, verifies `ag_ev_exports` directly in
+  PostgreSQL, and cleans up the smoke row.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
