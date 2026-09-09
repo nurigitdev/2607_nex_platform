@@ -733,6 +733,10 @@ Unified operations:
   the AE worker result route through its source client and publish a redacted
   worker summary, but worker execution, transition persistence, subprocess
   control, and JobQueue ownership remain inside AE.
+- Slice 0608 exposes that worker projection through a protected AG admin route
+  for the operations dashboard. The route validates service scope and execution
+  state identity, delegates to AE, and returns only the redacted worker
+  projection.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

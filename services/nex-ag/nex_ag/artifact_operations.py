@@ -2839,6 +2839,57 @@ def register_artifact_operation_routes(
         )
 
     @app.post(
+        "/admin/v1/operations/artifact-retention/"
+        "scheduler-daemon-operator-control-execution-workers",
+        response_model=None,
+    )
+    def run_artifact_retention_scheduler_daemon_operator_control_execution_worker_operation(
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        service_problem = _validate_artifact_service_filter(request, service_id)
+        if service_problem is not None:
+            return service_problem
+        worker_request = _validate_artifact_retention_daemon_operator_control_execution_worker_request(
+            request,
+            payload=payload,
+        )
+        if isinstance(worker_request, JSONResponse):
+            return worker_request
+
+        selected_client = (
+            configured_client or build_default_ae_artifact_operations_client()
+        )
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            worker_result = selected_client.run_artifact_retention_scheduler_daemon_operator_control_execution_worker(
+                operator_control_execution_state_id=worker_request[
+                    "operator_control_execution_state_id"
+                ],
+                operator_control_execution_state=worker_request[
+                    "operator_control_execution_state"
+                ],
+                checked_at=worker_request["checked_at"],
+                worker_observed_at=worker_request["worker_observed_at"],
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        except AeArtifactOperationsError as exc:
+            return _artifact_operations_problem_response(request, exc)
+
+        return build_artifact_operation_retention_daemon_operator_control_execution_worker_projection(
+            worker_result=worker_result,
+            source_client=selected_client,
+            request_trace_id=trace_id,
+        )
+
+    @app.post(
         "/admin/v1/operations/artifact-retention/scheduler-daemon/manual-tick-once",
         response_model=None,
     )
@@ -10347,6 +10398,89 @@ def _validate_artifact_retention_daemon_operator_control_preview_request(
         "current_process": dict(current_process)
         if isinstance(current_process, Mapping)
         else None,
+    }
+
+
+def _validate_artifact_retention_daemon_operator_control_execution_worker_request(
+    request: Request,
+    *,
+    payload: Any,
+) -> dict[str, Any] | JSONResponse:
+    if not isinstance(payload, Mapping):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code=(
+                "ag.ae_artifact_retention_daemon_operator_control_execution_worker_invalid"
+            ),
+            title=(
+                "Artifact retention daemon operator-control execution worker "
+                "request is invalid"
+            ),
+            detail=(
+                "Artifact retention daemon operator-control execution worker "
+                "request must be an object."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-operator-control-execution-worker-invalid"
+            ),
+        )
+
+    state_payload = payload.get("operator_control_execution_state")
+    if state_payload is not None and not isinstance(state_payload, Mapping):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code=(
+                "ag.ae_artifact_retention_daemon_operator_control_execution_worker_state_invalid"
+            ),
+            title=(
+                "Artifact retention daemon operator-control execution worker "
+                "state is invalid"
+            ),
+            detail=(
+                "Artifact retention daemon operator-control execution worker "
+                "state must be an object when supplied."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-operator-control-execution-worker-state-invalid"
+            ),
+        )
+
+    state = _mapping_or_empty(state_payload)
+    state_id = _text_or_none(
+        payload.get("operator_control_execution_state_id")
+        or state.get("operator_control_execution_state_id")
+    )
+    if not _present_text(state_id):
+        return problem_response(
+            request,
+            status_code=400,
+            error_code=(
+                "ag.ae_artifact_retention_daemon_operator_control_execution_worker_state_id_missing"
+            ),
+            title=(
+                "Artifact retention daemon operator-control execution worker "
+                "state id is required"
+            ),
+            detail=(
+                "Artifact retention daemon operator-control execution worker "
+                "requests require operator_control_execution_state_id or "
+                "operator_control_execution_state.operator_control_execution_state_id."
+            ),
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "ae-artifact-retention-daemon-operator-control-execution-worker-state-id-missing"
+            ),
+        )
+
+    return {
+        "operator_control_execution_state_id": str(state_id).strip(),
+        "operator_control_execution_state": dict(state) if state else None,
+        "checked_at": _text_or_none(payload.get("checked_at")),
+        "worker_observed_at": _text_or_none(payload.get("worker_observed_at")),
     }
 
 

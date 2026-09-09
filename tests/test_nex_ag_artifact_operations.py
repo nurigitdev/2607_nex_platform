@@ -8241,6 +8241,62 @@ def test_artifact_retention_scheduler_daemon_operator_control_execution_routes_r
     assert "/data/nex-platform" not in str(detail)
 
 
+def test_artifact_retention_scheduler_daemon_operator_control_execution_worker_route_returns_projection() -> (
+    None
+):
+    client = build_app(artifact_client())
+    route = (
+        "/admin/v1/operations/artifact-retention/"
+        "scheduler-daemon-operator-control-execution-workers"
+    )
+
+    response = client.post(
+        route,
+        params={"service_id": "nex-ae-api"},
+        json={
+            "operator_control_execution_state_id": (
+                "operator-control-execution-state-0597"
+            )
+        },
+        headers=auth_headers(),
+    )
+    state_payload_response = client.post(
+        route,
+        json={
+            "operator_control_execution_state": (
+                artifact_retention_scheduler_daemon_operator_control_execution_state_payload()
+            ),
+            "worker_observed_at": "2026-09-04T02:04:00Z",
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    projection = response.json()
+    assert projection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["summary"]["worker_status"] == "SUCCEEDED"
+    assert projection["summary"]["operator_attention_required"] is False
+    assert projection["source_status"]["execution_worker_result_loaded"] is True
+    assert projection["operator_guidance"][
+        "ag_direct_process_control_allowed"
+    ] is False
+    assert projection["operator_guidance"][
+        "ag_direct_database_write_allowed"
+    ] is False
+    assert projection["request_trace_id"] == TRACE_ID
+    assert state_payload_response.status_code == 200
+    assert state_payload_response.json()["summary"]["worker_status"] == "BLOCKED"
+    assert "operator_control_execution_worker_command" not in projection[
+        "worker_result"
+    ]
+    assert "DATABASE_URL_SHOULD_NOT_LEAK" not in str(projection)
+    assert "SECRET_SYSTEM_PROMPT" not in str(projection)
+    assert "database_url" not in str(projection)
+    assert "/data/nex-platform" not in str(projection)
+
+
 def test_artifact_retention_scheduler_daemon_operator_control_execution_route_guardrails() -> (
     None
 ):
@@ -8328,6 +8384,73 @@ def test_artifact_retention_scheduler_daemon_operator_control_execution_route_gu
     assert source_failed.status_code == 503
     assert source_failed.json()["error_code"] == (
         "ag.ae_artifact_retention_daemon_operator_control_execution_source_failed"
+    )
+
+
+def test_artifact_retention_scheduler_daemon_operator_control_execution_worker_route_guardrails() -> (
+    None
+):
+    client = build_app(artifact_client())
+    route = (
+        "/admin/v1/operations/artifact-retention/"
+        "scheduler-daemon-operator-control-execution-workers"
+    )
+
+    unauthorized = client.post(route, json={})
+    invalid_service = client.post(
+        route,
+        params={"service_id": "nex-cx"},
+        json={
+            "operator_control_execution_state_id": (
+                "operator-control-execution-state-0597"
+            )
+        },
+        headers=auth_headers(),
+    )
+    missing_state_id = client.post(route, json={}, headers=auth_headers())
+    invalid_state = client.post(
+        route,
+        json={"operator_control_execution_state": "not-object"},
+        headers=auth_headers(),
+    )
+
+    class BrokenOperatorControlExecutionWorkerClient(InMemoryAeArtifactOperationsClient):
+        def run_artifact_retention_scheduler_daemon_operator_control_execution_worker(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            raise AeArtifactOperationsError(
+                error_code=(
+                    "ag.ae_artifact_retention_daemon_operator_control_execution_worker_source_failed"
+                ),
+                detail="AE operator-control execution worker source unavailable",
+                status_code=503,
+            )
+
+    source_failed = build_app(BrokenOperatorControlExecutionWorkerClient()).post(
+        route,
+        json={
+            "operator_control_execution_state_id": (
+                "operator-control-execution-state-0597"
+            )
+        },
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert invalid_service.status_code == 400
+    assert missing_state_id.status_code == 400
+    assert missing_state_id.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_execution_worker_state_id_missing"
+    )
+    assert invalid_state.status_code == 400
+    assert invalid_state.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_execution_worker_state_invalid"
+    )
+    assert source_failed.status_code == 503
+    assert source_failed.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_execution_worker_source_failed"
     )
 
 
