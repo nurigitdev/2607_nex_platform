@@ -810,6 +810,11 @@ Unified operations:
   admin user-token calls, require `Idempotency-Key` for mutations, emit
   redacted AG audit events only for new notes, and keep replay responses
   side-effect free.
+- Slice 0625 adds
+  `scripts/smoke/run_ag_operator_review_note_postgres_smoke.py`, a guarded
+  `nex_ag_test` evidence path that runs AG migrations, drives the protected
+  note create/replay/list/detail routes, verifies `ag_op_notes` directly in
+  PostgreSQL, and cleans up the smoke row.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
