@@ -820,6 +820,9 @@ Unified operations:
   operator refs indexable, and store only manifest metadata plus SHA-256 hashes.
   Raw evidence bodies, prompts, source text, storage paths, and idempotency keys
   remain outside the persisted contract.
+- Slice 0627 adds the redacted evidence export service facade. Export mutations
+  require `Idempotency-Key`, return `NEW` or `REPLAYED`, reject conflicting key
+  reuse, and ignore caller-supplied `export_id` so AG remains the id authority.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

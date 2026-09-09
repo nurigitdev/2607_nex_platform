@@ -36,6 +36,9 @@ OPERATOR_EVIDENCE_EXPORT_SCHEMA_VERSION = "ag_redacted_evidence_export.v1"
 OPERATOR_EVIDENCE_EXPORT_LIST_SCHEMA_VERSION = (
     "ag_redacted_evidence_export_list.v1"
 )
+OPERATOR_EVIDENCE_EXPORT_MUTATION_SCHEMA_VERSION = (
+    "ag_redacted_evidence_export_mutation.v1"
+)
 AG_OPERATOR_NOTE_TABLE = "ag_op_notes"
 AG_EVIDENCE_EXPORT_TABLE = "ag_ev_exports"
 MAX_OPERATOR_NOTE_PREVIEW_LENGTH = 240
@@ -508,6 +511,122 @@ class OperatorReviewNoteService:
         return record
 
 
+class OperatorEvidenceExportService:
+    def __init__(self, store: Any) -> None:
+        self._store = store
+
+    def create_export(
+        self,
+        payload: dict[str, Any],
+        *,
+        request_id: str,
+        trace_id: str | None,
+        idempotency_key: str | None,
+    ) -> dict[str, Any]:
+        normalized_idempotency_key = required_export_idempotency_key(
+            idempotency_key
+        )
+        canonical_payload = dict(payload)
+        canonical_payload.pop("export_id", None)
+        record = build_operator_evidence_export_record(
+            canonical_payload,
+            request_id=request_id,
+            trace_id=trace_id,
+            idempotency_key=normalized_idempotency_key,
+        )
+        existing = self._store.get(record["export_id"])
+        if existing is not None:
+            if evidence_export_idempotency_signature(existing) != (
+                evidence_export_idempotency_signature(record)
+            ):
+                raise OperatorReviewNoteError(
+                    status_code=409,
+                    error_code="ag.evidence_export_idempotency_conflict",
+                    detail=(
+                        "Idempotency key already maps to a different "
+                        "operator evidence export request."
+                    ),
+                )
+            return build_operator_evidence_export_mutation_response(
+                existing,
+                idempotency_status="REPLAYED",
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        saved = self._store.save(record)
+        return build_operator_evidence_export_mutation_response(
+            saved,
+            idempotency_status="NEW",
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+
+    def list_exports(
+        self,
+        *,
+        request_id: str,
+        trace_id: str | None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        export_trace_id: str | None = None,
+        export_status: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        normalized_target_service = optional_choice(
+            target_service,
+            key="target_service",
+            choices=ALLOWED_TARGET_SERVICES,
+            default="",
+        )
+        normalized_export_status = optional_choice(
+            export_status,
+            key="export_status",
+            choices=ALLOWED_EXPORT_STATUSES,
+            default="",
+        )
+        normalized_operator_type = optional_choice(
+            operator_type,
+            key="operator_type",
+            choices=ALLOWED_OPERATOR_TYPES,
+            default="",
+        )
+        records = self._store.list_exports(
+            target_service=normalized_target_service or None,
+            target_kind=optional_text(target_kind),
+            target_id=optional_text(target_id),
+            trace_id=optional_text(export_trace_id),
+            export_status=normalized_export_status or None,
+            operator_type=normalized_operator_type or None,
+            operator_id=optional_text(operator_id),
+            limit=limit,
+        )
+        return build_operator_evidence_export_list_response(
+            records,
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+
+    def get_export(
+        self,
+        export_id: str,
+    ) -> dict[str, Any]:
+        normalized_export_id = required_text(
+            {"export_id": export_id},
+            "export_id",
+        )
+        record = self._store.get(normalized_export_id)
+        if record is None:
+            raise OperatorReviewNoteError(
+                status_code=404,
+                error_code="ag.evidence_export_not_found",
+                detail=f"Operator evidence export was not found: {export_id}",
+            )
+        return record
+
+
 def default_operator_review_note_store(app: FastAPI) -> Any:
     persistence = getattr(app.state, "nex_persistence", None)
     session_factory = getattr(persistence, "api_session_factory", None)
@@ -783,6 +902,39 @@ def build_operator_review_note_mutation_response(
             "target_id": record["target_id"],
             "note_status": record["note_status"],
             "severity": record["severity"],
+        },
+    }
+
+
+def build_operator_evidence_export_mutation_response(
+    record: dict[str, Any],
+    *,
+    idempotency_status: str,
+    request_id: str,
+    trace_id: str | None,
+) -> dict[str, Any]:
+    normalized_status = optional_choice(
+        idempotency_status,
+        key="idempotency_status",
+        choices=ALLOWED_IDEMPOTENCY_STATUSES,
+        default="NEW",
+    )
+    return {
+        "export_mutation_schema_version": (
+            OPERATOR_EVIDENCE_EXPORT_MUTATION_SCHEMA_VERSION
+        ),
+        "idempotency_status": normalized_status,
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "export": record,
+        "summary": {
+            "export_id": record["export_id"],
+            "target_service": record["target_service"],
+            "target_kind": record["target_kind"],
+            "target_id": record["target_id"],
+            "export_status": record["export_status"],
+            "export_format": record["export_format"],
+            "evidence_item_count": record["evidence_item_count"],
         },
     }
 
@@ -1132,6 +1284,17 @@ def required_idempotency_key(value: Any) -> str:
             status_code=422,
             error_code="ag.operator_review_note_idempotency_key_required",
             detail="Idempotency-Key is required for operator review note mutations.",
+        )
+    return normalized
+
+
+def required_export_idempotency_key(value: Any) -> str:
+    normalized = optional_text(value)
+    if normalized is None:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.evidence_export_idempotency_key_required",
+            detail="Idempotency-Key is required for operator evidence exports.",
         )
     return normalized
 

@@ -17,15 +17,19 @@ from nex_ag.operator_reviews import (
     ALLOWED_EXPORT_FORMATS,
     ALLOWED_EXPORT_STATUSES,
     OPERATOR_EVIDENCE_EXPORT_SCHEMA_VERSION,
+    OPERATOR_EVIDENCE_EXPORT_MUTATION_SCHEMA_VERSION,
+    OperatorEvidenceExportService,
     OperatorEvidenceExportStore,
     OperatorReviewNoteError,
     SqlAlchemyOperatorEvidenceExportStore,
     build_operator_evidence_export_list_response,
+    build_operator_evidence_export_mutation_response,
     build_operator_evidence_export_record,
     default_operator_evidence_export_store,
     evidence_export_idempotency_signature,
     evidence_manifest,
     optional_hex_hash,
+    required_export_idempotency_key,
     sha256_json,
     _datetime_value,
     _json_param_expr,
@@ -478,6 +482,185 @@ def test_export_list_response_summarizes_status_format_and_empty_state() -> None
     assert response["summary"]["latest_updated_at"] == failed["updated_at"]
     assert empty["summary"]["count"] == 0
     assert empty["summary"]["latest_updated_at"] is None
+
+
+def test_export_mutation_response_summarizes_record_and_validates_status() -> None:
+    record = build_export()
+
+    response = build_operator_evidence_export_mutation_response(
+        record,
+        idempotency_status="NEW",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert response["export_mutation_schema_version"] == (
+        OPERATOR_EVIDENCE_EXPORT_MUTATION_SCHEMA_VERSION
+    )
+    assert response["export"] == record
+    assert response["summary"] == {
+        "export_id": record["export_id"],
+        "target_service": "nex-ae-api",
+        "target_kind": "operator_control.worker_result",
+        "target_id": "worker-result-001",
+        "export_status": "READY",
+        "export_format": "json",
+        "evidence_item_count": 2,
+    }
+    with pytest.raises(OperatorReviewNoteError) as exc:
+        build_operator_evidence_export_mutation_response(
+            record,
+            idempotency_status="STALE",
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+    assert exc.value.error_code == "ag.operator_review_note_idempotency_status_unsupported"
+
+
+def test_export_service_creates_replays_and_rejects_conflicting_idempotency() -> None:
+    store = OperatorEvidenceExportStore()
+    service = OperatorEvidenceExportService(store)
+    payload = sample_export_payload(export_id="caller-supplied-id-is-ignored")
+
+    created = service.create_export(
+        payload,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0627-create",
+    )
+    replayed = service.create_export(
+        payload,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0627-create",
+    )
+
+    assert created["idempotency_status"] == "NEW"
+    assert replayed["idempotency_status"] == "REPLAYED"
+    assert created["export"] == replayed["export"]
+    assert created["export"]["export_id"] != "caller-supplied-id-is-ignored"
+    assert len(store.records) == 1
+
+    with pytest.raises(OperatorReviewNoteError) as exc:
+        service.create_export(
+            sample_export_payload(export_format="jsonl"),
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="idem-0627-create",
+        )
+    assert exc.value.status_code == 409
+    assert exc.value.error_code == "ag.evidence_export_idempotency_conflict"
+
+
+def test_export_service_lists_filters_and_gets_exports() -> None:
+    store = OperatorEvidenceExportStore()
+    service = OperatorEvidenceExportService(store)
+    ready = service.create_export(
+        sample_export_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0627-ready",
+    )["export"]
+    failed = service.create_export(
+        sample_export_payload(
+            export_status="FAILED",
+            target_ref={
+                "target_service": "nex-cx",
+                "target_kind": "processing_run",
+                "target_id": "cx-run-001",
+            },
+            operator_ref={
+                "operator_type": "service",
+                "operator_id": "nex-ag",
+                "tenant_id": None,
+            },
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0627-failed",
+    )["export"]
+
+    ready_list = service.list_exports(
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        target_service="nex-ae-api",
+        target_kind="operator_control.worker_result",
+        target_id="worker-result-001",
+        export_trace_id=TRACE_ID,
+        export_status="READY",
+        operator_type="user",
+        operator_id="employee-0001",
+        limit=10,
+    )
+    failed_list = service.list_exports(
+        request_id=REQUEST_ID,
+        trace_id=None,
+        target_service="nex-cx",
+        export_status="FAILED",
+        operator_type="service",
+    )
+
+    assert ready_list["items"] == [ready]
+    assert failed_list["items"] == [failed]
+    assert service.get_export(ready["export_id"]) == ready
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error_code"),
+    [
+        (
+            {"target_service": "nex-unknown"},
+            "ag.operator_review_note_target_service_unsupported",
+        ),
+        (
+            {"export_status": "UNKNOWN"},
+            "ag.operator_review_note_export_status_unsupported",
+        ),
+        (
+            {"operator_type": "bot"},
+            "ag.operator_review_note_operator_type_unsupported",
+        ),
+    ],
+)
+def test_export_service_list_rejects_invalid_filters(
+    kwargs: dict[str, Any],
+    error_code: str,
+) -> None:
+    service = OperatorEvidenceExportService(OperatorEvidenceExportStore())
+
+    with pytest.raises(OperatorReviewNoteError) as exc:
+        service.list_exports(
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            **kwargs,
+        )
+
+    assert exc.value.status_code == 422
+    assert exc.value.error_code == error_code
+
+
+def test_export_service_requires_idempotency_key_and_reports_not_found() -> None:
+    service = OperatorEvidenceExportService(OperatorEvidenceExportStore())
+
+    assert required_export_idempotency_key("  idem-export  ") == "idem-export"
+    with pytest.raises(OperatorReviewNoteError) as exc:
+        service.create_export(
+            sample_export_payload(),
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key=None,
+        )
+    assert exc.value.status_code == 422
+    assert exc.value.error_code == "ag.evidence_export_idempotency_key_required"
+
+    with pytest.raises(OperatorReviewNoteError) as missing:
+        service.get_export("missing-export")
+    assert missing.value.status_code == 404
+    assert missing.value.error_code == "ag.evidence_export_not_found"
+
+    with pytest.raises(OperatorReviewNoteError) as blank:
+        service.get_export(" ")
+    assert blank.value.error_code == "ag.operator_review_note_export_id_required"
 
 
 def test_sqlalchemy_export_store_roundtrips_and_updates_sqlite() -> None:
