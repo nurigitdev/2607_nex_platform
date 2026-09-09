@@ -1006,3 +1006,8 @@ Artifact library management:
   state id, persists one transition, verifies AE detail readback, and cleans up
   the targeted rows with `states=1`, `transitions=1`, `cleanup_states=1`,
   `cleanup_transitions=1`, and `live_db=true`.
+- Slice 0609 adds protected AG-to-AE PostgreSQL smoke evidence for the worker
+  route. When explicitly enabled against `NEX_AE_TEST_DATABASE_URL`, it persists
+  one AE execution state, has AG delegate to AE's worker route by state id,
+  verifies the redacted AG worker projection, and cleans up the targeted state
+  with no persisted transition row from the worker call itself.

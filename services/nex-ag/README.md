@@ -737,6 +737,10 @@ Unified operations:
   for the operations dashboard. The route validates service scope and execution
   state identity, delegates to AE, and returns only the redacted worker
   projection.
+- Slice 0609 proves the AG worker projection route against the real AE test DB
+  when explicitly enabled. The smoke persists one AE execution state, has AG
+  call AE's protected worker route, verifies the redacted worker projection, and
+  cleans up the targeted row while leaving AG read/projection-only.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
