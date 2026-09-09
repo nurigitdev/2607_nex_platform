@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -16,26 +17,40 @@ from nex_ag.operator_reviews import (
     ALLOWED_EVIDENCE_TYPES,
     ALLOWED_EXPORT_FORMATS,
     ALLOWED_EXPORT_STATUSES,
+    OPERATOR_EVIDENCE_EXPORT_RECORDED_EVENT_TYPE,
     OPERATOR_EVIDENCE_EXPORT_SCHEMA_VERSION,
     OPERATOR_EVIDENCE_EXPORT_MUTATION_SCHEMA_VERSION,
     OperatorEvidenceExportService,
     OperatorEvidenceExportStore,
+    OperatorReviewNoteStore,
     OperatorReviewNoteError,
     SqlAlchemyOperatorEvidenceExportStore,
     build_operator_evidence_export_list_response,
     build_operator_evidence_export_mutation_response,
     build_operator_evidence_export_record,
     default_operator_evidence_export_store,
+    emit_operator_evidence_export_event,
     evidence_export_idempotency_signature,
     evidence_manifest,
     optional_hex_hash,
+    register_operator_review_note_routes,
     required_export_idempotency_key,
     sha256_json,
     _datetime_value,
     _json_param_expr,
     _json_value,
 )
-from nex_runtime import build_engine, build_session_factory
+from nex_runtime import (
+    InMemoryOperationalEventStore,
+    OperationalEventEmitter,
+    OperationalEventError,
+    SERVICE_SPECS,
+    build_engine,
+    build_service_app,
+    build_session_factory,
+    issue_mock_service_token,
+    issue_mock_user_token,
+)
 
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
@@ -152,6 +167,60 @@ def sqlite_export_store() -> tuple[SqlAlchemyOperatorEvidenceExportStore, Any]:
             )
         )
     return SqlAlchemyOperatorEvidenceExportStore(build_session_factory(engine)), engine
+
+
+def service_auth_headers() -> dict[str, str]:
+    issued = issue_mock_service_token(service_id="nex-oa", audience="nex-ag")
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": REQUEST_ID,
+        "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+    }
+
+
+def admin_auth_headers() -> dict[str, str]:
+    issued = issue_mock_user_token(
+        tenant_id="local-tenant",
+        user_id="employee-0001",
+        audience="nex-ag",
+        roles=["admin"],
+    )
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": REQUEST_ID,
+        "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+    }
+
+
+def non_admin_auth_headers() -> dict[str, str]:
+    issued = issue_mock_user_token(
+        tenant_id="local-tenant",
+        user_id="employee-0002",
+        audience="nex-ag",
+        roles=["viewer"],
+    )
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": REQUEST_ID,
+        "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+    }
+
+
+def build_export_route_client(
+    *,
+    export_store: Any | None = None,
+    audit_event_store: InMemoryOperationalEventStore | None = None,
+) -> tuple[TestClient, Any, InMemoryOperationalEventStore]:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    selected_export_store = export_store or OperatorEvidenceExportStore()
+    selected_event_store = audit_event_store or InMemoryOperationalEventStore()
+    register_operator_review_note_routes(
+        app,
+        store=OperatorReviewNoteStore(),
+        export_store=selected_export_store,
+        audit_event_store=selected_event_store,
+    )
+    return TestClient(app), selected_export_store, selected_event_store
 
 
 def assert_export_error(payload: dict[str, Any], error_code: str) -> None:
@@ -661,6 +730,172 @@ def test_export_service_requires_idempotency_key_and_reports_not_found() -> None
     with pytest.raises(OperatorReviewNoteError) as blank:
         service.get_export(" ")
     assert blank.value.error_code == "ag.operator_review_note_export_id_required"
+
+
+def test_emit_operator_evidence_export_event_records_safe_event() -> None:
+    event_store = InMemoryOperationalEventStore()
+    emitter = OperationalEventEmitter(service_id="nex-ag", store=event_store)
+    record = build_export(sample_export_payload(export_id="export-event"))
+
+    result = emit_operator_evidence_export_event(emitter, record)
+    events = event_store.list_events(
+        event_type=OPERATOR_EVIDENCE_EXPORT_RECORDED_EVENT_TYPE
+    )
+
+    assert result.ok is True
+    assert len(events) == 1
+    assert events[0]["subject_ref"] == {
+        "type": "operator_evidence_export",
+        "id": "export-event",
+    }
+    assert events[0]["details"] == {
+        "export_id": "export-event",
+        "target_service": "nex-ae-api",
+        "target_kind": "operator_control.worker_result",
+        "target_id": "worker-result-001",
+        "export_status": "READY",
+        "export_format": "json",
+        "redaction_profile": "ag_redacted_manifest_v1",
+        "evidence_hash": record["evidence_hash"],
+        "evidence_item_count": 2,
+        "operator_type": "user",
+        "operator_id": "employee-0001",
+    }
+    assert "evidence_manifest" not in events[0]["details"]
+
+
+def test_emit_operator_evidence_export_event_uses_safe_failure_result() -> None:
+    class FailingEventStore:
+        def append(self, event: dict[str, Any]) -> dict[str, Any]:
+            raise OperationalEventError(
+                error_code="operational_event.store_unavailable",
+                detail="store unavailable",
+                status_code=503,
+            )
+
+    emitter = OperationalEventEmitter(service_id="nex-ag", store=FailingEventStore())
+
+    result = emit_operator_evidence_export_event(emitter, build_export())
+
+    assert result.ok is False
+    assert result.error_code == "operational_event.store_unavailable"
+
+
+def test_operator_evidence_export_routes_create_replay_list_and_get() -> None:
+    client, store, event_store = build_export_route_client()
+    headers = {**admin_auth_headers(), "Idempotency-Key": "idem-route-0628"}
+
+    created = client.post(
+        "/admin/v1/operator-review/evidence-exports",
+        headers=headers,
+        json=sample_export_payload(),
+    )
+    replayed = client.post(
+        "/admin/v1/operator-review/evidence-exports",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-route-0628"},
+        json=sample_export_payload(),
+    )
+    listed = client.get(
+        "/admin/v1/operator-review/evidence-exports?target_service=nex-ae-api",
+        headers=service_auth_headers(),
+    )
+    export_id = created.json()["export"]["export_id"]
+    detail = client.get(
+        f"/admin/v1/operator-review/evidence-exports/{export_id}",
+        headers=service_auth_headers(),
+    )
+
+    assert created.status_code == 201
+    Draft202012Validator(export_schema()).validate(created.json()["export"])
+    assert replayed.status_code == 200
+    assert replayed.json()["idempotency_status"] == "REPLAYED"
+    assert listed.status_code == 200
+    assert listed.json()["summary"]["count"] == 1
+    assert detail.status_code == 200
+    assert detail.json()["export_id"] == export_id
+    assert "evidence_refs" not in created.json()["export"]
+    assert "idem-route-0628" not in json.dumps(created.json())
+    assert len(store.records) == 1
+    assert event_store.summary()["total"] == 1
+
+
+def test_operator_evidence_export_routes_reject_auth_and_invalid_payloads() -> None:
+    client, _, _ = build_export_route_client()
+
+    missing_auth = client.get("/admin/v1/operator-review/evidence-exports")
+    non_admin = client.post(
+        "/admin/v1/operator-review/evidence-exports",
+        headers={**non_admin_auth_headers(), "Idempotency-Key": "idem-non-admin"},
+        json=sample_export_payload(),
+    )
+    missing_idempotency = client.post(
+        "/admin/v1/operator-review/evidence-exports",
+        headers=admin_auth_headers(),
+        json=sample_export_payload(),
+    )
+    invalid_payload = client.post(
+        "/admin/v1/operator-review/evidence-exports",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-invalid-export"},
+        json=sample_export_payload(export_status="UNKNOWN"),
+    )
+    invalid_filter = client.get(
+        "/admin/v1/operator-review/evidence-exports?export_status=UNKNOWN",
+        headers=service_auth_headers(),
+    )
+    missing_detail_auth = client.get(
+        "/admin/v1/operator-review/evidence-exports/missing"
+    )
+
+    assert missing_auth.status_code == 401
+    assert missing_detail_auth.status_code == 401
+    assert non_admin.status_code == 403
+    assert non_admin.json()["error_code"] == "AG_OPERATOR_REVIEW_ADMIN_ROLE_REQUIRED"
+    assert missing_idempotency.status_code == 422
+    assert missing_idempotency.json()["error_code"] == (
+        "ag.evidence_export_idempotency_key_required"
+    )
+    assert invalid_payload.status_code == 422
+    assert invalid_payload.json()["error_code"] == (
+        "ag.operator_review_note_export_status_unsupported"
+    )
+    assert invalid_filter.status_code == 422
+    assert invalid_filter.json()["error_code"] == (
+        "ag.operator_review_note_export_status_unsupported"
+    )
+
+
+def test_operator_evidence_export_routes_report_missing_and_store_failures() -> None:
+    class FailingExportStore:
+        def get(self, export_id: str) -> None:
+            raise OperatorReviewNoteError(
+                status_code=503,
+                error_code="ag.evidence_export_store_unavailable",
+                detail="store down",
+            )
+
+        def list_exports(self, **kwargs: Any) -> list[dict[str, Any]]:
+            return []
+
+        def save(self, record: dict[str, Any]) -> dict[str, Any]:
+            return record
+
+    client, _, _ = build_export_route_client()
+    failing_client, _, _ = build_export_route_client(export_store=FailingExportStore())
+
+    missing = client.get(
+        "/admin/v1/operator-review/evidence-exports/missing",
+        headers=service_auth_headers(),
+    )
+    store_failure = failing_client.post(
+        "/admin/v1/operator-review/evidence-exports",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-export-fail"},
+        json=sample_export_payload(),
+    )
+
+    assert missing.status_code == 404
+    assert missing.json()["error_code"] == "ag.evidence_export_not_found"
+    assert store_failure.status_code == 503
+    assert store_failure.json()["error_code"] == "ag.evidence_export_store_unavailable"
 
 
 def test_sqlalchemy_export_store_roundtrips_and_updates_sqlite() -> None:

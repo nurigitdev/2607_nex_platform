@@ -823,6 +823,10 @@ Unified operations:
 - Slice 0627 adds the redacted evidence export service facade. Export mutations
   require `Idempotency-Key`, return `NEW` or `REPLAYED`, reject conflicting key
   reuse, and ignore caller-supplied `export_id` so AG remains the id authority.
+- Slice 0628 wires the protected export routes at
+  `/admin/v1/operator-review/evidence-exports`. The routes share the S63
+  service-token/admin-user authorization boundary, emit one redacted operational
+  event only for `NEW` exports, and keep replay responses side-effect free.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

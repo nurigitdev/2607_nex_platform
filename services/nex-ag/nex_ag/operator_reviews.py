@@ -32,6 +32,7 @@ OPERATOR_REVIEW_NOTE_SCHEMA_VERSION = "ag_operator_review_note.v1"
 OPERATOR_REVIEW_NOTE_LIST_SCHEMA_VERSION = "ag_operator_review_note_list.v1"
 OPERATOR_REVIEW_NOTE_MUTATION_SCHEMA_VERSION = "ag_operator_review_note_mutation.v1"
 OPERATOR_REVIEW_NOTE_RECORDED_EVENT_TYPE = "ag.operator_review_note.recorded"
+OPERATOR_EVIDENCE_EXPORT_RECORDED_EVENT_TYPE = "ag.evidence_export.recorded"
 OPERATOR_EVIDENCE_EXPORT_SCHEMA_VERSION = "ag_redacted_evidence_export.v1"
 OPERATOR_EVIDENCE_EXPORT_LIST_SCHEMA_VERSION = (
     "ag_redacted_evidence_export_list.v1"
@@ -647,9 +648,13 @@ def register_operator_review_note_routes(
     app: FastAPI,
     *,
     store: Any | None = None,
+    export_store: Any | None = None,
     audit_event_store: OperationalEventStore | None = None,
 ) -> None:
     service = OperatorReviewNoteService(store or default_operator_review_note_store(app))
+    export_service = OperatorEvidenceExportService(
+        export_store or default_operator_evidence_export_store(app)
+    )
     audit_emitter = OperationalEventEmitter(
         service_id="nex-ag",
         store=audit_event_store or DEFAULT_OPERATOR_REVIEW_NOTE_AUDIT_EVENT_STORE,
@@ -731,6 +736,85 @@ def register_operator_review_note_routes(
         except OperatorReviewNoteError as exc:
             return _operator_review_note_problem_response(request, exc)
 
+    @app.post("/admin/v1/operator-review/evidence-exports", response_model=None)
+    def create_operator_evidence_export(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        payload: dict[str, Any] = Body(...),
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            response = export_service.create_export(
+                payload,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                idempotency_key=idempotency_key,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_note_problem_response(request, exc)
+
+        if response["idempotency_status"] == "NEW":
+            emit_operator_evidence_export_event(audit_emitter, response["export"])
+        return JSONResponse(
+            status_code=201 if response["idempotency_status"] == "NEW" else 200,
+            content=response,
+        )
+
+    @app.get("/admin/v1/operator-review/evidence-exports", response_model=None)
+    def list_operator_evidence_exports(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        export_trace_id: str | None = Query(default=None, alias="trace_id"),
+        export_status: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        limit: int | None = None,
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return export_service.list_exports(
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                target_service=target_service,
+                target_kind=target_kind,
+                target_id=target_id,
+                export_trace_id=export_trace_id,
+                export_status=export_status,
+                operator_type=operator_type,
+                operator_id=operator_id,
+                limit=limit,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_note_problem_response(request, exc)
+
+    @app.get(
+        "/admin/v1/operator-review/evidence-exports/{export_id}",
+        response_model=None,
+    )
+    def get_operator_evidence_export(
+        export_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return export_service.get_export(export_id)
+        except OperatorReviewNoteError as exc:
+            return _operator_review_note_problem_response(request, exc)
+
 
 def emit_operator_review_note_event(
     audit_emitter: OperationalEventEmitter,
@@ -759,6 +843,38 @@ def emit_operator_review_note_event(
             "operator_id": operator.get("operator_id"),
             "reason_count": len(record.get("reason_codes") or []),
             "operator_note_hash": record.get("operator_note_hash"),
+        },
+    )
+
+
+def emit_operator_evidence_export_event(
+    audit_emitter: OperationalEventEmitter,
+    record: dict[str, Any],
+) -> OperationalEventEmitResult:
+    operator = record.get("operator_ref")
+    operator_ref_value = operator if isinstance(operator, dict) else {}
+    return audit_emitter.safe_emit(
+        event_type=OPERATOR_EVIDENCE_EXPORT_RECORDED_EVENT_TYPE,
+        severity="INFO",
+        message="AG redacted evidence export recorded.",
+        trace_id=record.get("trace_id"),
+        request_id=record.get("request_id"),
+        subject_ref={
+            "type": "operator_evidence_export",
+            "id": str(record["export_id"]),
+        },
+        details={
+            "export_id": record.get("export_id"),
+            "target_service": record.get("target_service"),
+            "target_kind": record.get("target_kind"),
+            "target_id": record.get("target_id"),
+            "export_status": record.get("export_status"),
+            "export_format": record.get("export_format"),
+            "redaction_profile": record.get("redaction_profile"),
+            "evidence_hash": record.get("evidence_hash"),
+            "evidence_item_count": record.get("evidence_item_count"),
+            "operator_type": operator_ref_value.get("operator_type"),
+            "operator_id": operator_ref_value.get("operator_id"),
         },
     )
 
