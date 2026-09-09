@@ -1,0 +1,29 @@
+{
+  "operator_note_schema_version": "ag_operator_review_note.v1",
+  "operator_note_id": "ag-op-note-001",
+  "target_service": "nex-ae-api",
+  "target_kind": "artifact_retention.scheduler_daemon",
+  "target_id": "daemon-run-001",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "operator_ref": {
+    "operator_type": "user",
+    "operator_id": "employee-0001",
+    "tenant_id": "local-tenant"
+  },
+  "note_status": "ACTIVE",
+  "note_type": "OBSERVATION",
+  "severity": "MEDIUM",
+  "operator_note_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "operator_note_preview": "AE scheduler daemon worker result needs operator follow-up.",
+  "reason_codes": [
+    "worker_result_attention",
+    "operator_follow_up"
+  ],
+  "metadata": {
+    "raw_operator_note_stored": false,
+    "operator_note_storage": "hash_and_short_preview_only"
+  },
+  "created_at": "2026-09-10T00:00:00Z",
+  "updated_at": "2026-09-10T00:00:00Z"
+}

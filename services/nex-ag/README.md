@@ -794,6 +794,10 @@ Unified operations:
   should use short AG-owned tables such as `ag_op_notes` and `ag_ev_exports`,
   split target refs into indexable columns, store free text as hashes plus short
   previews, and keep AE/CX/MO/OA source records read-only through service APIs.
+- Slice 0622 adds the AG-owned operator review note persistence foundation.
+  Notes are stored in `ag_op_notes` with indexable target, trace, operator, and
+  status columns; free-text note bodies are reduced to SHA-256 hashes plus
+  bounded previews, and raw note text remains outside the database contract.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
