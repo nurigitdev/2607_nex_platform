@@ -7,15 +7,31 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
-from fastapi import FastAPI
+from fastapi import Body, FastAPI, Header, Query, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
+
+from nex_runtime import (
+    DEFAULT_SERVICE_SCOPE,
+    DEFAULT_USER_SCOPE,
+    InMemoryOperationalEventStore,
+    OperationalEventEmitter,
+    OperationalEventEmitResult,
+    OperationalEventStore,
+    problem_response,
+    request_id_from_headers,
+    trace_id_from_headers,
+    validate_authorization_header,
+    validate_user_authorization_header,
+)
 
 
 OPERATOR_REVIEW_NOTE_SCHEMA_VERSION = "ag_operator_review_note.v1"
 OPERATOR_REVIEW_NOTE_LIST_SCHEMA_VERSION = "ag_operator_review_note_list.v1"
 OPERATOR_REVIEW_NOTE_MUTATION_SCHEMA_VERSION = "ag_operator_review_note_mutation.v1"
+OPERATOR_REVIEW_NOTE_RECORDED_EVENT_TYPE = "ag.operator_review_note.recorded"
 AG_OPERATOR_NOTE_TABLE = "ag_op_notes"
 MAX_OPERATOR_NOTE_PREVIEW_LENGTH = 240
 DEFAULT_NOTE_LIMIT = 50
@@ -210,6 +226,7 @@ class OperatorReviewNoteError(Exception):
 
 
 DEFAULT_OPERATOR_REVIEW_NOTE_STORE = OperatorReviewNoteStore()
+DEFAULT_OPERATOR_REVIEW_NOTE_AUDIT_EVENT_STORE = InMemoryOperationalEventStore()
 
 
 class OperatorReviewNoteService:
@@ -332,6 +349,126 @@ def default_operator_review_note_store(app: FastAPI) -> Any:
     if session_factory is not None:
         return SqlAlchemyOperatorReviewNoteStore(session_factory)
     return DEFAULT_OPERATOR_REVIEW_NOTE_STORE
+
+
+def register_operator_review_note_routes(
+    app: FastAPI,
+    *,
+    store: Any | None = None,
+    audit_event_store: OperationalEventStore | None = None,
+) -> None:
+    service = OperatorReviewNoteService(store or default_operator_review_note_store(app))
+    audit_emitter = OperationalEventEmitter(
+        service_id="nex-ag",
+        store=audit_event_store or DEFAULT_OPERATOR_REVIEW_NOTE_AUDIT_EVENT_STORE,
+    )
+
+    @app.post("/admin/v1/operator-review/notes", response_model=None)
+    def create_operator_review_note(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        payload: dict[str, Any] = Body(...),
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            response = service.create_note(
+                payload,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                idempotency_key=idempotency_key,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_note_problem_response(request, exc)
+
+        if response["idempotency_status"] == "NEW":
+            emit_operator_review_note_event(audit_emitter, response["operator_note"])
+        return JSONResponse(
+            status_code=201 if response["idempotency_status"] == "NEW" else 200,
+            content=response,
+        )
+
+    @app.get("/admin/v1/operator-review/notes", response_model=None)
+    def list_operator_review_notes(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        note_trace_id: str | None = Query(default=None, alias="trace_id"),
+        note_status: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        limit: int | None = None,
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.list_notes(
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                target_service=target_service,
+                target_kind=target_kind,
+                target_id=target_id,
+                note_trace_id=note_trace_id,
+                note_status=note_status,
+                operator_type=operator_type,
+                operator_id=operator_id,
+                limit=limit,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_note_problem_response(request, exc)
+
+    @app.get("/admin/v1/operator-review/notes/{operator_note_id}", response_model=None)
+    def get_operator_review_note(
+        operator_note_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.get_note(operator_note_id)
+        except OperatorReviewNoteError as exc:
+            return _operator_review_note_problem_response(request, exc)
+
+
+def emit_operator_review_note_event(
+    audit_emitter: OperationalEventEmitter,
+    record: dict[str, Any],
+) -> OperationalEventEmitResult:
+    operator = record.get("operator_ref") if isinstance(record.get("operator_ref"), dict) else {}
+    return audit_emitter.safe_emit(
+        event_type=OPERATOR_REVIEW_NOTE_RECORDED_EVENT_TYPE,
+        severity="INFO",
+        message="AG operator review note recorded.",
+        trace_id=record.get("trace_id"),
+        request_id=record.get("request_id"),
+        subject_ref={
+            "type": "operator_review_note",
+            "id": str(record["operator_note_id"]),
+        },
+        details={
+            "operator_note_id": record.get("operator_note_id"),
+            "target_service": record.get("target_service"),
+            "target_kind": record.get("target_kind"),
+            "target_id": record.get("target_id"),
+            "note_status": record.get("note_status"),
+            "note_type": record.get("note_type"),
+            "severity": record.get("severity"),
+            "operator_type": operator.get("operator_type"),
+            "operator_id": operator.get("operator_id"),
+            "reason_count": len(record.get("reason_codes") or []),
+            "operator_note_hash": record.get("operator_note_hash"),
+        },
+    )
 
 
 def build_operator_review_note_record(
@@ -922,6 +1059,60 @@ def _store_unavailable_error() -> OperatorReviewNoteError:
         status_code=503,
         error_code="ag.operator_review_note_store_unavailable",
         detail="Operator review note store is unavailable.",
+    )
+
+
+def _authorize_ag_operator_review_request(
+    request: Request,
+    authorization: str | None,
+) -> JSONResponse | None:
+    service_result = validate_authorization_header(
+        authorization,
+        expected_audience="nex-ag",
+        required_scopes=[DEFAULT_SERVICE_SCOPE],
+    )
+    if service_result.ok:
+        return None
+
+    user_result = validate_user_authorization_header(
+        authorization,
+        expected_audience="nex-ag",
+        required_scopes=[DEFAULT_USER_SCOPE],
+    )
+    if user_result.ok:
+        roles = set(user_result.claims.roles if user_result.claims else ())
+        if "admin" in roles:
+            return None
+        return problem_response(
+            request,
+            status_code=403,
+            error_code="AG_OPERATOR_REVIEW_ADMIN_ROLE_REQUIRED",
+            title="Authorization failed",
+            detail="AG operator review note routes require an admin user role.",
+            type_uri="https://nex-platform.local/problems/authorization-failed",
+        )
+
+    return problem_response(
+        request,
+        status_code=401,
+        error_code=service_result.error_code or "SERVICE_CLAIM_INVALID",
+        title="Authentication failed",
+        detail=service_result.detail or "AG requires a valid service claim.",
+        type_uri="https://nex-platform.local/problems/authentication-failed",
+    )
+
+
+def _operator_review_note_problem_response(
+    request: Request,
+    exc: OperatorReviewNoteError,
+) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="Operator review note request rejected",
+        detail=exc.detail,
+        type_uri="https://nex-platform.local/problems/operator-review-note-rejected",
     )
 
 
