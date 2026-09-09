@@ -717,6 +717,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0611`](slices/0611_ae_worker_result_persistence_boundary_audit.md) | `S62-001` AE worker result persistence boundary audit. |
 | [`Slice 0612`](slices/0612_ae_worker_result_persistence_schema_store.md) | `S62-002` AE worker result persistence schema/store foundation. |
 | [`Slice 0613`](slices/0613_ae_worker_result_route_persistence_wiring.md) | `S62-003` AE worker result explicit route persistence wiring. |
+| [`Slice 0614`](slices/0614_ae_worker_result_postgresql_smoke.md) | `S62-004` AE worker result PostgreSQL smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

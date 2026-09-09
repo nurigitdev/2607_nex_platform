@@ -1031,3 +1031,8 @@ Artifact library management:
   worker route. The default route remains non-persistent; only
   `persist_worker_result=true` writes to `ae_op_exec_worker_results`, and the
   source execution state must already exist in the AE execution store.
+- Slice 0614 proves that explicit worker-result persistence path against the
+  real AE test DB. The protected smoke runs migrations, verifies PostgreSQL
+  table/index/JSONB evidence for `ae_op_exec_worker_results`, writes one
+  execution state and one worker result through AE routes, reads the result back
+  through the SQLAlchemy store, and cleans up the targeted rows.

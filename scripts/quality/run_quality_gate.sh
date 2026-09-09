@@ -187,6 +187,7 @@ node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
 "$PYTHON_BIN" scripts/smoke/run_s60_ae_operator_control_execution_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_operator_control_execution_worker_boundary_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_operator_control_execution_worker_result_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_ag_artifact_retention_scheduler_daemon_operator_control_execution_worker_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s61_ae_operator_control_execution_worker_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_operator_control_execution_worker_result_persistence_boundary_audit.py --summary
