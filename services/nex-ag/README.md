@@ -798,6 +798,10 @@ Unified operations:
   Notes are stored in `ag_op_notes` with indexable target, trace, operator, and
   status columns; free-text note bodies are reduced to SHA-256 hashes plus
   bounded previews, and raw note text remains outside the database contract.
+- Slice 0623 adds the operator review note service facade. Mutations require an
+  idempotency key, derive stable AG-owned note ids from a hash of that key,
+  return `NEW` or `REPLAYED` outcomes, reject conflicting reuse, and never
+  persist the raw idempotency key.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

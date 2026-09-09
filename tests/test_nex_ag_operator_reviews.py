@@ -17,14 +17,18 @@ from nex_ag.operator_reviews import (
     ALLOWED_NOTE_STATUSES,
     ALLOWED_NOTE_TYPES,
     OperatorReviewNoteError,
+    OperatorReviewNoteService,
     OperatorReviewNoteStore,
     SqlAlchemyOperatorReviewNoteStore,
     build_operator_review_note_list_response,
+    build_operator_review_note_mutation_response,
     build_operator_review_note_record,
     default_operator_review_note_store,
     find_sensitive_operator_review_note_keys,
     normalize_limit,
+    operator_note_idempotency_signature,
     operator_note_preview,
+    required_idempotency_key,
     sha256_text,
     _datetime_value,
     _json_param_expr,
@@ -205,6 +209,40 @@ def test_optional_defaults_and_nullable_trace_are_supported() -> None:
     assert record["reason_codes"] == []
 
 
+def test_record_builder_uses_idempotency_key_without_storing_it() -> None:
+    record = build_operator_review_note_record(
+        sample_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0623-create",
+        created_at="2026-09-10T00:00:00Z",
+    )
+    replay = build_operator_review_note_record(
+        sample_payload(operator_note="AE scheduler daemon worker result changed."),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0623-create",
+        created_at="2026-09-10T00:01:00Z",
+    )
+
+    assert record["operator_note_id"] == replay["operator_note_id"]
+    assert record["metadata"]["idempotency_key_hash"] == sha256_text(
+        "idem-0623-create"
+    )
+    assert record["metadata"]["idempotency_key_stored"] is False
+    assert "idem-0623-create" not in json.dumps(record)
+
+
+def test_idempotency_helpers_normalize_key_and_signature() -> None:
+    record = build_record(sample_payload(operator_note_id="note-signature"))
+    signature = operator_note_idempotency_signature(record)
+
+    assert required_idempotency_key("  idem-0623  ") == "idem-0623"
+    assert signature["target_service"] == "nex-ae-api"
+    assert signature["operator_id"] == "employee-0001"
+    assert signature["operator_note_hash"] == record["operator_note_hash"]
+
+
 def test_operator_note_preview_is_trimmed_and_bounded() -> None:
     note = f"  {'a' * 300}  "
 
@@ -301,6 +339,144 @@ def test_operator_note_list_response_handles_empty_records() -> None:
         "by_severity": {},
         "latest_updated_at": None,
     }
+
+
+def test_operator_note_mutation_response_summarizes_record() -> None:
+    record = build_record(sample_payload(operator_note_id="note-mutation"))
+
+    response = build_operator_review_note_mutation_response(
+        record,
+        idempotency_status="NEW",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert response["operator_note_mutation_schema_version"] == (
+        "ag_operator_review_note_mutation.v1"
+    )
+    assert response["idempotency_status"] == "NEW"
+    assert response["operator_note"] == record
+    assert response["summary"] == {
+        "operator_note_id": "note-mutation",
+        "target_service": "nex-ae-api",
+        "target_kind": "artifact_retention.scheduler_daemon",
+        "target_id": "daemon-run-001",
+        "note_status": "ACTIVE",
+        "severity": "MEDIUM",
+    }
+
+
+def test_operator_review_note_service_creates_replays_and_conflicts() -> None:
+    store = OperatorReviewNoteStore()
+    service = OperatorReviewNoteService(store)
+
+    created = service.create_note(
+        sample_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0623-create",
+    )
+    replayed = service.create_note(
+        sample_payload(),
+        request_id="request-replay",
+        trace_id=None,
+        idempotency_key="idem-0623-create",
+    )
+
+    assert created["idempotency_status"] == "NEW"
+    assert replayed["idempotency_status"] == "REPLAYED"
+    assert replayed["operator_note"] == created["operator_note"]
+    assert replayed["request_id"] == "request-replay"
+    assert len(store.records) == 1
+    with pytest.raises(OperatorReviewNoteError) as exc:
+        service.create_note(
+            sample_payload(operator_note="Different note with same idempotency key."),
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="idem-0623-create",
+        )
+    assert exc.value.status_code == 409
+    assert exc.value.error_code == "ag.operator_review_note_idempotency_conflict"
+
+
+def test_operator_review_note_service_lists_and_gets_records() -> None:
+    service = OperatorReviewNoteService(OperatorReviewNoteStore())
+    first = service.create_note(
+        sample_payload(severity="HIGH"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0623-first",
+    )["operator_note"]
+    second = service.create_note(
+        sample_payload(
+            target_ref={
+                "target_service": "nex-cx",
+                "target_kind": "processing_run",
+                "target_id": "cx-run-001",
+            },
+            note_status="RESOLVED",
+            severity="LOW",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0623-second",
+    )["operator_note"]
+
+    listed = service.list_notes(
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        target_service="nex-cx",
+        note_status="RESOLVED",
+        operator_type="user",
+        operator_id="employee-0001",
+    )
+
+    assert service.get_note(first["operator_note_id"]) == first
+    assert listed["items"] == [second]
+    assert listed["summary"]["by_status"] == {"RESOLVED": 1}
+
+
+def test_operator_review_note_service_rejects_invalid_controls() -> None:
+    service = OperatorReviewNoteService(OperatorReviewNoteStore())
+
+    with pytest.raises(OperatorReviewNoteError) as missing_idem:
+        service.create_note(
+            sample_payload(),
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key=None,
+        )
+    with pytest.raises(OperatorReviewNoteError) as invalid_status:
+        service.list_notes(
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            note_status="UNKNOWN",
+        )
+    with pytest.raises(OperatorReviewNoteError) as invalid_target:
+        service.list_notes(
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            target_service="unknown",
+        )
+    with pytest.raises(OperatorReviewNoteError) as missing_record:
+        service.get_note("missing")
+    with pytest.raises(OperatorReviewNoteError) as blank_record_id:
+        service.get_note(" ")
+
+    assert missing_idem.value.error_code == (
+        "ag.operator_review_note_idempotency_key_required"
+    )
+    assert invalid_status.value.error_code == (
+        "ag.operator_review_note_note_status_unsupported"
+    )
+    assert invalid_target.value.error_code == (
+        "ag.operator_review_note_target_service_unsupported"
+    )
+    assert missing_record.value.status_code == 404
+    assert missing_record.value.error_code == "ag.operator_review_note_not_found"
+    assert blank_record_id.value.error_code == (
+        "ag.operator_review_note_operator_note_id_required"
+    )
 
 
 def test_sqlalchemy_operator_note_store_round_trips_sqlite() -> None:

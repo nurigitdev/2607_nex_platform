@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 OPERATOR_REVIEW_NOTE_SCHEMA_VERSION = "ag_operator_review_note.v1"
 OPERATOR_REVIEW_NOTE_LIST_SCHEMA_VERSION = "ag_operator_review_note_list.v1"
+OPERATOR_REVIEW_NOTE_MUTATION_SCHEMA_VERSION = "ag_operator_review_note_mutation.v1"
 AG_OPERATOR_NOTE_TABLE = "ag_op_notes"
 MAX_OPERATOR_NOTE_PREVIEW_LENGTH = 240
 DEFAULT_NOTE_LIMIT = 50
@@ -37,6 +38,7 @@ ALLOWED_NOTE_TYPES = (
     "RESOLUTION",
 )
 ALLOWED_NOTE_SEVERITIES = ("INFO", "LOW", "MEDIUM", "HIGH", "URGENT")
+ALLOWED_IDEMPOTENCY_STATUSES = ("NEW", "REPLAYED", "CONFLICT")
 SENSITIVE_KEY_PARTS = (
     "api_key",
     "authorization",
@@ -210,6 +212,120 @@ class OperatorReviewNoteError(Exception):
 DEFAULT_OPERATOR_REVIEW_NOTE_STORE = OperatorReviewNoteStore()
 
 
+class OperatorReviewNoteService:
+    def __init__(self, store: Any) -> None:
+        self._store = store
+
+    def create_note(
+        self,
+        payload: dict[str, Any],
+        *,
+        request_id: str,
+        trace_id: str | None,
+        idempotency_key: str | None,
+    ) -> dict[str, Any]:
+        normalized_idempotency_key = required_idempotency_key(idempotency_key)
+        canonical_payload = dict(payload)
+        canonical_payload.pop("operator_note_id", None)
+        record = build_operator_review_note_record(
+            canonical_payload,
+            request_id=request_id,
+            trace_id=trace_id,
+            idempotency_key=normalized_idempotency_key,
+        )
+        existing = self._store.get(record["operator_note_id"])
+        if existing is not None:
+            if operator_note_idempotency_signature(existing) != (
+                operator_note_idempotency_signature(record)
+            ):
+                raise OperatorReviewNoteError(
+                    status_code=409,
+                    error_code="ag.operator_review_note_idempotency_conflict",
+                    detail=(
+                        "Idempotency key already maps to a different "
+                        "operator review note request."
+                    ),
+                )
+            return build_operator_review_note_mutation_response(
+                existing,
+                idempotency_status="REPLAYED",
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        saved = self._store.save(record)
+        return build_operator_review_note_mutation_response(
+            saved,
+            idempotency_status="NEW",
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+
+    def list_notes(
+        self,
+        *,
+        request_id: str,
+        trace_id: str | None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        note_trace_id: str | None = None,
+        note_status: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        normalized_target_service = optional_choice(
+            target_service,
+            key="target_service",
+            choices=ALLOWED_TARGET_SERVICES,
+            default="",
+        )
+        normalized_note_status = optional_choice(
+            note_status,
+            key="note_status",
+            choices=ALLOWED_NOTE_STATUSES,
+            default="",
+        )
+        normalized_operator_type = optional_choice(
+            operator_type,
+            key="operator_type",
+            choices=ALLOWED_OPERATOR_TYPES,
+            default="",
+        )
+        records = self._store.list_notes(
+            target_service=normalized_target_service or None,
+            target_kind=optional_text(target_kind),
+            target_id=optional_text(target_id),
+            trace_id=optional_text(note_trace_id),
+            note_status=normalized_note_status or None,
+            operator_type=normalized_operator_type or None,
+            operator_id=optional_text(operator_id),
+            limit=limit,
+        )
+        return build_operator_review_note_list_response(
+            records,
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+
+    def get_note(
+        self,
+        operator_note_id: str,
+    ) -> dict[str, Any]:
+        note_id = required_text(
+            {"operator_note_id": operator_note_id},
+            "operator_note_id",
+        )
+        record = self._store.get(note_id)
+        if record is None:
+            raise OperatorReviewNoteError(
+                status_code=404,
+                error_code="ag.operator_review_note_not_found",
+                detail=f"Operator review note was not found: {note_id}",
+            )
+        return record
+
+
 def default_operator_review_note_store(app: FastAPI) -> Any:
     persistence = getattr(app.state, "nex_persistence", None)
     session_factory = getattr(persistence, "api_session_factory", None)
@@ -223,6 +339,7 @@ def build_operator_review_note_record(
     *,
     request_id: str,
     trace_id: str | None,
+    idempotency_key: str | None = None,
     created_at: str | None = None,
 ) -> dict[str, Any]:
     assert_operator_review_note_payload_redaction_safe(payload)
@@ -250,14 +367,18 @@ def build_operator_review_note_record(
     )
     reason_codes = reason_code_list(payload.get("reason_codes"))
     now = created_at or _utc_now()
+    normalized_idempotency_key = optional_text(idempotency_key)
     operator_note_id = optional_text(payload.get("operator_note_id")) or str(
         uuid5(
             NAMESPACE_URL,
-            (
-                "ag-operator-review-note:"
-                f"{target['target_service']}:{target['target_kind']}:{target['target_id']}:"
-                f"{operator['operator_type']}:{operator['operator_id']}:"
-                f"{note_type}:{severity}:{note_hash}:{request_id}"
+            _operator_note_identity_seed(
+                target=target,
+                operator=operator,
+                note_type=note_type,
+                severity=severity,
+                note_hash=note_hash,
+                request_id=request_id,
+                idempotency_key=normalized_idempotency_key,
             ),
         )
     )
@@ -276,7 +397,14 @@ def build_operator_review_note_record(
         "operator_note_hash": note_hash,
         "operator_note_preview": operator_note_preview(note),
         "reason_codes": reason_codes,
-        "metadata": operator_note_metadata(payload.get("metadata")),
+        "metadata": operator_note_metadata(
+            payload.get("metadata"),
+            idempotency_key_hash=(
+                sha256_text(normalized_idempotency_key)
+                if normalized_idempotency_key is not None
+                else None
+            ),
+        ),
         "created_at": now,
         "updated_at": now,
     }
@@ -317,6 +445,56 @@ def build_operator_review_note_list_response(
     }
 
 
+def build_operator_review_note_mutation_response(
+    record: dict[str, Any],
+    *,
+    idempotency_status: str,
+    request_id: str,
+    trace_id: str | None,
+) -> dict[str, Any]:
+    normalized_status = optional_choice(
+        idempotency_status,
+        key="idempotency_status",
+        choices=ALLOWED_IDEMPOTENCY_STATUSES,
+        default="NEW",
+    )
+    return {
+        "operator_note_mutation_schema_version": (
+            OPERATOR_REVIEW_NOTE_MUTATION_SCHEMA_VERSION
+        ),
+        "idempotency_status": normalized_status,
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "operator_note": record,
+        "summary": {
+            "operator_note_id": record["operator_note_id"],
+            "target_service": record["target_service"],
+            "target_kind": record["target_kind"],
+            "target_id": record["target_id"],
+            "note_status": record["note_status"],
+            "severity": record["severity"],
+        },
+    }
+
+
+def operator_note_idempotency_signature(record: dict[str, Any]) -> dict[str, Any]:
+    operator = record.get("operator_ref")
+    operator_ref_value = operator if isinstance(operator, dict) else {}
+    return {
+        "target_service": record.get("target_service"),
+        "target_kind": record.get("target_kind"),
+        "target_id": record.get("target_id"),
+        "operator_type": operator_ref_value.get("operator_type"),
+        "operator_id": operator_ref_value.get("operator_id"),
+        "note_status": record.get("note_status"),
+        "note_type": record.get("note_type"),
+        "severity": record.get("severity"),
+        "operator_note_hash": record.get("operator_note_hash"),
+        "reason_codes": list(record.get("reason_codes") or []),
+        "metadata": dict(record.get("metadata") or {}),
+    }
+
+
 def target_ref(value: Any) -> dict[str, str]:
     if not isinstance(value, dict):
         raise OperatorReviewNoteError(
@@ -353,7 +531,11 @@ def operator_ref(value: Any) -> dict[str, str | None]:
     }
 
 
-def operator_note_metadata(value: Any) -> dict[str, Any]:
+def operator_note_metadata(
+    value: Any,
+    *,
+    idempotency_key_hash: str | None = None,
+) -> dict[str, Any]:
     if value is None:
         metadata: dict[str, Any] = {}
     elif isinstance(value, dict):
@@ -370,6 +552,9 @@ def operator_note_metadata(value: Any) -> dict[str, Any]:
             "operator_note_storage": "hash_and_short_preview_only",
         }
     )
+    if idempotency_key_hash is not None:
+        metadata["idempotency_key_hash"] = idempotency_key_hash
+        metadata["idempotency_key_stored"] = False
     return json.loads(json.dumps(metadata))
 
 
@@ -406,6 +591,17 @@ def normalize_limit(value: int | None) -> int:
     if value is None:
         return DEFAULT_NOTE_LIMIT
     return min(max(int(value), 1), MAX_NOTE_LIMIT)
+
+
+def required_idempotency_key(value: Any) -> str:
+    normalized = optional_text(value)
+    if normalized is None:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.operator_review_note_idempotency_key_required",
+            detail="Idempotency-Key is required for operator review note mutations.",
+        )
+    return normalized
 
 
 def required_choice(
@@ -536,6 +732,31 @@ def _operator_note_filter_clause(
             clauses.append(f"{name} = :{name}")
             params[name] = value
     return " AND ".join(clauses), params
+
+
+def _operator_note_identity_seed(
+    *,
+    target: dict[str, str],
+    operator: dict[str, str | None],
+    note_type: str,
+    severity: str,
+    note_hash: str,
+    request_id: str,
+    idempotency_key: str | None,
+) -> str:
+    if idempotency_key is not None:
+        return (
+            "ag-operator-review-note:idempotent:"
+            f"{target['target_service']}:{target['target_kind']}:{target['target_id']}:"
+            f"{operator['operator_type']}:{operator['operator_id']}:"
+            f"{sha256_text(idempotency_key)}"
+        )
+    return (
+        "ag-operator-review-note:content:"
+        f"{target['target_service']}:{target['target_kind']}:{target['target_id']}:"
+        f"{operator['operator_type']}:{operator['operator_id']}:"
+        f"{note_type}:{severity}:{note_hash}:{request_id}"
+    )
 
 
 def _operator_note_upsert_sql(dialect_name: str) -> str:
