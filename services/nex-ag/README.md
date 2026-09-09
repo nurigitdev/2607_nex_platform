@@ -745,6 +745,10 @@ Unified operations:
   operator projection over AE-owned worker execution. The checkpoint keeps AG
   outside AE database writes, JobQueue enqueue, worker-result persistence, real
   process control, and physical deletion automation.
+- Slice 0611 starts S62 with worker result persistence still AE-owned. AG may
+  later expose read-only result projections over AE APIs, but must not persist
+  `ae_op_exec_worker_results`, enqueue AE work, store raw worker payloads, or
+  control AE processes directly.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

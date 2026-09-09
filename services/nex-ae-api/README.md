@@ -1016,3 +1016,9 @@ Artifact library management:
   mode, protected PostgreSQL smoke hooks, AG read-only projection, redaction
   posture, and the continued absence of worker-result persistence, JobQueue
   enqueue, real subprocess control, or physical deletion.
+- Slice 0611 starts S62 by freezing the AE-owned worker result persistence
+  boundary. Future persistence should use the short
+  `ae_op_exec_worker_results` table, require `persist_worker_result=true`, keep
+  default worker route behavior non-persistent, and store only safe summary
+  fields plus source hashes instead of full worker command, transition-plan, or
+  supervisor result payloads.
