@@ -1027,3 +1027,7 @@ Artifact library management:
   plus source hashes, keeps full worker command, transition-plan, and
   supervisor result payloads out of the table, and leaves route writes deferred
   until `persist_worker_result=true` wiring is added.
+- Slice 0613 wires explicit worker-result persistence into the protected AE
+  worker route. The default route remains non-persistent; only
+  `persist_worker_result=true` writes to `ae_op_exec_worker_results`, and the
+  source execution state must already exist in the AE execution store.

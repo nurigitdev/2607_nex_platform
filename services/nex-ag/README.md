@@ -753,6 +753,9 @@ Unified operations:
   AE side. AG must continue to consume future result evidence through AE APIs
   and must not write `ae_op_exec_worker_results` or store raw worker result
   payloads.
+- Slice 0613 makes AE worker-result persistence an explicit AE route concern.
+  AG may later project those persisted records through protected AE read APIs,
+  but it must not set itself up as the writer for `ae_op_exec_worker_results`.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

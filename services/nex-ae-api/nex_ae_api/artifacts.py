@@ -1863,6 +1863,24 @@ def build_default_artifact_retention_scheduler_daemon_operator_control_execution
     )
 
 
+def build_default_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_store(
+    app: Any,
+) -> Any | None:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is None:
+        return None
+    from nex_ae_api.artifact_retention_scheduler_daemon import (
+        SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionWorkerResultStore,
+    )
+
+    return (
+        SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionWorkerResultStore(
+            session_factory
+        )
+    )
+
+
 def build_default_artifact_retention_scheduled_job_queue(app: Any) -> JobQueue:
     persistence = getattr(app.state, "nex_persistence", None)
     job_queue = getattr(persistence, "job_queue", None)
@@ -1889,6 +1907,9 @@ def register_artifact_handoff_routes(
     retention_scheduler_daemon_supervisor_store: Any | None = None,
     retention_scheduler_daemon_supervised_process_store: Any | None = None,
     retention_scheduler_daemon_operator_control_execution_store: Any | None = None,
+    retention_scheduler_daemon_operator_control_execution_worker_result_store: (
+        Any | None
+    ) = None,
     retention_scheduler_daemon_supervisor_adapter: Any | None = None,
     job_queue: JobQueue | None = None,
     cx_client: CxArtifactSourceClient | None = None,
@@ -1916,6 +1937,12 @@ def register_artifact_handoff_routes(
     artifact_retention_daemon_operator_control_execution_store = (
         retention_scheduler_daemon_operator_control_execution_store
         or build_default_artifact_retention_scheduler_daemon_operator_control_execution_store(
+            app
+        )
+    )
+    artifact_retention_daemon_operator_control_execution_worker_result_store = (
+        retention_scheduler_daemon_operator_control_execution_worker_result_store
+        or build_default_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_store(
             app
         )
     )
@@ -3076,6 +3103,42 @@ def register_artifact_handoff_routes(
                 run_artifact_retention_scheduler_daemon_operator_control_execution_worker,
             )
 
+            persist_worker_result = _boolean_from_payload(
+                payload,
+                "persist_worker_result",
+                default=False,
+            )
+            if (
+                persist_worker_result
+                and artifact_retention_daemon_operator_control_execution_worker_result_store
+                is None
+            ):
+                raise ArtifactHandoffError(
+                    status_code=503,
+                    error_code=(
+                        "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_store_unavailable"
+                    ),
+                    detail=(
+                        "AE artifact retention scheduler daemon operator "
+                        "control execution worker result store is unavailable."
+                    ),
+                    retryable=True,
+                )
+            if (
+                persist_worker_result
+                and artifact_retention_daemon_operator_control_execution_store is None
+            ):
+                raise ArtifactHandoffError(
+                    status_code=503,
+                    error_code=(
+                        "ae.artifact_retention_scheduler_daemon_operator_control_execution_store_unavailable"
+                    ),
+                    detail=(
+                        "AE artifact retention scheduler daemon operator "
+                        "control execution store is unavailable."
+                    ),
+                    retryable=True,
+                )
             execution_state = payload.get("operator_control_execution_state")
             if execution_state is None:
                 state_id = optional_text(
@@ -3141,7 +3204,7 @@ def register_artifact_handoff_routes(
                     ),
                 )
             )
-            return run_artifact_retention_scheduler_daemon_operator_control_execution_worker(
+            worker_result = run_artifact_retention_scheduler_daemon_operator_control_execution_worker(
                 operator_control_execution_worker_command=worker_command,
                 supervisor_adapter=artifact_retention_daemon_supervisor_adapter,
                 observed_at=(
@@ -3150,6 +3213,29 @@ def register_artifact_handoff_routes(
                     or optional_text(payload.get("checked_at"))
                 ),
             )
+            if persist_worker_result:
+                artifact_retention_daemon_operator_control_execution_store.ensure_schema()
+                persisted_state = (
+                    artifact_retention_daemon_operator_control_execution_store.get_execution_state(
+                        worker_result["operator_control_execution_state_id"]
+                    )
+                )
+                if persisted_state is None:
+                    raise ArtifactHandoffError(
+                        status_code=404,
+                        error_code=(
+                            "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_not_found"
+                        ),
+                        detail=(
+                            "AE artifact retention scheduler daemon operator "
+                            "control execution state was not found: "
+                            f"{worker_result['operator_control_execution_state_id']}"
+                        ),
+                    )
+                artifact_retention_daemon_operator_control_execution_worker_result_store.record_worker_result(
+                    worker_result
+                )
+            return worker_result
         except ArtifactHandoffError as exc:
             return _artifact_problem_response(request, exc)
 

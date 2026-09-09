@@ -5,6 +5,7 @@ import json
 from nex_ae_api.artifact_retention_scheduler_daemon import (
     AE_ARTIFACT_RETENTION_SCHEDULER_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_SCHEMA_VERSION,
     SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionStore,
+    SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionWorkerResultStore,
 )
 from test_nex_ae_artifact_retention_scheduler_daemon_operator_control_routes import (
     CHECKED_AT,
@@ -163,6 +164,209 @@ def test_operator_control_execution_worker_route_reads_state_by_id_from_store() 
     ] == "SUCCEEDED"
     assert payload["metadata"]["database_write_performed"] is False
     assert_safe_worker_payload(payload)
+
+
+def test_operator_control_execution_worker_route_defaults_to_non_persistent_result() -> None:
+    session_factory = sqlite_artifact_session_factory()
+    execution_store = SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionStore(
+        session_factory
+    )
+    result_store = (
+        SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionWorkerResultStore(
+            session_factory
+        )
+    )
+    result_store.ensure_schema()
+    client, _, _, _ = build_client_with_artifact_store(
+        retention_scheduler_daemon_operator_control_execution_store=execution_store,
+        retention_scheduler_daemon_operator_control_execution_worker_result_store=(
+            result_store
+        ),
+    )
+    state = client.post(
+        EXECUTION_ROUTE,
+        json=ready_execution_payload(
+            idempotency_key="idem-route-0613-default-non-persistent",
+            persist_execution_state=True,
+        ),
+        headers=auth_headers(),
+    ).json()
+
+    response = client.post(
+        WORKER_ROUTE,
+        json={
+            "operator_control_execution_state_id": state[
+                "operator_control_execution_state_id"
+            ],
+            "checked_at": "2026-09-08T07:12:00Z",
+        },
+        headers=auth_headers(),
+    )
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["worker_status"] == "SUCCEEDED"
+    assert payload["metadata"]["database_write_performed"] is False
+    assert result_store.list_worker_results(limit=1) == []
+
+
+def test_operator_control_execution_worker_route_persists_result_when_requested() -> None:
+    session_factory = sqlite_artifact_session_factory()
+    execution_store = SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionStore(
+        session_factory
+    )
+    result_store = (
+        SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionWorkerResultStore(
+            session_factory
+        )
+    )
+    client, _, _, _ = build_client_with_artifact_store(
+        retention_scheduler_daemon_operator_control_execution_store=execution_store,
+        retention_scheduler_daemon_operator_control_execution_worker_result_store=(
+            result_store
+        ),
+    )
+    state = client.post(
+        EXECUTION_ROUTE,
+        json=ready_execution_payload(
+            idempotency_key="idem-route-0613-persistent",
+            persist_execution_state=True,
+        ),
+        headers=auth_headers(),
+    ).json()
+
+    response = client.post(
+        WORKER_ROUTE,
+        json={
+            "operator_control_execution_state_id": state[
+                "operator_control_execution_state_id"
+            ],
+            "checked_at": "2026-09-08T07:13:00Z",
+            "persist_worker_result": True,
+        },
+        headers=auth_headers(),
+    )
+    payload = response.json()
+    record = result_store.get_worker_result(
+        payload["operator_control_execution_worker_result_id"]
+    )
+
+    assert response.status_code == 200
+    assert payload["worker_status"] == "SUCCEEDED"
+    assert payload["metadata"]["database_write_performed"] is False
+    assert record is not None
+    assert record["operator_control_execution_worker_result_id"] == (
+        payload["operator_control_execution_worker_result_id"]
+    )
+    assert record["operator_control_execution_state_id"] == (
+        state["operator_control_execution_state_id"]
+    )
+    assert record["metadata"]["database_write_performed"] is True
+    assert record["guardrails"]["stores_full_worker_result_payload"] is False
+    assert result_store.list_worker_results(
+        worker_status="SUCCEEDED",
+        operator_control_execution_state_id=state[
+            "operator_control_execution_state_id"
+        ],
+    ) == [record]
+    assert_safe_worker_payload(payload)
+    assert_safe_worker_payload(record)
+
+
+def test_operator_control_execution_worker_route_rejects_persistence_edges() -> None:
+    execution_store = SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionStore(
+        sqlite_artifact_session_factory()
+    )
+    client_without_result_store, _, _, _ = build_client_with_artifact_store(
+        retention_scheduler_daemon_operator_control_execution_store=execution_store,
+    )
+    state = client_without_result_store.post(
+        EXECUTION_ROUTE,
+        json=ready_execution_payload(
+            idempotency_key="idem-route-0613-result-store-missing",
+            persist_execution_state=True,
+        ),
+        headers=auth_headers(),
+    ).json()
+    orphan_client, _, _, _ = build_client_with_artifact_store(
+        retention_scheduler_daemon_operator_control_execution_store=(
+            SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionStore(
+                sqlite_artifact_session_factory()
+            )
+        ),
+        retention_scheduler_daemon_operator_control_execution_worker_result_store=(
+            SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionWorkerResultStore(
+                sqlite_artifact_session_factory()
+            )
+        ),
+    )
+    orphan_state = client_without_result_store.post(
+        EXECUTION_ROUTE,
+        json=ready_execution_payload(
+            idempotency_key="idem-route-0613-orphan-state",
+            persist_execution_state=False,
+        ),
+        headers=auth_headers(),
+    ).json()
+    client_without_execution_store, _, _, _ = build_client_with_artifact_store(
+        retention_scheduler_daemon_operator_control_execution_worker_result_store=(
+            SqlAlchemyArtifactRetentionSchedulerDaemonOperatorControlExecutionWorkerResultStore(
+                sqlite_artifact_session_factory()
+            )
+        ),
+    )
+
+    invalid_flag = client_without_result_store.post(
+        WORKER_ROUTE,
+        json={
+            "operator_control_execution_state": state,
+            "persist_worker_result": "yes",
+        },
+        headers=auth_headers(),
+    )
+    store_unavailable = client_without_result_store.post(
+        WORKER_ROUTE,
+        json={
+            "operator_control_execution_state_id": state[
+                "operator_control_execution_state_id"
+            ],
+            "persist_worker_result": True,
+        },
+        headers=auth_headers(),
+    )
+    execution_store_unavailable = client_without_execution_store.post(
+        WORKER_ROUTE,
+        json={
+            "operator_control_execution_state": state,
+            "persist_worker_result": True,
+        },
+        headers=auth_headers(),
+    )
+    orphan_response = orphan_client.post(
+        WORKER_ROUTE,
+        json={
+            "operator_control_execution_state": orphan_state,
+            "persist_worker_result": True,
+        },
+        headers=auth_headers(),
+    )
+
+    assert invalid_flag.status_code == 422
+    assert invalid_flag.json()["error_code"] == (
+        "ae.artifact_retention_persist_worker_result_invalid"
+    )
+    assert store_unavailable.status_code == 503
+    assert store_unavailable.json()["error_code"] == (
+        "ae.artifact_retention_scheduler_daemon_operator_control_execution_worker_result_store_unavailable"
+    )
+    assert execution_store_unavailable.status_code == 503
+    assert execution_store_unavailable.json()["error_code"] == (
+        "ae.artifact_retention_scheduler_daemon_operator_control_execution_store_unavailable"
+    )
+    assert orphan_response.status_code == 404
+    assert orphan_response.json()["error_code"] == (
+        "ae.artifact_retention_scheduler_daemon_operator_control_execution_state_not_found"
+    )
 
 
 def test_operator_control_execution_worker_route_returns_blocked_for_contract_only() -> None:

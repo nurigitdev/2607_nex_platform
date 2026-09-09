@@ -343,6 +343,9 @@ def build_client_with_artifact_store(
     retention_scheduler_daemon_supervisor_store: Any | None = None,
     retention_scheduler_daemon_supervised_process_store: Any | None = None,
     retention_scheduler_daemon_operator_control_execution_store: Any | None = None,
+    retention_scheduler_daemon_operator_control_execution_worker_result_store: (
+        Any | None
+    ) = None,
     retention_scheduler_daemon_supervisor_adapter: Any | None = None,
     job_queue: Any | None = None,
     worker_heartbeat_store: InMemoryWorkerHeartbeatStore | None = None,
@@ -375,6 +378,9 @@ def build_client_with_artifact_store(
         ),
         retention_scheduler_daemon_operator_control_execution_store=(
             retention_scheduler_daemon_operator_control_execution_store
+        ),
+        retention_scheduler_daemon_operator_control_execution_worker_result_store=(
+            retention_scheduler_daemon_operator_control_execution_worker_result_store
         ),
         retention_scheduler_daemon_supervisor_adapter=(
             retention_scheduler_daemon_supervisor_adapter
