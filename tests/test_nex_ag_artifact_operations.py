@@ -22,6 +22,7 @@ from nex_ag.artifact_operations import (
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_DETAIL_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_COLLECTION_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_DETAIL_PROJECTION_SCHEMA_VERSION,
+    AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_DIAGNOSTICS_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_PROJECTION_SCHEMA_VERSION,
     AG_ARTIFACT_OPERATION_RETENTION_DAEMON_SUPERVISOR_COLLECTION_PROJECTION_SCHEMA_VERSION,
@@ -50,6 +51,7 @@ from nex_ag.artifact_operations import (
     build_artifact_operation_retention_daemon_operator_control_execution_detail_projection,
     build_artifact_operation_retention_daemon_operator_control_execution_worker_result_collection_projection,
     build_artifact_operation_retention_daemon_operator_control_execution_worker_result_detail_projection,
+    build_artifact_operation_retention_daemon_operator_control_execution_worker_result_diagnostics_projection,
     build_artifact_operation_retention_daemon_operator_control_execution_worker_projection,
     build_artifact_operation_retention_daemon_operator_control_projection,
     build_artifact_operation_retention_daemon_run_collection_projection,
@@ -64,6 +66,7 @@ from nex_ag.artifact_operations import (
     build_artifact_retention_daemon_lifecycle_projection,
     build_default_ae_artifact_operations_client,
     classify_artifact_retention_daemon_attention,
+    diagnose_artifact_retention_daemon_operator_control_execution_worker_results,
     register_artifact_operation_routes,
     summarize_artifact_operation_collection,
     summarize_artifact_operation_detail,
@@ -7281,6 +7284,113 @@ def test_artifact_retention_scheduler_daemon_operator_control_execution_worker_r
     assert_artifact_operation_projection_redacted(detail_projection)
 
 
+def test_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_diagnostics_rollup() -> (
+    None
+):
+    collection = (
+        artifact_retention_scheduler_daemon_operator_control_execution_worker_result_collection_payload()
+    )
+    ready_item = (
+        artifact_retention_scheduler_daemon_operator_control_execution_worker_result_record_payload()
+    )
+    missing_hash_item = {
+        **ready_item,
+        "operator_control_execution_worker_result_id": (
+            "operator-control-execution-worker-result-missing-hash-0619"
+        ),
+        "hashes": {},
+        "worker_result_hash": None,
+    }
+    unsafe_item = {
+        **ready_item,
+        "operator_control_execution_worker_result_id": (
+            "operator-control-execution-worker-result-unsafe-0619"
+        ),
+        "metadata": {
+            **ready_item["metadata"],
+            "safe_for_ag_projection": False,
+            "database_url_included": True,
+        },
+    }
+
+    projection = build_artifact_operation_retention_daemon_operator_control_execution_worker_result_diagnostics_projection(
+        collection=collection,
+        source_client=artifact_client(),
+        request_trace_id=TRACE_ID,
+    )
+    empty_diagnostics = (
+        diagnose_artifact_retention_daemon_operator_control_execution_worker_results(
+            []
+        )
+    )
+    ready_diagnostics = (
+        diagnose_artifact_retention_daemon_operator_control_execution_worker_results(
+            [ready_item]
+        )
+    )
+    attention_diagnostics = (
+        diagnose_artifact_retention_daemon_operator_control_execution_worker_results(
+            [missing_hash_item, unsafe_item],
+            raw_items=[
+                {
+                    **missing_hash_item,
+                    "operator_control_execution_worker_command": {
+                        "database_url": "DATABASE_URL_SHOULD_NOT_LEAK"
+                    },
+                },
+                unsafe_item,
+            ],
+        )
+    )
+
+    assert projection["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_DIAGNOSTICS_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["projection_status"] == "READY"
+    assert projection["operation_type"] == (
+        "ae_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_diagnostics"
+    )
+    assert projection["diagnostics"]["diagnostic_status"] == "ATTENTION"
+    assert projection["diagnostics"]["result_count"] == 2
+    assert projection["diagnostics"]["succeeded_count"] == 1
+    assert projection["diagnostics"]["failed_count"] == 1
+    assert projection["diagnostics"]["failed_supervisor_count"] == 1
+    assert projection["diagnostics"]["operator_attention_required"] is True
+    assert projection["items"][0]["hashes_present"] is True
+    assert projection["items"][0]["status_path_matches_terminal"] is True
+    assert projection["source_status"][
+        "worker_result_collection_loaded"
+    ] is True
+    assert projection["operator_guidance"]["read_model"] == (
+        "ae_op_exec_worker_results"
+    )
+    assert projection["operator_guidance"][
+        "ag_direct_database_write_allowed"
+    ] is False
+
+    assert empty_diagnostics["diagnostic_status"] == "NO_RESULTS"
+    assert empty_diagnostics["recommended_actions"] == [
+        "run_worker_result_smoke_or_wait_for_worker_results"
+    ]
+    assert ready_diagnostics["diagnostic_status"] == "READY"
+    assert ready_diagnostics["recommended_actions"] == [
+        "continue_monitoring_worker_result_read_model"
+    ]
+    assert attention_diagnostics["diagnostic_status"] == "ATTENTION"
+    assert attention_diagnostics["missing_hash_count"] == 1
+    assert attention_diagnostics["unsafe_metadata_count"] == 1
+    assert attention_diagnostics["raw_payload_marker_count"] == 1
+    assert "review_worker_result_hash_persistence" in attention_diagnostics[
+        "recommended_actions"
+    ]
+    assert "review_worker_result_redaction_guardrails" in attention_diagnostics[
+        "recommended_actions"
+    ]
+    assert "DATABASE_URL_SHOULD_NOT_LEAK" not in str(projection)
+    assert "/data/nex-platform" not in str(projection)
+    assert_artifact_operation_projection_redacted(projection)
+
+
 def test_in_memory_artifact_operations_client_returns_operator_control_execution_read_models() -> (
     None
 ):
@@ -8883,6 +8993,52 @@ def test_artifact_retention_scheduler_daemon_operator_control_execution_worker_r
     assert "/data/nex-platform" not in str(detail)
 
 
+def test_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_diagnostics_route_returns_rollup() -> (
+    None
+):
+    client = build_app(artifact_client())
+    route = (
+        "/admin/v1/operations/artifact-retention/"
+        "scheduler-daemon-operator-control-execution-worker-result-diagnostics"
+    )
+
+    response = client.get(
+        route,
+        params={
+            "service_id": "nex-ae-api",
+            "scheduler_id": "ae-artifact-retention-scheduler",
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["projection_schema_version"] == (
+        AG_ARTIFACT_OPERATION_RETENTION_DAEMON_OPERATOR_CONTROL_EXECUTION_WORKER_RESULT_DIAGNOSTICS_PROJECTION_SCHEMA_VERSION
+    )
+    assert payload["projection_status"] == "READY"
+    assert payload["count"] == 2
+    assert payload["diagnostics"]["diagnostic_status"] == "ATTENTION"
+    assert payload["diagnostics"]["succeeded_count"] == 1
+    assert payload["diagnostics"]["failed_count"] == 1
+    assert payload["diagnostics"]["missing_hash_count"] == 0
+    assert payload["diagnostics"]["unsafe_metadata_count"] == 0
+    assert payload["items"][0]["hashes_present"] is True
+    assert payload["items"][0]["metadata_only"] is True
+    assert payload["source_status"][
+        "worker_result_collection_loaded"
+    ] is True
+    assert payload["operator_guidance"]["read_model"] == (
+        "ae_op_exec_worker_results"
+    )
+    assert payload["operator_guidance"][
+        "ag_direct_database_write_allowed"
+    ] is False
+    assert payload["request_trace_id"] == TRACE_ID
+    assert "DATABASE_URL_SHOULD_NOT_LEAK" not in str(payload)
+    assert "/data/nex-platform" not in str(payload)
+
+
 def test_artifact_retention_scheduler_daemon_operator_control_execution_route_guardrails() -> (
     None
 ):
@@ -9118,6 +9274,80 @@ def test_artifact_retention_scheduler_daemon_operator_control_execution_worker_r
     assert missing_detail.status_code == 404
     assert missing_detail.json()["error_code"] == (
         "ag.ae_artifact_retention_daemon_operator_control_execution_worker_result_not_found"
+    )
+    assert source_failed.status_code == 503
+    assert source_failed.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_execution_worker_result_source_failed"
+    )
+
+
+def test_artifact_retention_scheduler_daemon_operator_control_execution_worker_result_diagnostics_route_guardrails() -> (
+    None
+):
+    client = build_app(artifact_client())
+    route = (
+        "/admin/v1/operations/artifact-retention/"
+        "scheduler-daemon-operator-control-execution-worker-result-diagnostics"
+    )
+
+    unauthorized = client.get(route)
+    invalid_service = client.get(
+        route,
+        params={"service_id": "nex-cx"},
+        headers=auth_headers(),
+    )
+    invalid_action = client.get(
+        route,
+        params={"action": "manual_tick_once"},
+        headers=auth_headers(),
+    )
+    invalid_worker_status = client.get(
+        route,
+        params={"worker_status": "EXECUTING"},
+        headers=auth_headers(),
+    )
+    invalid_limit = client.get(
+        route,
+        params={"limit": "0"},
+        headers=auth_headers(),
+    )
+
+    class BrokenOperatorControlExecutionWorkerResultDiagnosticsClient(
+        InMemoryAeArtifactOperationsClient
+    ):
+        def list_artifact_retention_scheduler_daemon_operator_control_execution_worker_results(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            raise AeArtifactOperationsError(
+                error_code=(
+                    "ag.ae_artifact_retention_daemon_operator_control_execution_worker_result_source_failed"
+                ),
+                detail="AE operator-control execution worker result source unavailable",
+                status_code=503,
+            )
+
+    source_failed = build_app(
+        BrokenOperatorControlExecutionWorkerResultDiagnosticsClient()
+    ).get(
+        route,
+        headers=auth_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert invalid_service.status_code == 400
+    assert invalid_action.status_code == 400
+    assert invalid_action.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_execution_worker_result_action_invalid"
+    )
+    assert invalid_worker_status.status_code == 400
+    assert invalid_worker_status.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_execution_worker_result_status_invalid"
+    )
+    assert invalid_limit.status_code == 400
+    assert invalid_limit.json()["error_code"] == (
+        "ag.ae_artifact_retention_daemon_operator_control_execution_worker_result_limit_invalid"
     )
     assert source_failed.status_code == 503
     assert source_failed.json()["error_code"] == (

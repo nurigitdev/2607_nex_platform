@@ -30,6 +30,7 @@ Current endpoints:
 - `GET /admin/v1/operations/artifacts`
 - `GET /admin/v1/operations/artifact-retention/automation`
 - `GET /admin/v1/operations/artifact-retention/batch-plan`
+- `GET /admin/v1/operations/artifact-retention/scheduler-daemon-operator-control-execution-worker-result-diagnostics`
 - `GET /admin/v1/operations/artifacts/{artifact_id}`
 - `GET /admin/v1/operations/artifacts/{artifact_id}/lifecycle`
 - `POST /admin/v1/operations/jobs/{service_id}/{job_id}/cancel`
@@ -778,6 +779,11 @@ Unified operations:
   worker result, verifies AE collection/detail reads, verifies AG
   collection/detail projections over the AE APIs, and cleans up targeted rows.
   AG still does not connect to or mutate `ae_op_exec_worker_results` directly.
+- Slice 0619 adds a protected AG diagnostics rollup route for AE-persisted
+  worker results. The rollup classifies `NO_RESULTS`, `READY`, and `ATTENTION`
+  states from AE collection read-model data and reports only safe counts,
+  hash-presence flags, metadata guardrail checks, status-path checks, and
+  recommended operator actions.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
