@@ -717,6 +717,10 @@ Unified operations:
 - Slice 0603 adds an AE-owned worker transition-plan contract. AG may later
   project its safe summaries, but it must continue to read through AE APIs and
   must not persist transition rows or infer alternate worker state paths.
+- Slice 0604 keeps worker execution AE-owned while adding a fake dry-run worker
+  result contract. AG may later read projected worker summaries only; it still
+  must not invoke worker adapters, supervisor adapters, subprocess control, or
+  AE persistence directly.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -989,3 +989,9 @@ Artifact library management:
   `ae_daemon_operator_control_execution_states` and
   `ae_daemon_operator_control_execution_transitions` tables when persistence is
   wired later.
+- Slice 0604 adds the first fake dry-run worker adapter. It consumes ready
+  worker commands, uses the existing fake supervisor adapter to collect
+  supervisor results, and produces a worker result without database writes,
+  JobQueue enqueue, subprocess start/stop, transition persistence, supervisor
+  result persistence, or physical deletion. Blocked worker commands do not
+  invoke the adapter.

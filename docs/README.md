@@ -707,6 +707,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0601`](slices/0601_ae_operator_control_execution_worker_boundary_audit.md) | `S61-001` AE operator-control execution worker boundary audit. |
 | [`Slice 0602`](slices/0602_ae_execution_worker_plan_command_contract.md) | `S61-002` AE execution worker plan/command contract. |
 | [`Slice 0603`](slices/0603_ae_execution_worker_state_transition_hardening.md) | `S61-003` AE execution worker state transition hardening. |
+| [`Slice 0604`](slices/0604_ae_fake_dry_run_execution_worker_adapter.md) | `S61-004` AE fake dry-run execution worker adapter. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
