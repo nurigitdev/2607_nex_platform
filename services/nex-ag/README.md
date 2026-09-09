@@ -773,6 +773,11 @@ Unified operations:
   so dashboard evidence includes worker-result visibility. AG still delegates
   all source reads to AE APIs and does not touch `ae_op_exec_worker_results`
   directly.
+- Slice 0618 proves the AG-to-AE worker-result read-model path against the real
+  AE test database. The smoke writes one AE execution state and one persisted
+  worker result, verifies AE collection/detail reads, verifies AG
+  collection/detail projections over the AE APIs, and cleans up targeted rows.
+  AG still does not connect to or mutate `ae_op_exec_worker_results` directly.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

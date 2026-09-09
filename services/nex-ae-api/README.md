@@ -1042,3 +1042,8 @@ Artifact library management:
   and the matching `{operator_control_execution_worker_result_id}` detail
   route. The read model uses `ae_op_exec_worker_results`, supports indexed
   filters, and returns only the safe summary record plus hashes.
+- Slice 0618 adds cross-service PostgreSQL smoke evidence that the AE
+  worker-result read model can be consumed by AG without AG touching the AE
+  database directly. The smoke writes through AE protected routes, reads AE
+  collection/detail APIs, checks AG protected projections, verifies PostgreSQL
+  table/index/JSONB evidence, and removes the scoped rows.
