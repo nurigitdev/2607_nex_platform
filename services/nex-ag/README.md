@@ -887,6 +887,12 @@ Unified operations:
   note/export records, drives workbench/rollup/dashboard/issue-candidate
   routes, and verifies only bounded note previews, hashes, safe target refs,
   and redaction flags leave the AG workbench boundary.
+- Slice 0640 closes S64 with
+  `scripts/smoke/run_s64_operator_review_workbench_closure.py`. The closure
+  checks required workbench files, Slice 0631-0640 docs, contract/OpenAPI
+  artifacts, default quality-gate hooks, the protected PostgreSQL smoke path,
+  the privacy regression pack, short source table names, and the AG-owned
+  workbench projection boundary.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
