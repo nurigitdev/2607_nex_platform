@@ -42,6 +42,9 @@ Current endpoints:
 - `GET /admin/v1/operator-review/notes`
 - `GET /admin/v1/operator-review/notes/{operator_note_id}`
 - `POST /admin/v1/operator-review/notes`
+- `GET /admin/v1/operator-review/evidence-exports`
+- `GET /admin/v1/operator-review/evidence-exports/{export_id}`
+- `POST /admin/v1/operator-review/evidence-exports`
 - `GET /admin/v1/policies/retrieval`
 - `GET /admin/v1/policies/retrieval/active`
 - `GET /admin/v1/policies/retrieval/{policy_id}`
@@ -837,6 +840,13 @@ Unified operations:
   checks required note/export files, short table names, protected PostgreSQL
   smoke hooks, redaction posture, Slice 0621-0630 docs, and the quality-gate
   hook for the S63 checkpoint.
+- Slice 0631 starts S64 with
+  `scripts/smoke/run_ag_operator_review_workbench_boundary_audit.py`. The
+  checkpoint keeps the workbench projection AG-owned, adds no table, reuses
+  `ag_op_notes` and `ag_ev_exports`, requires read-model-first dashboard
+  wiring, and keeps raw notes, evidence bodies, prompts, source text, storage
+  paths, service tokens, provider keys, and idempotency keys out of workbench
+  evidence.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

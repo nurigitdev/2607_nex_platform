@@ -734,6 +734,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0628`](slices/0628_ag_redacted_evidence_export_routes.md) | `S63-008` AG redacted evidence export protected route wiring. |
 | [`Slice 0629`](slices/0629_ag_redacted_evidence_export_postgresql_smoke.md) | `S63-009` AG redacted evidence export PostgreSQL smoke evidence. |
 | [`Slice 0630`](slices/0630_s63_operator_review_evidence_closure.md) | `S63-010` S63 operator review note/export closure checkpoint. |
+| [`Slice 0631`](slices/0631_ag_operator_review_workbench_boundary_audit.md) | `S64-001` AG operator review workbench boundary audit and refactoring checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
