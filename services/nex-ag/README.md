@@ -893,6 +893,13 @@ Unified operations:
   artifacts, default quality-gate hooks, the protected PostgreSQL smoke path,
   the privacy regression pack, short source table names, and the AG-owned
   workbench projection boundary.
+- Slice 0641 starts S65 by freezing the AG-owned operator review case/action
+  boundary before adding case persistence or action routes. Cases should use a
+  short AG-owned table name such as `ag_op_cases`, actions should first be
+  modeled as idempotent state transitions plus AG operational events, and
+  source AE/CX/MO/OA records remain read-only through service APIs. Notification
+  delivery and external incident sync are deferred until the case loop is
+  stable.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
