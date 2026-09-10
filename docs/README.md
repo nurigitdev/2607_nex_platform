@@ -742,6 +742,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0636`](slices/0636_ag_operator_review_search_filter_hardening.md) | `S64-006` AG operator review workbench search/filter hardening. |
 | [`Slice 0637`](slices/0637_ag_operator_review_openapi_schema_examples.md) | `S64-007` AG operator review workbench OpenAPI/schema/examples freeze. |
 | [`Slice 0638`](slices/0638_ag_operator_review_workbench_postgresql_smoke.md) | `S64-008` AG operator review workbench PostgreSQL smoke evidence. |
+| [`Slice 0639`](slices/0639_ag_operator_review_workbench_privacy_regression.md) | `S64-009` AG operator review workbench privacy regression pack. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
