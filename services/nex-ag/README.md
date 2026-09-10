@@ -875,6 +875,12 @@ Unified operations:
   dedicated JSON Schemas, positive and negative contract fixtures, and OpenAPI
   paths for `/admin/v1/operator-review/workbench` and
   `/admin/v1/operator-review/workbench/rollups`.
+- Slice 0638 adds
+  `scripts/smoke/run_ag_operator_review_workbench_postgres_smoke.py`, a guarded
+  `nex_ag_test` evidence path that runs AG migrations, writes one note and one
+  redacted evidence export, reads workbench/rollup/dashboard/issue-candidate
+  projections through protected routes, verifies `ag_op_notes` and
+  `ag_ev_exports` directly in PostgreSQL, and cleans up both smoke rows.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
