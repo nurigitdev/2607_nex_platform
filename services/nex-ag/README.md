@@ -904,6 +904,11 @@ Unified operations:
   in-memory and SQLAlchemy-backed regression paths, keeps target and assignee
   fields indexable, stores resolution text as hash plus bounded preview only,
   and preserves the operational-event-first action history policy.
+- Slice 0643 wires case persistence into protected AG admin routes at
+  `/admin/v1/operator-review/cases`. The service supports idempotent create,
+  list, and detail reads, emits redaction-safe operational events for new cases,
+  and keeps explicit action command state transitions deferred to later S65
+  slices.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -12,7 +14,9 @@ from nex_ag.operator_review_cases import (
     AG_OPERATOR_REVIEW_CASE_TABLE,
     ALLOWED_CASE_PRIORITIES,
     ALLOWED_CASE_STATUSES,
+    OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_CASE_SCHEMA_VERSION,
+    OperatorReviewCaseService,
     OperatorReviewCaseStore,
     SqlAlchemyOperatorReviewCaseStore,
     _operator_review_case_filter_clause,
@@ -22,10 +26,13 @@ from nex_ag.operator_review_cases import (
     build_operator_review_case_mutation_response,
     build_operator_review_case_record,
     default_operator_review_case_store,
+    emit_operator_review_case_event,
     operator_review_case_assignment_ref,
     operator_review_case_idempotency_signature,
     operator_review_case_metadata,
     operator_review_case_source_ref,
+    register_operator_review_case_routes,
+    required_case_idempotency_key,
 )
 from nex_ag.operator_reviews import (
     OperatorReviewNoteError,
@@ -34,7 +41,17 @@ from nex_ag.operator_reviews import (
     _json_value,
     sha256_text,
 )
-from nex_runtime import SERVICE_SPECS, build_engine, build_service_app, build_session_factory
+from nex_runtime import (
+    InMemoryOperationalEventStore,
+    OperationalEventError,
+    OperationalEventEmitter,
+    SERVICE_SPECS,
+    build_engine,
+    build_service_app,
+    build_session_factory,
+    issue_mock_service_token,
+    issue_mock_user_token,
+)
 
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
@@ -122,6 +139,59 @@ def sqlite_case_store() -> tuple[SqlAlchemyOperatorReviewCaseStore, Any]:
             )
         )
     return SqlAlchemyOperatorReviewCaseStore(build_session_factory(engine)), engine
+
+
+def service_auth_headers() -> dict[str, str]:
+    issued = issue_mock_service_token(service_id="nex-oa", audience="nex-ag")
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": REQUEST_ID,
+        "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+    }
+
+
+def admin_auth_headers() -> dict[str, str]:
+    issued = issue_mock_user_token(
+        tenant_id="local-tenant",
+        user_id="employee-0001",
+        audience="nex-ag",
+        roles=["admin"],
+    )
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": REQUEST_ID,
+        "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+    }
+
+
+def non_admin_auth_headers() -> dict[str, str]:
+    issued = issue_mock_user_token(
+        tenant_id="local-tenant",
+        user_id="employee-0002",
+        audience="nex-ag",
+        roles=["viewer"],
+    )
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": REQUEST_ID,
+        "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+    }
+
+
+def build_route_client(
+    *,
+    store: Any | None = None,
+    audit_event_store: InMemoryOperationalEventStore | None = None,
+) -> tuple[TestClient, Any, InMemoryOperationalEventStore]:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    selected_store = store or OperatorReviewCaseStore()
+    selected_event_store = audit_event_store or InMemoryOperationalEventStore()
+    register_operator_review_case_routes(
+        app,
+        store=selected_store,
+        audit_event_store=selected_event_store,
+    )
+    return TestClient(app), selected_store, selected_event_store
 
 
 def assert_case_error(payload: dict[str, Any], error_code: str) -> None:
@@ -317,6 +387,322 @@ def test_case_idempotency_signature_is_safe_and_stable() -> None:
     assert signature["source_ref"]["source_type"] == "operator_review_workbench"
     assert signature["metadata"]["idempotency_key_stored"] is False
     assert "idem-0642-case" not in str(signature)
+
+
+def test_operator_review_case_service_creates_replays_and_conflicts() -> None:
+    store = OperatorReviewCaseStore()
+    service = OperatorReviewCaseService(store)
+    payload = sample_case_payload(case_id="caller-supplied-id-is-ignored")
+
+    created = service.create_case(
+        payload,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0643-create",
+    )
+    replayed = service.create_case(
+        payload,
+        request_id="request-replay",
+        trace_id=None,
+        idempotency_key="idem-0643-create",
+    )
+
+    assert created["idempotency_status"] == "NEW"
+    assert replayed["idempotency_status"] == "REPLAYED"
+    assert replayed["case"] == created["case"]
+    assert replayed["request_id"] == "request-replay"
+    assert created["case"]["case_id"] != "caller-supplied-id-is-ignored"
+    assert len(store.records) == 1
+
+    with pytest.raises(OperatorReviewNoteError) as exc:
+        service.create_case(
+            sample_case_payload(case_priority="LOW"),
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="idem-0643-create",
+        )
+    assert exc.value.status_code == 409
+    assert exc.value.error_code == "ag.operator_review_case_idempotency_conflict"
+
+
+def test_operator_review_case_service_lists_filters_and_gets_cases() -> None:
+    store = OperatorReviewCaseStore()
+    service = OperatorReviewCaseService(store)
+    open_case = service.create_case(
+        sample_case_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0643-open",
+    )["case"]
+    assigned_case = service.create_case(
+        sample_case_payload(
+            case_status="ASSIGNED",
+            case_priority="URGENT",
+            target_ref={
+                "target_service": "nex-cx",
+                "target_kind": "retrieval_package",
+                "target_id": "retrieval-0643",
+            },
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0643",
+            },
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0643-assigned",
+    )["case"]
+
+    listed = service.list_cases(
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        target_service="nex-cx",
+        case_trace_id=TRACE_ID,
+        case_status="ASSIGNED",
+        case_priority="URGENT",
+        operator_type="user",
+        operator_id="employee-0001",
+        assignee_id="employee-0643",
+    )
+
+    assert service.get_case(open_case["case_id"]) == open_case
+    assert listed["items"] == [assigned_case]
+    assert listed["summary"]["by_status"] == {"ASSIGNED": 1}
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error_code"),
+    [
+        (
+            {"target_service": "nex-unknown"},
+            "ag.operator_review_note_target_service_unsupported",
+        ),
+        (
+            {"case_status": "UNKNOWN"},
+            "ag.operator_review_note_case_status_unsupported",
+        ),
+        (
+            {"case_priority": "CRITICAL"},
+            "ag.operator_review_note_case_priority_unsupported",
+        ),
+        (
+            {"operator_type": "bot"},
+            "ag.operator_review_note_operator_type_unsupported",
+        ),
+    ],
+)
+def test_operator_review_case_service_rejects_invalid_filters(
+    kwargs: dict[str, Any],
+    error_code: str,
+) -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+
+    with pytest.raises(OperatorReviewNoteError) as exc:
+        service.list_cases(
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            **kwargs,
+        )
+
+    assert exc.value.status_code == 422
+    assert exc.value.error_code == error_code
+
+
+def test_operator_review_case_service_requires_idempotency_and_reports_not_found() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+
+    assert required_case_idempotency_key("  idem-case  ") == "idem-case"
+    with pytest.raises(OperatorReviewNoteError) as missing_idem:
+        service.create_case(
+            sample_case_payload(),
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key=None,
+        )
+    with pytest.raises(OperatorReviewNoteError) as missing_case:
+        service.get_case("missing-case")
+    with pytest.raises(OperatorReviewNoteError) as blank_case:
+        service.get_case(" ")
+
+    assert missing_idem.value.error_code == (
+        "ag.operator_review_case_idempotency_key_required"
+    )
+    assert missing_case.value.status_code == 404
+    assert missing_case.value.error_code == "ag.operator_review_case_not_found"
+    assert blank_case.value.error_code == "ag.operator_review_case_case_id_required"
+
+
+def test_emit_operator_review_case_event_records_safe_operational_event() -> None:
+    event_store = InMemoryOperationalEventStore()
+    emitter = OperationalEventEmitter(service_id="nex-ag", store=event_store)
+    record = build_case(
+        sample_case_payload(
+            case_id="case-event",
+            case_status="RESOLVED",
+            resolution_comment="Resolved with a safe hash-only evidence path.",
+        )
+    )
+
+    result = emit_operator_review_case_event(emitter, record)
+    events = event_store.list_events(
+        event_type=OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE
+    )
+
+    assert result.ok is True
+    assert len(events) == 1
+    assert events[0]["subject_ref"] == {
+        "type": "operator_review_case",
+        "id": "case-event",
+    }
+    assert events[0]["details"] == {
+        "case_id": "case-event",
+        "target_service": "nex-ag",
+        "target_kind": "operator_review_workbench",
+        "target_id": "target-0642",
+        "case_status": "RESOLVED",
+        "case_priority": "HIGH",
+        "operator_type": "user",
+        "operator_id": "employee-0001",
+        "assignee_id": "employee-0002",
+        "reason_count": 1,
+        "resolution_hash": record["resolution_hash"],
+    }
+    assert "resolution_preview" not in events[0]["details"]
+
+
+def test_emit_operator_review_case_event_uses_safe_failure_result() -> None:
+    class FailingEventStore:
+        def append(self, event: dict[str, Any]) -> dict[str, Any]:
+            raise OperationalEventError(
+                error_code="operational_event.store_unavailable",
+                detail="store unavailable",
+                status_code=503,
+            )
+
+    emitter = OperationalEventEmitter(service_id="nex-ag", store=FailingEventStore())
+
+    result = emit_operator_review_case_event(emitter, build_case())
+
+    assert result.ok is False
+    assert result.error_code == "operational_event.store_unavailable"
+
+
+def test_operator_review_case_routes_create_replay_list_and_get_records() -> None:
+    client, store, event_store = build_route_client()
+    headers = {**admin_auth_headers(), "Idempotency-Key": "idem-route-0643"}
+
+    created = client.post(
+        "/admin/v1/operator-review/cases",
+        headers=headers,
+        json=sample_case_payload(),
+    )
+    replayed = client.post(
+        "/admin/v1/operator-review/cases",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-route-0643"},
+        json=sample_case_payload(),
+    )
+    listed = client.get(
+        "/admin/v1/operator-review/cases?target_service=nex-ag",
+        headers=service_auth_headers(),
+    )
+    case_id = created.json()["case"]["case_id"]
+    detail = client.get(
+        f"/admin/v1/operator-review/cases/{case_id}",
+        headers=service_auth_headers(),
+    )
+
+    assert created.status_code == 201
+    assert created.json()["case"]["case_schema_version"] == (
+        OPERATOR_REVIEW_CASE_SCHEMA_VERSION
+    )
+    assert replayed.status_code == 200
+    assert replayed.json()["idempotency_status"] == "REPLAYED"
+    assert listed.status_code == 200
+    assert listed.json()["summary"]["count"] == 1
+    assert detail.status_code == 200
+    assert detail.json()["case_id"] == case_id
+    assert "idem-route-0643" not in json.dumps(created.json())
+    assert len(store.records) == 1
+    assert event_store.summary()["total"] == 1
+
+
+def test_operator_review_case_routes_reject_auth_and_invalid_payloads() -> None:
+    client, _, _ = build_route_client()
+
+    missing_auth = client.get("/admin/v1/operator-review/cases")
+    non_admin = client.post(
+        "/admin/v1/operator-review/cases",
+        headers={**non_admin_auth_headers(), "Idempotency-Key": "idem-non-admin"},
+        json=sample_case_payload(),
+    )
+    missing_idempotency = client.post(
+        "/admin/v1/operator-review/cases",
+        headers=admin_auth_headers(),
+        json=sample_case_payload(),
+    )
+    invalid_payload = client.post(
+        "/admin/v1/operator-review/cases",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-invalid-case"},
+        json=sample_case_payload(case_status="UNKNOWN"),
+    )
+    invalid_filter = client.get(
+        "/admin/v1/operator-review/cases?case_status=UNKNOWN",
+        headers=service_auth_headers(),
+    )
+    missing_detail_auth = client.get("/admin/v1/operator-review/cases/missing")
+
+    assert missing_auth.status_code == 401
+    assert missing_detail_auth.status_code == 401
+    assert non_admin.status_code == 403
+    assert non_admin.json()["error_code"] == "AG_OPERATOR_REVIEW_ADMIN_ROLE_REQUIRED"
+    assert missing_idempotency.status_code == 422
+    assert missing_idempotency.json()["error_code"] == (
+        "ag.operator_review_case_idempotency_key_required"
+    )
+    assert invalid_payload.status_code == 422
+    assert invalid_payload.json()["error_code"] == (
+        "ag.operator_review_note_case_status_unsupported"
+    )
+    assert invalid_filter.status_code == 422
+    assert invalid_filter.json()["error_code"] == (
+        "ag.operator_review_note_case_status_unsupported"
+    )
+
+
+def test_operator_review_case_routes_report_missing_and_store_failures() -> None:
+    class FailingStore:
+        def get(self, case_id: str) -> None:
+            raise OperatorReviewNoteError(
+                status_code=503,
+                error_code="ag.operator_review_case_store_unavailable",
+                detail="store down",
+            )
+
+        def list_cases(self, **kwargs: Any) -> list[dict[str, Any]]:
+            return []
+
+        def save(self, record: dict[str, Any]) -> dict[str, Any]:
+            return record
+
+    client, _, _ = build_route_client()
+    failing_client, _, _ = build_route_client(store=FailingStore())
+
+    missing = client.get(
+        "/admin/v1/operator-review/cases/missing",
+        headers=service_auth_headers(),
+    )
+    store_failure = failing_client.post(
+        "/admin/v1/operator-review/cases",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-case-fail"},
+        json=sample_case_payload(),
+    )
+
+    assert missing.status_code == 404
+    assert missing.json()["error_code"] == "ag.operator_review_case_not_found"
+    assert store_failure.status_code == 503
+    assert store_failure.json()["error_code"] == (
+        "ag.operator_review_case_store_unavailable"
+    )
 
 
 def test_sqlalchemy_operator_review_case_store_round_trips_sqlite() -> None:

@@ -30,6 +30,10 @@ from nex_ag.operator_reviews import (
     default_operator_review_note_store,
     register_operator_review_note_routes,
 )
+from nex_ag.operator_review_cases import (
+    default_operator_review_case_store,
+    register_operator_review_case_routes,
+)
 from nex_ag.operator_review_workbench import register_operator_review_workbench_routes
 from nex_ag.artifact_operations import register_artifact_operation_routes
 from nex_ag.processing_operations import (
@@ -79,6 +83,7 @@ GENERATION_REMEDIATION_TASK_STORES = {
 }
 OPERATOR_REVIEW_NOTE_STORE = default_operator_review_note_store(app)
 OPERATOR_EVIDENCE_EXPORT_STORE = default_operator_evidence_export_store(app)
+OPERATOR_REVIEW_CASE_STORE = default_operator_review_case_store(app)
 register_readiness_routes(app)
 register_generation_audit_routes(app)
 register_generation_quality_disposition_routes(
@@ -98,6 +103,11 @@ register_operator_review_note_routes(
     app,
     store=OPERATOR_REVIEW_NOTE_STORE,
     export_store=OPERATOR_EVIDENCE_EXPORT_STORE,
+    audit_event_store=SERVICE_PERSISTENCE.operational_event_store,
+)
+register_operator_review_case_routes(
+    app,
+    store=OPERATOR_REVIEW_CASE_STORE,
     audit_event_store=SERVICE_PERSISTENCE.operational_event_store,
 )
 register_operator_review_workbench_routes(

@@ -5,15 +5,27 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
-from fastapi import FastAPI
+from fastapi import Body, FastAPI, Header, Query, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
+
+from nex_runtime import (
+    InMemoryOperationalEventStore,
+    OperationalEventEmitter,
+    OperationalEventEmitResult,
+    OperationalEventStore,
+    problem_response,
+    request_id_from_headers,
+    trace_id_from_headers,
+)
 
 from .operator_reviews import (
     ALLOWED_OPERATOR_TYPES,
     ALLOWED_TARGET_SERVICES,
     OperatorReviewNoteError,
+    _authorize_ag_operator_review_request,
     _datetime_value,
     _dialect_name,
     _json_param_expr,
@@ -35,6 +47,7 @@ from .operator_reviews import (
 OPERATOR_REVIEW_CASE_SCHEMA_VERSION = "ag_operator_review_case.v1"
 OPERATOR_REVIEW_CASE_LIST_SCHEMA_VERSION = "ag_operator_review_case_list.v1"
 OPERATOR_REVIEW_CASE_MUTATION_SCHEMA_VERSION = "ag_operator_review_case_mutation.v1"
+OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE = "ag.operator_review_case.recorded"
 AG_OPERATOR_REVIEW_CASE_TABLE = "ag_op_cases"
 MAX_CASE_COMMENT_PREVIEW_LENGTH = 240
 
@@ -202,6 +215,129 @@ class SqlAlchemyOperatorReviewCaseStore:
 
 
 DEFAULT_OPERATOR_REVIEW_CASE_STORE = OperatorReviewCaseStore()
+DEFAULT_OPERATOR_REVIEW_CASE_AUDIT_EVENT_STORE = InMemoryOperationalEventStore()
+
+
+class OperatorReviewCaseService:
+    def __init__(self, store: Any) -> None:
+        self._store = store
+
+    def create_case(
+        self,
+        payload: dict[str, Any],
+        *,
+        request_id: str,
+        trace_id: str | None,
+        idempotency_key: str | None,
+    ) -> dict[str, Any]:
+        normalized_idempotency_key = required_case_idempotency_key(idempotency_key)
+        canonical_payload = dict(payload)
+        canonical_payload.pop("case_id", None)
+        record = build_operator_review_case_record(
+            canonical_payload,
+            request_id=request_id,
+            trace_id=trace_id,
+            idempotency_key=normalized_idempotency_key,
+        )
+        existing = self._store.get(record["case_id"])
+        if existing is not None:
+            if operator_review_case_idempotency_signature(existing) != (
+                operator_review_case_idempotency_signature(record)
+            ):
+                raise OperatorReviewNoteError(
+                    status_code=409,
+                    error_code="ag.operator_review_case_idempotency_conflict",
+                    detail=(
+                        "Idempotency key already maps to a different "
+                        "operator review case request."
+                    ),
+                )
+            return build_operator_review_case_mutation_response(
+                existing,
+                idempotency_status="REPLAYED",
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        saved = self._store.save(record)
+        return build_operator_review_case_mutation_response(
+            saved,
+            idempotency_status="NEW",
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+
+    def list_cases(
+        self,
+        *,
+        request_id: str,
+        trace_id: str | None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        case_trace_id: str | None = None,
+        case_status: str | None = None,
+        case_priority: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        assignee_id: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        normalized_target_service = optional_choice(
+            target_service,
+            key="target_service",
+            choices=ALLOWED_TARGET_SERVICES,
+            default="",
+        )
+        normalized_case_status = optional_choice(
+            case_status,
+            key="case_status",
+            choices=ALLOWED_CASE_STATUSES,
+            default="",
+        )
+        normalized_case_priority = optional_choice(
+            case_priority,
+            key="case_priority",
+            choices=ALLOWED_CASE_PRIORITIES,
+            default="",
+        )
+        normalized_operator_type = optional_choice(
+            operator_type,
+            key="operator_type",
+            choices=ALLOWED_OPERATOR_TYPES,
+            default="",
+        )
+        records = self._store.list_cases(
+            target_service=normalized_target_service or None,
+            target_kind=optional_text(target_kind),
+            target_id=optional_text(target_id),
+            trace_id=optional_text(case_trace_id),
+            case_status=normalized_case_status or None,
+            case_priority=normalized_case_priority or None,
+            operator_type=normalized_operator_type or None,
+            operator_id=optional_text(operator_id),
+            assignee_id=optional_text(assignee_id),
+            updated_from=optional_text(updated_from),
+            updated_to=optional_text(updated_to),
+            limit=limit,
+        )
+        return build_operator_review_case_list_response(
+            records,
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+
+    def get_case(self, case_id: str) -> dict[str, Any]:
+        normalized_case_id = required_case_id(case_id)
+        record = self._store.get(normalized_case_id)
+        if record is None:
+            raise OperatorReviewNoteError(
+                status_code=404,
+                error_code="ag.operator_review_case_not_found",
+                detail=f"Operator review case was not found: {case_id}",
+            )
+        return record
 
 
 def default_operator_review_case_store(app: FastAPI) -> Any:
@@ -210,6 +346,137 @@ def default_operator_review_case_store(app: FastAPI) -> Any:
     if session_factory is not None:
         return SqlAlchemyOperatorReviewCaseStore(session_factory)
     return DEFAULT_OPERATOR_REVIEW_CASE_STORE
+
+
+def register_operator_review_case_routes(
+    app: FastAPI,
+    *,
+    store: Any | None = None,
+    audit_event_store: OperationalEventStore | None = None,
+) -> None:
+    service = OperatorReviewCaseService(store or default_operator_review_case_store(app))
+    audit_emitter = OperationalEventEmitter(
+        service_id="nex-ag",
+        store=audit_event_store or DEFAULT_OPERATOR_REVIEW_CASE_AUDIT_EVENT_STORE,
+    )
+
+    @app.post("/admin/v1/operator-review/cases", response_model=None)
+    def create_operator_review_case(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        payload: dict[str, Any] = Body(...),
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            response = service.create_case(
+                payload,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                idempotency_key=idempotency_key,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+        if response["idempotency_status"] == "NEW":
+            emit_operator_review_case_event(audit_emitter, response["case"])
+        return JSONResponse(
+            status_code=201 if response["idempotency_status"] == "NEW" else 200,
+            content=response,
+        )
+
+    @app.get("/admin/v1/operator-review/cases", response_model=None)
+    def list_operator_review_cases(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        case_trace_id: str | None = Query(default=None, alias="trace_id"),
+        case_status: str | None = None,
+        case_priority: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        assignee_id: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
+        limit: int | None = None,
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.list_cases(
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                target_service=target_service,
+                target_kind=target_kind,
+                target_id=target_id,
+                case_trace_id=case_trace_id,
+                case_status=case_status,
+                case_priority=case_priority,
+                operator_type=operator_type,
+                operator_id=operator_id,
+                assignee_id=assignee_id,
+                updated_from=updated_from,
+                updated_to=updated_to,
+                limit=limit,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+    @app.get("/admin/v1/operator-review/cases/{case_id}", response_model=None)
+    def get_operator_review_case(
+        case_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.get_case(case_id)
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+
+def emit_operator_review_case_event(
+    audit_emitter: OperationalEventEmitter,
+    record: dict[str, Any],
+) -> OperationalEventEmitResult:
+    operator = record.get("operator_ref")
+    operator_ref_value = operator if isinstance(operator, dict) else {}
+    assignment = record.get("assignment_ref")
+    assignment_ref_value = assignment if isinstance(assignment, dict) else {}
+    return audit_emitter.safe_emit(
+        event_type=OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
+        severity="INFO",
+        message="AG operator review case recorded.",
+        trace_id=record.get("trace_id"),
+        request_id=record.get("request_id"),
+        subject_ref={
+            "type": "operator_review_case",
+            "id": str(record["case_id"]),
+        },
+        details={
+            "case_id": record.get("case_id"),
+            "target_service": record.get("target_service"),
+            "target_kind": record.get("target_kind"),
+            "target_id": record.get("target_id"),
+            "case_status": record.get("case_status"),
+            "case_priority": record.get("case_priority"),
+            "operator_type": operator_ref_value.get("operator_type"),
+            "operator_id": operator_ref_value.get("operator_id"),
+            "assignee_id": assignment_ref_value.get("assignee_id"),
+            "reason_count": len(record.get("reason_codes") or []),
+            "resolution_hash": record.get("resolution_hash"),
+        },
+    )
 
 
 def build_operator_review_case_record(
@@ -478,6 +745,28 @@ def operator_review_case_metadata(
     return json.loads(json.dumps(metadata))
 
 
+def required_case_idempotency_key(value: Any) -> str:
+    normalized = optional_text(value)
+    if normalized is None:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.operator_review_case_idempotency_key_required",
+            detail="Idempotency-Key is required for operator review case mutations.",
+        )
+    return normalized
+
+
+def required_case_id(value: Any) -> str:
+    normalized = optional_text(value)
+    if normalized is None:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.operator_review_case_case_id_required",
+            detail="case_id is required.",
+        )
+    return normalized
+
+
 def _operator_review_case_identity_seed(
     *,
     target: dict[str, str],
@@ -742,4 +1031,18 @@ def _case_store_unavailable_error() -> OperatorReviewNoteError:
         status_code=503,
         error_code="ag.operator_review_case_store_unavailable",
         detail="Operator review case store is unavailable.",
+    )
+
+
+def _operator_review_case_problem_response(
+    request: Request,
+    exc: OperatorReviewNoteError,
+) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="Operator review case request rejected",
+        detail=exc.detail,
+        type_uri="https://nex-platform.local/problems/operator-review-case-rejected",
     )
