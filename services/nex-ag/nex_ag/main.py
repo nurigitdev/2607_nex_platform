@@ -26,6 +26,7 @@ from nex_ag.operations import (
     register_unified_operation_routes,
 )
 from nex_ag.operator_reviews import register_operator_review_note_routes
+from nex_ag.operator_review_workbench import register_operator_review_workbench_routes
 from nex_ag.artifact_operations import register_artifact_operation_routes
 from nex_ag.processing_operations import (
     build_cx_processing_run_operation_stores,
@@ -91,6 +92,7 @@ register_operator_review_note_routes(
     app,
     audit_event_store=SERVICE_PERSISTENCE.operational_event_store,
 )
+register_operator_review_workbench_routes(app)
 register_retrieval_policy_routes(app)
 register_cx_processing_run_operation_routes(
     app,

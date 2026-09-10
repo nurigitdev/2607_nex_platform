@@ -42,6 +42,7 @@ Current endpoints:
 - `GET /admin/v1/operator-review/notes`
 - `GET /admin/v1/operator-review/notes/{operator_note_id}`
 - `POST /admin/v1/operator-review/notes`
+- `GET /admin/v1/operator-review/workbench`
 - `GET /admin/v1/operator-review/evidence-exports`
 - `GET /admin/v1/operator-review/evidence-exports/{export_id}`
 - `POST /admin/v1/operator-review/evidence-exports`
@@ -847,6 +848,10 @@ Unified operations:
   wiring, and keeps raw notes, evidence bodies, prompts, source text, storage
   paths, service tokens, provider keys, and idempotency keys out of workbench
   evidence.
+- Slice 0632 adds the read-only operator review workbench read model at
+  `/admin/v1/operator-review/workbench`. The projection groups existing
+  AG-owned note/export records by target reference, returns only hash/preview
+  note refs and redacted export metadata, and adds no new database table.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
