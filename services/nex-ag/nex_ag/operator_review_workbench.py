@@ -23,6 +23,9 @@ from .operator_reviews import (
 
 
 OPERATOR_REVIEW_WORKBENCH_SCHEMA_VERSION = "ag_operator_review_workbench.v1"
+OPERATOR_REVIEW_WORKBENCH_ROLLUP_SCHEMA_VERSION = (
+    "ag_operator_review_workbench_rollup.v1"
+)
 
 
 def register_operator_review_workbench_routes(
@@ -64,6 +67,40 @@ def register_operator_review_workbench_routes(
                 operator_id=operator_id,
                 limit=limit,
             )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_note_problem_response(request, exc)
+
+    @app.get("/admin/v1/operator-review/workbench/rollups", response_model=None)
+    def get_operator_review_workbench_rollups(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        workbench_trace_id: str | None = Query(default=None, alias="trace_id"),
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        limit: int | None = None,
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            projection = build_operator_review_workbench_projection_from_stores(
+                note_store=selected_note_store,
+                export_store=selected_export_store,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                target_service=target_service,
+                target_kind=target_kind,
+                target_id=target_id,
+                item_trace_id=workbench_trace_id,
+                operator_type=operator_type,
+                operator_id=operator_id,
+                limit=limit,
+            )
+            return build_operator_review_workbench_rollup_metrics(projection)
         except OperatorReviewNoteError as exc:
             return _operator_review_note_problem_response(request, exc)
 
@@ -202,6 +239,66 @@ def build_operator_review_workbench_projection(
             "note_body_shape": "hash_and_short_preview_only",
             "evidence_shape": "redacted_manifest_plus_hashes",
         },
+    }
+
+
+def build_operator_review_workbench_rollup_metrics(
+    projection: dict[str, Any],
+) -> dict[str, Any]:
+    items = list(projection.get("items") or [])
+    notes = [note for item in items for note in item.get("notes", [])]
+    exports = [
+        export for item in items for export in item.get("evidence_exports", [])
+    ]
+    attention_items = [_attention_item(item) for item in items]
+    attention_items = [
+        item for item in attention_items if item["attention_status"] != "OK"
+    ]
+    attention_items.sort(
+        key=lambda item: (
+            _attention_sort_rank(item["attention_status"]),
+            str(item["latest_updated_at"] or ""),
+            item["target_ref"]["target_service"],
+            item["target_ref"]["target_kind"],
+            item["target_ref"]["target_id"],
+        )
+    )
+    return {
+        "rollup_schema_version": OPERATOR_REVIEW_WORKBENCH_ROLLUP_SCHEMA_VERSION,
+        "trace_id": projection.get("trace_id"),
+        "request_id": projection.get("request_id"),
+        "filters": dict(projection.get("filters") or {}),
+        "summary": {
+            "target_count": len(items),
+            "note_count": len(notes),
+            "export_count": len(exports),
+            "open_note_count": _count_matching(notes, "note_status", "ACTIVE"),
+            "resolved_note_count": _count_matching(notes, "note_status", "RESOLVED"),
+            "deleted_note_count": _count_matching(notes, "note_status", "DELETED"),
+            "high_urgency_note_count": sum(
+                1
+                for note in notes
+                if note.get("severity") in {"HIGH", "URGENT"}
+                and note.get("note_status") == "ACTIVE"
+            ),
+            "ready_export_count": _count_matching(exports, "export_status", "READY"),
+            "failed_export_count": _count_matching(exports, "export_status", "FAILED"),
+            "evidence_item_count": sum(
+                int(export.get("evidence_item_count") or 0) for export in exports
+            ),
+            "attention_target_count": len(attention_items),
+        },
+        "by_target_service": _count_items_by_target(items, "target_service"),
+        "by_target_kind": _count_items_by_target(items, "target_kind"),
+        "by_note_status": _count_by(notes, "note_status"),
+        "by_note_severity": _count_by(notes, "severity"),
+        "by_export_status": _count_by(exports, "export_status"),
+        "by_export_format": _count_by(exports, "export_format"),
+        "attention": {
+            "items": attention_items,
+            "by_status": _count_by(attention_items, "attention_status"),
+        },
+        "redaction": dict(projection.get("redaction") or {}),
     }
 
 
@@ -347,6 +444,56 @@ def _workbench_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
         ),
         "latest_updated_at": max(latest_values) if latest_values else None,
     }
+
+
+def _attention_item(item: dict[str, Any]) -> dict[str, Any]:
+    notes = list(item.get("notes") or [])
+    exports = list(item.get("evidence_exports") or [])
+    reasons: list[str] = []
+    if any(export.get("export_status") == "FAILED" for export in exports):
+        reasons.append("failed_evidence_export")
+    if any(
+        note.get("note_status") == "ACTIVE"
+        and note.get("severity") in {"HIGH", "URGENT"}
+        for note in notes
+    ):
+        reasons.append("active_high_urgency_note")
+    if any(note.get("note_status") == "ACTIVE" for note in notes):
+        reasons.append("active_operator_note")
+
+    if "failed_evidence_export" in reasons:
+        status = "BLOCKED"
+    elif "active_high_urgency_note" in reasons:
+        status = "ATTENTION"
+    elif "active_operator_note" in reasons:
+        status = "OPEN"
+    else:
+        status = "OK"
+    return {
+        "target_ref": dict(item["target_ref"]),
+        "attention_status": status,
+        "reason_codes": reasons,
+        "note_count": len(notes),
+        "export_count": len(exports),
+        "latest_updated_at": item.get("latest_updated_at"),
+    }
+
+
+def _attention_sort_rank(status: str) -> int:
+    return {"BLOCKED": 0, "ATTENTION": 1, "OPEN": 2}.get(status, 3)
+
+
+def _count_matching(records: list[dict[str, Any]], key: str, value: str) -> int:
+    return sum(1 for record in records if record.get(key) == value)
+
+
+def _count_items_by_target(items: list[dict[str, Any]], key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        target = item.get("target_ref") if isinstance(item.get("target_ref"), dict) else {}
+        value = str(target.get(key) or "UNKNOWN")
+        counts[value] = counts.get(value, 0) + 1
+    return counts
 
 
 def _count_by(records: list[dict[str, Any]], key: str) -> dict[str, int]:

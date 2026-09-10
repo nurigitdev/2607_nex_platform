@@ -7,9 +7,11 @@ from fastapi.testclient import TestClient
 import pytest
 
 from nex_ag.operator_review_workbench import (
+    OPERATOR_REVIEW_WORKBENCH_ROLLUP_SCHEMA_VERSION,
     OPERATOR_REVIEW_WORKBENCH_SCHEMA_VERSION,
     build_operator_review_workbench_projection,
     build_operator_review_workbench_projection_from_stores,
+    build_operator_review_workbench_rollup_metrics,
     normalize_operator_review_workbench_filters,
     register_operator_review_workbench_routes,
 )
@@ -352,3 +354,151 @@ def test_workbench_projection_handles_missing_operator_ref_defensively() -> None
         "operator_id": None,
         "tenant_id": None,
     }
+
+
+def test_workbench_rollup_metrics_summarize_attention() -> None:
+    high_note = build_note()
+    resolved_note = build_note(
+        payload=note_payload(
+            note_status="RESOLVED",
+            severity="LOW",
+            target_ref={
+                "target_service": "nex-cx",
+                "target_kind": "processing_run",
+                "target_id": "cx-run-001",
+            },
+        ),
+        created_at="2026-09-10T00:10:00Z",
+    )
+    failed_export = build_export(
+        payload=export_payload(
+            export_status="FAILED",
+            target_ref={
+                "target_service": "nex-cx",
+                "target_kind": "processing_run",
+                "target_id": "cx-run-001",
+            },
+        ),
+        created_at="2026-09-10T00:15:00Z",
+    )
+    projection = build_operator_review_workbench_projection(
+        [high_note, resolved_note],
+        [failed_export],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    rollup = build_operator_review_workbench_rollup_metrics(projection)
+
+    assert rollup["rollup_schema_version"] == OPERATOR_REVIEW_WORKBENCH_ROLLUP_SCHEMA_VERSION
+    assert rollup["summary"] == {
+        "target_count": 2,
+        "note_count": 2,
+        "export_count": 1,
+        "open_note_count": 1,
+        "resolved_note_count": 1,
+        "deleted_note_count": 0,
+        "high_urgency_note_count": 1,
+        "ready_export_count": 0,
+        "failed_export_count": 1,
+        "evidence_item_count": 1,
+        "attention_target_count": 2,
+    }
+    assert rollup["by_target_service"] == {"nex-ae-api": 1, "nex-cx": 1}
+    assert rollup["by_note_status"] == {"ACTIVE": 1, "RESOLVED": 1}
+    assert rollup["by_export_status"] == {"FAILED": 1}
+    assert rollup["attention"]["by_status"] == {"ATTENTION": 1, "BLOCKED": 1}
+    assert rollup["attention"]["items"][0]["attention_status"] == "BLOCKED"
+    assert "failed_evidence_export" in rollup["attention"]["items"][0]["reason_codes"]
+    serialized = json.dumps(rollup, ensure_ascii=False)
+    assert "idempotency_key_hash" not in serialized
+    assert rollup["redaction"]["raw_evidence_body_included"] is False
+
+
+def test_workbench_rollup_route_uses_same_auth_and_filters() -> None:
+    client, note_store, export_store = route_client()
+    note_store.save(build_note())
+    export_store.save(build_export())
+
+    assert client.get("/admin/v1/operator-review/workbench/rollups").status_code == 401
+
+    response = client.get(
+        "/admin/v1/operator-review/workbench/rollups?target_service=nex-ae-api",
+        headers=service_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rollup_schema_version"] == OPERATOR_REVIEW_WORKBENCH_ROLLUP_SCHEMA_VERSION
+    assert body["filters"]["target_service"] == "nex-ae-api"
+    assert body["summary"]["attention_target_count"] == 1
+    assert body["attention"]["items"][0]["attention_status"] == "ATTENTION"
+
+    invalid = client.get(
+        "/admin/v1/operator-review/workbench/rollups?target_service=bad-service",
+        headers=admin_auth_headers(),
+    )
+    assert invalid.status_code == 422
+    assert invalid.json()["error_code"] == (
+        "ag.operator_review_note_target_service_unsupported"
+    )
+
+
+def test_workbench_rollup_empty_projection_is_safe() -> None:
+    projection = build_operator_review_workbench_projection(
+        [],
+        [],
+        request_id=REQUEST_ID,
+        trace_id=None,
+    )
+
+    rollup = build_operator_review_workbench_rollup_metrics(projection)
+
+    assert rollup["summary"]["target_count"] == 0
+    assert rollup["summary"]["attention_target_count"] == 0
+    assert rollup["attention"] == {"items": [], "by_status": {}}
+    assert rollup["by_target_service"] == {}
+
+
+def test_workbench_rollup_open_and_ok_attention_branches() -> None:
+    low_active_note = build_note(
+        payload=note_payload(severity="LOW"),
+        created_at="2026-09-10T00:10:00Z",
+    )
+    resolved_note = build_note(
+        payload=note_payload(
+            note_status="RESOLVED",
+            severity="URGENT",
+            target_ref={
+                "target_service": "nex-mo",
+                "target_kind": "provider",
+                "target_id": "embedding-provider",
+            },
+        ),
+        created_at="2026-09-10T00:20:00Z",
+    )
+    projection = build_operator_review_workbench_projection(
+        [low_active_note, resolved_note],
+        [],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    rollup = build_operator_review_workbench_rollup_metrics(projection)
+
+    assert rollup["summary"]["attention_target_count"] == 1
+    assert rollup["attention"]["items"] == [
+        {
+            "target_ref": {
+                "target_service": "nex-ae-api",
+                "target_kind": "operator_control.worker_result",
+                "target_id": "worker-result-001",
+            },
+            "attention_status": "OPEN",
+            "reason_codes": ["active_operator_note"],
+            "note_count": 1,
+            "export_count": 0,
+            "latest_updated_at": "2026-09-10T00:10:00Z",
+        }
+    ]
+    assert rollup["by_note_severity"] == {"LOW": 1, "URGENT": 1}

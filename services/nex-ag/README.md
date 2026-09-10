@@ -43,6 +43,7 @@ Current endpoints:
 - `GET /admin/v1/operator-review/notes/{operator_note_id}`
 - `POST /admin/v1/operator-review/notes`
 - `GET /admin/v1/operator-review/workbench`
+- `GET /admin/v1/operator-review/workbench/rollups`
 - `GET /admin/v1/operator-review/evidence-exports`
 - `GET /admin/v1/operator-review/evidence-exports/{export_id}`
 - `POST /admin/v1/operator-review/evidence-exports`
@@ -852,6 +853,10 @@ Unified operations:
   `/admin/v1/operator-review/workbench`. The projection groups existing
   AG-owned note/export records by target reference, returns only hash/preview
   note refs and redacted export metadata, and adds no new database table.
+- Slice 0633 adds the workbench rollup route at
+  `/admin/v1/operator-review/workbench/rollups`. It derives safe target, note,
+  export, evidence-item, and attention counts from the read model without
+  adding persistence or exposing raw note/evidence payloads.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
