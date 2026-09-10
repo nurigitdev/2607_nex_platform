@@ -92,6 +92,11 @@ from nex_ag.retrieval_threshold_decisions import (
     summarize_retrieval_threshold_calibration_closure,
     summarize_retrieval_threshold_decisions,
 )
+from nex_ag.operator_review_workbench import (
+    build_operator_review_workbench_projection_from_stores,
+    build_operator_review_workbench_rollup_metrics,
+)
+from nex_ag.operator_reviews import ALLOWED_TARGET_SERVICES
 from nex_runtime.retrieval_policies import list_retrieval_policy_records
 
 DEFAULT_OPERATIONAL_EVENT_STORE = InMemoryOperationalEventStore()
@@ -194,8 +199,6 @@ class GenerationRemediationTaskDashboardStore(Protocol):
 
 
 RemediationExecutionOperationsProjectionBuilder = Callable[..., dict[str, Any]]
-
-
 MIN_SERVICE_LOG_RETENTION_DAYS = 7
 MAX_SERVICE_LOG_RETENTION_DAYS = 365
 MAX_OPERATION_EVENT_QUERY_LENGTH = 128
@@ -1952,6 +1955,8 @@ def register_unified_operation_routes(
     remediation_execution_projection_builder: (
         RemediationExecutionOperationsProjectionBuilder | None
     ) = None,
+    operator_review_note_store: Any | None = None,
+    operator_review_export_store: Any | None = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -2103,6 +2108,8 @@ def register_unified_operation_routes(
             remediation_execution_projection_builder=(
                 remediation_execution_projection_builder
             ),
+            operator_review_note_store=operator_review_note_store,
+            operator_review_export_store=operator_review_export_store,
             service_id=service_id,
             recent_limit=recent_limit,
             query_options=query_options,
@@ -3413,6 +3420,8 @@ def build_operations_dashboard_snapshot_projection(
     remediation_execution_projection_builder: (
         RemediationExecutionOperationsProjectionBuilder | None
     ) = None,
+    operator_review_note_store: Any | None = None,
+    operator_review_export_store: Any | None = None,
     service_id: str | None = None,
     recent_limit: int = 5,
     limit: int = 500,
@@ -3517,6 +3526,14 @@ def build_operations_dashboard_snapshot_projection(
         options=options,
         limit=normalized_recent_limit,
     )
+    operator_review_workbench = _dashboard_operator_review_workbench_section(
+        note_store=operator_review_note_store,
+        export_store=operator_review_export_store,
+        service_id=service_id,
+        options=options,
+        limit=normalized_recent_limit,
+        request_trace_id=request_trace_id,
+    )
     degraded_sources = _dashboard_degraded_sources(
         operation_sources=readiness_projection["sources"],
         job_source_statuses=rollup_projection["job_source_statuses"],
@@ -3531,6 +3548,9 @@ def build_operations_dashboard_snapshot_projection(
         ),
         remediation_execution_source_statuses=(
             remediation_executions["source_statuses"]
+        ),
+        operator_review_workbench_source_statuses=(
+            operator_review_workbench["source_statuses"]
         ),
     )
     projection = {
@@ -3555,6 +3575,7 @@ def build_operations_dashboard_snapshot_projection(
         "generation_quality": generation_quality,
         "generation_remediation": generation_remediation,
         "remediation_executions": remediation_executions,
+        "operator_review_workbench": operator_review_workbench,
         "degraded_sources": degraded_sources,
         "job_source_statuses": rollup_projection["job_source_statuses"],
         "event_source_statuses": rollup_projection["event_source_statuses"],
@@ -6183,6 +6204,206 @@ def _remediation_execution_needs_attention(item: Mapping[str, Any]) -> bool:
     return item.get("attention_required") is True
 
 
+def _dashboard_operator_review_workbench_section(
+    *,
+    note_store: Any | None,
+    export_store: Any | None,
+    service_id: str | None,
+    options: OperationQueryOptions,
+    limit: int,
+    request_trace_id: str | None,
+) -> dict[str, Any]:
+    source_statuses: dict[str, dict[str, Any]] = {}
+    if note_store is None and export_store is None:
+        return _empty_dashboard_operator_review_workbench_section(source_statuses)
+    if note_store is None or export_store is None:
+        source_statuses["nex-ag"] = _dashboard_operator_review_source_status(
+            note_store=note_store,
+            export_store=export_store,
+            summary=_empty_operator_review_workbench_summary(),
+            error_code="ag.operator_review_workbench_source_not_configured",
+            detail="Operator review note and export stores must both be configured.",
+            status="NOT_CONFIGURED",
+        )
+        return {
+            **_empty_dashboard_operator_review_workbench_section(source_statuses),
+            "projection_status": "DEGRADED",
+        }
+
+    target_service = service_id if service_id in ALLOWED_TARGET_SERVICES else None
+    try:
+        projection = build_operator_review_workbench_projection_from_stores(
+            note_store=note_store,
+            export_store=export_store,
+            request_id=request_trace_id or "ag-operations-dashboard",
+            trace_id=request_trace_id,
+            target_service=target_service,
+            limit=500,
+        )
+        visible_items = _filter_records_by_operation_time(
+            [dict(item) for item in projection.get("items", [])],
+            options,
+            timestamp_field="latest_updated_at",
+        )
+        filtered_projection = dict(projection)
+        filtered_projection["items"] = visible_items
+        rollup = build_operator_review_workbench_rollup_metrics(filtered_projection)
+    except Exception as exc:
+        source_statuses["nex-ag"] = _dashboard_operator_review_source_status(
+            note_store=note_store,
+            export_store=export_store,
+            summary=_empty_operator_review_workbench_summary(),
+            error_code=getattr(
+                exc,
+                "error_code",
+                "ag.operator_review_workbench_source_unavailable",
+            ),
+            detail=getattr(
+                exc,
+                "detail",
+                "Operator review workbench source could not be read.",
+            ),
+            status="UNAVAILABLE",
+        )
+        return {
+            **_empty_dashboard_operator_review_workbench_section(source_statuses),
+            "projection_status": "DEGRADED",
+        }
+
+    summary = dict(rollup["summary"])
+    source_statuses["nex-ag"] = _dashboard_operator_review_source_status(
+        note_store=note_store,
+        export_store=export_store,
+        summary=summary,
+    )
+    return {
+        "projection_schema_version": (
+            "ag_operator_review_workbench_dashboard_section.v1"
+        ),
+        "projection_status": "READY",
+        "summary": summary,
+        "by_target_service": dict(rollup["by_target_service"]),
+        "by_target_kind": dict(rollup["by_target_kind"]),
+        "by_note_status": dict(rollup["by_note_status"]),
+        "by_note_severity": dict(rollup["by_note_severity"]),
+        "by_export_status": dict(rollup["by_export_status"]),
+        "by_export_format": dict(rollup["by_export_format"]),
+        "attention": list(rollup["attention"]["items"])[:limit],
+        "source_statuses": source_statuses,
+        "workbench_path": "/admin/v1/operator-review/workbench",
+        "rollup_path": "/admin/v1/operator-review/workbench/rollups",
+        "redaction": dict(rollup["redaction"]),
+    }
+
+
+def _empty_dashboard_operator_review_workbench_section(
+    source_statuses: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "projection_schema_version": (
+            "ag_operator_review_workbench_dashboard_section.v1"
+        ),
+        "projection_status": "READY",
+        "summary": _empty_operator_review_workbench_summary(),
+        "by_target_service": {},
+        "by_target_kind": {},
+        "by_note_status": {},
+        "by_note_severity": {},
+        "by_export_status": {},
+        "by_export_format": {},
+        "attention": [],
+        "source_statuses": source_statuses,
+        "workbench_path": "/admin/v1/operator-review/workbench",
+        "rollup_path": "/admin/v1/operator-review/workbench/rollups",
+        "redaction": {
+            "raw_note_body_included": False,
+            "raw_evidence_payload_included": False,
+        },
+    }
+
+
+def _empty_operator_review_workbench_summary() -> dict[str, int]:
+    return {
+        "target_count": 0,
+        "note_count": 0,
+        "export_count": 0,
+        "open_note_count": 0,
+        "resolved_note_count": 0,
+        "deleted_note_count": 0,
+        "high_urgency_note_count": 0,
+        "ready_export_count": 0,
+        "failed_export_count": 0,
+        "evidence_item_count": 0,
+        "attention_target_count": 0,
+    }
+
+
+def _dashboard_operator_review_source_status(
+    *,
+    note_store: Any | None,
+    export_store: Any | None,
+    summary: Mapping[str, Any],
+    status: str = "READY",
+    error_code: str | None = None,
+    detail: str | None = None,
+) -> dict[str, Any]:
+    source = {
+        "status": status,
+        "service_id": "nex-ag",
+        "source_kind": _operator_review_source_kind(note_store, export_store),
+        "target_count": _safe_int(summary.get("target_count")),
+        "note_count": _safe_int(summary.get("note_count")),
+        "export_count": _safe_int(summary.get("export_count")),
+        "attention_target_count": _safe_int(summary.get("attention_target_count")),
+        "database_env": _first_store_attr(note_store, export_store, "database_env"),
+        "redacted_database_url": _first_store_attr(
+            note_store,
+            export_store,
+            "redacted_database_url",
+        ),
+    }
+    if error_code is not None:
+        source["error_code"] = error_code
+    if detail is not None:
+        source["detail"] = detail
+    return source
+
+
+def _operator_review_source_kind(
+    note_store: Any | None,
+    export_store: Any | None,
+) -> str:
+    stores = [store for store in (note_store, export_store) if store is not None]
+    if not stores:
+        return "none"
+    kinds = sorted({_operator_review_single_store_kind(store) for store in stores})
+    return "+".join(kinds)
+
+
+def _operator_review_single_store_kind(store: Any) -> str:
+    explicit = getattr(store, "source_kind", None)
+    if isinstance(explicit, str) and explicit:
+        return explicit
+    class_name = type(store).__name__
+    if class_name.startswith("SqlAlchemy"):
+        return "postgres"
+    if class_name.startswith("Operator") or "Memory" in class_name:
+        return "memory"
+    return "unknown"
+
+
+def _first_store_attr(
+    note_store: Any | None,
+    export_store: Any | None,
+    attr_name: str,
+) -> Any | None:
+    for store in (note_store, export_store):
+        value = getattr(store, attr_name, None)
+        if value is not None:
+            return value
+    return None
+
+
 def _dashboard_generation_quality_section(
     generation_audit_projections: list[Mapping[str, Any]] | None,
     *,
@@ -6584,6 +6805,9 @@ def _dashboard_degraded_sources(
     ) = None,
     generation_remediation_source_statuses: Mapping[str, dict[str, Any]] | None = None,
     remediation_execution_source_statuses: Mapping[str, dict[str, Any]] | None = None,
+    operator_review_workbench_source_statuses: (
+        Mapping[str, dict[str, Any]] | None
+    ) = None,
 ) -> list[dict[str, Any]]:
     degraded: list[dict[str, Any]] = []
     for source in operation_sources:
@@ -6608,6 +6832,10 @@ def _dashboard_degraded_sources(
         ),
         ("generation_remediation", generation_remediation_source_statuses or {}),
         ("remediation_executions", remediation_execution_source_statuses or {}),
+        (
+            "operator_review_workbench",
+            operator_review_workbench_source_statuses or {},
+        ),
     ):
         for service_id, source_status in statuses.items():
             status = str(source_status["status"])

@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -104,6 +105,12 @@ from nex_ag.processing_operations import (
     CxProcessingRunOperationsError,
     InMemoryCxProcessingRunOperationsStore,
 )
+from nex_ag.operator_reviews import (
+    OperatorEvidenceExportStore,
+    OperatorReviewNoteStore,
+    build_operator_evidence_export_record,
+    build_operator_review_note_record,
+)
 from nex_ag.remediation_execution_operations import (
     InMemoryRemediationExecutionOperationsStore,
     build_remediation_execution_operations_projection,
@@ -179,6 +186,85 @@ def retrieval_package_record(
         "created_at": created_at,
         "updated_at": created_at,
     }
+
+
+def operator_review_note_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "target_ref": {
+            "target_service": "nex-cx",
+            "target_kind": "retrieval_threshold_decision",
+            "target_id": "weighted_rrf_vector_bm25_v1",
+        },
+        "operator_ref": {
+            "operator_type": "user",
+            "operator_id": "employee-0001",
+            "tenant_id": "local-tenant",
+        },
+        "operator_note": "Review the retrieval threshold before policy promotion.",
+        "note_type": "ACTION",
+        "severity": "HIGH",
+        "reason_codes": ["threshold_review_required"],
+        "metadata": {"source_view": "operations_dashboard"},
+    }
+    payload.update(overrides)
+    return payload
+
+
+def operator_review_export_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "target_ref": {
+            "target_service": "nex-cx",
+            "target_kind": "retrieval_threshold_decision",
+            "target_id": "weighted_rrf_vector_bm25_v1",
+        },
+        "operator_ref": {
+            "operator_type": "user",
+            "operator_id": "employee-0001",
+            "tenant_id": "local-tenant",
+        },
+        "export_status": "READY",
+        "export_format": "json",
+        "evidence_refs": [
+            {
+                "source_service": "nex-cx",
+                "evidence_type": "retrieval_package",
+                "evidence_id": "retrieval-package-001",
+                "content_hash": "a" * 64,
+                "redaction_status": "HASH_ONLY",
+            }
+        ],
+        "metadata": {"source_view": "operations_dashboard"},
+    }
+    payload.update(overrides)
+    return payload
+
+
+def operator_review_note_record(
+    *,
+    payload: dict[str, Any] | None = None,
+    created_at: str = "2026-08-05T00:00:09Z",
+) -> dict[str, Any]:
+    return build_operator_review_note_record(
+        operator_review_note_payload() if payload is None else payload,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key=f"operations-note-{created_at}",
+        created_at=created_at,
+    )
+
+
+def operator_review_export_record(
+    *,
+    payload: dict[str, Any] | None = None,
+    created_at: str = "2026-08-05T00:00:10Z",
+) -> dict[str, Any]:
+    return build_operator_evidence_export_record(
+        operator_review_export_payload() if payload is None else payload,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key=f"operations-export-{created_at}",
+        created_at=created_at,
+    )
 
 
 def cx_processing_run_record(
@@ -2896,6 +2982,141 @@ def test_dashboard_remediation_execution_section_handles_empty_filtered_and_brok
     assert broken["source_statuses"]["nex-cx"]["error_code"] == (
         "ag.remediation_execution_dashboard_source_unavailable"
     )
+
+
+def test_operations_dashboard_snapshot_includes_operator_review_workbench() -> None:
+    note_store = OperatorReviewNoteStore()
+    note_store.save(operator_review_note_record())
+    note_store.save(
+        operator_review_note_record(
+            payload=operator_review_note_payload(
+                target_ref={
+                    "target_service": "nex-mo",
+                    "target_kind": "provider",
+                    "target_id": "embedding",
+                },
+                severity="INFO",
+            ),
+            created_at="2026-08-05T00:00:11Z",
+        )
+    )
+    export_store = OperatorEvidenceExportStore()
+    export_store.save(operator_review_export_record())
+
+    projection = build_operations_dashboard_snapshot_projection(
+        operator_review_note_store=note_store,
+        operator_review_export_store=export_store,
+        service_id="nex-cx",
+        recent_limit=2,
+        request_trace_id=TRACE_ID,
+    )
+
+    workbench = projection["operator_review_workbench"]
+    assert workbench["projection_status"] == "READY"
+    assert workbench["summary"] == {
+        "target_count": 1,
+        "note_count": 1,
+        "export_count": 1,
+        "open_note_count": 1,
+        "resolved_note_count": 0,
+        "deleted_note_count": 0,
+        "high_urgency_note_count": 1,
+        "ready_export_count": 1,
+        "failed_export_count": 0,
+        "evidence_item_count": 1,
+        "attention_target_count": 1,
+    }
+    assert workbench["by_target_service"] == {"nex-cx": 1}
+    assert workbench["by_note_severity"] == {"HIGH": 1}
+    assert workbench["by_export_status"] == {"READY": 1}
+    assert workbench["attention"][0]["attention_status"] == "ATTENTION"
+    assert workbench["attention"][0]["target_ref"] == {
+        "target_service": "nex-cx",
+        "target_kind": "retrieval_threshold_decision",
+        "target_id": "weighted_rrf_vector_bm25_v1",
+    }
+    assert workbench["source_statuses"]["nex-ag"] == {
+        "status": "READY",
+        "service_id": "nex-ag",
+        "source_kind": "memory",
+        "target_count": 1,
+        "note_count": 1,
+        "export_count": 1,
+        "attention_target_count": 1,
+        "database_env": None,
+        "redacted_database_url": None,
+    }
+    assert projection["degraded_sources"] == []
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_dashboard_operator_review_workbench_handles_filters_and_errors() -> (
+    None
+):
+    class FailingNoteStore(OperatorReviewNoteStore):
+        def list_notes(self, **_: object) -> list[dict[str, Any]]:
+            raise RuntimeError("note source down")
+
+    note_store = OperatorReviewNoteStore()
+    note_store.save(operator_review_note_record())
+    export_store = OperatorEvidenceExportStore()
+
+    filtered = build_operations_dashboard_snapshot_projection(
+        operator_review_note_store=note_store,
+        operator_review_export_store=export_store,
+        service_id="nex-mo",
+        recent_limit=2,
+    )
+    unavailable = build_operations_dashboard_snapshot_projection(
+        operator_review_note_store=FailingNoteStore(),
+        operator_review_export_store=export_store,
+        service_id="nex-cx",
+        recent_limit=2,
+    )
+
+    assert filtered["operator_review_workbench"]["summary"]["target_count"] == 0
+    assert (
+        filtered["operator_review_workbench"]["source_statuses"]["nex-ag"]["status"]
+        == "READY"
+    )
+    assert unavailable["operator_review_workbench"]["projection_status"] == "DEGRADED"
+    assert unavailable["projection_status"] == "DEGRADED"
+    assert unavailable["operator_review_workbench"]["source_statuses"]["nex-ag"][
+        "error_code"
+    ] == "ag.operator_review_workbench_source_unavailable"
+    assert {
+        (source["source_type"], source["service_id"], source["status"])
+        for source in unavailable["degraded_sources"]
+    } == {("operator_review_workbench", "nex-ag", "UNAVAILABLE")}
+    assert_ag_operations_projection_contract(filtered)
+    assert_ag_operations_projection_contract(unavailable)
+
+
+def test_operations_dashboard_route_wires_operator_review_workbench() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    note_store = OperatorReviewNoteStore()
+    note_store.save(operator_review_note_record())
+    export_store = OperatorEvidenceExportStore()
+    export_store.save(operator_review_export_record())
+    register_unified_operation_routes(
+        app,
+        operator_review_note_store=note_store,
+        operator_review_export_store=export_store,
+    )
+
+    response = TestClient(app).get(
+        "/admin/v1/operations/dashboard",
+        params={"service_id": "nex-cx", "recent_limit": 2},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["operator_review_workbench"]["summary"]["target_count"] == 1
+    assert payload["operator_review_workbench"]["attention"][0]["attention_status"] == (
+        "ATTENTION"
+    )
+    assert_ag_operations_projection_contract(payload)
 
 
 def test_dashboard_generation_remediation_section_handles_missing_and_broken_sources() -> (

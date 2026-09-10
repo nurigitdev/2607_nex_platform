@@ -33,6 +33,12 @@ from nex_ag.processing_operations import (  # noqa: E402
     InMemoryCxProcessingRunOperationsStore,
     register_cx_processing_run_operation_routes,
 )
+from nex_ag.operator_reviews import (  # noqa: E402
+    OperatorEvidenceExportStore,
+    OperatorReviewNoteStore,
+    build_operator_evidence_export_record,
+    build_operator_review_note_record,
+)
 from nex_ag.retrieval_operations import (  # noqa: E402
     InMemoryRetrievalPackageOperationsStore,
 )
@@ -61,6 +67,8 @@ SCHEMA_VERSION = "ag_operations_dashboard_smoke.v1"
 def run_ag_operations_dashboard_smoke() -> dict[str, Any]:
     cx_processing_run_stores = _build_cx_processing_run_stores()
     retrieval_package_stores = _build_retrieval_package_stores()
+    operator_review_note_store = _build_operator_review_note_store()
+    operator_review_export_store = _build_operator_review_export_store()
     registry = build_operations_source_registry(
         job_queues=_build_job_queues(),
         event_stores=_build_event_stores(),
@@ -86,6 +94,8 @@ def run_ag_operations_dashboard_smoke() -> dict[str, Any]:
         runtime=runtime,
         retrieval_package_stores=retrieval_package_stores,
         cx_processing_run_stores=cx_processing_run_stores,
+        operator_review_note_store=operator_review_note_store,
+        operator_review_export_store=operator_review_export_store,
     )
     register_operational_event_taxonomy_routes(app)
     register_operational_event_routes(app, registry=registry)
@@ -146,6 +156,72 @@ def _build_retrieval_package_stores() -> dict[str, InMemoryRetrievalPackageOpera
             ]
         )
     }
+
+
+def _build_operator_review_note_store() -> OperatorReviewNoteStore:
+    store = OperatorReviewNoteStore()
+    store.save(
+        build_operator_review_note_record(
+            {
+                "operator_note_id": "smoke-note-cx-001",
+                "target_ref": {
+                    "target_service": "nex-cx",
+                    "target_kind": "retrieval_threshold_decision",
+                    "target_id": "weighted_rrf_vector_bm25_v1",
+                },
+                "operator_ref": {
+                    "operator_type": "service",
+                    "operator_id": "nex-ag",
+                    "service_id": "nex-ag",
+                },
+                "operator_note": "Smoke operator review note.",
+                "severity": "HIGH",
+                "note_type": "ACTION",
+                "reason_codes": ["smoke_operator_review_attention"],
+            },
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="smoke-note-cx-001",
+            created_at="2026-08-05T00:00:09Z",
+        )
+    )
+    return store
+
+
+def _build_operator_review_export_store() -> OperatorEvidenceExportStore:
+    store = OperatorEvidenceExportStore()
+    store.save(
+        build_operator_evidence_export_record(
+            {
+                "export_id": "smoke-export-cx-001",
+                "target_ref": {
+                    "target_service": "nex-cx",
+                    "target_kind": "retrieval_threshold_decision",
+                    "target_id": "weighted_rrf_vector_bm25_v1",
+                },
+                "operator_ref": {
+                    "operator_type": "service",
+                    "operator_id": "nex-ag",
+                    "service_id": "nex-ag",
+                },
+                "export_format": "json",
+                "evidence_refs": [
+                    {
+                        "source_service": "nex-cx",
+                        "evidence_type": "retrieval_package",
+                        "evidence_id": "smoke-retrieval-package-cx-001",
+                        "content_hash": "a" * 64,
+                        "redaction_status": "HASH_ONLY",
+                    }
+                ],
+            },
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="smoke-export-cx-001",
+            created_at="2026-08-05T00:00:10Z",
+        )
+    )
+    return store
 
 
 def _build_job_queues() -> dict[str, InMemoryJobQueue]:
@@ -752,6 +828,19 @@ def _ag_operations_dashboard_smoke_checks(
             ]["status"]
             == "READY"
         ),
+        "dashboard_operator_review_workbench_visible": (
+            dashboard["operator_review_workbench"]["summary"]["target_count"] == 1
+            and dashboard["operator_review_workbench"]["summary"]["note_count"] == 1
+            and dashboard["operator_review_workbench"]["summary"]["export_count"] == 1
+            and dashboard["operator_review_workbench"]["attention"][0][
+                "attention_status"
+            ]
+            == "ATTENTION"
+            and dashboard["operator_review_workbench"]["source_statuses"]["nex-ag"][
+                "status"
+            ]
+            == "READY"
+        ),
         "issue_candidates_include_failed_and_active": {
             candidate["rule_id"]
             for candidate in issue_candidates["issue_candidates"]
@@ -793,6 +882,9 @@ def _projection_counts(projections: dict[str, dict[str, Any]]) -> dict[str, int]
             projections["dashboard"]["retrieval_threshold_decisions"][
                 "threshold_decisions"
             ]
+        ),
+        "operator_review_attention": len(
+            projections["dashboard"]["operator_review_workbench"]["attention"]
         ),
         "issue_candidates": len(projections["issue_candidates"]["issue_candidates"]),
     }

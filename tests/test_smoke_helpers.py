@@ -345,6 +345,7 @@ def test_ag_operations_dashboard_smoke_passes_mock_pack() -> None:
         "dashboard_degraded_sources": 0,
         "dashboard_replay_candidates": 1,
         "threshold_decisions": 2,
+        "operator_review_attention": 1,
         "issue_candidates": 4,
     }
     assert ag_operations_dashboard_smoke.summary_line(evidence) == (

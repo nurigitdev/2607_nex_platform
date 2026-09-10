@@ -260,6 +260,9 @@
     "remediation_executions": {
       "$ref": "#/$defs/dashboard_remediation_executions"
     },
+    "operator_review_workbench": {
+      "$ref": "#/$defs/dashboard_operator_review_workbench"
+    },
     "replay_candidates": {
       "type": "array",
       "items": {
@@ -733,6 +736,7 @@
           "generation_quality",
           "generation_remediation",
           "remediation_executions",
+          "operator_review_workbench",
           "degraded_sources",
           "job_source_statuses",
           "event_source_statuses",
@@ -840,6 +844,13 @@
     "sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
+    },
+    "string_integer_counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
     },
     "subject_ref": {
       "type": "object",
@@ -2183,6 +2194,211 @@
         }
       }
     },
+    "dashboard_operator_review_workbench": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "projection_status",
+        "summary",
+        "by_target_service",
+        "by_target_kind",
+        "by_note_status",
+        "by_note_severity",
+        "by_export_status",
+        "by_export_format",
+        "attention",
+        "source_statuses",
+        "workbench_path",
+        "rollup_path",
+        "redaction"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "const": "ag_operator_review_workbench_dashboard_section.v1"
+        },
+        "projection_status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "DEGRADED"
+          ]
+        },
+        "summary": {
+          "$ref": "#/$defs/dashboard_operator_review_workbench_summary"
+        },
+        "by_target_service": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "by_target_kind": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "by_note_status": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "by_note_severity": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "by_export_status": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "by_export_format": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "attention": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dashboard_operator_review_attention_item"
+          }
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/source_status"
+          }
+        },
+        "workbench_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rollup_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "dashboard_operator_review_workbench_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_count",
+        "note_count",
+        "export_count",
+        "open_note_count",
+        "resolved_note_count",
+        "deleted_note_count",
+        "high_urgency_note_count",
+        "ready_export_count",
+        "failed_export_count",
+        "evidence_item_count",
+        "attention_target_count"
+      ],
+      "properties": {
+        "target_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "note_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "export_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_note_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resolved_note_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deleted_note_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "high_urgency_note_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ready_export_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_export_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence_item_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attention_target_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "dashboard_operator_review_attention_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_ref",
+        "attention_status",
+        "reason_codes",
+        "note_count",
+        "export_count",
+        "latest_updated_at"
+      ],
+      "properties": {
+        "target_ref": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target_service",
+            "target_kind",
+            "target_id"
+          ],
+          "properties": {
+            "target_service": {
+              "$ref": "#/$defs/service_id"
+            },
+            "target_kind": {
+              "type": "string",
+              "minLength": 1
+            },
+            "target_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "attention_status": {
+          "type": "string",
+          "enum": [
+            "BLOCKED",
+            "ATTENTION",
+            "OPEN"
+          ]
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "note_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "export_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latest_updated_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
     "dashboard_remediation_execution_item": {
       "type": "object",
       "additionalProperties": false,
@@ -2642,7 +2858,10 @@
             "events",
             "logs",
             "cx_processing_runs",
-            "retrieval_threshold_decisions"
+            "retrieval_threshold_decisions",
+            "generation_remediation",
+            "remediation_executions",
+            "operator_review_workbench"
           ]
         },
         "service_id": {

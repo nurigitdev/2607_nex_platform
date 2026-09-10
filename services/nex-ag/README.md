@@ -857,6 +857,11 @@ Unified operations:
   `/admin/v1/operator-review/workbench/rollups`. It derives safe target, note,
   export, evidence-item, and attention counts from the read model without
   adding persistence or exposing raw note/evidence payloads.
+- Slice 0634 wires the operator review workbench rollup into
+  `/admin/v1/operations/dashboard` as the
+  `ag_operator_review_workbench_dashboard_section.v1` section. The dashboard
+  interprets `service_id` as a workbench target-service filter, reports AG-owned
+  source health under `nex-ag`, and keeps workbench access read-only.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
