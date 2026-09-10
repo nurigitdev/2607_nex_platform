@@ -900,6 +900,10 @@ Unified operations:
   source AE/CX/MO/OA records remain read-only through service APIs. Notification
   delivery and external incident sync are deferred until the case loop is
   stable.
+- Slice 0642 adds the `ag_op_cases` persistence foundation. The store supports
+  in-memory and SQLAlchemy-backed regression paths, keeps target and assignee
+  fields indexable, stores resolution text as hash plus bounded preview only,
+  and preserves the operational-event-first action history policy.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
