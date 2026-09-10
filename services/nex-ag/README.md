@@ -871,6 +871,10 @@ Unified operations:
   and rollup routes now accept `note_status`, `export_status`, `updated_from`,
   and `updated_to` alongside target, trace, operator, and limit filters, and the
   AG note/export stores apply those filters before limiting records.
+- Slice 0637 freezes the operator review workbench contract surface with
+  dedicated JSON Schemas, positive and negative contract fixtures, and OpenAPI
+  paths for `/admin/v1/operator-review/workbench` and
+  `/admin/v1/operator-review/workbench/rollups`.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -740,6 +740,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0634`](slices/0634_ag_operator_review_dashboard_wiring.md) | `S64-004` AG operations dashboard operator-review workbench section wiring. |
 | [`Slice 0635`](slices/0635_ag_operator_review_issue_candidate_correlation.md) | `S64-005` AG operator review issue-candidate correlation foundation. |
 | [`Slice 0636`](slices/0636_ag_operator_review_search_filter_hardening.md) | `S64-006` AG operator review workbench search/filter hardening. |
+| [`Slice 0637`](slices/0637_ag_operator_review_openapi_schema_examples.md) | `S64-007` AG operator review workbench OpenAPI/schema/examples freeze. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

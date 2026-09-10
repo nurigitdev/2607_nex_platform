@@ -431,6 +431,16 @@
       "schema": "schemas/service/nex_ag/operations_projection.v1.schema.json"
     },
     {
+      "name": "ag_operator_review_workbench_mock",
+      "path": "examples/operations/ag_operator_review_workbench.mock_success.json",
+      "schema": "schemas/service/nex_ag/operator_review_workbench.v1.schema.json"
+    },
+    {
+      "name": "ag_operator_review_workbench_rollup_mock",
+      "path": "examples/operations/ag_operator_review_workbench_rollup.mock_success.json",
+      "schema": "schemas/service/nex_ag/operator_review_workbench_rollup.v1.schema.json"
+    },
+    {
       "name": "ae_web_fetch_mode_smoke_evidence_postgres_success",
       "path": "examples/operations/ae_web_fetch_mode_smoke_evidence.postgres_success.json",
       "schema": "schemas/service/nex_ae_web/fetch_mode_smoke_evidence.v1.schema.json"

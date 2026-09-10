@@ -1,0 +1,91 @@
+{
+  "workbench_schema_version": "ag_operator_review_workbench.v1",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "filters": {
+    "target_service": "nex-ae-api",
+    "target_kind": "operator_control.worker_result",
+    "target_id": "worker-result-001",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "operator_type": "user",
+    "operator_id": "employee-0001",
+    "note_status": "ACTIVE",
+    "export_status": null,
+    "updated_from": null,
+    "updated_to": null,
+    "limit": 50
+  },
+  "items": [
+    {
+      "target_ref": {
+        "target_service": "nex-ae-api",
+        "target_kind": "operator_control.worker_result",
+        "target_id": "worker-result-001"
+      },
+      "latest_updated_at": "2026-09-10T00:10:00Z",
+      "trace_ids": [
+        "4bf92f3577b34da6a3ce929d0e0e4736"
+      ],
+      "notes": [
+        {
+          "operator_note_id": "ag-note-001",
+          "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+          "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+          "note_status": "ACTIVE",
+          "note_type": "OBSERVATION",
+          "severity": "HIGH",
+          "operator_ref": {
+            "operator_type": "user",
+            "operator_id": "employee-0001",
+            "tenant_id": "local-tenant"
+          },
+          "operator_note_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "operator_note_preview": "Worker result needs review before closing.",
+          "operator_note": "This raw note must not be exposed.",
+          "reason_codes": [
+            "worker_result_attention"
+          ],
+          "created_at": "2026-09-10T00:10:00Z",
+          "updated_at": "2026-09-10T00:10:00Z"
+        }
+      ],
+      "evidence_exports": [],
+      "note_summary": {
+        "count": 1,
+        "by_status": {
+          "ACTIVE": 1
+        },
+        "by_severity": {
+          "HIGH": 1
+        },
+        "latest_updated_at": "2026-09-10T00:10:00Z"
+      },
+      "export_summary": {
+        "count": 0,
+        "by_status": {},
+        "by_format": {},
+        "evidence_item_count": 0,
+        "latest_updated_at": null
+      },
+      "raw_payloads_included": false
+    }
+  ],
+  "summary": {
+    "target_count": 1,
+    "note_count": 1,
+    "export_count": 0,
+    "open_note_count": 1,
+    "failed_export_count": 0,
+    "latest_updated_at": "2026-09-10T00:10:00Z"
+  },
+  "redaction": {
+    "raw_operator_note_included": false,
+    "raw_evidence_body_included": false,
+    "raw_prompt_included": false,
+    "raw_source_text_included": false,
+    "storage_paths_included": false,
+    "idempotency_keys_included": false,
+    "note_body_shape": "hash_and_short_preview_only",
+    "evidence_shape": "redacted_manifest_plus_hashes"
+  }
+}

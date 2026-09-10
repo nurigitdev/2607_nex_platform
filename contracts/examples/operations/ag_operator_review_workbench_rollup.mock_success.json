@@ -1,0 +1,82 @@
+{
+  "rollup_schema_version": "ag_operator_review_workbench_rollup.v1",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "filters": {
+    "target_service": "nex-ae-api",
+    "target_kind": "operator_control.worker_result",
+    "target_id": "worker-result-001",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "operator_type": "user",
+    "operator_id": "employee-0001",
+    "note_status": "ACTIVE",
+    "export_status": "FAILED",
+    "updated_from": "2026-09-10T00:00:00Z",
+    "updated_to": "2026-09-10T00:15:00Z",
+    "limit": 50
+  },
+  "summary": {
+    "target_count": 1,
+    "note_count": 1,
+    "export_count": 1,
+    "open_note_count": 1,
+    "resolved_note_count": 0,
+    "deleted_note_count": 0,
+    "high_urgency_note_count": 1,
+    "ready_export_count": 0,
+    "failed_export_count": 1,
+    "evidence_item_count": 1,
+    "attention_target_count": 1
+  },
+  "by_target_service": {
+    "nex-ae-api": 1
+  },
+  "by_target_kind": {
+    "operator_control.worker_result": 1
+  },
+  "by_note_status": {
+    "ACTIVE": 1
+  },
+  "by_note_severity": {
+    "HIGH": 1
+  },
+  "by_export_status": {
+    "FAILED": 1
+  },
+  "by_export_format": {
+    "json": 1
+  },
+  "attention": {
+    "items": [
+      {
+        "target_ref": {
+          "target_service": "nex-ae-api",
+          "target_kind": "operator_control.worker_result",
+          "target_id": "worker-result-001"
+        },
+        "attention_status": "BLOCKED",
+        "reason_codes": [
+          "failed_evidence_export",
+          "active_high_urgency_note",
+          "active_operator_note"
+        ],
+        "note_count": 1,
+        "export_count": 1,
+        "latest_updated_at": "2026-09-10T00:12:00Z"
+      }
+    ],
+    "by_status": {
+      "BLOCKED": 1
+    }
+  },
+  "redaction": {
+    "raw_operator_note_included": false,
+    "raw_evidence_body_included": false,
+    "raw_prompt_included": false,
+    "raw_source_text_included": false,
+    "storage_paths_included": false,
+    "idempotency_keys_included": false,
+    "note_body_shape": "hash_and_short_preview_only",
+    "evidence_shape": "redacted_manifest_plus_hashes"
+  }
+}

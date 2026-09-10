@@ -220,6 +220,58 @@ def test_nex_ag_operations_contract_includes_cx_processing_projections() -> None
     ]
 
 
+def test_nex_ag_operator_review_workbench_contracts_are_indexed() -> None:
+    root = Path(__file__).parents[1] / "contracts"
+    workbench_schema = json.loads(
+        (
+            root
+            / "schemas"
+            / "service"
+            / "nex_ag"
+            / "operator_review_workbench.v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    rollup_schema = json.loads(
+        (
+            root
+            / "schemas"
+            / "service"
+            / "nex_ag"
+            / "operator_review_workbench_rollup.v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    example_entries = json.loads(
+        (root / "examples" / "index.json").read_text(encoding="utf-8")
+    )["examples"]
+    negative_entries = json.loads(
+        (root / "tests" / "negative" / "index.json").read_text(encoding="utf-8")
+    )["negative_examples"]
+    openapi = yaml.safe_load(
+        (root / "openapi" / "nex-ag.openapi.yaml").read_text(encoding="utf-8")
+    )
+
+    assert workbench_schema["properties"]["workbench_schema_version"]["const"] == (
+        "ag_operator_review_workbench.v1"
+    )
+    assert rollup_schema["properties"]["rollup_schema_version"]["const"] == (
+        "ag_operator_review_workbench_rollup.v1"
+    )
+    assert "note_status" in workbench_schema["$defs"]["workbench_filters"]["required"]
+    assert "updated_to" in rollup_schema["$defs"]["workbench_filters"]["required"]
+    assert {
+        "examples/operations/ag_operator_review_workbench.mock_success.json",
+        "examples/operations/ag_operator_review_workbench_rollup.mock_success.json",
+    }.issubset({entry["path"] for entry in example_entries})
+    assert {
+        "tests/negative/operations/ag_operator_review_workbench.raw_operator_note_leak.json",
+        "tests/negative/operations/ag_operator_review_workbench_rollup.bad_attention_status.json",
+    }.issubset({entry["path"] for entry in negative_entries})
+    assert "/admin/v1/operator-review/workbench" in openapi["paths"]
+    assert "/admin/v1/operator-review/workbench/rollups" in openapi["paths"]
+    assert "AgOperatorReviewWorkbench" in openapi["components"]["schemas"]
+    assert "AgOperatorReviewWorkbenchRollup" in openapi["components"]["schemas"]
+
+
 def test_nex_ag_operations_contract_hardens_retrieval_threshold_decisions() -> None:
     schema_path = (
         Path(__file__).parents[1]

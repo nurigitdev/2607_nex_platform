@@ -522,6 +522,154 @@ paths:
           description: Invalid issue candidate query or filter.
         "401":
           description: Service claim is missing or invalid.
+  /admin/v1/operator-review/workbench:
+    get:
+      operationId: getAgOperatorReviewWorkbench
+      tags:
+        - Operations
+      parameters:
+        - name: target_service
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ServiceId"
+        - name: target_kind
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: target_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TraceId"
+        - name: operator_type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorType"
+        - name: operator_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: note_status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewNoteStatus"
+        - name: export_status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorEvidenceExportStatus"
+        - name: updated_from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: updated_to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only AG operator review workbench grouped by target reference.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewWorkbench"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "422":
+          description: Workbench filter is invalid.
+        "503":
+          description: Operator review note or evidence export store is unavailable.
+  /admin/v1/operator-review/workbench/rollups:
+    get:
+      operationId: getAgOperatorReviewWorkbenchRollups
+      tags:
+        - Operations
+      parameters:
+        - name: target_service
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ServiceId"
+        - name: target_kind
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: target_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TraceId"
+        - name: operator_type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorType"
+        - name: operator_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: note_status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewNoteStatus"
+        - name: export_status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorEvidenceExportStatus"
+        - name: updated_from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: updated_to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only rollup metrics for the AG operator review workbench.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewWorkbenchRollup"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "422":
+          description: Workbench filter is invalid.
+        "503":
+          description: Operator review note or evidence export store is unavailable.
   /admin/v1/operations/workers:
     get:
       operationId: getAgWorkerRuntimeProjection
@@ -1530,6 +1678,25 @@ components:
         - WARNING
         - ERROR
         - CRITICAL
+    AgOperatorType:
+      type: string
+      enum:
+        - service
+        - user
+    AgOperatorReviewNoteStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - SUPERSEDED
+        - RESOLVED
+        - DELETED
+    AgOperatorEvidenceExportStatus:
+      type: string
+      enum:
+        - REQUESTED
+        - READY
+        - FAILED
+        - CANCELLED
     AgGenerationQualityIssueDetailProjection:
       type: object
       additionalProperties: true
@@ -2354,6 +2521,74 @@ components:
           type: string
           format: date-time
       additionalProperties: true
+    AgOperatorReviewWorkbench:
+      type: object
+      additionalProperties: true
+      required:
+        - workbench_schema_version
+        - request_id
+        - filters
+        - items
+        - summary
+        - redaction
+      properties:
+        workbench_schema_version:
+          type: string
+          const: ag_operator_review_workbench.v1
+        trace_id:
+          oneOf:
+            - $ref: "#/components/schemas/TraceId"
+            - type: "null"
+        request_id:
+          type: string
+          minLength: 1
+        filters:
+          type: object
+          additionalProperties: true
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        summary:
+          type: object
+          additionalProperties: true
+        redaction:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewWorkbenchRollup:
+      type: object
+      additionalProperties: true
+      required:
+        - rollup_schema_version
+        - request_id
+        - filters
+        - summary
+        - attention
+        - redaction
+      properties:
+        rollup_schema_version:
+          type: string
+          const: ag_operator_review_workbench_rollup.v1
+        trace_id:
+          oneOf:
+            - $ref: "#/components/schemas/TraceId"
+            - type: "null"
+        request_id:
+          type: string
+          minLength: 1
+        filters:
+          type: object
+          additionalProperties: true
+        summary:
+          type: object
+          additionalProperties: true
+        attention:
+          type: object
+          additionalProperties: true
+        redaction:
+          type: object
+          additionalProperties: true
     AgServiceLogRetentionPurgeRequest:
       type: object
       additionalProperties: false

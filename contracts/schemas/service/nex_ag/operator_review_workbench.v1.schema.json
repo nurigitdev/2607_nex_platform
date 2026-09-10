@@ -1,0 +1,578 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/operator_review_workbench.v1.schema.json",
+  "title": "NeX AG Operator Review Workbench",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "workbench_schema_version",
+    "trace_id",
+    "request_id",
+    "filters",
+    "items",
+    "summary",
+    "redaction"
+  ],
+  "properties": {
+    "workbench_schema_version": {
+      "const": "ag_operator_review_workbench.v1"
+    },
+    "trace_id": {
+      "$ref": "#/$defs/nullable_trace_id"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "filters": {
+      "$ref": "#/$defs/workbench_filters"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/workbench_item"
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/workbench_summary"
+    },
+    "redaction": {
+      "$ref": "#/$defs/redaction"
+    }
+  },
+  "$defs": {
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "nullable_trace_id": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/trace_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullable_text": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nullable_timestamp": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target_service": {
+      "type": "string",
+      "enum": [
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-oa",
+        "nex-ag"
+      ]
+    },
+    "note_status": {
+      "type": "string",
+      "enum": [
+        "ACTIVE",
+        "SUPERSEDED",
+        "RESOLVED",
+        "DELETED"
+      ]
+    },
+    "export_status": {
+      "type": "string",
+      "enum": [
+        "REQUESTED",
+        "READY",
+        "FAILED",
+        "CANCELLED"
+      ]
+    },
+    "operator_type": {
+      "type": "string",
+      "enum": [
+        "service",
+        "user"
+      ]
+    },
+    "workbench_filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_service",
+        "target_kind",
+        "target_id",
+        "trace_id",
+        "operator_type",
+        "operator_id",
+        "note_status",
+        "export_status",
+        "updated_from",
+        "updated_to",
+        "limit"
+      ],
+      "properties": {
+        "target_service": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/target_service"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target_kind": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "target_id": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "operator_type": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/operator_type"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operator_id": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "note_status": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/note_status"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "export_status": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/export_status"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updated_from": {
+          "$ref": "#/$defs/nullable_timestamp"
+        },
+        "updated_to": {
+          "$ref": "#/$defs/nullable_timestamp"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        }
+      }
+    },
+    "target_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_service",
+        "target_kind",
+        "target_id"
+      ],
+      "properties": {
+        "target_service": {
+          "$ref": "#/$defs/target_service"
+        },
+        "target_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "operator_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operator_type",
+        "operator_id",
+        "tenant_id"
+      ],
+      "properties": {
+        "operator_type": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/operator_type"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operator_id": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "tenant_id": {
+          "$ref": "#/$defs/nullable_text"
+        }
+      }
+    },
+    "note_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operator_note_id",
+        "trace_id",
+        "request_id",
+        "note_status",
+        "note_type",
+        "severity",
+        "operator_ref",
+        "operator_note_hash",
+        "operator_note_preview",
+        "reason_codes",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "operator_note_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "note_status": {
+          "$ref": "#/$defs/note_status"
+        },
+        "note_type": {
+          "type": "string",
+          "enum": [
+            "OBSERVATION",
+            "ACTION",
+            "FOLLOW_UP",
+            "ESCALATION",
+            "RESOLUTION"
+          ]
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "INFO",
+            "LOW",
+            "MEDIUM",
+            "HIGH",
+            "URGENT"
+          ]
+        },
+        "operator_ref": {
+          "$ref": "#/$defs/operator_ref"
+        },
+        "operator_note_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "operator_note_preview": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "evidence_export_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "export_id",
+        "trace_id",
+        "request_id",
+        "export_status",
+        "export_format",
+        "redaction_profile",
+        "evidence_hash",
+        "evidence_item_count",
+        "operator_ref",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "export_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "export_status": {
+          "$ref": "#/$defs/export_status"
+        },
+        "export_format": {
+          "type": "string",
+          "enum": [
+            "json",
+            "jsonl",
+            "zip_manifest"
+          ]
+        },
+        "redaction_profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "evidence_item_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "operator_ref": {
+          "$ref": "#/$defs/operator_ref"
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "count_map": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "note_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "count",
+        "by_status",
+        "by_severity",
+        "latest_updated_at"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_status": {
+          "$ref": "#/$defs/count_map"
+        },
+        "by_severity": {
+          "$ref": "#/$defs/count_map"
+        },
+        "latest_updated_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        }
+      }
+    },
+    "export_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "count",
+        "by_status",
+        "by_format",
+        "evidence_item_count",
+        "latest_updated_at"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_status": {
+          "$ref": "#/$defs/count_map"
+        },
+        "by_format": {
+          "$ref": "#/$defs/count_map"
+        },
+        "evidence_item_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latest_updated_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        }
+      }
+    },
+    "workbench_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_ref",
+        "latest_updated_at",
+        "trace_ids",
+        "notes",
+        "evidence_exports",
+        "note_summary",
+        "export_summary",
+        "raw_payloads_included"
+      ],
+      "properties": {
+        "target_ref": {
+          "$ref": "#/$defs/target_ref"
+        },
+        "latest_updated_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        },
+        "trace_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/trace_id"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/note_ref"
+          }
+        },
+        "evidence_exports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence_export_ref"
+          }
+        },
+        "note_summary": {
+          "$ref": "#/$defs/note_summary"
+        },
+        "export_summary": {
+          "$ref": "#/$defs/export_summary"
+        },
+        "raw_payloads_included": {
+          "const": false
+        }
+      }
+    },
+    "workbench_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_count",
+        "note_count",
+        "export_count",
+        "open_note_count",
+        "failed_export_count",
+        "latest_updated_at"
+      ],
+      "properties": {
+        "target_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "note_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "export_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_note_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_export_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latest_updated_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        }
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_operator_note_included",
+        "raw_evidence_body_included",
+        "raw_prompt_included",
+        "raw_source_text_included",
+        "storage_paths_included",
+        "idempotency_keys_included",
+        "note_body_shape",
+        "evidence_shape"
+      ],
+      "properties": {
+        "raw_operator_note_included": {
+          "const": false
+        },
+        "raw_evidence_body_included": {
+          "const": false
+        },
+        "raw_prompt_included": {
+          "const": false
+        },
+        "raw_source_text_included": {
+          "const": false
+        },
+        "storage_paths_included": {
+          "const": false
+        },
+        "idempotency_keys_included": {
+          "const": false
+        },
+        "note_body_shape": {
+          "const": "hash_and_short_preview_only"
+        },
+        "evidence_shape": {
+          "const": "redacted_manifest_plus_hashes"
+        }
+      }
+    }
+  }
+}
