@@ -47,10 +47,22 @@ from .operator_reviews import (
 OPERATOR_REVIEW_CASE_SCHEMA_VERSION = "ag_operator_review_case.v1"
 OPERATOR_REVIEW_CASE_LIST_SCHEMA_VERSION = "ag_operator_review_case_list.v1"
 OPERATOR_REVIEW_CASE_MUTATION_SCHEMA_VERSION = "ag_operator_review_case_mutation.v1"
+OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION = "ag_operator_review_case_action.v1"
+OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION = (
+    "ag_operator_review_case_action_mutation.v1"
+)
 OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE = "ag.operator_review_case.recorded"
 AG_OPERATOR_REVIEW_CASE_TABLE = "ag_op_cases"
 MAX_CASE_COMMENT_PREVIEW_LENGTH = 240
 
+ALLOWED_CASE_ACTIONS = (
+    "CREATE_CASE",
+    "ACKNOWLEDGE",
+    "ASSIGN",
+    "RESOLVE",
+    "DISMISS",
+    "REOPEN",
+)
 ALLOWED_CASE_STATUSES = (
     "OPEN",
     "ACKNOWLEDGED",
@@ -60,6 +72,20 @@ ALLOWED_CASE_STATUSES = (
     "REOPENED",
 )
 ALLOWED_CASE_PRIORITIES = ("LOW", "MEDIUM", "HIGH", "URGENT")
+CASE_ACTION_TARGET_STATUSES = {
+    "ACKNOWLEDGE": "ACKNOWLEDGED",
+    "ASSIGN": "ASSIGNED",
+    "RESOLVE": "RESOLVED",
+    "DISMISS": "DISMISSED",
+    "REOPEN": "REOPENED",
+}
+CASE_ACTION_ALLOWED_FROM = {
+    "ACKNOWLEDGE": ("OPEN", "REOPENED"),
+    "ASSIGN": ("OPEN", "ACKNOWLEDGED", "ASSIGNED", "REOPENED"),
+    "RESOLVE": ("OPEN", "ACKNOWLEDGED", "ASSIGNED", "REOPENED"),
+    "DISMISS": ("OPEN", "ACKNOWLEDGED", "ASSIGNED", "REOPENED"),
+    "REOPEN": ("RESOLVED", "DISMISSED"),
+}
 
 
 @dataclass
@@ -338,6 +364,68 @@ class OperatorReviewCaseService:
                 detail=f"Operator review case was not found: {case_id}",
             )
         return record
+
+    def apply_action(
+        self,
+        case_id: str,
+        payload: dict[str, Any],
+        *,
+        request_id: str,
+        trace_id: str | None,
+        idempotency_key: str | None,
+    ) -> dict[str, Any]:
+        normalized_case_id = required_case_id(case_id)
+        normalized_idempotency_key = required_case_action_idempotency_key(
+            idempotency_key
+        )
+        record = self.get_case(normalized_case_id)
+        action_id = operator_review_case_action_id(
+            normalized_case_id,
+            normalized_idempotency_key,
+        )
+        request_signature = operator_review_case_action_request_signature(
+            normalized_case_id,
+            payload,
+        )
+        previous_action = _latest_case_action_summary(record)
+        if previous_action is not None and previous_action.get("action_id") == action_id:
+            if previous_action.get("request_signature") != request_signature:
+                raise OperatorReviewNoteError(
+                    status_code=409,
+                    error_code="ag.operator_review_case_action_idempotency_conflict",
+                    detail=(
+                        "Idempotency key already maps to a different "
+                        "operator review case action."
+                    ),
+                )
+            return build_operator_review_case_action_mutation_response(
+                record,
+                previous_action["record"],
+                idempotency_status="REPLAYED",
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        updated, action = apply_operator_review_case_action(
+            record,
+            payload,
+            request_id=request_id,
+            trace_id=trace_id,
+            idempotency_key=normalized_idempotency_key,
+        )
+        updated["metadata"]["last_action"] = {
+            "action_id": action["action_id"],
+            "action_type": action["action_type"],
+            "request_signature": request_signature,
+            "record": action,
+        }
+        saved = self._store.save(updated)
+        return build_operator_review_case_action_mutation_response(
+            saved,
+            action,
+            idempotency_status="NEW",
+            request_id=request_id,
+            trace_id=trace_id,
+        )
 
 
 def default_operator_review_case_store(app: FastAPI) -> Any:
@@ -622,6 +710,172 @@ def build_operator_review_case_mutation_response(
     }
 
 
+def build_operator_review_case_action_mutation_response(
+    record: dict[str, Any],
+    action: dict[str, Any],
+    *,
+    idempotency_status: str,
+    request_id: str,
+    trace_id: str | None,
+) -> dict[str, Any]:
+    normalized_status = optional_choice(
+        idempotency_status,
+        key="idempotency_status",
+        choices=("NEW", "REPLAYED", "CONFLICT"),
+        default="NEW",
+    )
+    return {
+        "case_action_mutation_schema_version": (
+            OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION
+        ),
+        "idempotency_status": normalized_status,
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "case": record,
+        "action": action,
+        "summary": {
+            "case_id": record["case_id"],
+            "action_id": action["action_id"],
+            "action_type": action["action_type"],
+            "from_status": action["from_status"],
+            "to_status": action["to_status"],
+            "case_status": record["case_status"],
+            "case_priority": record["case_priority"],
+        },
+    }
+
+
+def apply_operator_review_case_action(
+    record: dict[str, Any],
+    payload: dict[str, Any],
+    *,
+    request_id: str,
+    trace_id: str | None,
+    idempotency_key: str,
+    acted_at: str | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    action = build_operator_review_case_action_record(
+        record,
+        payload,
+        request_id=request_id,
+        trace_id=trace_id,
+        idempotency_key=idempotency_key,
+        acted_at=acted_at,
+    )
+    updated = dict(record)
+    updated["case_status"] = action["to_status"]
+    updated["updated_at"] = action["acted_at"]
+    if action["action_type"] == "ASSIGN":
+        updated["assignment_ref"] = dict(action["assignment_ref"])
+    if action["action_type"] in {"RESOLVE", "DISMISS"}:
+        updated["closed_at"] = action["acted_at"]
+        updated["resolution_hash"] = action["resolution_hash"]
+        updated["resolution_preview"] = action["resolution_preview"]
+    if action["action_type"] == "REOPEN":
+        updated["closed_at"] = None
+    existing_metadata = (
+        updated.get("metadata") if isinstance(updated.get("metadata"), dict) else {}
+    )
+    updated["metadata"] = operator_review_case_metadata(
+        existing_metadata,
+        idempotency_key_hash=existing_metadata.get("idempotency_key_hash"),
+    )
+    updated["metadata"].update(
+        {
+            "last_action_id": action["action_id"],
+            "last_action_type": action["action_type"],
+            "last_action_at": action["acted_at"],
+        }
+    )
+    return updated, action
+
+
+def build_operator_review_case_action_record(
+    record: dict[str, Any],
+    payload: dict[str, Any],
+    *,
+    request_id: str,
+    trace_id: str | None,
+    idempotency_key: str,
+    acted_at: str | None = None,
+) -> dict[str, Any]:
+    assert_operator_review_note_payload_redaction_safe(payload)
+    action_type = required_case_action_type(payload.get("action_type"))
+    if action_type == "CREATE_CASE":
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.operator_review_case_action_create_case_unsupported",
+            detail="CREATE_CASE is represented by the case create route.",
+        )
+    from_status = str(record.get("case_status") or "")
+    to_status = _target_status_for_case_action(action_type, from_status)
+    operator = operator_ref(payload.get("operator_ref"))
+    assignment = _assignment_ref_for_case_action(action_type, payload, record)
+    reason_codes = reason_code_list(payload.get("reason_codes"))
+    action_comment = optional_text(payload.get("action_comment"))
+    resolution_comment = optional_text(payload.get("resolution_comment"))
+    effective_resolution = resolution_comment or action_comment
+    if action_type in {"RESOLVE", "DISMISS"} and effective_resolution is None:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.operator_review_case_resolution_comment_required",
+            detail="resolution_comment or action_comment is required.",
+        )
+    now = acted_at or _utc_now()
+    action_id = operator_review_case_action_id(record["case_id"], idempotency_key)
+    return {
+        "case_action_schema_version": OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION,
+        "action_id": action_id,
+        "case_id": record["case_id"],
+        "action_type": action_type,
+        "from_status": from_status,
+        "to_status": to_status,
+        "target_service": record["target_service"],
+        "target_kind": record["target_kind"],
+        "target_id": record["target_id"],
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "operator_ref": operator,
+        "assignment_ref": assignment,
+        "reason_codes": reason_codes,
+        "action_comment_hash": sha256_text(action_comment) if action_comment else None,
+        "action_comment_preview": operator_note_preview(action_comment),
+        "resolution_hash": (
+            sha256_text(effective_resolution) if effective_resolution else None
+        ),
+        "resolution_preview": operator_note_preview(effective_resolution),
+        "metadata": operator_review_case_action_metadata(
+            payload.get("metadata"),
+            idempotency_key_hash=sha256_text(idempotency_key),
+        ),
+        "acted_at": now,
+    }
+
+
+def operator_review_case_action_request_signature(
+    case_id: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    assert_operator_review_note_payload_redaction_safe(payload)
+    action_type = required_case_action_type(payload.get("action_type"))
+    operator = operator_ref(payload.get("operator_ref"))
+    assignment = operator_review_case_assignment_ref(payload.get("assignment_ref"))
+    action_comment = optional_text(payload.get("action_comment"))
+    resolution_comment = optional_text(payload.get("resolution_comment"))
+    return {
+        "case_id": required_case_id(case_id),
+        "action_type": action_type,
+        "operator_ref": operator,
+        "assignment_ref": assignment,
+        "reason_codes": reason_code_list(payload.get("reason_codes")),
+        "action_comment_hash": sha256_text(action_comment) if action_comment else None,
+        "resolution_hash": (
+            sha256_text(resolution_comment) if resolution_comment else None
+        ),
+        "metadata": operator_review_case_action_metadata(payload.get("metadata")),
+    }
+
+
 def operator_review_case_idempotency_signature(record: dict[str, Any]) -> dict[str, Any]:
     operator = record.get("operator_ref")
     operator_ref_value = operator if isinstance(operator, dict) else {}
@@ -745,6 +999,41 @@ def operator_review_case_metadata(
     return json.loads(json.dumps(metadata))
 
 
+def operator_review_case_action_metadata(
+    value: Any,
+    *,
+    idempotency_key_hash: str | None = None,
+) -> dict[str, Any]:
+    if value is None:
+        metadata: dict[str, Any] = {}
+    elif isinstance(value, dict):
+        metadata = dict(value)
+    else:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.operator_review_case_action_metadata_invalid",
+            detail="metadata must be an object when supplied.",
+        )
+    metadata.update(
+        {
+            "raw_action_comment_stored": False,
+            "raw_resolution_comment_stored": False,
+            "raw_prompt_stored": False,
+            "raw_generation_output_stored": False,
+            "raw_source_text_stored": False,
+            "storage_paths_included": False,
+            "action_comment_storage": "hash_and_short_preview_only",
+            "action_history_storage": "operational_events_first",
+            "notification_delivery_deferred": True,
+            "external_incident_sync_deferred": True,
+        }
+    )
+    if idempotency_key_hash is not None:
+        metadata["idempotency_key_hash"] = idempotency_key_hash
+        metadata["idempotency_key_stored"] = False
+    return json.loads(json.dumps(metadata))
+
+
 def required_case_idempotency_key(value: Any) -> str:
     normalized = optional_text(value)
     if normalized is None:
@@ -752,6 +1041,17 @@ def required_case_idempotency_key(value: Any) -> str:
             status_code=422,
             error_code="ag.operator_review_case_idempotency_key_required",
             detail="Idempotency-Key is required for operator review case mutations.",
+        )
+    return normalized
+
+
+def required_case_action_idempotency_key(value: Any) -> str:
+    normalized = optional_text(value)
+    if normalized is None:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.operator_review_case_action_idempotency_key_required",
+            detail="Idempotency-Key is required for operator review case actions.",
         )
     return normalized
 
@@ -765,6 +1065,82 @@ def required_case_id(value: Any) -> str:
             detail="case_id is required.",
         )
     return normalized
+
+
+def required_case_action_type(value: Any) -> str:
+    normalized = optional_text(value)
+    if normalized is None:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.operator_review_case_action_type_required",
+            detail="action_type is required.",
+        )
+    if normalized not in ALLOWED_CASE_ACTIONS:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.operator_review_case_action_type_unsupported",
+            detail=f"unsupported action_type: {normalized}",
+        )
+    return normalized
+
+
+def operator_review_case_action_id(case_id: str, idempotency_key: str) -> str:
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            "ag-operator-review-case-action:"
+            f"{required_case_id(case_id)}:{sha256_text(idempotency_key)}",
+        )
+    )
+
+
+def _target_status_for_case_action(action_type: str, from_status: str) -> str:
+    allowed_from = CASE_ACTION_ALLOWED_FROM.get(action_type)
+    if allowed_from is None or action_type not in CASE_ACTION_TARGET_STATUSES:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.operator_review_case_action_type_unsupported",
+            detail=f"unsupported action_type: {action_type}",
+        )
+    if from_status not in allowed_from:
+        raise OperatorReviewNoteError(
+            status_code=409,
+            error_code="ag.operator_review_case_action_transition_invalid",
+            detail=f"{action_type} cannot transition case status {from_status}.",
+        )
+    return CASE_ACTION_TARGET_STATUSES[action_type]
+
+
+def _assignment_ref_for_case_action(
+    action_type: str,
+    payload: dict[str, Any],
+    record: dict[str, Any],
+) -> dict[str, str | None]:
+    supplied = operator_review_case_assignment_ref(payload.get("assignment_ref"))
+    if action_type == "ASSIGN":
+        if supplied.get("assignee_id") is None:
+            raise OperatorReviewNoteError(
+                status_code=422,
+                error_code="ag.operator_review_case_assignment_required",
+                detail="ASSIGN requires assignment_ref with assignee_type and assignee_id.",
+            )
+        return supplied
+    existing = record.get("assignment_ref")
+    return dict(existing) if isinstance(existing, dict) else supplied
+
+
+def _latest_case_action_summary(record: dict[str, Any]) -> dict[str, Any] | None:
+    metadata = record.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    action = metadata.get("last_action")
+    if not isinstance(action, dict):
+        return None
+    if not isinstance(action.get("record"), dict):
+        return None
+    if not isinstance(action.get("request_signature"), dict):
+        return None
+    return action
 
 
 def _operator_review_case_identity_seed(

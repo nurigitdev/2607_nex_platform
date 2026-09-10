@@ -12,26 +12,38 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from nex_ag.operator_review_cases import (
     AG_OPERATOR_REVIEW_CASE_TABLE,
+    ALLOWED_CASE_ACTIONS,
     ALLOWED_CASE_PRIORITIES,
     ALLOWED_CASE_STATUSES,
+    OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION,
+    OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_CASE_SCHEMA_VERSION,
     OperatorReviewCaseService,
     OperatorReviewCaseStore,
     SqlAlchemyOperatorReviewCaseStore,
     _operator_review_case_filter_clause,
+    _latest_case_action_summary,
     _operator_review_case_record_params,
     _operator_review_case_select_sql,
+    _target_status_for_case_action,
+    apply_operator_review_case_action,
+    build_operator_review_case_action_mutation_response,
+    build_operator_review_case_action_record,
     build_operator_review_case_list_response,
     build_operator_review_case_mutation_response,
     build_operator_review_case_record,
     default_operator_review_case_store,
     emit_operator_review_case_event,
+    operator_review_case_action_id,
+    operator_review_case_action_metadata,
+    operator_review_case_action_request_signature,
     operator_review_case_assignment_ref,
     operator_review_case_idempotency_signature,
     operator_review_case_metadata,
     operator_review_case_source_ref,
     register_operator_review_case_routes,
+    required_case_action_idempotency_key,
     required_case_idempotency_key,
 )
 from nex_ag.operator_reviews import (
@@ -84,6 +96,22 @@ def sample_case_payload(**overrides: Any) -> dict[str, Any]:
         },
         "reason_codes": ["active_operator_note", "active_operator_note"],
         "metadata": {"source_view": "operator_review_workbench"},
+    }
+    payload.update(overrides)
+    return payload
+
+
+def sample_action_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "action_type": "ACKNOWLEDGE",
+        "operator_ref": {
+            "operator_type": "user",
+            "operator_id": "employee-0001",
+            "tenant_id": "local-tenant",
+        },
+        "reason_codes": ["operator_review_follow_up"],
+        "action_comment": "Operator acknowledged the review case.",
+        "metadata": {"source_view": "operator_review_case_detail"},
     }
     payload.update(overrides)
     return payload
@@ -387,6 +415,302 @@ def test_case_idempotency_signature_is_safe_and_stable() -> None:
     assert signature["source_ref"]["source_type"] == "operator_review_workbench"
     assert signature["metadata"]["idempotency_key_stored"] is False
     assert "idem-0642-case" not in str(signature)
+
+
+@pytest.mark.parametrize("action_type", ALLOWED_CASE_ACTIONS)
+def test_case_action_type_registry_is_explicit(action_type: str) -> None:
+    assert action_type in {
+        "CREATE_CASE",
+        "ACKNOWLEDGE",
+        "ASSIGN",
+        "RESOLVE",
+        "DISMISS",
+        "REOPEN",
+    }
+
+
+def test_case_action_record_resolves_and_redacts_comments() -> None:
+    record = build_case()
+    action = build_operator_review_case_action_record(
+        record,
+        sample_action_payload(
+            action_type="RESOLVE",
+            resolution_comment="Resolved after reviewing redacted evidence.",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0644-resolve",
+        acted_at="2026-09-11T02:00:00Z",
+    )
+    updated, applied = apply_operator_review_case_action(
+        record,
+        sample_action_payload(
+            action_type="RESOLVE",
+            resolution_comment="Resolved after reviewing redacted evidence.",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0644-resolve",
+        acted_at="2026-09-11T02:00:00Z",
+    )
+
+    assert action["case_action_schema_version"] == (
+        OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION
+    )
+    assert action["action_type"] == "RESOLVE"
+    assert action["from_status"] == "OPEN"
+    assert action["to_status"] == "RESOLVED"
+    assert action["resolution_hash"] == sha256_text(
+        "Resolved after reviewing redacted evidence."
+    )
+    assert action["resolution_preview"] == (
+        "Resolved after reviewing redacted evidence."
+    )
+    assert action["metadata"]["action_history_storage"] == (
+        "operational_events_first"
+    )
+    assert action["metadata"]["idempotency_key_stored"] is False
+    assert updated["case_status"] == "RESOLVED"
+    assert updated["closed_at"] == "2026-09-11T02:00:00Z"
+    assert updated["resolution_hash"] == action["resolution_hash"]
+    assert applied == action
+    assert '"resolution_comment"' not in json.dumps(action)
+
+
+def test_case_action_service_applies_replays_and_conflicts() -> None:
+    store = OperatorReviewCaseStore()
+    service = OperatorReviewCaseService(store)
+    case = service.create_case(
+        sample_case_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0644-case",
+    )["case"]
+
+    acknowledged = service.apply_action(
+        case["case_id"],
+        sample_action_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0644-action",
+    )
+    replayed = service.apply_action(
+        case["case_id"],
+        sample_action_payload(),
+        request_id="request-replay",
+        trace_id=None,
+        idempotency_key="idem-0644-action",
+    )
+
+    assert acknowledged["case_action_mutation_schema_version"] == (
+        OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION
+    )
+    assert acknowledged["idempotency_status"] == "NEW"
+    assert acknowledged["case"]["case_status"] == "ACKNOWLEDGED"
+    assert acknowledged["case"]["metadata"]["last_action"]["record"] == (
+        acknowledged["action"]
+    )
+    assert replayed["idempotency_status"] == "REPLAYED"
+    assert replayed["action"] == acknowledged["action"]
+    assert replayed["request_id"] == "request-replay"
+
+    with pytest.raises(OperatorReviewNoteError) as conflict:
+        service.apply_action(
+            case["case_id"],
+            sample_action_payload(action_comment="Different action comment."),
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="idem-0644-action",
+        )
+    assert conflict.value.status_code == 409
+    assert conflict.value.error_code == (
+        "ag.operator_review_case_action_idempotency_conflict"
+    )
+
+
+def test_case_action_service_assign_resolve_and_reopen_transitions() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+    case = service.create_case(
+        sample_case_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0644-flow-case",
+    )["case"]
+
+    assigned = service.apply_action(
+        case["case_id"],
+        sample_action_payload(
+            action_type="ASSIGN",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-assign-0644",
+                "tenant_id": "local-tenant",
+            },
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0644-assign",
+    )
+    resolved = service.apply_action(
+        case["case_id"],
+        sample_action_payload(
+            action_type="RESOLVE",
+            resolution_comment="Resolution stored as a bounded safe preview.",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0644-resolve-flow",
+    )
+    reopened = service.apply_action(
+        case["case_id"],
+        sample_action_payload(action_type="REOPEN"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0644-reopen",
+    )
+
+    assert assigned["case"]["case_status"] == "ASSIGNED"
+    assert assigned["case"]["assignment_ref"]["assignee_id"] == "employee-assign-0644"
+    assert resolved["case"]["case_status"] == "RESOLVED"
+    assert resolved["case"]["closed_at"] is not None
+    assert reopened["case"]["case_status"] == "REOPENED"
+    assert reopened["case"]["closed_at"] is None
+
+
+def test_case_action_mutation_response_and_signature_helpers() -> None:
+    record = build_case()
+    action = build_operator_review_case_action_record(
+        record,
+        sample_action_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0644-helper",
+        acted_at="2026-09-11T03:00:00Z",
+    )
+    response = build_operator_review_case_action_mutation_response(
+        {**record, "case_status": "ACKNOWLEDGED"},
+        action,
+        idempotency_status="NEW",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    signature = operator_review_case_action_request_signature(
+        record["case_id"],
+        sample_action_payload(),
+    )
+
+    assert response["summary"]["action_type"] == "ACKNOWLEDGE"
+    assert response["summary"]["to_status"] == "ACKNOWLEDGED"
+    assert signature["action_comment_hash"] == sha256_text(
+        "Operator acknowledged the review case."
+    )
+    assert operator_review_case_action_id(
+        record["case_id"],
+        "idem-0644-helper",
+    ) == action["action_id"]
+    assert required_case_action_idempotency_key("  idem-action  ") == "idem-action"
+    assert operator_review_case_action_metadata(None)["raw_prompt_stored"] is False
+
+
+def test_case_action_validation_rejects_invalid_requests() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+    case = service.create_case(
+        sample_case_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0644-invalid-case",
+    )["case"]
+
+    invalid_requests = [
+        (
+            sample_action_payload(action_type=None),
+            "ag.operator_review_case_action_type_required",
+        ),
+        (
+            sample_action_payload(action_type="CREATE_CASE"),
+            "ag.operator_review_case_action_create_case_unsupported",
+        ),
+        (
+            sample_action_payload(action_type="UNKNOWN"),
+            "ag.operator_review_case_action_type_unsupported",
+        ),
+        (
+            sample_action_payload(action_type="ASSIGN"),
+            "ag.operator_review_case_assignment_required",
+        ),
+        (
+            sample_action_payload(action_type="RESOLVE", action_comment=None),
+            "ag.operator_review_case_resolution_comment_required",
+        ),
+        (
+            sample_action_payload(raw_prompt="do not store this"),
+            "ag.operator_review_note_sensitive_payload",
+        ),
+        (
+            sample_action_payload(metadata=["not-object"]),
+            "ag.operator_review_case_action_metadata_invalid",
+        ),
+    ]
+
+    for payload, error_code in invalid_requests:
+        with pytest.raises(OperatorReviewNoteError) as exc:
+            service.apply_action(
+                case["case_id"],
+                payload,
+                request_id=REQUEST_ID,
+                trace_id=TRACE_ID,
+                idempotency_key=f"idem-0644-invalid-{error_code}",
+            )
+        assert exc.value.error_code == error_code
+
+    with pytest.raises(OperatorReviewNoteError) as missing_idem:
+        service.apply_action(
+            case["case_id"],
+            sample_action_payload(),
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key=None,
+        )
+    assert missing_idem.value.error_code == (
+        "ag.operator_review_case_action_idempotency_key_required"
+    )
+
+
+def test_case_action_private_guard_helpers_cover_malformed_metadata() -> None:
+    assert _latest_case_action_summary({"metadata": None}) is None
+    assert _latest_case_action_summary({"metadata": {"last_action": None}}) is None
+    assert _latest_case_action_summary(
+        {"metadata": {"last_action": {"request_signature": {}}}}
+    ) is None
+    assert _latest_case_action_summary(
+        {"metadata": {"last_action": {"record": {}, "request_signature": None}}}
+    ) is None
+
+    with pytest.raises(OperatorReviewNoteError) as exc:
+        _target_status_for_case_action("CREATE_CASE", "OPEN")
+    assert exc.value.error_code == "ag.operator_review_case_action_type_unsupported"
+
+
+def test_case_action_validation_rejects_invalid_transition() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+    case = service.create_case(
+        sample_case_payload(case_status="RESOLVED"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0644-resolved-case",
+    )["case"]
+
+    with pytest.raises(OperatorReviewNoteError) as exc:
+        service.apply_action(
+            case["case_id"],
+            sample_action_payload(action_type="ACKNOWLEDGE"),
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="idem-0644-invalid-transition",
+        )
+
+    assert exc.value.status_code == 409
+    assert exc.value.error_code == "ag.operator_review_case_action_transition_invalid"
 
 
 def test_operator_review_case_service_creates_replays_and_conflicts() -> None:

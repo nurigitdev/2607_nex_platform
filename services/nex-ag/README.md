@@ -909,6 +909,11 @@ Unified operations:
   list, and detail reads, emits redaction-safe operational events for new cases,
   and keeps explicit action command state transitions deferred to later S65
   slices.
+- Slice 0644 adds the internal operator review case action state machine. AG can
+  now validate and apply acknowledge, assign, resolve, dismiss, and reopen
+  transitions with idempotent replay/conflict handling while keeping action
+  history operational-event-first and comments stored as hashes plus bounded
+  previews only.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
