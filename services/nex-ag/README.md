@@ -914,6 +914,11 @@ Unified operations:
   transitions with idempotent replay/conflict handling while keeping action
   history operational-event-first and comments stored as hashes plus bounded
   previews only.
+- Slice 0645 exposes the state machine at
+  `POST /admin/v1/operator-review/cases/{case_id}/actions`. The route reuses AG
+  operator-review auth, requires an `Idempotency-Key`, returns 201 for new
+  actions and 200 for replay, and emits a redaction-safe operational event only
+  for new actions.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

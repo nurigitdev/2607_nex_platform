@@ -52,6 +52,9 @@ OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION = (
     "ag_operator_review_case_action_mutation.v1"
 )
 OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE = "ag.operator_review_case.recorded"
+OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE = (
+    "ag.operator_review_case_action.recorded"
+)
 AG_OPERATOR_REVIEW_CASE_TABLE = "ag_op_cases"
 MAX_CASE_COMMENT_PREVIEW_LENGTH = 240
 
@@ -532,6 +535,43 @@ def register_operator_review_case_routes(
         except OperatorReviewNoteError as exc:
             return _operator_review_case_problem_response(request, exc)
 
+    @app.post(
+        "/admin/v1/operator-review/cases/{case_id}/actions",
+        response_model=None,
+    )
+    def apply_operator_review_case_action_route(
+        case_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        payload: dict[str, Any] = Body(...),
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            response = service.apply_action(
+                case_id,
+                payload,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                idempotency_key=idempotency_key,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+        if response["idempotency_status"] == "NEW":
+            emit_operator_review_case_action_event(
+                audit_emitter,
+                response["action"],
+                response["case"],
+            )
+        return JSONResponse(
+            status_code=201 if response["idempotency_status"] == "NEW" else 200,
+            content=response,
+        )
+
 
 def emit_operator_review_case_event(
     audit_emitter: OperationalEventEmitter,
@@ -563,6 +603,45 @@ def emit_operator_review_case_event(
             "assignee_id": assignment_ref_value.get("assignee_id"),
             "reason_count": len(record.get("reason_codes") or []),
             "resolution_hash": record.get("resolution_hash"),
+        },
+    )
+
+
+def emit_operator_review_case_action_event(
+    audit_emitter: OperationalEventEmitter,
+    action: dict[str, Any],
+    record: dict[str, Any],
+) -> OperationalEventEmitResult:
+    operator = action.get("operator_ref")
+    operator_ref_value = operator if isinstance(operator, dict) else {}
+    assignment = action.get("assignment_ref")
+    assignment_ref_value = assignment if isinstance(assignment, dict) else {}
+    return audit_emitter.safe_emit(
+        event_type=OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE,
+        severity="INFO",
+        message="AG operator review case action recorded.",
+        trace_id=action.get("trace_id"),
+        request_id=action.get("request_id"),
+        subject_ref={
+            "type": "operator_review_case_action",
+            "id": str(action["action_id"]),
+        },
+        details={
+            "case_id": action.get("case_id"),
+            "action_id": action.get("action_id"),
+            "action_type": action.get("action_type"),
+            "from_status": action.get("from_status"),
+            "to_status": action.get("to_status"),
+            "case_status": record.get("case_status"),
+            "target_service": action.get("target_service"),
+            "target_kind": action.get("target_kind"),
+            "target_id": action.get("target_id"),
+            "operator_type": operator_ref_value.get("operator_type"),
+            "operator_id": operator_ref_value.get("operator_id"),
+            "assignee_id": assignment_ref_value.get("assignee_id"),
+            "reason_count": len(action.get("reason_codes") or []),
+            "action_comment_hash": action.get("action_comment_hash"),
+            "resolution_hash": action.get("resolution_hash"),
         },
     )
 

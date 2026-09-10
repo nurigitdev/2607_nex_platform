@@ -16,6 +16,7 @@ from nex_ag.operator_review_cases import (
     ALLOWED_CASE_PRIORITIES,
     ALLOWED_CASE_STATUSES,
     OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION,
+    OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_CASE_SCHEMA_VERSION,
@@ -34,6 +35,7 @@ from nex_ag.operator_review_cases import (
     build_operator_review_case_mutation_response,
     build_operator_review_case_record,
     default_operator_review_case_store,
+    emit_operator_review_case_action_event,
     emit_operator_review_case_event,
     operator_review_case_action_id,
     operator_review_case_action_metadata,
@@ -894,6 +896,78 @@ def test_emit_operator_review_case_event_records_safe_operational_event() -> Non
     assert "resolution_preview" not in events[0]["details"]
 
 
+def test_emit_operator_review_case_action_event_records_safe_event() -> None:
+    event_store = InMemoryOperationalEventStore()
+    emitter = OperationalEventEmitter(service_id="nex-ag", store=event_store)
+    record = build_case(sample_case_payload(case_id="case-action-event"))
+    updated, action = apply_operator_review_case_action(
+        record,
+        sample_action_payload(
+            action_type="RESOLVE",
+            resolution_comment="Action completed with safe summary only.",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-action-event",
+        acted_at="2026-09-11T04:00:00Z",
+    )
+
+    result = emit_operator_review_case_action_event(emitter, action, updated)
+    events = event_store.list_events(
+        event_type=OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE
+    )
+
+    assert result.ok is True
+    assert len(events) == 1
+    assert events[0]["subject_ref"] == {
+        "type": "operator_review_case_action",
+        "id": action["action_id"],
+    }
+    assert events[0]["details"] == {
+        "case_id": "case-action-event",
+        "action_id": action["action_id"],
+        "action_type": "RESOLVE",
+        "from_status": "OPEN",
+        "to_status": "RESOLVED",
+        "case_status": "RESOLVED",
+        "target_service": "nex-ag",
+        "target_kind": "operator_review_workbench",
+        "target_id": "target-0642",
+        "operator_type": "user",
+        "operator_id": "employee-0001",
+        "assignee_id": "employee-0002",
+        "reason_count": 1,
+        "action_comment_hash": action["action_comment_hash"],
+        "resolution_hash": action["resolution_hash"],
+    }
+    assert "resolution_preview" not in events[0]["details"]
+
+
+def test_emit_operator_review_case_action_event_uses_safe_failure_result() -> None:
+    class FailingEventStore:
+        def append(self, event: dict[str, Any]) -> dict[str, Any]:
+            raise OperationalEventError(
+                error_code="operational_event.store_unavailable",
+                detail="store unavailable",
+                status_code=503,
+            )
+
+    record = build_case()
+    updated, action = apply_operator_review_case_action(
+        record,
+        sample_action_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-action-event-failure",
+    )
+    emitter = OperationalEventEmitter(service_id="nex-ag", store=FailingEventStore())
+
+    result = emit_operator_review_case_action_event(emitter, action, updated)
+
+    assert result.ok is False
+    assert result.error_code == "operational_event.store_unavailable"
+
+
 def test_emit_operator_review_case_event_uses_safe_failure_result() -> None:
     class FailingEventStore:
         def append(self, event: dict[str, Any]) -> dict[str, Any]:
@@ -948,6 +1022,91 @@ def test_operator_review_case_routes_create_replay_list_and_get_records() -> Non
     assert "idem-route-0643" not in json.dumps(created.json())
     assert len(store.records) == 1
     assert event_store.summary()["total"] == 1
+
+
+def test_operator_review_case_action_route_applies_replays_and_emits_event() -> None:
+    client, store, event_store = build_route_client()
+    created = client.post(
+        "/admin/v1/operator-review/cases",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-route-case-0645"},
+        json=sample_case_payload(),
+    )
+    case_id = created.json()["case"]["case_id"]
+
+    applied = client.post(
+        f"/admin/v1/operator-review/cases/{case_id}/actions",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-route-action-0645"},
+        json=sample_action_payload(),
+    )
+    replayed = client.post(
+        f"/admin/v1/operator-review/cases/{case_id}/actions",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-route-action-0645"},
+        json=sample_action_payload(),
+    )
+
+    assert applied.status_code == 201
+    assert applied.json()["idempotency_status"] == "NEW"
+    assert applied.json()["case"]["case_status"] == "ACKNOWLEDGED"
+    assert applied.json()["action"]["action_type"] == "ACKNOWLEDGE"
+    assert replayed.status_code == 200
+    assert replayed.json()["idempotency_status"] == "REPLAYED"
+    assert replayed.json()["action"] == applied.json()["action"]
+    assert store.get(case_id)["case_status"] == "ACKNOWLEDGED"
+    assert event_store.summary()["total"] == 2
+    assert len(
+        event_store.list_events(
+            event_type=OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE
+        )
+    ) == 1
+
+
+def test_operator_review_case_action_route_rejects_auth_invalid_and_missing() -> None:
+    client, _, _ = build_route_client()
+    created = client.post(
+        "/admin/v1/operator-review/cases",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-route-invalid-case"},
+        json=sample_case_payload(),
+    )
+    case_id = created.json()["case"]["case_id"]
+
+    missing_auth = client.post(
+        f"/admin/v1/operator-review/cases/{case_id}/actions",
+        json=sample_action_payload(),
+    )
+    non_admin = client.post(
+        f"/admin/v1/operator-review/cases/{case_id}/actions",
+        headers={**non_admin_auth_headers(), "Idempotency-Key": "idem-non-admin"},
+        json=sample_action_payload(),
+    )
+    missing_idempotency = client.post(
+        f"/admin/v1/operator-review/cases/{case_id}/actions",
+        headers=admin_auth_headers(),
+        json=sample_action_payload(),
+    )
+    invalid_action = client.post(
+        f"/admin/v1/operator-review/cases/{case_id}/actions",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-invalid-action"},
+        json=sample_action_payload(action_type="ASSIGN"),
+    )
+    missing_case = client.post(
+        "/admin/v1/operator-review/cases/missing/actions",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-missing-case"},
+        json=sample_action_payload(),
+    )
+
+    assert missing_auth.status_code == 401
+    assert non_admin.status_code == 403
+    assert non_admin.json()["error_code"] == "AG_OPERATOR_REVIEW_ADMIN_ROLE_REQUIRED"
+    assert missing_idempotency.status_code == 422
+    assert missing_idempotency.json()["error_code"] == (
+        "ag.operator_review_case_action_idempotency_key_required"
+    )
+    assert invalid_action.status_code == 422
+    assert invalid_action.json()["error_code"] == (
+        "ag.operator_review_case_assignment_required"
+    )
+    assert missing_case.status_code == 404
+    assert missing_case.json()["error_code"] == "ag.operator_review_case_not_found"
 
 
 def test_operator_review_case_routes_reject_auth_and_invalid_payloads() -> None:
