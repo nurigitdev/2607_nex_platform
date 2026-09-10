@@ -86,6 +86,7 @@ from nex_ag.operations import (
     _dashboard_replay_candidates,
     _dashboard_timestamp,
     _issue_candidates_from_generation_quality,
+    _issue_candidates_from_operator_review_workbench,
     _issue_candidates_from_remediation_executions,
     _job_error_code,
     _nullable_string,
@@ -3119,6 +3120,48 @@ def test_operations_dashboard_route_wires_operator_review_workbench() -> None:
     assert_ag_operations_projection_contract(payload)
 
 
+def test_operations_issue_candidate_projection_includes_operator_review_workbench() -> (
+    None
+):
+    note_store = OperatorReviewNoteStore()
+    note_store.save(operator_review_note_record())
+    export_store = OperatorEvidenceExportStore()
+    export_store.save(
+        operator_review_export_record(
+            payload=operator_review_export_payload(export_status="FAILED")
+        )
+    )
+
+    projection = build_operations_issue_candidate_projection(
+        operator_review_note_store=note_store,
+        operator_review_export_store=export_store,
+        service_id="nex-cx",
+        recent_limit=2,
+        request_trace_id=TRACE_ID,
+    )
+
+    candidates = [
+        candidate
+        for candidate in projection["issue_candidates"]
+        if candidate["rule_id"] == "operator_review_attention_required.v1"
+    ]
+    assert len(candidates) == 1
+    assert candidates[0]["service_id"] == "nex-ag"
+    assert candidates[0]["severity"] == "ERROR"
+    assert candidates[0]["signal"]["status"] == "BLOCKED"
+    assert candidates[0]["signal"]["target_services"] == ["nex-cx"]
+    assert candidates[0]["signal"]["target_ids"] == [
+        "weighted_rrf_vector_bm25_v1"
+    ]
+    assert projection["summary"]["by_rule"][
+        "operator_review_attention_required.v1"
+    ] == 1
+    assert projection["rules"][-1]["rule_id"] == (
+        "operator_review_attention_required.v1"
+    )
+    assert_ag_operations_projection_contract(projection)
+
+
 def test_dashboard_generation_remediation_section_handles_missing_and_broken_sources() -> (
     None
 ):
@@ -3576,6 +3619,7 @@ def test_build_operations_issue_candidate_projection_flags_service_scope() -> No
         "generation_quality_attention_required.v1",
         "generation_remediation_attention_required.v1",
         "remediation_execution_attention_required.v1",
+        "operator_review_attention_required.v1",
     ]
     assert [
         (candidate["rule_id"], candidate["service_id"], candidate["severity"])
@@ -4417,6 +4461,18 @@ def test_operations_issue_candidates_group_threshold_decision_readiness() -> Non
         )
         == []
     )
+    assert (
+        build_operations_issue_candidates(
+            {**base_dashboard, "operator_review_workbench": "bad"}
+        )
+        == []
+    )
+    assert (
+        build_operations_issue_candidates(
+            {**base_dashboard, "operator_review_workbench": {"attention": "bad"}}
+        )
+        == []
+    )
     remediation_candidates = build_operations_issue_candidates(
         {
             **base_dashboard,
@@ -4507,6 +4563,98 @@ def test_operations_issue_candidates_group_threshold_decision_readiness() -> Non
         "ag.remediation_execution.missing_execution_followup.v1",
         "ag.remediation_execution.orphan_execution_review.v1",
     ]
+    operator_review_candidates = _issue_candidates_from_operator_review_workbench(
+        {
+            "attention": [
+                {
+                    "target_ref": {
+                        "target_service": "nex-cx",
+                        "target_kind": "retrieval_threshold_decision",
+                        "target_id": "weighted_rrf_vector_bm25_v1",
+                    },
+                    "attention_status": "BLOCKED",
+                    "reason_codes": [
+                        "failed_evidence_export",
+                        "active_operator_note",
+                        404,
+                    ],
+                    "note_count": 2,
+                    "export_count": 1,
+                },
+                {
+                    "target_ref": {
+                        "target_service": "nex-mo",
+                        "target_kind": "provider",
+                        "target_id": "embedding",
+                    },
+                    "attention_status": "ATTENTION",
+                    "reason_codes": ["active_high_urgency_note"],
+                    "note_count": "1",
+                    "export_count": False,
+                },
+                {"attention_status": "OK"},
+                "malformed",
+            ]
+        }
+    )
+
+    assert len(operator_review_candidates) == 1
+    assert operator_review_candidates[0]["severity"] == "ERROR"
+    assert operator_review_candidates[0]["signal"] == {
+        "source_type": "operator_review_workbench",
+        "status": "BLOCKED",
+        "count": 2,
+        "threshold": 1,
+        "blocked_count": 1,
+        "attention_count": 1,
+        "open_count": 0,
+        "note_count": 3,
+        "export_count": 1,
+        "target_services": ["nex-cx", "nex-mo"],
+        "target_kinds": ["provider", "retrieval_threshold_decision"],
+        "target_ids": ["embedding", "weighted_rrf_vector_bm25_v1"],
+        "attention_statuses": ["ATTENTION", "BLOCKED"],
+        "reason_codes": [
+            "active_high_urgency_note",
+            "active_operator_note",
+            "failed_evidence_export",
+        ],
+        "workbench_path": "/admin/v1/operator-review/workbench",
+        "rollup_path": "/admin/v1/operator-review/workbench/rollups",
+        "runbook_ids": [
+            "ag.operator_review.failed_export_triage.v1",
+            "ag.operator_review.high_urgency_note_review.v1",
+            "ag.operator_review.open_note_followup.v1",
+        ],
+        "recommended_operator_actions": [
+            "follow_up_open_operator_note",
+            "review_high_urgency_operator_note",
+            "triage_failed_operator_evidence_export",
+        ],
+    }
+    assert [
+        candidate["rule_id"]
+        for candidate in build_operations_issue_candidates(
+            {
+                **base_dashboard,
+                "operator_review_workbench": {
+                    "attention": [
+                        {
+                            "target_ref": {
+                                "target_service": "nex-cx",
+                                "target_kind": "retrieval_threshold_decision",
+                                "target_id": "weighted_rrf_vector_bm25_v1",
+                            },
+                            "attention_status": "OPEN",
+                            "reason_codes": ["active_operator_note"],
+                            "note_count": 1,
+                            "export_count": 0,
+                        }
+                    ]
+                },
+            }
+        )
+    ] == ["operator_review_attention_required.v1"]
 
 
 def test_operations_issue_candidate_projection_flags_error_and_critical_service_logs() -> (

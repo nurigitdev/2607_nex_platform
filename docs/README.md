@@ -738,6 +738,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0632`](slices/0632_ag_operator_review_unified_read_model.md) | `S64-002` AG operator review unified read-model projection. |
 | [`Slice 0633`](slices/0633_ag_operator_review_rollup_metrics.md) | `S64-003` AG operator review rollup metrics foundation. |
 | [`Slice 0634`](slices/0634_ag_operator_review_dashboard_wiring.md) | `S64-004` AG operations dashboard operator-review workbench section wiring. |
+| [`Slice 0635`](slices/0635_ag_operator_review_issue_candidate_correlation.md) | `S64-005` AG operator review issue-candidate correlation foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

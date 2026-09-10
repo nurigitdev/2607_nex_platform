@@ -849,6 +849,7 @@ def _ag_operations_dashboard_smoke_checks(
             "dead_letter_replay_available.v1",
             "active_jobs_review.v1",
             "retrieval_threshold_live_samples_insufficient.v1",
+            "operator_review_attention_required.v1",
         },
     }
 

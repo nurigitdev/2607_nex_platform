@@ -346,12 +346,12 @@ def test_ag_operations_dashboard_smoke_passes_mock_pack() -> None:
         "dashboard_replay_candidates": 1,
         "threshold_decisions": 2,
         "operator_review_attention": 1,
-        "issue_candidates": 4,
+        "issue_candidates": 5,
     }
     assert ag_operations_dashboard_smoke.summary_line(evidence) == (
         "ag_operations_dashboard_smoke=pass endpoints=20 jobs=2 workers=1 "
         "processing_runs=2 threshold_decisions=2 events=1 logs=1 history=1 "
-        "issues=4"
+        "issues=5"
     )
     assert "private" not in json.dumps(evidence, ensure_ascii=False)
 

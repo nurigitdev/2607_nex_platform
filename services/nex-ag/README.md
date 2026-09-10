@@ -862,6 +862,11 @@ Unified operations:
   `ag_operator_review_workbench_dashboard_section.v1` section. The dashboard
   interprets `service_id` as a workbench target-service filter, reports AG-owned
   source health under `nex-ag`, and keeps workbench access read-only.
+- Slice 0635 correlates operator review workbench attention with
+  `/admin/v1/operations/issue-candidates` through
+  `operator_review_attention_required.v1`. Failed evidence exports become
+  `ERROR` candidates; active high-urgency or open notes become `WARNING`
+  candidates with safe target refs, runbook ids, and operator actions.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

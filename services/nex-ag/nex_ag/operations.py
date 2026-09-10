@@ -360,6 +360,14 @@ OPERATIONS_ISSUE_CANDIDATE_RULES = (
         "enabled": True,
         "signal_type": "remediation_execution",
     },
+    {
+        "rule_id": "operator_review_attention_required.v1",
+        "severity": "WARNING",
+        "title": "Operator review attention required",
+        "description": "One or more operator review workbench targets need review.",
+        "enabled": True,
+        "signal_type": "operator_review_workbench",
+    },
 )
 RETRIEVAL_THRESHOLD_ISSUE_RULES_BY_READINESS = {
     "NO_DECISION_CHECKPOINT": {
@@ -2170,6 +2178,8 @@ def register_unified_operation_routes(
             remediation_execution_projection_builder=(
                 remediation_execution_projection_builder
             ),
+            operator_review_note_store=operator_review_note_store,
+            operator_review_export_store=operator_review_export_store,
             worker_heartbeat_stores=worker_heartbeat_stores,
             registry=registry,
             runtime=selected_runtime,
@@ -3033,6 +3043,8 @@ def build_operations_issue_candidate_projection(
     remediation_execution_projection_builder: (
         RemediationExecutionOperationsProjectionBuilder | None
     ) = None,
+    operator_review_note_store: Any | None = None,
+    operator_review_export_store: Any | None = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -3061,6 +3073,8 @@ def build_operations_issue_candidate_projection(
         ),
         remediation_execution_stores=remediation_execution_stores,
         remediation_execution_projection_builder=remediation_execution_projection_builder,
+        operator_review_note_store=operator_review_note_store,
+        operator_review_export_store=operator_review_export_store,
         registry=registry,
         runtime=runtime,
         service_id=service_id,
@@ -4175,6 +4189,11 @@ def build_operations_issue_candidates(
     candidates.extend(
         _issue_candidates_from_remediation_executions(
             dashboard_snapshot.get("remediation_executions")
+        )
+    )
+    candidates.extend(
+        _issue_candidates_from_operator_review_workbench(
+            dashboard_snapshot.get("operator_review_workbench")
         )
     )
     if worker_runtime_projection is not None:
@@ -7377,6 +7396,144 @@ def _generation_remediation_issue_operator_actions(
             actions.add("review_active_remediation_task")
         if action_type == "prompt_policy_review":
             actions.add("prepare_prompt_policy_review")
+    return sorted(actions)
+
+
+def _issue_candidates_from_operator_review_workbench(
+    section: object,
+) -> list[dict[str, Any]]:
+    if not isinstance(section, Mapping):
+        return []
+    attention = section.get("attention")
+    if not isinstance(attention, list):
+        return []
+    items = [
+        dict(item)
+        for item in attention
+        if isinstance(item, Mapping)
+        and _operator_review_attention_item_needs_attention(item)
+    ]
+    if not items:
+        return []
+    return [_operator_review_workbench_issue_candidate(items)]
+
+
+def _operator_review_attention_item_needs_attention(item: Mapping[str, Any]) -> bool:
+    return str(item.get("attention_status") or "OK") in {
+        "BLOCKED",
+        "ATTENTION",
+        "OPEN",
+    }
+
+
+def _operator_review_workbench_issue_candidate(
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    status_counts = _dashboard_count_by(items, "attention_status")
+    blocked_count = status_counts.get("BLOCKED", 0)
+    target_refs = [
+        target_ref
+        for item in items
+        if isinstance((target_ref := item.get("target_ref")), Mapping)
+    ]
+    target_services = sorted(
+        {
+            str(target.get("target_service"))
+            for target in target_refs
+            if str(target.get("target_service") or "") in SERVICE_SPECS
+        }
+    )
+    target_kinds = sorted(
+        {
+            str(target.get("target_kind"))
+            for target in target_refs
+            if target.get("target_kind")
+        }
+    )
+    target_ids = sorted(
+        {
+            str(target.get("target_id"))
+            for target in target_refs
+            if target.get("target_id")
+        }
+    )
+    reason_codes = sorted(
+        {
+            str(reason)
+            for item in items
+            for reason in item.get("reason_codes", [])
+            if isinstance(reason, str)
+        }
+    )
+    severity = "ERROR" if blocked_count else "WARNING"
+    return _operations_issue_candidate(
+        rule_id="operator_review_attention_required.v1",
+        service_id="nex-ag",
+        severity=severity,
+        title="Operator review attention required",
+        detail=f"{len(items)} operator review target(s) need review.",
+        signal={
+            "source_type": "operator_review_workbench",
+            "status": "BLOCKED" if blocked_count else "ATTENTION",
+            "count": len(items),
+            "threshold": 1,
+            "blocked_count": blocked_count,
+            "attention_count": status_counts.get("ATTENTION", 0),
+            "open_count": status_counts.get("OPEN", 0),
+            "note_count": sum(_safe_int(item.get("note_count")) for item in items),
+            "export_count": sum(_safe_int(item.get("export_count")) for item in items),
+            "target_services": target_services,
+            "target_kinds": target_kinds,
+            "target_ids": target_ids,
+            "attention_statuses": sorted(status_counts),
+            "reason_codes": reason_codes,
+            "workbench_path": "/admin/v1/operator-review/workbench",
+            "rollup_path": "/admin/v1/operator-review/workbench/rollups",
+            "runbook_ids": _operator_review_issue_runbook_ids(items),
+            "recommended_operator_actions": (
+                _operator_review_issue_operator_actions(items)
+            ),
+        },
+    )
+
+
+def _operator_review_issue_runbook_ids(
+    items: list[dict[str, Any]],
+) -> list[str]:
+    runbook_ids: set[str] = set()
+    for item in items:
+        status = str(item.get("attention_status") or "")
+        reasons = {
+            str(reason)
+            for reason in item.get("reason_codes", [])
+            if isinstance(reason, str)
+        }
+        if status == "BLOCKED" or "failed_evidence_export" in reasons:
+            runbook_ids.add("ag.operator_review.failed_export_triage.v1")
+        if status == "ATTENTION" or "active_high_urgency_note" in reasons:
+            runbook_ids.add("ag.operator_review.high_urgency_note_review.v1")
+        if status == "OPEN" or "active_operator_note" in reasons:
+            runbook_ids.add("ag.operator_review.open_note_followup.v1")
+    return sorted(runbook_ids)
+
+
+def _operator_review_issue_operator_actions(
+    items: list[dict[str, Any]],
+) -> list[str]:
+    actions: set[str] = set()
+    for item in items:
+        status = str(item.get("attention_status") or "")
+        reasons = {
+            str(reason)
+            for reason in item.get("reason_codes", [])
+            if isinstance(reason, str)
+        }
+        if status == "BLOCKED" or "failed_evidence_export" in reasons:
+            actions.add("triage_failed_operator_evidence_export")
+        if status == "ATTENTION" or "active_high_urgency_note" in reasons:
+            actions.add("review_high_urgency_operator_note")
+        if status == "OPEN" or "active_operator_note" in reasons:
+            actions.add("follow_up_open_operator_note")
     return sorted(actions)
 
 
