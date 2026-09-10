@@ -867,6 +867,10 @@ Unified operations:
   `operator_review_attention_required.v1`. Failed evidence exports become
   `ERROR` candidates; active high-urgency or open notes become `WARNING`
   candidates with safe target refs, runbook ids, and operator actions.
+- Slice 0636 hardens operator review workbench search filters. The workbench
+  and rollup routes now accept `note_status`, `export_status`, `updated_from`,
+  and `updated_to` alongside target, trace, operator, and limit filters, and the
+  AG note/export stores apply those filters before limiting records.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

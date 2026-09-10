@@ -345,6 +345,11 @@ def test_in_memory_store_filters_and_deletes_notes() -> None:
     assert store.list_notes(target_kind="processing_run") == [second]
     assert store.list_notes(target_id="missing") == []
     assert store.list_notes(note_status="RESOLVED") == [second]
+    assert store.list_notes(
+        updated_from="2026-09-10T00:05:00Z",
+        updated_to="2026-09-10T00:15:00Z",
+    ) == [second]
+    assert store.list_notes(updated_to="2026-09-09T23:59:59Z") == []
     assert store.list_notes(operator_type="user", operator_id="employee-0001") == [
         second,
         first,
@@ -737,6 +742,10 @@ def test_sqlalchemy_operator_note_store_round_trips_sqlite() -> None:
         loaded = store.get("note-sqlite-old")
         listed = store.list_notes(target_service="nex-cx")
         traced = store.list_notes(trace_id=TRACE_ID, operator_id="employee-0001")
+        ranged = store.list_notes(
+            updated_from="2026-09-10T00:05:00Z",
+            updated_to="2026-09-10T00:15:00Z",
+        )
         deleted = store.delete("note-sqlite-new")
 
         assert loaded == updated_older
@@ -745,6 +754,7 @@ def test_sqlalchemy_operator_note_store_round_trips_sqlite() -> None:
             "note-sqlite-old",
             "note-sqlite-new",
         ]
+        assert ranged == [newer]
         assert deleted == 1
         assert store.get("note-sqlite-new") is None
         assert store.delete("missing") == 0

@@ -127,6 +127,8 @@ class OperatorReviewNoteStore:
         note_status: str | None = None,
         operator_type: str | None = None,
         operator_id: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
         selected = [
@@ -141,6 +143,8 @@ class OperatorReviewNoteStore:
                 note_status=note_status,
                 operator_type=operator_type,
                 operator_id=operator_id,
+                updated_from=updated_from,
+                updated_to=updated_to,
             )
         ]
         selected.sort(
@@ -201,6 +205,8 @@ class SqlAlchemyOperatorReviewNoteStore:
         note_status: str | None = None,
         operator_type: str | None = None,
         operator_id: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
         where_clause, params = _operator_note_filter_clause(
@@ -211,6 +217,8 @@ class SqlAlchemyOperatorReviewNoteStore:
             note_status=note_status,
             operator_type=operator_type,
             operator_id=operator_id,
+            updated_from=updated_from,
+            updated_to=updated_to,
         )
         params["limit"] = normalize_limit(limit)
         try:
@@ -267,6 +275,8 @@ class OperatorEvidenceExportStore:
         export_status: str | None = None,
         operator_type: str | None = None,
         operator_id: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
         selected = [
@@ -281,6 +291,8 @@ class OperatorEvidenceExportStore:
                 note_status=None,
                 operator_type=operator_type,
                 operator_id=operator_id,
+                updated_from=updated_from,
+                updated_to=updated_to,
             )
             and (export_status is None or record.get("export_status") == export_status)
         ]
@@ -338,6 +350,8 @@ class SqlAlchemyOperatorEvidenceExportStore:
         export_status: str | None = None,
         operator_type: str | None = None,
         operator_id: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
         where_clause, params = _evidence_export_filter_clause(
@@ -348,6 +362,8 @@ class SqlAlchemyOperatorEvidenceExportStore:
             export_status=export_status,
             operator_type=operator_type,
             operator_id=operator_id,
+            updated_from=updated_from,
+            updated_to=updated_to,
         )
         params["limit"] = normalize_limit(limit)
         try:
@@ -1520,9 +1536,12 @@ def _record_matches_filter(
     note_status: str | None,
     operator_type: str | None,
     operator_id: str | None,
+    updated_from: str | None = None,
+    updated_to: str | None = None,
 ) -> bool:
     operator = record.get("operator_ref")
     operator_ref_value = operator if isinstance(operator, dict) else {}
+    updated_at = str(record.get("updated_at") or "")
     return all(
         (
             target_service is None or record.get("target_service") == target_service,
@@ -1533,6 +1552,8 @@ def _record_matches_filter(
             operator_type is None
             or operator_ref_value.get("operator_type") == operator_type,
             operator_id is None or operator_ref_value.get("operator_id") == operator_id,
+            updated_from is None or updated_at >= updated_from,
+            updated_to is None or updated_at <= updated_to,
         )
     )
 
@@ -1546,6 +1567,8 @@ def _operator_note_filter_clause(
     note_status: str | None,
     operator_type: str | None,
     operator_id: str | None,
+    updated_from: str | None = None,
+    updated_to: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     clauses = ["1 = 1"]
     params: dict[str, Any] = {}
@@ -1561,6 +1584,12 @@ def _operator_note_filter_clause(
         if value is not None:
             clauses.append(f"{name} = :{name}")
             params[name] = value
+    if updated_from is not None:
+        clauses.append("updated_at >= :updated_from")
+        params["updated_from"] = updated_from
+    if updated_to is not None:
+        clauses.append("updated_at <= :updated_to")
+        params["updated_to"] = updated_to
     return " AND ".join(clauses), params
 
 
@@ -1754,6 +1783,8 @@ def _evidence_export_filter_clause(
     export_status: str | None,
     operator_type: str | None,
     operator_id: str | None,
+    updated_from: str | None = None,
+    updated_to: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     clauses = ["1 = 1"]
     params: dict[str, Any] = {}
@@ -1769,6 +1800,12 @@ def _evidence_export_filter_clause(
         if value is not None:
             clauses.append(f"{name} = :{name}")
             params[name] = value
+    if updated_from is not None:
+        clauses.append("updated_at >= :updated_from")
+        params["updated_from"] = updated_from
+    if updated_to is not None:
+        clauses.append("updated_at <= :updated_to")
+        params["updated_to"] = updated_to
     return " AND ".join(clauses), params
 
 

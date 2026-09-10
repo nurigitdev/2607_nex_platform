@@ -13,6 +13,7 @@ from nex_ag.operator_review_workbench import (
     build_operator_review_workbench_projection_from_stores,
     build_operator_review_workbench_rollup_metrics,
     normalize_operator_review_workbench_filters,
+    normalize_operator_review_workbench_timestamp,
     register_operator_review_workbench_routes,
 )
 from nex_ag.operator_reviews import (
@@ -276,6 +277,55 @@ def test_workbench_projection_from_stores_applies_filters() -> None:
     )
 
 
+def test_workbench_projection_from_stores_applies_status_and_date_filters() -> None:
+    note_store = OperatorReviewNoteStore()
+    export_store = OperatorEvidenceExportStore()
+    active_note = build_note(created_at="2026-09-10T00:10:00Z")
+    note_store.save(active_note)
+    note_store.save(
+        build_note(
+            payload=note_payload(note_status="RESOLVED", severity="LOW"),
+            created_at="2026-09-10T00:20:00Z",
+        )
+    )
+    export_store.save(
+        build_export(
+            payload=export_payload(export_status="FAILED"),
+            created_at="2026-09-10T00:12:00Z",
+        )
+    )
+    export_store.save(
+        build_export(
+            payload=export_payload(export_status="READY"),
+            created_at="2026-09-10T00:22:00Z",
+        )
+    )
+
+    projection = build_operator_review_workbench_projection_from_stores(
+        note_store=note_store,
+        export_store=export_store,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        note_status="ACTIVE",
+        export_status="FAILED",
+        updated_from="2026-09-10T00:09:00+00:00",
+        updated_to="2026-09-10T00:15:00Z",
+    )
+
+    assert projection["filters"]["note_status"] == "ACTIVE"
+    assert projection["filters"]["export_status"] == "FAILED"
+    assert projection["filters"]["updated_from"] == "2026-09-10T00:09:00Z"
+    assert projection["filters"]["updated_to"] == "2026-09-10T00:15:00Z"
+    assert projection["summary"]["target_count"] == 1
+    item = projection["items"][0]
+    assert [note["operator_note_id"] for note in item["notes"]] == [
+        active_note["operator_note_id"]
+    ]
+    assert [export["export_status"] for export in item["evidence_exports"]] == [
+        "FAILED"
+    ]
+
+
 def test_workbench_route_allows_service_and_admin_tokens() -> None:
     client, note_store, export_store = route_client()
     note_store.save(build_note())
@@ -296,6 +346,46 @@ def test_workbench_route_allows_service_and_admin_tokens() -> None:
     assert admin_response.json()["filters"]["target_service"] == "nex-ae-api"
 
 
+def test_workbench_route_filters_status_and_date_bounds() -> None:
+    client, note_store, export_store = route_client()
+    note_store.save(build_note(created_at="2026-09-10T00:10:00Z"))
+    note_store.save(
+        build_note(
+            payload=note_payload(note_status="RESOLVED", severity="LOW"),
+            created_at="2026-09-10T00:20:00Z",
+        )
+    )
+    export_store.save(
+        build_export(
+            payload=export_payload(export_status="FAILED"),
+            created_at="2026-09-10T00:11:00Z",
+        )
+    )
+    export_store.save(build_export(created_at="2026-09-10T00:30:00Z"))
+
+    response = client.get(
+        "/admin/v1/operator-review/workbench"
+        "?note_status=ACTIVE&export_status=FAILED"
+        "&updated_from=2026-09-10T00:09:00Z&updated_to=2026-09-10T00:12:00Z",
+        headers=admin_auth_headers(),
+    )
+    rollup_response = client.get(
+        "/admin/v1/operator-review/workbench/rollups"
+        "?note_status=ACTIVE&export_status=FAILED"
+        "&updated_from=2026-09-10T00:09:00Z&updated_to=2026-09-10T00:12:00Z",
+        headers=admin_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["filters"]["note_status"] == "ACTIVE"
+    assert body["filters"]["export_status"] == "FAILED"
+    assert body["summary"]["note_count"] == 1
+    assert body["summary"]["export_count"] == 1
+    assert rollup_response.status_code == 200
+    assert rollup_response.json()["summary"]["failed_export_count"] == 1
+
+
 def test_workbench_route_rejects_auth_and_invalid_filters() -> None:
     client, _note_store, _export_store = route_client()
 
@@ -314,6 +404,22 @@ def test_workbench_route_rejects_auth_and_invalid_filters() -> None:
     assert invalid.status_code == 422
     assert invalid.json()["error_code"] == (
         "ag.operator_review_note_target_service_unsupported"
+    )
+    invalid_status = client.get(
+        "/admin/v1/operator-review/workbench?note_status=bad-status",
+        headers=service_auth_headers(),
+    )
+    invalid_date = client.get(
+        "/admin/v1/operator-review/workbench?updated_from=not-a-date",
+        headers=service_auth_headers(),
+    )
+    assert invalid_status.status_code == 422
+    assert invalid_status.json()["error_code"] == (
+        "ag.operator_review_note_note_status_unsupported"
+    )
+    assert invalid_date.status_code == 422
+    assert invalid_date.json()["error_code"] == (
+        "ag.operator_review_note_updated_from_invalid"
     )
 
 
@@ -336,6 +442,22 @@ def test_workbench_helpers_cover_empty_and_invalid_inputs() -> None:
 
     with pytest.raises(OperatorReviewNoteError):
         normalize_operator_review_workbench_filters(target_service="bad-service")
+    with pytest.raises(OperatorReviewNoteError):
+        normalize_operator_review_workbench_filters(export_status="bad-status")
+    assert (
+        normalize_operator_review_workbench_timestamp(
+            "2026-09-10T00:00:00+09:00",
+            key="updated_from",
+        )
+        == "2026-09-09T15:00:00Z"
+    )
+    assert (
+        normalize_operator_review_workbench_timestamp(
+            "2026-09-10T00:00:00",
+            key="updated_from",
+        )
+        == "2026-09-10T00:00:00Z"
+    )
 
 
 def test_workbench_projection_handles_missing_operator_ref_defensively() -> None:

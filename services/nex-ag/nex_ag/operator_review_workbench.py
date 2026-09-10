@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import FastAPI, Header, Query, Request
@@ -7,6 +8,9 @@ from fastapi import FastAPI, Header, Query, Request
 from nex_runtime import request_id_from_headers, trace_id_from_headers
 
 from .operator_reviews import (
+    ALLOWED_EXPORT_STATUSES,
+    ALLOWED_NOTE_STATUSES,
+    ALLOWED_OPERATOR_TYPES,
     ALLOWED_TARGET_SERVICES,
     OperatorEvidenceExportStore,
     OperatorReviewNoteError,
@@ -47,6 +51,10 @@ def register_operator_review_workbench_routes(
         workbench_trace_id: str | None = Query(default=None, alias="trace_id"),
         operator_type: str | None = None,
         operator_id: str | None = None,
+        note_status: str | None = None,
+        export_status: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
         limit: int | None = None,
     ):
         auth_problem = _authorize_ag_operator_review_request(request, authorization)
@@ -65,6 +73,10 @@ def register_operator_review_workbench_routes(
                 item_trace_id=workbench_trace_id,
                 operator_type=operator_type,
                 operator_id=operator_id,
+                note_status=note_status,
+                export_status=export_status,
+                updated_from=updated_from,
+                updated_to=updated_to,
                 limit=limit,
             )
         except OperatorReviewNoteError as exc:
@@ -80,6 +92,10 @@ def register_operator_review_workbench_routes(
         workbench_trace_id: str | None = Query(default=None, alias="trace_id"),
         operator_type: str | None = None,
         operator_id: str | None = None,
+        note_status: str | None = None,
+        export_status: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
         limit: int | None = None,
     ):
         auth_problem = _authorize_ag_operator_review_request(request, authorization)
@@ -98,6 +114,10 @@ def register_operator_review_workbench_routes(
                 item_trace_id=workbench_trace_id,
                 operator_type=operator_type,
                 operator_id=operator_id,
+                note_status=note_status,
+                export_status=export_status,
+                updated_from=updated_from,
+                updated_to=updated_to,
                 limit=limit,
             )
             return build_operator_review_workbench_rollup_metrics(projection)
@@ -117,6 +137,10 @@ def build_operator_review_workbench_projection_from_stores(
     item_trace_id: str | None = None,
     operator_type: str | None = None,
     operator_id: str | None = None,
+    note_status: str | None = None,
+    export_status: str | None = None,
+    updated_from: str | None = None,
+    updated_to: str | None = None,
     limit: int | None = None,
 ) -> dict[str, Any]:
     filters = normalize_operator_review_workbench_filters(
@@ -126,6 +150,10 @@ def build_operator_review_workbench_projection_from_stores(
         trace_id=item_trace_id,
         operator_type=operator_type,
         operator_id=operator_id,
+        note_status=note_status,
+        export_status=export_status,
+        updated_from=updated_from,
+        updated_to=updated_to,
         limit=limit,
     )
     records_limit = filters["limit"]
@@ -134,9 +162,11 @@ def build_operator_review_workbench_projection_from_stores(
         target_kind=filters["target_kind"],
         target_id=filters["target_id"],
         trace_id=filters["trace_id"],
-        note_status=None,
+        note_status=filters["note_status"],
         operator_type=filters["operator_type"],
         operator_id=filters["operator_id"],
+        updated_from=filters["updated_from"],
+        updated_to=filters["updated_to"],
         limit=records_limit,
     )
     exports = export_store.list_exports(
@@ -144,9 +174,11 @@ def build_operator_review_workbench_projection_from_stores(
         target_kind=filters["target_kind"],
         target_id=filters["target_id"],
         trace_id=filters["trace_id"],
-        export_status=None,
+        export_status=filters["export_status"],
         operator_type=filters["operator_type"],
         operator_id=filters["operator_id"],
+        updated_from=filters["updated_from"],
+        updated_to=filters["updated_to"],
         limit=records_limit,
     )
     return build_operator_review_workbench_projection(
@@ -166,6 +198,10 @@ def normalize_operator_review_workbench_filters(
     trace_id: str | None = None,
     operator_type: str | None = None,
     operator_id: str | None = None,
+    note_status: str | None = None,
+    export_status: str | None = None,
+    updated_from: str | None = None,
+    updated_to: str | None = None,
     limit: int | None = None,
 ) -> dict[str, Any]:
     normalized_target_service = optional_choice(
@@ -177,7 +213,19 @@ def normalize_operator_review_workbench_filters(
     normalized_operator_type = optional_choice(
         operator_type,
         key="operator_type",
-        choices=("service", "user"),
+        choices=ALLOWED_OPERATOR_TYPES,
+        default="",
+    )
+    normalized_note_status = optional_choice(
+        note_status,
+        key="note_status",
+        choices=ALLOWED_NOTE_STATUSES,
+        default="",
+    )
+    normalized_export_status = optional_choice(
+        export_status,
+        key="export_status",
+        choices=ALLOWED_EXPORT_STATUSES,
         default="",
     )
     return {
@@ -187,8 +235,42 @@ def normalize_operator_review_workbench_filters(
         "trace_id": optional_text(trace_id),
         "operator_type": normalized_operator_type or None,
         "operator_id": optional_text(operator_id),
+        "note_status": normalized_note_status or None,
+        "export_status": normalized_export_status or None,
+        "updated_from": normalize_operator_review_workbench_timestamp(
+            updated_from,
+            key="updated_from",
+        ),
+        "updated_to": normalize_operator_review_workbench_timestamp(
+            updated_to,
+            key="updated_to",
+        ),
         "limit": normalize_limit(limit),
     }
+
+
+def normalize_operator_review_workbench_timestamp(
+    value: Any,
+    *,
+    key: str,
+) -> str | None:
+    normalized = optional_text(value)
+    if normalized is None:
+        return None
+    parse_candidate = (
+        f"{normalized[:-1]}+00:00" if normalized.endswith("Z") else normalized
+    )
+    try:
+        parsed = datetime.fromisoformat(parse_candidate)
+    except ValueError as exc:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=f"ag.operator_review_note_{key}_invalid",
+            detail=f"{key} must be an ISO-8601 timestamp.",
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def build_operator_review_workbench_projection(

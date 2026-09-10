@@ -512,12 +512,17 @@ def test_in_memory_export_store_filters_orders_and_deletes() -> None:
         operator_id="nex-ag",
         limit=5,
     )
+    ranged = store.list_exports(
+        updated_from="2026-09-10T00:01:30Z",
+        updated_to="2026-09-10T00:02:30Z",
+    )
 
     assert [record["export_id"] for record in listed] == [
         newer["export_id"],
         older["export_id"],
     ]
     assert filtered == [failed]
+    assert ranged == [failed]
     assert store.get(older["export_id"]) == older
     assert store.delete(older["export_id"]) == 1
     assert store.delete(older["export_id"]) == 0
@@ -918,6 +923,8 @@ def test_sqlalchemy_export_store_roundtrips_and_updates_sqlite() -> None:
         export_status="FAILED",
         operator_type="user",
         operator_id="employee-0001",
+        updated_from="2026-09-10T00:02:00Z",
+        updated_to="2026-09-10T00:04:00Z",
         limit=10,
     )
 
