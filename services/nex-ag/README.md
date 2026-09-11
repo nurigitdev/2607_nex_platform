@@ -919,6 +919,11 @@ Unified operations:
   operator-review auth, requires an `Idempotency-Key`, returns 201 for new
   actions and 200 for replay, and emits a redaction-safe operational event only
   for new actions.
+- Slice 0646 adds `GET /admin/v1/operator-review/cases/rollups`, a protected
+  case/action rollup for dashboard correlation. It reuses case filters,
+  summarizes case status/priority/assignment/latest-action attention, and keeps
+  comments, idempotency keys, prompts, storage paths, and raw provider/source
+  material out of the payload.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

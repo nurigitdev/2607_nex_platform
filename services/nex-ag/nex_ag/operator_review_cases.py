@@ -51,6 +51,7 @@ OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION = "ag_operator_review_case_action.v1"
 OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION = (
     "ag_operator_review_case_action_mutation.v1"
 )
+OPERATOR_REVIEW_CASE_ROLLUP_SCHEMA_VERSION = "ag_operator_review_case_rollup.v1"
 OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE = "ag.operator_review_case.recorded"
 OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE = (
     "ag.operator_review_case_action.recorded"
@@ -368,6 +369,42 @@ class OperatorReviewCaseService:
             )
         return record
 
+    def rollup_cases(
+        self,
+        *,
+        request_id: str,
+        trace_id: str | None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        case_trace_id: str | None = None,
+        case_status: str | None = None,
+        case_priority: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        assignee_id: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        case_list = self.list_cases(
+            request_id=request_id,
+            trace_id=trace_id,
+            target_service=target_service,
+            target_kind=target_kind,
+            target_id=target_id,
+            case_trace_id=case_trace_id,
+            case_status=case_status,
+            case_priority=case_priority,
+            operator_type=operator_type,
+            operator_id=operator_id,
+            assignee_id=assignee_id,
+            updated_from=updated_from,
+            updated_to=updated_to,
+            limit=limit,
+        )
+        return build_operator_review_case_rollup_metrics(case_list)
+
     def apply_action(
         self,
         case_id: str,
@@ -502,6 +539,47 @@ def register_operator_review_case_routes(
 
         try:
             return service.list_cases(
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                target_service=target_service,
+                target_kind=target_kind,
+                target_id=target_id,
+                case_trace_id=case_trace_id,
+                case_status=case_status,
+                case_priority=case_priority,
+                operator_type=operator_type,
+                operator_id=operator_id,
+                assignee_id=assignee_id,
+                updated_from=updated_from,
+                updated_to=updated_to,
+                limit=limit,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+    @app.get("/admin/v1/operator-review/cases/rollups", response_model=None)
+    def get_operator_review_case_rollups(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        case_trace_id: str | None = Query(default=None, alias="trace_id"),
+        case_status: str | None = None,
+        case_priority: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        assignee_id: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
+        limit: int | None = None,
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.rollup_cases(
                 request_id=request_id_from_headers(request),
                 trace_id=trace_id_from_headers(request),
                 target_service=target_service,
@@ -820,6 +898,83 @@ def build_operator_review_case_action_mutation_response(
             "to_status": action["to_status"],
             "case_status": record["case_status"],
             "case_priority": record["case_priority"],
+        },
+    }
+
+
+def build_operator_review_case_rollup_metrics(
+    case_list: dict[str, Any],
+) -> dict[str, Any]:
+    cases = list(case_list.get("items") or [])
+    last_actions = [_safe_case_last_action_ref(record) for record in cases]
+    last_actions = [action for action in last_actions if action is not None]
+    attention_items = [_case_attention_item(record) for record in cases]
+    attention_items = [
+        item for item in attention_items if item["attention_status"] != "OK"
+    ]
+    attention_items.sort(
+        key=lambda item: (
+            _case_attention_sort_rank(item["attention_status"]),
+            str(item.get("latest_updated_at") or ""),
+            str(item.get("case_id") or ""),
+        )
+    )
+    return {
+        "rollup_schema_version": OPERATOR_REVIEW_CASE_ROLLUP_SCHEMA_VERSION,
+        "trace_id": case_list.get("trace_id"),
+        "request_id": case_list.get("request_id"),
+        "summary": {
+            "case_count": len(cases),
+            "open_case_count": sum(
+                1
+                for record in cases
+                if record.get("case_status")
+                in {"OPEN", "ACKNOWLEDGED", "ASSIGNED", "REOPENED"}
+            ),
+            "closed_case_count": sum(
+                1
+                for record in cases
+                if record.get("case_status") in {"RESOLVED", "DISMISSED"}
+            ),
+            "assigned_case_count": sum(
+                1 for record in cases if record.get("case_status") == "ASSIGNED"
+            ),
+            "urgent_case_count": sum(
+                1 for record in cases if record.get("case_priority") == "URGENT"
+            ),
+            "unassigned_open_case_count": sum(
+                1 for record in cases if _case_is_unassigned_open(record)
+            ),
+            "actioned_case_count": len(last_actions),
+            "attention_case_count": len(attention_items),
+            "latest_updated_at": case_list.get("summary", {}).get(
+                "latest_updated_at"
+            ),
+        },
+        "by_target_service": _count_by(cases, "target_service"),
+        "by_target_kind": _count_by(cases, "target_kind"),
+        "by_case_status": _count_by(cases, "case_status"),
+        "by_case_priority": _count_by(cases, "case_priority"),
+        "by_last_action_type": _count_by(last_actions, "action_type"),
+        "attention": {
+            "items": attention_items,
+            "by_status": _count_by(attention_items, "attention_status"),
+        },
+        "redaction": {
+            "raw_case_comment_included": False,
+            "raw_action_comment_included": False,
+            "raw_resolution_comment_included": False,
+            "raw_prompt_included": False,
+            "raw_generation_output_included": False,
+            "raw_source_text_included": False,
+            "storage_paths_included": False,
+            "idempotency_keys_included": False,
+            "case_comment_shape": "hash_and_short_preview_only",
+            "action_history_shape": "operational_events_first",
+        },
+        "paths": {
+            "case_list_path": "/admin/v1/operator-review/cases",
+            "case_rollup_path": "/admin/v1/operator-review/cases/rollups",
         },
     }
 
@@ -1220,6 +1375,121 @@ def _latest_case_action_summary(record: dict[str, Any]) -> dict[str, Any] | None
     if not isinstance(action.get("request_signature"), dict):
         return None
     return action
+
+
+def _safe_case_last_action_ref(record: dict[str, Any]) -> dict[str, Any] | None:
+    action_summary = _latest_case_action_summary(record)
+    if action_summary is None:
+        return None
+    action = action_summary["record"]
+    assignment = action.get("assignment_ref")
+    assignment_ref_value = assignment if isinstance(assignment, dict) else {}
+    return {
+        "case_id": record.get("case_id"),
+        "action_id": action.get("action_id"),
+        "action_type": action.get("action_type"),
+        "from_status": action.get("from_status"),
+        "to_status": action.get("to_status"),
+        "acted_at": action.get("acted_at"),
+        "operator_ref": _case_operator_ref(action),
+        "assignee_id": assignment_ref_value.get("assignee_id"),
+        "reason_count": len(action.get("reason_codes") or []),
+        "action_comment_hash": action.get("action_comment_hash"),
+        "resolution_hash": action.get("resolution_hash"),
+    }
+
+
+def _case_attention_item(record: dict[str, Any]) -> dict[str, Any]:
+    reasons: list[str] = []
+    status = str(record.get("case_status") or "")
+    priority = str(record.get("case_priority") or "")
+    if status == "REOPENED":
+        reasons.append("reopened_case_requires_review")
+    if status == "OPEN":
+        reasons.append("open_case_requires_triage")
+    if _case_is_unassigned_open(record):
+        reasons.append("open_case_unassigned")
+    if priority == "URGENT" and status not in {"RESOLVED", "DISMISSED"}:
+        reasons.append("urgent_case_not_closed")
+    if status == "ASSIGNED":
+        reasons.append("assigned_case_in_progress")
+
+    if "urgent_case_not_closed" in reasons:
+        attention_status = "BLOCKED"
+    elif "reopened_case_requires_review" in reasons:
+        attention_status = "ATTENTION"
+    elif reasons:
+        attention_status = "OPEN"
+    else:
+        attention_status = "OK"
+
+    assignment = record.get("assignment_ref")
+    assignment_ref_value = assignment if isinstance(assignment, dict) else {}
+    last_action = _safe_case_last_action_ref(record)
+    recommended_actions = _case_recommended_actions(record, reasons)
+    return {
+        "case_id": record.get("case_id"),
+        "target_ref": {
+            "target_service": record.get("target_service"),
+            "target_kind": record.get("target_kind"),
+            "target_id": record.get("target_id"),
+        },
+        "case_status": status,
+        "case_priority": priority,
+        "attention_status": attention_status,
+        "reason_codes": reasons,
+        "recommended_actions": recommended_actions,
+        "assignee_id": assignment_ref_value.get("assignee_id"),
+        "last_action_type": (
+            last_action.get("action_type") if last_action is not None else None
+        ),
+        "last_action_at": (
+            last_action.get("acted_at") if last_action is not None else None
+        ),
+        "latest_updated_at": record.get("updated_at"),
+    }
+
+
+def _case_recommended_actions(
+    record: dict[str, Any],
+    reasons: list[str],
+) -> list[str]:
+    status = str(record.get("case_status") or "")
+    actions: set[str] = set()
+    if "open_case_requires_triage" in reasons:
+        actions.add("acknowledge_or_assign_case")
+    if "open_case_unassigned" in reasons:
+        actions.add("assign_case_owner")
+    if "urgent_case_not_closed" in reasons:
+        actions.add("prioritize_urgent_operator_review_case")
+    if "reopened_case_requires_review" in reasons:
+        actions.add("review_reopened_case")
+    if status == "ASSIGNED":
+        actions.add("resolve_or_dismiss_after_review")
+    return sorted(actions)
+
+
+def _case_is_unassigned_open(record: dict[str, Any]) -> bool:
+    if record.get("case_status") not in {"OPEN", "ACKNOWLEDGED", "REOPENED"}:
+        return False
+    assignment = record.get("assignment_ref")
+    assignment_ref_value = assignment if isinstance(assignment, dict) else {}
+    return assignment_ref_value.get("assignee_id") is None
+
+
+def _case_operator_ref(record: dict[str, Any]) -> dict[str, str | None]:
+    operator = record.get("operator_ref")
+    if not isinstance(operator, dict):
+        return {"operator_type": None, "operator_id": None, "tenant_id": None}
+    return {
+        "operator_type": optional_text(operator.get("operator_type")),
+        "operator_id": optional_text(operator.get("operator_id")),
+        "tenant_id": optional_text(operator.get("tenant_id")),
+    }
+
+
+def _case_attention_sort_rank(status: str) -> int:
+    return {"BLOCKED": 0, "ATTENTION": 1, "OPEN": 2}.get(status, 3)
 
 
 def _operator_review_case_identity_seed(

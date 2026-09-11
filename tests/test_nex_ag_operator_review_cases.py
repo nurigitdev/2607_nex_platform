@@ -19,6 +19,7 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
+    OPERATOR_REVIEW_CASE_ROLLUP_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_SCHEMA_VERSION,
     OperatorReviewCaseService,
     OperatorReviewCaseStore,
@@ -34,6 +35,7 @@ from nex_ag.operator_review_cases import (
     build_operator_review_case_list_response,
     build_operator_review_case_mutation_response,
     build_operator_review_case_record,
+    build_operator_review_case_rollup_metrics,
     default_operator_review_case_store,
     emit_operator_review_case_action_event,
     emit_operator_review_case_event,
@@ -407,6 +409,134 @@ def test_case_list_and_mutation_response_summaries() -> None:
     assert response["summary"]["closed_count"] == 1
     assert mutation["summary"]["case_id"] == "case-open"
     assert mutation["idempotency_status"] == "NEW"
+
+
+def test_case_rollup_metrics_correlate_actions_and_attention_safely() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+    open_case = service.create_case(
+        sample_case_payload(
+            assignment_ref=None,
+            case_priority="HIGH",
+            metadata={"debug_source": "rollup"},
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0646-open-case",
+    )["case"]
+    urgent_case = service.create_case(
+        sample_case_payload(
+            case_priority="URGENT",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0646",
+            },
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0646-urgent-case",
+    )["case"]
+    resolved = service.create_case(
+        sample_case_payload(
+            case_status="RESOLVED",
+            case_priority="LOW",
+            resolution_comment="Closed with a hash only summary.",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0646-resolved-case",
+    )["case"]
+
+    assigned = service.apply_action(
+        urgent_case["case_id"],
+        sample_action_payload(
+            action_type="ASSIGN",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0646",
+            },
+            action_comment="Assign this urgent case without leaking raw text.",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0646-assign",
+    )
+    case_list = service.list_cases(request_id=REQUEST_ID, trace_id=TRACE_ID)
+
+    rollup = build_operator_review_case_rollup_metrics(case_list)
+
+    assert rollup["rollup_schema_version"] == OPERATOR_REVIEW_CASE_ROLLUP_SCHEMA_VERSION
+    assert rollup["summary"] == {
+        "case_count": 3,
+        "open_case_count": 2,
+        "closed_case_count": 1,
+        "assigned_case_count": 1,
+        "urgent_case_count": 1,
+        "unassigned_open_case_count": 1,
+        "actioned_case_count": 1,
+        "attention_case_count": 2,
+        "latest_updated_at": case_list["summary"]["latest_updated_at"],
+    }
+    assert rollup["by_case_status"] == {"ASSIGNED": 1, "RESOLVED": 1, "OPEN": 1}
+    assert rollup["by_case_priority"] == {"URGENT": 1, "LOW": 1, "HIGH": 1}
+    assert rollup["by_last_action_type"] == {"ASSIGN": 1}
+    assert rollup["attention"]["by_status"] == {"BLOCKED": 1, "OPEN": 1}
+    assert rollup["attention"]["items"][0]["case_id"] == assigned["case"]["case_id"]
+    assert rollup["attention"]["items"][0]["last_action_type"] == "ASSIGN"
+    assert rollup["attention"]["items"][1]["case_id"] == open_case["case_id"]
+    assert resolved["case_id"] not in {
+        item["case_id"] for item in rollup["attention"]["items"]
+    }
+    assert rollup["redaction"]["idempotency_keys_included"] is False
+    serialized = json.dumps(rollup)
+    assert "Assign this urgent case" not in serialized
+    assert "Closed with a hash only summary." not in serialized
+    assert "idem-0646" not in serialized
+
+
+def test_case_rollup_metrics_handles_reopened_cases_and_malformed_last_action() -> None:
+    reopened = build_case(
+        sample_case_payload(
+            case_id="case-reopened-rollup",
+            case_status="REOPENED",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-reopen",
+            },
+        )
+    )
+    reopened["metadata"]["last_action"] = {
+        "request_signature": {"case_id": "case-reopened-rollup"},
+        "record": {
+            "action_id": "action-reopened-rollup",
+            "action_type": "REOPEN",
+            "from_status": "RESOLVED",
+            "to_status": "REOPENED",
+            "acted_at": "2026-09-11T05:00:00Z",
+            "operator_ref": "malformed-operator-ref",
+            "assignment_ref": {"assignee_id": "employee-reopen"},
+            "reason_codes": ["operator_requested_reopen"],
+            "action_comment_hash": sha256_text("safe reopen summary"),
+            "resolution_hash": None,
+        },
+    }
+    case_list = build_operator_review_case_list_response(
+        [reopened],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    rollup = build_operator_review_case_rollup_metrics(case_list)
+
+    assert rollup["summary"]["case_count"] == 1
+    assert rollup["summary"]["actioned_case_count"] == 1
+    assert rollup["attention"]["by_status"] == {"ATTENTION": 1}
+    assert rollup["attention"]["items"][0]["reason_codes"] == [
+        "reopened_case_requires_review"
+    ]
+    assert rollup["attention"]["items"][0]["recommended_actions"] == [
+        "review_reopened_case"
+    ]
+    assert rollup["by_last_action_type"] == {"REOPEN": 1}
 
 
 def test_case_idempotency_signature_is_safe_and_stable() -> None:
@@ -796,6 +926,43 @@ def test_operator_review_case_service_lists_filters_and_gets_cases() -> None:
     assert listed["summary"]["by_status"] == {"ASSIGNED": 1}
 
 
+def test_operator_review_case_service_rollup_reuses_list_filters() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+    service.create_case(
+        sample_case_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0646-rollup-open",
+    )
+    service.create_case(
+        sample_case_payload(
+            case_status="DISMISSED",
+            case_priority="LOW",
+            target_ref={
+                "target_service": "nex-cx",
+                "target_kind": "retrieval_package",
+                "target_id": "retrieval-rollup",
+            },
+            resolution_comment="Dismissed as duplicate.",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0646-rollup-dismissed",
+    )
+
+    rollup = service.rollup_cases(
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        target_service="nex-cx",
+        case_status="DISMISSED",
+    )
+
+    assert rollup["summary"]["case_count"] == 1
+    assert rollup["summary"]["closed_case_count"] == 1
+    assert rollup["summary"]["attention_case_count"] == 0
+    assert rollup["by_target_service"] == {"nex-cx": 1}
+
+
 @pytest.mark.parametrize(
     ("kwargs", "error_code"),
     [
@@ -1058,6 +1225,41 @@ def test_operator_review_case_action_route_applies_replays_and_emits_event() -> 
             event_type=OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE
         )
     ) == 1
+
+
+def test_operator_review_case_rollup_route_precedes_detail_route_and_filters() -> None:
+    client, _, _ = build_route_client()
+    created = client.post(
+        "/admin/v1/operator-review/cases",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-route-case-0646"},
+        json=sample_case_payload(assignment_ref=None, case_priority="URGENT"),
+    )
+    case_id = created.json()["case"]["case_id"]
+
+    rollup = client.get(
+        "/admin/v1/operator-review/cases/rollups?target_service=nex-ag",
+        headers=service_auth_headers(),
+    )
+    invalid = client.get(
+        "/admin/v1/operator-review/cases/rollups?case_priority=CRITICAL",
+        headers=service_auth_headers(),
+    )
+    unauthorized = client.get("/admin/v1/operator-review/cases/rollups")
+
+    assert rollup.status_code == 200
+    assert rollup.json()["rollup_schema_version"] == (
+        OPERATOR_REVIEW_CASE_ROLLUP_SCHEMA_VERSION
+    )
+    assert rollup.json()["summary"]["case_count"] == 1
+    assert rollup.json()["attention"]["items"][0]["case_id"] == case_id
+    assert rollup.json()["paths"]["case_rollup_path"] == (
+        "/admin/v1/operator-review/cases/rollups"
+    )
+    assert invalid.status_code == 422
+    assert invalid.json()["error_code"] == (
+        "ag.operator_review_note_case_priority_unsupported"
+    )
+    assert unauthorized.status_code == 401
 
 
 def test_operator_review_case_action_route_rejects_auth_invalid_and_missing() -> None:
