@@ -971,8 +971,11 @@ def test_case_workbench_detail_projection_exposes_safe_action_controls() -> None
 
     detail = build_operator_review_case_workbench_detail_projection(
         assigned,
+        operator_note_records=[sample_note_record()],
+        evidence_export_records=[sample_evidence_export_record()],
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
+        evidence_source_status="READY",
     )
 
     assert detail["case_workbench_detail_schema_version"] == (
@@ -1002,13 +1005,35 @@ def test_case_workbench_detail_projection_exposes_safe_action_controls() -> None
     assert detail["action_controls"]["available_actions"][1][
         "requires_resolution_comment"
     ] is True
+    assert detail["evidence_links"]["planned_schema_version"] == (
+        OPERATOR_REVIEW_CASE_EVIDENCE_LINKS_SCHEMA_VERSION
+    )
+    assert detail["evidence_links"]["inline_items_included"] is False
+    assert detail["evidence_links"]["summary"]["evidence_source_status"] == "READY"
+    assert detail["evidence_links"]["summary"]["total_link_count"] == 2
+    assert detail["action_admission"]["planned_schema_version"] == (
+        OPERATOR_REVIEW_CASE_ACTION_ADMISSION_SCHEMA_VERSION
+    )
+    assert detail["action_admission"]["inline_items_included"] is False
+    assert detail["action_admission"]["summary"]["admitted_action_count"] == 3
+    assert detail["action_admission"]["links"]["case_action_admission_path"] == (
+        f"/admin/v1/operator-review/cases/{created['case_id']}/action-admission"
+    )
     assert detail["timeline"]["action_history_shape"] == "operational_events_first"
+    assert detail["links"]["case_evidence_links_path"] == (
+        f"/admin/v1/operator-review/cases/{created['case_id']}/evidence-links"
+    )
+    assert detail["links"]["case_action_admission_path"] == (
+        f"/admin/v1/operator-review/cases/{created['case_id']}/action-admission"
+    )
     assert detail["redaction"]["metadata_payload_included"] is False
 
     serialized = json.dumps(detail)
     assert "Assigning this case" not in serialized
     assert "idem-0654" not in serialized
     assert '"action_comment":' not in serialized
+    assert "raw-secret-note-0662" not in serialized
+    assert "raw-export-body-should-not-leak" not in serialized
 
 
 def test_case_workbench_detail_projection_handles_closed_and_malformed_source() -> None:
@@ -1209,6 +1234,49 @@ def test_case_service_evidence_links_reads_target_scoped_stores() -> None:
     assert projection["summary"]["returned_link_count"] == 2
     assert no_sources["summary"]["evidence_source_status"] == "NOT_CONFIGURED"
     assert no_sources["items"] == []
+
+
+def test_case_service_workbench_detail_embeds_lightweight_evidence_and_admission() -> None:
+    class CapturingNoteStore:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def list_notes(self, **kwargs: Any) -> list[dict[str, Any]]:
+            self.calls.append(kwargs)
+            return [sample_note_record()]
+
+    case_store = OperatorReviewCaseStore()
+    service = OperatorReviewCaseService(case_store)
+    case = service.create_case(
+        sample_case_payload(case_id="case-0666-service"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0666-service",
+    )["case"]
+    note_store = CapturingNoteStore()
+
+    detail = service.get_case_workbench_detail(
+        case["case_id"],
+        note_store=note_store,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        evidence_limit=1,
+    )
+
+    assert note_store.calls == [
+        {
+            "target_service": "nex-ag",
+            "target_kind": "operator_review_workbench",
+            "target_id": "target-0642",
+            "limit": 1,
+        }
+    ]
+    assert detail["evidence_links"]["summary"]["evidence_source_status"] == "PARTIAL"
+    assert detail["evidence_links"]["summary"]["operator_note_count"] == 1
+    assert detail["evidence_links"]["summary"]["redacted_evidence_export_count"] == 0
+    assert detail["evidence_links"]["inline_items_included"] is False
+    assert detail["action_admission"]["summary"]["preflight_only"] is True
+    assert detail["action_admission"]["summary"]["admitted_action_count"] == 4
 
 
 def test_case_action_admission_projection_lists_preflight_decisions() -> None:
@@ -2238,7 +2306,12 @@ def test_operator_review_case_queue_route_precedes_detail_route_and_filters() ->
 
 
 def test_operator_review_case_workbench_detail_route_is_protected_and_safe() -> None:
-    client, _, _ = build_route_client()
+    note_store = OperatorReviewNoteStore()
+    export_store = OperatorEvidenceExportStore()
+    client, _, _ = build_route_client(
+        note_store=note_store,
+        export_store=export_store,
+    )
     created = client.post(
         "/admin/v1/operator-review/cases",
         headers={**admin_auth_headers(), "Idempotency-Key": "idem-route-case-0654"},
@@ -2248,6 +2321,10 @@ def test_operator_review_case_workbench_detail_route_is_protected_and_safe() -> 
         ),
     )
     case_id = created.json()["case"]["case_id"]
+    note_store.save(sample_note_record(operator_note_id="note-route-0666-detail"))
+    export_store.save(
+        sample_evidence_export_record(export_id="export-route-0666-detail")
+    )
 
     detail = client.get(
         f"/admin/v1/operator-review/cases/{case_id}/workbench-detail",
@@ -2269,13 +2346,27 @@ def test_operator_review_case_workbench_detail_route_is_protected_and_safe() -> 
     assert detail.json()["links"]["case_action_path"] == (
         f"/admin/v1/operator-review/cases/{case_id}/actions"
     )
+    assert detail.json()["links"]["case_evidence_links_path"] == (
+        f"/admin/v1/operator-review/cases/{case_id}/evidence-links"
+    )
+    assert detail.json()["links"]["case_action_admission_path"] == (
+        f"/admin/v1/operator-review/cases/{case_id}/action-admission"
+    )
+    assert detail.json()["evidence_links"]["summary"]["evidence_source_status"] == (
+        "READY"
+    )
+    assert detail.json()["evidence_links"]["summary"]["total_link_count"] == 2
+    assert detail.json()["action_admission"]["summary"]["preflight_only"] is True
     assert detail.json()["redaction"]["raw_resolution_comment_included"] is False
     assert "Route detail must expose only" in detail.json()["resolution"][
         "resolution_preview"
     ]
     assert missing.status_code == 404
     assert unauthorized.status_code == 401
-    assert "idem-route-case-0654" not in json.dumps(detail.json())
+    serialized = json.dumps(detail.json())
+    assert "idem-route-case-0654" not in serialized
+    assert "raw-secret-note-0662" not in serialized
+    assert "raw-export-body-should-not-leak" not in serialized
 
 
 def test_operator_review_case_evidence_links_route_is_protected_and_safe() -> None:

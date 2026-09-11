@@ -398,14 +398,27 @@ class OperatorReviewCaseService:
         self,
         case_id: str,
         *,
+        note_store: Any | None = None,
+        export_store: Any | None = None,
         request_id: str,
         trace_id: str | None,
+        evidence_limit: int | None = 5,
     ) -> dict[str, Any]:
         record = self.get_case(case_id)
+        evidence_sources = _case_evidence_source_records(
+            record,
+            note_store=note_store,
+            export_store=export_store,
+            limit=evidence_limit,
+        )
         return build_operator_review_case_workbench_detail_projection(
             record,
+            operator_note_records=evidence_sources["operator_note_records"],
+            evidence_export_records=evidence_sources["evidence_export_records"],
             request_id=request_id,
             trace_id=trace_id,
+            evidence_limit=evidence_sources["limit"],
+            evidence_source_status=evidence_sources["source_status"],
         )
 
     def get_case_evidence_links(
@@ -419,39 +432,20 @@ class OperatorReviewCaseService:
         limit: int | None = None,
     ) -> dict[str, Any]:
         record = self.get_case(case_id)
-        normalized_limit = normalize_limit(limit)
-        note_records = (
-            note_store.list_notes(
-                target_service=record.get("target_service"),
-                target_kind=record.get("target_kind"),
-                target_id=record.get("target_id"),
-                limit=normalized_limit,
-            )
-            if note_store is not None
-            else []
-        )
-        export_records = (
-            export_store.list_exports(
-                target_service=record.get("target_service"),
-                target_kind=record.get("target_kind"),
-                target_id=record.get("target_id"),
-                limit=normalized_limit,
-            )
-            if export_store is not None
-            else []
+        evidence_sources = _case_evidence_source_records(
+            record,
+            note_store=note_store,
+            export_store=export_store,
+            limit=limit,
         )
         return build_operator_review_case_evidence_links_projection(
             record,
-            operator_note_records=note_records,
-            evidence_export_records=export_records,
+            operator_note_records=evidence_sources["operator_note_records"],
+            evidence_export_records=evidence_sources["evidence_export_records"],
             request_id=request_id,
             trace_id=trace_id,
-            limit=normalized_limit,
-            source_status=(
-                "READY"
-                if note_store is not None and export_store is not None
-                else "NOT_CONFIGURED"
-            ),
+            limit=evidence_sources["limit"],
+            source_status=evidence_sources["source_status"],
         )
 
     def get_case_action_admission(
@@ -821,6 +815,8 @@ def register_operator_review_case_routes(
         try:
             return service.get_case_workbench_detail(
                 case_id,
+                note_store=selected_note_store,
+                export_store=selected_export_store,
                 request_id=request_id_from_headers(request),
                 trace_id=trace_id_from_headers(request),
             )
@@ -1258,14 +1254,74 @@ def build_operator_review_case_queue_projection(
     }
 
 
+def _case_evidence_source_records(
+    record: dict[str, Any],
+    *,
+    note_store: Any | None,
+    export_store: Any | None,
+    limit: int | None,
+) -> dict[str, Any]:
+    normalized_limit = normalize_limit(limit)
+    note_records = (
+        note_store.list_notes(
+            target_service=record.get("target_service"),
+            target_kind=record.get("target_kind"),
+            target_id=record.get("target_id"),
+            limit=normalized_limit,
+        )
+        if note_store is not None
+        else []
+    )
+    export_records = (
+        export_store.list_exports(
+            target_service=record.get("target_service"),
+            target_kind=record.get("target_kind"),
+            target_id=record.get("target_id"),
+            limit=normalized_limit,
+        )
+        if export_store is not None
+        else []
+    )
+    if note_store is not None and export_store is not None:
+        source_status = "READY"
+    elif note_store is not None or export_store is not None:
+        source_status = "PARTIAL"
+    else:
+        source_status = "NOT_CONFIGURED"
+    return {
+        "operator_note_records": note_records,
+        "evidence_export_records": export_records,
+        "limit": normalized_limit,
+        "source_status": source_status,
+    }
+
+
 def build_operator_review_case_workbench_detail_projection(
     record: dict[str, Any],
     *,
+    operator_note_records: list[dict[str, Any]] | None = None,
+    evidence_export_records: list[dict[str, Any]] | None = None,
     request_id: str,
     trace_id: str | None,
+    evidence_limit: int | None = 5,
+    evidence_source_status: str = "NOT_CONFIGURED",
 ) -> dict[str, Any]:
     queue_item = _case_queue_item(record)
     action_controls = _case_workbench_action_controls(record)
+    evidence_links = build_operator_review_case_evidence_links_projection(
+        record,
+        operator_note_records=operator_note_records or [],
+        evidence_export_records=evidence_export_records or [],
+        request_id=request_id,
+        trace_id=trace_id,
+        limit=evidence_limit,
+        source_status=evidence_source_status,
+    )
+    action_admission = build_operator_review_case_action_admission_projection(
+        record,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
     return {
         "case_workbench_detail_schema_version": (
             OPERATOR_REVIEW_CASE_WORKBENCH_DETAIL_SCHEMA_VERSION
@@ -1295,6 +1351,28 @@ def build_operator_review_case_workbench_detail_projection(
         },
         "latest_action": queue_item["latest_action"],
         "action_controls": action_controls,
+        "evidence_links": {
+            "planned_schema_version": OPERATOR_REVIEW_CASE_EVIDENCE_LINKS_SCHEMA_VERSION,
+            "inline_items_included": False,
+            "summary": dict(evidence_links["summary"]),
+            "links": {
+                "case_evidence_links_path": evidence_links["links"][
+                    "case_evidence_links_path"
+                ],
+                "case_timeline_path": evidence_links["links"]["case_timeline_path"],
+            },
+        },
+        "action_admission": {
+            "planned_schema_version": OPERATOR_REVIEW_CASE_ACTION_ADMISSION_SCHEMA_VERSION,
+            "inline_items_included": False,
+            "summary": dict(action_admission["summary"]),
+            "links": {
+                "case_action_admission_path": action_admission["links"][
+                    "case_action_admission_path"
+                ],
+                "case_action_path": action_admission["links"]["case_action_path"],
+            },
+        },
         "timeline": {
             "timeline_path": (
                 f"/admin/v1/operator-review/cases/{record.get('case_id')}/timeline"
@@ -1310,6 +1388,14 @@ def build_operator_review_case_workbench_detail_projection(
             "case_action_path": (
                 f"/admin/v1/operator-review/cases/{record.get('case_id')}/actions"
             ),
+            "case_evidence_links_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+                "/evidence-links"
+            ),
+            "case_action_admission_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+                "/action-admission"
+            ),
             "case_queue_path": "/admin/v1/operator-review/cases/queue",
             "operator_review_workbench_path": "/admin/v1/operator-review/workbench",
         },
@@ -1321,6 +1407,9 @@ def build_operator_review_case_workbench_detail_projection(
             "raw_generation_output_included": False,
             "raw_source_text_included": False,
             "storage_paths_included": False,
+            "provider_payloads_included": False,
+            "database_urls_included": False,
+            "tokens_included": False,
             "idempotency_keys_included": False,
             "metadata_payload_included": False,
             "detail_payload_shape": "safe_refs_hashes_and_bounded_previews_only",

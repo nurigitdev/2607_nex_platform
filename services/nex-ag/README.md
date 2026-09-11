@@ -1038,6 +1038,12 @@ Unified operations:
   supports an optional `action_type` query parameter, remains protected by the
   AG operator-review authorization boundary, returns standard case-not-found
   and unsupported-action problems, and remains preflight-only.
+- Slice 0666 integrates the evidence/admission surfaces into
+  `GET /admin/v1/operator-review/cases/{case_id}/workbench-detail` as
+  lightweight summaries and route links. The detail surface reports evidence
+  source status (`READY`, `PARTIAL`, or `NOT_CONFIGURED`), does not inline
+  evidence items or admission decision items, and keeps the existing evidence
+  and mutation routes authoritative.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
