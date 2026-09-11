@@ -941,6 +941,11 @@ Unified operations:
   case, replays the idempotent create, applies an assignment action, reads
   detail/list/rollup/dashboard projections, verifies `ag_op_cases` directly in
   PostgreSQL, and cleans up the smoke row.
+- Slice 0650 closes S65 with
+  `scripts/smoke/run_s65_operator_review_case_action_closure.py`. The closure
+  checks required case/action files, Slice 0641-0650 docs, `ag_op_cases`, the
+  operational-events-first action history policy, contract/OpenAPI artifacts,
+  the protected PostgreSQL smoke path, and redaction-safe documentation.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
