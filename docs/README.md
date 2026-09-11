@@ -772,6 +772,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0666`](slices/0666_ag_operator_review_case_detail_evidence_admission_integration.md) | `S67-006` AG operator review case detail evidence/admission summary integration. |
 | [`Slice 0667`](slices/0667_ag_operator_review_case_evidence_admission_contract_openapi.md) | `S67-007` AG operator review case evidence/admission contract and OpenAPI hardening. |
 | [`Slice 0668`](slices/0668_ag_operator_review_case_evidence_admission_postgresql_smoke.md) | `S67-008` AG operator review case evidence/admission PostgreSQL smoke evidence. |
+| [`Slice 0669`](slices/0669_ag_operator_review_case_evidence_admission_privacy_regression.md) | `S67-009` AG operator review case evidence/admission privacy regression pack. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

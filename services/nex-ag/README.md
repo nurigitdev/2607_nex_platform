@@ -1056,6 +1056,13 @@ Unified operations:
   `ag_op_cases`, `ag_op_notes`, and `ag_ev_exports`, then verifies
   workbench-detail, evidence-link, and action-admission routes without exposing
   raw notes, raw evidence bodies, database URLs, or idempotency keys.
+- Slice 0669 adds the deterministic privacy regression in
+  `scripts/smoke/run_ag_operator_review_case_evidence_admission_privacy_regression.py`.
+  The unsafe in-memory fixture injects raw notes, raw evidence bodies, comments,
+  prompts, storage paths, provider payloads, database URLs, tokens, and
+  idempotency keys into case/note/export records, then asserts S67 public
+  payloads expose only safe refs, hashes, bounded previews, summary counts,
+  state-machine admission metadata, redaction flags, and route links.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
