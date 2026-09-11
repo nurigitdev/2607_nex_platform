@@ -22,6 +22,7 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_CASE_ROLLUP_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_SCHEMA_VERSION,
+    OPERATOR_REVIEW_CASE_TIMELINE_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_WORKBENCH_DETAIL_SCHEMA_VERSION,
     OperatorReviewCaseService,
     OperatorReviewCaseStore,
@@ -40,6 +41,7 @@ from nex_ag.operator_review_cases import (
     build_operator_review_case_queue_projection,
     build_operator_review_case_record,
     build_operator_review_case_rollup_metrics,
+    build_operator_review_case_timeline_projection,
     build_operator_review_case_workbench_detail_projection,
     default_operator_review_case_store,
     emit_operator_review_case_action_event,
@@ -969,6 +971,168 @@ def test_case_workbench_detail_projection_handles_closed_and_malformed_source() 
     ] == "ACKNOWLEDGE cannot transition from UNKNOWN."
 
 
+def test_case_timeline_projection_filters_and_redacts_operational_events() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+    event_store = InMemoryOperationalEventStore()
+    emitter = OperationalEventEmitter(service_id="nex-ag", store=event_store)
+    created = service.create_case(
+        sample_case_payload(case_id="case-0655-timeline"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0655-case",
+    )["case"]
+    emit_operator_review_case_event(emitter, created)
+    assigned = service.apply_action(
+        created["case_id"],
+        sample_action_payload(
+            action_type="ASSIGN",
+            action_comment="Sensitive action comment should stay out.",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0655",
+            },
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0655-action",
+    )["case"]
+    action = assigned["metadata"]["last_action"]["record"]
+    emit_operator_review_case_action_event(emitter, action, assigned)
+    emitter.emit(
+        event_type="ag.unrelated",
+        severity="INFO",
+        message="Unrelated event.",
+        trace_id=TRACE_ID,
+        request_id=REQUEST_ID,
+        subject_ref={"type": "other", "id": "other"},
+        details={"case_id": "other"},
+        created_at="2026-09-11T00:00:01Z",
+    )
+
+    timeline = build_operator_review_case_timeline_projection(
+        assigned,
+        event_store=event_store,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    limited = build_operator_review_case_timeline_projection(
+        assigned,
+        event_store=event_store,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        limit=1,
+    )
+
+    assert timeline["case_timeline_schema_version"] == (
+        OPERATOR_REVIEW_CASE_TIMELINE_SCHEMA_VERSION
+    )
+    assert timeline["summary"]["timeline_status"] == "READY"
+    assert timeline["summary"]["event_count"] == 2
+    assert timeline["summary"]["case_recorded_event_count"] == 1
+    assert timeline["summary"]["case_action_event_count"] == 1
+    assert [item["event_type"] for item in timeline["items"]] == [
+        OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
+        OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE,
+    ]
+    assert timeline["items"][1]["details"]["action_type"] == "ASSIGN"
+    assert timeline["items"][1]["details"]["assignee_id"] == "employee-0655"
+    assert timeline["items"][1]["details"]["action_comment_hash"] == (
+        action["action_comment_hash"]
+    )
+    assert limited["summary"]["event_count"] == 1
+    serialized = json.dumps(timeline)
+    assert "Sensitive action comment" not in serialized
+    assert "idem-0655" not in serialized
+    assert '"action_comment":' not in serialized
+
+
+def test_case_timeline_projection_reports_unavailable_source_and_subject_match() -> None:
+    record = build_case(sample_case_payload(case_id="case-0655-subject"))
+    event_store = InMemoryOperationalEventStore()
+    event_store.append(
+        {
+            "event_schema_version": "operational_event.v1",
+            "event_id": "event-0655-subject",
+            "service_id": "nex-ag",
+            "event_type": OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
+            "severity": "INFO",
+            "message": "Subject-only event.",
+            "trace_id": TRACE_ID,
+            "request_id": REQUEST_ID,
+            "subject_ref": {
+                "type": "operator_review_case",
+                "id": record["case_id"],
+            },
+            "details": {"case_id": None},
+            "created_at": "2026-09-11T00:00:00Z",
+        }
+    )
+
+    class BrokenEventStore:
+        def list_events(self, **_: Any) -> list[dict[str, Any]]:
+            raise OperationalEventError(
+                error_code="operational_event.store_unavailable",
+                detail="store unavailable",
+                status_code=503,
+            )
+
+    class UnexpectedBrokenEventStore:
+        def list_events(self, **_: Any) -> list[dict[str, Any]]:
+            raise RuntimeError("unexpected failure")
+
+    class MalformedEventStore:
+        def list_events(self, **_: Any) -> list[dict[str, Any]]:
+            return [
+                {
+                    "event_id": "event-0655-malformed",
+                    "event_type": OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
+                    "details": "bad-details",
+                    "subject_ref": "bad-subject",
+                    "created_at": "2026-09-11T00:00:01Z",
+                }
+            ]
+
+    subject_timeline = build_operator_review_case_timeline_projection(
+        record,
+        event_store=event_store,
+        request_id=REQUEST_ID,
+        trace_id=None,
+    )
+    unavailable = build_operator_review_case_timeline_projection(
+        record,
+        event_store=BrokenEventStore(),
+        request_id=REQUEST_ID,
+        trace_id=None,
+    )
+    generic_unavailable = build_operator_review_case_timeline_projection(
+        record,
+        event_store=UnexpectedBrokenEventStore(),
+        request_id=REQUEST_ID,
+        trace_id=None,
+    )
+    malformed = build_operator_review_case_timeline_projection(
+        record,
+        event_store=MalformedEventStore(),
+        request_id=REQUEST_ID,
+        trace_id=None,
+    )
+
+    assert subject_timeline["items"][0]["event_id"] == "event-0655-subject"
+    assert subject_timeline["items"][0]["details"]["case_id"] is None
+    assert unavailable["summary"]["timeline_status"] == "UNAVAILABLE"
+    assert unavailable["summary"]["event_count"] == 0
+    assert unavailable["summary"]["source_error"] == {
+        "error_code": "operational_event.store_unavailable",
+        "detail": "store unavailable",
+        "status_code": 503,
+    }
+    assert generic_unavailable["summary"]["source_error"]["error_code"] == (
+        "ag.operator_review_case_timeline_unavailable"
+    )
+    assert malformed["summary"]["timeline_status"] == "READY"
+    assert malformed["summary"]["event_count"] == 0
+
+
 def test_case_idempotency_signature_is_safe_and_stable() -> None:
     record = build_case()
     signature = operator_review_case_idempotency_signature(record)
@@ -1772,6 +1936,53 @@ def test_operator_review_case_workbench_detail_route_is_protected_and_safe() -> 
     assert missing.status_code == 404
     assert unauthorized.status_code == 401
     assert "idem-route-case-0654" not in json.dumps(detail.json())
+
+
+def test_operator_review_case_timeline_route_reads_audit_events() -> None:
+    client, _, event_store = build_route_client()
+    created = client.post(
+        "/admin/v1/operator-review/cases",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-route-case-0655"},
+        json=sample_case_payload(),
+    )
+    case_id = created.json()["case"]["case_id"]
+    applied = client.post(
+        f"/admin/v1/operator-review/cases/{case_id}/actions",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-route-action-0655"},
+        json=sample_action_payload(action_comment="Route timeline raw text."),
+    )
+
+    timeline = client.get(
+        f"/admin/v1/operator-review/cases/{case_id}/timeline",
+        headers=service_auth_headers(),
+    )
+    limited = client.get(
+        f"/admin/v1/operator-review/cases/{case_id}/timeline?limit=1",
+        headers=service_auth_headers(),
+    )
+    missing = client.get(
+        "/admin/v1/operator-review/cases/missing/timeline",
+        headers=service_auth_headers(),
+    )
+    unauthorized = client.get(
+        f"/admin/v1/operator-review/cases/{case_id}/timeline"
+    )
+
+    assert applied.status_code == 201
+    assert timeline.status_code == 200
+    assert timeline.json()["case_timeline_schema_version"] == (
+        OPERATOR_REVIEW_CASE_TIMELINE_SCHEMA_VERSION
+    )
+    assert timeline.json()["summary"]["event_count"] == 2
+    assert [item["event_type"] for item in timeline.json()["items"]] == [
+        OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
+        OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE,
+    ]
+    assert limited.json()["summary"]["event_count"] == 1
+    assert missing.status_code == 404
+    assert unauthorized.status_code == 401
+    assert event_store.summary()["total"] == 2
+    assert "Route timeline raw text" not in json.dumps(timeline.json())
 
 
 def test_operator_review_case_action_route_rejects_auth_invalid_and_missing() -> None:

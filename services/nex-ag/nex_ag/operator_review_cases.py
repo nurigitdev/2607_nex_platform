@@ -15,6 +15,7 @@ from nex_runtime import (
     InMemoryOperationalEventStore,
     OperationalEventEmitter,
     OperationalEventEmitResult,
+    OperationalEventError,
     OperationalEventStore,
     problem_response,
     request_id_from_headers,
@@ -49,6 +50,9 @@ OPERATOR_REVIEW_CASE_LIST_SCHEMA_VERSION = "ag_operator_review_case_list.v1"
 OPERATOR_REVIEW_CASE_QUEUE_SCHEMA_VERSION = "ag_operator_review_case_queue.v1"
 OPERATOR_REVIEW_CASE_WORKBENCH_DETAIL_SCHEMA_VERSION = (
     "ag_operator_review_case_workbench_detail.v1"
+)
+OPERATOR_REVIEW_CASE_TIMELINE_SCHEMA_VERSION = (
+    "ag_operator_review_case_timeline.v1"
 )
 OPERATOR_REVIEW_CASE_MUTATION_SCHEMA_VERSION = "ag_operator_review_case_mutation.v1"
 OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION = "ag_operator_review_case_action.v1"
@@ -558,9 +562,12 @@ def register_operator_review_case_routes(
     audit_event_store: OperationalEventStore | None = None,
 ) -> None:
     service = OperatorReviewCaseService(store or default_operator_review_case_store(app))
+    selected_audit_event_store = (
+        audit_event_store or DEFAULT_OPERATOR_REVIEW_CASE_AUDIT_EVENT_STORE
+    )
     audit_emitter = OperationalEventEmitter(
         service_id="nex-ag",
-        store=audit_event_store or DEFAULT_OPERATOR_REVIEW_CASE_AUDIT_EVENT_STORE,
+        store=selected_audit_event_store,
     )
 
     @app.post("/admin/v1/operator-review/cases", response_model=None)
@@ -742,6 +749,32 @@ def register_operator_review_case_routes(
                 case_id,
                 request_id=request_id_from_headers(request),
                 trace_id=trace_id_from_headers(request),
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+    @app.get(
+        "/admin/v1/operator-review/cases/{case_id}/timeline",
+        response_model=None,
+    )
+    def get_operator_review_case_timeline(
+        case_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        limit: int | None = None,
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            record = service.get_case(case_id)
+            return build_operator_review_case_timeline_projection(
+                record,
+                event_store=selected_audit_event_store,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                limit=limit,
             )
         except OperatorReviewNoteError as exc:
             return _operator_review_case_problem_response(request, exc)
@@ -1167,6 +1200,95 @@ def build_operator_review_case_workbench_detail_projection(
             "idempotency_keys_included": False,
             "metadata_payload_included": False,
             "detail_payload_shape": "safe_refs_hashes_and_bounded_previews_only",
+        },
+    }
+
+
+def build_operator_review_case_timeline_projection(
+    record: dict[str, Any],
+    *,
+    event_store: OperationalEventStore,
+    request_id: str,
+    trace_id: str | None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    normalized_limit = normalize_limit(limit)
+    source_status = "READY"
+    source_error: dict[str, Any] | None = None
+    try:
+        events = event_store.list_events(
+            service_id="nex-ag",
+            trace_id=record.get("trace_id"),
+            limit=normalized_limit,
+        )
+    except OperationalEventError as exc:
+        source_status = "UNAVAILABLE"
+        source_error = {
+            "error_code": exc.error_code,
+            "detail": exc.detail,
+            "status_code": exc.status_code,
+        }
+        events = []
+    except Exception:
+        source_status = "UNAVAILABLE"
+        source_error = {
+            "error_code": "ag.operator_review_case_timeline_unavailable",
+            "detail": "Operator review case timeline source is unavailable.",
+            "status_code": 503,
+        }
+        events = []
+
+    items = _case_timeline_items(record, events, limit=normalized_limit)
+    return {
+        "case_timeline_schema_version": OPERATOR_REVIEW_CASE_TIMELINE_SCHEMA_VERSION,
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "case_id": record.get("case_id"),
+        "target_ref": {
+            "target_service": record.get("target_service"),
+            "target_kind": record.get("target_kind"),
+            "target_id": record.get("target_id"),
+        },
+        "items": items,
+        "summary": {
+            "timeline_status": source_status,
+            "event_count": len(items),
+            "case_recorded_event_count": sum(
+                1
+                for item in items
+                if item.get("event_type") == OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE
+            ),
+            "case_action_event_count": sum(
+                1
+                for item in items
+                if item.get("event_type")
+                == OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE
+            ),
+            "latest_event_at": items[-1]["created_at"] if items else None,
+            "source_error": source_error,
+        },
+        "paths": {
+            "case_detail_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+            ),
+            "case_workbench_detail_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+                "/workbench-detail"
+            ),
+            "case_timeline_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}/timeline"
+            ),
+        },
+        "redaction": {
+            "raw_case_comment_included": False,
+            "raw_action_comment_included": False,
+            "raw_resolution_comment_included": False,
+            "raw_prompt_included": False,
+            "raw_generation_output_included": False,
+            "raw_source_text_included": False,
+            "storage_paths_included": False,
+            "idempotency_keys_included": False,
+            "timeline_payload_shape": "operational_event_metadata_only",
         },
     }
 
@@ -1824,6 +1946,87 @@ def _case_workbench_action_control_item(
         "requires_resolution_comment": action_type in {"RESOLVE", "DISMISS"},
         "method": "POST",
         "idempotency_key_required": True,
+    }
+
+
+def _case_timeline_items(
+    record: dict[str, Any],
+    events: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    selected = [
+        _case_timeline_item(event)
+        for event in events
+        if _event_matches_operator_review_case(record, event)
+    ]
+    selected.sort(
+        key=lambda item: (
+            str(item.get("created_at") or ""),
+            str(item.get("event_id") or ""),
+        )
+    )
+    return selected[:limit]
+
+
+def _event_matches_operator_review_case(
+    record: dict[str, Any],
+    event: dict[str, Any],
+) -> bool:
+    if event.get("event_type") not in {
+        OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
+        OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE,
+    }:
+        return False
+    case_id = str(record.get("case_id") or "")
+    details = event.get("details")
+    if isinstance(details, dict) and str(details.get("case_id") or "") == case_id:
+        return True
+    subject_ref = event.get("subject_ref")
+    if not isinstance(subject_ref, dict):
+        return False
+    return (
+        subject_ref.get("type") == "operator_review_case"
+        and str(subject_ref.get("id") or "") == case_id
+    )
+
+
+def _case_timeline_item(event: dict[str, Any]) -> dict[str, Any]:
+    details = event.get("details") if isinstance(event.get("details"), dict) else {}
+    subject_ref = (
+        event.get("subject_ref") if isinstance(event.get("subject_ref"), dict) else {}
+    )
+    return {
+        "timeline_item_schema_version": "ag_operator_review_case_timeline_item.v1",
+        "event_id": event.get("event_id"),
+        "event_type": event.get("event_type"),
+        "severity": event.get("severity"),
+        "message": event.get("message"),
+        "trace_id": event.get("trace_id"),
+        "request_id": event.get("request_id"),
+        "created_at": event.get("created_at"),
+        "subject_ref": {
+            "type": optional_text(subject_ref.get("type")),
+            "id": optional_text(subject_ref.get("id")),
+        },
+        "details": {
+            "case_id": optional_text(details.get("case_id")),
+            "action_id": optional_text(details.get("action_id")),
+            "action_type": optional_text(details.get("action_type")),
+            "from_status": optional_text(details.get("from_status")),
+            "to_status": optional_text(details.get("to_status")),
+            "case_status": optional_text(details.get("case_status")),
+            "case_priority": optional_text(details.get("case_priority")),
+            "target_service": optional_text(details.get("target_service")),
+            "target_kind": optional_text(details.get("target_kind")),
+            "target_id": optional_text(details.get("target_id")),
+            "operator_type": optional_text(details.get("operator_type")),
+            "operator_id": optional_text(details.get("operator_id")),
+            "assignee_id": optional_text(details.get("assignee_id")),
+            "reason_count": details.get("reason_count"),
+            "action_comment_hash": optional_text(details.get("action_comment_hash")),
+            "resolution_hash": optional_text(details.get("resolution_hash")),
+        },
     }
 
 

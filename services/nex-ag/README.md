@@ -970,6 +970,12 @@ Unified operations:
   returns safe refs, attention metadata, latest safe action summary, action
   controls, and resolution hash/preview only, while leaving timeline event
   expansion to a later S66 slice.
+- Slice 0655 adds
+  `GET /admin/v1/operator-review/cases/{case_id}/timeline`. The route reads AG
+  operational events for case creation and case actions, returns only
+  metadata-safe event refs and hash fields, and reports safe
+  `timeline_status=UNAVAILABLE` source errors instead of adding a case action
+  history table.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
