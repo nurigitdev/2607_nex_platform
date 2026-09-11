@@ -1,0 +1,112 @@
+{
+  "case_action_mutation_schema_version": "ag_operator_review_case_action_mutation.v1",
+  "idempotency_status": "NEW",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "case": {
+    "case_schema_version": "ag_operator_review_case.v1",
+    "case_id": "5c7ff448-0648-4a93-9df4-0b9d4921648a",
+    "target_service": "nex-ag",
+    "target_kind": "operator_review_workbench",
+    "target_id": "workbench-target-0648",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "operator_ref": {
+      "operator_type": "user",
+      "operator_id": "employee-0001",
+      "tenant_id": "local-tenant"
+    },
+    "case_status": "ACKNOWLEDGED",
+    "case_priority": "HIGH",
+    "source_ref": {
+      "source_type": "operator_review_workbench",
+      "source_id": "workbench-target-0648",
+      "source_service": "nex-ag",
+      "workbench_path": "/admin/v1/operator-review/workbench"
+    },
+    "assignment_ref": {
+      "assignee_type": null,
+      "assignee_id": null,
+      "tenant_id": null
+    },
+    "reason_codes": [
+      "active_operator_note"
+    ],
+    "resolution_hash": null,
+    "resolution_preview": null,
+    "metadata": {
+      "raw_operator_note_stored": false,
+      "raw_evidence_body_stored": false,
+      "raw_prompt_stored": false,
+      "raw_generation_output_stored": false,
+      "raw_source_text_stored": false,
+      "storage_paths_included": false,
+      "case_comment_storage": "hash_and_short_preview_only",
+      "action_history_storage": "operational_events_first",
+      "notification_delivery_deferred": true,
+      "external_incident_sync_deferred": true,
+      "idempotency_key_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "idempotency_key_stored": false,
+      "last_action_id": "4ab83c94-0648-44ad-8cda-bc4f1412648a",
+      "last_action_type": "ACKNOWLEDGE",
+      "last_action_at": "2026-09-11T00:05:00Z"
+    },
+    "created_at": "2026-09-11T00:00:00Z",
+    "updated_at": "2026-09-11T00:05:00Z",
+    "closed_at": null
+  },
+  "action": {
+    "case_action_schema_version": "ag_operator_review_case_action.v1",
+    "action_id": "4ab83c94-0648-44ad-8cda-bc4f1412648a",
+    "case_id": "5c7ff448-0648-4a93-9df4-0b9d4921648a",
+    "action_type": "ACKNOWLEDGE",
+    "from_status": "OPEN",
+    "to_status": "ACKNOWLEDGED",
+    "target_service": "nex-ag",
+    "target_kind": "operator_review_workbench",
+    "target_id": "workbench-target-0648",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "operator_ref": {
+      "operator_type": "user",
+      "operator_id": "employee-0001",
+      "tenant_id": "local-tenant"
+    },
+    "assignment_ref": {
+      "assignee_type": null,
+      "assignee_id": null,
+      "tenant_id": null
+    },
+    "reason_codes": [
+      "operator_review_follow_up"
+    ],
+    "action_comment_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "action_comment_preview": "Operator acknowledged the review case.",
+    "resolution_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "resolution_preview": "Operator acknowledged the review case.",
+    "metadata": {
+      "raw_action_comment_stored": false,
+      "raw_resolution_comment_stored": false,
+      "raw_prompt_stored": false,
+      "raw_generation_output_stored": false,
+      "raw_source_text_stored": false,
+      "storage_paths_included": false,
+      "action_comment_storage": "hash_and_short_preview_only",
+      "action_history_storage": "operational_events_first",
+      "notification_delivery_deferred": true,
+      "external_incident_sync_deferred": true,
+      "idempotency_key_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "idempotency_key_stored": false
+    },
+    "acted_at": "2026-09-11T00:05:00Z"
+  },
+  "summary": {
+    "case_id": "5c7ff448-0648-4a93-9df4-0b9d4921648a",
+    "action_id": "4ab83c94-0648-44ad-8cda-bc4f1412648a",
+    "action_type": "ACKNOWLEDGE",
+    "from_status": "OPEN",
+    "to_status": "ACKNOWLEDGED",
+    "case_status": "ACKNOWLEDGED",
+    "case_priority": "HIGH"
+  }
+}

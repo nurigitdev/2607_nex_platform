@@ -1,0 +1,53 @@
+{
+  "case_mutation_schema_version": "ag_operator_review_case_mutation.v1",
+  "idempotency_status": "NEW",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "case": {
+    "case_schema_version": "ag_operator_review_case.v1",
+    "case_id": "5c7ff448-0648-4a93-9df4-0b9d4921648a",
+    "target_service": "nex-ag",
+    "target_kind": "operator_review_workbench",
+    "target_id": "workbench-target-0648",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+    "operator_ref": {
+      "operator_type": "user",
+      "operator_id": "employee-0001",
+      "tenant_id": "local-tenant"
+    },
+    "case_status": "RESOLVED",
+    "case_priority": "HIGH",
+    "source_ref": {
+      "source_type": "operator_review_workbench",
+      "source_id": "workbench-target-0648",
+      "source_service": "nex-ag",
+      "workbench_path": "/admin/v1/operator-review/workbench"
+    },
+    "assignment_ref": {
+      "assignee_type": null,
+      "assignee_id": null,
+      "tenant_id": null
+    },
+    "reason_codes": [
+      "active_operator_note"
+    ],
+    "resolution_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "resolution_preview": "Safe bounded preview only.",
+    "raw_resolution_comment": "This raw resolution body must never leave the AG case boundary.",
+    "metadata": {
+      "raw_operator_note_stored": false
+    },
+    "created_at": "2026-09-11T00:00:00Z",
+    "updated_at": "2026-09-11T00:05:00Z",
+    "closed_at": "2026-09-11T00:05:00Z"
+  },
+  "summary": {
+    "case_id": "5c7ff448-0648-4a93-9df4-0b9d4921648a",
+    "target_service": "nex-ag",
+    "target_kind": "operator_review_workbench",
+    "target_id": "workbench-target-0648",
+    "case_status": "RESOLVED",
+    "case_priority": "HIGH"
+  }
+}

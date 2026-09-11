@@ -670,6 +670,282 @@ paths:
           description: Workbench filter is invalid.
         "503":
           description: Operator review note or evidence export store is unavailable.
+  /admin/v1/operator-review/cases:
+    get:
+      operationId: listAgOperatorReviewCases
+      tags:
+        - Operations
+      parameters:
+        - name: target_service
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ServiceId"
+        - name: target_kind
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: target_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TraceId"
+        - name: case_status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewCaseStatus"
+        - name: case_priority
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewCasePriority"
+        - name: operator_type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorType"
+        - name: operator_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: assignee_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: updated_from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: updated_to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only AG operator review case list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewCaseSurface"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "422":
+          description: Case filter is invalid.
+        "503":
+          description: Operator review case store is unavailable.
+    post:
+      operationId: createAgOperatorReviewCase
+      tags:
+        - Operations
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgOperatorReviewCaseMutationRequest"
+      responses:
+        "201":
+          description: Operator review case created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewCaseSurface"
+        "200":
+          description: Idempotent replay of a previously created case.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewCaseSurface"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "409":
+          description: Idempotency key maps to a different case request.
+        "422":
+          description: Case payload is invalid.
+        "503":
+          description: Operator review case store or audit emitter is unavailable.
+  /admin/v1/operator-review/cases/rollups:
+    get:
+      operationId: getAgOperatorReviewCaseRollups
+      tags:
+        - Operations
+      parameters:
+        - name: target_service
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ServiceId"
+        - name: target_kind
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: target_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TraceId"
+        - name: case_status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewCaseStatus"
+        - name: case_priority
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewCasePriority"
+        - name: operator_type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorType"
+        - name: operator_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: assignee_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: updated_from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: updated_to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only AG operator review case/action rollup metrics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewCaseRollup"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "422":
+          description: Case rollup filter is invalid.
+        "503":
+          description: Operator review case store is unavailable.
+  /admin/v1/operator-review/cases/{case_id}:
+    get:
+      operationId: getAgOperatorReviewCase
+      tags:
+        - Operations
+      parameters:
+        - name: case_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Read-only AG operator review case detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewCaseSurface"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "404":
+          description: Operator review case was not found.
+        "422":
+          description: Case id is invalid.
+        "503":
+          description: Operator review case store is unavailable.
+  /admin/v1/operator-review/cases/{case_id}/actions:
+    post:
+      operationId: applyAgOperatorReviewCaseAction
+      tags:
+        - Operations
+      parameters:
+        - name: case_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgOperatorReviewCaseActionRequest"
+      responses:
+        "201":
+          description: Operator review case action applied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewCaseSurface"
+        "200":
+          description: Idempotent replay of a previously applied action.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewCaseSurface"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "404":
+          description: Operator review case was not found.
+        "409":
+          description: Idempotency key maps to a different action request.
+        "422":
+          description: Action payload or state transition is invalid.
+        "503":
+          description: Operator review case store or audit emitter is unavailable.
   /admin/v1/operations/workers:
     get:
       operationId: getAgWorkerRuntimeProjection
@@ -2587,6 +2863,149 @@ components:
           type: object
           additionalProperties: true
         redaction:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewCaseStatus:
+      type: string
+      enum:
+        - OPEN
+        - ACKNOWLEDGED
+        - ASSIGNED
+        - RESOLVED
+        - DISMISSED
+        - REOPENED
+    AgOperatorReviewCasePriority:
+      type: string
+      enum:
+        - LOW
+        - MEDIUM
+        - HIGH
+        - URGENT
+    AgOperatorReviewCaseActionType:
+      type: string
+      enum:
+        - ACKNOWLEDGE
+        - ASSIGN
+        - RESOLVE
+        - DISMISS
+        - REOPEN
+    AgOperatorReviewCaseSurface:
+      type: object
+      additionalProperties: true
+      description: >
+        AG operator review case detail, list, create mutation, or action mutation
+        response. The canonical JSON Schema is
+        schemas/service/nex_ag/operator_review_case.v1.schema.json.
+      properties:
+        case_schema_version:
+          type: string
+          const: ag_operator_review_case.v1
+        case_list_schema_version:
+          type: string
+          const: ag_operator_review_case_list.v1
+        case_mutation_schema_version:
+          type: string
+          const: ag_operator_review_case_mutation.v1
+        case_action_mutation_schema_version:
+          type: string
+          const: ag_operator_review_case_action_mutation.v1
+        trace_id:
+          oneOf:
+            - $ref: "#/components/schemas/TraceId"
+            - type: "null"
+        request_id:
+          type: string
+          minLength: 1
+    AgOperatorReviewCaseRollup:
+      type: object
+      additionalProperties: true
+      description: >
+        AG operator review case/action rollup metrics. The canonical JSON Schema
+        is schemas/service/nex_ag/operator_review_case_rollup.v1.schema.json.
+      required:
+        - rollup_schema_version
+        - request_id
+        - summary
+        - attention
+        - redaction
+        - paths
+      properties:
+        rollup_schema_version:
+          type: string
+          const: ag_operator_review_case_rollup.v1
+        trace_id:
+          oneOf:
+            - $ref: "#/components/schemas/TraceId"
+            - type: "null"
+        request_id:
+          type: string
+          minLength: 1
+        summary:
+          type: object
+          additionalProperties: true
+        attention:
+          type: object
+          additionalProperties: true
+        redaction:
+          type: object
+          additionalProperties: true
+        paths:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewCaseMutationRequest:
+      type: object
+      additionalProperties: true
+      required:
+        - target_ref
+        - operator_ref
+      properties:
+        target_ref:
+          type: object
+          additionalProperties: true
+        operator_ref:
+          type: object
+          additionalProperties: true
+        case_status:
+          $ref: "#/components/schemas/AgOperatorReviewCaseStatus"
+        case_priority:
+          $ref: "#/components/schemas/AgOperatorReviewCasePriority"
+        source_ref:
+          type: object
+          additionalProperties: true
+        assignment_ref:
+          type: object
+          additionalProperties: true
+        reason_codes:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewCaseActionRequest:
+      type: object
+      additionalProperties: true
+      required:
+        - action_type
+        - operator_ref
+      properties:
+        action_type:
+          $ref: "#/components/schemas/AgOperatorReviewCaseActionType"
+        operator_ref:
+          type: object
+          additionalProperties: true
+        assignment_ref:
+          type: object
+          additionalProperties: true
+        reason_codes:
+          type: array
+          items:
+            type: string
+        action_comment:
+          type: string
+        resolution_comment:
+          type: string
+        metadata:
           type: object
           additionalProperties: true
     AgServiceLogRetentionPurgeRequest:

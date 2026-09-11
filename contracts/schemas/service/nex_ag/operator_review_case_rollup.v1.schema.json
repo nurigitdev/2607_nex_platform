@@ -1,0 +1,355 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/operator_review_case_rollup.v1.schema.json",
+  "title": "NeX AG Operator Review Case Rollup",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "rollup_schema_version",
+    "trace_id",
+    "request_id",
+    "summary",
+    "by_target_service",
+    "by_target_kind",
+    "by_case_status",
+    "by_case_priority",
+    "by_last_action_type",
+    "attention",
+    "redaction",
+    "paths"
+  ],
+  "properties": {
+    "rollup_schema_version": {
+      "const": "ag_operator_review_case_rollup.v1"
+    },
+    "trace_id": {
+      "$ref": "#/$defs/nullable_trace_id"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "$ref": "#/$defs/rollup_summary"
+    },
+    "by_target_service": {
+      "$ref": "#/$defs/count_map"
+    },
+    "by_target_kind": {
+      "$ref": "#/$defs/count_map"
+    },
+    "by_case_status": {
+      "$ref": "#/$defs/count_map"
+    },
+    "by_case_priority": {
+      "$ref": "#/$defs/count_map"
+    },
+    "by_last_action_type": {
+      "$ref": "#/$defs/count_map"
+    },
+    "attention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items",
+        "by_status"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/attention_item"
+          }
+        },
+        "by_status": {
+          "$ref": "#/$defs/count_map"
+        }
+      }
+    },
+    "redaction": {
+      "$ref": "#/$defs/redaction"
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_list_path",
+        "case_rollup_path"
+      ],
+      "properties": {
+        "case_list_path": {
+          "const": "/admin/v1/operator-review/cases"
+        },
+        "case_rollup_path": {
+          "const": "/admin/v1/operator-review/cases/rollups"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "nullable_trace_id": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/trace_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullable_text": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullable_timestamp": {
+      "oneOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target_service": {
+      "type": "string",
+      "enum": [
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-oa",
+        "nex-ag"
+      ]
+    },
+    "case_status": {
+      "type": "string",
+      "enum": [
+        "OPEN",
+        "ACKNOWLEDGED",
+        "ASSIGNED",
+        "RESOLVED",
+        "DISMISSED",
+        "REOPENED"
+      ]
+    },
+    "case_priority": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "URGENT"
+      ]
+    },
+    "attention_status": {
+      "type": "string",
+      "enum": [
+        "OPEN",
+        "ATTENTION",
+        "BLOCKED"
+      ]
+    },
+    "count_map": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "target_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_service",
+        "target_kind",
+        "target_id"
+      ],
+      "properties": {
+        "target_service": {
+          "$ref": "#/$defs/target_service"
+        },
+        "target_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "rollup_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_count",
+        "open_case_count",
+        "closed_case_count",
+        "assigned_case_count",
+        "urgent_case_count",
+        "unassigned_open_case_count",
+        "actioned_case_count",
+        "attention_case_count",
+        "latest_updated_at"
+      ],
+      "properties": {
+        "case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "closed_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "assigned_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "urgent_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unassigned_open_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "actioned_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attention_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latest_updated_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        }
+      }
+    },
+    "attention_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "target_ref",
+        "case_status",
+        "case_priority",
+        "attention_status",
+        "reason_codes",
+        "recommended_actions",
+        "assignee_id",
+        "last_action_type",
+        "last_action_at",
+        "latest_updated_at"
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_ref": {
+          "$ref": "#/$defs/target_ref"
+        },
+        "case_status": {
+          "$ref": "#/$defs/case_status"
+        },
+        "case_priority": {
+          "$ref": "#/$defs/case_priority"
+        },
+        "attention_status": {
+          "$ref": "#/$defs/attention_status"
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "recommended_actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "assignee_id": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "last_action_type": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "last_action_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        },
+        "latest_updated_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        }
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_case_comment_included",
+        "raw_action_comment_included",
+        "raw_resolution_comment_included",
+        "raw_prompt_included",
+        "raw_generation_output_included",
+        "raw_source_text_included",
+        "storage_paths_included",
+        "idempotency_keys_included",
+        "case_comment_shape",
+        "action_history_shape"
+      ],
+      "properties": {
+        "raw_case_comment_included": {
+          "const": false
+        },
+        "raw_action_comment_included": {
+          "const": false
+        },
+        "raw_resolution_comment_included": {
+          "const": false
+        },
+        "raw_prompt_included": {
+          "const": false
+        },
+        "raw_generation_output_included": {
+          "const": false
+        },
+        "raw_source_text_included": {
+          "const": false
+        },
+        "storage_paths_included": {
+          "const": false
+        },
+        "idempotency_keys_included": {
+          "const": false
+        },
+        "case_comment_shape": {
+          "const": "hash_and_short_preview_only"
+        },
+        "action_history_shape": {
+          "const": "operational_events_first"
+        }
+      }
+    }
+  }
+}

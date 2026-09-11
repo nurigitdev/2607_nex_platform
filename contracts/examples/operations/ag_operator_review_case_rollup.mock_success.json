@@ -1,0 +1,77 @@
+{
+  "rollup_schema_version": "ag_operator_review_case_rollup.v1",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "summary": {
+    "case_count": 1,
+    "open_case_count": 1,
+    "closed_case_count": 0,
+    "assigned_case_count": 0,
+    "urgent_case_count": 1,
+    "unassigned_open_case_count": 1,
+    "actioned_case_count": 0,
+    "attention_case_count": 1,
+    "latest_updated_at": "2026-09-11T00:00:00Z"
+  },
+  "by_target_service": {
+    "nex-ag": 1
+  },
+  "by_target_kind": {
+    "operator_review_workbench": 1
+  },
+  "by_case_status": {
+    "OPEN": 1
+  },
+  "by_case_priority": {
+    "URGENT": 1
+  },
+  "by_last_action_type": {},
+  "attention": {
+    "items": [
+      {
+        "case_id": "5c7ff448-0648-4a93-9df4-0b9d4921648a",
+        "target_ref": {
+          "target_service": "nex-ag",
+          "target_kind": "operator_review_workbench",
+          "target_id": "workbench-target-0648"
+        },
+        "case_status": "OPEN",
+        "case_priority": "URGENT",
+        "attention_status": "BLOCKED",
+        "reason_codes": [
+          "open_case_requires_triage",
+          "open_case_unassigned",
+          "urgent_case_not_closed"
+        ],
+        "recommended_actions": [
+          "acknowledge_or_assign_case",
+          "assign_case_owner",
+          "prioritize_urgent_operator_review_case"
+        ],
+        "assignee_id": null,
+        "last_action_type": null,
+        "last_action_at": null,
+        "latest_updated_at": "2026-09-11T00:00:00Z"
+      }
+    ],
+    "by_status": {
+      "BLOCKED": 1
+    }
+  },
+  "redaction": {
+    "raw_case_comment_included": false,
+    "raw_action_comment_included": false,
+    "raw_resolution_comment_included": false,
+    "raw_prompt_included": false,
+    "raw_generation_output_included": false,
+    "raw_source_text_included": false,
+    "storage_paths_included": false,
+    "idempotency_keys_included": false,
+    "case_comment_shape": "hash_and_short_preview_only",
+    "action_history_shape": "operational_events_first"
+  },
+  "paths": {
+    "case_list_path": "/admin/v1/operator-review/cases",
+    "case_rollup_path": "/admin/v1/operator-review/cases/rollups"
+  }
+}

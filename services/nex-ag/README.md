@@ -929,6 +929,12 @@ Unified operations:
   reports safe case counts, status/priority/action buckets, attention items,
   source status, and degraded-source evidence while preserving the hash/preview
   and operational-event-first action-history boundaries.
+- Slice 0648 freezes the operator review case/action contract surface with
+  dedicated JSON Schemas, positive and negative contract fixtures, and OpenAPI
+  paths for `/admin/v1/operator-review/cases`,
+  `/admin/v1/operator-review/cases/rollups`,
+  `/admin/v1/operator-review/cases/{case_id}`, and
+  `/admin/v1/operator-review/cases/{case_id}/actions`.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
