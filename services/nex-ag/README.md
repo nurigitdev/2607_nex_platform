@@ -953,6 +953,12 @@ Unified operations:
   action timeline evidence, links only safe workbench/note/export refs, and
   keeps raw comments, source text, storage paths, database URLs, tokens, and
   idempotency keys out of case workbench evidence.
+- Slice 0652 adds the operator-facing case queue read model at
+  `/admin/v1/operator-review/cases/queue`. The queue reuses `ag_op_cases` and
+  the existing case filters, returns safe target/operator/assignment refs,
+  attention status, recommended actions, latest safe action summaries, and
+  detail/action links, and keeps raw comments, raw resolution text, prompts,
+  source text, storage paths, and idempotency keys out of the payload.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

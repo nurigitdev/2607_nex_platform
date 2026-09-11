@@ -46,6 +46,7 @@ from .operator_reviews import (
 
 OPERATOR_REVIEW_CASE_SCHEMA_VERSION = "ag_operator_review_case.v1"
 OPERATOR_REVIEW_CASE_LIST_SCHEMA_VERSION = "ag_operator_review_case_list.v1"
+OPERATOR_REVIEW_CASE_QUEUE_SCHEMA_VERSION = "ag_operator_review_case_queue.v1"
 OPERATOR_REVIEW_CASE_MUTATION_SCHEMA_VERSION = "ag_operator_review_case_mutation.v1"
 OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION = "ag_operator_review_case_action.v1"
 OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION = (
@@ -405,6 +406,42 @@ class OperatorReviewCaseService:
         )
         return build_operator_review_case_rollup_metrics(case_list)
 
+    def queue_cases(
+        self,
+        *,
+        request_id: str,
+        trace_id: str | None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        case_trace_id: str | None = None,
+        case_status: str | None = None,
+        case_priority: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        assignee_id: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        case_list = self.list_cases(
+            request_id=request_id,
+            trace_id=trace_id,
+            target_service=target_service,
+            target_kind=target_kind,
+            target_id=target_id,
+            case_trace_id=case_trace_id,
+            case_status=case_status,
+            case_priority=case_priority,
+            operator_type=operator_type,
+            operator_id=operator_id,
+            assignee_id=assignee_id,
+            updated_from=updated_from,
+            updated_to=updated_to,
+            limit=limit,
+        )
+        return build_operator_review_case_queue_projection(case_list)
+
     def apply_action(
         self,
         case_id: str,
@@ -580,6 +617,47 @@ def register_operator_review_case_routes(
 
         try:
             return service.rollup_cases(
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                target_service=target_service,
+                target_kind=target_kind,
+                target_id=target_id,
+                case_trace_id=case_trace_id,
+                case_status=case_status,
+                case_priority=case_priority,
+                operator_type=operator_type,
+                operator_id=operator_id,
+                assignee_id=assignee_id,
+                updated_from=updated_from,
+                updated_to=updated_to,
+                limit=limit,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+    @app.get("/admin/v1/operator-review/cases/queue", response_model=None)
+    def get_operator_review_case_queue(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        case_trace_id: str | None = Query(default=None, alias="trace_id"),
+        case_status: str | None = None,
+        case_priority: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        assignee_id: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
+        limit: int | None = None,
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.queue_cases(
                 request_id=request_id_from_headers(request),
                 trace_id=trace_id_from_headers(request),
                 target_service=target_service,
@@ -863,6 +941,42 @@ def build_operator_review_case_mutation_response(
             "target_id": record["target_id"],
             "case_status": record["case_status"],
             "case_priority": record["case_priority"],
+        },
+    }
+
+
+def build_operator_review_case_queue_projection(
+    case_list: dict[str, Any],
+) -> dict[str, Any]:
+    cases = list(case_list.get("items") or [])
+    items = [_case_queue_item(record) for record in cases]
+    items.sort(key=_case_queue_sort_key)
+    return {
+        "case_queue_schema_version": OPERATOR_REVIEW_CASE_QUEUE_SCHEMA_VERSION,
+        "trace_id": case_list.get("trace_id"),
+        "request_id": case_list.get("request_id"),
+        "items": items,
+        "summary": _case_queue_summary(items),
+        "paths": {
+            "case_list_path": "/admin/v1/operator-review/cases",
+            "case_queue_path": "/admin/v1/operator-review/cases/queue",
+            "case_detail_path_template": "/admin/v1/operator-review/cases/{case_id}",
+            "case_action_path_template": (
+                "/admin/v1/operator-review/cases/{case_id}/actions"
+            ),
+            "case_rollup_path": "/admin/v1/operator-review/cases/rollups",
+        },
+        "redaction": {
+            "raw_case_comment_included": False,
+            "raw_action_comment_included": False,
+            "raw_resolution_comment_included": False,
+            "raw_prompt_included": False,
+            "raw_generation_output_included": False,
+            "raw_source_text_included": False,
+            "storage_paths_included": False,
+            "idempotency_keys_included": False,
+            "queue_payload_shape": "safe_refs_hashes_and_bounded_previews_only",
+            "action_history_shape": "operational_events_first",
         },
     }
 
@@ -1399,6 +1513,105 @@ def _safe_case_last_action_ref(record: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def _case_queue_item(record: dict[str, Any]) -> dict[str, Any]:
+    assignment = record.get("assignment_ref")
+    assignment_ref_value = assignment if isinstance(assignment, dict) else {}
+    source = record.get("source_ref")
+    source_ref_value = source if isinstance(source, dict) else {}
+    attention = _case_attention_item(record)
+    return {
+        "queue_item_schema_version": "ag_operator_review_case_queue_item.v1",
+        "case_id": record.get("case_id"),
+        "target_ref": dict(attention["target_ref"]),
+        "case_status": record.get("case_status"),
+        "case_priority": record.get("case_priority"),
+        "attention_status": attention["attention_status"],
+        "attention_reason_codes": list(attention["reason_codes"]),
+        "recommended_actions": list(attention["recommended_actions"]),
+        "operator_ref": _case_operator_ref(record),
+        "assignment_ref": {
+            "assignee_type": optional_text(assignment_ref_value.get("assignee_type")),
+            "assignee_id": optional_text(assignment_ref_value.get("assignee_id")),
+            "tenant_id": optional_text(assignment_ref_value.get("tenant_id")),
+        },
+        "source_ref": {
+            "source_type": optional_text(source_ref_value.get("source_type")),
+            "source_id": optional_text(source_ref_value.get("source_id")),
+            "source_service": optional_text(source_ref_value.get("source_service")),
+            "workbench_path": optional_text(source_ref_value.get("workbench_path")),
+        },
+        "reason_count": len(record.get("reason_codes") or []),
+        "resolution_hash": record.get("resolution_hash"),
+        "resolution_preview": record.get("resolution_preview"),
+        "latest_action": _safe_case_last_action_ref(record),
+        "created_at": record.get("created_at"),
+        "updated_at": record.get("updated_at"),
+        "closed_at": record.get("closed_at"),
+        "links": {
+            "case_detail_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+            ),
+            "case_action_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}/actions"
+            ),
+        },
+        "redaction": {
+            "raw_case_comment_included": False,
+            "raw_action_comment_included": False,
+            "raw_resolution_comment_included": False,
+            "idempotency_keys_included": False,
+            "storage_paths_included": False,
+        },
+    }
+
+
+def _case_queue_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "case_count": len(items),
+        "open_case_count": sum(
+            1
+            for item in items
+            if item.get("case_status")
+            in {"OPEN", "ACKNOWLEDGED", "ASSIGNED", "REOPENED"}
+        ),
+        "closed_case_count": sum(
+            1
+            for item in items
+            if item.get("case_status") in {"RESOLVED", "DISMISSED"}
+        ),
+        "assigned_case_count": sum(
+            1 for item in items if item.get("case_status") == "ASSIGNED"
+        ),
+        "urgent_case_count": sum(
+            1 for item in items if item.get("case_priority") == "URGENT"
+        ),
+        "attention_case_count": sum(
+            1 for item in items if item.get("attention_status") != "OK"
+        ),
+        "unassigned_open_case_count": sum(
+            1
+            for item in items
+            if item.get("case_status") in {"OPEN", "ACKNOWLEDGED", "REOPENED"}
+            and item.get("assignment_ref", {}).get("assignee_id") is None
+        ),
+        "by_attention_status": _count_by(items, "attention_status"),
+        "by_case_status": _count_by(items, "case_status"),
+        "by_case_priority": _count_by(items, "case_priority"),
+        "latest_updated_at": max(
+            (str(item.get("updated_at") or "") for item in items),
+            default=None,
+        ),
+    }
+
+
+def _case_queue_sort_key(item: dict[str, Any]) -> tuple[int, str, str]:
+    return (
+        _case_attention_sort_rank(str(item.get("attention_status") or "")),
+        _reverse_text_sort_token(item.get("updated_at")),
+        str(item.get("case_id") or ""),
+    )
+
+
 def _case_attention_item(record: dict[str, Any]) -> dict[str, Any]:
     reasons: list[str] = []
     status = str(record.get("case_status") or "")
@@ -1490,6 +1703,10 @@ def _case_operator_ref(record: dict[str, Any]) -> dict[str, str | None]:
 
 def _case_attention_sort_rank(status: str) -> int:
     return {"BLOCKED": 0, "ATTENTION": 1, "OPEN": 2}.get(status, 3)
+
+
+def _reverse_text_sort_token(value: Any) -> str:
+    return "".join(chr(0x10FFFF - ord(character)) for character in str(value or ""))
 
 
 def _operator_review_case_identity_seed(

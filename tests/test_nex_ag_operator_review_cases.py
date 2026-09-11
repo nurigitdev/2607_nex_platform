@@ -18,6 +18,7 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION,
+    OPERATOR_REVIEW_CASE_QUEUE_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_CASE_ROLLUP_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_SCHEMA_VERSION,
@@ -34,6 +35,7 @@ from nex_ag.operator_review_cases import (
     build_operator_review_case_action_record,
     build_operator_review_case_list_response,
     build_operator_review_case_mutation_response,
+    build_operator_review_case_queue_projection,
     build_operator_review_case_record,
     build_operator_review_case_rollup_metrics,
     default_operator_review_case_store,
@@ -537,6 +539,150 @@ def test_case_rollup_metrics_handles_reopened_cases_and_malformed_last_action() 
         "review_reopened_case"
     ]
     assert rollup["by_last_action_type"] == {"REOPEN": 1}
+
+
+def test_case_queue_projection_prioritizes_attention_and_redacts_payloads() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+    open_case = service.create_case(
+        sample_case_payload(
+            case_id="case-queue-open",
+            assignment_ref=None,
+            case_priority="MEDIUM",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0652-open",
+    )["case"]
+    urgent_case = service.create_case(
+        sample_case_payload(
+            case_id="case-queue-urgent",
+            case_priority="URGENT",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0652",
+                "tenant_id": "local-tenant",
+            },
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0652-urgent",
+    )["case"]
+    resolved_case = service.create_case(
+        sample_case_payload(
+            case_id="case-queue-resolved",
+            case_status="RESOLVED",
+            case_priority="LOW",
+            resolution_comment="Queue projection should keep only a preview.",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0652-resolved",
+    )["case"]
+    assigned = service.apply_action(
+        urgent_case["case_id"],
+        sample_action_payload(
+            action_type="ASSIGN",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0652",
+                "tenant_id": "local-tenant",
+            },
+            action_comment="Queue projection must not leak this raw action comment.",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0652-action",
+    )
+
+    case_list = build_operator_review_case_list_response(
+        [open_case, assigned["case"], resolved_case],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    queue = build_operator_review_case_queue_projection(case_list)
+
+    assert queue["case_queue_schema_version"] == OPERATOR_REVIEW_CASE_QUEUE_SCHEMA_VERSION
+    assert queue["summary"] == {
+        "case_count": 3,
+        "open_case_count": 2,
+        "closed_case_count": 1,
+        "assigned_case_count": 1,
+        "urgent_case_count": 1,
+        "attention_case_count": 2,
+        "unassigned_open_case_count": 1,
+        "by_attention_status": {"BLOCKED": 1, "OPEN": 1, "OK": 1},
+        "by_case_status": {"ASSIGNED": 1, "OPEN": 1, "RESOLVED": 1},
+        "by_case_priority": {"URGENT": 1, "MEDIUM": 1, "LOW": 1},
+        "latest_updated_at": max(
+            assigned["case"]["updated_at"],
+            open_case["updated_at"],
+            resolved_case["updated_at"],
+        ),
+    }
+    assert [item["case_id"] for item in queue["items"]] == [
+        assigned["case"]["case_id"],
+        open_case["case_id"],
+        resolved_case["case_id"],
+    ]
+    assert queue["items"][0]["attention_status"] == "BLOCKED"
+    assert queue["items"][0]["latest_action"]["action_type"] == "ASSIGN"
+    assert queue["items"][0]["recommended_actions"] == [
+        "prioritize_urgent_operator_review_case",
+        "resolve_or_dismiss_after_review",
+    ]
+    assert queue["items"][1]["attention_reason_codes"] == [
+        "open_case_requires_triage",
+        "open_case_unassigned",
+    ]
+    assert queue["items"][2]["attention_status"] == "OK"
+    assert queue["paths"]["case_queue_path"] == "/admin/v1/operator-review/cases/queue"
+    assert queue["redaction"]["action_history_shape"] == "operational_events_first"
+
+    serialized = json.dumps(queue)
+    assert "Queue projection must not leak" not in serialized
+    assert "idem-0652" not in serialized
+    assert '"action_comment":' not in serialized
+
+
+def test_case_queue_projection_handles_empty_and_malformed_refs() -> None:
+    malformed = build_case(sample_case_payload(case_id="case-queue-malformed"))
+    malformed["assignment_ref"] = "bad-assignment"
+    malformed["source_ref"] = "bad-source"
+    malformed["operator_ref"] = "bad-operator"
+
+    empty = build_operator_review_case_queue_projection(
+        build_operator_review_case_list_response(
+            [],
+            request_id=REQUEST_ID,
+            trace_id=None,
+        )
+    )
+    queue = build_operator_review_case_queue_projection(
+        build_operator_review_case_list_response(
+            [malformed],
+            request_id=REQUEST_ID,
+            trace_id=None,
+        )
+    )
+
+    assert empty["summary"]["latest_updated_at"] is None
+    assert empty["items"] == []
+    assert queue["items"][0]["operator_ref"] == {
+        "operator_type": None,
+        "operator_id": None,
+        "tenant_id": None,
+    }
+    assert queue["items"][0]["assignment_ref"] == {
+        "assignee_type": None,
+        "assignee_id": None,
+        "tenant_id": None,
+    }
+    assert queue["items"][0]["source_ref"] == {
+        "source_type": None,
+        "source_id": None,
+        "source_service": None,
+        "workbench_path": None,
+    }
 
 
 def test_case_idempotency_signature_is_safe_and_stable() -> None:
@@ -1258,6 +1404,47 @@ def test_operator_review_case_rollup_route_precedes_detail_route_and_filters() -
     assert invalid.status_code == 422
     assert invalid.json()["error_code"] == (
         "ag.operator_review_note_case_priority_unsupported"
+    )
+    assert unauthorized.status_code == 401
+
+
+def test_operator_review_case_queue_route_precedes_detail_route_and_filters() -> None:
+    client, _, _ = build_route_client()
+    created = client.post(
+        "/admin/v1/operator-review/cases",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-route-case-0652"},
+        json=sample_case_payload(assignment_ref=None, case_priority="URGENT"),
+    )
+    case_id = created.json()["case"]["case_id"]
+
+    queue = client.get(
+        "/admin/v1/operator-review/cases/queue?target_service=nex-ag",
+        headers=service_auth_headers(),
+    )
+    filtered_empty = client.get(
+        "/admin/v1/operator-review/cases/queue?case_status=RESOLVED",
+        headers=service_auth_headers(),
+    )
+    invalid = client.get(
+        "/admin/v1/operator-review/cases/queue?operator_type=robot",
+        headers=service_auth_headers(),
+    )
+    unauthorized = client.get("/admin/v1/operator-review/cases/queue")
+
+    assert queue.status_code == 200
+    assert queue.json()["case_queue_schema_version"] == (
+        OPERATOR_REVIEW_CASE_QUEUE_SCHEMA_VERSION
+    )
+    assert queue.json()["items"][0]["case_id"] == case_id
+    assert queue.json()["items"][0]["attention_status"] == "BLOCKED"
+    assert queue.json()["paths"]["case_detail_path_template"] == (
+        "/admin/v1/operator-review/cases/{case_id}"
+    )
+    assert filtered_empty.status_code == 200
+    assert filtered_empty.json()["summary"]["case_count"] == 0
+    assert invalid.status_code == 422
+    assert invalid.json()["error_code"] == (
+        "ag.operator_review_note_operator_type_unsupported"
     )
     assert unauthorized.status_code == 401
 
