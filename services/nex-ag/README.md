@@ -935,6 +935,12 @@ Unified operations:
   `/admin/v1/operator-review/cases/rollups`,
   `/admin/v1/operator-review/cases/{case_id}`, and
   `/admin/v1/operator-review/cases/{case_id}/actions`.
+- Slice 0649 adds
+  `scripts/smoke/run_ag_operator_review_case_postgres_smoke.py`, a guarded
+  `nex_ag_test` smoke path that runs AG migrations, creates an operator review
+  case, replays the idempotent create, applies an assignment action, reads
+  detail/list/rollup/dashboard projections, verifies `ag_op_cases` directly in
+  PostgreSQL, and cleans up the smoke row.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
