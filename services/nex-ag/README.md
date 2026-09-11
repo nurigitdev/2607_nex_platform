@@ -994,6 +994,13 @@ Unified operations:
   applies an assignment action, reads queue/detail/timeline projections, verifies
   `ag_op_cases` and `service_operational_events` directly in PostgreSQL, and
   cleans up the smoke case and timeline events.
+- Slice 0659 adds
+  `scripts/smoke/run_ag_operator_review_case_workbench_privacy_regression.py`, a
+  mock-first leak regression that injects unsafe raw action comments, prompts,
+  source text, storage paths, provider keys, tokens, database URLs, and
+  idempotency keys into case records/events, then verifies queue, detail,
+  timeline, dashboard, and issue-candidate surfaces expose only safe hashes,
+  refs, redaction flags, and operational-event metadata.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

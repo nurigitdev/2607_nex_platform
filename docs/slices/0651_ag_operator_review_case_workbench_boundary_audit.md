@@ -20,7 +20,9 @@ admission, contract, and PostgreSQL smoke evidence.
   prompts, generation output, source text, provider payloads, storage paths,
   database URLs, service tokens, provider keys, and idempotency keys must not
   enter case workbench evidence.
-- Confirms the planned order for Slice 0652 through Slice 0660.
+- Confirms the planned order for Slice 0652 through Slice 0660. Slice 0659
+  refines this plan to match the implemented order after contract and
+  PostgreSQL smoke evidence landed one slice earlier than originally expected.
 
 ## Decision
 
@@ -34,6 +36,10 @@ admission, contract, and PostgreSQL smoke evidence.
   bounded previews, and redaction flags.
 - PostgreSQL smoke evidence for queue/detail/timeline must use the real
   `nex_ag_test` database before S66 closure.
+- The final pre-closure regression should also prove queue/detail/timeline,
+  dashboard, and issue-candidate surfaces do not leak raw action comments,
+  prompts, source text, storage paths, provider credentials, database URLs, or
+  idempotency keys.
 
 ## Verification
 

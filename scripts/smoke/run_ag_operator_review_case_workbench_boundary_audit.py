@@ -287,12 +287,12 @@ REQUIRED_SOURCE_TOKENS = (
 PLANNED_SLICES = (
     ("case_queue_read_model", "Slice_0652", "Build operator-facing case queue read model."),
     ("case_queue_filters", "Slice_0653", "Harden queue filter, search, and sort controls."),
-    ("case_detail_timeline", "Slice_0654", "Project safe action history from operational events."),
-    ("case_evidence_linkage", "Slice_0655", "Link cases to workbench notes and redacted exports."),
-    ("action_admission_guardrail", "Slice_0656", "Expose allowed, blocked, and recommended actions."),
-    ("dashboard_queue_correlation", "Slice_0657", "Harden operations dashboard case queue correlation."),
-    ("contract_schema_examples", "Slice_0658", "Freeze queue/detail/timeline contracts and examples."),
-    ("postgres_smoke", "Slice_0659", "Prove queue/detail/timeline against nex_ag_test."),
+    ("case_workbench_detail", "Slice_0654", "Project safe case workbench detail."),
+    ("case_timeline", "Slice_0655", "Project safe action history from operational events."),
+    ("dashboard_queue_correlation", "Slice_0656", "Harden dashboard and issue-candidate signals."),
+    ("contract_schema_examples", "Slice_0657", "Freeze queue/detail/timeline contracts and examples."),
+    ("postgres_smoke", "Slice_0658", "Prove queue/detail/timeline against nex_ag_test."),
+    ("privacy_regression", "Slice_0659", "Lock raw-field leak regression across S66 surfaces."),
     ("s66_closure", "Slice_0660", "Close the operator review case workbench loop."),
 )
 
