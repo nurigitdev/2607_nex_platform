@@ -1,0 +1,150 @@
+{
+  "case_workbench_detail_schema_version": "ag_operator_review_case_workbench_detail.v1",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "case": {
+    "case_id": "5c7ff448-0648-4a93-9df4-0b9d4921648a",
+    "target_ref": {
+      "target_service": "nex-ag",
+      "target_kind": "operator_review_workbench",
+      "target_id": "workbench-target-0657"
+    },
+    "case_status": "ASSIGNED",
+    "case_priority": "URGENT",
+    "attention_status": "BLOCKED",
+    "attention_reason_codes": [
+      "urgent_case_not_closed",
+      "assigned_case_in_progress"
+    ],
+    "recommended_actions": [
+      "prioritize_urgent_operator_review_case",
+      "resolve_or_dismiss_after_review"
+    ],
+    "operator_ref": {
+      "operator_type": "user",
+      "operator_id": "employee-0001",
+      "tenant_id": "local-tenant"
+    },
+    "assignment_ref": {
+      "assignee_type": "user",
+      "assignee_id": "employee-0657",
+      "tenant_id": "local-tenant"
+    },
+    "source_ref": {
+      "source_type": "operator_review_workbench",
+      "source_id": "workbench-target-0657",
+      "source_service": "nex-ag",
+      "workbench_path": "/admin/v1/operator-review/workbench"
+    },
+    "reason_count": 1,
+    "created_at": "2026-09-11T00:00:00Z",
+    "updated_at": "2026-09-11T00:00:05Z",
+    "closed_at": null
+  },
+  "resolution": {
+    "resolution_hash": null,
+    "resolution_preview": null,
+    "raw_resolution_comment_included": false
+  },
+  "latest_action": {
+    "case_id": "5c7ff448-0648-4a93-9df4-0b9d4921648a",
+    "action_id": "action-0657-assign",
+    "action_type": "ASSIGN",
+    "from_status": "OPEN",
+    "to_status": "ASSIGNED",
+    "acted_at": "2026-09-11T00:00:05Z",
+    "operator_ref": {
+      "operator_type": "user",
+      "operator_id": "employee-0001",
+      "tenant_id": "local-tenant"
+    },
+    "assignee_id": "employee-0657",
+    "reason_count": 1,
+    "action_comment_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "resolution_hash": null
+  },
+  "action_controls": {
+    "current_status": "ASSIGNED",
+    "available_actions": [
+      {
+        "action_type": "ASSIGN",
+        "target_status": "ASSIGNED",
+        "available": true,
+        "blocked_reason": null,
+        "requires_assignment_ref": true,
+        "requires_resolution_comment": false,
+        "method": "POST",
+        "idempotency_key_required": true
+      },
+      {
+        "action_type": "RESOLVE",
+        "target_status": "RESOLVED",
+        "available": true,
+        "blocked_reason": null,
+        "requires_assignment_ref": false,
+        "requires_resolution_comment": true,
+        "method": "POST",
+        "idempotency_key_required": true
+      },
+      {
+        "action_type": "DISMISS",
+        "target_status": "DISMISSED",
+        "available": true,
+        "blocked_reason": null,
+        "requires_assignment_ref": false,
+        "requires_resolution_comment": true,
+        "method": "POST",
+        "idempotency_key_required": true
+      }
+    ],
+    "blocked_actions": [
+      {
+        "action_type": "ACKNOWLEDGE",
+        "target_status": "ACKNOWLEDGED",
+        "available": false,
+        "blocked_reason": "ACKNOWLEDGE cannot transition from ASSIGNED.",
+        "requires_assignment_ref": false,
+        "requires_resolution_comment": false,
+        "method": "POST",
+        "idempotency_key_required": true
+      },
+      {
+        "action_type": "REOPEN",
+        "target_status": "REOPENED",
+        "available": false,
+        "blocked_reason": "REOPEN cannot transition from ASSIGNED.",
+        "requires_assignment_ref": false,
+        "requires_resolution_comment": false,
+        "method": "POST",
+        "idempotency_key_required": true
+      }
+    ],
+    "available_action_count": 3,
+    "blocked_action_count": 2,
+    "requires_idempotency_key": true
+  },
+  "timeline": {
+    "timeline_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/timeline",
+    "action_history_shape": "operational_events_first",
+    "inline_events_included": false,
+    "planned_schema_version": "ag_operator_review_case_timeline.v1"
+  },
+  "links": {
+    "case_detail_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a",
+    "case_action_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/actions",
+    "case_queue_path": "/admin/v1/operator-review/cases/queue",
+    "operator_review_workbench_path": "/admin/v1/operator-review/workbench"
+  },
+  "redaction": {
+    "raw_case_comment_included": false,
+    "raw_action_comment_included": false,
+    "raw_resolution_comment_included": false,
+    "raw_prompt_included": false,
+    "raw_generation_output_included": false,
+    "raw_source_text_included": false,
+    "storage_paths_included": false,
+    "idempotency_keys_included": false,
+    "metadata_payload_included": false,
+    "detail_payload_shape": "safe_refs_hashes_and_bounded_previews_only"
+  }
+}

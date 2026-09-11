@@ -1,0 +1,102 @@
+{
+  "case_queue_schema_version": "ag_operator_review_case_queue.v1",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "filters": {
+    "latest_action_type": null,
+    "attention_status": null,
+    "q": null
+  },
+  "sort": {
+    "sort_by": "attention",
+    "sort_direction": "asc"
+  },
+  "items": [
+    {
+      "queue_item_schema_version": "ag_operator_review_case_queue_item.v1",
+      "case_id": "case-negative-queue",
+      "target_ref": {
+        "target_service": "nex-ag",
+        "target_kind": "operator_review_workbench",
+        "target_id": "target-negative"
+      },
+      "case_status": "OPEN",
+      "case_priority": "HIGH",
+      "attention_status": "OPEN",
+      "attention_reason_codes": [
+        "open_case_requires_triage"
+      ],
+      "recommended_actions": [
+        "acknowledge_or_assign_case"
+      ],
+      "operator_ref": {
+        "operator_type": "user",
+        "operator_id": "employee-0001",
+        "tenant_id": "local-tenant"
+      },
+      "assignment_ref": {
+        "assignee_type": null,
+        "assignee_id": null,
+        "tenant_id": null
+      },
+      "source_ref": {
+        "source_type": "operator_review_workbench",
+        "source_id": "target-negative",
+        "source_service": "nex-ag",
+        "workbench_path": "/admin/v1/operator-review/workbench"
+      },
+      "reason_count": 1,
+      "resolution_hash": null,
+      "resolution_preview": null,
+      "latest_action": null,
+      "raw_action_comment": "This raw action comment must not be exposed.",
+      "created_at": "2026-09-11T00:00:00Z",
+      "updated_at": "2026-09-11T00:00:00Z",
+      "closed_at": null,
+      "links": {
+        "case_detail_path": "/admin/v1/operator-review/cases/case-negative-queue",
+        "case_action_path": "/admin/v1/operator-review/cases/case-negative-queue/actions"
+      },
+      "redaction": {
+        "raw_case_comment_included": false,
+        "raw_action_comment_included": false,
+        "raw_resolution_comment_included": false,
+        "storage_paths_included": false,
+        "idempotency_keys_included": false
+      }
+    }
+  ],
+  "summary": {
+    "case_count": 1,
+    "open_case_count": 1,
+    "closed_case_count": 0,
+    "assigned_case_count": 0,
+    "urgent_case_count": 0,
+    "attention_case_count": 1,
+    "unassigned_open_case_count": 1,
+    "by_attention_status": {
+      "OPEN": 1
+    },
+    "by_case_status": {
+      "OPEN": 1
+    },
+    "by_case_priority": {
+      "HIGH": 1
+    },
+    "latest_updated_at": "2026-09-11T00:00:00Z"
+  },
+  "paths": {
+    "case_list_path": "/admin/v1/operator-review/cases",
+    "case_queue_path": "/admin/v1/operator-review/cases/queue",
+    "case_detail_path_template": "/admin/v1/operator-review/cases/{case_id}",
+    "case_action_path_template": "/admin/v1/operator-review/cases/{case_id}/actions",
+    "case_rollup_path": "/admin/v1/operator-review/cases/rollups"
+  },
+  "redaction": {
+    "raw_case_comment_included": false,
+    "raw_action_comment_included": false,
+    "raw_resolution_comment_included": false,
+    "storage_paths_included": false,
+    "idempotency_keys_included": false
+  }
+}

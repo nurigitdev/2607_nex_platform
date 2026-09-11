@@ -1,0 +1,126 @@
+{
+  "case_queue_schema_version": "ag_operator_review_case_queue.v1",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "filters": {
+    "latest_action_type": null,
+    "attention_status": null,
+    "q": null
+  },
+  "sort": {
+    "sort_by": "attention",
+    "sort_direction": "asc"
+  },
+  "items": [
+    {
+      "queue_item_schema_version": "ag_operator_review_case_queue_item.v1",
+      "case_id": "5c7ff448-0648-4a93-9df4-0b9d4921648a",
+      "target_ref": {
+        "target_service": "nex-ag",
+        "target_kind": "operator_review_workbench",
+        "target_id": "workbench-target-0657"
+      },
+      "case_status": "ASSIGNED",
+      "case_priority": "URGENT",
+      "attention_status": "BLOCKED",
+      "attention_reason_codes": [
+        "urgent_case_not_closed",
+        "assigned_case_in_progress"
+      ],
+      "recommended_actions": [
+        "prioritize_urgent_operator_review_case",
+        "resolve_or_dismiss_after_review"
+      ],
+      "operator_ref": {
+        "operator_type": "user",
+        "operator_id": "employee-0001",
+        "tenant_id": "local-tenant"
+      },
+      "assignment_ref": {
+        "assignee_type": "user",
+        "assignee_id": "employee-0657",
+        "tenant_id": "local-tenant"
+      },
+      "source_ref": {
+        "source_type": "operator_review_workbench",
+        "source_id": "workbench-target-0657",
+        "source_service": "nex-ag",
+        "workbench_path": "/admin/v1/operator-review/workbench"
+      },
+      "reason_count": 1,
+      "resolution_hash": null,
+      "resolution_preview": null,
+      "latest_action": {
+        "case_id": "5c7ff448-0648-4a93-9df4-0b9d4921648a",
+        "action_id": "action-0657-assign",
+        "action_type": "ASSIGN",
+        "from_status": "OPEN",
+        "to_status": "ASSIGNED",
+        "acted_at": "2026-09-11T00:00:05Z",
+        "operator_ref": {
+          "operator_type": "user",
+          "operator_id": "employee-0001",
+          "tenant_id": "local-tenant"
+        },
+        "assignee_id": "employee-0657",
+        "reason_count": 1,
+        "action_comment_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resolution_hash": null
+      },
+      "created_at": "2026-09-11T00:00:00Z",
+      "updated_at": "2026-09-11T00:00:05Z",
+      "closed_at": null,
+      "links": {
+        "case_detail_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a",
+        "case_action_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/actions"
+      },
+      "redaction": {
+        "raw_case_comment_included": false,
+        "raw_action_comment_included": false,
+        "raw_resolution_comment_included": false,
+        "raw_prompt_included": false,
+        "raw_generation_output_included": false,
+        "raw_source_text_included": false,
+        "storage_paths_included": false,
+        "idempotency_keys_included": false
+      }
+    }
+  ],
+  "summary": {
+    "case_count": 1,
+    "open_case_count": 1,
+    "closed_case_count": 0,
+    "assigned_case_count": 1,
+    "urgent_case_count": 1,
+    "attention_case_count": 1,
+    "unassigned_open_case_count": 0,
+    "by_attention_status": {
+      "BLOCKED": 1
+    },
+    "by_case_status": {
+      "ASSIGNED": 1
+    },
+    "by_case_priority": {
+      "URGENT": 1
+    },
+    "latest_updated_at": "2026-09-11T00:00:05Z"
+  },
+  "paths": {
+    "case_list_path": "/admin/v1/operator-review/cases",
+    "case_queue_path": "/admin/v1/operator-review/cases/queue",
+    "case_detail_path_template": "/admin/v1/operator-review/cases/{case_id}",
+    "case_action_path_template": "/admin/v1/operator-review/cases/{case_id}/actions",
+    "case_rollup_path": "/admin/v1/operator-review/cases/rollups"
+  },
+  "redaction": {
+    "raw_case_comment_included": false,
+    "raw_action_comment_included": false,
+    "raw_resolution_comment_included": false,
+    "raw_prompt_included": false,
+    "raw_generation_output_included": false,
+    "raw_source_text_included": false,
+    "storage_paths_included": false,
+    "idempotency_keys_included": false,
+    "action_history_shape": "operational_events_first"
+  }
+}

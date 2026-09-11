@@ -982,6 +982,12 @@ Unified operations:
   summary, while issue candidates add
   `operator_review_case_attention_required.v1` for case lifecycle attention
   separately from workbench target attention.
+- Slice 0657 freezes the case workbench contract surface with
+  `operator_review_case_workbench.v1.schema.json`, positive fixtures for queue,
+  detail, and timeline, negative raw-comment leak fixtures, and OpenAPI paths
+  for `/admin/v1/operator-review/cases/queue`,
+  `/admin/v1/operator-review/cases/{case_id}/workbench-detail`, and
+  `/admin/v1/operator-review/cases/{case_id}/timeline`.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

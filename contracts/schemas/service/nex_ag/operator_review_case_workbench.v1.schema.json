@@ -1,0 +1,1160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/operator_review_case_workbench.v1.schema.json",
+  "title": "NeX AG Operator Review Case Workbench Surface",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/case_queue_response"
+    },
+    {
+      "$ref": "#/$defs/case_workbench_detail_response"
+    },
+    {
+      "$ref": "#/$defs/case_timeline_response"
+    }
+  ],
+  "$defs": {
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "nullable_trace_id": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/trace_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullable_text": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nullable_timestamp": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullable_sha256": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target_service": {
+      "type": "string",
+      "enum": [
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-oa",
+        "nex-ag"
+      ]
+    },
+    "case_status": {
+      "type": "string",
+      "enum": [
+        "OPEN",
+        "ACKNOWLEDGED",
+        "ASSIGNED",
+        "RESOLVED",
+        "DISMISSED",
+        "REOPENED"
+      ]
+    },
+    "case_priority": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "URGENT"
+      ]
+    },
+    "case_action_type": {
+      "type": "string",
+      "enum": [
+        "CREATE_CASE",
+        "ACKNOWLEDGE",
+        "ASSIGN",
+        "RESOLVE",
+        "DISMISS",
+        "REOPEN"
+      ]
+    },
+    "attention_status": {
+      "type": "string",
+      "enum": [
+        "BLOCKED",
+        "ATTENTION",
+        "OPEN",
+        "OK"
+      ]
+    },
+    "count_map": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "string_array": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "target_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_service",
+        "target_kind",
+        "target_id"
+      ],
+      "properties": {
+        "target_service": {
+          "$ref": "#/$defs/target_service"
+        },
+        "target_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "operator_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operator_type",
+        "operator_id",
+        "tenant_id"
+      ],
+      "properties": {
+        "operator_type": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "operator_id": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "tenant_id": {
+          "$ref": "#/$defs/nullable_text"
+        }
+      }
+    },
+    "assignment_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assignee_type",
+        "assignee_id",
+        "tenant_id"
+      ],
+      "properties": {
+        "assignee_type": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "assignee_id": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "tenant_id": {
+          "$ref": "#/$defs/nullable_text"
+        }
+      }
+    },
+    "source_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_type",
+        "source_id",
+        "source_service",
+        "workbench_path"
+      ],
+      "properties": {
+        "source_type": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "source_id": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "source_service": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "workbench_path": {
+          "$ref": "#/$defs/nullable_text"
+        }
+      }
+    },
+    "latest_action_ref": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "case_id",
+            "action_id",
+            "action_type",
+            "from_status",
+            "to_status",
+            "acted_at",
+            "operator_ref",
+            "assignee_id",
+            "reason_count",
+            "action_comment_hash",
+            "resolution_hash"
+          ],
+          "properties": {
+            "case_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "action_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "action_type": {
+              "$ref": "#/$defs/case_action_type"
+            },
+            "from_status": {
+              "$ref": "#/$defs/case_status"
+            },
+            "to_status": {
+              "$ref": "#/$defs/case_status"
+            },
+            "acted_at": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "operator_ref": {
+              "$ref": "#/$defs/operator_ref"
+            },
+            "assignee_id": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "reason_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "action_comment_hash": {
+              "$ref": "#/$defs/nullable_sha256"
+            },
+            "resolution_hash": {
+              "$ref": "#/$defs/nullable_sha256"
+            }
+          }
+        }
+      ]
+    },
+    "queue_item_links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_detail_path",
+        "case_action_path"
+      ],
+      "properties": {
+        "case_detail_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_action_path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "safe_redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_case_comment_included",
+        "raw_action_comment_included",
+        "raw_resolution_comment_included",
+        "idempotency_keys_included",
+        "storage_paths_included"
+      ],
+      "properties": {
+        "raw_case_comment_included": {
+          "const": false
+        },
+        "raw_action_comment_included": {
+          "const": false
+        },
+        "raw_resolution_comment_included": {
+          "const": false
+        },
+        "idempotency_keys_included": {
+          "const": false
+        },
+        "storage_paths_included": {
+          "const": false
+        },
+        "raw_prompt_included": {
+          "const": false
+        },
+        "raw_generation_output_included": {
+          "const": false
+        },
+        "raw_source_text_included": {
+          "const": false
+        },
+        "metadata_payload_included": {
+          "const": false
+        },
+        "action_history_shape": {
+          "const": "operational_events_first"
+        },
+        "detail_payload_shape": {
+          "const": "safe_refs_hashes_and_bounded_previews_only"
+        },
+        "timeline_payload_shape": {
+          "const": "operational_event_metadata_only"
+        }
+      }
+    },
+    "case_queue_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "queue_item_schema_version",
+        "case_id",
+        "target_ref",
+        "case_status",
+        "case_priority",
+        "attention_status",
+        "attention_reason_codes",
+        "recommended_actions",
+        "operator_ref",
+        "assignment_ref",
+        "source_ref",
+        "reason_count",
+        "resolution_hash",
+        "resolution_preview",
+        "latest_action",
+        "created_at",
+        "updated_at",
+        "closed_at",
+        "links",
+        "redaction"
+      ],
+      "properties": {
+        "queue_item_schema_version": {
+          "const": "ag_operator_review_case_queue_item.v1"
+        },
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_ref": {
+          "$ref": "#/$defs/target_ref"
+        },
+        "case_status": {
+          "$ref": "#/$defs/case_status"
+        },
+        "case_priority": {
+          "$ref": "#/$defs/case_priority"
+        },
+        "attention_status": {
+          "$ref": "#/$defs/attention_status"
+        },
+        "attention_reason_codes": {
+          "$ref": "#/$defs/string_array"
+        },
+        "recommended_actions": {
+          "$ref": "#/$defs/string_array"
+        },
+        "operator_ref": {
+          "$ref": "#/$defs/operator_ref"
+        },
+        "assignment_ref": {
+          "$ref": "#/$defs/assignment_ref"
+        },
+        "source_ref": {
+          "$ref": "#/$defs/source_ref"
+        },
+        "reason_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resolution_hash": {
+          "$ref": "#/$defs/nullable_sha256"
+        },
+        "resolution_preview": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "latest_action": {
+          "$ref": "#/$defs/latest_action_ref"
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "closed_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        },
+        "links": {
+          "$ref": "#/$defs/queue_item_links"
+        },
+        "redaction": {
+          "$ref": "#/$defs/safe_redaction"
+        }
+      }
+    },
+    "case_queue_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_count",
+        "open_case_count",
+        "closed_case_count",
+        "assigned_case_count",
+        "urgent_case_count",
+        "attention_case_count",
+        "unassigned_open_case_count",
+        "by_attention_status",
+        "by_case_status",
+        "by_case_priority",
+        "latest_updated_at"
+      ],
+      "properties": {
+        "case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "closed_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "assigned_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "urgent_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attention_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unassigned_open_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_attention_status": {
+          "$ref": "#/$defs/count_map"
+        },
+        "by_case_status": {
+          "$ref": "#/$defs/count_map"
+        },
+        "by_case_priority": {
+          "$ref": "#/$defs/count_map"
+        },
+        "latest_updated_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        }
+      }
+    },
+    "case_queue_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_queue_schema_version",
+        "trace_id",
+        "request_id",
+        "filters",
+        "sort",
+        "items",
+        "summary",
+        "paths",
+        "redaction"
+      ],
+      "properties": {
+        "case_queue_schema_version": {
+          "const": "ag_operator_review_case_queue.v1"
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "filters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "latest_action_type",
+            "attention_status",
+            "q"
+          ],
+          "properties": {
+            "latest_action_type": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/case_action_type"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "attention_status": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/attention_status"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "q": {
+              "$ref": "#/$defs/nullable_text"
+            }
+          }
+        },
+        "sort": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sort_by",
+            "sort_direction"
+          ],
+          "properties": {
+            "sort_by": {
+              "type": "string",
+              "enum": [
+                "attention",
+                "updated_at",
+                "priority",
+                "status",
+                "case_id"
+              ]
+            },
+            "sort_direction": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/case_queue_item"
+          }
+        },
+        "summary": {
+          "$ref": "#/$defs/case_queue_summary"
+        },
+        "paths": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "case_list_path",
+            "case_queue_path",
+            "case_detail_path_template",
+            "case_action_path_template",
+            "case_rollup_path"
+          ],
+          "properties": {
+            "case_list_path": {
+              "const": "/admin/v1/operator-review/cases"
+            },
+            "case_queue_path": {
+              "const": "/admin/v1/operator-review/cases/queue"
+            },
+            "case_detail_path_template": {
+              "const": "/admin/v1/operator-review/cases/{case_id}"
+            },
+            "case_action_path_template": {
+              "const": "/admin/v1/operator-review/cases/{case_id}/actions"
+            },
+            "case_rollup_path": {
+              "const": "/admin/v1/operator-review/cases/rollups"
+            }
+          }
+        },
+        "redaction": {
+          "$ref": "#/$defs/safe_redaction"
+        }
+      }
+    },
+    "case_workbench_detail_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_workbench_detail_schema_version",
+        "trace_id",
+        "request_id",
+        "case",
+        "resolution",
+        "latest_action",
+        "action_controls",
+        "timeline",
+        "links",
+        "redaction"
+      ],
+      "properties": {
+        "case_workbench_detail_schema_version": {
+          "const": "ag_operator_review_case_workbench_detail.v1"
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "case_id",
+            "target_ref",
+            "case_status",
+            "case_priority",
+            "attention_status",
+            "attention_reason_codes",
+            "recommended_actions",
+            "operator_ref",
+            "assignment_ref",
+            "source_ref",
+            "reason_count",
+            "created_at",
+            "updated_at",
+            "closed_at"
+          ],
+          "properties": {
+            "case_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "target_ref": {
+              "$ref": "#/$defs/target_ref"
+            },
+            "case_status": {
+              "$ref": "#/$defs/case_status"
+            },
+            "case_priority": {
+              "$ref": "#/$defs/case_priority"
+            },
+            "attention_status": {
+              "$ref": "#/$defs/attention_status"
+            },
+            "attention_reason_codes": {
+              "$ref": "#/$defs/string_array"
+            },
+            "recommended_actions": {
+              "$ref": "#/$defs/string_array"
+            },
+            "operator_ref": {
+              "$ref": "#/$defs/operator_ref"
+            },
+            "assignment_ref": {
+              "$ref": "#/$defs/assignment_ref"
+            },
+            "source_ref": {
+              "$ref": "#/$defs/source_ref"
+            },
+            "reason_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "created_at": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "updated_at": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "closed_at": {
+              "$ref": "#/$defs/nullable_timestamp"
+            }
+          }
+        },
+        "resolution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "resolution_hash",
+            "resolution_preview",
+            "raw_resolution_comment_included"
+          ],
+          "properties": {
+            "resolution_hash": {
+              "$ref": "#/$defs/nullable_sha256"
+            },
+            "resolution_preview": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "raw_resolution_comment_included": {
+              "const": false
+            }
+          }
+        },
+        "latest_action": {
+          "$ref": "#/$defs/latest_action_ref"
+        },
+        "action_controls": {
+          "$ref": "#/$defs/action_controls"
+        },
+        "timeline": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "timeline_path",
+            "action_history_shape",
+            "inline_events_included",
+            "planned_schema_version"
+          ],
+          "properties": {
+            "timeline_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "action_history_shape": {
+              "const": "operational_events_first"
+            },
+            "inline_events_included": {
+              "const": false
+            },
+            "planned_schema_version": {
+              "const": "ag_operator_review_case_timeline.v1"
+            }
+          }
+        },
+        "links": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "case_detail_path",
+            "case_action_path",
+            "case_queue_path",
+            "operator_review_workbench_path"
+          ],
+          "properties": {
+            "case_detail_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "case_action_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "case_queue_path": {
+              "const": "/admin/v1/operator-review/cases/queue"
+            },
+            "operator_review_workbench_path": {
+              "const": "/admin/v1/operator-review/workbench"
+            }
+          }
+        },
+        "redaction": {
+          "$ref": "#/$defs/safe_redaction"
+        }
+      }
+    },
+    "action_controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "current_status",
+        "available_actions",
+        "blocked_actions",
+        "available_action_count",
+        "blocked_action_count",
+        "requires_idempotency_key"
+      ],
+      "properties": {
+        "current_status": {
+          "$ref": "#/$defs/case_status"
+        },
+        "available_actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/action_control_item"
+          }
+        },
+        "blocked_actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/action_control_item"
+          }
+        },
+        "available_action_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked_action_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requires_idempotency_key": {
+          "const": true
+        }
+      }
+    },
+    "action_control_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action_type",
+        "target_status",
+        "available",
+        "blocked_reason",
+        "requires_assignment_ref",
+        "requires_resolution_comment",
+        "method",
+        "idempotency_key_required"
+      ],
+      "properties": {
+        "action_type": {
+          "$ref": "#/$defs/case_action_type"
+        },
+        "target_status": {
+          "$ref": "#/$defs/case_status"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "blocked_reason": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "requires_assignment_ref": {
+          "type": "boolean"
+        },
+        "requires_resolution_comment": {
+          "type": "boolean"
+        },
+        "method": {
+          "const": "POST"
+        },
+        "idempotency_key_required": {
+          "const": true
+        }
+      }
+    },
+    "case_timeline_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_timeline_schema_version",
+        "trace_id",
+        "request_id",
+        "case_id",
+        "target_ref",
+        "items",
+        "summary",
+        "paths",
+        "redaction"
+      ],
+      "properties": {
+        "case_timeline_schema_version": {
+          "const": "ag_operator_review_case_timeline.v1"
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_ref": {
+          "$ref": "#/$defs/target_ref"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/timeline_item"
+          }
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "timeline_status",
+            "event_count",
+            "case_recorded_event_count",
+            "case_action_event_count",
+            "latest_event_at",
+            "source_error"
+          ],
+          "properties": {
+            "timeline_status": {
+              "type": "string",
+              "enum": [
+                "READY",
+                "UNAVAILABLE"
+              ]
+            },
+            "event_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "case_recorded_event_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "case_action_event_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "latest_event_at": {
+              "$ref": "#/$defs/nullable_timestamp"
+            },
+            "source_error": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error_code",
+                    "detail",
+                    "status_code"
+                  ],
+                  "properties": {
+                    "error_code": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "detail": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "status_code": {
+                      "type": "integer",
+                      "minimum": 400
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "paths": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "case_detail_path",
+            "case_workbench_detail_path",
+            "case_timeline_path"
+          ],
+          "properties": {
+            "case_detail_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "case_workbench_detail_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "case_timeline_path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "redaction": {
+          "$ref": "#/$defs/safe_redaction"
+        }
+      }
+    },
+    "timeline_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "timeline_item_schema_version",
+        "event_id",
+        "event_type",
+        "severity",
+        "message",
+        "trace_id",
+        "request_id",
+        "created_at",
+        "subject_ref",
+        "details"
+      ],
+      "properties": {
+        "timeline_item_schema_version": {
+          "const": "ag_operator_review_case_timeline_item.v1"
+        },
+        "event_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "event_type": {
+          "type": "string",
+          "enum": [
+            "ag.operator_review_case.recorded",
+            "ag.operator_review_case_action.recorded"
+          ]
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "subject_ref": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "id"
+          ],
+          "properties": {
+            "type": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "id": {
+              "$ref": "#/$defs/nullable_text"
+            }
+          }
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "case_id",
+            "action_id",
+            "action_type",
+            "from_status",
+            "to_status",
+            "case_status",
+            "case_priority",
+            "target_service",
+            "target_kind",
+            "target_id",
+            "operator_type",
+            "operator_id",
+            "assignee_id",
+            "reason_count",
+            "action_comment_hash",
+            "resolution_hash"
+          ],
+          "properties": {
+            "case_id": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "action_id": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "action_type": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "from_status": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "to_status": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "case_status": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "case_priority": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "target_service": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "target_kind": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "target_id": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "operator_type": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "operator_id": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "assignee_id": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "reason_count": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "action_comment_hash": {
+              "$ref": "#/$defs/nullable_sha256"
+            },
+            "resolution_hash": {
+              "$ref": "#/$defs/nullable_sha256"
+            }
+          }
+        }
+      }
+    }
+  }
+}

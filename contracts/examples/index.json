@@ -461,6 +461,21 @@
       "schema": "schemas/service/nex_ag/operator_review_case_rollup.v1.schema.json"
     },
     {
+      "name": "ag_operator_review_case_queue_mock",
+      "path": "examples/operations/ag_operator_review_case_queue.mock_success.json",
+      "schema": "schemas/service/nex_ag/operator_review_case_workbench.v1.schema.json"
+    },
+    {
+      "name": "ag_operator_review_case_workbench_detail_mock",
+      "path": "examples/operations/ag_operator_review_case_workbench_detail.mock_success.json",
+      "schema": "schemas/service/nex_ag/operator_review_case_workbench.v1.schema.json"
+    },
+    {
+      "name": "ag_operator_review_case_timeline_mock",
+      "path": "examples/operations/ag_operator_review_case_timeline.mock_success.json",
+      "schema": "schemas/service/nex_ag/operator_review_case_workbench.v1.schema.json"
+    },
+    {
       "name": "ae_web_fetch_mode_smoke_evidence_postgres_success",
       "path": "examples/operations/ae_web_fetch_mode_smoke_evidence.postgres_success.json",
       "schema": "schemas/service/nex_ae_web/fetch_mode_smoke_evidence.v1.schema.json"
