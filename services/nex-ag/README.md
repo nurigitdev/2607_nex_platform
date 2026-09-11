@@ -1070,6 +1070,13 @@ Unified operations:
   action-admission contracts/OpenAPI entries, protected PostgreSQL smoke
   coverage, privacy regression coverage, and redaction-safe documentation for
   the `ag_owned_operator_review_case_evidence_admission` boundary.
+- Slice 0671 starts S68 with
+  `scripts/smoke/run_ag_operator_review_case_decision_lifecycle_boundary_audit.py`.
+  The checkpoint keeps the decision lifecycle AG-owned, adds no new table,
+  reuses `ag_op_cases`, `service_operational_events`, `ag_op_notes`, and
+  `ag_ev_exports`, keeps action history operational-events-first, and defers
+  closure packet persistence until query or retention requirements prove a
+  dedicated table is necessary.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
