@@ -112,6 +112,10 @@ from nex_ag.operator_reviews import (
     build_operator_evidence_export_record,
     build_operator_review_note_record,
 )
+from nex_ag.operator_review_cases import (
+    OperatorReviewCaseService,
+    OperatorReviewCaseStore,
+)
 from nex_ag.remediation_execution_operations import (
     InMemoryRemediationExecutionOperationsStore,
     build_remediation_execution_operations_projection,
@@ -234,6 +238,33 @@ def operator_review_export_payload(**overrides: Any) -> dict[str, Any]:
                 "redaction_status": "HASH_ONLY",
             }
         ],
+        "metadata": {"source_view": "operations_dashboard"},
+    }
+    payload.update(overrides)
+    return payload
+
+
+def operator_review_case_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "target_ref": {
+            "target_service": "nex-cx",
+            "target_kind": "retrieval_threshold_decision",
+            "target_id": "weighted_rrf_vector_bm25_v1",
+        },
+        "operator_ref": {
+            "operator_type": "user",
+            "operator_id": "employee-0001",
+            "tenant_id": "local-tenant",
+        },
+        "case_status": "OPEN",
+        "case_priority": "URGENT",
+        "source_ref": {
+            "source_type": "operator_review_workbench",
+            "source_id": "workbench-target-ops",
+            "source_service": "nex-ag",
+        },
+        "assignment_ref": None,
+        "reason_codes": ["operator_review_attention_required"],
         "metadata": {"source_view": "operations_dashboard"},
     }
     payload.update(overrides)
@@ -3003,10 +3034,19 @@ def test_operations_dashboard_snapshot_includes_operator_review_workbench() -> N
     )
     export_store = OperatorEvidenceExportStore()
     export_store.save(operator_review_export_record())
+    case_store = OperatorReviewCaseStore()
+    case_service = OperatorReviewCaseService(case_store)
+    case_service.create_case(
+        operator_review_case_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="operations-case-open",
+    )
 
     projection = build_operations_dashboard_snapshot_projection(
         operator_review_note_store=note_store,
         operator_review_export_store=export_store,
+        operator_review_case_store=case_store,
         service_id="nex-cx",
         recent_limit=2,
         request_trace_id=TRACE_ID,
@@ -3044,6 +3084,29 @@ def test_operations_dashboard_snapshot_includes_operator_review_workbench() -> N
         "note_count": 1,
         "export_count": 1,
         "attention_target_count": 1,
+        "database_env": None,
+        "redacted_database_url": None,
+    }
+    cases = projection["operator_review_cases"]
+    assert cases["projection_status"] == "READY"
+    assert cases["summary"]["case_count"] == 1
+    assert cases["summary"]["urgent_case_count"] == 1
+    assert cases["summary"]["attention_case_count"] == 1
+    assert cases["by_case_status"] == {"OPEN": 1}
+    assert cases["by_case_priority"] == {"URGENT": 1}
+    assert cases["attention"][0]["attention_status"] == "BLOCKED"
+    assert cases["attention"][0]["recommended_actions"] == [
+        "acknowledge_or_assign_case",
+        "assign_case_owner",
+        "prioritize_urgent_operator_review_case",
+    ]
+    assert cases["source_statuses"]["nex-ag"] == {
+        "status": "READY",
+        "service_id": "nex-ag",
+        "source_kind": "memory",
+        "case_count": 1,
+        "open_case_count": 1,
+        "attention_case_count": 1,
         "database_env": None,
         "redacted_database_url": None,
     }
@@ -3093,16 +3156,66 @@ def test_operations_dashboard_operator_review_workbench_handles_filters_and_erro
     assert_ag_operations_projection_contract(unavailable)
 
 
+def test_operations_dashboard_operator_review_cases_handles_filters_and_errors() -> None:
+    class FailingCaseStore(OperatorReviewCaseStore):
+        def list_cases(self, **_: object) -> list[dict[str, Any]]:
+            raise RuntimeError("case source down")
+
+    case_store = OperatorReviewCaseStore()
+    case_service = OperatorReviewCaseService(case_store)
+    case_service.create_case(
+        operator_review_case_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="operations-case-filtered",
+    )
+
+    filtered = build_operations_dashboard_snapshot_projection(
+        operator_review_case_store=case_store,
+        service_id="nex-mo",
+        recent_limit=2,
+    )
+    unavailable = build_operations_dashboard_snapshot_projection(
+        operator_review_case_store=FailingCaseStore(),
+        service_id="nex-cx",
+        recent_limit=2,
+    )
+
+    assert filtered["operator_review_cases"]["summary"]["case_count"] == 0
+    assert filtered["operator_review_cases"]["source_statuses"]["nex-ag"][
+        "status"
+    ] == "READY"
+    assert unavailable["operator_review_cases"]["projection_status"] == "DEGRADED"
+    assert unavailable["projection_status"] == "DEGRADED"
+    assert unavailable["operator_review_cases"]["source_statuses"]["nex-ag"][
+        "error_code"
+    ] == "ag.operator_review_case_source_unavailable"
+    assert {
+        (source["source_type"], source["service_id"], source["status"])
+        for source in unavailable["degraded_sources"]
+    } == {("operator_review_cases", "nex-ag", "UNAVAILABLE")}
+    assert_ag_operations_projection_contract(filtered)
+    assert_ag_operations_projection_contract(unavailable)
+
+
 def test_operations_dashboard_route_wires_operator_review_workbench() -> None:
     app = build_service_app(SERVICE_SPECS["nex-ag"])
     note_store = OperatorReviewNoteStore()
     note_store.save(operator_review_note_record())
     export_store = OperatorEvidenceExportStore()
     export_store.save(operator_review_export_record())
+    case_store = OperatorReviewCaseStore()
+    OperatorReviewCaseService(case_store).create_case(
+        operator_review_case_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="operations-route-case",
+    )
     register_unified_operation_routes(
         app,
         operator_review_note_store=note_store,
         operator_review_export_store=export_store,
+        operator_review_case_store=case_store,
     )
 
     response = TestClient(app).get(
@@ -3116,6 +3229,10 @@ def test_operations_dashboard_route_wires_operator_review_workbench() -> None:
     assert payload["operator_review_workbench"]["summary"]["target_count"] == 1
     assert payload["operator_review_workbench"]["attention"][0]["attention_status"] == (
         "ATTENTION"
+    )
+    assert payload["operator_review_cases"]["summary"]["case_count"] == 1
+    assert payload["operator_review_cases"]["attention"][0]["attention_status"] == (
+        "BLOCKED"
     )
     assert_ag_operations_projection_contract(payload)
 

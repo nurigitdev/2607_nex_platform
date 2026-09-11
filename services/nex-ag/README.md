@@ -924,6 +924,11 @@ Unified operations:
   summarizes case status/priority/assignment/latest-action attention, and keeps
   comments, idempotency keys, prompts, storage paths, and raw provider/source
   material out of the payload.
+- Slice 0647 wires that case/action rollup into
+  `/admin/v1/operations/dashboard` as `operator_review_cases`. The section
+  reports safe case counts, status/priority/action buckets, attention items,
+  source status, and degraded-source evidence while preserving the hash/preview
+  and operational-event-first action-history boundaries.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

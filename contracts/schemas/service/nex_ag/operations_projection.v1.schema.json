@@ -263,6 +263,9 @@
     "operator_review_workbench": {
       "$ref": "#/$defs/dashboard_operator_review_workbench"
     },
+    "operator_review_cases": {
+      "$ref": "#/$defs/dashboard_operator_review_cases"
+    },
     "replay_candidates": {
       "type": "array",
       "items": {
@@ -737,6 +740,7 @@
           "generation_remediation",
           "remediation_executions",
           "operator_review_workbench",
+          "operator_review_cases",
           "degraded_sources",
           "job_source_statuses",
           "event_source_statuses",
@@ -2334,6 +2338,215 @@
         }
       }
     },
+    "dashboard_operator_review_cases": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "projection_status",
+        "summary",
+        "by_target_service",
+        "by_target_kind",
+        "by_case_status",
+        "by_case_priority",
+        "by_last_action_type",
+        "attention",
+        "source_statuses",
+        "case_list_path",
+        "rollup_path",
+        "redaction"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "const": "ag_operator_review_case_dashboard_section.v1"
+        },
+        "projection_status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "DEGRADED"
+          ]
+        },
+        "summary": {
+          "$ref": "#/$defs/dashboard_operator_review_case_summary"
+        },
+        "by_target_service": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "by_target_kind": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "by_case_status": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "by_case_priority": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "by_last_action_type": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "attention": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dashboard_operator_review_case_attention_item"
+          }
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/source_status"
+          }
+        },
+        "case_list_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rollup_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "dashboard_operator_review_case_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_count",
+        "open_case_count",
+        "closed_case_count",
+        "assigned_case_count",
+        "urgent_case_count",
+        "unassigned_open_case_count",
+        "actioned_case_count",
+        "attention_case_count",
+        "latest_updated_at"
+      ],
+      "properties": {
+        "case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "closed_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "assigned_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "urgent_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unassigned_open_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "actioned_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attention_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latest_updated_at": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "dashboard_operator_review_case_attention_item": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "case_id",
+        "target_ref",
+        "case_status",
+        "case_priority",
+        "attention_status",
+        "reason_codes",
+        "recommended_actions",
+        "latest_updated_at"
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_ref": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target_service",
+            "target_kind",
+            "target_id"
+          ],
+          "properties": {
+            "target_service": {
+              "$ref": "#/$defs/service_id"
+            },
+            "target_kind": {
+              "type": "string",
+              "minLength": 1
+            },
+            "target_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "case_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_priority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attention_status": {
+          "type": "string",
+          "enum": [
+            "BLOCKED",
+            "ATTENTION",
+            "OPEN"
+          ]
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "recommended_actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "latest_updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
     "dashboard_operator_review_attention_item": {
       "type": "object",
       "additionalProperties": false,
@@ -2861,7 +3074,8 @@
             "retrieval_threshold_decisions",
             "generation_remediation",
             "remediation_executions",
-            "operator_review_workbench"
+            "operator_review_workbench",
+            "operator_review_cases"
           ]
         },
         "service_id": {

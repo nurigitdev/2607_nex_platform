@@ -147,6 +147,7 @@ register_unified_operation_routes(
     ),
     operator_review_note_store=OPERATOR_REVIEW_NOTE_STORE,
     operator_review_export_store=OPERATOR_EVIDENCE_EXPORT_STORE,
+    operator_review_case_store=OPERATOR_REVIEW_CASE_STORE,
     registry=OPERATIONS_SOURCE_REGISTRY,
     runtime=OPERATIONS_SOURCE_RUNTIME,
 )

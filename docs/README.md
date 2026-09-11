@@ -750,6 +750,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0644`](slices/0644_ag_operator_review_case_action_state_machine.md) | `S65-004` AG operator review case action state-machine foundation. |
 | [`Slice 0645`](slices/0645_ag_operator_review_case_action_routes.md) | `S65-005` AG operator review case action protected route wiring. |
 | [`Slice 0646`](slices/0646_ag_operator_review_case_rollup_dashboard_correlation.md) | `S65-006` AG operator review case/action rollup dashboard correlation. |
+| [`Slice 0647`](slices/0647_ag_operator_review_case_operations_dashboard_wiring.md) | `S65-007` AG operator review case/action operations dashboard wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

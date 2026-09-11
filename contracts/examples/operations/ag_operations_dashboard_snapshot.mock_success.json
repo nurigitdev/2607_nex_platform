@@ -565,6 +565,36 @@
       "raw_evidence_payload_included": false
     }
   },
+  "operator_review_cases": {
+    "projection_schema_version": "ag_operator_review_case_dashboard_section.v1",
+    "projection_status": "READY",
+    "summary": {
+      "case_count": 0,
+      "open_case_count": 0,
+      "closed_case_count": 0,
+      "assigned_case_count": 0,
+      "urgent_case_count": 0,
+      "unassigned_open_case_count": 0,
+      "actioned_case_count": 0,
+      "attention_case_count": 0,
+      "latest_updated_at": null
+    },
+    "by_target_service": {},
+    "by_target_kind": {},
+    "by_case_status": {},
+    "by_case_priority": {},
+    "by_last_action_type": {},
+    "attention": [],
+    "source_statuses": {},
+    "case_list_path": "/admin/v1/operator-review/cases",
+    "rollup_path": "/admin/v1/operator-review/cases/rollups",
+    "redaction": {
+      "raw_case_comment_included": false,
+      "raw_action_comment_included": false,
+      "raw_resolution_comment_included": false,
+      "idempotency_keys_included": false
+    }
+  },
   "degraded_sources": [],
   "job_source_statuses": {
     "nex-cx": {
