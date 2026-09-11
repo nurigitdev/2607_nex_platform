@@ -1001,6 +1001,13 @@ Unified operations:
   idempotency keys into case records/events, then verifies queue, detail,
   timeline, dashboard, and issue-candidate surfaces expose only safe hashes,
   refs, redaction flags, and operational-event metadata.
+- Slice 0660 closes S66 with
+  `scripts/smoke/run_s66_operator_review_case_workbench_closure.py`. The
+  checkpoint verifies Slice 0651-0660 docs, queue/detail/timeline runtime
+  hooks, `ag_op_cases` plus `service_operational_events` as the S66 source
+  tables, contract/OpenAPI artifacts, protected PostgreSQL smoke coverage,
+  privacy regression coverage, and redaction-safe documentation for the
+  `ag_owned_operator_review_case_workbench_projection` boundary.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

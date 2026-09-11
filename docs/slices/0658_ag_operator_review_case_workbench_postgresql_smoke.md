@@ -36,7 +36,7 @@ Use the test database only:
 
 ```bash
 NEX_AG_OPERATOR_REVIEW_CASE_WORKBENCH_POSTGRES_SMOKE=1 \
-NEX_AG_TEST_DATABASE_URL='postgresql+psycopg://nex_ag_user:nuri1004@127.0.0.1:5432/nex_ag_test' \
+NEX_AG_TEST_DATABASE_URL='postgresql+psycopg://nex_ag_user:***@127.0.0.1:5432/nex_ag_test' \
 ./.venv/bin/python scripts/smoke/run_ag_operator_review_case_workbench_postgres_smoke.py --summary
 ```
 
