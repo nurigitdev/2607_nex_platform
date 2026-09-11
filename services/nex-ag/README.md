@@ -1021,6 +1021,12 @@ Unified operations:
   exports, returns only safe refs, hashes, bounded previews, counts, status
   fields, timestamps, and detail paths, and leaves the protected route wiring to
   Slice 0663.
+- Slice 0663 exposes that read model at
+  `GET /admin/v1/operator-review/cases/{case_id}/evidence-links`. The route
+  uses the existing AG operator-review authorization boundary, target-scoped
+  note/export stores, and the shared bounded `limit` query option while keeping
+  raw notes, raw evidence bodies, storage refs, provider payloads, database
+  URLs, tokens, and idempotency keys out of the response.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

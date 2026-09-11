@@ -60,6 +60,8 @@ from nex_ag.operator_review_cases import (
     required_case_idempotency_key,
 )
 from nex_ag.operator_reviews import (
+    OperatorEvidenceExportStore,
+    OperatorReviewNoteStore,
     OperatorReviewNoteError,
     _datetime_value,
     _json_param_expr,
@@ -293,6 +295,8 @@ def non_admin_auth_headers() -> dict[str, str]:
 def build_route_client(
     *,
     store: Any | None = None,
+    note_store: Any | None = None,
+    export_store: Any | None = None,
     audit_event_store: InMemoryOperationalEventStore | None = None,
 ) -> tuple[TestClient, Any, InMemoryOperationalEventStore]:
     app = build_service_app(SERVICE_SPECS["nex-ag"])
@@ -301,6 +305,8 @@ def build_route_client(
     register_operator_review_case_routes(
         app,
         store=selected_store,
+        note_store=note_store,
+        export_store=export_store,
         audit_event_store=selected_event_store,
     )
     return TestClient(app), selected_store, selected_event_store
@@ -2168,6 +2174,64 @@ def test_operator_review_case_workbench_detail_route_is_protected_and_safe() -> 
     assert missing.status_code == 404
     assert unauthorized.status_code == 401
     assert "idem-route-case-0654" not in json.dumps(detail.json())
+
+
+def test_operator_review_case_evidence_links_route_is_protected_and_safe() -> None:
+    note_store = OperatorReviewNoteStore()
+    export_store = OperatorEvidenceExportStore()
+    client, _, _ = build_route_client(
+        note_store=note_store,
+        export_store=export_store,
+    )
+    created = client.post(
+        "/admin/v1/operator-review/cases",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-route-case-0663"},
+        json=sample_case_payload(),
+    )
+    case_id = created.json()["case"]["case_id"]
+    note_store.save(sample_note_record(operator_note_id="note-route-0663-a"))
+    note_store.save(
+        sample_note_record(
+            operator_note_id="note-route-0663-other",
+            target_id="target-other",
+            updated_at="2026-09-11T00:04:00Z",
+        )
+    )
+    export_store.save(sample_evidence_export_record(export_id="export-route-0663-a"))
+
+    evidence_links = client.get(
+        f"/admin/v1/operator-review/cases/{case_id}/evidence-links?limit=1",
+        headers=service_auth_headers(),
+    )
+    missing = client.get(
+        "/admin/v1/operator-review/cases/missing/evidence-links",
+        headers=service_auth_headers(),
+    )
+    unauthorized = client.get(
+        f"/admin/v1/operator-review/cases/{case_id}/evidence-links"
+    )
+
+    assert evidence_links.status_code == 200
+    payload = evidence_links.json()
+    assert payload["case_evidence_links_schema_version"] == (
+        OPERATOR_REVIEW_CASE_EVIDENCE_LINKS_SCHEMA_VERSION
+    )
+    assert payload["case"]["case_id"] == case_id
+    assert payload["summary"]["operator_note_count"] == 1
+    assert payload["summary"]["redacted_evidence_export_count"] == 1
+    assert payload["summary"]["returned_link_count"] == 1
+    assert payload["links"]["case_evidence_links_path"] == (
+        f"/admin/v1/operator-review/cases/{case_id}/evidence-links"
+    )
+    assert payload["redaction"]["raw_operator_note_included"] is False
+    assert missing.status_code == 404
+    assert unauthorized.status_code == 401
+
+    serialized = json.dumps(payload)
+    assert "raw-secret-note-0662" not in serialized
+    assert "raw-export-body-should-not-leak" not in serialized
+    assert "postgresql://secret-should-not-leak" not in serialized
+    assert "idem-route-case-0663" not in serialized
 
 
 def test_operator_review_case_timeline_route_reads_audit_events() -> None:

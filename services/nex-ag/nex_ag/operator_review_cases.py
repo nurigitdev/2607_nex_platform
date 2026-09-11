@@ -33,6 +33,8 @@ from .operator_reviews import (
     _json_value,
     _utc_now,
     assert_operator_review_note_payload_redaction_safe,
+    default_operator_evidence_export_store,
+    default_operator_review_note_store,
     normalize_limit,
     operator_note_preview,
     operator_ref,
@@ -608,9 +610,13 @@ def register_operator_review_case_routes(
     app: FastAPI,
     *,
     store: Any | None = None,
+    note_store: Any | None = None,
+    export_store: Any | None = None,
     audit_event_store: OperationalEventStore | None = None,
 ) -> None:
     service = OperatorReviewCaseService(store or default_operator_review_case_store(app))
+    selected_note_store = note_store or default_operator_review_note_store(app)
+    selected_export_store = export_store or default_operator_evidence_export_store(app)
     selected_audit_event_store = (
         audit_event_store or DEFAULT_OPERATOR_REVIEW_CASE_AUDIT_EVENT_STORE
     )
@@ -798,6 +804,32 @@ def register_operator_review_case_routes(
                 case_id,
                 request_id=request_id_from_headers(request),
                 trace_id=trace_id_from_headers(request),
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+    @app.get(
+        "/admin/v1/operator-review/cases/{case_id}/evidence-links",
+        response_model=None,
+    )
+    def get_operator_review_case_evidence_links(
+        case_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        limit: int | None = None,
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.get_case_evidence_links(
+                case_id,
+                note_store=selected_note_store,
+                export_store=selected_export_store,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                limit=limit,
             )
         except OperatorReviewNoteError as exc:
             return _operator_review_case_problem_response(request, exc)
