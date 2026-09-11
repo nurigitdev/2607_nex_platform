@@ -11,8 +11,10 @@
   "items": [
     {
       "timeline_item_schema_version": "ag_operator_review_case_timeline_item.v1",
+      "sequence": 1,
       "event_id": "event-negative-action",
       "event_type": "ag.operator_review_case_action.recorded",
+      "timeline_kind": "CASE_ACTION",
       "severity": "INFO",
       "message": "Operator review case action recorded.",
       "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
@@ -40,6 +42,33 @@
         "action_comment_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "raw_action_comment": "This raw action comment must not be exposed.",
         "resolution_hash": null
+      },
+      "action_outcome": {
+        "outcome_source": "operator_review_case_action_event",
+        "action_id": "action-negative",
+        "action_type": "ASSIGN",
+        "from_status": "OPEN",
+        "to_status": "ASSIGNED",
+        "status_changed": true,
+        "assignment_changed": true,
+        "resolution_recorded": false,
+        "terminal_action": false
+      },
+      "redaction": {
+        "raw_event_details_included": false,
+        "raw_case_comment_included": false,
+        "raw_action_comment_included": false,
+        "raw_resolution_comment_included": false,
+        "raw_prompt_included": false,
+        "raw_generation_output_included": false,
+        "raw_source_text_included": false,
+        "storage_paths_included": false,
+        "provider_payloads_included": false,
+        "database_urls_included": false,
+        "tokens_included": false,
+        "idempotency_keys_included": false,
+        "metadata_payload_included": false,
+        "timeline_item_payload_shape": "whitelisted_operational_event_fields"
       }
     }
   ],
@@ -48,6 +77,10 @@
     "event_count": 1,
     "case_recorded_event_count": 0,
     "case_action_event_count": 1,
+    "status_transition_count": 1,
+    "assignment_action_count": 1,
+    "terminal_action_count": 0,
+    "first_event_at": "2026-09-11T00:00:05Z",
     "latest_event_at": "2026-09-11T00:00:05Z",
     "source_error": null
   },

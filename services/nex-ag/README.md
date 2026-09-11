@@ -1077,6 +1077,13 @@ Unified operations:
   `ag_ev_exports`, keeps action history operational-events-first, and defers
   closure packet persistence until query or retention requirements prove a
   dedicated table is necessary.
+- Slice 0672 hardens
+  `GET /admin/v1/operator-review/cases/{case_id}/timeline` as the first S68
+  lifecycle read-model step. Timeline items now carry deterministic sequence
+  numbers, `timeline_kind`, safe `action_outcome` transition facts, and
+  item-level redaction flags while continuing to read `service_operational_events`
+  and exclude raw comments, resolution text, event details, idempotency keys,
+  metadata payloads, provider payloads, storage paths, database URLs, and tokens.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

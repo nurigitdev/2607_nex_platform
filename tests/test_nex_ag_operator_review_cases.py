@@ -1406,6 +1406,19 @@ def test_case_timeline_projection_filters_and_redacts_operational_events() -> No
     )["case"]
     action = assigned["metadata"]["last_action"]["record"]
     emit_operator_review_case_action_event(emitter, action, assigned)
+    resolved = service.apply_action(
+        assigned["case_id"],
+        sample_action_payload(
+            action_type="RESOLVE",
+            action_comment="Sensitive terminal action text should stay out.",
+            resolution_comment="Sensitive resolution body should stay out.",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0655-resolve",
+    )["case"]
+    resolved_action = resolved["metadata"]["last_action"]["record"]
+    emit_operator_review_case_action_event(emitter, resolved_action, resolved)
     emitter.emit(
         event_type="ag.unrelated",
         severity="INFO",
@@ -1418,13 +1431,13 @@ def test_case_timeline_projection_filters_and_redacts_operational_events() -> No
     )
 
     timeline = build_operator_review_case_timeline_projection(
-        assigned,
+        resolved,
         event_store=event_store,
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     )
     limited = build_operator_review_case_timeline_projection(
-        assigned,
+        resolved,
         event_store=event_store,
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
@@ -1435,21 +1448,76 @@ def test_case_timeline_projection_filters_and_redacts_operational_events() -> No
         OPERATOR_REVIEW_CASE_TIMELINE_SCHEMA_VERSION
     )
     assert timeline["summary"]["timeline_status"] == "READY"
-    assert timeline["summary"]["event_count"] == 2
+    assert timeline["summary"]["event_count"] == 3
     assert timeline["summary"]["case_recorded_event_count"] == 1
-    assert timeline["summary"]["case_action_event_count"] == 1
+    assert timeline["summary"]["case_action_event_count"] == 2
+    assert timeline["summary"]["status_transition_count"] == 2
+    assert timeline["summary"]["assignment_action_count"] == 1
+    assert timeline["summary"]["terminal_action_count"] == 1
+    assert timeline["summary"]["first_event_at"] == timeline["items"][0]["created_at"]
+    assert timeline["summary"]["latest_event_at"] == timeline["items"][2]["created_at"]
     assert [item["event_type"] for item in timeline["items"]] == [
         OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
         OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE,
+        OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE,
     ]
+    assert [item["sequence"] for item in timeline["items"]] == [1, 2, 3]
+    assert timeline["items"][0]["timeline_kind"] == "CASE_RECORDED"
+    assert timeline["items"][0]["action_outcome"] == {
+        "outcome_source": "operator_review_case_recorded_event",
+        "action_id": None,
+        "action_type": None,
+        "from_status": None,
+        "to_status": None,
+        "status_changed": False,
+        "assignment_changed": False,
+        "resolution_recorded": False,
+        "terminal_action": False,
+    }
     assert timeline["items"][1]["details"]["action_type"] == "ASSIGN"
     assert timeline["items"][1]["details"]["assignee_id"] == "employee-0655"
     assert timeline["items"][1]["details"]["action_comment_hash"] == (
         action["action_comment_hash"]
     )
+    assert timeline["items"][1]["timeline_kind"] == "CASE_ACTION"
+    assert timeline["items"][1]["action_outcome"] == {
+        "outcome_source": "operator_review_case_action_event",
+        "action_id": action["action_id"],
+        "action_type": "ASSIGN",
+        "from_status": "OPEN",
+        "to_status": "ASSIGNED",
+        "status_changed": True,
+        "assignment_changed": True,
+        "resolution_recorded": False,
+        "terminal_action": False,
+    }
+    assert timeline["items"][2]["details"]["action_type"] == "RESOLVE"
+    assert timeline["items"][2]["details"]["resolution_hash"] == (
+        resolved_action["resolution_hash"]
+    )
+    assert timeline["items"][2]["action_outcome"]["terminal_action"] is True
+    assert timeline["items"][2]["action_outcome"]["resolution_recorded"] is True
+    assert timeline["items"][2]["redaction"] == {
+        "raw_event_details_included": False,
+        "raw_case_comment_included": False,
+        "raw_action_comment_included": False,
+        "raw_resolution_comment_included": False,
+        "raw_prompt_included": False,
+        "raw_generation_output_included": False,
+        "raw_source_text_included": False,
+        "storage_paths_included": False,
+        "provider_payloads_included": False,
+        "database_urls_included": False,
+        "tokens_included": False,
+        "idempotency_keys_included": False,
+        "metadata_payload_included": False,
+        "timeline_item_payload_shape": "whitelisted_operational_event_fields",
+    }
     assert limited["summary"]["event_count"] == 1
     serialized = json.dumps(timeline)
     assert "Sensitive action comment" not in serialized
+    assert "Sensitive terminal action text" not in serialized
+    assert "Sensitive resolution body" not in serialized
     assert "idem-0655" not in serialized
     assert '"action_comment":' not in serialized
 
@@ -1473,6 +1541,24 @@ def test_case_timeline_projection_reports_unavailable_source_and_subject_match()
             },
             "details": {"case_id": None},
             "created_at": "2026-09-11T00:00:00Z",
+        }
+    )
+    event_store.append(
+        {
+            "event_schema_version": "operational_event.v1",
+            "event_id": "event-0655-subject-action",
+            "service_id": "nex-ag",
+            "event_type": OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE,
+            "severity": "INFO",
+            "message": "Subject-only action event.",
+            "trace_id": TRACE_ID,
+            "request_id": REQUEST_ID,
+            "subject_ref": {
+                "type": "operator_review_case",
+                "id": record["case_id"],
+            },
+            "details": {},
+            "created_at": "2026-09-11T00:00:01Z",
         }
     )
 
@@ -1527,6 +1613,19 @@ def test_case_timeline_projection_reports_unavailable_source_and_subject_match()
 
     assert subject_timeline["items"][0]["event_id"] == "event-0655-subject"
     assert subject_timeline["items"][0]["details"]["case_id"] is None
+    assert subject_timeline["items"][1]["sequence"] == 2
+    assert subject_timeline["items"][1]["timeline_kind"] == "CASE_ACTION"
+    assert subject_timeline["items"][1]["action_outcome"] == {
+        "outcome_source": "operator_review_case_action_event",
+        "action_id": None,
+        "action_type": None,
+        "from_status": None,
+        "to_status": None,
+        "status_changed": False,
+        "assignment_changed": False,
+        "resolution_recorded": False,
+        "terminal_action": False,
+    }
     assert unavailable["summary"]["timeline_status"] == "UNAVAILABLE"
     assert unavailable["summary"]["event_count"] == 0
     assert unavailable["summary"]["source_error"] == {
@@ -2524,6 +2623,10 @@ def test_operator_review_case_timeline_route_reads_audit_events() -> None:
         OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
         OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE,
     ]
+    assert timeline.json()["items"][1]["sequence"] == 2
+    assert timeline.json()["items"][1]["timeline_kind"] == "CASE_ACTION"
+    assert timeline.json()["items"][1]["action_outcome"]["status_changed"] is True
+    assert timeline.json()["items"][1]["redaction"]["raw_event_details_included"] is False
     assert limited.json()["summary"]["event_count"] == 1
     assert missing.status_code == 404
     assert unauthorized.status_code == 401

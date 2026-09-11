@@ -775,6 +775,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0669`](slices/0669_ag_operator_review_case_evidence_admission_privacy_regression.md) | `S67-009` AG operator review case evidence/admission privacy regression pack. |
 | [`Slice 0670`](slices/0670_s67_operator_review_case_evidence_admission_closure.md) | `S67-010` S67 operator review case evidence/admission closure checkpoint. |
 | [`Slice 0671`](slices/0671_ag_operator_review_case_decision_lifecycle_boundary_audit.md) | `S68-001` AG operator review case decision lifecycle boundary audit. |
+| [`Slice 0672`](slices/0672_ag_operator_review_case_action_timeline_projection_hardening.md) | `S68-002` AG operator review case action timeline projection hardening. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

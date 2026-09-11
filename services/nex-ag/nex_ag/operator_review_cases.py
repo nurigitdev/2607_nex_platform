@@ -1663,6 +1663,22 @@ def build_operator_review_case_timeline_projection(
                 if item.get("event_type")
                 == OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE
             ),
+            "status_transition_count": sum(
+                1
+                for item in items
+                if (item.get("action_outcome") or {}).get("status_changed") is True
+            ),
+            "assignment_action_count": sum(
+                1
+                for item in items
+                if (item.get("action_outcome") or {}).get("assignment_changed") is True
+            ),
+            "terminal_action_count": sum(
+                1
+                for item in items
+                if (item.get("action_outcome") or {}).get("terminal_action") is True
+            ),
+            "first_event_at": items[0]["created_at"] if items else None,
             "latest_event_at": items[-1]["created_at"] if items else None,
             "source_error": source_error,
         },
@@ -2488,7 +2504,10 @@ def _case_timeline_items(
             str(item.get("event_id") or ""),
         )
     )
-    return selected[:limit]
+    limited = selected[:limit]
+    for sequence, item in enumerate(limited, start=1):
+        item["sequence"] = sequence
+    return limited
 
 
 def _event_matches_operator_review_case(
@@ -2518,10 +2537,12 @@ def _case_timeline_item(event: dict[str, Any]) -> dict[str, Any]:
     subject_ref = (
         event.get("subject_ref") if isinstance(event.get("subject_ref"), dict) else {}
     )
+    event_type = optional_text(event.get("event_type"))
     return {
         "timeline_item_schema_version": "ag_operator_review_case_timeline_item.v1",
         "event_id": event.get("event_id"),
-        "event_type": event.get("event_type"),
+        "event_type": event_type,
+        "timeline_kind": _case_timeline_kind(event_type),
         "severity": event.get("severity"),
         "message": event.get("message"),
         "trace_id": event.get("trace_id"),
@@ -2549,6 +2570,75 @@ def _case_timeline_item(event: dict[str, Any]) -> dict[str, Any]:
             "action_comment_hash": optional_text(details.get("action_comment_hash")),
             "resolution_hash": optional_text(details.get("resolution_hash")),
         },
+        "action_outcome": _case_timeline_action_outcome(event_type, details),
+        "redaction": _case_timeline_item_redaction(),
+    }
+
+
+def _case_timeline_kind(event_type: str | None) -> str:
+    if event_type == OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE:
+        return "CASE_ACTION"
+    return "CASE_RECORDED"
+
+
+def _case_timeline_action_outcome(
+    event_type: str | None,
+    details: dict[str, Any],
+) -> dict[str, Any]:
+    if event_type != OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE:
+        return {
+            "outcome_source": "operator_review_case_recorded_event",
+            "action_id": None,
+            "action_type": None,
+            "from_status": None,
+            "to_status": None,
+            "status_changed": False,
+            "assignment_changed": False,
+            "resolution_recorded": False,
+            "terminal_action": False,
+        }
+    action_type = optional_text(details.get("action_type"))
+    from_status = optional_text(details.get("from_status"))
+    to_status = optional_text(details.get("to_status"))
+    return {
+        "outcome_source": "operator_review_case_action_event",
+        "action_id": optional_text(details.get("action_id")),
+        "action_type": action_type,
+        "from_status": from_status,
+        "to_status": to_status,
+        "status_changed": (
+            from_status is not None
+            and to_status is not None
+            and from_status != to_status
+        ),
+        "assignment_changed": (
+            action_type == "ASSIGN"
+            and optional_text(details.get("assignee_id")) is not None
+        ),
+        "resolution_recorded": (
+            action_type in {"RESOLVE", "DISMISS"}
+            and optional_text(details.get("resolution_hash")) is not None
+        ),
+        "terminal_action": action_type in {"RESOLVE", "DISMISS"},
+    }
+
+
+def _case_timeline_item_redaction() -> dict[str, Any]:
+    return {
+        "raw_event_details_included": False,
+        "raw_case_comment_included": False,
+        "raw_action_comment_included": False,
+        "raw_resolution_comment_included": False,
+        "raw_prompt_included": False,
+        "raw_generation_output_included": False,
+        "raw_source_text_included": False,
+        "storage_paths_included": False,
+        "provider_payloads_included": False,
+        "database_urls_included": False,
+        "tokens_included": False,
+        "idempotency_keys_included": False,
+        "metadata_payload_included": False,
+        "timeline_item_payload_shape": "whitelisted_operational_event_fields",
     }
 
 

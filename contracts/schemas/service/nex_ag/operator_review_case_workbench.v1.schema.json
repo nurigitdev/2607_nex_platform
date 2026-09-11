@@ -1541,6 +1541,10 @@
             "event_count",
             "case_recorded_event_count",
             "case_action_event_count",
+            "status_transition_count",
+            "assignment_action_count",
+            "terminal_action_count",
+            "first_event_at",
             "latest_event_at",
             "source_error"
           ],
@@ -1563,6 +1567,21 @@
             "case_action_event_count": {
               "type": "integer",
               "minimum": 0
+            },
+            "status_transition_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "assignment_action_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "terminal_action_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "first_event_at": {
+              "$ref": "#/$defs/nullable_timestamp"
             },
             "latest_event_at": {
               "$ref": "#/$defs/nullable_timestamp"
@@ -1632,19 +1651,27 @@
       "additionalProperties": false,
       "required": [
         "timeline_item_schema_version",
+        "sequence",
         "event_id",
         "event_type",
+        "timeline_kind",
         "severity",
         "message",
         "trace_id",
         "request_id",
         "created_at",
         "subject_ref",
-        "details"
+        "details",
+        "action_outcome",
+        "redaction"
       ],
       "properties": {
         "timeline_item_schema_version": {
           "const": "ag_operator_review_case_timeline_item.v1"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
         },
         "event_id": {
           "type": "string",
@@ -1655,6 +1682,13 @@
           "enum": [
             "ag.operator_review_case.recorded",
             "ag.operator_review_case_action.recorded"
+          ]
+        },
+        "timeline_kind": {
+          "type": "string",
+          "enum": [
+            "CASE_RECORDED",
+            "CASE_ACTION"
           ]
         },
         "severity": {
@@ -1772,6 +1806,125 @@
             },
             "resolution_hash": {
               "$ref": "#/$defs/nullable_sha256"
+            }
+          }
+        },
+        "action_outcome": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "outcome_source",
+            "action_id",
+            "action_type",
+            "from_status",
+            "to_status",
+            "status_changed",
+            "assignment_changed",
+            "resolution_recorded",
+            "terminal_action"
+          ],
+          "properties": {
+            "outcome_source": {
+              "type": "string",
+              "enum": [
+                "operator_review_case_recorded_event",
+                "operator_review_case_action_event"
+              ]
+            },
+            "action_id": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "action_type": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/case_action_type"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "from_status": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "to_status": {
+              "$ref": "#/$defs/nullable_text"
+            },
+            "status_changed": {
+              "type": "boolean"
+            },
+            "assignment_changed": {
+              "type": "boolean"
+            },
+            "resolution_recorded": {
+              "type": "boolean"
+            },
+            "terminal_action": {
+              "type": "boolean"
+            }
+          }
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "raw_event_details_included",
+            "raw_case_comment_included",
+            "raw_action_comment_included",
+            "raw_resolution_comment_included",
+            "raw_prompt_included",
+            "raw_generation_output_included",
+            "raw_source_text_included",
+            "storage_paths_included",
+            "provider_payloads_included",
+            "database_urls_included",
+            "tokens_included",
+            "idempotency_keys_included",
+            "metadata_payload_included",
+            "timeline_item_payload_shape"
+          ],
+          "properties": {
+            "raw_event_details_included": {
+              "const": false
+            },
+            "raw_case_comment_included": {
+              "const": false
+            },
+            "raw_action_comment_included": {
+              "const": false
+            },
+            "raw_resolution_comment_included": {
+              "const": false
+            },
+            "raw_prompt_included": {
+              "const": false
+            },
+            "raw_generation_output_included": {
+              "const": false
+            },
+            "raw_source_text_included": {
+              "const": false
+            },
+            "storage_paths_included": {
+              "const": false
+            },
+            "provider_payloads_included": {
+              "const": false
+            },
+            "database_urls_included": {
+              "const": false
+            },
+            "tokens_included": {
+              "const": false
+            },
+            "idempotency_keys_included": {
+              "const": false
+            },
+            "metadata_payload_included": {
+              "const": false
+            },
+            "timeline_item_payload_shape": {
+              "const": "whitelisted_operational_event_fields"
             }
           }
         }
