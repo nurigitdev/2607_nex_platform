@@ -761,6 +761,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0655`](slices/0655_ag_operator_review_case_timeline_projection.md) | `S66-005` AG operator review case timeline projection over operational events. |
 | [`Slice 0656`](slices/0656_ag_operator_review_case_dashboard_issue_signal.md) | `S66-006` AG operator review case dashboard and issue-candidate signal integration. |
 | [`Slice 0657`](slices/0657_ag_operator_review_case_workbench_contract_openapi.md) | `S66-007` AG operator review case workbench contract/OpenAPI hardening. |
+| [`Slice 0658`](slices/0658_ag_operator_review_case_workbench_postgresql_smoke.md) | `S66-008` AG operator review case workbench PostgreSQL smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
