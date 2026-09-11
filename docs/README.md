@@ -765,6 +765,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0659`](slices/0659_ag_operator_review_case_workbench_privacy_regression.md) | `S66-009` AG operator review case workbench privacy regression pack. |
 | [`Slice 0660`](slices/0660_s66_operator_review_case_workbench_closure.md) | `S66-010` S66 operator review case workbench closure checkpoint. |
 | [`Slice 0661`](slices/0661_ag_operator_review_case_evidence_admission_boundary_audit.md) | `S67-001` AG operator review case evidence/admission boundary audit. |
+| [`Slice 0662`](slices/0662_ag_operator_review_case_evidence_link_read_model.md) | `S67-002` AG operator review case evidence-link read-model foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

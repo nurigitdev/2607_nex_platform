@@ -18,6 +18,7 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION,
+    OPERATOR_REVIEW_CASE_EVIDENCE_LINKS_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_QUEUE_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_CASE_ROLLUP_SCHEMA_VERSION,
@@ -36,6 +37,7 @@ from nex_ag.operator_review_cases import (
     apply_operator_review_case_action,
     build_operator_review_case_action_mutation_response,
     build_operator_review_case_action_record,
+    build_operator_review_case_evidence_links_projection,
     build_operator_review_case_list_response,
     build_operator_review_case_mutation_response,
     build_operator_review_case_queue_projection,
@@ -141,6 +143,77 @@ def build_case(
         idempotency_key=idempotency_key,
         created_at=created_at,
     )
+
+
+def sample_note_record(**overrides: Any) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "operator_note_schema_version": "ag_operator_review_note.v1",
+        "operator_note_id": "note-0662-a",
+        "target_service": "nex-ag",
+        "target_kind": "operator_review_workbench",
+        "target_id": "target-0642",
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "operator_ref": {
+            "operator_type": "user",
+            "operator_id": "employee-0662",
+            "tenant_id": "local-tenant",
+        },
+        "note_status": "ACTIVE",
+        "note_type": "FOLLOW_UP",
+        "severity": "HIGH",
+        "operator_note_hash": sha256_text("raw-secret-note-0662"),
+        "operator_note_preview": "Bounded note preview.",
+        "reason_codes": ["operator_review_follow_up"],
+        "metadata": {
+            "raw_operator_note_stored": False,
+            "storage_path": "/tmp/raw-note-should-not-leak",
+            "idempotency_key_hash": sha256_text("idem-note-should-not-leak"),
+        },
+        "raw_operator_note": "raw-secret-note-0662",
+        "created_at": "2026-09-11T00:01:00Z",
+        "updated_at": "2026-09-11T00:03:00Z",
+    }
+    record.update(overrides)
+    return record
+
+
+def sample_evidence_export_record(**overrides: Any) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "export_schema_version": "ag_redacted_evidence_export.v1",
+        "export_id": "export-0662-a",
+        "target_service": "nex-ag",
+        "target_kind": "operator_review_workbench",
+        "target_id": "target-0642",
+        "trace_id": TRACE_ID,
+        "request_id": REQUEST_ID,
+        "operator_ref": {
+            "operator_type": "user",
+            "operator_id": "employee-0662",
+            "tenant_id": "local-tenant",
+        },
+        "export_status": "READY",
+        "export_format": "json",
+        "redaction_profile": "ag_redacted_manifest_v1",
+        "evidence_manifest": {
+            "items": [
+                {
+                    "evidence_type": "operator_note",
+                    "raw_evidence_body": "raw-export-body-should-not-leak",
+                }
+            ]
+        },
+        "evidence_hash": sha256_text("redacted-export-0662"),
+        "evidence_item_count": 1,
+        "metadata": {
+            "storage_uri": "s3://private/raw-export-should-not-leak",
+            "database_url": "postgresql://secret-should-not-leak",
+        },
+        "created_at": "2026-09-11T00:02:00Z",
+        "updated_at": "2026-09-11T00:02:30Z",
+    }
+    record.update(overrides)
+    return record
 
 
 def sqlite_case_store() -> tuple[SqlAlchemyOperatorReviewCaseStore, Any]:
@@ -969,6 +1042,165 @@ def test_case_workbench_detail_projection_handles_closed_and_malformed_source() 
     assert malformed_detail["action_controls"]["blocked_actions"][0][
         "blocked_reason"
     ] == "ACKNOWLEDGE cannot transition from UNKNOWN."
+
+
+def test_case_evidence_links_projection_filters_sorts_and_redacts() -> None:
+    case = build_case()
+    matching_note = sample_note_record()
+    matching_export = sample_evidence_export_record()
+    unrelated_note = sample_note_record(
+        operator_note_id="note-0662-other",
+        target_id="target-other",
+        updated_at="2026-09-11T00:04:00Z",
+    )
+    unrelated_export = sample_evidence_export_record(
+        export_id="export-0662-other",
+        target_service="nex-cx",
+        updated_at="2026-09-11T00:05:00Z",
+    )
+
+    projection = build_operator_review_case_evidence_links_projection(
+        case,
+        operator_note_records=[unrelated_note, matching_note],
+        evidence_export_records=[unrelated_export, matching_export],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert projection["case_evidence_links_schema_version"] == (
+        OPERATOR_REVIEW_CASE_EVIDENCE_LINKS_SCHEMA_VERSION
+    )
+    assert projection["case"]["case_id"] == case["case_id"]
+    assert projection["summary"]["operator_note_count"] == 1
+    assert projection["summary"]["redacted_evidence_export_count"] == 1
+    assert projection["summary"]["total_link_count"] == 2
+    assert [item["link_type"] for item in projection["items"]] == [
+        "operator_review_note",
+        "redacted_evidence_export",
+    ]
+    assert projection["items"][0]["detail_path"].endswith("/notes/note-0662-a")
+    assert projection["items"][1]["detail_path"].endswith(
+        "/evidence-exports/export-0662-a"
+    )
+    assert projection["redaction"]["metadata_payload_included"] is False
+    assert projection["redaction"]["evidence_payload_shape"] == (
+        "safe_refs_hashes_and_bounded_previews_only"
+    )
+
+    serialized = json.dumps(projection)
+    assert "raw-secret-note-0662" not in serialized
+    assert "raw-export-body-should-not-leak" not in serialized
+    assert "raw-note-should-not-leak" not in serialized
+    assert "postgresql://secret-should-not-leak" not in serialized
+    assert "idem-note-should-not-leak" not in serialized
+    assert "evidence_manifest" not in serialized
+    assert '"metadata":' not in serialized
+
+
+def test_case_evidence_links_projection_handles_empty_limit_and_missing_ids() -> None:
+    case = build_case()
+    note_without_id = sample_note_record(
+        operator_note_id=None,
+        updated_at="2026-09-11T00:04:00Z",
+    )
+    export_without_id = sample_evidence_export_record(
+        export_id=None,
+        evidence_item_count=None,
+        updated_at="2026-09-11T00:05:00Z",
+    )
+
+    limited = build_operator_review_case_evidence_links_projection(
+        case,
+        operator_note_records=[note_without_id],
+        evidence_export_records=[export_without_id],
+        request_id=REQUEST_ID,
+        trace_id=None,
+        limit=1,
+        source_status="READY",
+    )
+    empty = build_operator_review_case_evidence_links_projection(
+        case,
+        operator_note_records=[],
+        evidence_export_records=[],
+        request_id=REQUEST_ID,
+        trace_id=None,
+        source_status="NOT_CONFIGURED",
+    )
+
+    assert limited["trace_id"] is None
+    assert limited["summary"]["total_link_count"] == 2
+    assert limited["summary"]["returned_link_count"] == 1
+    assert limited["items"][0]["link_type"] == "redacted_evidence_export"
+    assert limited["items"][0]["link_id"] is None
+    assert limited["items"][0]["detail_path"] is None
+    assert limited["items"][0]["evidence_item_count"] == 0
+    assert empty["summary"]["evidence_source_status"] == "NOT_CONFIGURED"
+    assert empty["summary"]["latest_updated_at"] is None
+    assert empty["items"] == []
+
+
+def test_case_service_evidence_links_reads_target_scoped_stores() -> None:
+    class CapturingNoteStore:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def list_notes(self, **kwargs: Any) -> list[dict[str, Any]]:
+            self.calls.append(kwargs)
+            return [sample_note_record()]
+
+    class CapturingExportStore:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def list_exports(self, **kwargs: Any) -> list[dict[str, Any]]:
+            self.calls.append(kwargs)
+            return [sample_evidence_export_record()]
+
+    case_store = OperatorReviewCaseStore()
+    service = OperatorReviewCaseService(case_store)
+    case = service.create_case(
+        sample_case_payload(case_id="case-0662-service"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0662-service",
+    )["case"]
+    note_store = CapturingNoteStore()
+    export_store = CapturingExportStore()
+
+    projection = service.get_case_evidence_links(
+        case["case_id"],
+        note_store=note_store,
+        export_store=export_store,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        limit=3,
+    )
+    no_sources = service.get_case_evidence_links(
+        case["case_id"],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert note_store.calls == [
+        {
+            "target_service": "nex-ag",
+            "target_kind": "operator_review_workbench",
+            "target_id": "target-0642",
+            "limit": 3,
+        }
+    ]
+    assert export_store.calls == [
+        {
+            "target_service": "nex-ag",
+            "target_kind": "operator_review_workbench",
+            "target_id": "target-0642",
+            "limit": 3,
+        }
+    ]
+    assert projection["summary"]["evidence_source_status"] == "READY"
+    assert projection["summary"]["returned_link_count"] == 2
+    assert no_sources["summary"]["evidence_source_status"] == "NOT_CONFIGURED"
+    assert no_sources["items"] == []
 
 
 def test_case_timeline_projection_filters_and_redacts_operational_events() -> None:

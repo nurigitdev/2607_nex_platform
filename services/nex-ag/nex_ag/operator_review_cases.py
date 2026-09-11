@@ -54,6 +54,9 @@ OPERATOR_REVIEW_CASE_WORKBENCH_DETAIL_SCHEMA_VERSION = (
 OPERATOR_REVIEW_CASE_TIMELINE_SCHEMA_VERSION = (
     "ag_operator_review_case_timeline.v1"
 )
+OPERATOR_REVIEW_CASE_EVIDENCE_LINKS_SCHEMA_VERSION = (
+    "ag_operator_review_case_evidence_links.v1"
+)
 OPERATOR_REVIEW_CASE_MUTATION_SCHEMA_VERSION = "ag_operator_review_case_mutation.v1"
 OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION = "ag_operator_review_case_action.v1"
 OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION = (
@@ -398,6 +401,52 @@ class OperatorReviewCaseService:
             record,
             request_id=request_id,
             trace_id=trace_id,
+        )
+
+    def get_case_evidence_links(
+        self,
+        case_id: str,
+        *,
+        note_store: Any | None = None,
+        export_store: Any | None = None,
+        request_id: str,
+        trace_id: str | None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        record = self.get_case(case_id)
+        normalized_limit = normalize_limit(limit)
+        note_records = (
+            note_store.list_notes(
+                target_service=record.get("target_service"),
+                target_kind=record.get("target_kind"),
+                target_id=record.get("target_id"),
+                limit=normalized_limit,
+            )
+            if note_store is not None
+            else []
+        )
+        export_records = (
+            export_store.list_exports(
+                target_service=record.get("target_service"),
+                target_kind=record.get("target_kind"),
+                target_id=record.get("target_id"),
+                limit=normalized_limit,
+            )
+            if export_store is not None
+            else []
+        )
+        return build_operator_review_case_evidence_links_projection(
+            record,
+            operator_note_records=note_records,
+            evidence_export_records=export_records,
+            request_id=request_id,
+            trace_id=trace_id,
+            limit=normalized_limit,
+            source_status=(
+                "READY"
+                if note_store is not None and export_store is not None
+                else "NOT_CONFIGURED"
+            ),
         )
 
     def rollup_cases(
@@ -1204,6 +1253,99 @@ def build_operator_review_case_workbench_detail_projection(
     }
 
 
+def build_operator_review_case_evidence_links_projection(
+    record: dict[str, Any],
+    *,
+    operator_note_records: list[dict[str, Any]],
+    evidence_export_records: list[dict[str, Any]],
+    request_id: str,
+    trace_id: str | None,
+    limit: int | None = None,
+    source_status: str = "READY",
+) -> dict[str, Any]:
+    normalized_limit = normalize_limit(limit)
+    note_links = [
+        _case_evidence_note_link(note)
+        for note in operator_note_records
+        if _record_targets_case(record, note)
+    ]
+    export_links = [
+        _case_evidence_export_link(export)
+        for export in evidence_export_records
+        if _record_targets_case(record, export)
+    ]
+    items = sorted(
+        [*note_links, *export_links],
+        key=lambda item: (
+            str(item.get("updated_at") or ""),
+            str(item.get("link_type") or ""),
+            str(item.get("link_id") or ""),
+        ),
+        reverse=True,
+    )[:normalized_limit]
+    return {
+        "case_evidence_links_schema_version": (
+            OPERATOR_REVIEW_CASE_EVIDENCE_LINKS_SCHEMA_VERSION
+        ),
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "case": {
+            "case_id": record.get("case_id"),
+            "target_ref": _case_target_ref(record),
+            "case_status": record.get("case_status"),
+            "case_priority": record.get("case_priority"),
+            "source_ref": _case_workbench_source_ref(record),
+            "updated_at": record.get("updated_at"),
+        },
+        "items": items,
+        "summary": {
+            "evidence_source_status": source_status,
+            "operator_note_count": len(note_links),
+            "redacted_evidence_export_count": len(export_links),
+            "total_link_count": len(note_links) + len(export_links),
+            "returned_link_count": len(items),
+            "latest_updated_at": items[0]["updated_at"] if items else None,
+        },
+        "links": {
+            "case_detail_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+            ),
+            "case_workbench_detail_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+                "/workbench-detail"
+            ),
+            "case_timeline_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}/timeline"
+            ),
+            "case_evidence_links_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+                "/evidence-links"
+            ),
+            "case_action_admission_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+                "/action-admission"
+            ),
+            "operator_review_workbench_path": "/admin/v1/operator-review/workbench",
+        },
+        "redaction": {
+            "raw_operator_note_included": False,
+            "raw_evidence_body_included": False,
+            "raw_case_comment_included": False,
+            "raw_action_comment_included": False,
+            "raw_prompt_included": False,
+            "raw_generation_output_included": False,
+            "raw_source_text_included": False,
+            "storage_paths_included": False,
+            "provider_payloads_included": False,
+            "database_urls_included": False,
+            "tokens_included": False,
+            "idempotency_keys_included": False,
+            "metadata_payload_included": False,
+            "evidence_payload_shape": "safe_refs_hashes_and_bounded_previews_only",
+        },
+    }
+
+
 def build_operator_review_case_timeline_projection(
     record: dict[str, Any],
     *,
@@ -1885,6 +2027,86 @@ def _case_workbench_source_ref(record: dict[str, Any]) -> dict[str, str | None]:
         "source_id": optional_text(source_ref_value.get("source_id")),
         "source_service": optional_text(source_ref_value.get("source_service")),
         "workbench_path": optional_text(source_ref_value.get("workbench_path")),
+    }
+
+
+def _case_target_ref(record: dict[str, Any]) -> dict[str, str | None]:
+    return {
+        "target_service": optional_text(record.get("target_service")),
+        "target_kind": optional_text(record.get("target_kind")),
+        "target_id": optional_text(record.get("target_id")),
+    }
+
+
+def _record_targets_case(
+    case_record: dict[str, Any],
+    candidate_record: dict[str, Any],
+) -> bool:
+    case_target = _case_target_ref(case_record)
+    candidate_target = _case_target_ref(candidate_record)
+    return (
+        case_target["target_service"] == candidate_target["target_service"]
+        and case_target["target_kind"] == candidate_target["target_kind"]
+        and case_target["target_id"] == candidate_target["target_id"]
+    )
+
+
+def _case_evidence_note_link(record: dict[str, Any]) -> dict[str, Any]:
+    operator_note_id = optional_text(record.get("operator_note_id"))
+    return {
+        "case_evidence_link_schema_version": "ag_operator_review_case_evidence_link.v1",
+        "link_type": "operator_review_note",
+        "link_id": operator_note_id,
+        "target_ref": _case_target_ref(record),
+        "operator_ref": _case_operator_ref(record),
+        "note_status": optional_text(record.get("note_status")),
+        "note_type": optional_text(record.get("note_type")),
+        "severity": optional_text(record.get("severity")),
+        "operator_note_hash": optional_text(record.get("operator_note_hash")),
+        "operator_note_preview": optional_text(record.get("operator_note_preview")),
+        "reason_count": len(record.get("reason_codes") or []),
+        "created_at": record.get("created_at"),
+        "updated_at": record.get("updated_at"),
+        "detail_path": (
+            f"/admin/v1/operator-review/notes/{operator_note_id}"
+            if operator_note_id is not None
+            else None
+        ),
+        "redaction": {
+            "raw_operator_note_included": False,
+            "raw_prompt_included": False,
+            "storage_paths_included": False,
+            "idempotency_keys_included": False,
+        },
+    }
+
+
+def _case_evidence_export_link(record: dict[str, Any]) -> dict[str, Any]:
+    export_id = optional_text(record.get("export_id"))
+    return {
+        "case_evidence_link_schema_version": "ag_operator_review_case_evidence_link.v1",
+        "link_type": "redacted_evidence_export",
+        "link_id": export_id,
+        "target_ref": _case_target_ref(record),
+        "operator_ref": _case_operator_ref(record),
+        "export_status": optional_text(record.get("export_status")),
+        "export_format": optional_text(record.get("export_format")),
+        "redaction_profile": optional_text(record.get("redaction_profile")),
+        "evidence_hash": optional_text(record.get("evidence_hash")),
+        "evidence_item_count": int(record.get("evidence_item_count") or 0),
+        "created_at": record.get("created_at"),
+        "updated_at": record.get("updated_at"),
+        "detail_path": (
+            f"/admin/v1/operator-review/evidence-exports/{export_id}"
+            if export_id is not None
+            else None
+        ),
+        "redaction": {
+            "raw_evidence_body_included": False,
+            "raw_prompt_included": False,
+            "storage_paths_included": False,
+            "idempotency_keys_included": False,
+        },
     }
 
 

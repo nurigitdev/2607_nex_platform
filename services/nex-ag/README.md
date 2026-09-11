@@ -1016,6 +1016,11 @@ Unified operations:
   keeps raw notes, evidence bodies, action comments, prompts, source text,
   storage paths, provider payloads, database URLs, tokens, and idempotency keys
   out of evidence/admission payloads.
+- Slice 0662 adds the case evidence-link read model foundation. It reuses the
+  case target ref to gather matching operator notes and redacted evidence
+  exports, returns only safe refs, hashes, bounded previews, counts, status
+  fields, timestamps, and detail paths, and leaves the protected route wiring to
+  Slice 0663.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
