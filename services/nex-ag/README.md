@@ -1049,6 +1049,13 @@ Unified operations:
   adds positive examples for the evidence-link and action-admission route
   payloads, updates the workbench-detail example, and documents both protected
   S67 routes in the AG OpenAPI file.
+- Slice 0668 adds the protected PostgreSQL smoke evidence in
+  `scripts/smoke/run_ag_operator_review_case_evidence_admission_postgres_smoke.py`.
+  The opt-in smoke runs AG migrations against `NEX_AG_TEST_DATABASE_URL`, writes
+  a case, matching operator note, and redacted evidence export into
+  `ag_op_cases`, `ag_op_notes`, and `ag_ev_exports`, then verifies
+  workbench-detail, evidence-link, and action-admission routes without exposing
+  raw notes, raw evidence bodies, database URLs, or idempotency keys.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
