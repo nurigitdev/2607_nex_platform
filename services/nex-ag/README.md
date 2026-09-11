@@ -1033,6 +1033,11 @@ Unified operations:
   `POST /admin/v1/operator-review/cases/{case_id}/actions` mutation route, and
   keeps raw comments, prompts, metadata payloads, storage refs, provider
   payloads, database URLs, tokens, and idempotency keys out of the payload.
+- Slice 0665 exposes that model at
+  `GET /admin/v1/operator-review/cases/{case_id}/action-admission`. The route
+  supports an optional `action_type` query parameter, remains protected by the
+  AG operator-review authorization boundary, returns standard case-not-found
+  and unsupported-action problems, and remains preflight-only.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

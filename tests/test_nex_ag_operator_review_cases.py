@@ -2336,6 +2336,63 @@ def test_operator_review_case_evidence_links_route_is_protected_and_safe() -> No
     assert "idem-route-case-0663" not in serialized
 
 
+def test_operator_review_case_action_admission_route_is_protected_and_safe() -> None:
+    client, store, _ = build_route_client()
+    created = client.post(
+        "/admin/v1/operator-review/cases",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-route-case-0665"},
+        json=sample_case_payload(),
+    )
+    case_id = created.json()["case"]["case_id"]
+    stored_case = store.get(case_id)
+    stored_case["metadata"]["raw_action_comment"] = "raw action comment leak"
+    stored_case["metadata"]["database_url"] = "postgresql://admission-route-secret"
+    store.save(stored_case)
+
+    admission = client.get(
+        f"/admin/v1/operator-review/cases/{case_id}/action-admission"
+        "?action_type=RESOLVE",
+        headers=service_auth_headers(),
+    )
+    invalid = client.get(
+        f"/admin/v1/operator-review/cases/{case_id}/action-admission"
+        "?action_type=ESCALATE",
+        headers=service_auth_headers(),
+    )
+    missing = client.get(
+        "/admin/v1/operator-review/cases/missing/action-admission",
+        headers=service_auth_headers(),
+    )
+    unauthorized = client.get(
+        f"/admin/v1/operator-review/cases/{case_id}/action-admission"
+    )
+
+    assert admission.status_code == 200
+    payload = admission.json()
+    assert payload["case_action_admission_schema_version"] == (
+        OPERATOR_REVIEW_CASE_ACTION_ADMISSION_SCHEMA_VERSION
+    )
+    assert payload["case"]["case_id"] == case_id
+    assert payload["summary"]["requested_action_type"] == "RESOLVE"
+    assert payload["summary"]["requested_action_admitted"] is True
+    assert payload["requested_action"]["requires_resolution_comment"] is True
+    assert payload["links"]["case_action_admission_path"] == (
+        f"/admin/v1/operator-review/cases/{case_id}/action-admission"
+    )
+    assert invalid.status_code == 422
+    assert invalid.json()["error_code"] == (
+        "ag.operator_review_case_action_type_unsupported"
+    )
+    assert missing.status_code == 404
+    assert unauthorized.status_code == 401
+
+    serialized = json.dumps(payload)
+    assert "raw action comment leak" not in serialized
+    assert "postgresql://admission-route-secret" not in serialized
+    assert "idem-route-case-0665" not in serialized
+    assert '"metadata":' not in serialized
+
+
 def test_operator_review_case_timeline_route_reads_audit_events() -> None:
     client, _, event_store = build_route_client()
     created = client.post(

@@ -854,6 +854,30 @@ def register_operator_review_case_routes(
             return _operator_review_case_problem_response(request, exc)
 
     @app.get(
+        "/admin/v1/operator-review/cases/{case_id}/action-admission",
+        response_model=None,
+    )
+    def get_operator_review_case_action_admission(
+        case_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        action_type: str | None = None,
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.get_case_action_admission(
+                case_id,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                action_type=action_type,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+    @app.get(
         "/admin/v1/operator-review/cases/{case_id}/timeline",
         response_model=None,
     )
