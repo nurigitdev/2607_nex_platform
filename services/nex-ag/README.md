@@ -946,6 +946,13 @@ Unified operations:
   checks required case/action files, Slice 0641-0650 docs, `ag_op_cases`, the
   operational-events-first action history policy, contract/OpenAPI artifacts,
   the protected PostgreSQL smoke path, and redaction-safe documentation.
+- Slice 0651 starts S66 with
+  `scripts/smoke/run_ag_operator_review_case_workbench_boundary_audit.py`. The
+  checkpoint keeps the case workbench AG-owned and read-model-first, adds no new
+  table, reuses `ag_op_cases` for the queue and `service_operational_events` for
+  action timeline evidence, links only safe workbench/note/export refs, and
+  keeps raw comments, source text, storage paths, database URLs, tokens, and
+  idempotency keys out of case workbench evidence.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
