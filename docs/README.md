@@ -767,6 +767,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0661`](slices/0661_ag_operator_review_case_evidence_admission_boundary_audit.md) | `S67-001` AG operator review case evidence/admission boundary audit. |
 | [`Slice 0662`](slices/0662_ag_operator_review_case_evidence_link_read_model.md) | `S67-002` AG operator review case evidence-link read-model foundation. |
 | [`Slice 0663`](slices/0663_ag_operator_review_case_evidence_link_routes.md) | `S67-003` AG operator review case evidence-link protected route wiring. |
+| [`Slice 0664`](slices/0664_ag_operator_review_case_action_admission_model.md) | `S67-004` AG operator review case action-admission decision model. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

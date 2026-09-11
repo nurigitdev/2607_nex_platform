@@ -17,6 +17,7 @@ from nex_ag.operator_review_cases import (
     ALLOWED_CASE_STATUSES,
     OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE,
+    OPERATOR_REVIEW_CASE_ACTION_ADMISSION_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_EVIDENCE_LINKS_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_QUEUE_SCHEMA_VERSION,
@@ -37,6 +38,7 @@ from nex_ag.operator_review_cases import (
     apply_operator_review_case_action,
     build_operator_review_case_action_mutation_response,
     build_operator_review_case_action_record,
+    build_operator_review_case_action_admission_projection,
     build_operator_review_case_evidence_links_projection,
     build_operator_review_case_list_response,
     build_operator_review_case_mutation_response,
@@ -1207,6 +1209,106 @@ def test_case_service_evidence_links_reads_target_scoped_stores() -> None:
     assert projection["summary"]["returned_link_count"] == 2
     assert no_sources["summary"]["evidence_source_status"] == "NOT_CONFIGURED"
     assert no_sources["items"] == []
+
+
+def test_case_action_admission_projection_lists_preflight_decisions() -> None:
+    case = build_case(sample_case_payload(case_id="case-0664-open"))
+    case["metadata"]["raw_prompt"] = "raw prompt should not leak"
+    case["metadata"]["database_url"] = "postgresql://admission-secret"
+
+    admission = build_operator_review_case_action_admission_projection(
+        case,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert admission["case_action_admission_schema_version"] == (
+        OPERATOR_REVIEW_CASE_ACTION_ADMISSION_SCHEMA_VERSION
+    )
+    assert admission["requested_action"] is None
+    assert admission["summary"]["current_status"] == "OPEN"
+    assert admission["summary"]["admitted_action_count"] == 4
+    assert admission["summary"]["blocked_action_count"] == 1
+    assert admission["summary"]["preflight_only"] is True
+    assert admission["summary"]["mutation_route_authoritative"] is True
+    by_action = {item["action_type"]: item for item in admission["items"]}
+    assert by_action["ACKNOWLEDGE"]["admitted"] is True
+    assert by_action["ASSIGN"]["requires_assignment_ref"] is True
+    assert by_action["RESOLVE"]["requires_resolution_comment"] is True
+    assert by_action["REOPEN"]["admitted"] is False
+    assert by_action["REOPEN"]["blocked_reason"] == (
+        "REOPEN cannot transition from OPEN."
+    )
+
+    serialized = json.dumps(admission)
+    assert "raw prompt should not leak" not in serialized
+    assert "postgresql://admission-secret" not in serialized
+    assert '"metadata":' not in serialized
+
+
+def test_case_action_admission_projection_handles_requested_and_closed_cases() -> None:
+    resolved = build_case(
+        sample_case_payload(
+            case_id="case-0664-resolved",
+            case_status="RESOLVED",
+            resolution_comment="Raw resolution comment must not leak.",
+        )
+    )
+
+    assign_admission = build_operator_review_case_action_admission_projection(
+        resolved,
+        request_id=REQUEST_ID,
+        trace_id=None,
+        action_type="ASSIGN",
+    )
+    reopen_admission = build_operator_review_case_action_admission_projection(
+        resolved,
+        request_id=REQUEST_ID,
+        trace_id=None,
+        action_type="REOPEN",
+    )
+
+    assert assign_admission["trace_id"] is None
+    assert assign_admission["summary"]["requested_action_type"] == "ASSIGN"
+    assert assign_admission["summary"]["requested_action_admitted"] is False
+    assert assign_admission["requested_action"]["blocked_reason"] == (
+        "ASSIGN cannot transition from RESOLVED."
+    )
+    assert assign_admission["summary"]["admitted_action_count"] == 0
+    assert assign_admission["summary"]["blocked_action_count"] == 1
+    assert reopen_admission["summary"]["requested_action_admitted"] is True
+    assert reopen_admission["requested_action"]["target_status"] == "REOPENED"
+    assert "Raw resolution comment" not in json.dumps(assign_admission)
+
+
+def test_case_action_admission_service_and_invalid_action_type() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+    created = service.create_case(
+        sample_case_payload(case_id="case-0664-service"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0664-service",
+    )["case"]
+
+    admission = service.get_case_action_admission(
+        created["case_id"],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        action_type="RESOLVE",
+    )
+
+    assert admission["requested_action"]["action_type"] == "RESOLVE"
+    assert admission["requested_action"]["admitted"] is True
+    assert admission["requested_action"]["requires_resolution_comment"] is True
+    with pytest.raises(OperatorReviewNoteError) as exc:
+        service.get_case_action_admission(
+            created["case_id"],
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            action_type="ESCALATE",
+        )
+    assert exc.value.status_code == 422
+    assert exc.value.error_code == "ag.operator_review_case_action_type_unsupported"
 
 
 def test_case_timeline_projection_filters_and_redacts_operational_events() -> None:

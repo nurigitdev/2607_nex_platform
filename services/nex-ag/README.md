@@ -1027,6 +1027,12 @@ Unified operations:
   note/export stores, and the shared bounded `limit` query option while keeping
   raw notes, raw evidence bodies, storage refs, provider payloads, database
   URLs, tokens, and idempotency keys out of the response.
+- Slice 0664 adds the action-admission decision model. It derives admitted and
+  blocked actions from the same case action state machine used by mutations,
+  marks the projection as preflight-only, points back to the authoritative
+  `POST /admin/v1/operator-review/cases/{case_id}/actions` mutation route, and
+  keeps raw comments, prompts, metadata payloads, storage refs, provider
+  payloads, database URLs, tokens, and idempotency keys out of the payload.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

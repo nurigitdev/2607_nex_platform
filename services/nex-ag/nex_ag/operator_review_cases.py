@@ -59,6 +59,9 @@ OPERATOR_REVIEW_CASE_TIMELINE_SCHEMA_VERSION = (
 OPERATOR_REVIEW_CASE_EVIDENCE_LINKS_SCHEMA_VERSION = (
     "ag_operator_review_case_evidence_links.v1"
 )
+OPERATOR_REVIEW_CASE_ACTION_ADMISSION_SCHEMA_VERSION = (
+    "ag_operator_review_case_action_admission.v1"
+)
 OPERATOR_REVIEW_CASE_MUTATION_SCHEMA_VERSION = "ag_operator_review_case_mutation.v1"
 OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION = "ag_operator_review_case_action.v1"
 OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION = (
@@ -449,6 +452,22 @@ class OperatorReviewCaseService:
                 if note_store is not None and export_store is not None
                 else "NOT_CONFIGURED"
             ),
+        )
+
+    def get_case_action_admission(
+        self,
+        case_id: str,
+        *,
+        request_id: str,
+        trace_id: str | None,
+        action_type: str | None = None,
+    ) -> dict[str, Any]:
+        record = self.get_case(case_id)
+        return build_operator_review_case_action_admission_projection(
+            record,
+            request_id=request_id,
+            trace_id=trace_id,
+            action_type=action_type,
         )
 
     def rollup_cases(
@@ -1378,6 +1397,99 @@ def build_operator_review_case_evidence_links_projection(
     }
 
 
+def build_operator_review_case_action_admission_projection(
+    record: dict[str, Any],
+    *,
+    request_id: str,
+    trace_id: str | None,
+    action_type: str | None = None,
+) -> dict[str, Any]:
+    normalized_action_type = (
+        required_case_action_type(action_type)
+        if optional_text(action_type) is not None
+        else None
+    )
+    admission_items = [
+        _case_action_admission_item(record, candidate_action_type)
+        for candidate_action_type in (
+            "ACKNOWLEDGE",
+            "ASSIGN",
+            "RESOLVE",
+            "DISMISS",
+            "REOPEN",
+        )
+        if normalized_action_type is None
+        or candidate_action_type == normalized_action_type
+    ]
+    admitted_count = sum(1 for item in admission_items if item["admitted"] is True)
+    blocked_count = len(admission_items) - admitted_count
+    requested_item = admission_items[0] if normalized_action_type is not None else None
+    return {
+        "case_action_admission_schema_version": (
+            OPERATOR_REVIEW_CASE_ACTION_ADMISSION_SCHEMA_VERSION
+        ),
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "case": {
+            "case_id": record.get("case_id"),
+            "target_ref": _case_target_ref(record),
+            "case_status": record.get("case_status"),
+            "case_priority": record.get("case_priority"),
+            "assignment_ref": {
+                "assignee_id": _case_assignment_ref(record).get("assignee_id"),
+                "assignee_type": _case_assignment_ref(record).get("assignee_type"),
+                "tenant_id": _case_assignment_ref(record).get("tenant_id"),
+            },
+            "updated_at": record.get("updated_at"),
+        },
+        "requested_action": requested_item,
+        "items": admission_items,
+        "summary": {
+            "current_status": str(record.get("case_status") or ""),
+            "requested_action_type": normalized_action_type,
+            "requested_action_admitted": (
+                requested_item.get("admitted") if requested_item is not None else None
+            ),
+            "admitted_action_count": admitted_count,
+            "blocked_action_count": blocked_count,
+            "preflight_only": True,
+            "mutation_route_authoritative": True,
+            "admission_source": "operator_review_case_action_state_machine",
+        },
+        "links": {
+            "case_detail_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+            ),
+            "case_workbench_detail_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+                "/workbench-detail"
+            ),
+            "case_action_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}/actions"
+            ),
+            "case_action_admission_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+                "/action-admission"
+            ),
+        },
+        "redaction": {
+            "raw_case_comment_included": False,
+            "raw_action_comment_included": False,
+            "raw_resolution_comment_included": False,
+            "raw_prompt_included": False,
+            "raw_generation_output_included": False,
+            "raw_source_text_included": False,
+            "storage_paths_included": False,
+            "provider_payloads_included": False,
+            "database_urls_included": False,
+            "tokens_included": False,
+            "idempotency_keys_included": False,
+            "metadata_payload_included": False,
+            "admission_payload_shape": "case_state_machine_preflight_only",
+        },
+    }
+
+
 def build_operator_review_case_timeline_projection(
     record: dict[str, Any],
     *,
@@ -2070,6 +2182,16 @@ def _case_target_ref(record: dict[str, Any]) -> dict[str, str | None]:
     }
 
 
+def _case_assignment_ref(record: dict[str, Any]) -> dict[str, str | None]:
+    assignment = record.get("assignment_ref")
+    assignment_ref_value = assignment if isinstance(assignment, dict) else {}
+    return {
+        "assignee_type": optional_text(assignment_ref_value.get("assignee_type")),
+        "assignee_id": optional_text(assignment_ref_value.get("assignee_id")),
+        "tenant_id": optional_text(assignment_ref_value.get("tenant_id")),
+    }
+
+
 def _record_targets_case(
     case_record: dict[str, Any],
     candidate_record: dict[str, Any],
@@ -2139,6 +2261,39 @@ def _case_evidence_export_link(record: dict[str, Any]) -> dict[str, Any]:
             "storage_paths_included": False,
             "idempotency_keys_included": False,
         },
+    }
+
+
+def _case_action_admission_item(
+    record: dict[str, Any],
+    action_type: str,
+) -> dict[str, Any]:
+    current_status = str(record.get("case_status") or "")
+    allowed_from = CASE_ACTION_ALLOWED_FROM[action_type]
+    target_status = CASE_ACTION_TARGET_STATUSES[action_type]
+    admitted = current_status in allowed_from
+    return {
+        "case_action_admission_item_schema_version": (
+            "ag_operator_review_case_action_admission_item.v1"
+        ),
+        "action_type": action_type,
+        "current_status": current_status,
+        "target_status": target_status,
+        "admitted": admitted,
+        "blocked_reason": (
+            None
+            if admitted
+            else f"{action_type} cannot transition from {current_status}."
+        ),
+        "requires_idempotency_key": True,
+        "requires_assignment_ref": action_type == "ASSIGN",
+        "requires_resolution_comment": action_type == "RESOLVE",
+        "mutation_method": "POST",
+        "mutation_path": (
+            f"/admin/v1/operator-review/cases/{record.get('case_id')}/actions"
+        ),
+        "mutation_route_authoritative": True,
+        "preflight_only": True,
     }
 
 
