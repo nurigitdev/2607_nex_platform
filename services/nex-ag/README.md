@@ -1063,6 +1063,13 @@ Unified operations:
   idempotency keys into case/note/export records, then asserts S67 public
   payloads expose only safe refs, hashes, bounded previews, summary counts,
   state-machine admission metadata, redaction flags, and route links.
+- Slice 0670 closes S67 with
+  `scripts/smoke/run_s67_operator_review_case_evidence_admission_closure.py`.
+  The checkpoint verifies Slice 0661-0670 docs, quality-gate hooks,
+  `ag_op_cases`/`ag_op_notes`/`ag_ev_exports` source tables, evidence-link and
+  action-admission contracts/OpenAPI entries, protected PostgreSQL smoke
+  coverage, privacy regression coverage, and redaction-safe documentation for
+  the `ag_owned_operator_review_case_evidence_admission` boundary.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
