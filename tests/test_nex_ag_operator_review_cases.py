@@ -22,6 +22,7 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_CASE_ROLLUP_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_SCHEMA_VERSION,
+    OPERATOR_REVIEW_CASE_WORKBENCH_DETAIL_SCHEMA_VERSION,
     OperatorReviewCaseService,
     OperatorReviewCaseStore,
     SqlAlchemyOperatorReviewCaseStore,
@@ -39,6 +40,7 @@ from nex_ag.operator_review_cases import (
     build_operator_review_case_queue_projection,
     build_operator_review_case_record,
     build_operator_review_case_rollup_metrics,
+    build_operator_review_case_workbench_detail_projection,
     default_operator_review_case_store,
     emit_operator_review_case_action_event,
     emit_operator_review_case_event,
@@ -857,6 +859,116 @@ def test_case_queue_projection_rejects_invalid_controls(
     assert exc.value.error_code == error_code
 
 
+def test_case_workbench_detail_projection_exposes_safe_action_controls() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+    created = service.create_case(
+        sample_case_payload(
+            case_id="case-0654-detail",
+            case_priority="URGENT",
+            assignment_ref=None,
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0654-detail",
+    )["case"]
+    assigned = service.apply_action(
+        created["case_id"],
+        sample_action_payload(
+            action_type="ASSIGN",
+            action_comment="Assigning this case for workbench detail review.",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0654",
+            },
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0654-action",
+    )["case"]
+
+    detail = build_operator_review_case_workbench_detail_projection(
+        assigned,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert detail["case_workbench_detail_schema_version"] == (
+        OPERATOR_REVIEW_CASE_WORKBENCH_DETAIL_SCHEMA_VERSION
+    )
+    assert detail["case"]["case_id"] == created["case_id"]
+    assert detail["case"]["attention_status"] == "BLOCKED"
+    assert detail["case"]["assignment_ref"]["assignee_id"] == "employee-0654"
+    assert detail["latest_action"]["action_type"] == "ASSIGN"
+    assert detail["latest_action"]["assignee_id"] == "employee-0654"
+    assert [item["action_type"] for item in detail["action_controls"]["available_actions"]] == [
+        "ASSIGN",
+        "RESOLVE",
+        "DISMISS",
+    ]
+    assert [item["action_type"] for item in detail["action_controls"]["blocked_actions"]] == [
+        "ACKNOWLEDGE",
+        "REOPEN",
+    ]
+    assert detail["action_controls"]["available_action_count"] == 3
+    assert detail["action_controls"]["blocked_actions"][0]["blocked_reason"] == (
+        "ACKNOWLEDGE cannot transition from ASSIGNED."
+    )
+    assert detail["action_controls"]["available_actions"][0][
+        "requires_assignment_ref"
+    ] is True
+    assert detail["action_controls"]["available_actions"][1][
+        "requires_resolution_comment"
+    ] is True
+    assert detail["timeline"]["action_history_shape"] == "operational_events_first"
+    assert detail["redaction"]["metadata_payload_included"] is False
+
+    serialized = json.dumps(detail)
+    assert "Assigning this case" not in serialized
+    assert "idem-0654" not in serialized
+    assert '"action_comment":' not in serialized
+
+
+def test_case_workbench_detail_projection_handles_closed_and_malformed_source() -> None:
+    resolved = build_case(
+        sample_case_payload(
+            case_status="RESOLVED",
+            resolution_comment="Closed with bounded preview only.",
+        )
+    )
+    resolved["source_ref"] = "bad-source"
+    detail = build_operator_review_case_workbench_detail_projection(
+        resolved,
+        request_id=REQUEST_ID,
+        trace_id=None,
+    )
+    malformed = {
+        **resolved,
+        "case_status": "UNKNOWN",
+        "case_id": "case-0654-malformed",
+    }
+    malformed_detail = build_operator_review_case_workbench_detail_projection(
+        malformed,
+        request_id=REQUEST_ID,
+        trace_id=None,
+    )
+
+    assert detail["trace_id"] is None
+    assert detail["case"]["source_ref"] == {
+        "source_type": None,
+        "source_id": None,
+        "source_service": None,
+        "workbench_path": None,
+    }
+    assert detail["resolution"]["resolution_hash"] == resolved["resolution_hash"]
+    assert detail["resolution"]["resolution_preview"] == "Closed with bounded preview only."
+    assert detail["action_controls"]["available_actions"][0]["action_type"] == "REOPEN"
+    assert malformed_detail["action_controls"]["available_actions"] == []
+    assert malformed_detail["action_controls"]["blocked_action_count"] == 5
+    assert malformed_detail["action_controls"]["blocked_actions"][0][
+        "blocked_reason"
+    ] == "ACKNOWLEDGE cannot transition from UNKNOWN."
+
+
 def test_case_idempotency_signature_is_safe_and_stable() -> None:
     record = build_case()
     signature = operator_review_case_idempotency_signature(record)
@@ -1619,6 +1731,47 @@ def test_operator_review_case_queue_route_precedes_detail_route_and_filters() ->
         "ag.operator_review_note_operator_type_unsupported"
     )
     assert unauthorized.status_code == 401
+
+
+def test_operator_review_case_workbench_detail_route_is_protected_and_safe() -> None:
+    client, _, _ = build_route_client()
+    created = client.post(
+        "/admin/v1/operator-review/cases",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-route-case-0654"},
+        json=sample_case_payload(
+            case_priority="URGENT",
+            resolution_comment="Route detail must expose only the bounded preview.",
+        ),
+    )
+    case_id = created.json()["case"]["case_id"]
+
+    detail = client.get(
+        f"/admin/v1/operator-review/cases/{case_id}/workbench-detail",
+        headers=service_auth_headers(),
+    )
+    missing = client.get(
+        "/admin/v1/operator-review/cases/missing/workbench-detail",
+        headers=service_auth_headers(),
+    )
+    unauthorized = client.get(
+        f"/admin/v1/operator-review/cases/{case_id}/workbench-detail"
+    )
+
+    assert detail.status_code == 200
+    assert detail.json()["case_workbench_detail_schema_version"] == (
+        OPERATOR_REVIEW_CASE_WORKBENCH_DETAIL_SCHEMA_VERSION
+    )
+    assert detail.json()["case"]["case_id"] == case_id
+    assert detail.json()["links"]["case_action_path"] == (
+        f"/admin/v1/operator-review/cases/{case_id}/actions"
+    )
+    assert detail.json()["redaction"]["raw_resolution_comment_included"] is False
+    assert "Route detail must expose only" in detail.json()["resolution"][
+        "resolution_preview"
+    ]
+    assert missing.status_code == 404
+    assert unauthorized.status_code == 401
+    assert "idem-route-case-0654" not in json.dumps(detail.json())
 
 
 def test_operator_review_case_action_route_rejects_auth_invalid_and_missing() -> None:

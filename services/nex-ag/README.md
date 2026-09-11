@@ -964,6 +964,12 @@ Unified operations:
   `sort_direction` controls. The projection returns normalized filter/sort
   metadata, searches only safe queue fields, keeps the default attention-first
   ordering, and adds no new table or migration.
+- Slice 0654 adds
+  `GET /admin/v1/operator-review/cases/{case_id}/workbench-detail`, a
+  metadata-safe detail projection for operator screens. It reuses `ag_op_cases`,
+  returns safe refs, attention metadata, latest safe action summary, action
+  controls, and resolution hash/preview only, while leaving timeline event
+  expansion to a later S66 slice.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

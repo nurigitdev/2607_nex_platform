@@ -47,6 +47,9 @@ from .operator_reviews import (
 OPERATOR_REVIEW_CASE_SCHEMA_VERSION = "ag_operator_review_case.v1"
 OPERATOR_REVIEW_CASE_LIST_SCHEMA_VERSION = "ag_operator_review_case_list.v1"
 OPERATOR_REVIEW_CASE_QUEUE_SCHEMA_VERSION = "ag_operator_review_case_queue.v1"
+OPERATOR_REVIEW_CASE_WORKBENCH_DETAIL_SCHEMA_VERSION = (
+    "ag_operator_review_case_workbench_detail.v1"
+)
 OPERATOR_REVIEW_CASE_MUTATION_SCHEMA_VERSION = "ag_operator_review_case_mutation.v1"
 OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION = "ag_operator_review_case_action.v1"
 OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION = (
@@ -379,6 +382,20 @@ class OperatorReviewCaseService:
             )
         return record
 
+    def get_case_workbench_detail(
+        self,
+        case_id: str,
+        *,
+        request_id: str,
+        trace_id: str | None,
+    ) -> dict[str, Any]:
+        record = self.get_case(case_id)
+        return build_operator_review_case_workbench_detail_projection(
+            record,
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+
     def rollup_cases(
         self,
         *,
@@ -703,6 +720,28 @@ def register_operator_review_case_routes(
                 updated_from=updated_from,
                 updated_to=updated_to,
                 limit=limit,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+    @app.get(
+        "/admin/v1/operator-review/cases/{case_id}/workbench-detail",
+        response_model=None,
+    )
+    def get_operator_review_case_workbench_detail(
+        case_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.get_case_workbench_detail(
+                case_id,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
             )
         except OperatorReviewNoteError as exc:
             return _operator_review_case_problem_response(request, exc)
@@ -1058,6 +1097,76 @@ def build_operator_review_case_queue_projection(
             "idempotency_keys_included": False,
             "queue_payload_shape": "safe_refs_hashes_and_bounded_previews_only",
             "action_history_shape": "operational_events_first",
+        },
+    }
+
+
+def build_operator_review_case_workbench_detail_projection(
+    record: dict[str, Any],
+    *,
+    request_id: str,
+    trace_id: str | None,
+) -> dict[str, Any]:
+    queue_item = _case_queue_item(record)
+    action_controls = _case_workbench_action_controls(record)
+    return {
+        "case_workbench_detail_schema_version": (
+            OPERATOR_REVIEW_CASE_WORKBENCH_DETAIL_SCHEMA_VERSION
+        ),
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "case": {
+            "case_id": record.get("case_id"),
+            "target_ref": dict(queue_item["target_ref"]),
+            "case_status": record.get("case_status"),
+            "case_priority": record.get("case_priority"),
+            "attention_status": queue_item["attention_status"],
+            "attention_reason_codes": list(queue_item["attention_reason_codes"]),
+            "recommended_actions": list(queue_item["recommended_actions"]),
+            "operator_ref": dict(queue_item["operator_ref"]),
+            "assignment_ref": dict(queue_item["assignment_ref"]),
+            "source_ref": _case_workbench_source_ref(record),
+            "reason_count": queue_item["reason_count"],
+            "created_at": record.get("created_at"),
+            "updated_at": record.get("updated_at"),
+            "closed_at": record.get("closed_at"),
+        },
+        "resolution": {
+            "resolution_hash": record.get("resolution_hash"),
+            "resolution_preview": record.get("resolution_preview"),
+            "raw_resolution_comment_included": False,
+        },
+        "latest_action": queue_item["latest_action"],
+        "action_controls": action_controls,
+        "timeline": {
+            "timeline_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}/timeline"
+            ),
+            "action_history_shape": "operational_events_first",
+            "inline_events_included": False,
+            "planned_schema_version": "ag_operator_review_case_timeline.v1",
+        },
+        "links": {
+            "case_detail_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+            ),
+            "case_action_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}/actions"
+            ),
+            "case_queue_path": "/admin/v1/operator-review/cases/queue",
+            "operator_review_workbench_path": "/admin/v1/operator-review/workbench",
+        },
+        "redaction": {
+            "raw_case_comment_included": False,
+            "raw_action_comment_included": False,
+            "raw_resolution_comment_included": False,
+            "raw_prompt_included": False,
+            "raw_generation_output_included": False,
+            "raw_source_text_included": False,
+            "storage_paths_included": False,
+            "idempotency_keys_included": False,
+            "metadata_payload_included": False,
+            "detail_payload_shape": "safe_refs_hashes_and_bounded_previews_only",
         },
     }
 
@@ -1643,6 +1752,78 @@ def _case_queue_item(record: dict[str, Any]) -> dict[str, Any]:
             "idempotency_keys_included": False,
             "storage_paths_included": False,
         },
+    }
+
+
+def _case_workbench_source_ref(record: dict[str, Any]) -> dict[str, str | None]:
+    source = record.get("source_ref")
+    source_ref_value = source if isinstance(source, dict) else {}
+    return {
+        "source_type": optional_text(source_ref_value.get("source_type")),
+        "source_id": optional_text(source_ref_value.get("source_id")),
+        "source_service": optional_text(source_ref_value.get("source_service")),
+        "workbench_path": optional_text(source_ref_value.get("workbench_path")),
+    }
+
+
+def _case_workbench_action_controls(record: dict[str, Any]) -> dict[str, Any]:
+    status = str(record.get("case_status") or "")
+    available_actions: list[dict[str, Any]] = []
+    blocked_actions: list[dict[str, Any]] = []
+    for action_type in (
+        "ACKNOWLEDGE",
+        "ASSIGN",
+        "RESOLVE",
+        "DISMISS",
+        "REOPEN",
+    ):
+        allowed_from = CASE_ACTION_ALLOWED_FROM[action_type]
+        if status in allowed_from:
+            available_actions.append(
+                _case_workbench_action_control_item(
+                    action_type=action_type,
+                    available=True,
+                    current_status=status,
+                )
+            )
+        else:
+            blocked_actions.append(
+                _case_workbench_action_control_item(
+                    action_type=action_type,
+                    available=False,
+                    current_status=status,
+                )
+            )
+    return {
+        "current_status": status,
+        "available_actions": available_actions,
+        "blocked_actions": blocked_actions,
+        "available_action_count": len(available_actions),
+        "blocked_action_count": len(blocked_actions),
+        "requires_idempotency_key": True,
+    }
+
+
+def _case_workbench_action_control_item(
+    *,
+    action_type: str,
+    available: bool,
+    current_status: str,
+) -> dict[str, Any]:
+    target_status = CASE_ACTION_TARGET_STATUSES[action_type]
+    return {
+        "action_type": action_type,
+        "target_status": target_status,
+        "available": available,
+        "blocked_reason": (
+            None
+            if available
+            else f"{action_type} cannot transition from {current_status or 'UNKNOWN'}."
+        ),
+        "requires_assignment_ref": action_type == "ASSIGN",
+        "requires_resolution_comment": action_type in {"RESOLVE", "DISMISS"},
+        "method": "POST",
+        "idempotency_key_required": True,
     }
 
 
