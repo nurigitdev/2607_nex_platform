@@ -86,6 +86,7 @@ from nex_ag.operations import (
     _dashboard_replay_candidates,
     _dashboard_timestamp,
     _issue_candidates_from_generation_quality,
+    _issue_candidates_from_operator_review_cases,
     _issue_candidates_from_operator_review_workbench,
     _issue_candidates_from_remediation_executions,
     _job_error_code,
@@ -3100,6 +3101,32 @@ def test_operations_dashboard_snapshot_includes_operator_review_workbench() -> N
         "assign_case_owner",
         "prioritize_urgent_operator_review_case",
     ]
+    assert cases["attention"][0]["links"] == {
+        "case_detail_path": (
+            f"/admin/v1/operator-review/cases/{cases['attention'][0]['case_id']}"
+        ),
+        "case_action_path": (
+            f"/admin/v1/operator-review/cases/{cases['attention'][0]['case_id']}"
+            "/actions"
+        ),
+        "case_workbench_detail_path": (
+            f"/admin/v1/operator-review/cases/{cases['attention'][0]['case_id']}"
+            "/workbench-detail"
+        ),
+        "case_timeline_path": (
+            f"/admin/v1/operator-review/cases/{cases['attention'][0]['case_id']}"
+            "/timeline"
+        ),
+    }
+    assert cases["case_queue_path"] == "/admin/v1/operator-review/cases/queue"
+    assert cases["case_workbench_detail_path_template"] == (
+        "/admin/v1/operator-review/cases/{case_id}/workbench-detail"
+    )
+    assert cases["case_timeline_path_template"] == (
+        "/admin/v1/operator-review/cases/{case_id}/timeline"
+    )
+    assert cases["queue_summary"]["case_count"] == 1
+    assert cases["queue_summary"]["by_attention_status"] == {"BLOCKED": 1}
     assert cases["source_statuses"]["nex-ag"] == {
         "status": "READY",
         "service_id": "nex-ag",
@@ -3273,10 +3300,110 @@ def test_operations_issue_candidate_projection_includes_operator_review_workbenc
     assert projection["summary"]["by_rule"][
         "operator_review_attention_required.v1"
     ] == 1
-    assert projection["rules"][-1]["rule_id"] == (
+    assert projection["rules"][-2]["rule_id"] == (
         "operator_review_attention_required.v1"
     )
+    assert projection["rules"][-1]["rule_id"] == (
+        "operator_review_case_attention_required.v1"
+    )
     assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_issue_candidate_projection_includes_operator_review_cases() -> (
+    None
+):
+    case_store = OperatorReviewCaseStore()
+    case_service = OperatorReviewCaseService(case_store)
+    mutation = case_service.create_case(
+        operator_review_case_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="operations-case-candidate",
+    )
+
+    projection = build_operations_issue_candidate_projection(
+        operator_review_case_store=case_store,
+        service_id="nex-cx",
+        recent_limit=2,
+        request_trace_id=TRACE_ID,
+    )
+
+    candidates = [
+        candidate
+        for candidate in projection["issue_candidates"]
+        if candidate["rule_id"] == "operator_review_case_attention_required.v1"
+    ]
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["service_id"] == "nex-ag"
+    assert candidate["severity"] == "ERROR"
+    assert candidate["signal"] == {
+        "source_type": "operator_review_case",
+        "status": "BLOCKED",
+        "count": 1,
+        "threshold": 1,
+        "blocked_count": 1,
+        "attention_count": 0,
+        "open_count": 0,
+        "case_ids": [mutation["case"]["case_id"]],
+        "target_services": ["nex-cx"],
+        "target_kinds": ["retrieval_threshold_decision"],
+        "target_ids": ["weighted_rrf_vector_bm25_v1"],
+        "attention_statuses": ["BLOCKED"],
+        "reason_codes": [
+            "open_case_requires_triage",
+            "open_case_unassigned",
+            "urgent_case_not_closed",
+        ],
+        "case_list_path": "/admin/v1/operator-review/cases",
+        "case_queue_path": "/admin/v1/operator-review/cases/queue",
+        "case_workbench_detail_path_template": (
+            "/admin/v1/operator-review/cases/{case_id}/workbench-detail"
+        ),
+        "case_timeline_path_template": (
+            "/admin/v1/operator-review/cases/{case_id}/timeline"
+        ),
+        "runbook_ids": [
+            "ag.operator_review_case.assign_owner.v1",
+            "ag.operator_review_case.initial_triage.v1",
+            "ag.operator_review_case.urgent_triage.v1",
+        ],
+        "recommended_operator_actions": [
+            "acknowledge_or_assign_case",
+            "assign_case_owner",
+            "open_case_workbench_detail",
+            "prioritize_urgent_operator_review_case",
+        ],
+    }
+    assert projection["summary"]["by_rule"][
+        "operator_review_case_attention_required.v1"
+    ] == 1
+    assert_ag_operations_projection_contract(projection)
+
+    helper_candidates = _issue_candidates_from_operator_review_cases(
+        {
+            "attention": [
+                {
+                    "case_id": "case-0656-reopened",
+                    "target_ref": {
+                        "target_service": "nex-cx",
+                        "target_kind": "document",
+                        "target_id": "doc-0656",
+                    },
+                    "attention_status": "ATTENTION",
+                    "reason_codes": ["reopened_case_requires_review"],
+                    "recommended_actions": ["review_reopened_case"],
+                },
+                {"attention_status": "OK"},
+                "malformed",
+            ]
+        }
+    )
+    assert helper_candidates[0]["severity"] == "WARNING"
+    assert helper_candidates[0]["signal"]["status"] == "ATTENTION"
+    assert helper_candidates[0]["signal"]["runbook_ids"] == [
+        "ag.operator_review_case.reopened_review.v1"
+    ]
 
 
 def test_dashboard_generation_remediation_section_handles_missing_and_broken_sources() -> (
@@ -3737,6 +3864,7 @@ def test_build_operations_issue_candidate_projection_flags_service_scope() -> No
         "generation_remediation_attention_required.v1",
         "remediation_execution_attention_required.v1",
         "operator_review_attention_required.v1",
+        "operator_review_case_attention_required.v1",
     ]
     assert [
         (candidate["rule_id"], candidate["service_id"], candidate["severity"])
@@ -4587,6 +4715,18 @@ def test_operations_issue_candidates_group_threshold_decision_readiness() -> Non
     assert (
         build_operations_issue_candidates(
             {**base_dashboard, "operator_review_workbench": {"attention": "bad"}}
+        )
+        == []
+    )
+    assert (
+        build_operations_issue_candidates(
+            {**base_dashboard, "operator_review_cases": "bad"}
+        )
+        == []
+    )
+    assert (
+        build_operations_issue_candidates(
+            {**base_dashboard, "operator_review_cases": {"attention": "bad"}}
         )
         == []
     )

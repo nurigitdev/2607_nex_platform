@@ -976,6 +976,12 @@ Unified operations:
   metadata-safe event refs and hash fields, and reports safe
   `timeline_status=UNAVAILABLE` source errors instead of adding a case action
   history table.
+- Slice 0656 extends `/admin/v1/operations/dashboard` and
+  `/admin/v1/operations/issue-candidates` with case workbench signals. The
+  dashboard now exposes queue/detail/timeline entrypoints and a safe queue
+  summary, while issue candidates add
+  `operator_review_case_attention_required.v1` for case lifecycle attention
+  separately from workbench target attention.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

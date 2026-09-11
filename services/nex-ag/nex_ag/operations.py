@@ -98,6 +98,7 @@ from nex_ag.operator_review_workbench import (
 )
 from nex_ag.operator_review_cases import (
     build_operator_review_case_list_response,
+    build_operator_review_case_queue_projection,
     build_operator_review_case_rollup_metrics,
 )
 from nex_ag.operator_reviews import ALLOWED_TARGET_SERVICES
@@ -371,6 +372,14 @@ OPERATIONS_ISSUE_CANDIDATE_RULES = (
         "description": "One or more operator review workbench targets need review.",
         "enabled": True,
         "signal_type": "operator_review_workbench",
+    },
+    {
+        "rule_id": "operator_review_case_attention_required.v1",
+        "severity": "WARNING",
+        "title": "Operator review case attention required",
+        "description": "One or more operator review cases need action.",
+        "enabled": True,
+        "signal_type": "operator_review_case",
     },
 )
 RETRIEVAL_THRESHOLD_ISSUE_RULES_BY_READINESS = {
@@ -2186,6 +2195,7 @@ def register_unified_operation_routes(
             ),
             operator_review_note_store=operator_review_note_store,
             operator_review_export_store=operator_review_export_store,
+            operator_review_case_store=operator_review_case_store,
             worker_heartbeat_stores=worker_heartbeat_stores,
             registry=registry,
             runtime=selected_runtime,
@@ -3051,6 +3061,7 @@ def build_operations_issue_candidate_projection(
     ) = None,
     operator_review_note_store: Any | None = None,
     operator_review_export_store: Any | None = None,
+    operator_review_case_store: Any | None = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -3081,6 +3092,7 @@ def build_operations_issue_candidate_projection(
         remediation_execution_projection_builder=remediation_execution_projection_builder,
         operator_review_note_store=operator_review_note_store,
         operator_review_export_store=operator_review_export_store,
+        operator_review_case_store=operator_review_case_store,
         registry=registry,
         runtime=runtime,
         service_id=service_id,
@@ -4212,6 +4224,11 @@ def build_operations_issue_candidates(
     candidates.extend(
         _issue_candidates_from_operator_review_workbench(
             dashboard_snapshot.get("operator_review_workbench")
+        )
+    )
+    candidates.extend(
+        _issue_candidates_from_operator_review_cases(
+            dashboard_snapshot.get("operator_review_cases")
         )
     )
     if worker_runtime_projection is not None:
@@ -6388,6 +6405,7 @@ def _dashboard_operator_review_case_section(
             trace_id=request_trace_id,
         )
         rollup = build_operator_review_case_rollup_metrics(case_list)
+        queue = build_operator_review_case_queue_projection(case_list)
     except Exception as exc:
         source_statuses["nex-ag"] = _dashboard_operator_review_case_source_status(
             case_store=case_store,
@@ -6423,10 +6441,21 @@ def _dashboard_operator_review_case_section(
         "by_case_status": dict(rollup["by_case_status"]),
         "by_case_priority": dict(rollup["by_case_priority"]),
         "by_last_action_type": dict(rollup["by_last_action_type"]),
-        "attention": list(rollup["attention"]["items"])[:limit],
+        "attention": [
+            _dashboard_operator_review_case_attention_item(item)
+            for item in list(rollup["attention"]["items"])[:limit]
+        ],
         "source_statuses": source_statuses,
         "case_list_path": "/admin/v1/operator-review/cases",
+        "case_queue_path": "/admin/v1/operator-review/cases/queue",
+        "case_workbench_detail_path_template": (
+            "/admin/v1/operator-review/cases/{case_id}/workbench-detail"
+        ),
+        "case_timeline_path_template": (
+            "/admin/v1/operator-review/cases/{case_id}/timeline"
+        ),
         "rollup_path": "/admin/v1/operator-review/cases/rollups",
+        "queue_summary": dict(queue["summary"]),
         "redaction": dict(rollup["redaction"]),
     }
 
@@ -6446,7 +6475,27 @@ def _empty_dashboard_operator_review_case_section(
         "attention": [],
         "source_statuses": source_statuses,
         "case_list_path": "/admin/v1/operator-review/cases",
+        "case_queue_path": "/admin/v1/operator-review/cases/queue",
+        "case_workbench_detail_path_template": (
+            "/admin/v1/operator-review/cases/{case_id}/workbench-detail"
+        ),
+        "case_timeline_path_template": (
+            "/admin/v1/operator-review/cases/{case_id}/timeline"
+        ),
         "rollup_path": "/admin/v1/operator-review/cases/rollups",
+        "queue_summary": {
+            "case_count": 0,
+            "open_case_count": 0,
+            "closed_case_count": 0,
+            "assigned_case_count": 0,
+            "urgent_case_count": 0,
+            "attention_case_count": 0,
+            "unassigned_open_case_count": 0,
+            "by_attention_status": {},
+            "by_case_status": {},
+            "by_case_priority": {},
+            "latest_updated_at": None,
+        },
         "redaction": {
             "raw_case_comment_included": False,
             "raw_action_comment_included": False,
@@ -6468,6 +6517,24 @@ def _empty_operator_review_case_summary() -> dict[str, int | None]:
         "attention_case_count": 0,
         "latest_updated_at": None,
     }
+
+
+def _dashboard_operator_review_case_attention_item(
+    item: Mapping[str, Any],
+) -> dict[str, Any]:
+    selected = dict(item)
+    case_id = _nullable_string(selected.get("case_id"))
+    if case_id is None:
+        return selected
+    selected["links"] = {
+        "case_detail_path": f"/admin/v1/operator-review/cases/{case_id}",
+        "case_action_path": f"/admin/v1/operator-review/cases/{case_id}/actions",
+        "case_workbench_detail_path": (
+            f"/admin/v1/operator-review/cases/{case_id}/workbench-detail"
+        ),
+        "case_timeline_path": f"/admin/v1/operator-review/cases/{case_id}/timeline",
+    }
+    return selected
 
 
 def _empty_operator_review_workbench_summary() -> dict[str, int]:
@@ -7696,6 +7763,158 @@ def _operator_review_issue_operator_actions(
             actions.add("review_high_urgency_operator_note")
         if status == "OPEN" or "active_operator_note" in reasons:
             actions.add("follow_up_open_operator_note")
+    return sorted(actions)
+
+
+def _issue_candidates_from_operator_review_cases(
+    section: object,
+) -> list[dict[str, Any]]:
+    if not isinstance(section, Mapping):
+        return []
+    attention = section.get("attention")
+    if not isinstance(attention, list):
+        return []
+    items = [
+        dict(item)
+        for item in attention
+        if isinstance(item, Mapping)
+        and _operator_review_case_attention_item_needs_attention(item)
+    ]
+    if not items:
+        return []
+    return [_operator_review_case_issue_candidate(items)]
+
+
+def _operator_review_case_attention_item_needs_attention(
+    item: Mapping[str, Any],
+) -> bool:
+    return str(item.get("attention_status") or "OK") in {
+        "BLOCKED",
+        "ATTENTION",
+        "OPEN",
+    }
+
+
+def _operator_review_case_issue_candidate(
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    status_counts = _dashboard_count_by(items, "attention_status")
+    blocked_count = status_counts.get("BLOCKED", 0)
+    target_refs = [
+        target_ref
+        for item in items
+        if isinstance((target_ref := item.get("target_ref")), Mapping)
+    ]
+    target_services = sorted(
+        {
+            str(target.get("target_service"))
+            for target in target_refs
+            if str(target.get("target_service") or "") in SERVICE_SPECS
+        }
+    )
+    target_kinds = sorted(
+        {
+            str(target.get("target_kind"))
+            for target in target_refs
+            if target.get("target_kind")
+        }
+    )
+    target_ids = sorted(
+        {
+            str(target.get("target_id"))
+            for target in target_refs
+            if target.get("target_id")
+        }
+    )
+    reason_codes = sorted(
+        {
+            str(reason)
+            for item in items
+            for reason in item.get("reason_codes", [])
+            if isinstance(reason, str)
+        }
+    )
+    case_ids = sorted(
+        {
+            str(case_id)
+            for item in items
+            if (case_id := item.get("case_id"))
+        }
+    )
+    severity = "ERROR" if blocked_count else "WARNING"
+    return _operations_issue_candidate(
+        rule_id="operator_review_case_attention_required.v1",
+        service_id="nex-ag",
+        severity=severity,
+        title="Operator review case attention required",
+        detail=f"{len(items)} operator review case(s) need action.",
+        signal={
+            "source_type": "operator_review_case",
+            "status": "BLOCKED" if blocked_count else "ATTENTION",
+            "count": len(items),
+            "threshold": 1,
+            "blocked_count": blocked_count,
+            "attention_count": status_counts.get("ATTENTION", 0),
+            "open_count": status_counts.get("OPEN", 0),
+            "case_ids": case_ids,
+            "target_services": target_services,
+            "target_kinds": target_kinds,
+            "target_ids": target_ids,
+            "attention_statuses": sorted(status_counts),
+            "reason_codes": reason_codes,
+            "case_list_path": "/admin/v1/operator-review/cases",
+            "case_queue_path": "/admin/v1/operator-review/cases/queue",
+            "case_workbench_detail_path_template": (
+                "/admin/v1/operator-review/cases/{case_id}/workbench-detail"
+            ),
+            "case_timeline_path_template": (
+                "/admin/v1/operator-review/cases/{case_id}/timeline"
+            ),
+            "runbook_ids": _operator_review_case_issue_runbook_ids(items),
+            "recommended_operator_actions": (
+                _operator_review_case_issue_operator_actions(items)
+            ),
+        },
+    )
+
+
+def _operator_review_case_issue_runbook_ids(
+    items: list[dict[str, Any]],
+) -> list[str]:
+    runbook_ids: set[str] = set()
+    for item in items:
+        status = str(item.get("attention_status") or "")
+        reasons = {
+            str(reason)
+            for reason in item.get("reason_codes", [])
+            if isinstance(reason, str)
+        }
+        if status == "BLOCKED" or "urgent_case_not_closed" in reasons:
+            runbook_ids.add("ag.operator_review_case.urgent_triage.v1")
+        if "open_case_unassigned" in reasons:
+            runbook_ids.add("ag.operator_review_case.assign_owner.v1")
+        if status == "OPEN" or "open_case_requires_triage" in reasons:
+            runbook_ids.add("ag.operator_review_case.initial_triage.v1")
+        if status == "ATTENTION" or "reopened_case_requires_review" in reasons:
+            runbook_ids.add("ag.operator_review_case.reopened_review.v1")
+        if "assigned_case_in_progress" in reasons:
+            runbook_ids.add("ag.operator_review_case.assigned_followup.v1")
+    return sorted(runbook_ids)
+
+
+def _operator_review_case_issue_operator_actions(
+    items: list[dict[str, Any]],
+) -> list[str]:
+    actions: set[str] = set()
+    for item in items:
+        for action in item.get("recommended_actions", []):
+            if isinstance(action, str):
+                actions.add(action)
+        status = str(item.get("attention_status") or "")
+        if status == "BLOCKED":
+            actions.add("open_case_workbench_detail")
+        if status in {"ATTENTION", "OPEN"}:
+            actions.add("review_case_queue")
     return sorted(actions)
 
 

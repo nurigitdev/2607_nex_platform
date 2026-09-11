@@ -2353,7 +2353,11 @@
         "attention",
         "source_statuses",
         "case_list_path",
+        "case_queue_path",
+        "case_workbench_detail_path_template",
+        "case_timeline_path_template",
         "rollup_path",
+        "queue_summary",
         "redaction"
       ],
       "properties": {
@@ -2401,9 +2405,25 @@
           "type": "string",
           "minLength": 1
         },
+        "case_queue_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_workbench_detail_path_template": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_timeline_path_template": {
+          "type": "string",
+          "minLength": 1
+        },
         "rollup_path": {
           "type": "string",
           "minLength": 1
+        },
+        "queue_summary": {
+          "type": "object",
+          "additionalProperties": true
         },
         "redaction": {
           "type": "object",
