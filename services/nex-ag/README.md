@@ -1044,6 +1044,11 @@ Unified operations:
   source status (`READY`, `PARTIAL`, or `NOT_CONFIGURED`), does not inline
   evidence items or admission decision items, and keeps the existing evidence
   and mutation routes authoritative.
+- Slice 0667 freezes the evidence/admission contract surface in
+  `contracts/schemas/service/nex_ag/operator_review_case_workbench.v1.schema.json`,
+  adds positive examples for the evidence-link and action-admission route
+  payloads, updates the workbench-detail example, and documents both protected
+  S67 routes in the AG OpenAPI file.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

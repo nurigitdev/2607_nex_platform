@@ -1044,6 +1044,76 @@ paths:
           description: Case id is invalid.
         "503":
           description: Operator review case store is unavailable.
+  /admin/v1/operator-review/cases/{case_id}/evidence-links:
+    get:
+      operationId: getAgOperatorReviewCaseEvidenceLinks
+      tags:
+        - Operations
+      parameters:
+        - name: case_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 50
+      responses:
+        "200":
+          description: Metadata-safe evidence-link projection for one AG review case.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewCaseWorkbenchSurface"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "404":
+          description: Operator review case was not found.
+        "422":
+          description: Case id or evidence-link query is invalid.
+        "503":
+          description: Operator review case or evidence source store is unavailable.
+  /admin/v1/operator-review/cases/{case_id}/action-admission:
+    get:
+      operationId: getAgOperatorReviewCaseActionAdmission
+      tags:
+        - Operations
+      parameters:
+        - name: case_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: action_type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewCaseActionType"
+      responses:
+        "200":
+          description: Read-only case action-admission preflight projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewCaseWorkbenchSurface"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "404":
+          description: Operator review case was not found.
+        "422":
+          description: Case id or action type is invalid.
+        "503":
+          description: Operator review case store is unavailable.
   /admin/v1/operator-review/cases/{case_id}/timeline:
     get:
       operationId: getAgOperatorReviewCaseTimeline
@@ -3152,6 +3222,12 @@ components:
         case_timeline_schema_version:
           type: string
           const: ag_operator_review_case_timeline.v1
+        case_evidence_links_schema_version:
+          type: string
+          const: ag_operator_review_case_evidence_links.v1
+        case_action_admission_schema_version:
+          type: string
+          const: ag_operator_review_case_action_admission.v1
         trace_id:
           oneOf:
             - $ref: "#/components/schemas/TraceId"

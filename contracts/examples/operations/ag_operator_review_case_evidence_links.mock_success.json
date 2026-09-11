@@ -1,0 +1,115 @@
+{
+  "case_evidence_links_schema_version": "ag_operator_review_case_evidence_links.v1",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "case": {
+    "case_id": "5c7ff448-0648-4a93-9df4-0b9d4921648a",
+    "target_ref": {
+      "target_service": "nex-ag",
+      "target_kind": "operator_review_workbench",
+      "target_id": "workbench-target-0657"
+    },
+    "case_status": "ASSIGNED",
+    "case_priority": "URGENT",
+    "source_ref": {
+      "source_type": "operator_review_workbench",
+      "source_id": "workbench-target-0657",
+      "source_service": "nex-ag",
+      "workbench_path": "/admin/v1/operator-review/workbench"
+    },
+    "updated_at": "2026-09-11T00:00:05Z"
+  },
+  "items": [
+    {
+      "case_evidence_link_schema_version": "ag_operator_review_case_evidence_link.v1",
+      "link_type": "operator_review_note",
+      "link_id": "note-0667-a",
+      "target_ref": {
+        "target_service": "nex-ag",
+        "target_kind": "operator_review_workbench",
+        "target_id": "workbench-target-0657"
+      },
+      "operator_ref": {
+        "operator_type": "user",
+        "operator_id": "employee-0667",
+        "tenant_id": "local-tenant"
+      },
+      "note_status": "ACTIVE",
+      "note_type": "FOLLOW_UP",
+      "severity": "HIGH",
+      "operator_note_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "operator_note_preview": "Bounded operator note preview.",
+      "reason_count": 1,
+      "created_at": "2026-09-11T00:00:01Z",
+      "updated_at": "2026-09-11T00:00:04Z",
+      "detail_path": "/admin/v1/operator-review/notes/note-0667-a",
+      "redaction": {
+        "raw_operator_note_included": false,
+        "raw_prompt_included": false,
+        "storage_paths_included": false,
+        "idempotency_keys_included": false
+      }
+    },
+    {
+      "case_evidence_link_schema_version": "ag_operator_review_case_evidence_link.v1",
+      "link_type": "redacted_evidence_export",
+      "link_id": "export-0667-a",
+      "target_ref": {
+        "target_service": "nex-ag",
+        "target_kind": "operator_review_workbench",
+        "target_id": "workbench-target-0657"
+      },
+      "operator_ref": {
+        "operator_type": "user",
+        "operator_id": "employee-0667",
+        "tenant_id": "local-tenant"
+      },
+      "export_status": "READY",
+      "export_format": "json",
+      "redaction_profile": "ag_redacted_manifest_v1",
+      "evidence_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "evidence_item_count": 1,
+      "created_at": "2026-09-11T00:00:02Z",
+      "updated_at": "2026-09-11T00:00:03Z",
+      "detail_path": "/admin/v1/operator-review/evidence-exports/export-0667-a",
+      "redaction": {
+        "raw_evidence_body_included": false,
+        "raw_prompt_included": false,
+        "storage_paths_included": false,
+        "idempotency_keys_included": false
+      }
+    }
+  ],
+  "summary": {
+    "evidence_source_status": "READY",
+    "operator_note_count": 1,
+    "redacted_evidence_export_count": 1,
+    "total_link_count": 2,
+    "returned_link_count": 2,
+    "latest_updated_at": "2026-09-11T00:00:04Z"
+  },
+  "links": {
+    "case_detail_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a",
+    "case_workbench_detail_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/workbench-detail",
+    "case_timeline_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/timeline",
+    "case_evidence_links_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/evidence-links",
+    "case_action_admission_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/action-admission",
+    "operator_review_workbench_path": "/admin/v1/operator-review/workbench"
+  },
+  "redaction": {
+    "raw_operator_note_included": false,
+    "raw_evidence_body_included": false,
+    "raw_case_comment_included": false,
+    "raw_action_comment_included": false,
+    "raw_prompt_included": false,
+    "raw_generation_output_included": false,
+    "raw_source_text_included": false,
+    "storage_paths_included": false,
+    "provider_payloads_included": false,
+    "database_urls_included": false,
+    "tokens_included": false,
+    "idempotency_keys_included": false,
+    "metadata_payload_included": false,
+    "evidence_payload_shape": "safe_refs_hashes_and_bounded_previews_only"
+  }
+}

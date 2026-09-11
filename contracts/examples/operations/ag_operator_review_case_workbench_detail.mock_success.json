@@ -123,6 +123,40 @@
     "blocked_action_count": 2,
     "requires_idempotency_key": true
   },
+  "evidence_links": {
+    "planned_schema_version": "ag_operator_review_case_evidence_links.v1",
+    "inline_items_included": false,
+    "summary": {
+      "evidence_source_status": "READY",
+      "operator_note_count": 1,
+      "redacted_evidence_export_count": 1,
+      "total_link_count": 2,
+      "returned_link_count": 2,
+      "latest_updated_at": "2026-09-11T00:00:04Z"
+    },
+    "links": {
+      "case_evidence_links_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/evidence-links",
+      "case_timeline_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/timeline"
+    }
+  },
+  "action_admission": {
+    "planned_schema_version": "ag_operator_review_case_action_admission.v1",
+    "inline_items_included": false,
+    "summary": {
+      "current_status": "ASSIGNED",
+      "requested_action_type": null,
+      "requested_action_admitted": null,
+      "admitted_action_count": 3,
+      "blocked_action_count": 2,
+      "preflight_only": true,
+      "mutation_route_authoritative": true,
+      "admission_source": "operator_review_case_action_state_machine"
+    },
+    "links": {
+      "case_action_admission_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/action-admission",
+      "case_action_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/actions"
+    }
+  },
   "timeline": {
     "timeline_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/timeline",
     "action_history_shape": "operational_events_first",
@@ -132,6 +166,8 @@
   "links": {
     "case_detail_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a",
     "case_action_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/actions",
+    "case_evidence_links_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/evidence-links",
+    "case_action_admission_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/action-admission",
     "case_queue_path": "/admin/v1/operator-review/cases/queue",
     "operator_review_workbench_path": "/admin/v1/operator-review/workbench"
   },
@@ -143,6 +179,9 @@
     "raw_generation_output_included": false,
     "raw_source_text_included": false,
     "storage_paths_included": false,
+    "provider_payloads_included": false,
+    "database_urls_included": false,
+    "tokens_included": false,
     "idempotency_keys_included": false,
     "metadata_payload_included": false,
     "detail_payload_shape": "safe_refs_hashes_and_bounded_previews_only"

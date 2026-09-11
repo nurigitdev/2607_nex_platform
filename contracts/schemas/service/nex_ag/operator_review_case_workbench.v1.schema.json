@@ -11,6 +11,12 @@
     },
     {
       "$ref": "#/$defs/case_timeline_response"
+    },
+    {
+      "$ref": "#/$defs/case_evidence_links_response"
+    },
+    {
+      "$ref": "#/$defs/case_action_admission_response"
     }
   ],
   "$defs": {
@@ -300,7 +306,6 @@
       "required": [
         "raw_case_comment_included",
         "raw_action_comment_included",
-        "raw_resolution_comment_included",
         "idempotency_keys_included",
         "storage_paths_included"
       ],
@@ -312,6 +317,12 @@
           "const": false
         },
         "raw_resolution_comment_included": {
+          "const": false
+        },
+        "raw_operator_note_included": {
+          "const": false
+        },
+        "raw_evidence_body_included": {
           "const": false
         },
         "idempotency_keys_included": {
@@ -332,6 +343,15 @@
         "metadata_payload_included": {
           "const": false
         },
+        "provider_payloads_included": {
+          "const": false
+        },
+        "database_urls_included": {
+          "const": false
+        },
+        "tokens_included": {
+          "const": false
+        },
         "action_history_shape": {
           "const": "operational_events_first"
         },
@@ -340,6 +360,197 @@
         },
         "timeline_payload_shape": {
           "const": "operational_event_metadata_only"
+        },
+        "evidence_payload_shape": {
+          "const": "safe_refs_hashes_and_bounded_previews_only"
+        },
+        "admission_payload_shape": {
+          "const": "case_state_machine_preflight_only"
+        }
+      }
+    },
+    "evidence_source_status": {
+      "type": "string",
+      "enum": [
+        "READY",
+        "PARTIAL",
+        "NOT_CONFIGURED"
+      ]
+    },
+    "case_evidence_links_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_source_status",
+        "operator_note_count",
+        "redacted_evidence_export_count",
+        "total_link_count",
+        "returned_link_count",
+        "latest_updated_at"
+      ],
+      "properties": {
+        "evidence_source_status": {
+          "$ref": "#/$defs/evidence_source_status"
+        },
+        "operator_note_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "redacted_evidence_export_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_link_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "returned_link_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latest_updated_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        }
+      }
+    },
+    "nullable_case_action_type": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/case_action_type"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullable_boolean": {
+      "oneOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "case_action_admission_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "current_status",
+        "requested_action_type",
+        "requested_action_admitted",
+        "admitted_action_count",
+        "blocked_action_count",
+        "preflight_only",
+        "mutation_route_authoritative",
+        "admission_source"
+      ],
+      "properties": {
+        "current_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requested_action_type": {
+          "$ref": "#/$defs/nullable_case_action_type"
+        },
+        "requested_action_admitted": {
+          "$ref": "#/$defs/nullable_boolean"
+        },
+        "admitted_action_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked_action_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "preflight_only": {
+          "const": true
+        },
+        "mutation_route_authoritative": {
+          "const": true
+        },
+        "admission_source": {
+          "const": "operator_review_case_action_state_machine"
+        }
+      }
+    },
+    "detail_evidence_links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "planned_schema_version",
+        "inline_items_included",
+        "summary",
+        "links"
+      ],
+      "properties": {
+        "planned_schema_version": {
+          "const": "ag_operator_review_case_evidence_links.v1"
+        },
+        "inline_items_included": {
+          "const": false
+        },
+        "summary": {
+          "$ref": "#/$defs/case_evidence_links_summary"
+        },
+        "links": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "case_evidence_links_path",
+            "case_timeline_path"
+          ],
+          "properties": {
+            "case_evidence_links_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "case_timeline_path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "detail_action_admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "planned_schema_version",
+        "inline_items_included",
+        "summary",
+        "links"
+      ],
+      "properties": {
+        "planned_schema_version": {
+          "const": "ag_operator_review_case_action_admission.v1"
+        },
+        "inline_items_included": {
+          "const": false
+        },
+        "summary": {
+          "$ref": "#/$defs/case_action_admission_summary"
+        },
+        "links": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "case_action_admission_path",
+            "case_action_path"
+          ],
+          "properties": {
+            "case_action_admission_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "case_action_path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
       }
     },
@@ -631,6 +842,8 @@
         "resolution",
         "latest_action",
         "action_controls",
+        "evidence_links",
+        "action_admission",
         "timeline",
         "links",
         "redaction"
@@ -738,6 +951,12 @@
         "action_controls": {
           "$ref": "#/$defs/action_controls"
         },
+        "evidence_links": {
+          "$ref": "#/$defs/detail_evidence_links"
+        },
+        "action_admission": {
+          "$ref": "#/$defs/detail_action_admission"
+        },
         "timeline": {
           "type": "object",
           "additionalProperties": false,
@@ -769,6 +988,8 @@
           "required": [
             "case_detail_path",
             "case_action_path",
+            "case_evidence_links_path",
+            "case_action_admission_path",
             "case_queue_path",
             "operator_review_workbench_path"
           ],
@@ -778,6 +999,14 @@
               "minLength": 1
             },
             "case_action_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "case_evidence_links_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "case_action_admission_path": {
               "type": "string",
               "minLength": 1
             },
@@ -871,6 +1100,398 @@
         },
         "idempotency_key_required": {
           "const": true
+        }
+      }
+    },
+    "evidence_link_redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_prompt_included",
+        "storage_paths_included",
+        "idempotency_keys_included"
+      ],
+      "properties": {
+        "raw_operator_note_included": {
+          "const": false
+        },
+        "raw_evidence_body_included": {
+          "const": false
+        },
+        "raw_prompt_included": {
+          "const": false
+        },
+        "storage_paths_included": {
+          "const": false
+        },
+        "idempotency_keys_included": {
+          "const": false
+        }
+      }
+    },
+    "case_evidence_link_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_evidence_link_schema_version",
+        "link_type",
+        "link_id",
+        "target_ref",
+        "operator_ref",
+        "created_at",
+        "updated_at",
+        "detail_path",
+        "redaction"
+      ],
+      "properties": {
+        "case_evidence_link_schema_version": {
+          "const": "ag_operator_review_case_evidence_link.v1"
+        },
+        "link_type": {
+          "type": "string",
+          "enum": [
+            "operator_review_note",
+            "redacted_evidence_export"
+          ]
+        },
+        "link_id": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "target_ref": {
+          "$ref": "#/$defs/target_ref"
+        },
+        "operator_ref": {
+          "$ref": "#/$defs/operator_ref"
+        },
+        "note_status": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "note_type": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "severity": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "operator_note_hash": {
+          "$ref": "#/$defs/nullable_sha256"
+        },
+        "operator_note_preview": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "reason_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "export_status": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "export_format": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "redaction_profile": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "evidence_hash": {
+          "$ref": "#/$defs/nullable_sha256"
+        },
+        "evidence_item_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "detail_path": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "redaction": {
+          "$ref": "#/$defs/evidence_link_redaction"
+        }
+      }
+    },
+    "case_evidence_links_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_evidence_links_schema_version",
+        "trace_id",
+        "request_id",
+        "case",
+        "items",
+        "summary",
+        "links",
+        "redaction"
+      ],
+      "properties": {
+        "case_evidence_links_schema_version": {
+          "const": "ag_operator_review_case_evidence_links.v1"
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "case_id",
+            "target_ref",
+            "case_status",
+            "case_priority",
+            "source_ref",
+            "updated_at"
+          ],
+          "properties": {
+            "case_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "target_ref": {
+              "$ref": "#/$defs/target_ref"
+            },
+            "case_status": {
+              "$ref": "#/$defs/case_status"
+            },
+            "case_priority": {
+              "$ref": "#/$defs/case_priority"
+            },
+            "source_ref": {
+              "$ref": "#/$defs/source_ref"
+            },
+            "updated_at": {
+              "$ref": "#/$defs/timestamp"
+            }
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/case_evidence_link_item"
+          }
+        },
+        "summary": {
+          "$ref": "#/$defs/case_evidence_links_summary"
+        },
+        "links": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "case_detail_path",
+            "case_workbench_detail_path",
+            "case_timeline_path",
+            "case_evidence_links_path",
+            "case_action_admission_path",
+            "operator_review_workbench_path"
+          ],
+          "properties": {
+            "case_detail_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "case_workbench_detail_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "case_timeline_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "case_evidence_links_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "case_action_admission_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "operator_review_workbench_path": {
+              "const": "/admin/v1/operator-review/workbench"
+            }
+          }
+        },
+        "redaction": {
+          "$ref": "#/$defs/safe_redaction"
+        }
+      }
+    },
+    "case_action_admission_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_action_admission_item_schema_version",
+        "action_type",
+        "current_status",
+        "target_status",
+        "admitted",
+        "blocked_reason",
+        "requires_idempotency_key",
+        "requires_assignment_ref",
+        "requires_resolution_comment",
+        "mutation_method",
+        "mutation_path",
+        "mutation_route_authoritative",
+        "preflight_only"
+      ],
+      "properties": {
+        "case_action_admission_item_schema_version": {
+          "const": "ag_operator_review_case_action_admission_item.v1"
+        },
+        "action_type": {
+          "$ref": "#/$defs/case_action_type"
+        },
+        "current_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_status": {
+          "$ref": "#/$defs/case_status"
+        },
+        "admitted": {
+          "type": "boolean"
+        },
+        "blocked_reason": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "requires_idempotency_key": {
+          "const": true
+        },
+        "requires_assignment_ref": {
+          "type": "boolean"
+        },
+        "requires_resolution_comment": {
+          "type": "boolean"
+        },
+        "mutation_method": {
+          "const": "POST"
+        },
+        "mutation_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mutation_route_authoritative": {
+          "const": true
+        },
+        "preflight_only": {
+          "const": true
+        }
+      }
+    },
+    "nullable_case_action_admission_item": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/case_action_admission_item"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "case_action_admission_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_action_admission_schema_version",
+        "trace_id",
+        "request_id",
+        "case",
+        "requested_action",
+        "items",
+        "summary",
+        "links",
+        "redaction"
+      ],
+      "properties": {
+        "case_action_admission_schema_version": {
+          "const": "ag_operator_review_case_action_admission.v1"
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "case_id",
+            "target_ref",
+            "case_status",
+            "case_priority",
+            "assignment_ref",
+            "updated_at"
+          ],
+          "properties": {
+            "case_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "target_ref": {
+              "$ref": "#/$defs/target_ref"
+            },
+            "case_status": {
+              "$ref": "#/$defs/case_status"
+            },
+            "case_priority": {
+              "$ref": "#/$defs/case_priority"
+            },
+            "assignment_ref": {
+              "$ref": "#/$defs/assignment_ref"
+            },
+            "updated_at": {
+              "$ref": "#/$defs/timestamp"
+            }
+          }
+        },
+        "requested_action": {
+          "$ref": "#/$defs/nullable_case_action_admission_item"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/case_action_admission_item"
+          }
+        },
+        "summary": {
+          "$ref": "#/$defs/case_action_admission_summary"
+        },
+        "links": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "case_detail_path",
+            "case_workbench_detail_path",
+            "case_action_path",
+            "case_action_admission_path"
+          ],
+          "properties": {
+            "case_detail_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "case_workbench_detail_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "case_action_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "case_action_admission_path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "redaction": {
+          "$ref": "#/$defs/safe_redaction"
         }
       }
     },

@@ -471,6 +471,16 @@
       "schema": "schemas/service/nex_ag/operator_review_case_workbench.v1.schema.json"
     },
     {
+      "name": "ag_operator_review_case_evidence_links_mock",
+      "path": "examples/operations/ag_operator_review_case_evidence_links.mock_success.json",
+      "schema": "schemas/service/nex_ag/operator_review_case_workbench.v1.schema.json"
+    },
+    {
+      "name": "ag_operator_review_case_action_admission_mock",
+      "path": "examples/operations/ag_operator_review_case_action_admission.mock_success.json",
+      "schema": "schemas/service/nex_ag/operator_review_case_workbench.v1.schema.json"
+    },
+    {
       "name": "ag_operator_review_case_timeline_mock",
       "path": "examples/operations/ag_operator_review_case_timeline.mock_success.json",
       "schema": "schemas/service/nex_ag/operator_review_case_workbench.v1.schema.json"
